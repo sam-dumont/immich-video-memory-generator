@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories
+    app.kubernetes.io/component: video-compiler

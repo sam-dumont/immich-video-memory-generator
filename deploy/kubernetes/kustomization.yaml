@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: immich-memories
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  # Uncomment to include batch jobs
+  # - job.yaml
+
+commonLabels:
+  app.kubernetes.io/name: immich-memories
+  app.kubernetes.io/version: "0.1.0"
+  app.kubernetes.io/managed-by: kustomize
+
+# Example: Override for production
+# images:
+#   - name: ghcr.io/sam-dumont/immich-video-memory-generator
+#     newTag: v1.0.0

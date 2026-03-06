@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: immich-memories-config
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories
+data:
+  config.yaml: |
+    immich:
+      url: "${IMMICH_URL}"
+      api_key: "${IMMICH_API_KEY}"
+
+    defaults:
+      target_duration_minutes: 10
+      output_orientation: "landscape"
+      scale_mode: "smart_crop"
+      transition: "crossfade"
+      transition_duration: 0.5
+      transition_buffer: 0.5
+
+    analysis:
+      scene_threshold: 27.0
+      min_scene_duration: 1.0
+      duplicate_hash_threshold: 8
+      keyframe_interval: 1.0
+      enable_downscaling: true
+      analysis_resolution: 480
+      # Scene detection (enabled by default)
+      use_scene_detection: true
+      max_segment_duration: 10.0
+      min_segment_duration: 1.5
+
+    output:
+      directory: "/output"
+      format: "mp4"
+      resolution: "1080p"
+      codec: "h264"
+      crf: 18
+
+    hardware:
+      enabled: true
+      backend: "nvidia"
+      encoder_preset: "balanced"
+      gpu_decode: true
+      gpu_analysis: true
+
+    audio:
+      auto_music: false
+      music_source: "pixabay"
+      ollama_url: "http://ollama.ollama.svc.cluster.local:11434"
+      ollama_model: "llava"
+      ducking_threshold: 0.02
+      ducking_ratio: 6.0
+      music_volume_db: -6.0
+
+    # LLM content analysis (disabled by default for performance)
+    content_analysis:
+      enabled: false
+      weight: 0.2
+      provider: "auto"
+      ollama_url: "http://ollama.ollama.svc.cluster.local:11434"
+      ollama_model: "llava"
+      openai_api_key: "${OPENAI_API_KEY}"
+      openai_model: "gpt-4o-mini"
+      analyze_frames: 3
+      min_confidence: 0.5

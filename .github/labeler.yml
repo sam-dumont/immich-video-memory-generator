@@ -1,0 +1,70 @@
+# Labels for PR files changed
+# Copy to .github/labeler.yml
+
+# Area labels
+area/api:
+  - changed-files:
+      - any-glob-to-any-file: 'src/immich_memories/api/**'
+
+area/analysis:
+  - changed-files:
+      - any-glob-to-any-file: 'src/immich_memories/analysis/**'
+
+area/processing:
+  - changed-files:
+      - any-glob-to-any-file: 'src/immich_memories/processing/**'
+
+area/ui:
+  - changed-files:
+      - any-glob-to-any-file: 'src/immich_memories/ui/**'
+
+area/cli:
+  - changed-files:
+      - any-glob-to-any-file: 'src/immich_memories/cli.py'
+
+# Type labels
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.md'
+          - 'docs/**'
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file: 'tests/**'
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+          - 'justfile'
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'pyproject.toml'
+          - 'uv.lock'
+          - 'requirements*.txt'
+
+docker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docker/**'
+          - 'Dockerfile'
+          - 'docker-compose*.yml'
+
+# Platform labels
+platform/mac:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/immich_memories/analysis/apple_vision.py'
+          - '**/*apple*'
+          - '**/*vision*'
+          - '**/*metal*'
+
+platform/nvidia:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*cuda*'
+          - '**/*nvenc*'
+          - '**/*nvidia*'

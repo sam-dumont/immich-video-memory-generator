@@ -1,0 +1,360 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "immich-memories"
+dynamic = ["version"]
+description = "Create yearly video compilations from your Immich photo library"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+authors = [
+    { name = "Immich Memories Contributors" }
+]
+keywords = ["immich", "video", "memories", "compilation", "photo-management"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Multimedia :: Video :: Conversion",
+]
+
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "nicegui>=2.4.0",
+    "moviepy>=1.0.3",
+    "scenedetect[opencv]>=0.6",
+    "opencv-python>=4.9",
+    "videohash>=3.0",
+    "pyyaml>=6.0",
+    "click>=8.1",
+    "rich>=13.0",
+    "pillow>=10.0",
+    "numpy>=1.24",
+    "imagehash>=4.3",
+    "watchdog>=3.0",  # File watching for development
+]
+
+[project.optional-dependencies]
+face = [
+    "face-recognition>=1.3",
+    "dlib>=19.24",
+]
+# Mac-specific dependencies for GPU-accelerated processing
+mac = [
+    "pyobjc-core>=9.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Vision>=9.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=9.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Metal>=9.0; sys_platform == 'darwin'",
+]
+# Audio metadata for local music library
+audio = [
+    "mutagen>=1.47",
+]
+# ML-based audio content analysis (laughter/speech detection)
+# TensorFlow 2.20+ supports Python 3.13 and macOS ARM64 natively
+audio-ml = [
+    "tensorflow>=2.20",
+    "tensorflow-hub>=0.16",
+]
+# GPU-accelerated title rendering with Taichi
+# Supports: Metal (macOS), CUDA (NVIDIA), Vulkan, OpenGL, CPU fallback
+gpu = [
+    "taichi>=1.7.0",
+    "freetype-py>=2.4",  # SDF font rendering
+]
+# All cross-platform optional features
+all = [
+    "immich-memories[face]",
+    "immich-memories[audio]",
+    "immich-memories[audio-ml]",
+    "immich-memories[gpu]",
+]
+# All features for macOS (includes Apple Vision framework)
+all-mac = [
+    "immich-memories[face]",
+    "immich-memories[audio]",
+    "immich-memories[audio-ml]",
+    "immich-memories[mac]",
+    "immich-memories[gpu]",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-asyncio>=0.21",
+    "mypy>=1.0",
+    "ruff>=0.1",
+    "pre-commit>=3.0",
+    "commitizen>=3.0",
+    "python-semantic-release>=9.0",
+    "types-PyYAML>=6.0",
+]
+
+[project.scripts]
+immich-memories = "immich_memories.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/sam-dumont/immich-video-memory-generator"
+Documentation = "https://github.com/sam-dumont/immich-video-memory-generator#readme"
+Repository = "https://github.com/sam-dumont/immich-video-memory-generator"
+Issues = "https://github.com/sam-dumont/immich-video-memory-generator/issues"
+
+[tool.hatch.version]
+source = "vcs"
+# On non-tagged commits: 0.1.0.dev1+g1234567
+# On tagged commits: 0.1.0
+
+[tool.hatch.version.raw-options]
+local_scheme = "no-local-version"  # For PyPI compatibility
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/immich_memories/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/immich_memories"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+]
+
+# Semantic Release Configuration
+[tool.semantic_release]
+version_toml = ["pyproject.toml:tool.semantic_release.version"]
+version = "0.1.0"
+tag_format = "v{version}"
+branch = "main"
+build_command = "uv build"
+commit_message = "chore(release): {version} [skip ci]"
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.branches."rc"]
+match = "rc/*"
+prerelease = true
+prerelease_token = "rc"
+
+[tool.semantic_release.branches."dev"]
+match = "(dev|develop|feature)/*"
+prerelease = true
+prerelease_token = "dev"
+
+[tool.semantic_release.changelog]
+template_dir = ".github/templates"
+changelog_file = "CHANGELOG.md"
+exclude_commit_patterns = [
+    "^chore\\(release\\):",
+    "^ci:",
+    "^Merge",
+]
+
+[tool.semantic_release.changelog.environment]
+block_start_string = "{%"
+block_end_string = "%}"
+variable_start_string = "{{"
+variable_end_string = "}}"
+comment_start_string = "{#"
+comment_end_string = "#}"
+trim_blocks = true
+lstrip_blocks = true
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = ["build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "style", "test"]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+
+[tool.semantic_release.remote]
+type = "github"
+token = { env = "GH_TOKEN" }
+
+[tool.semantic_release.publish]
+upload_to_vcs_release = true
+upload_to_pypi = false  # Don't publish to PyPI
+
+# Commitizen configuration for conventional commits
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_scheme = "semver"
+version_provider = "scm"
+update_changelog_on_bump = true
+changelog_incremental = true
+major_version_zero = true
+
+[tool.uv]
+# Only resolve dependencies for the current platform to avoid cross-platform issues
+# with platform-specific packages like pyobjc
+environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'", "sys_platform == 'win32'"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src", "tests"]
+exclude = ["src/immich_memories/_version.py"]  # Auto-generated by hatch-vcs
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+    "SIM105", # contextlib.suppress - often less readable
+    "SIM115", # context manager for temp files - false positives with delete=False
+    "ARG001", # unused function argument - often needed for interface compliance
+    "ARG002", # unused method argument - often needed for interface compliance
+    "B904",   # raise from - not always needed for simple re-raises
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["immich_memories"]
+
+[tool.ruff.lint.per-file-ignores]
+# app.py needs logging configured before other imports
+"src/immich_memories/ui/app.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = false
+warn_unused_ignores = false
+disallow_untyped_defs = false
+check_untyped_defs = true
+strict = false
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = [
+    "moviepy.*",
+    "scenedetect.*",
+    "videohash.*",
+    "face_recognition.*",
+    "imagehash.*",
+    "mutagen.*",
+    # macOS frameworks (PyObjC)
+    "Vision.*",
+    "Quartz.*",
+    "CoreImage.*",
+    "Metal.*",
+    "objc.*",
+    # TensorFlow (optional for audio content analysis)
+    "tensorflow.*",
+    "tensorflow_hub.*",
+    # Taichi (GPU rendering)
+    "taichi.*",
+]
+ignore_missing_imports = true
+
+# OpenCV has incomplete type stubs, especially for CUDA
+[[tool.mypy.overrides]]
+module = ["cv2", "cv2.*"]
+ignore_missing_imports = true
+ignore_errors = true
+
+# Files using OpenCV CUDA functions with incomplete stubs
+[[tool.mypy.overrides]]
+module = [
+    "immich_memories.analysis.scenes",
+    "immich_memories.analysis.scoring",
+    "immich_memories.analysis.apple_vision",
+    "immich_memories.processing.transforms",
+]
+disable_error_code = ["attr-defined", "call-overload", "union-attr", "assignment", "misc", "has-type"]
+
+# API client with dynamic JSON responses
+[[tool.mypy.overrides]]
+module = ["immich_memories.api.immich"]
+disable_error_code = ["arg-type", "return-value"]
+
+# Streamlit UI with dynamic session state
+[[tool.mypy.overrides]]
+module = ["immich_memories.ui.components", "immich_memories.ui.app"]
+disable_error_code = ["assignment", "misc", "arg-type", "import-untyped"]
+
+# Audio mood analyzer with dynamic LLM outputs
+[[tool.mypy.overrides]]
+module = ["immich_memories.audio.mood_analyzer"]
+disable_error_code = ["dict-item"]
+
+# Audio content analyzer with TensorFlow/YAMNet
+[[tool.mypy.overrides]]
+module = ["immich_memories.audio.content_analyzer"]
+disable_error_code = ["attr-defined", "assignment", "misc"]
+
+# Audio music generator with dynamic callbacks
+[[tool.mypy.overrides]]
+module = ["immich_memories.audio.music_generator"]
+disable_error_code = ["valid-type", "misc", "call-arg"]
+
+# Video cache with Immich client compatibility
+[[tool.mypy.overrides]]
+module = ["immich_memories.cache.video_cache"]
+disable_error_code = ["attr-defined"]
+
+# Taichi GPU renderers (uses Taichi-specific type annotations)
+[[tool.mypy.overrides]]
+module = [
+    "immich_memories.titles.renderer_taichi",
+    "immich_memories.titles.sdf_font",
+]
+disable_error_code = ["valid-type", "assignment", "misc", "truthy-function", "union-attr", "import-untyped"]
+
+# PIL renderer with optional font types
+[[tool.mypy.overrides]]
+module = ["immich_memories.titles.renderer_pil"]
+disable_error_code = ["arg-type", "union-attr", "has-type"]
+
+# Unified analyzer with complex audio analysis
+[[tool.mypy.overrides]]
+module = ["immich_memories.analysis.unified_analyzer"]
+disable_error_code = ["var-annotated", "assignment", "attr-defined"]
+
+# Title generator with optional Taichi imports
+[[tool.mypy.overrides]]
+module = ["immich_memories.titles.generator"]
+disable_error_code = ["assignment", "misc"]
+
+# Video assembler with dynamic resolution detection
+[[tool.mypy.overrides]]
+module = ["immich_memories.processing.assembly"]
+disable_error_code = ["attr-defined"]
+
+# Pandas is optional for UI
+[[tool.mypy.overrides]]
+module = ["pandas", "pandas.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["src/immich_memories"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
