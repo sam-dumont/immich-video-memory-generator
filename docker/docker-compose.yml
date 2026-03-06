@@ -1,0 +1,60 @@
+# Immich Memories - Docker Compose Configuration
+# Run alongside your Immich instance
+
+version: "3.8"
+
+services:
+  immich-memories:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: immich-memories
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Config directory (for persistent settings)
+      - immich-memories-config:/root/.immich-memories
+
+      # Output directory for generated videos
+      - ./output:/app/output
+
+      # Optional: Mount a local directory for music files
+      # - ./music:/app/music:ro
+    environment:
+      # Immich connection (can also be set in config.yaml)
+      - IMMICH_URL=${IMMICH_URL:-}
+      - IMMICH_API_KEY=${IMMICH_API_KEY:-}
+    networks:
+      - immich-memories-net
+    # Uncomment to connect to Immich's network
+    # external_links:
+    #   - immich_server:immich
+
+  # Optional: Add to existing Immich network
+  # networks:
+  #   default:
+  #     external:
+  #       name: immich_default
+
+volumes:
+  immich-memories-config:
+
+networks:
+  immich-memories-net:
+    driver: bridge
+
+# Example usage with Immich (add to your existing docker-compose.yml):
+#
+# services:
+#   immich-memories:
+#     image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
+#     ports:
+#       - "8080:8080"
+#     environment:
+#       - IMMICH_URL=http://immich_server:3001
+#       - IMMICH_API_KEY=${IMMICH_API_KEY}
+#     networks:
+#       - default
+#     depends_on:
+#       - immich-server

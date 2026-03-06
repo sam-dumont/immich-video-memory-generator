@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: immich-memories-output
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  # Uncomment and modify for your storage class
+  # storageClassName: local-path
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: immich-memories-cache
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  # storageClassName: local-path

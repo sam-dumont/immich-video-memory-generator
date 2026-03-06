@@ -1,0 +1,76 @@
+# French translations for Immich Memories.
+# Copyright (C) 2024, Immich Memories
+# This file is distributed under the same license as the Immich Memories package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: immich-memories 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-01-01 00:00+0000\n"
+"PO-Revision-Date: 2024-01-01 00:00+0000\n"
+"Last-Translator: Automatically generated\n"
+"Language-Team: French\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: Month names
+msgid "month.1"
+msgstr "Janvier"
+
+msgid "month.2"
+msgstr "Février"
+
+msgid "month.3"
+msgstr "Mars"
+
+msgid "month.4"
+msgstr "Avril"
+
+msgid "month.5"
+msgstr "Mai"
+
+msgid "month.6"
+msgstr "Juin"
+
+msgid "month.7"
+msgstr "Juillet"
+
+msgid "month.8"
+msgstr "Août"
+
+msgid "month.9"
+msgstr "Septembre"
+
+msgid "month.10"
+msgstr "Octobre"
+
+msgid "month.11"
+msgstr "Novembre"
+
+msgid "month.12"
+msgstr "Décembre"
+
+#: Title patterns
+msgid "title.year"
+msgstr "{year}"
+
+msgid "title.month_year"
+msgstr "{month} {year}"
+
+msgid "title.month_range_same_year"
+msgstr "{start_month} à {end_month} {year}"
+
+msgid "title.month_range_different_year"
+msgstr "{start_month} {start_year} à {end_month} {end_year}"
+
+msgid "title.birthday_year"
+msgstr "{ordinal} Année"
+
+#: General
+msgid "word.to"
+msgstr "à"
+
+msgid "word.year"
+msgstr "Année"

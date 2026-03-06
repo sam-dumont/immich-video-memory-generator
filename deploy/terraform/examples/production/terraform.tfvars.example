@@ -1,0 +1,40 @@
+# Copy this file to terraform.tfvars and fill in your values
+
+# Kubernetes
+kubeconfig_path    = "~/.kube/config"
+kubeconfig_context = "production-cluster"
+namespace          = "immich-memories"
+environment        = "production"
+
+# Image
+image_tag = "v1.0.0"
+
+# Immich
+immich_url     = "https://photos.example.com"
+immich_api_key = "your-immich-api-key"
+
+# Optional API keys
+openai_api_key  = ""  # For mood/content analysis fallback
+pixabay_api_key = ""  # For music search
+
+# GPU
+gpu_count = 1
+
+# Storage
+storage_class_name = "local-path"  # Or your storage class
+
+# Ingress
+ingress_host = "memories.example.com"
+
+# Ollama (for mood and content analysis - local LLM)
+ollama_url   = "http://ollama.ollama.svc.cluster.local:11434"
+ollama_model = "llava"  # Vision model for content analysis
+
+# Analysis settings
+use_scene_detection = true  # Use natural scene boundaries (default)
+enable_downscaling  = true  # Faster analysis at 480p (default)
+
+# LLM Content Analysis (adds AI-powered content scoring)
+content_analysis_enabled = false  # Disabled by default for performance
+content_analysis_weight  = 0.2    # 20% of total score when enabled
+content_analysis_provider = "auto" # auto, ollama, openai
