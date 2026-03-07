@@ -34,12 +34,8 @@ class TitleStyle:
     accent_color: str = "#F59E0B"
 
     # Background
-    background_type: Literal["solid_gradient", "soft_gradient", "vignette"] = (
-        "soft_gradient"
-    )
-    background_colors: list[str] = field(
-        default_factory=lambda: ["#FFF5E6", "#FFE4CC"]
-    )
+    background_type: Literal["solid_gradient", "soft_gradient", "vignette"] = "soft_gradient"
+    background_colors: list[str] = field(default_factory=lambda: ["#FFF5E6", "#FFE4CC"])
     background_angle: int = 135  # degrees for linear gradient
 
     # Animation preset name (see animations.py)

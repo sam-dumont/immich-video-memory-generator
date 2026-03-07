@@ -84,12 +84,12 @@ jobs:
 
       - name: Check for breaking changes
         id: check
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           # Check PR title and body for breaking change indicators
-          TITLE="${{ github.event.pull_request.title }}"
-          BODY="${{ github.event.pull_request.body }}"
-
-          if [[ "$TITLE" == *"!"* ]] || [[ "$BODY" == *"BREAKING CHANGE"* ]]; then
+          if [[ "$PR_TITLE" == *"!"* ]] || [[ "$PR_BODY" == *"BREAKING CHANGE"* ]]; then
             echo "is_breaking=true" >> $GITHUB_OUTPUT
             echo "This PR contains breaking changes"
           else

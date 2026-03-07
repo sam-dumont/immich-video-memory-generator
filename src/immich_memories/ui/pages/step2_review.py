@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import logging
 from collections import defaultdict
-from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from nicegui import run, ui
 
@@ -18,8 +16,7 @@ from immich_memories.processing.clips import probe_video_url
 from immich_memories.ui.state import get_app_state
 
 if TYPE_CHECKING:
-    from immich_memories.cache import VideoAnalysisCache
-    from immich_memories.cache.thumbnail_cache import ThumbnailCache
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +54,6 @@ def _get_preview_path(asset_id: str) -> Path | None:
     Returns the path to the preview file, or None if the source isn't cached.
     """
     import subprocess
-    from pathlib import Path
 
     from immich_memories.config import get_config
 
@@ -94,15 +90,24 @@ def _get_preview_path(asset_id: str) -> Path | None:
 
     # Transcode to H.264 480p — fast, small, plays everywhere
     cmd = [
-        "ffmpeg", "-y",
-        "-i", str(source),
-        "-vf", "scale=-2:480",
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "28",
-        "-c:a", "aac",
-        "-b:a", "96k",
-        "-movflags", "+faststart",
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(source),
+        "-vf",
+        "scale=-2:480",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "28",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "96k",
+        "-movflags",
+        "+faststart",
         str(preview_path),
     ]
 
@@ -139,14 +144,13 @@ def render_duration_summary(
 ) -> None:
     """Render duration summary."""
     container.clear()
-    with container:
-        with ui.row().classes("w-full gap-8"):
-            with ui.column().classes("items-center"):
-                ui.label("Selected Clips").classes("text-sm text-gray-500")
-                ui.label(str(clip_count)).classes("text-2xl font-bold")
-            with ui.column().classes("items-center"):
-                ui.label("Total Duration").classes("text-sm text-gray-500")
-                ui.label(format_duration(total_duration)).classes("text-2xl font-bold")
+    with container, ui.row().classes("w-full gap-8"):
+        with ui.column().classes("items-center"):
+            ui.label("Selected Clips").classes("text-sm text-gray-500")
+            ui.label(str(clip_count)).classes("text-2xl font-bold")
+        with ui.column().classes("items-center"):
+            ui.label("Total Duration").classes("text-sm text-gray-500")
+            ui.label(format_duration(total_duration)).classes("text-2xl font-bold")
 
 
 def render_phase_indicator(current_phase: int, total_phases: int = 4) -> None:
@@ -214,7 +218,9 @@ def render_step2() -> None:
     if not state.date_range or not state.immich_url:
         with ui.card().classes("w-full p-4 bg-yellow-50"):
             ui.label("Session expired — please reconfigure.").classes("text-yellow-700 font-medium")
-            ui.label("The server restarted and lost your settings.").classes("text-yellow-600 text-sm")
+            ui.label("The server restarted and lost your settings.").classes(
+                "text-yellow-600 text-sm"
+            )
         ui.button("Back to Configuration", on_click=lambda: ui.navigate.to("/"), icon="arrow_back")
         return
 
@@ -534,12 +540,17 @@ def render_step2() -> None:
                         container = ui.column().classes("w-full")
                         with container:
                             _render_clip_grid_paginated(
-                                clips_list, dup_ids, lq_ids, summary_ctr,
+                                clips_list,
+                                dup_ids,
+                                lq_ids,
+                                summary_ctr,
                             )
 
             exp.on_value_change(on_expand)
 
-        _make_lazy_loader(expansion, month_clips, duplicate_ids, lower_quality_ids, summary_container)
+        _make_lazy_loader(
+            expansion, month_clips, duplicate_ids, lower_quality_ids, summary_container
+        )
 
     ui.separator().classes("my-4")
 
@@ -585,6 +596,7 @@ def _load_clips() -> None:
     async def do_load():
         """Async wrapper to load clips with run.io_bound."""
         try:
+
             def fetch_clips():
                 """Blocking function to fetch clips from API."""
                 with SyncImmichClient(
@@ -592,6 +604,8 @@ def _load_clips() -> None:
                     api_key=state.immich_api_key,
                 ) as client:
                     date_range = state.date_range
+                    if date_range is None:
+                        raise ValueError("No date range configured")
 
                     if state.selected_person:
                         assets = client.get_videos_for_person_and_date_range(
@@ -617,7 +631,9 @@ def _load_clips() -> None:
                         clips.append(clip)
 
                     if skipped_short > 0:
-                        logger.info(f"Skipped {skipped_short} clips shorter than {MIN_CLIP_DURATION}s")
+                        logger.info(
+                            f"Skipped {skipped_short} clips shorter than {MIN_CLIP_DURATION}s"
+                        )
 
                     return clips, client
 
@@ -651,6 +667,8 @@ async def _load_thumbnails_and_metadata_async(
     state = get_app_state()
     analysis_cache = state.analysis_cache
     thumbnail_cache = state.thumbnail_cache
+    if thumbnail_cache is None:
+        raise RuntimeError("Thumbnail cache not initialized")
 
     all_asset_ids = [c.asset.id for c in clips]
 
@@ -690,7 +708,7 @@ async def _load_thumbnails_and_metadata_async(
             api_key=state.immich_api_key,
         ) as client:
             # Fetch missing thumbnails
-            for i, clip in enumerate(clips_needing_thumbnails):
+            for _i, clip in enumerate(clips_needing_thumbnails):
                 try:
                     thumb = client.get_asset_thumbnail(clip.asset.id, size="preview")
                     if thumb:
@@ -735,7 +753,9 @@ async def _load_thumbnails_and_metadata_async(
                     logger.debug(f"Failed to probe video metadata: {e}")
 
     # Run blocking code in thread pool
-    status_label.set_text(f"Loading {len(clips_needing_thumbnails)} thumbnails + probing {len(clips_needing_metadata)} metadata...")
+    status_label.set_text(
+        f"Loading {len(clips_needing_thumbnails)} thumbnails + probing {len(clips_needing_metadata)} metadata..."
+    )
     await run.io_bound(fetch_thumbnails_and_metadata)
     status_label.set_text("Done loading metadata")
 
@@ -787,7 +807,7 @@ def _detect_duplicates(
     duplicate_ids: set[str] = set()
     lower_quality_ids: set[str] = set()
 
-    for key, group in clips_by_datetime.items():
+    for _key, group in clips_by_datetime.items():
         if len(group) > 1:
             sorted_group = sorted(group, key=clip_quality_score, reverse=True)
             best_clip = sorted_group[0]
@@ -826,7 +846,9 @@ def _update_duration_summary(clips: list[VideoClipInfo], container: ui.element) 
                 selected_duration += min(c.duration_seconds or avg_clip_sec, avg_clip_sec)
 
     selected_count = len(state.selected_clip_ids)
-    render_duration_summary(selected_duration, state.target_duration * 60, selected_count, container)
+    render_duration_summary(
+        selected_duration, state.target_duration * 60, selected_count, container
+    )
 
 
 CLIPS_PER_PAGE = 20
@@ -898,7 +920,9 @@ def _render_clip_grid(
             is_best = is_duplicate and clip.asset.id not in lower_quality_ids
 
             date_str = clip.asset.file_created_at.strftime("%b %d %H:%M")
-            duration_str = format_duration(clip.duration_seconds) if clip.duration_seconds else "N/A"
+            duration_str = (
+                format_duration(clip.duration_seconds) if clip.duration_seconds else "N/A"
+            )
 
             with ui.card().classes("p-2"):
                 # Thumbnail
@@ -907,7 +931,9 @@ def _render_clip_grid(
                     b64 = base64.b64encode(thumb).decode()
                     ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-24 object-cover")
                 else:
-                    ui.element("div").classes("w-full h-24 bg-gray-200 flex items-center justify-center")
+                    ui.element("div").classes(
+                        "w-full h-24 bg-gray-200 flex items-center justify-center"
+                    )
 
                 # Badges
                 badges = []
@@ -992,7 +1018,9 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
     progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-full")
 
     # Stats row: counts + ETA + speed
-    stats_container = ui.row().classes("w-full justify-between items-center text-sm text-gray-600 mt-1")
+    stats_container = ui.row().classes(
+        "w-full justify-between items-center text-sm text-gray-600 mt-1"
+    )
 
     status_label = ui.label("Starting pipeline...")
 
@@ -1045,7 +1073,9 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
     def _render_thumbnail_for(asset_id: str | None, container: ui.element) -> None:
         """Render a thumbnail into a container (called from UI thread)."""
         if not asset_id:
-            ui.element("div").classes("w-full h-32 bg-gray-200 rounded flex items-center justify-center")
+            ui.element("div").classes(
+                "w-full h-32 bg-gray-200 rounded flex items-center justify-center"
+            )
             return
         thumb = get_thumbnail(asset_id)
         if thumb:
@@ -1108,7 +1138,9 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
 
         # Detail cards — only rebuild when the displayed clip changes
         current_changed = _rendered_state["current_asset_id"] != progress_state["current_asset_id"]
-        last_changed = _rendered_state["last_completed_asset_id"] != progress_state["last_completed_asset_id"]
+        last_changed = (
+            _rendered_state["last_completed_asset_id"] != progress_state["last_completed_asset_id"]
+        )
 
         if current_changed or last_changed:
             _rendered_state["current_asset_id"] = progress_state["current_asset_id"]
@@ -1118,7 +1150,9 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
             with detail_container:
                 # --- Currently analyzing ---
                 with ui.card().classes("flex-1 p-3"):
-                    ui.label("Currently Analyzing").classes("text-sm font-semibold text-blue-600 mb-2")
+                    ui.label("Currently Analyzing").classes(
+                        "text-sm font-semibold text-blue-600 mb-2"
+                    )
                     current_item = progress_state["current_item"]
                     current_asset = progress_state["current_asset_id"]
                     if current_item:
@@ -1132,7 +1166,9 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
                 last_asset = progress_state["last_completed_asset_id"]
                 if last_asset:
                     with ui.card().classes("flex-1 p-3"):
-                        ui.label("Last Analyzed").classes("text-sm font-semibold text-green-600 mb-2")
+                        ui.label("Last Analyzed").classes(
+                            "text-sm font-semibold text-green-600 mb-2"
+                        )
 
                         # Show video preview if available, otherwise thumbnail
                         preview_path = progress_state["last_completed_video_path"]
@@ -1162,9 +1198,9 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
                             seg_dur = end - start
                             with ui.row().classes("gap-2 mt-2 items-center"):
                                 ui.icon("content_cut", color="blue").classes("text-sm")
-                                ui.label(
-                                    f"{start:.1f}s - {end:.1f}s ({seg_dur:.1f}s)"
-                                ).classes("text-sm")
+                                ui.label(f"{start:.1f}s - {end:.1f}s ({seg_dur:.1f}s)").classes(
+                                    "text-sm"
+                                )
                         if score is not None:
                             with ui.row().classes("gap-2 items-center"):
                                 ui.icon("star", color="amber").classes("text-sm")
@@ -1217,6 +1253,9 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
 
         def run_blocking() -> None:
             """Runs entirely in a background thread — no UI calls here."""
+            tc = state.thumbnail_cache
+            if tc is None:
+                raise RuntimeError("Thumbnail cache not initialized")
             try:
                 with SyncImmichClient(
                     base_url=state.immich_url,
@@ -1225,7 +1264,7 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
                     pipeline = SmartPipeline(
                         client=client,
                         analysis_cache=state.analysis_cache,
-                        thumbnail_cache=state.thumbnail_cache,
+                        thumbnail_cache=tc,
                         config=config,
                     )
 
@@ -1251,14 +1290,28 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
                         progress_state["completed_count"] = status.get("completed_count", 0)
                         progress_state["error_count"] = status.get("error_count", 0)
                         # Last completed clip details
-                        progress_state["last_completed_asset_id"] = status.get("last_completed_asset_id")
-                        progress_state["last_completed_segment"] = status.get("last_completed_segment")
+                        progress_state["last_completed_asset_id"] = status.get(
+                            "last_completed_asset_id"
+                        )
+                        progress_state["last_completed_segment"] = status.get(
+                            "last_completed_segment"
+                        )
                         progress_state["last_completed_score"] = status.get("last_completed_score")
-                        progress_state["last_completed_video_path"] = status.get("last_completed_video_path")
-                        progress_state["last_completed_llm_description"] = status.get("last_completed_llm_description")
-                        progress_state["last_completed_llm_emotion"] = status.get("last_completed_llm_emotion")
-                        progress_state["last_completed_llm_interestingness"] = status.get("last_completed_llm_interestingness")
-                        progress_state["last_completed_llm_quality"] = status.get("last_completed_llm_quality")
+                        progress_state["last_completed_video_path"] = status.get(
+                            "last_completed_video_path"
+                        )
+                        progress_state["last_completed_llm_description"] = status.get(
+                            "last_completed_llm_description"
+                        )
+                        progress_state["last_completed_llm_emotion"] = status.get(
+                            "last_completed_llm_emotion"
+                        )
+                        progress_state["last_completed_llm_interestingness"] = status.get(
+                            "last_completed_llm_interestingness"
+                        )
+                        progress_state["last_completed_llm_quality"] = status.get(
+                            "last_completed_llm_quality"
+                        )
 
                     result = pipeline.run(clips=clips, progress_callback=on_progress)
 
@@ -1342,7 +1395,9 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
         with summary_container:
             with ui.column().classes("items-center"):
                 ui.label("Selected Clips").classes("text-sm text-gray-500")
-                ui.label(str(len([c for c in selected_clips if c.asset.id in state.selected_clip_ids]))).classes("text-2xl font-bold")
+                ui.label(
+                    str(len([c for c in selected_clips if c.asset.id in state.selected_clip_ids]))
+                ).classes("text-2xl font-bold")
             with ui.column().classes("items-center"):
                 ui.label("Total Duration").classes("text-sm text-gray-500")
                 ui.label(format_duration(total_selected)).classes("text-2xl font-bold")
@@ -1410,9 +1465,11 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
         if clip.is_hdr:
             title_parts.append(f"[{clip.hdr_format}]")
         title_parts.append(date_str)
-        title_parts.append(f"• Using {format_duration(segment_duration)} of {format_duration(duration)}")
+        title_parts.append(
+            f"• Using {format_duration(segment_duration)} of {format_duration(duration)}"
+        )
 
-        with ui.expansion(" ".join(title_parts), value=i < 5).classes("w-full"):
+        with ui.expansion(" ".join(title_parts), value=i < 5).classes("w-full"):  # noqa: SIM117
             with ui.row().classes("w-full gap-4"):
                 # Preview column
                 with ui.column().classes("w-64"):
@@ -1423,7 +1480,9 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
                         thumb = get_thumbnail(clip.asset.id)
                         if thumb:
                             b64 = base64.b64encode(thumb).decode()
-                            ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-24 object-cover rounded")
+                            ui.image(f"data:image/jpeg;base64,{b64}").classes(
+                                "w-full h-24 object-cover rounded"
+                            )
                         else:
                             ui.element("div").classes("w-full h-24 bg-gray-200 rounded")
 
@@ -1481,15 +1540,25 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
                         return handler
 
                     ui.label("Select range").classes("text-sm text-gray-500")
-                    range_slider = ui.range(min=0, max=duration, step=0.1, value={"min": start, "max": end}).classes("w-full")
+                    range_slider = ui.range(
+                        min=0, max=duration, step=0.1, value={"min": start, "max": end}
+                    ).classes("w-full")
                     range_slider.on_value_change(make_range_handler(clip.asset.id, video_id))
 
                     # Play preview button + quick range buttons
                     with ui.row().classes("gap-2 mt-2"):
                         if video_id:
-                            def make_play_handler(vid_id: str, asset_id: str):
+
+                            def make_play_handler(
+                                vid_id: str,
+                                asset_id: str,
+                                default_start: float = start,
+                                default_end: float = end,
+                            ):
                                 def handler():
-                                    s, e = state.clip_segments.get(asset_id, (start, end))
+                                    s, e = state.clip_segments.get(
+                                        asset_id, (default_start, default_end)
+                                    )
                                     # Play from start to end of range, then pause
                                     ui.run_javascript(f'''
                                         const v = document.getElementById("{vid_id}");
@@ -1508,11 +1577,17 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
 
                                 return handler
 
-                            ui.button("Preview", on_click=make_play_handler(video_id, clip.asset.id)).props(
-                                "outline size=sm color=primary"
-                            ).classes("font-semibold")
+                            ui.button(
+                                "Preview", on_click=make_play_handler(video_id, clip.asset.id)
+                            ).props("outline size=sm color=primary").classes("font-semibold")
 
-                        def make_quick_btn_handler(asset_id: str, new_start: float, new_end: float, vid_id: str | None, slider):
+                        def make_quick_btn_handler(
+                            asset_id: str,
+                            new_start: float,
+                            new_end: float,
+                            vid_id: str | None,
+                            slider,
+                        ):
                             def handler():
                                 state.clip_segments[asset_id] = (new_start, new_end)
                                 slider.value = {"min": new_start, "max": new_end}
@@ -1525,11 +1600,39 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
 
                             return handler
 
-                        ui.button("First 5s", on_click=make_quick_btn_handler(clip.asset.id, 0.0, min(5.0, duration), video_id, range_slider)).props("outline size=sm")
-                        ui.button("Last 5s", on_click=make_quick_btn_handler(clip.asset.id, max(0, duration - 5.0), duration, video_id, range_slider)).props("outline size=sm")
+                        ui.button(
+                            "First 5s",
+                            on_click=make_quick_btn_handler(
+                                clip.asset.id, 0.0, min(5.0, duration), video_id, range_slider
+                            ),
+                        ).props("outline size=sm")
+                        ui.button(
+                            "Last 5s",
+                            on_click=make_quick_btn_handler(
+                                clip.asset.id,
+                                max(0, duration - 5.0),
+                                duration,
+                                video_id,
+                                range_slider,
+                            ),
+                        ).props("outline size=sm")
                         mid = duration / 2
-                        ui.button("Middle 5s", on_click=make_quick_btn_handler(clip.asset.id, max(0, mid - 2.5), min(duration, mid + 2.5), video_id, range_slider)).props("outline size=sm")
-                        ui.button("Full clip", on_click=make_quick_btn_handler(clip.asset.id, 0.0, duration, video_id, range_slider)).props("outline size=sm")
+                        ui.button(
+                            "Middle 5s",
+                            on_click=make_quick_btn_handler(
+                                clip.asset.id,
+                                max(0, mid - 2.5),
+                                min(duration, mid + 2.5),
+                                video_id,
+                                range_slider,
+                            ),
+                        ).props("outline size=sm")
+                        ui.button(
+                            "Full clip",
+                            on_click=make_quick_btn_handler(
+                                clip.asset.id, 0.0, duration, video_id, range_slider
+                            ),
+                        ).props("outline size=sm")
 
                     # Rotation override
                     rotation_options = {
@@ -1546,10 +1649,10 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
                             current_opt = name
                             break
 
-                    def make_rotation_handler(asset_id: str):
+                    def make_rotation_handler(asset_id: str, opts: dict = rotation_options):
                         def handler(e):
                             value = e.value if hasattr(e, "value") else e
-                            state.clip_rotations[asset_id] = rotation_options.get(value)
+                            state.clip_rotations[asset_id] = opts.get(value)
 
                         return handler
 
@@ -1598,7 +1701,9 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
             else:
                 ui.notify("Please select at least one clip", type="warning")
 
-        ui.button("Back to Selection", on_click=go_back_selection, icon="arrow_back").props("outline")
+        ui.button("Back to Selection", on_click=go_back_selection, icon="arrow_back").props(
+            "outline"
+        )
         ui.button("Re-run Analysis", on_click=rerun_analysis, icon="refresh").props("outline")
         ui.button(
             "Continue to Generation",

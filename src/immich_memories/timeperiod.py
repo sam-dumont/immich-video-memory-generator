@@ -12,11 +12,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import NamedTuple
 
 
-class PeriodUnit(str, Enum):
+class PeriodUnit(StrEnum):
     """Time period units."""
 
     DAYS = "d"

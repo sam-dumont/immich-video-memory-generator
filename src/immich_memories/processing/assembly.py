@@ -51,10 +51,10 @@ from collections import Counter, OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from threading import Thread
-from typing import IO
+from typing import IO, Any
 
 from immich_memories.config import get_config
 from immich_memories.processing.clips import ClipSegment
@@ -67,6 +67,7 @@ class JobCancelledException(Exception):
     """Raised when a job is cancelled by user request."""
 
     pass
+
 
 # Memory optimization: Chunked assembly thresholds
 # When clip count exceeds threshold, process in batches to avoid OOM
@@ -86,10 +87,15 @@ def _detect_hdr_type(video_path: Path) -> str | None:
     try:
         result = subprocess.run(
             [
-                "ffprobe", "-v", "quiet",
-                "-select_streams", "v:0",
-                "-show_entries", "stream=color_transfer",
-                "-of", "json",
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=color_transfer",
+                "-of",
+                "json",
                 str(video_path),
             ],
             capture_output=True,
@@ -97,6 +103,7 @@ def _detect_hdr_type(video_path: Path) -> str | None:
         )
         if result.returncode == 0:
             import json
+
             data = json.loads(result.stdout)
             streams = data.get("streams", [])
             if streams:
@@ -176,7 +183,8 @@ def _get_hdr_conversion_filter(source_type: str | None, target_type: str) -> str
     try:
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-filters"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         has_zscale = "zscale" in result.stdout
     except Exception:
@@ -235,7 +243,9 @@ def _get_clip_hdr_types(clips: list) -> list[str | None]:
     return hdr_types
 
 
-def _get_gpu_encoder_args(crf: int = 23, preserve_hdr: bool = False, hdr_type: str = "hlg") -> list[str]:
+def _get_gpu_encoder_args(
+    crf: int = 23, preserve_hdr: bool = False, hdr_type: str = "hlg"
+) -> list[str]:
     """Get GPU-accelerated encoder arguments.
 
     Uses hardware encoding when available:
@@ -267,45 +277,72 @@ def _get_gpu_encoder_args(crf: int = 23, preserve_hdr: bool = False, hdr_type: s
 
         if preserve_hdr:
             return [
-                "-c:v", "hevc_videotoolbox",
-                "-q:v", str(vt_quality),
-                "-pix_fmt", "p010le",  # 10-bit
-                "-tag:v", "hvc1",
-                "-colorspace", "bt2020nc",
-                "-color_primaries", "bt2020",
-                "-color_trc", color_trc,
+                "-c:v",
+                "hevc_videotoolbox",
+                "-q:v",
+                str(vt_quality),
+                "-pix_fmt",
+                "p010le",  # 10-bit
+                "-tag:v",
+                "hvc1",
+                "-colorspace",
+                "bt2020nc",
+                "-color_primaries",
+                "bt2020",
+                "-color_trc",
+                color_trc,
             ]
         else:
             return [
-                "-c:v", "hevc_videotoolbox",
-                "-q:v", str(vt_quality),
-                "-tag:v", "hvc1",
+                "-c:v",
+                "hevc_videotoolbox",
+                "-q:v",
+                str(vt_quality),
+                "-tag:v",
+                "hvc1",
             ]
 
     # Check for NVIDIA NVENC
     try:
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-encoders"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if "hevc_nvenc" in result.stdout:
             if preserve_hdr:
                 return [
-                    "-c:v", "hevc_nvenc",
-                    "-preset", "p4",
-                    "-rc", "constqp", "-qp", str(crf),
-                    "-pix_fmt", "p010le",  # 10-bit
-                    "-tag:v", "hvc1",
-                    "-colorspace", "bt2020nc",
-                    "-color_primaries", "bt2020",
-                    "-color_trc", color_trc,
+                    "-c:v",
+                    "hevc_nvenc",
+                    "-preset",
+                    "p4",
+                    "-rc",
+                    "constqp",
+                    "-qp",
+                    str(crf),
+                    "-pix_fmt",
+                    "p010le",  # 10-bit
+                    "-tag:v",
+                    "hvc1",
+                    "-colorspace",
+                    "bt2020nc",
+                    "-color_primaries",
+                    "bt2020",
+                    "-color_trc",
+                    color_trc,
                 ]
             else:
                 return [
-                    "-c:v", "hevc_nvenc",
-                    "-preset", "p4",
-                    "-rc", "constqp", "-qp", str(crf),
-                    "-tag:v", "hvc1",
+                    "-c:v",
+                    "hevc_nvenc",
+                    "-preset",
+                    "p4",
+                    "-rc",
+                    "constqp",
+                    "-qp",
+                    str(crf),
+                    "-tag:v",
+                    "hvc1",
                 ]
     except Exception:
         pass
@@ -315,21 +352,33 @@ def _get_gpu_encoder_args(crf: int = 23, preserve_hdr: bool = False, hdr_type: s
         # x265 transfer parameter name
         x265_transfer = "smpte2084" if hdr_type == "pq" else "arib-std-b67"
         return [
-            "-c:v", "libx265",
-            "-preset", "medium",
-            "-crf", str(crf),
-            "-pix_fmt", "yuv420p10le",
-            "-tag:v", "hvc1",
-            "-colorspace", "bt2020nc",
-            "-color_primaries", "bt2020",
-            "-color_trc", color_trc,
-            "-x265-params", f"hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer={x265_transfer}:colormatrix=bt2020nc",
+            "-c:v",
+            "libx265",
+            "-preset",
+            "medium",
+            "-crf",
+            str(crf),
+            "-pix_fmt",
+            "yuv420p10le",
+            "-tag:v",
+            "hvc1",
+            "-colorspace",
+            "bt2020nc",
+            "-color_primaries",
+            "bt2020",
+            "-color_trc",
+            color_trc,
+            "-x265-params",
+            f"hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer={x265_transfer}:colormatrix=bt2020nc",
         ]
     else:
         return [
-            "-c:v", "libx264",
-            "-preset", "medium",
-            "-crf", str(crf),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            str(crf),
         ]
 
 
@@ -402,8 +451,7 @@ def _get_aspect_ratio_filter(
     if scale_mode == "smart_zoom" and face_center is not None:
         # Smart crop centered on face
         crop_filter = _get_smart_crop_filter(
-            src_w, src_h, target_w, target_h,
-            face_center[0], face_center[1]
+            src_w, src_h, target_w, target_h, face_center[0], face_center[1]
         )
         return (
             f"[{clip_index}:v]{rotation_filter}setpts=PTS-STARTPTS,"
@@ -504,6 +552,7 @@ def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None
         # Fallback to OpenCV
         try:
             import cv2
+
             detector = None  # Will use OpenCV directly
         except ImportError:
             logger.debug("No face detection available (Apple Vision or OpenCV)")
@@ -512,9 +561,18 @@ def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None
     # Get video duration
     try:
         result = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-             "-of", "default=noprint_wrappers=1:nokey=1", str(video_path)],
-            capture_output=True, text=True,
+            [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(video_path),
+            ],
+            capture_output=True,
+            text=True,
         )
         duration = float(result.stdout.strip())
     except (ValueError, subprocess.SubprocessError):
@@ -531,8 +589,19 @@ def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None
                 frame_path = Path(tmp.name)
 
             subprocess.run(
-                ["ffmpeg", "-y", "-ss", str(sample_time), "-i", str(video_path),
-                 "-frames:v", "1", "-q:v", "2", str(frame_path)],
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-ss",
+                    str(sample_time),
+                    "-i",
+                    str(video_path),
+                    "-frames:v",
+                    "1",
+                    "-q:v",
+                    "2",
+                    str(frame_path),
+                ],
                 capture_output=True,
                 timeout=30,
             )
@@ -542,7 +611,12 @@ def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None
 
             if detector is not None:
                 # Apple Vision
-                faces = detector.detect_faces(frame_path)
+                import cv2
+
+                _img = cv2.imread(str(frame_path))
+                if _img is None:
+                    continue
+                faces = detector.detect_faces(_img)
                 for face in faces:
                     # Apple Vision returns bounding box with origin at bottom-left
                     # Convert to top-left origin normalized coordinates
@@ -552,6 +626,7 @@ def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None
             else:
                 # OpenCV fallback
                 import cv2
+
                 img = cv2.imread(str(frame_path))
                 if img is not None:
                     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -560,7 +635,7 @@ def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None
                     )
                     faces_cv = face_cascade.detectMultiScale(gray, 1.1, 4)
                     h, w = img.shape[:2]
-                    for (x, y, fw, fh) in faces_cv:
+                    for x, y, fw, fh in faces_cv:
                         center_x = (x + fw / 2) / w
                         center_y = (y + fh / 2) / h
                         all_face_positions.append((center_x, center_y))
@@ -579,7 +654,9 @@ def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None
     avg_x = sum(p[0] for p in all_face_positions) / len(all_face_positions)
     avg_y = sum(p[1] for p in all_face_positions) / len(all_face_positions)
 
-    logger.debug(f"Detected {len(all_face_positions)} faces, average center: ({avg_x:.2f}, {avg_y:.2f})")
+    logger.debug(
+        f"Detected {len(all_face_positions)} faces, average center: ({avg_x:.2f}, {avg_y:.2f})"
+    )
     return (avg_x, avg_y)
 
 
@@ -812,6 +889,7 @@ def _run_ffmpeg_with_progress(
     # Add Streamlit script context to thread BEFORE starting (required for UI updates)
     try:
         from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
+
         ctx = get_script_run_ctx()
         if ctx is not None:
             add_script_run_ctx(stderr_thread, ctx)
@@ -832,7 +910,7 @@ def _run_ffmpeg_with_progress(
     )
 
 
-class TransitionType(str, Enum):
+class TransitionType(StrEnum):
     """Video transition types."""
 
     CUT = "cut"
@@ -946,9 +1024,9 @@ def _get_rotation_filter(rotation: int) -> str:
         FFmpeg filter string (e.g., "transpose=1" for 90° clockwise).
     """
     rotation_filters = {
-        90: "transpose=1",    # 90° clockwise
-        180: "hflip,vflip",   # 180° rotation
-        270: "transpose=2",   # 90° counter-clockwise (270° clockwise)
+        90: "transpose=1",  # 90° clockwise
+        180: "hflip,vflip",  # 180° rotation
+        270: "transpose=2",  # 90° counter-clockwise (270° clockwise)
     }
     return rotation_filters.get(rotation, "")
 
@@ -1143,24 +1221,26 @@ class VideoAssembler:
         hdr_type = _get_dominant_hdr_type(clips) if self.settings.preserve_hdr else "hlg"
 
         # Get per-clip HDR types for mixed content handling
-        clip_hdr_types = _get_clip_hdr_types(clips) if self.settings.preserve_hdr else [None] * len(clips)
+        clip_hdr_types = (
+            _get_clip_hdr_types(clips) if self.settings.preserve_hdr else [None] * len(clips)
+        )
 
         # Check for mixed HDR content
-        unique_types = set(t for t in clip_hdr_types if t is not None)
+        unique_types = {t for t in clip_hdr_types if t is not None}
         if len(unique_types) > 1:
-            logger.warning(f"Mixed HDR content detected: {unique_types} - converting all to {hdr_type.upper()}")
+            logger.warning(
+                f"Mixed HDR content detected: {unique_types} - converting all to {hdr_type.upper()}"
+            )
 
         # HDR colorspace parameters - auto-detected based on source
         # Use p010le for macOS VideoToolbox, yuv420p10le for software/other encoders
         import sys
+
         if self.settings.preserve_hdr:
             pix_fmt = "p010le" if sys.platform == "darwin" else "yuv420p10le"
         else:
             pix_fmt = "yuv420p"
-        if self.settings.preserve_hdr:
-            colorspace_filter = _get_colorspace_filter(hdr_type)
-        else:
-            colorspace_filter = ""
+        colorspace_filter = _get_colorspace_filter(hdr_type) if self.settings.preserve_hdr else ""
 
         # Scale each input
         for i in range(len(clips)):
@@ -1204,15 +1284,23 @@ class VideoAssembler:
             *input_args,
             "-filter_complex",
             filter_complex,
-            "-map", "[vout]",
-            "-map", "[aout]",
+            "-map",
+            "[vout]",
+            "-map",
+            "[aout]",
             *video_codec_args,
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-threads", "4",  # Limit thread parallelism for memory
-            "-filter_complex_threads", "1",  # Single-threaded filter processing
-            "-max_muxing_queue_size", "1024",  # Limit memory for 4K filter graphs
-            "-movflags", "+faststart",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-threads",
+            "4",  # Limit thread parallelism for memory
+            "-filter_complex_threads",
+            "1",  # Single-threaded filter processing
+            "-max_muxing_queue_size",
+            "1024",  # Limit memory for 4K filter graphs
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -1244,10 +1332,14 @@ class VideoAssembler:
             # Get width, height, and rotation in one call
             cmd = [
                 "ffprobe",
-                "-v", "error",
-                "-select_streams", "v:0",
-                "-show_entries", "stream=width,height:stream_side_data=rotation",
-                "-of", "json",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height:stream_side_data=rotation",
+                "-of",
+                "json",
                 str(video_path),
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)
@@ -1343,21 +1435,31 @@ class VideoAssembler:
 
         # Check for majority (>50%)
         if resolution_counts["4k"] > total / 2:
-            logger.info(f"Auto resolution: 4K {orientation_str} ({resolution_counts['4k']}/{total} clips are 4K)")
+            logger.info(
+                f"Auto resolution: 4K {orientation_str} ({resolution_counts['4k']}/{total} clips are 4K)"
+            )
             return res_4k
         elif resolution_counts["1080p"] > total / 2:
-            logger.info(f"Auto resolution: 1080p {orientation_str} ({resolution_counts['1080p']}/{total} clips are 1080p)")
+            logger.info(
+                f"Auto resolution: 1080p {orientation_str} ({resolution_counts['1080p']}/{total} clips are 1080p)"
+            )
             return res_1080p
         elif resolution_counts["720p"] > total / 2:
-            logger.info(f"Auto resolution: 720p {orientation_str} ({resolution_counts['720p']}/{total} clips are 720p)")
+            logger.info(
+                f"Auto resolution: 720p {orientation_str} ({resolution_counts['720p']}/{total} clips are 720p)"
+            )
             return res_720p
         else:
             # No majority - use the highest resolution present
             if resolution_counts["4k"] > 0:
-                logger.info(f"Auto resolution: 4K {orientation_str} (highest available, {resolution_counts['4k']}/{total} clips)")
+                logger.info(
+                    f"Auto resolution: 4K {orientation_str} (highest available, {resolution_counts['4k']}/{total} clips)"
+                )
                 return res_4k
             elif resolution_counts["1080p"] > 0:
-                logger.info(f"Auto resolution: 1080p {orientation_str} (highest available, {resolution_counts['1080p']}/{total} clips)")
+                logger.info(
+                    f"Auto resolution: 1080p {orientation_str} (highest available, {resolution_counts['1080p']}/{total} clips)"
+                )
                 return res_1080p
             else:
                 logger.info(f"Auto resolution: 720p {orientation_str} (default)")
@@ -1385,7 +1487,9 @@ class VideoAssembler:
         # Memory optimization: use chunked assembly for many clips at 4K
         # This prevents OOM when processing 44+ clips with xfade transitions
         if len(clips) > CHUNKED_ASSEMBLY_THRESHOLD:
-            logger.info(f"Using chunked assembly for {len(clips)} clips (threshold: {CHUNKED_ASSEMBLY_THRESHOLD})")
+            logger.info(
+                f"Using chunked assembly for {len(clips)} clips (threshold: {CHUNKED_ASSEMBLY_THRESHOLD})"
+            )
             return self._assemble_chunked(clips, output_path, progress_callback)
 
         fade_duration = self.settings.transition_duration
@@ -1431,6 +1535,7 @@ class VideoAssembler:
         # IMPORTANT: Normalize fps to 60 for xfade compatibility (30fps clips get frame-doubled)
         # Use p010le for macOS VideoToolbox, yuv420p10le for software/other encoders
         import sys
+
         if self.settings.preserve_hdr:
             pix_fmt = "p010le" if sys.platform == "darwin" else "yuv420p10le"
         else:
@@ -1441,18 +1546,19 @@ class VideoAssembler:
         hdr_type = _get_dominant_hdr_type(clips) if self.settings.preserve_hdr else "hlg"
 
         # Get per-clip HDR types for mixed content handling
-        clip_hdr_types = _get_clip_hdr_types(clips) if self.settings.preserve_hdr else [None] * len(clips)
+        clip_hdr_types = (
+            _get_clip_hdr_types(clips) if self.settings.preserve_hdr else [None] * len(clips)
+        )
 
         # Check for mixed HDR content
-        unique_types = set(t for t in clip_hdr_types if t is not None)
+        unique_types = {t for t in clip_hdr_types if t is not None}
         if len(unique_types) > 1:
-            logger.warning(f"Mixed HDR content detected: {unique_types} - converting all to {hdr_type.upper()}")
+            logger.warning(
+                f"Mixed HDR content detected: {unique_types} - converting all to {hdr_type.upper()}"
+            )
 
         # HDR colorspace parameters - auto-detected based on source
-        if self.settings.preserve_hdr:
-            colorspace_filter = _get_colorspace_filter(hdr_type)
-        else:
-            colorspace_filter = ""
+        colorspace_filter = _get_colorspace_filter(hdr_type) if self.settings.preserve_hdr else ""
 
         for i, clip in enumerate(clips):
             # Build filter chain for this clip
@@ -1483,7 +1589,9 @@ class VideoAssembler:
                     # Skip face detection for title screens (no faces)
                     face_center = self._get_face_center(clip.path)
                     if face_center:
-                        logger.info(f"Clip {i}: Using smart crop centered on face at ({face_center[0]:.2f}, {face_center[1]:.2f})")
+                        logger.info(
+                            f"Clip {i}: Using smart crop centered on face at ({face_center[0]:.2f}, {face_center[1]:.2f})"
+                        )
                     else:
                         logger.info(f"Clip {i}: Using blur background (no faces detected)")
 
@@ -1645,7 +1753,9 @@ class VideoAssembler:
         if result.returncode != 0:
             # Log just the last 1000 chars of stderr which contains the actual error
             stderr_tail = result.stderr[-1000:] if len(result.stderr) > 1000 else result.stderr
-            logger.warning(f"Crossfade failed (code {result.returncode}), falling back to cuts. Error: {stderr_tail}")
+            logger.warning(
+                f"Crossfade failed (code {result.returncode}), falling back to cuts. Error: {stderr_tail}"
+            )
             # Fall back to cuts (which re-encodes properly)
             return self._assemble_with_cuts(clips, output_path, progress_callback)
 
@@ -1753,7 +1863,9 @@ class VideoAssembler:
         # Memory optimization: use chunked assembly for many clips at 4K
         # This prevents OOM when processing 44+ clips with xfade transitions
         if len(clips) > CHUNKED_ASSEMBLY_THRESHOLD:
-            logger.info(f"Using chunked assembly for {len(clips)} clips (threshold: {CHUNKED_ASSEMBLY_THRESHOLD})")
+            logger.info(
+                f"Using chunked assembly for {len(clips)} clips (threshold: {CHUNKED_ASSEMBLY_THRESHOLD})"
+            )
             return self._assemble_chunked(clips, output_path, progress_callback)
 
         # Decide transitions for each clip pair (takes clips to respect title screen fades)
@@ -1796,6 +1908,7 @@ class VideoAssembler:
         # Normalize all inputs (scale, fps, format)
         # Use p010le for macOS VideoToolbox, yuv420p10le for software/other encoders
         import sys
+
         if self.settings.preserve_hdr:
             pix_fmt = "p010le" if sys.platform == "darwin" else "yuv420p10le"
         else:
@@ -1806,18 +1919,19 @@ class VideoAssembler:
         hdr_type = _get_dominant_hdr_type(clips) if self.settings.preserve_hdr else "hlg"
 
         # Get per-clip HDR types for mixed content handling
-        clip_hdr_types = _get_clip_hdr_types(clips) if self.settings.preserve_hdr else [None] * len(clips)
+        clip_hdr_types = (
+            _get_clip_hdr_types(clips) if self.settings.preserve_hdr else [None] * len(clips)
+        )
 
         # Check for mixed HDR content
-        unique_types = set(t for t in clip_hdr_types if t is not None)
+        unique_types = {t for t in clip_hdr_types if t is not None}
         if len(unique_types) > 1:
-            logger.warning(f"Mixed HDR content detected: {unique_types} - converting all to {hdr_type.upper()}")
+            logger.warning(
+                f"Mixed HDR content detected: {unique_types} - converting all to {hdr_type.upper()}"
+            )
 
         # HDR colorspace parameters - auto-detected based on source
-        if self.settings.preserve_hdr:
-            colorspace_filter = _get_colorspace_filter(hdr_type)
-        else:
-            colorspace_filter = ""
+        colorspace_filter = _get_colorspace_filter(hdr_type) if self.settings.preserve_hdr else ""
 
         for i, clip in enumerate(clips):
             # Optional rotation override (applied before scaling)
@@ -1954,7 +2068,9 @@ class VideoAssembler:
         if result.returncode != 0:
             # Log just the last 1000 chars of stderr which contains the actual error
             stderr_tail = result.stderr[-1000:] if len(result.stderr) > 1000 else result.stderr
-            logger.warning(f"Smart transitions failed (code {result.returncode}), falling back to crossfade. Error: {stderr_tail}")
+            logger.warning(
+                f"Smart transitions failed (code {result.returncode}), falling back to crossfade. Error: {stderr_tail}"
+            )
             return self._assemble_with_crossfade(clips, output_path, progress_callback)
 
         return output_path
@@ -2004,7 +2120,6 @@ class VideoAssembler:
 
         intermediate_clips: list[AssemblyClip] = []
         try:
-
             # Process each batch
             for batch_idx in range(num_batches):
                 start_idx = batch_idx * CHUNK_SIZE
@@ -2016,7 +2131,7 @@ class VideoAssembler:
                     batch_progress = (batch_idx / num_batches) * 0.8
                     progress_callback(
                         batch_progress,
-                        f"Processing batch {batch_idx + 1}/{num_batches} ({len(batch)} clips)..."
+                        f"Processing batch {batch_idx + 1}/{num_batches} ({len(batch)} clips)...",
                     )
 
                 intermediate_path = intermediates_dir / f"batch_{batch_idx:03d}.mp4"
@@ -2040,10 +2155,15 @@ class VideoAssembler:
                                 # Map batch-internal progress (0.0-1.0) to overall progress
                                 overall_pct = base + (pct * range_)
                                 progress_callback(overall_pct, f"Batch {idx + 1}/{total}: {msg}")
+
                         return batch_progress_cb
 
-                    cb = make_batch_progress_cb(batch_base_progress, batch_progress_range, batch_idx, num_batches)
-                    self._assemble_batch_direct(batch, intermediate_path, cb if progress_callback else None)
+                    cb = make_batch_progress_cb(
+                        batch_base_progress, batch_progress_range, batch_idx, num_batches
+                    )
+                    self._assemble_batch_direct(
+                        batch, intermediate_path, cb if progress_callback else None
+                    )
 
                     # Calculate batch duration accounting for fade overlaps
                     batch_duration = sum(c.duration for c in batch)
@@ -2053,15 +2173,19 @@ class VideoAssembler:
                 # (this ensures ending screen gets fade transition in final merge)
                 is_title = batch[-1].is_title_screen if batch else False
 
-                intermediate_clips.append(AssemblyClip(
-                    path=intermediate_path,
-                    duration=batch_duration,
-                    date=None,
-                    asset_id=f"batch_{batch_idx}",
-                    is_title_screen=is_title,
-                ))
+                intermediate_clips.append(
+                    AssemblyClip(
+                        path=intermediate_path,
+                        duration=batch_duration,
+                        date=None,
+                        asset_id=f"batch_{batch_idx}",
+                        is_title_screen=is_title,
+                    )
+                )
 
-                logger.info(f"Batch {batch_idx + 1}/{num_batches} complete: {intermediate_path.name}")
+                logger.info(
+                    f"Batch {batch_idx + 1}/{num_batches} complete: {intermediate_path.name}"
+                )
 
                 # Check for cancellation after each batch
                 self._check_cancelled()
@@ -2073,7 +2197,9 @@ class VideoAssembler:
             logger.info(f"Final merge: {len(intermediate_clips)} intermediate files")
 
             # Use specialized merge that probes actual durations to fix audio sync
-            result = self._merge_intermediate_batches(intermediate_clips, output_path, progress_callback)
+            result = self._merge_intermediate_batches(
+                intermediate_clips, output_path, progress_callback
+            )
 
             # Clean up intermediate files on success (unless debug mode)
             if self.settings.debug_preserve_intermediates:
@@ -2084,9 +2210,11 @@ class VideoAssembler:
 
             return result
 
-        except Exception as e:
+        except Exception:
             # Keep intermediate files for debugging on failure
-            logger.error(f"Chunked assembly failed. Intermediate files preserved in: {intermediates_dir}")
+            logger.error(
+                f"Chunked assembly failed. Intermediate files preserved in: {intermediates_dir}"
+            )
             raise
 
     def _probe_duration(self, file_path: Path, stream_type: str = "audio") -> float:
@@ -2104,11 +2232,21 @@ class VideoAssembler:
             # This is important because audio and video durations can differ
             stream_select = "a:0" if stream_type == "audio" else "v:0"
             result = subprocess.run(
-                ["ffprobe", "-v", "quiet",
-                 "-select_streams", stream_select,
-                 "-show_entries", "stream=duration",
-                 "-of", "default=noprint_wrappers=1:nokey=1", str(file_path)],
-                capture_output=True, text=True, timeout=30,
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-select_streams",
+                    stream_select,
+                    "-show_entries",
+                    "stream=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(file_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             duration = result.stdout.strip()
             if duration and duration != "N/A":
@@ -2116,9 +2254,19 @@ class VideoAssembler:
 
             # Fallback to format duration if stream duration unavailable
             result = subprocess.run(
-                ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-                 "-of", "default=noprint_wrappers=1:nokey=1", str(file_path)],
-                capture_output=True, text=True, timeout=30,
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(file_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             return float(result.stdout.strip())
         except (ValueError, subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
@@ -2137,12 +2285,21 @@ class VideoAssembler:
         """
         try:
             result = subprocess.run(
-                ["ffprobe", "-v", "error",
-                 "-select_streams", "v:0",
-                 "-show_entries", "stream=r_frame_rate",
-                 "-of", "default=noprint_wrappers=1:nokey=1",
-                 str(path)],
-                capture_output=True, text=True, timeout=30,
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "v:0",
+                    "-show_entries",
+                    "stream=r_frame_rate",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if result.returncode == 0 and result.stdout.strip():
                 fps_str = result.stdout.strip()
@@ -2166,9 +2323,16 @@ class VideoAssembler:
         """
         try:
             cmd = [
-                "ffprobe", "-v", "error", "-select_streams", "a",
-                "-show_entries", "stream=index,codec_name,sample_rate,channels",
-                "-of", "json", str(path),
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a",
+                "-show_entries",
+                "stream=index,codec_name,sample_rate,channels",
+                "-of",
+                "json",
+                str(path),
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             if result.returncode != 0:
@@ -2206,9 +2370,16 @@ class VideoAssembler:
         """
         try:
             cmd = [
-                "ffprobe", "-v", "error", "-select_streams", "v",
-                "-show_entries", "stream=index",
-                "-of", "csv=p=0", str(path),
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v",
+                "-show_entries",
+                "stream=index",
+                "-of",
+                "csv=p=0",
+                str(path),
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             return bool(result.stdout.strip())
@@ -2241,6 +2412,7 @@ class VideoAssembler:
         if len(batches) < 2:
             if len(batches) == 1:
                 import shutil
+
                 shutil.copy2(batches[0].path, output_path)
                 return output_path
             raise ValueError("No batches to merge")
@@ -2254,22 +2426,32 @@ class VideoAssembler:
             video_dur = self._probe_duration(batch.path, stream_type="video")
 
             if audio_dur <= 0:
-                logger.warning(f"Could not probe audio duration of {batch.path}, using declared {batch.duration}")
+                logger.warning(
+                    f"Could not probe audio duration of {batch.path}, using declared {batch.duration}"
+                )
                 audio_dur = batch.duration
             if video_dur <= 0:
-                logger.warning(f"Could not probe video duration of {batch.path}, using declared {batch.duration}")
+                logger.warning(
+                    f"Could not probe video duration of {batch.path}, using declared {batch.duration}"
+                )
                 video_dur = batch.duration
 
             # Log mismatches for debugging
             if abs(audio_dur - video_dur) > 0.05:
-                logger.warning(f"A/V duration mismatch in {batch.path.name}: audio={audio_dur:.3f}s, video={video_dur:.3f}s")
+                logger.warning(
+                    f"A/V duration mismatch in {batch.path.name}: audio={audio_dur:.3f}s, video={video_dur:.3f}s"
+                )
             if abs(audio_dur - batch.duration) > 0.1:
-                logger.info(f"Audio duration mismatch for {batch.path.name}: declared={batch.duration:.3f}s, actual={audio_dur:.3f}s")
+                logger.info(
+                    f"Audio duration mismatch for {batch.path.name}: declared={batch.duration:.3f}s, actual={audio_dur:.3f}s"
+                )
 
             audio_durations.append(audio_dur)
             video_durations.append(video_dur)
 
-        logger.info(f"Merging {len(batches)} batches - audio: {[f'{d:.2f}s' for d in audio_durations]}, video: {[f'{d:.2f}s' for d in video_durations]}")
+        logger.info(
+            f"Merging {len(batches)} batches - audio: {[f'{d:.2f}s' for d in audio_durations]}, video: {[f'{d:.2f}s' for d in video_durations]}"
+        )
 
         fade_duration = self.settings.transition_duration
 
@@ -2284,7 +2466,8 @@ class VideoAssembler:
 
         # Detect orientation from batches
         portrait_count = sum(
-            1 for batch in batches
+            1
+            for batch in batches
             if (res := self._get_video_resolution(batch.path)) and res[1] > res[0]
         )
         if portrait_count > len(batches) // 2:
@@ -2299,6 +2482,7 @@ class VideoAssembler:
 
         # Pixel format
         import sys
+
         if self.settings.preserve_hdr:
             pix_fmt = "p010le" if sys.platform == "darwin" else "yuv420p10le"
         else:
@@ -2306,15 +2490,14 @@ class VideoAssembler:
         target_fps = 60
 
         hdr_type = _get_dominant_hdr_type(batches) if self.settings.preserve_hdr else "hlg"
-        batch_hdr_types = _get_clip_hdr_types(batches) if self.settings.preserve_hdr else [None] * len(batches)
+        batch_hdr_types = (
+            _get_clip_hdr_types(batches) if self.settings.preserve_hdr else [None] * len(batches)
+        )
 
-        if self.settings.preserve_hdr:
-            colorspace_filter = _get_colorspace_filter(hdr_type)
-        else:
-            colorspace_filter = ""
+        colorspace_filter = _get_colorspace_filter(hdr_type) if self.settings.preserve_hdr else ""
 
         # Scale all inputs
-        for i, batch in enumerate(batches):
+        for i, _batch in enumerate(batches):
             hdr_conversion = ""
             if self.settings.preserve_hdr and batch_hdr_types[i] != hdr_type:
                 hdr_conversion = _get_hdr_conversion_filter(batch_hdr_types[i], hdr_type)
@@ -2331,7 +2514,7 @@ class VideoAssembler:
         # Prepare audio with PROBED AUDIO durations (the key fix!)
         audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
         audio_labels = []
-        for i, (batch, audio_dur) in enumerate(zip(batches, audio_durations)):
+        for i, (_batch, audio_dur) in enumerate(zip(batches, audio_durations, strict=False)):
             # Use ACTUAL AUDIO duration for silence generation and trimming
             filter_parts.append(
                 f"anullsrc=r=48000:cl=stereo,atrim=0:{audio_dur}[a{i}silence];"
@@ -2384,15 +2567,23 @@ class VideoAssembler:
             "ffmpeg",
             "-y",
             *inputs,
-            "-filter_complex", filter_complex,
-            "-map", current_video,
-            "-map", current_audio,
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            current_video,
+            "-map",
+            current_audio,
             *video_codec_args,
-            "-r", str(target_fps),
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-max_muxing_queue_size", "1024",
-            "-movflags", "+faststart",
+            "-r",
+            str(target_fps),
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-max_muxing_queue_size",
+            "1024",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -2400,10 +2591,14 @@ class VideoAssembler:
         result = _run_ffmpeg_with_progress(cmd, total_dur, progress_callback)
 
         if result.returncode != 0:
-            stderr_lines = result.stderr.split('\n')
-            error_lines = [l for l in stderr_lines if 'error' in l.lower() or 'Error' in l or 'invalid' in l.lower()]
+            stderr_lines = result.stderr.split("\n")
+            error_lines = [
+                line
+                for line in stderr_lines
+                if "error" in line.lower() or "Error" in line or "invalid" in line.lower()
+            ]
             if error_lines:
-                error_msg = '\n'.join(error_lines[-10:])
+                error_msg = "\n".join(error_lines[-10:])
             else:
                 error_msg = result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr
             raise RuntimeError(f"FFmpeg batch merge failed (code {result.returncode}): {error_msg}")
@@ -2432,6 +2627,7 @@ class VideoAssembler:
         if len(clips) < 2:
             if len(clips) == 1:
                 import shutil
+
                 shutil.copy2(clips[0].path, output_path)
                 return output_path
             raise ValueError("No clips to assemble")
@@ -2451,7 +2647,8 @@ class VideoAssembler:
 
         # Detect orientation
         portrait_count = sum(
-            1 for clip in clips
+            1
+            for clip in clips
             if (res := self._get_video_resolution(clip.path)) and res[1] > res[0]
         )
         if portrait_count > len(clips) // 2:
@@ -2466,6 +2663,7 @@ class VideoAssembler:
 
         # Use p010le for macOS VideoToolbox, yuv420p10le for software/other encoders
         import sys
+
         if self.settings.preserve_hdr:
             pix_fmt = "p010le" if sys.platform == "darwin" else "yuv420p10le"
         else:
@@ -2473,12 +2671,11 @@ class VideoAssembler:
         target_fps = 60
 
         hdr_type = _get_dominant_hdr_type(clips) if self.settings.preserve_hdr else "hlg"
-        clip_hdr_types = _get_clip_hdr_types(clips) if self.settings.preserve_hdr else [None] * len(clips)
+        clip_hdr_types = (
+            _get_clip_hdr_types(clips) if self.settings.preserve_hdr else [None] * len(clips)
+        )
 
-        if self.settings.preserve_hdr:
-            colorspace_filter = _get_colorspace_filter(hdr_type)
-        else:
-            colorspace_filter = ""
+        colorspace_filter = _get_colorspace_filter(hdr_type) if self.settings.preserve_hdr else ""
 
         # Scale all inputs with smart zoom/blur for aspect ratio mismatches
         for i, clip in enumerate(clips):
@@ -2619,15 +2816,23 @@ class VideoAssembler:
             "ffmpeg",
             "-y",
             *inputs,
-            "-filter_complex", filter_complex,
-            "-map", current_input,
-            "-map", current_audio,
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            current_input,
+            "-map",
+            current_audio,
             *video_codec_args,
-            "-r", str(target_fps),
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-max_muxing_queue_size", "1024",
-            "-movflags", "+faststart",
+            "-r",
+            str(target_fps),
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-max_muxing_queue_size",
+            "1024",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -2636,13 +2841,19 @@ class VideoAssembler:
 
         if result.returncode != 0:
             # Get the actual error - search for error lines, not just last 1000 chars
-            stderr_lines = result.stderr.split('\n')
-            error_lines = [l for l in stderr_lines if 'error' in l.lower() or 'Error' in l or 'invalid' in l.lower()]
+            stderr_lines = result.stderr.split("\n")
+            error_lines = [
+                line
+                for line in stderr_lines
+                if "error" in line.lower() or "Error" in line or "invalid" in line.lower()
+            ]
             if error_lines:
-                error_msg = '\n'.join(error_lines[-10:])  # Last 10 error lines
+                error_msg = "\n".join(error_lines[-10:])  # Last 10 error lines
             else:
                 error_msg = result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr
-            raise RuntimeError(f"FFmpeg batch assembly failed (code {result.returncode}): {error_msg}")
+            raise RuntimeError(
+                f"FFmpeg batch assembly failed (code {result.returncode}): {error_msg}"
+            )
 
         return output_path
 
@@ -2704,10 +2915,7 @@ class VideoAssembler:
             encoded_clips: list[Path] = []
             for i, clip in enumerate(clips):
                 if progress_callback:
-                    progress_callback(
-                        i / len(clips) * 0.6,
-                        f"Encoding clip {i + 1}/{len(clips)}"
-                    )
+                    progress_callback(i / len(clips) * 0.6, f"Encoding clip {i + 1}/{len(clips)}")
 
                 encoded_path = temp_dir / f"clip_{i:03d}.mp4"
                 self._encode_single_clip(clip, encoded_path, target_resolution=target_resolution)
@@ -2740,7 +2948,9 @@ class VideoAssembler:
                         )
                         transitions[i] = "cut"
 
-            logger.info(f"Transitions: {sum(1 for t in transitions if t == 'fade')} fades, {sum(1 for t in transitions if t == 'cut')} cuts")
+            logger.info(
+                f"Transitions: {sum(1 for t in transitions if t == 'fade')} fades, {sum(1 for t in transitions if t == 'cut')} cuts"
+            )
 
             # Step 4: Chunked xfade assembly
             # Opening all clips simultaneously in one xfade chain exhausts RAM
@@ -2755,7 +2965,11 @@ class VideoAssembler:
                     progress_callback(0.7, "Building final assembly...")
 
                 self._assemble_xfade_chain(
-                    encoded_clips, clip_durations, transitions, fade, output_path,
+                    encoded_clips,
+                    clip_durations,
+                    transitions,
+                    fade,
+                    output_path,
                 )
             else:
                 # Split into chunks, process each with xfade, concat results
@@ -2765,13 +2979,14 @@ class VideoAssembler:
                     end = min(i + CHUNK_SIZE, len(encoded_clips))
                     chunk_clips = encoded_clips[i:end]
                     chunk_durs = clip_durations[i:end]
-                    chunk_trans = transitions[i:end - 1] if end < len(encoded_clips) else transitions[i:]
+                    chunk_trans = (
+                        transitions[i : end - 1] if end < len(encoded_clips) else transitions[i:]
+                    )
                     chunks.append((chunk_clips, chunk_durs, chunk_trans))
                     i = end
 
                 logger.info(
-                    f"Chunked assembly: {len(chunks)} chunks of up to "
-                    f"{CHUNK_SIZE} clips each"
+                    f"Chunked assembly: {len(chunks)} chunks of up to {CHUNK_SIZE} clips each"
                 )
 
                 chunk_outputs: list[Path] = []
@@ -2779,7 +2994,7 @@ class VideoAssembler:
                     if progress_callback:
                         progress_callback(
                             0.6 + (ci / len(chunks)) * 0.3,
-                            f"Assembling chunk {ci + 1}/{len(chunks)}"
+                            f"Assembling chunk {ci + 1}/{len(chunks)}",
                         )
 
                     if len(chunk_clips) == 1:
@@ -2788,7 +3003,11 @@ class VideoAssembler:
                     else:
                         chunk_path = temp_dir / f"chunk_{ci:02d}.mp4"
                         self._assemble_xfade_chain(
-                            chunk_clips, chunk_durs, chunk_trans, fade, chunk_path,
+                            chunk_clips,
+                            chunk_durs,
+                            chunk_trans,
+                            fade,
+                            chunk_path,
                         )
                         chunk_outputs.append(chunk_path)
 
@@ -2798,6 +3017,7 @@ class VideoAssembler:
 
                 if len(chunk_outputs) == 1:
                     import shutil as _shutil
+
                     _shutil.copy2(chunk_outputs[0], output_path)
                 else:
                     self._concat_with_copy(chunk_outputs, output_path)
@@ -2839,6 +3059,7 @@ class VideoAssembler:
 
         # Pixel format
         import sys
+
         if self.settings.preserve_hdr:
             pix_fmt = "p010le" if sys.platform == "darwin" else "yuv420p10le"
         else:
@@ -2895,7 +3116,9 @@ class VideoAssembler:
             # tmix blends adjacent frames for smoother 30->60 conversion
             # frames=2 averages pairs of duplicated frames, reducing stutter
             fps_filter = f"fps={target_fps},tmix=frames=2:weights='1 1'"
-            logger.debug(f"Using tmix frame blending for {source_fps:.1f}fps source: {clip.path.name}")
+            logger.debug(
+                f"Using tmix frame blending for {source_fps:.1f}fps source: {clip.path.name}"
+            )
         else:
             fps_filter = f"fps={target_fps}"
 
@@ -2916,9 +3139,7 @@ class VideoAssembler:
             )
         else:
             logger.debug(f"No audio in {clip.path.name}, generating silence")
-            audio_filter = (
-                f"anullsrc=r=48000:cl=stereo,atrim=0:{clip.duration},{audio_format},asetpts=PTS-STARTPTS[aout]"
-            )
+            audio_filter = f"anullsrc=r=48000:cl=stereo,atrim=0:{clip.duration},{audio_format},asetpts=PTS-STARTPTS[aout]"
 
         # Video filter: process, scale, AND TRIM to exact duration
         # Check scale_mode to determine how to handle aspect ratio mismatch
@@ -2934,15 +3155,15 @@ class VideoAssembler:
                 if clip_res:
                     src_w, src_h = clip_res
                     crop_filter = _get_smart_crop_filter(
-                        src_w, src_h, target_w, target_h,
-                        face_center[0], face_center[1]
+                        src_w, src_h, target_w, target_h, face_center[0], face_center[1]
                     )
                     video_filter = (
-                        f"{rotation_filter}setpts=PTS-STARTPTS,"
-                        f"{crop_filter},{common_suffix}"
+                        f"{rotation_filter}setpts=PTS-STARTPTS,{crop_filter},{common_suffix}"
                     )
                     filter_complex = f"[0:v]{video_filter}[vout];{audio_filter}"
-                    logger.info(f"Smart zoom: cropping centered on face at ({face_center[0]:.2f}, {face_center[1]:.2f})")
+                    logger.info(
+                        f"Smart zoom: cropping centered on face at ({face_center[0]:.2f}, {face_center[1]:.2f})"
+                    )
                 else:
                     # Fallback to blur if resolution detection fails
                     use_blur = True
@@ -2974,16 +3195,25 @@ class VideoAssembler:
             filter_complex = f"[0:v]{video_filter}[vout];{audio_filter}"
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(clip.path),
-            "-filter_complex", filter_complex,
-            "-map", "[vout]",
-            "-map", "[aout]",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(clip.path),
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[vout]",
+            "-map",
+            "[aout]",
             *video_codec_args,
-            "-r", str(target_fps),
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-movflags", "+faststart",
+            "-r",
+            str(target_fps),
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -3007,12 +3237,18 @@ class VideoAssembler:
             duration: Duration in seconds.
         """
         cmd = [
-            "ffmpeg", "-y",
-            "-ss", str(start),
-            "-i", str(input_path),
-            "-t", str(duration),
-            "-c", "copy",
-            "-movflags", "+faststart",
+            "ffmpeg",
+            "-y",
+            "-ss",
+            str(start),
+            "-i",
+            str(input_path),
+            "-t",
+            str(duration),
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -3063,15 +3299,23 @@ class VideoAssembler:
         )
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(input_path),
-            "-filter_complex", filter_complex,
-            "-map", "[vout]",
-            "-map", "[aout]",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[vout]",
+            "-map",
+            "[aout]",
             *video_codec_args,
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-movflags", "+faststart",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -3087,15 +3331,23 @@ class VideoAssembler:
             )
 
             cmd_silent = [
-                "ffmpeg", "-y",
-                "-i", str(input_path),
-                "-filter_complex", filter_complex_silent,
-                "-map", "[vout]",
-                "-map", "[aout]",
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(input_path),
+                "-filter_complex",
+                filter_complex_silent,
+                "-map",
+                "[vout]",
+                "-map",
+                "[aout]",
                 *video_codec_args,
-                "-c:a", "aac",
-                "-b:a", "128k",
-                "-movflags", "+faststart",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-movflags",
+                "+faststart",
                 str(output_path),
             ]
 
@@ -3144,18 +3396,23 @@ class VideoAssembler:
 
         # Try to import GPU blending (catch all exceptions to be safe)
         use_gpu = False
-        blend_frames_gpu = None
+        blend_frames_gpu_fn: Callable[..., Any] | None = None
         try:
             from immich_memories.processing.transition_blend import (
-                blend_frames_gpu,
+                blend_frames_gpu as _blend_frames_gpu,
+            )
+            from immich_memories.processing.transition_blend import (
                 is_gpu_blending_available,
             )
+
+            blend_frames_gpu_fn = _blend_frames_gpu
+
             use_gpu = is_gpu_blending_available()
         except Exception as e:
             # Catch any exception (ImportError, RuntimeError from Taichi, etc.)
             logger.debug(f"GPU blending not available: {e}")
             use_gpu = False
-            blend_frames_gpu = None
+            blend_frames_gpu_fn = None
 
         import numpy as np
 
@@ -3185,6 +3442,7 @@ class VideoAssembler:
 
             # Decode all frames from both segments
             # For short transitions (0.3-0.5s), this is ~18-30 frames = ~50-100MB for 4K
+            dtype: type[np.uint8] | type[np.uint16]
             if is_hdr:
                 pix_fmt = "rgb48le"  # 16-bit RGB for HDR
                 dtype = np.uint16
@@ -3220,32 +3478,33 @@ class VideoAssembler:
             indices_b = np.linspace(0, len(frames_b) - 1, total_frames, dtype=int)
 
             # Create output container
-            output_container = av.open(str(output_path), mode='w')
+            output_container = av.open(str(output_path), mode="w")
 
             # Configure output stream based on platform and HDR
             import sys
+
             if sys.platform == "darwin":
                 # macOS: Use VideoToolbox HEVC
-                output_stream = output_container.add_stream('hevc_videotoolbox', rate=target_fps)
+                output_stream = output_container.add_stream("hevc_videotoolbox", rate=target_fps)
                 if is_hdr:
-                    output_stream.pix_fmt = 'p010le'
+                    output_stream.pix_fmt = "p010le"
                     output_stream.options = {
-                        'tag': 'hvc1',
-                        'colorspace': 'bt2020nc',
-                        'color_primaries': 'bt2020',
-                        'color_trc': 'arib-std-b67',
+                        "tag": "hvc1",
+                        "colorspace": "bt2020nc",
+                        "color_primaries": "bt2020",
+                        "color_trc": "arib-std-b67",
                     }
                 else:
-                    output_stream.pix_fmt = 'yuv420p'
-                    output_stream.options = {'tag': 'hvc1'}
+                    output_stream.pix_fmt = "yuv420p"
+                    output_stream.options = {"tag": "hvc1"}
             else:
                 # Other platforms: Use libx265
-                output_stream = output_container.add_stream('libx265', rate=target_fps)
+                output_stream = output_container.add_stream("libx265", rate=target_fps)
                 if is_hdr:
-                    output_stream.pix_fmt = 'yuv420p10le'
+                    output_stream.pix_fmt = "yuv420p10le"
                 else:
-                    output_stream.pix_fmt = 'yuv420p'
-                output_stream.options = {'crf': str(self.settings.output_crf), 'preset': 'fast'}
+                    output_stream.pix_fmt = "yuv420p"
+                output_stream.options = {"crf": str(self.settings.output_crf), "preset": "fast"}
 
             output_stream.width = width
             output_stream.height = height
@@ -3258,13 +3517,13 @@ class VideoAssembler:
                 frame_b = frames_b[indices_b[i]]
 
                 # GPU-accelerated blend (Metal/CUDA/Vulkan/CPU)
-                if use_gpu and blend_frames_gpu is not None:
-                    blended = blend_frames_gpu(frame_a, frame_b, alpha)
+                if use_gpu and blend_frames_gpu_fn is not None:
+                    blended = blend_frames_gpu_fn(frame_a, frame_b, alpha)
                 else:
                     # Numpy fallback
                     blended = (
-                        (1.0 - alpha) * frame_a.astype(np.float32) +
-                        alpha * frame_b.astype(np.float32)
+                        (1.0 - alpha) * frame_a.astype(np.float32)
+                        + alpha * frame_b.astype(np.float32)
                     ).astype(dtype)
 
                 # Convert to PyAV frame
@@ -3313,7 +3572,7 @@ class VideoAssembler:
             video_path: Video file to add audio to (modified in place).
             fade_dur: Duration of the audio crossfade.
         """
-        temp_output = video_path.with_suffix('.tmp.mp4')
+        temp_output = video_path.with_suffix(".tmp.mp4")
 
         audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
 
@@ -3326,16 +3585,28 @@ class VideoAssembler:
         )
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(video_path),  # Video (may have no audio)
-            "-i", str(seg_a),       # Audio source A
-            "-i", str(seg_b),       # Audio source B
-            "-filter_complex", filter_complex,
-            "-map", "0:v",
-            "-map", "[aout]",
-            "-c:v", "copy",
-            "-c:a", "aac", "-b:a", "128k",
-            "-movflags", "+faststart",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path),  # Video (may have no audio)
+            "-i",
+            str(seg_a),  # Audio source A
+            "-i",
+            str(seg_b),  # Audio source B
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "0:v",
+            "-map",
+            "[aout]",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
             "-shortest",
             str(temp_output),
         ]
@@ -3354,16 +3625,28 @@ class VideoAssembler:
             )
 
             cmd_fallback = [
-                "ffmpeg", "-y",
-                "-i", str(video_path),
-                "-i", str(seg_a),
-                "-i", str(seg_b),
-                "-filter_complex", filter_complex_fallback,
-                "-map", "0:v",
-                "-map", "[aout]",
-                "-c:v", "copy",
-                "-c:a", "aac", "-b:a", "128k",
-                "-movflags", "+faststart",
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(video_path),
+                "-i",
+                str(seg_a),
+                "-i",
+                str(seg_b),
+                "-filter_complex",
+                filter_complex_fallback,
+                "-map",
+                "0:v",
+                "-map",
+                "[aout]",
+                "-c:v",
+                "copy",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-movflags",
+                "+faststart",
                 "-shortest",
                 str(temp_output),
             ]
@@ -3375,14 +3658,26 @@ class VideoAssembler:
                 logger.warning(f"Audio crossfade failed, using silence: {result.stderr[-200:]}")
 
                 cmd_silent = [
-                    "ffmpeg", "-y",
-                    "-i", str(video_path),
-                    "-f", "lavfi", "-i", f"anullsrc=r=48000:cl=stereo:d={fade_dur}",
-                    "-map", "0:v",
-                    "-map", "1:a",
-                    "-c:v", "copy",
-                    "-c:a", "aac", "-b:a", "128k",
-                    "-movflags", "+faststart",
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(video_path),
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    f"anullsrc=r=48000:cl=stereo:d={fade_dur}",
+                    "-map",
+                    "0:v",
+                    "-map",
+                    "1:a",
+                    "-c:v",
+                    "copy",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "128k",
+                    "-movflags",
+                    "+faststart",
                     "-shortest",
                     str(temp_output),
                 ]
@@ -3448,15 +3743,23 @@ class VideoAssembler:
         )
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(src),
-            "-filter_complex", filter_complex,
-            "-map", "[vout]",
-            "-map", "[aout]",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(src),
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[vout]",
+            "-map",
+            "[aout]",
             *video_codec_args,
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-movflags", "+faststart",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
             str(output),
         ]
 
@@ -3464,7 +3767,9 @@ class VideoAssembler:
 
         # If filter_complex failed (e.g., atrim on audio failed), retry with silence only
         if result.returncode != 0:
-            logger.warning(f"Extraction with audio failed, retrying with silence: {result.stderr[-200:]}")
+            logger.warning(
+                f"Extraction with audio failed, retrying with silence: {result.stderr[-200:]}"
+            )
 
             filter_complex_silent = (
                 f"[0:v]trim=start={start}:duration={duration},setpts=PTS-STARTPTS[vout];"
@@ -3472,15 +3777,23 @@ class VideoAssembler:
             )
 
             cmd_silent = [
-                "ffmpeg", "-y",
-                "-i", str(src),
-                "-filter_complex", filter_complex_silent,
-                "-map", "[vout]",
-                "-map", "[aout]",
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(src),
+                "-filter_complex",
+                filter_complex_silent,
+                "-map",
+                "[vout]",
+                "-map",
+                "[aout]",
                 *video_codec_args,
-                "-c:a", "aac",
-                "-b:a", "128k",
-                "-movflags", "+faststart",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-movflags",
+                "+faststart",
                 str(output),
             ]
 
@@ -3650,16 +3963,25 @@ class VideoAssembler:
             )
 
             cmd = [
-                "ffmpeg", "-y",
-                "-i", str(seg_a),
-                "-i", str(seg_b),
-                "-filter_complex", filter_complex,
-                "-map", "[vout]",
-                "-map", "[aout]",
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(seg_a),
+                "-i",
+                str(seg_b),
+                "-filter_complex",
+                filter_complex,
+                "-map",
+                "[vout]",
+                "-map",
+                "[aout]",
                 *video_codec_args,
-                "-c:a", "aac",
-                "-b:a", "128k",
-                "-movflags", "+faststart",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-movflags",
+                "+faststart",
                 str(output_path),
             ]
 
@@ -3693,16 +4015,25 @@ class VideoAssembler:
                 )
 
                 cmd_fallback = [
-                    "ffmpeg", "-y",
-                    "-i", str(seg_a),
-                    "-i", str(seg_b),
-                    "-filter_complex", filter_complex_fallback,
-                    "-map", "[vout]",
-                    "-map", "[aout]",
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(seg_a),
+                    "-i",
+                    str(seg_b),
+                    "-filter_complex",
+                    filter_complex_fallback,
+                    "-map",
+                    "[vout]",
+                    "-map",
+                    "[aout]",
                     *video_codec_args,
-                    "-c:a", "aac",
-                    "-b:a", "128k",
-                    "-movflags", "+faststart",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "128k",
+                    "-movflags",
+                    "+faststart",
                     str(output_path),
                 ]
 
@@ -3724,17 +4055,27 @@ class VideoAssembler:
                     )
 
                     cmd_silent = [
-                        "ffmpeg", "-y",
-                        "-i", str(seg_a),
-                        "-i", str(seg_b),
-                        "-filter_complex", filter_complex_silent,
-                        "-map", "[vout]",
-                        "-map", "[aout]",
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(seg_a),
+                        "-i",
+                        str(seg_b),
+                        "-filter_complex",
+                        filter_complex_silent,
+                        "-map",
+                        "[vout]",
+                        "-map",
+                        "[aout]",
                         *video_codec_args,
-                        "-c:a", "aac",
-                        "-b:a", "128k",
-                        "-t", str(fade_dur),
-                        "-movflags", "+faststart",
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "128k",
+                        "-t",
+                        str(fade_dur),
+                        "-movflags",
+                        "+faststart",
                         str(output_path),
                     ]
 
@@ -3785,11 +4126,11 @@ class VideoAssembler:
 
         for i, encoded_clip in enumerate(encoded_clips):
             clip_dur = clip_durations[i]
-            is_first = (i == 0)
-            is_last = (i == len(encoded_clips) - 1)
+            is_first = i == 0
+            is_last = i == len(encoded_clips) - 1
 
-            prev_is_fade = (not is_first and transitions[i - 1] == "fade")
-            next_is_fade = (not is_last and transitions[i] == "fade")
+            prev_is_fade = not is_first and transitions[i - 1] == "fade"
+            next_is_fade = not is_last and transitions[i] == "fade"
 
             trim_start = fade if prev_is_fade else 0
             trim_end = clip_dur - fade if next_is_fade else clip_dur
@@ -3819,15 +4160,10 @@ class VideoAssembler:
                         f"asetpts=PTS-STARTPTS[a{idx}]"
                     )
             else:
-                filter_parts.append(
-                    f"[{idx}:v]setpts=PTS-STARTPTS[v{idx}]"
-                )
+                filter_parts.append(f"[{idx}:v]setpts=PTS-STARTPTS[v{idx}]")
                 has_audio = self._has_audio_stream(encoded_clip)
                 if has_audio:
-                    filter_parts.append(
-                        f"[{idx}:a]{audio_format},"
-                        f"asetpts=PTS-STARTPTS[a{idx}]"
-                    )
+                    filter_parts.append(f"[{idx}:a]{audio_format},asetpts=PTS-STARTPTS[a{idx}]")
                 else:
                     filter_parts.append(
                         f"anullsrc=r=48000:cl=stereo,"
@@ -3844,13 +4180,8 @@ class VideoAssembler:
                 t_idx = input_idx
                 input_idx += 1
 
-                filter_parts.append(
-                    f"[{t_idx}:v]setpts=PTS-STARTPTS[v{t_idx}]"
-                )
-                filter_parts.append(
-                    f"[{t_idx}:a]{audio_format},"
-                    f"asetpts=PTS-STARTPTS[a{t_idx}]"
-                )
+                filter_parts.append(f"[{t_idx}:v]setpts=PTS-STARTPTS[v{t_idx}]")
+                filter_parts.append(f"[{t_idx}:a]{audio_format},asetpts=PTS-STARTPTS[a{t_idx}]")
 
                 concat_labels_v.append(f"[v{t_idx}]")
                 concat_labels_a.append(f"[a{t_idx}]")
@@ -3858,12 +4189,9 @@ class VideoAssembler:
         # Build concat filter
         n_segments = len(concat_labels_v)
         concat_input = "".join(
-            f"{concat_labels_v[i]}{concat_labels_a[i]}"
-            for i in range(n_segments)
+            f"{concat_labels_v[i]}{concat_labels_a[i]}" for i in range(n_segments)
         )
-        filter_parts.append(
-            f"{concat_input}concat=n={n_segments}:v=1:a=1[vout][aout]"
-        )
+        filter_parts.append(f"{concat_input}concat=n={n_segments}:v=1:a=1[vout][aout]")
 
         filter_complex = ";".join(filter_parts)
 
@@ -3878,17 +4206,26 @@ class VideoAssembler:
         )
 
         cmd = [
-            "ffmpeg", "-y",
+            "ffmpeg",
+            "-y",
             *inputs,
-            "-filter_complex", filter_complex,
-            "-map", "[vout]",
-            "-map", "[aout]",
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[vout]",
+            "-map",
+            "[aout]",
             *video_codec_args,
-            "-r", "60",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-max_muxing_queue_size", "4096",
-            "-movflags", "+faststart",
+            "-r",
+            "60",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-max_muxing_queue_size",
+            "4096",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -3900,9 +4237,7 @@ class VideoAssembler:
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
         if result.returncode != 0:
-            raise RuntimeError(
-                f"Concat with inline trim failed: {result.stderr[-500:]}"
-            )
+            raise RuntimeError(f"Concat with inline trim failed: {result.stderr[-500:]}")
 
     def _concat_with_copy(self, segments: list[Path], output_path: Path) -> None:
         """Concatenate video segments using the concat filter (decode + re-encode).
@@ -3925,6 +4260,7 @@ class VideoAssembler:
 
         if n == 1:
             import shutil
+
             shutil.copy2(segments[0], output_path)
             return
 
@@ -3948,15 +4284,24 @@ class VideoAssembler:
         )
 
         cmd = [
-            "ffmpeg", "-y",
+            "ffmpeg",
+            "-y",
             *inputs,
-            "-filter_complex", filter_complex,
-            "-map", "[vout]",
-            "-map", "[aout]",
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[vout]",
+            "-map",
+            "[aout]",
             *video_codec_args,
-            "-r", "60",
-            "-c:a", "aac", "-b:a", "192k",
-            "-movflags", "+faststart",
+            "-r",
+            "60",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -3995,6 +4340,7 @@ class VideoAssembler:
         n = len(encoded_clips)
         if n == 1:
             import shutil
+
             shutil.copy2(encoded_clips[0], output_path)
             return
 
@@ -4010,13 +4356,10 @@ class VideoAssembler:
         for i in range(n):
             has_audio = self._has_audio_stream(encoded_clips[i])
             if has_audio:
-                filter_parts.append(
-                    f"[{i}:a]{audio_format},asetpts=PTS-STARTPTS[a{i}]"
-                )
+                filter_parts.append(f"[{i}:a]{audio_format},asetpts=PTS-STARTPTS[a{i}]")
             else:
                 filter_parts.append(
-                    f"anullsrc=r=48000:cl=stereo,"
-                    f"atrim=0:{clip_durations[i]},{audio_format}[a{i}]"
+                    f"anullsrc=r=48000:cl=stereo,atrim=0:{clip_durations[i]},{audio_format}[a{i}]"
                 )
 
         # Build xfade chain for video, acrossfade chain for audio
@@ -4042,8 +4385,7 @@ class VideoAssembler:
                     f"duration={fade}:offset={offset}{v_out}"
                 )
                 filter_parts.append(
-                    f"{current_audio}{next_audio}acrossfade="
-                    f"d={fade}:c1=tri:c2=tri{a_out}"
+                    f"{current_audio}{next_audio}acrossfade=d={fade}:c1=tri:c2=tri{a_out}"
                 )
 
                 current_video = v_out
@@ -4056,12 +4398,8 @@ class VideoAssembler:
                 v_out = f"[vc{i}]"
                 a_out = f"[ac{i}]"
 
-                filter_parts.append(
-                    f"{current_video}{next_video}concat=n=2:v=1:a=0{v_out}"
-                )
-                filter_parts.append(
-                    f"{current_audio}{next_audio}concat=n=2:v=0:a=1{a_out}"
-                )
+                filter_parts.append(f"{current_video}{next_video}concat=n=2:v=1:a=0{v_out}")
+                filter_parts.append(f"{current_audio}{next_audio}concat=n=2:v=0:a=1{a_out}")
 
                 current_video = v_out
                 current_audio = a_out
@@ -4075,16 +4413,24 @@ class VideoAssembler:
         )
 
         cmd = [
-            "ffmpeg", "-y",
+            "ffmpeg",
+            "-y",
             *inputs,
-            "-filter_complex", filter_complex,
-            "-map", current_video,
-            "-map", current_audio,
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            current_video,
+            "-map",
+            current_audio,
             *video_codec_args,
-            "-r", "60",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-movflags", "+faststart",
+            "-r",
+            "60",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -4093,9 +4439,7 @@ class VideoAssembler:
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if result.returncode != 0:
-            raise RuntimeError(
-                f"Xfade assembly failed: {result.stderr[-500:]}"
-            )
+            raise RuntimeError(f"Xfade assembly failed: {result.stderr[-500:]}")
 
         logger.info(f"Assembly complete: {output_path}")
 
@@ -4119,15 +4463,17 @@ class VideoAssembler:
             next_clip = clips[i + 1]
 
             # Title screens always use fade
-            if clip.is_title_screen or next_clip.is_title_screen:
-                transitions.append("fade")
-            elif self.settings.transition == TransitionType.CROSSFADE:
+            if (
+                clip.is_title_screen
+                or next_clip.is_title_screen
+                or self.settings.transition == TransitionType.CROSSFADE
+            ):
                 transitions.append("fade")
             elif self.settings.transition == TransitionType.CUT:
                 transitions.append("cut")
             elif self.settings.transition == TransitionType.SMART:
                 # Use outgoing_transition if set, otherwise default to fade
-                trans = getattr(clip, 'outgoing_transition', None) or "fade"
+                trans = getattr(clip, "outgoing_transition", None) or "fade"
                 transitions.append(trans)
             else:
                 transitions.append("cut")
@@ -4156,8 +4502,16 @@ class VideoAssembler:
         vocals = self.settings.music_vocals_path
         other = self.settings.music_other_path
 
-        if (drums and drums.exists() and bass and bass.exists() and
-            vocals and vocals.exists() and other and other.exists()):
+        if (
+            drums
+            and drums.exists()
+            and bass
+            and bass.exists()
+            and vocals
+            and vocals.exists()
+            and other
+            and other.exists()
+        ):
             # Use 4-stem ducking for granular control
             return self._add_music_with_4stems(video_path, output_path, drums, bass, vocals, other)
 
@@ -4188,13 +4542,18 @@ class VideoAssembler:
         Returns:
             Path to output video.
         """
-        from immich_memories.audio.mixer import DuckingConfig, MixConfig, mix_audio_with_stem_ducking
+        from immich_memories.audio.mixer import (
+            DuckingConfig,
+            MixConfig,
+            mix_audio_with_stem_ducking,
+        )
 
         logger.info("Using stem-based audio ducking (vocals duck during speech, drums stay full)")
 
         # Convert volume (0.0-1.0) to dB
         # 0.3 volume ≈ -10dB, 0.5 ≈ -6dB, 1.0 = 0dB
         import math
+
         volume_db = 20 * math.log10(max(0.01, self.settings.music_volume))
 
         config = MixConfig(
@@ -4261,6 +4620,7 @@ class VideoAssembler:
 
         # Convert volume (0.0-1.0) to dB
         import math
+
         volume_db = 20 * math.log10(max(0.01, self.settings.music_volume))
 
         config = MixConfig(
@@ -4380,10 +4740,14 @@ class VideoAssembler:
         try:
             cmd = [
                 "ffprobe",
-                "-v", "error",
-                "-select_streams", "v:0",
-                "-show_entries", "stream=r_frame_rate",
-                "-of", "default=noprint_wrappers=1:nokey=1",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=r_frame_rate",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
                 str(video_path),
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)
@@ -4459,11 +4823,11 @@ class VideoAssembler:
         try:
             # Try common date formats (ISO first, then human-readable)
             for fmt in [
-                "%Y-%m-%d",           # ISO format (preferred)
+                "%Y-%m-%d",  # ISO format (preferred)
                 "%Y-%m-%dT%H:%M:%S",  # ISO with time
                 "%Y-%m-%d %H:%M:%S",  # ISO with time (space)
-                "%B %d, %Y",          # Human-readable (e.g., "October 15, 2025")
-                "%b %d, %Y",          # Short month (e.g., "Oct 15, 2025")
+                "%B %d, %Y",  # Human-readable (e.g., "October 15, 2025")
+                "%b %d, %Y",  # Short month (e.g., "Oct 15, 2025")
             ]:
                 try:
                     return datetime.strptime(clip.date, fmt).date()
@@ -4510,11 +4874,15 @@ class VideoAssembler:
                 if current_month is None:
                     logger.info(f"First month detected at clip {i}: {month_key}")
                 else:
-                    logger.info(f"Month change detected at clip {i}: {current_month} -> {month_key}")
+                    logger.info(
+                        f"Month change detected at clip {i}: {current_month} -> {month_key}"
+                    )
 
             current_month = month_key
 
-        logger.info(f"Month detection: {clips_with_dates}/{len(clips)} clips have dates, {len(month_changes)} month changes found")
+        logger.info(
+            f"Month detection: {clips_with_dates}/{len(clips)} clips have dates, {len(month_changes)} month changes found"
+        )
         if month_clip_counts:
             logger.info(f"Clips per month: {month_clip_counts}")
 
@@ -4696,7 +5064,10 @@ class VideoAssembler:
                         month, year, is_birthday_month=is_birthday
                     )
                     month_divider_paths[key] = divider.path
-                    logger.info(f"Generated month divider: {month}/{year}" + (" (birthday!)" if is_birthday else ""))
+                    logger.info(
+                        f"Generated month divider: {month}/{year}"
+                        + (" (birthday!)" if is_birthday else "")
+                    )
 
         # 3. Build clip list with month dividers inserted
         current_month: tuple[int, int] | None = None

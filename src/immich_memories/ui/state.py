@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from immich_memories.api.models import VideoClipInfo
+    from immich_memories.api.models import Person, VideoClipInfo
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.timeperiod import DateRange
 
@@ -42,8 +42,8 @@ class AppState:
     date_range: DateRange | None = None
 
     # Person selection
-    selected_person: str | None = None
-    people: list[dict[str, Any]] = field(default_factory=list)
+    selected_person: Person | None = None
+    people: list[Person] = field(default_factory=list)
     years: list[int] = field(default_factory=list)
 
     # Clips

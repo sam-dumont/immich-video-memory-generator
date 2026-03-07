@@ -129,9 +129,7 @@ class RunDatabase:
             RunMetadata or None if not found.
         """
         with self._get_connection() as conn:
-            row = conn.execute(
-                "SELECT * FROM pipeline_runs WHERE run_id = ?", (run_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM pipeline_runs WHERE run_id = ?", (run_id,)).fetchone()
 
             if not row:
                 return None
@@ -150,22 +148,16 @@ class RunDatabase:
             run_id=row["run_id"],
             created_at=datetime.fromisoformat(row["created_at"]),
             completed_at=(
-                datetime.fromisoformat(row["completed_at"])
-                if row["completed_at"]
-                else None
+                datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None
             ),
             status=row["status"],
             person_name=row["person_name"],
             person_id=row["person_id"],
             date_range_start=(
-                date.fromisoformat(row["date_range_start"])
-                if row["date_range_start"]
-                else None
+                date.fromisoformat(row["date_range_start"]) if row["date_range_start"] else None
             ),
             date_range_end=(
-                date.fromisoformat(row["date_range_end"])
-                if row["date_range_end"]
-                else None
+                date.fromisoformat(row["date_range_end"]) if row["date_range_end"] else None
             ),
             target_duration_minutes=row["target_duration_minutes"] or 10,
             output_path=row["output_path"],
@@ -204,9 +196,7 @@ class RunDatabase:
             phase_name=row["phase_name"],
             started_at=datetime.fromisoformat(row["started_at"]),
             completed_at=(
-                datetime.fromisoformat(row["completed_at"])
-                if row["completed_at"]
-                else None
+                datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None
             ),
             duration_seconds=row["duration_seconds"] or 0.0,
             items_processed=row["items_processed"] or 0,
@@ -269,9 +259,7 @@ class RunDatabase:
         """
         with self._get_connection() as conn:
             # Phase stats are deleted via CASCADE
-            cursor = conn.execute(
-                "DELETE FROM pipeline_runs WHERE run_id = ?", (run_id,)
-            )
+            cursor = conn.execute("DELETE FROM pipeline_runs WHERE run_id = ?", (run_id,))
             conn.commit()
             return cursor.rowcount > 0
 
@@ -282,9 +270,7 @@ class RunDatabase:
             Dictionary with aggregate stats.
         """
         with self._get_connection() as conn:
-            total_runs = conn.execute(
-                "SELECT COUNT(*) FROM pipeline_runs"
-            ).fetchone()[0]
+            total_runs = conn.execute("SELECT COUNT(*) FROM pipeline_runs").fetchone()[0]
 
             completed_runs = conn.execute(
                 "SELECT COUNT(*) FROM pipeline_runs WHERE status = 'completed'"
@@ -605,9 +591,13 @@ class RunDatabase:
                 "cancel_requested": bool(row["cancel_requested"]),
                 "started_at": row["started_at"],
                 "updated_at": row["updated_at"],
-                "selected_clips": json.loads(row["selected_clips"]) if row["selected_clips"] else [],
+                "selected_clips": json.loads(row["selected_clips"])
+                if row["selected_clips"]
+                else [],
                 "clip_segments": json.loads(row["clip_segments"]) if row["clip_segments"] else {},
-                "generation_options": json.loads(row["generation_options"]) if row["generation_options"] else {},
+                "generation_options": json.loads(row["generation_options"])
+                if row["generation_options"]
+                else {},
             }
 
     def complete_job(self, run_id: str, status: str = "completed") -> None:

@@ -313,7 +313,9 @@ class UnifiedSegmentAnalyzer:
         # Skip videos that are too short to be useful
         MIN_VIDEO_DURATION = 1.5  # seconds
         if video_duration < MIN_VIDEO_DURATION:
-            logger.warning(f"Video too short ({video_duration:.1f}s < {MIN_VIDEO_DURATION}s), skipping")
+            logger.warning(
+                f"Video too short ({video_duration:.1f}s < {MIN_VIDEO_DURATION}s), skipping"
+            )
             return []
 
         # Log duration scoring config
@@ -321,7 +323,7 @@ class UnifiedSegmentAnalyzer:
         logger.info(
             f"Duration scoring: source={video_duration:.1f}s → "
             f"optimal clip={dynamic_optimal:.1f}s "
-            f"(target {self.target_extraction_ratio*100:.0f}% of source, "
+            f"(target {self.target_extraction_ratio * 100:.0f}% of source, "
             f"range {self.min_segment_duration:.1f}s-{self.max_segment_duration:.1f}s)"
         )
 
@@ -350,7 +352,9 @@ class UnifiedSegmentAnalyzer:
                 )
                 # Log the actual protected ranges for debugging
                 for i, (start, end) in enumerate(audio_content_result.protected_ranges[:5]):
-                    logger.info(f"     Protected range {i+1}: {start:.2f}s - {end:.2f}s (duration: {end-start:.2f}s)")
+                    logger.info(
+                        f"     Protected range {i + 1}: {start:.2f}s - {end:.2f}s (duration: {end - start:.2f}s)"
+                    )
 
                 # Calculate speech coverage to warn about problematic videos
                 total_protected = sum(
@@ -380,11 +384,11 @@ class UnifiedSegmentAnalyzer:
 
         # Step 2: Merge boundaries into cut points
         logger.info("Step 2: Merging visual + audio boundaries into cut points")
-        cut_points = self._merge_boundaries(
-            visual_boundaries, audio_boundaries, video_duration
-        )
+        cut_points = self._merge_boundaries(visual_boundaries, audio_boundaries, video_duration)
         priority_2_count = sum(1 for cp in cut_points if cp.priority == 2)
-        logger.info(f"  -> {len(cut_points)} cut points ({priority_2_count} ideal = both visual+audio)")
+        logger.info(
+            f"  -> {len(cut_points)} cut points ({priority_2_count} ideal = both visual+audio)"
+        )
 
         # Step 3: Generate candidate segments
         logger.info("Step 3: Generating candidate segments (must start/end on silence)")
@@ -403,7 +407,9 @@ class UnifiedSegmentAnalyzer:
             candidates = self._adjust_candidates_for_audio(
                 candidates, audio_content_result, video_duration
             )
-            logger.info(f"  -> Adjusted {original_count} candidates to {len(candidates)} candidates")
+            logger.info(
+                f"  -> Adjusted {original_count} candidates to {len(candidates)} candidates"
+            )
             # Log a sample of adjusted segments
             if candidates:
                 sample = candidates[0]
@@ -419,7 +425,9 @@ class UnifiedSegmentAnalyzer:
                 logger.debug("Step 3b: SKIPPED - audio content analysis not enabled/available")
 
         # Step 4: Score each candidate with VISUAL analysis only (fast)
-        logger.info(f"Step 4a: Visual scoring {len(candidates)} candidates (faces, motion, stability, duration)")
+        logger.info(
+            f"Step 4a: Visual scoring {len(candidates)} candidates (faces, motion, stability, duration)"
+        )
         scored_segments = self._score_segments_visual_only(
             visual_video, candidates, cut_points, audio_content_result, video_duration
         )
@@ -433,7 +441,9 @@ class UnifiedSegmentAnalyzer:
             logger.info(f"Step 4b: LLM content analysis on TOP {top_n} candidates only")
             for i, segment in enumerate(scored_segments[:top_n]):
                 try:
-                    logger.info(f"  -> Analyzing candidate {i+1}/{top_n}: {segment.start_time:.1f}s-{segment.end_time:.1f}s")
+                    logger.info(
+                        f"  -> Analyzing candidate {i + 1}/{top_n}: {segment.start_time:.1f}s-{segment.end_time:.1f}s"
+                    )
                     segment.content_score = self._score_content(
                         audio_video, segment.start_time, segment.end_time, segment=segment
                     )
@@ -528,9 +538,7 @@ class UnifiedSegmentAnalyzer:
             List of boundary timestamps in seconds.
         """
         try:
-            scenes = self._scene_detector.detect(
-                video_path, extract_keyframes=False
-            )
+            scenes = self._scene_detector.detect(video_path, extract_keyframes=False)
 
             # Extract unique boundary times
             boundaries = set()
@@ -622,9 +630,7 @@ class UnifiedSegmentAnalyzer:
         if 0.0 not in all_times:
             all_times[0.0] = CutPoint(time=0.0, is_visual=True, is_audio=True)
         if video_duration not in all_times:
-            all_times[video_duration] = CutPoint(
-                time=video_duration, is_visual=True, is_audio=True
-            )
+            all_times[video_duration] = CutPoint(time=video_duration, is_visual=True, is_audio=True)
 
         # Sort by time
         cut_points = sorted(all_times.values(), key=lambda cp: cp.time)
@@ -691,8 +697,12 @@ class UnifiedSegmentAnalyzer:
             dynamic_optimal = self._get_dynamic_optimal_duration(video_duration)
             candidates.sort(
                 key=lambda pair: (
-                    -(pair[0].is_audio + pair[1].is_audio),  # More audio = better (negative for desc)
-                    abs((pair[1].time - pair[0].time) - dynamic_optimal),  # Closer to optimal = better
+                    -(
+                        pair[0].is_audio + pair[1].is_audio
+                    ),  # More audio = better (negative for desc)
+                    abs(
+                        (pair[1].time - pair[0].time) - dynamic_optimal
+                    ),  # Closer to optimal = better
                 ),
             )
             return candidates[:20]  # Limit to top 20 candidates
@@ -729,9 +739,7 @@ class UnifiedSegmentAnalyzer:
         # Sort by proximity to optimal duration
         if candidates and video_duration:
             dynamic_optimal = self._get_dynamic_optimal_duration(video_duration)
-            candidates.sort(
-                key=lambda pair: abs((pair[1].time - pair[0].time) - dynamic_optimal)
-            )
+            candidates.sort(key=lambda pair: abs((pair[1].time - pair[0].time) - dynamic_optimal))
 
         return candidates
 
@@ -787,9 +795,7 @@ class UnifiedSegmentAnalyzer:
 
         return candidates
 
-    def _find_nearest_cut_point(
-        self, cut_points: list[CutPoint], time: float
-    ) -> CutPoint | None:
+    def _find_nearest_cut_point(self, cut_points: list[CutPoint], time: float) -> CutPoint | None:
         """Find the cut point nearest to a given time.
 
         Args:
@@ -846,7 +852,9 @@ class UnifiedSegmentAnalyzer:
             else:
                 merged_ranges.append((start, end))
 
-        logger.info(f"     Buffered+merged ranges: {[(f'{s:.2f}-{e:.2f}') for s, e in merged_ranges]}")
+        logger.info(
+            f"     Buffered+merged ranges: {[(f'{s:.2f}-{e:.2f}') for s, e in merged_ranges]}"
+        )
 
         adjusted = []
         adjustments_made = 0
@@ -944,7 +952,9 @@ class UnifiedSegmentAnalyzer:
                 adjusted.append((start_cp, end_cp))
 
         if adjustments_made > 0:
-            logger.info(f"     Made {adjustments_made} boundary adjustments to avoid mid-speech cuts")
+            logger.info(
+                f"     Made {adjustments_made} boundary adjustments to avoid mid-speech cuts"
+            )
 
         return adjusted
 
@@ -984,9 +994,7 @@ class UnifiedSegmentAnalyzer:
 
             # Score using visual analysis only
             try:
-                visual_scores = self._score_visual(
-                    video_path, segment.start_time, segment.end_time
-                )
+                visual_scores = self._score_visual(video_path, segment.start_time, segment.end_time)
                 segment.face_score = visual_scores.get("face", 0.0)
                 segment.motion_score = visual_scores.get("motion", 0.0)
                 segment.stability_score = visual_scores.get("stability", 0.0)
@@ -1056,9 +1064,7 @@ class UnifiedSegmentAnalyzer:
 
             # Score using visual analysis
             try:
-                visual_scores = self._score_visual(
-                    video_path, segment.start_time, segment.end_time
-                )
+                visual_scores = self._score_visual(video_path, segment.start_time, segment.end_time)
                 segment.face_score = visual_scores.get("face", 0.0)
                 segment.motion_score = visual_scores.get("motion", 0.0)
                 segment.stability_score = visual_scores.get("stability", 0.0)
@@ -1105,9 +1111,7 @@ class UnifiedSegmentAnalyzer:
         )
 
         # Use the SceneScorer to get component scores
-        moment = self.scorer.score_scene(
-            video_path, scene, sample_frames=5
-        )
+        moment = self.scorer.score_scene(video_path, scene, sample_frames=5)
 
         return {
             "face": moment.face_score,
@@ -1143,9 +1147,7 @@ class UnifiedSegmentAnalyzer:
             return 0.5
 
         try:
-            analysis = self.content_analyzer.analyze_segment(
-                video_path, start_time, end_time
-            )
+            analysis = self.content_analyzer.analyze_segment(video_path, start_time, end_time)
 
             # If segment provided, store full LLM analysis results
             if segment is not None:
@@ -1356,7 +1358,7 @@ def create_unified_analyzer_from_config() -> UnifiedSegmentAnalyzer:
     logger.info(
         f"Duration scoring config: base={config.analysis.optimal_clip_duration:.1f}s, "
         f"max={config.analysis.max_optimal_duration:.1f}s, "
-        f"ratio={config.analysis.target_extraction_ratio*100:.0f}%"
+        f"ratio={config.analysis.target_extraction_ratio * 100:.0f}%"
     )
 
     return UnifiedSegmentAnalyzer(

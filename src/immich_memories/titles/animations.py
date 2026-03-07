@@ -40,7 +40,7 @@ def ease_in_out_quad(t: float) -> float:
 
 def ease_in_cubic(t: float) -> float:
     """Cubic ease-in."""
-    return t ** 3
+    return t**3
 
 
 def ease_out_cubic(t: float) -> float:
@@ -50,7 +50,7 @@ def ease_out_cubic(t: float) -> float:
 
 def ease_in_out_cubic(t: float) -> float:
     """Cubic ease-in-out."""
-    return 4 * t ** 3 if t < 0.5 else 1 - (-2 * t + 2) ** 3 / 2
+    return 4 * t**3 if t < 0.5 else 1 - (-2 * t + 2) ** 3 / 2
 
 
 def ease_in_sine(t: float) -> float:
@@ -196,23 +196,33 @@ def reverse_preset(preset: AnimationPreset) -> AnimationPreset:
         opacity=AnimationProperty(
             from_value=preset.opacity.to_value,
             to_value=preset.opacity.from_value,
-        ) if preset.opacity else None,
+        )
+        if preset.opacity
+        else None,
         y_offset=AnimationProperty(
             from_value=preset.y_offset.to_value,
             to_value=preset.y_offset.from_value,
-        ) if preset.y_offset else None,
+        )
+        if preset.y_offset
+        else None,
         x_offset=AnimationProperty(
             from_value=preset.x_offset.to_value,
             to_value=preset.x_offset.from_value,
-        ) if preset.x_offset else None,
+        )
+        if preset.x_offset
+        else None,
         scale=AnimationProperty(
             from_value=preset.scale.to_value,
             to_value=preset.scale.from_value,
-        ) if preset.scale else None,
+        )
+        if preset.scale
+        else None,
         blur=AnimationProperty(
             from_value=preset.blur.to_value,
             to_value=preset.blur.from_value,
-        ) if preset.blur else None,
+        )
+        if preset.blur
+        else None,
         phases=[],  # Don't reverse complex phase animations
     )
 

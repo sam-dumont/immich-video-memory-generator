@@ -511,7 +511,7 @@ class SceneScorer:
             logger.debug(
                 f"Duration scoring: source={source_duration:.1f}s, "
                 f"clip={duration:.1f}s, optimal={dynamic_optimal:.1f}s "
-                f"(target {self._target_extraction_ratio*100:.0f}% of source)"
+                f"(target {self._target_extraction_ratio * 100:.0f}% of source)"
             )
         else:
             dynamic_optimal = self._optimal_duration
@@ -906,9 +906,7 @@ class SceneScorer:
                     scene_threshold=config.analysis.scene_threshold,
                     min_scene_duration=config.analysis.min_scene_duration,
                 )
-                logger.debug(
-                    f"Scene detection: {len(segments)} segments from natural boundaries"
-                )
+                logger.debug(f"Scene detection: {len(segments)} segments from natural boundaries")
             except Exception as e:
                 logger.warning(f"Scene detection failed, falling back to fixed segments: {e}")
                 segments = self._generate_segments(video_path, segment_duration, overlap)
@@ -929,7 +927,7 @@ class SceneScorer:
             logger.info(
                 f"Duration scoring: source={video_duration:.1f}s → "
                 f"optimal clip={dynamic_optimal:.1f}s "
-                f"(target {self._target_extraction_ratio*100:.0f}% of source, "
+                f"(target {self._target_extraction_ratio * 100:.0f}% of source, "
                 f"min={self._min_duration:.1f}s, max={self._max_optimal_duration:.1f}s)"
             )
         else:
@@ -1037,7 +1035,7 @@ def create_scorer_from_config() -> SceneScorer:
 
     logger.info(
         f"Duration scoring config: base={optimal_duration:.1f}s, "
-        f"max={max_optimal_duration:.1f}s, ratio={target_extraction_ratio*100:.0f}%, "
+        f"max={max_optimal_duration:.1f}s, ratio={target_extraction_ratio * 100:.0f}%, "
         f"min={min_duration:.1f}s"
     )
 

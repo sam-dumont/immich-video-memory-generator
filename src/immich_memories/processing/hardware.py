@@ -7,14 +7,14 @@ import logging
 import platform
 import subprocess
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from functools import lru_cache
 from typing import Literal
 
 logger = logging.getLogger(__name__)
 
 
-class HWAccelBackend(str, Enum):
+class HWAccelBackend(StrEnum):
     """Available hardware acceleration backends."""
 
     NONE = "none"

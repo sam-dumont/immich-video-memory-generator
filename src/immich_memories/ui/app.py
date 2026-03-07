@@ -6,6 +6,7 @@ import logging
 import os
 import signal
 import sys
+
 # Configure logging to show in console before importing our modules
 logging.basicConfig(
     level=logging.INFO,
@@ -15,7 +16,6 @@ logging.basicConfig(
 )
 
 from nicegui import app, ui
-
 
 # ---------------------------------------------------------------------------
 # Ctrl+C handling: ThreadPoolExecutor threads are non-daemon by default,
@@ -209,14 +209,15 @@ def initialize_app() -> None:
 app.on_startup(initialize_app)
 
 
-def main() -> None:
+def main(port: int = 8080, host: str = "0.0.0.0", reload: bool = True) -> None:
     """Run the NiceGUI application."""
     ui.run(
         title="Immich Memories",
         favicon="🎬",
-        port=8080,
-        reload=True,  # Enable hot reload for development
-        uvicorn_reload_includes="*.py",  # Only watch Python files
+        port=port,
+        host=host,
+        reload=reload,
+        uvicorn_reload_includes="*.py",
         uvicorn_reload_excludes=".*, *.log, *.db, *.db-journal",
     )
 

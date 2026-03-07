@@ -182,7 +182,9 @@ def render_step3() -> None:
                 ).props("accept='.mp3,.m4a,.wav'").classes("w-full max-w-md")
 
                 if options.get("music_filename"):
-                    ui.label(f"Selected: {options['music_filename']}").classes("text-sm text-green-600")
+                    ui.label(f"Selected: {options['music_filename']}").classes(
+                        "text-sm text-green-600"
+                    )
 
                 with ui.row().classes("items-center gap-4 mt-4"):
                     ui.label("Music volume:").classes("text-sm")
@@ -231,7 +233,9 @@ def render_step3() -> None:
                                 options["music_volume"] = e.value
 
                             volume_slider.on_value_change(on_ai_volume_change)
-                            ui.label().bind_text_from(volume_slider, "value", lambda v: f"{int(v * 100)}%")
+                            ui.label().bind_text_from(
+                                volume_slider, "value", lambda v: f"{int(v * 100)}%"
+                            )
 
     music_source_select = ui.select(
         options=music_sources,

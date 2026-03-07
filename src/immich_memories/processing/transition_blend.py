@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 # Try to import Taichi and reuse initialization from renderer_taichi
 try:
     import taichi as ti
+
     TAICHI_AVAILABLE = True
 except ImportError:
     TAICHI_AVAILABLE = False
@@ -54,12 +55,12 @@ def _ensure_taichi_initialized() -> bool:
     # Try to import and use the existing Taichi initialization from renderer_taichi
     # Suppress stdout/stderr to avoid triggering Streamlit reruns (Taichi prints version info)
     try:
-        with contextlib.redirect_stdout(io.StringIO()), \
-             contextlib.redirect_stderr(io.StringIO()):
-            old_ti_log = os.environ.get('TI_LOG_LEVEL')
-            os.environ['TI_LOG_LEVEL'] = 'error'
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            old_ti_log = os.environ.get("TI_LOG_LEVEL")
+            os.environ["TI_LOG_LEVEL"] = "error"
             try:
                 from immich_memories.titles.renderer_taichi import init_taichi, is_taichi_available
+
                 if is_taichi_available():
                     return True
                 # Try to initialize
@@ -67,9 +68,9 @@ def _ensure_taichi_initialized() -> bool:
                 return result
             finally:
                 if old_ti_log is not None:
-                    os.environ['TI_LOG_LEVEL'] = old_ti_log
-                elif 'TI_LOG_LEVEL' in os.environ:
-                    del os.environ['TI_LOG_LEVEL']
+                    os.environ["TI_LOG_LEVEL"] = old_ti_log
+                elif "TI_LOG_LEVEL" in os.environ:
+                    del os.environ["TI_LOG_LEVEL"]
     except Exception as e:
         # Catch any exception (ImportError, RuntimeError, etc.)
         logger.debug(f"renderer_taichi not available or failed: {e}")
@@ -93,18 +94,20 @@ def _ensure_taichi_initialized() -> bool:
         try:
             # Suppress Taichi's stdout output to avoid triggering Streamlit reruns
             # Taichi prints version info during init which can confuse Streamlit
-            with contextlib.redirect_stdout(io.StringIO()), \
-                 contextlib.redirect_stderr(io.StringIO()):
+            with (
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
                 # Set environment variable to suppress Taichi output
-                old_ti_log = os.environ.get('TI_LOG_LEVEL')
-                os.environ['TI_LOG_LEVEL'] = 'error'
+                old_ti_log = os.environ.get("TI_LOG_LEVEL")
+                os.environ["TI_LOG_LEVEL"] = "error"
                 try:
                     ti.init(arch=backend, offline_cache=True)
                 finally:
                     if old_ti_log is not None:
-                        os.environ['TI_LOG_LEVEL'] = old_ti_log
-                    elif 'TI_LOG_LEVEL' in os.environ:
-                        del os.environ['TI_LOG_LEVEL']
+                        os.environ["TI_LOG_LEVEL"] = old_ti_log
+                    elif "TI_LOG_LEVEL" in os.environ:
+                        del os.environ["TI_LOG_LEVEL"]
             logger.info(f"Taichi initialized with {name} backend for frame blending")
             return True
         except Exception as e:
@@ -126,9 +129,9 @@ def _compile_blend_kernel():
 
     @ti.kernel
     def blend_frames_kernel(
-        frame_a: ti.types.ndarray(dtype=ti.f32, ndim=3),
-        frame_b: ti.types.ndarray(dtype=ti.f32, ndim=3),
-        output: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        frame_a: ti.types.ndarray(dtype=ti.f32, ndim=3),  # type: ignore[valid-type]
+        frame_b: ti.types.ndarray(dtype=ti.f32, ndim=3),  # type: ignore[valid-type]
+        output: ti.types.ndarray(dtype=ti.f32, ndim=3),  # type: ignore[valid-type]
         alpha: ti.f32,
     ):
         """GPU kernel for alpha blending two frames.

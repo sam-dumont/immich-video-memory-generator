@@ -224,9 +224,7 @@ def download_font(
 
                 # Verify it's actually a font file (TTF starts with specific bytes)
                 if len(response.content) < 100:
-                    logger.warning(
-                        f"Downloaded file too small for {font_family} {weight_name}"
-                    )
+                    logger.warning(f"Downloaded file too small for {font_family} {weight_name}")
                     continue
 
                 # Save with our naming convention: FontFamily-Weight.ttf

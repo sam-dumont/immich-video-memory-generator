@@ -534,7 +534,9 @@ def cluster_thumbnails(
                 similar_pairs.append((id1, id2))
             elif time_close and distance <= threshold * 1.5:
                 similar_pairs.append((id1, id2))
-                logger.debug(f"Time-based cluster: {id1[:8]} + {id2[:8]} (dist={distance}, time_diff={time_diff:.0f}s)")
+                logger.debug(
+                    f"Time-based cluster: {id1[:8]} + {id2[:8]} (dist={distance}, time_diff={time_diff:.0f}s)"
+                )
 
     # Build groups using union-find
     groups = _union_find_groups(clip_ids, similar_pairs)
