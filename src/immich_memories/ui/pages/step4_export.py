@@ -8,7 +8,6 @@ from pathlib import Path
 from nicegui import app as nicegui_app
 from nicegui import run, ui
 
-from immich_memories.config import get_config
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
@@ -117,7 +116,7 @@ def render_step4() -> None:
             run_id_label = ui.label("").classes("text-sm text-gray-500")
 
         try:
-            from immich_memories.api.immich import ImmichClient
+            from immich_memories.api.immich import SyncImmichClient
             from immich_memories.cache.video_cache import VideoDownloadCache
             from immich_memories.config import get_config
             from immich_memories.processing.assembly import (
@@ -152,7 +151,7 @@ def render_step4() -> None:
             )
 
             # Initialize client and cache
-            client = ImmichClient(
+            client = SyncImmichClient(
                 base_url=state.immich_url,
                 api_key=state.immich_api_key,
             )
@@ -308,7 +307,11 @@ def render_step4() -> None:
                 progress_bar.value = 0.85
 
                 try:
-                    from immich_memories.audio.mixer import mix_audio_with_ducking
+                    from immich_memories.audio.mixer import (
+                        DuckingConfig,
+                        MixConfig,
+                        mix_audio_with_ducking,
+                    )
                     from immich_memories.audio.music_generator import (
                         MusicGenClientConfig,
                         VideoTimeline,
@@ -316,8 +319,13 @@ def render_step4() -> None:
                     )
 
                     # Build timeline
-                    clip_data = [
-                        (clip.duration, clip.llm_emotion or "calm") for clip in assembly_clips
+                    clip_data: list[tuple[float, str, int | None]] = [
+                        (
+                            clip.duration,
+                            clip.llm_emotion or "calm",
+                            int(clip.date.split("-")[1]) if clip.date else None,
+                        )
+                        for clip in assembly_clips
                     ]
                     timeline = VideoTimeline.from_clips(
                         clips=clip_data,
@@ -360,13 +368,18 @@ def render_step4() -> None:
 
                         music_volume = gen_options.get("music_volume", 0.3)
                         final_path = result_path.with_suffix(".with_music.mp4")
+                        mix_config = MixConfig(
+                            ducking=DuckingConfig(
+                                music_volume_db=-20 + (music_volume * 20),
+                            ),
+                        )
 
                         await run.io_bound(
                             mix_audio_with_ducking,
                             video_path=result_path,
                             music_path=selected_music.full_mix,
                             output_path=final_path,
-                            music_volume_db=-20 + (music_volume * 20),
+                            config=mix_config,
                         )
 
                         result_path.unlink()
@@ -377,7 +390,9 @@ def render_step4() -> None:
 
                 except Exception as e:
                     logger.warning(f"Music generation failed: {e}")
-                    ui.notify(f"Music generation failed: {e}. Video saved without music.", type="warning")
+                    ui.notify(
+                        f"Music generation failed: {e}. Video saved without music.", type="warning"
+                    )
                     run_tracker.complete_phase(items_processed=0)
 
             elif music_source == "Upload file" and gen_options.get("music_file"):
@@ -388,7 +403,11 @@ def render_step4() -> None:
                 try:
                     import tempfile
 
-                    from immich_memories.audio.mixer import mix_audio_with_ducking
+                    from immich_memories.audio.mixer import (
+                        DuckingConfig,
+                        MixConfig,
+                        mix_audio_with_ducking,
+                    )
 
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
                         tmp.write(gen_options["music_file"])
@@ -396,13 +415,18 @@ def render_step4() -> None:
 
                     music_volume = gen_options.get("music_volume", 0.3)
                     final_path = result_path.with_suffix(".with_music.mp4")
+                    mix_config = MixConfig(
+                        ducking=DuckingConfig(
+                            music_volume_db=-20 + (music_volume * 20),
+                        ),
+                    )
 
                     await run.io_bound(
                         mix_audio_with_ducking,
                         video_path=result_path,
                         music_path=tmp_music_path,
                         output_path=final_path,
-                        music_volume_db=-20 + (music_volume * 20),
+                        config=mix_config,
                     )
 
                     tmp_music_path.unlink()
@@ -413,7 +437,9 @@ def render_step4() -> None:
 
                 except Exception as e:
                     logger.warning(f"Music mixing failed: {e}")
-                    ui.notify(f"Music mixing failed: {e}. Video saved without music.", type="warning")
+                    ui.notify(
+                        f"Music mixing failed: {e}. Video saved without music.", type="warning"
+                    )
                     run_tracker.complete_phase(items_processed=0)
 
             progress_bar.value = 1.0
@@ -421,21 +447,21 @@ def render_step4() -> None:
             state.output_path = result_path
 
             # Complete run
-            run_metadata = run_tracker.complete_run(
+            run_tracker.complete_run(
                 output_path=result_path,
                 clips_analyzed=total_clips,
                 clips_selected=len(assembly_clips),
             )
 
             # Cleanup temporary segment files
-            for clip in assembly_clips:
+            for assembled_clip in assembly_clips:
                 try:
-                    if clip.path.exists() and "tmp" in str(clip.path).lower():
-                        clip.path.unlink()
+                    if assembled_clip.path.exists() and "tmp" in str(assembled_clip.path).lower():
+                        assembled_clip.path.unlink()
                 except Exception:
                     pass
 
-            ui.notify(f"Video generated successfully!", type="positive")
+            ui.notify("Video generated successfully!", type="positive")
 
             # Show output
             output_container.clear()
@@ -447,7 +473,9 @@ def render_step4() -> None:
                 # Video player
                 if result_path.exists():
                     video_url = nicegui_app.add_media_file(local_file=result_path)
-                    ui.video(video_url).classes("w-full max-w-2xl").style("max-height: 60vh; object-fit: contain")
+                    ui.video(video_url).classes("w-full max-w-2xl").style(
+                        "max-height: 60vh; object-fit: contain"
+                    )
 
         except Exception as e:
             logger.exception("Video generation failed")
@@ -469,7 +497,9 @@ def render_step4() -> None:
         ui.label(f"Saved to: {state.output_path}").classes("text-sm text-gray-500")
 
         video_url = nicegui_app.add_media_file(local_file=Path(state.output_path))
-        ui.video(video_url).classes("w-full max-w-2xl").style("max-height: 60vh; object-fit: contain")
+        ui.video(video_url).classes("w-full max-w-2xl").style(
+            "max-height: 60vh; object-fit: contain"
+        )
 
     ui.separator().classes("my-6")
 
@@ -488,5 +518,7 @@ def render_step4() -> None:
             state.step = 1
             ui.navigate.to("/")
 
-        ui.button("Back to Generation Options", on_click=go_back, icon="arrow_back").props("outline")
+        ui.button("Back to Generation Options", on_click=go_back, icon="arrow_back").props(
+            "outline"
+        )
         ui.button("Start New Project", on_click=start_new, icon="refresh").props("outline")

@@ -23,8 +23,10 @@ def _get_fast_encoder_args() -> list[str]:
     # macOS: Use VideoToolbox hardware encoder
     if sys.platform == "darwin":
         return [
-            "-c:v", "h264_videotoolbox",
-            "-q:v", "65",  # Lower quality OK for analysis (faster)
+            "-c:v",
+            "h264_videotoolbox",
+            "-q:v",
+            "65",  # Lower quality OK for analysis (faster)
         ]
 
     # Other platforms: Check for available encoders
@@ -40,33 +42,46 @@ def _get_fast_encoder_args() -> list[str]:
         # Try NVIDIA NVENC (GPU accelerated)
         if "h264_nvenc" in encoders:
             return [
-                "-c:v", "h264_nvenc",
-                "-preset", "p1",  # Fastest preset
-                "-rc", "constqp", "-qp", "28",
+                "-c:v",
+                "h264_nvenc",
+                "-preset",
+                "p1",  # Fastest preset
+                "-rc",
+                "constqp",
+                "-qp",
+                "28",
             ]
 
         # Try VAAPI (Linux GPU)
         if "h264_vaapi" in encoders:
             return [
-                "-c:v", "h264_vaapi",
-                "-qp", "28",
+                "-c:v",
+                "h264_vaapi",
+                "-qp",
+                "28",
             ]
 
         # Try Intel QSV
         if "h264_qsv" in encoders:
             return [
-                "-c:v", "h264_qsv",
-                "-preset", "veryfast",
+                "-c:v",
+                "h264_qsv",
+                "-preset",
+                "veryfast",
             ]
     except Exception:
         pass
 
     # Fallback to CPU libx264
     return [
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "28",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "28",
     ]
+
 
 DEFAULT_ANALYSIS_HEIGHT = 480  # 480p for analysis
 

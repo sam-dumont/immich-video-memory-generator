@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
+
+try:
+    import cv2  # noqa: F401
+except ImportError:
+    pytest.skip("cv2 not available", allow_module_level=True)
+
 from immich_memories.analysis.duplicates import (
     DuplicateGroup,
     _union_find_groups,

@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
 try:
     from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
@@ -244,13 +245,17 @@ class TitleRenderer:
         )
 
         # Calculate animation for subtitle (same timing as title - no stagger)
-        subtitle_anim = compute_staggered_animation(
-            preset,
-            frame_number,
-            self.settings.fps,
-            element_index=0,  # Same as title so they animate together
-            start_frame=0,
-        ) if subtitle else {}
+        subtitle_anim = (
+            compute_staggered_animation(
+                preset,
+                frame_number,
+                self.settings.fps,
+                element_index=0,  # Same as title so they animate together
+                start_frame=0,
+            )
+            if subtitle
+            else {}
+        )
 
         # Render title
         frame = self._render_text_element(
@@ -577,7 +582,7 @@ class TitleRenderer:
         hex_color = hex_color.lstrip("#")
         if len(hex_color) == 3:
             hex_color = "".join(c * 2 for c in hex_color)
-        return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore
+        return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore
 
     def _parse_color_with_alpha(
         self,
@@ -835,18 +840,25 @@ def _get_best_encoder() -> list[str]:
 
     # HLG colorspace metadata — must match video clips for clean concat
     color_args = [
-        "-color_primaries", "bt2020",
-        "-color_trc", "arib-std-b67",
-        "-colorspace", "bt2020nc",
+        "-color_primaries",
+        "bt2020",
+        "-color_trc",
+        "arib-std-b67",
+        "-colorspace",
+        "bt2020nc",
     ]
 
     # macOS: Use VideoToolbox hardware encoder (GPU accelerated, 10-bit support)
     if sys.platform == "darwin":
         return [
-            "-c:v", "hevc_videotoolbox",
-            "-q:v", "50",  # High quality (lower = better, 0-100)
-            "-pix_fmt", "p010le",  # 10-bit for smooth gradients
-            "-tag:v", "hvc1",  # Better compatibility
+            "-c:v",
+            "hevc_videotoolbox",
+            "-q:v",
+            "50",  # High quality (lower = better, 0-100)
+            "-pix_fmt",
+            "p010le",  # 10-bit for smooth gradients
+            "-tag:v",
+            "hvc1",  # Better compatibility
             *color_args,
         ]
 
@@ -862,40 +874,60 @@ def _get_best_encoder() -> list[str]:
         # Try NVIDIA NVENC (GPU accelerated)
         if "hevc_nvenc" in encoders:
             return [
-                "-c:v", "hevc_nvenc",
-                "-preset", "p4",  # Quality preset
-                "-rc", "constqp", "-qp", "18",
-                "-pix_fmt", "p010le",  # 10-bit
-                "-tag:v", "hvc1",
+                "-c:v",
+                "hevc_nvenc",
+                "-preset",
+                "p4",  # Quality preset
+                "-rc",
+                "constqp",
+                "-qp",
+                "18",
+                "-pix_fmt",
+                "p010le",  # 10-bit
+                "-tag:v",
+                "hvc1",
                 *color_args,
             ]
 
         # Fallback to libx265 (CPU, slower but high quality)
         if "libx265" in encoders:
             return [
-                "-c:v", "libx265",
-                "-crf", "18",
-                "-preset", "fast",
-                "-pix_fmt", "yuv420p10le",
-                "-tag:v", "hvc1",
+                "-c:v",
+                "libx265",
+                "-crf",
+                "18",
+                "-preset",
+                "fast",
+                "-pix_fmt",
+                "yuv420p10le",
+                "-tag:v",
+                "hvc1",
                 *color_args,
             ]
 
         # Last fallback to libx264 (8-bit)
         return [
-            "-c:v", "libx264",
-            "-crf", "18",
-            "-preset", "fast",
-            "-pix_fmt", "yuv420p",
+            "-c:v",
+            "libx264",
+            "-crf",
+            "18",
+            "-preset",
+            "fast",
+            "-pix_fmt",
+            "yuv420p",
         ]
 
     except Exception:
         # Default to libx264 if detection fails
         return [
-            "-c:v", "libx264",
-            "-crf", "18",
-            "-preset", "fast",
-            "-pix_fmt", "yuv420p",
+            "-c:v",
+            "libx264",
+            "-crf",
+            "18",
+            "-preset",
+            "fast",
+            "-pix_fmt",
+            "yuv420p",
         ]
 
 
@@ -951,19 +983,32 @@ def create_title_video(
         "ffmpeg",
         "-y",
         # Input: raw RGB frames from stdin
-        "-f", "rawvideo",
-        "-pix_fmt", "rgb24",
-        "-s", f"{width}x{height}",
-        "-r", str(fps),
-        "-i", "pipe:0",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-s",
+        f"{width}x{height}",
+        "-r",
+        str(fps),
+        "-i",
+        "pipe:0",
         # Add silent audio track (required for crossfades in assembly)
-        "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+        "-f",
+        "lavfi",
+        "-i",
+        "anullsrc=r=48000:cl=stereo",
         *encoder_args,
         # Audio codec for the silent track
-        "-c:a", "aac", "-b:a", "128k",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
         # Duration to match video
-        "-t", str(duration),
-        "-movflags", "+faststart",
+        "-t",
+        str(duration),
+        "-movflags",
+        "+faststart",
         str(output_path),
     ]
 

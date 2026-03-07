@@ -91,7 +91,9 @@ class ContentAnalyzer:
         ContentAnalyzer.total_images_analyzed += num_images
 
         # Truncate description for logging
-        desc = result.description[:80] + "..." if len(result.description) > 80 else result.description
+        desc = (
+            result.description[:80] + "..." if len(result.description) > 80 else result.description
+        )
 
         logger.info(
             f"LLM Analysis: {desc} | "
@@ -213,7 +215,7 @@ class ContentAnalyzer:
                     start = text.find("{")
                     end = text.find("}")
                     if start >= 0 and end > start:
-                        text = text[start:end + 1]
+                        text = text[start : end + 1]
                         data = json.loads(text)
                     else:
                         raise
@@ -287,7 +289,7 @@ class ContentAnalyzer:
         # Try to extract description (handle escaped quotes and newlines)
         desc_match = re.search(r'"description"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', text)
         if desc_match:
-            result.description = desc_match.group(1).replace('\\"', '"').replace('\\n', ' ')
+            result.description = desc_match.group(1).replace('\\"', '"').replace("\\n", " ")
             logger.debug(f"Extracted description: {result.description[:80]}...")
 
         # Try to extract emotion (can be string or number)
@@ -340,7 +342,9 @@ class ContentAnalyzer:
 
         if result.description or result.emotion:
             desc_preview = result.description[:50] if result.description else "(none)"
-            logger.info(f"Partial extraction successful: desc='{desc_preview}...', emotion={result.emotion}")
+            logger.info(
+                f"Partial extraction successful: desc='{desc_preview}...', emotion={result.emotion}"
+            )
             result.confidence = 0.6  # Upgrade confidence if we got something useful
         else:
             logger.warning(f"Partial extraction found nothing in: {text[:150]}...")
@@ -490,7 +494,9 @@ class OllamaContentAnalyzer(ContentAnalyzer):
                             quality=0.5,
                             confidence=0.2,
                         )
-                        self._log_analysis_result(result, prompt_tokens, completion_tokens, len(images))
+                        self._log_analysis_result(
+                            result, prompt_tokens, completion_tokens, len(images)
+                        )
                         return result
 
                 # Parse the response
@@ -593,13 +599,15 @@ class OpenAIContentAnalyzer(ContentAnalyzer):
             for path in frames[:4]:
                 with open(path, "rb") as f:
                     b64 = base64.b64encode(f.read()).decode("utf-8")
-                content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{b64}",
-                        "detail": self.image_detail,  # "low"=85 tokens, "high"=1889 tokens
-                    },
-                })
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{b64}",
+                            "detail": self.image_detail,  # "low"=85 tokens, "high"=1889 tokens
+                        },
+                    }
+                )
 
             payload = {
                 "model": self.model,
@@ -682,7 +690,9 @@ def get_content_analyzer(
             image_detail=openai_image_detail,
             max_height=max_height,
         )
-        logger.info(f"Using OpenAI for content analysis (model: {openai_model}, detail: {openai_image_detail})")
+        logger.info(
+            f"Using OpenAI for content analysis (model: {openai_model}, detail: {openai_image_detail})"
+        )
         return openai
 
     # Try Ollama first (for "ollama" or "auto")
@@ -693,7 +703,9 @@ def get_content_analyzer(
         num_ctx=ollama_num_ctx,
     )
     if ollama.is_available():
-        logger.info(f"Using Ollama for content analysis (model: {ollama_model}, num_ctx: {ollama_num_ctx})")
+        logger.info(
+            f"Using Ollama for content analysis (model: {ollama_model}, num_ctx: {ollama_num_ctx})"
+        )
         return ollama
 
     # Fall back to OpenAI
@@ -705,7 +717,9 @@ def get_content_analyzer(
             image_detail=openai_image_detail,
             max_height=max_height,
         )
-        logger.info(f"Using OpenAI for content analysis (model: {openai_model}, detail: {openai_image_detail})")
+        logger.info(
+            f"Using OpenAI for content analysis (model: {openai_model}, detail: {openai_image_detail})"
+        )
         return openai
 
     logger.info("No content analyzer available (Ollama not running, no OpenAI key)")

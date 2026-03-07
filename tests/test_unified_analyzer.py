@@ -8,6 +8,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+try:
+    import cv2  # noqa: F401
+except ImportError:
+    pytest.skip("cv2 not available", allow_module_level=True)
+
 from immich_memories.analysis.scoring import MomentScore
 from immich_memories.analysis.unified_analyzer import (
     CutPoint,
@@ -248,9 +253,7 @@ class TestUnifiedSegmentAnalyzer:
             CutPoint(time=30.0, is_visual=True, is_audio=True),
         ]
 
-        result = analyzer._generate_fallback_segments(
-            video_duration=30.0, cut_points=cut_points
-        )
+        result = analyzer._generate_fallback_segments(video_duration=30.0, cut_points=cut_points)
 
         assert len(result) >= 1
 
@@ -342,9 +345,7 @@ class TestUnifiedAnalyzerIntegration:
         with (
             patch.object(analyzer, "_detect_visual_boundaries") as mock_visual,
             patch.object(analyzer, "_detect_audio_boundaries") as mock_audio,
-            patch(
-                "immich_memories.analysis.unified_analyzer.get_video_info"
-            ) as mock_info,
+            patch("immich_memories.analysis.unified_analyzer.get_video_info") as mock_info,
             tempfile.NamedTemporaryFile(suffix=".mp4") as f,
         ):
             mock_visual.return_value = [0.0, 5.0, 10.0]
@@ -365,9 +366,7 @@ class TestUnifiedAnalyzerIntegration:
             patch.object(analyzer, "_detect_visual_boundaries") as mock_visual,
             patch.object(analyzer, "_detect_audio_boundaries") as mock_audio,
             patch.object(analyzer, "_score_visual") as mock_score,
-            patch(
-                "immich_memories.analysis.unified_analyzer.get_video_info"
-            ) as mock_info,
+            patch("immich_memories.analysis.unified_analyzer.get_video_info") as mock_info,
             tempfile.NamedTemporaryFile(suffix=".mp4") as f,
         ):
             mock_visual.return_value = [0.0, 5.0, 10.0, 15.0]
@@ -400,9 +399,7 @@ class TestUnifiedAnalyzerIntegration:
         with (
             patch.object(analyzer, "_detect_visual_boundaries") as mock_visual,
             patch.object(analyzer, "_detect_audio_boundaries") as mock_audio,
-            patch(
-                "immich_memories.analysis.unified_analyzer.get_video_info"
-            ) as mock_info,
+            patch("immich_memories.analysis.unified_analyzer.get_video_info") as mock_info,
             tempfile.NamedTemporaryFile(suffix=".mp4") as f,
         ):
             mock_visual.return_value = [0.0, 5.0, 10.0]

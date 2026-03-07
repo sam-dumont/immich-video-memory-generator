@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class AssetType(str, Enum):
+class AssetType(StrEnum):
     """Asset type enumeration."""
 
     IMAGE = "IMAGE"

@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 # Optional dependencies
 try:
     import freetype
+
     FREETYPE_AVAILABLE = True
 except ImportError:
     FREETYPE_AVAILABLE = False
@@ -31,6 +32,7 @@ except ImportError:
 
 try:
     import taichi as ti
+
     TAICHI_AVAILABLE = True
 except ImportError:
     TAICHI_AVAILABLE = False
@@ -41,9 +43,11 @@ except ImportError:
 # Glyph and Atlas Data Structures
 # =============================================================================
 
+
 @dataclass
 class GlyphMetrics:
     """Metrics for a single glyph in the atlas."""
+
     char: str
     # Position in atlas (pixels)
     atlas_x: int
@@ -59,6 +63,7 @@ class GlyphMetrics:
 @dataclass
 class SDFFontAtlas:
     """SDF font atlas with glyph metrics."""
+
     # Atlas texture (grayscale, 0-255)
     texture: np.ndarray
     # Glyph lookup
@@ -182,7 +187,8 @@ DEFAULT_CHARSET = (
     # Common symbols
     "©®™€£¥¢°±²³¹º¼½¾×÷"
     # Quotes and punctuation
-    "''""…–—"
+    "''"
+    "…–—"
 )
 
 
@@ -231,13 +237,22 @@ def generate_sdf_atlas(
             bitmap = face.glyph.bitmap
             if bitmap.width == 0 or bitmap.rows == 0:
                 # Space or empty glyph
-                glyph_data.append((char, np.zeros((1, 1), dtype=np.uint8), GlyphMetrics(
-                    char=char,
-                    atlas_x=0, atlas_y=0,
-                    atlas_width=1, atlas_height=1,
-                    bearing_x=0, bearing_y=0,
-                    advance_x=face.glyph.advance.x >> 6,
-                )))
+                glyph_data.append(
+                    (
+                        char,
+                        np.zeros((1, 1), dtype=np.uint8),
+                        GlyphMetrics(
+                            char=char,
+                            atlas_x=0,
+                            atlas_y=0,
+                            atlas_width=1,
+                            atlas_height=1,
+                            bearing_x=0,
+                            bearing_y=0,
+                            advance_x=face.glyph.advance.x >> 6,
+                        ),
+                    )
+                )
                 continue
 
             # Copy bitmap buffer
@@ -291,7 +306,7 @@ def generate_sdf_atlas(
 
         # Copy glyph to atlas
         if h > 0 and w > 0:
-            texture[y:y+h, x:x+w] = buffer
+            texture[y : y + h, x : x + w] = buffer
 
         # Update metrics
         metrics.atlas_x = x
@@ -365,13 +380,16 @@ def _compile_sdf_kernels():
     @ti.kernel
     def render_sdf_text(
         output: ti.types.ndarray(dtype=ti.f32, ndim=3),  # RGB output
-        atlas: ti.types.ndarray(dtype=ti.f32, ndim=2),   # SDF atlas
+        atlas: ti.types.ndarray(dtype=ti.f32, ndim=2),  # SDF atlas
         glyph_data: ti.types.ndarray(dtype=ti.f32, ndim=2),  # [n_glyphs, 10] metrics
         num_glyphs: ti.i32,
-        color_r: ti.f32, color_g: ti.f32, color_b: ti.f32,
+        color_r: ti.f32,
+        color_g: ti.f32,
+        color_b: ti.f32,
         opacity: ti.f32,
         scale: ti.f32,
-        offset_x: ti.f32, offset_y: ti.f32,
+        offset_x: ti.f32,
+        offset_y: ti.f32,
         smoothing: ti.f32,
     ):
         """Render SDF text onto output buffer.
@@ -422,9 +440,10 @@ def _compile_sdf_kernels():
                         # Apply smoothstep for anti-aliasing
                         # SDF is 0-1 with ~0.5 at edge (128/255)
                         edge = 0.5
-                        alpha = ti.max(0.0, ti.min(1.0,
-                            (sdf - edge + smoothing) / (2.0 * smoothing)
-                        )) * opacity
+                        alpha = (
+                            ti.max(0.0, ti.min(1.0, (sdf - edge + smoothing) / (2.0 * smoothing)))
+                            * opacity
+                        )
 
                         # Composite with premultiplied alpha
                         if alpha > 0.001:
@@ -445,6 +464,7 @@ def init_sdf_kernels():
 # =============================================================================
 # Text Layout
 # =============================================================================
+
 
 def layout_text(
     text: str,
@@ -469,7 +489,7 @@ def layout_text(
     cursor_y = y
 
     for char in text:
-        if char == '\n':
+        if char == "\n":
             cursor_x = x
             cursor_y += atlas.line_height * scale
             continue
@@ -477,23 +497,26 @@ def layout_text(
         metrics = atlas.glyphs.get(char)
         if metrics is None:
             # Unknown character, use space width
-            space_metrics = atlas.glyphs.get(' ')
+            space_metrics = atlas.glyphs.get(" ")
             if space_metrics:
                 cursor_x += space_metrics.advance_x * scale
             continue
 
         # Store glyph data [screen_x, screen_y, atlas coords, metrics]
-        glyph_data.append([
-            cursor_x,
-            cursor_y,
-            float(metrics.atlas_x),
-            float(metrics.atlas_y),
-            float(metrics.atlas_width),
-            float(metrics.atlas_height),
-            float(metrics.bearing_x),
-            float(metrics.bearing_y),
-            0.0, 0.0,  # Reserved
-        ])
+        glyph_data.append(
+            [
+                cursor_x,
+                cursor_y,
+                float(metrics.atlas_x),
+                float(metrics.atlas_y),
+                float(metrics.atlas_width),
+                float(metrics.atlas_height),
+                float(metrics.bearing_x),
+                float(metrics.bearing_y),
+                0.0,
+                0.0,  # Reserved
+            ]
+        )
 
         cursor_x += metrics.advance_x * scale
 
@@ -540,10 +563,18 @@ def render_text_sdf(
 
     # Render
     _render_sdf_text(
-        output, atlas_float, glyph_data,
+        output,
+        atlas_float,
+        glyph_data,
         len(glyph_data),
-        color[0], color[1], color[2],
-        opacity, scale, 0.0, 0.0, smoothing,
+        color[0],
+        color[1],
+        color[2],
+        opacity,
+        scale,
+        0.0,
+        0.0,
+        smoothing,
     )
 
 
