@@ -242,6 +242,8 @@ known-first-party = ["immich_memories"]
 [tool.ruff.lint.per-file-ignores]
 # app.py needs logging configured before other imports
 "src/immich_memories/ui/app.py" = ["E402"]
+# mixer.py has bottom-of-file re-exports to avoid circular imports with mixer_helpers/mixer_class
+"src/immich_memories/audio/mixer.py" = ["E402", "I001"]
 # Tests use hardcoded /tmp paths as dummy values, not actual temp file usage
 "tests/**" = ["S108"]
 
@@ -298,35 +300,63 @@ ignore_errors = true
 module = [
     "immich_memories.analysis.scenes",
     "immich_memories.analysis.scoring",
+    "immich_memories.analysis.scoring_motion",
+    "immich_memories.analysis.scoring_face",
     "immich_memories.analysis.apple_vision",
     "immich_memories.processing.transforms",
+    "immich_memories.processing._transforms_smart_crop",
+    "immich_memories.processing.scaling_utilities",
 ]
 disable_error_code = ["attr-defined", "call-overload", "union-attr", "assignment", "misc", "has-type"]
 
 # API client with dynamic JSON responses
 [[tool.mypy.overrides]]
-module = ["immich_memories.api.immich"]
-disable_error_code = ["arg-type", "return-value"]
+module = [
+    "immich_memories.api.immich",
+    "immich_memories.api.client_search",
+    "immich_memories.api.client_person",
+    "immich_memories.api.client_asset",
+]
+disable_error_code = ["attr-defined", "arg-type", "return-value"]
 
 # Streamlit UI with dynamic session state
 [[tool.mypy.overrides]]
-module = ["immich_memories.ui.components", "immich_memories.ui.app"]
-disable_error_code = ["assignment", "misc", "arg-type", "import-untyped"]
+module = [
+    "immich_memories.ui.components",
+    "immich_memories.ui.app",
+    "immich_memories.ui.pages._step4_music",
+]
+disable_error_code = ["assignment", "misc", "arg-type", "import-untyped", "attr-defined"]
 
 # Audio mood analyzer with dynamic LLM outputs
 [[tool.mypy.overrides]]
-module = ["immich_memories.audio.mood_analyzer"]
+module = [
+    "immich_memories.audio.mood_analyzer",
+    "immich_memories.audio.mood_analyzer_backends",
+]
 disable_error_code = ["dict-item"]
 
-# Audio content analyzer with TensorFlow/YAMNet
+# Audio content analyzer with TensorFlow/YAMNet (split into mixins)
 [[tool.mypy.overrides]]
-module = ["immich_memories.audio.content_analyzer"]
-disable_error_code = ["attr-defined", "assignment", "misc"]
+module = [
+    "immich_memories.audio.content_analyzer",
+    "immich_memories.audio.yamnet_analysis",
+    "immich_memories.audio.energy_analysis",
+]
+disable_error_code = ["attr-defined", "assignment", "misc", "has-type"]
 
 # Audio music generator with dynamic callbacks
 [[tool.mypy.overrides]]
-module = ["immich_memories.audio.music_generator"]
+module = [
+    "immich_memories.audio.music_generator",
+    "immich_memories.audio.music_generator_client",
+]
 disable_error_code = ["valid-type", "misc", "call-arg"]
+
+# Audio mixer with optional path types
+[[tool.mypy.overrides]]
+module = ["immich_memories.audio.mixer_class"]
+disable_error_code = ["assignment"]
 
 # Video cache with Immich client compatibility
 [[tool.mypy.overrides]]
@@ -338,13 +368,38 @@ disable_error_code = ["attr-defined"]
 module = [
     "immich_memories.titles.renderer_taichi",
     "immich_memories.titles.sdf_font",
+    "immich_memories.titles.taichi_kernels",
+    "immich_memories.titles.sdf_font_rendering",
+    "immich_memories.titles.taichi_video",
 ]
 disable_error_code = ["valid-type", "assignment", "misc", "truthy-function", "union-attr", "import-untyped"]
 
-# PIL renderer with optional font types
+# Taichi mixin files accessing parent class attributes
 [[tool.mypy.overrides]]
-module = ["immich_memories.titles.renderer_pil"]
-disable_error_code = ["arg-type", "union-attr", "has-type"]
+module = [
+    "immich_memories.titles.taichi_text",
+    "immich_memories.titles.taichi_particles",
+]
+disable_error_code = ["attr-defined", "truthy-function", "assignment", "has-type"]
+
+# PIL renderer with optional font types (split into mixins)
+[[tool.mypy.overrides]]
+module = [
+    "immich_memories.titles.renderer_pil",
+    "immich_memories.titles.text_rendering",
+    "immich_memories.titles.ending_mixin",
+]
+disable_error_code = ["attr-defined", "arg-type", "union-attr", "has-type"]
+
+# Title video encoding with optional subprocess pipes
+[[tool.mypy.overrides]]
+module = ["immich_memories.titles.video_encoding"]
+disable_error_code = ["union-attr", "arg-type"]
+
+# Title rendering mixin with optional Taichi imports
+[[tool.mypy.overrides]]
+module = ["immich_memories.titles.rendering_mixin"]
+disable_error_code = ["assignment", "misc", "attr-defined"]
 
 # Unified analyzer with complex audio analysis
 [[tool.mypy.overrides]]
@@ -356,10 +411,48 @@ disable_error_code = ["var-annotated", "assignment", "attr-defined"]
 module = ["immich_memories.titles.generator"]
 disable_error_code = ["assignment", "misc"]
 
-# Video assembler with dynamic resolution detection
+# Video assembler mixins (access parent class attributes via mixin pattern)
 [[tool.mypy.overrides]]
-module = ["immich_memories.processing.assembly"]
+module = [
+    "immich_memories.processing.assembly",
+    "immich_memories.processing.assembler_helpers",
+    "immich_memories.processing.assembler_encoding",
+    "immich_memories.processing.assembler_strategies",
+    "immich_memories.processing.assembler_scalable",
+    "immich_memories.processing.assembler_batch",
+    "immich_memories.processing.assembler_concat",
+    "immich_memories.processing.assembler_audio",
+    "immich_memories.processing.assembler_probing",
+    "immich_memories.processing.assembler_transitions",
+    "immich_memories.processing.assembler_transition_render",
+    "immich_memories.processing.assembler_titles",
+]
 disable_error_code = ["attr-defined"]
+
+# Clip encoding with dynamic hardware detection
+[[tool.mypy.overrides]]
+module = ["immich_memories.processing.clip_encoding"]
+disable_error_code = ["attr-defined"]
+
+# Tracking mixins (access parent class _get_connection via mixin pattern)
+[[tool.mypy.overrides]]
+module = [
+    "immich_memories.tracking.run_queries",
+    "immich_memories.tracking.active_jobs_mixin",
+]
+disable_error_code = ["attr-defined"]
+
+# Analysis pipeline mixins (access parent class attributes via mixin pattern)
+[[tool.mypy.overrides]]
+module = [
+    "immich_memories.analysis.pipeline_analysis",
+    "immich_memories.analysis.pipeline_refinement",
+    "immich_memories.analysis.pipeline_preview",
+    "immich_memories.analysis.candidate_generation",
+    "immich_memories.analysis.analyzer_factory",
+    "immich_memories.analysis.smart_pipeline",
+]
+disable_error_code = ["attr-defined", "arg-type", "return-value"]
 
 # Pandas is optional for UI
 [[tool.mypy.overrides]]

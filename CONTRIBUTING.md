@@ -51,17 +51,13 @@ By participating in this project, you agree to maintain a respectful and inclusi
    # Install uv (if not already installed)
    curl -LsSf https://astral.sh/uv/install.sh | sh
 
-   # Install just (command runner)
-   brew install just  # macOS
-   # or: cargo install just
-
-   # Setup development environment
-   just setup
+   # Install all dependencies (including dev)
+   make dev
    ```
 4. **Make your changes**
 5. **Run all checks**:
    ```bash
-   just check  # Runs lint, typecheck, and tests
+   make check  # Runs lint, format-check, typecheck, file-length, complexity, and tests
    ```
 6. **Commit your changes**:
    ```bash
@@ -80,7 +76,7 @@ By participating in this project, you agree to maintain a respectful and inclusi
 - Python 3.11+ (3.13 recommended)
 - FFmpeg
 - uv (recommended) or pip
-- just (recommended) for task running
+- GNU Make (pre-installed on most systems)
 
 ### Quick Setup
 
@@ -92,49 +88,32 @@ cd immich-video-memory-generator
 # Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Setup environment
-just setup
+# Install all dependencies
+make dev
 
 # Verify everything works
-just check
+make check
 ```
 
 ### Development Commands
 
-```bash
-just setup         # Install dependencies
-just test          # Run tests
-just test-cov      # Run tests with coverage
-just lint          # Run linter
-just fmt           # Format code
-just typecheck     # Run type checker
-just check         # Run all checks (lint, typecheck, test)
-just run --help    # Run the CLI
-just ui            # Launch the UI
-just build         # Build package
-just clean         # Clean build artifacts
-```
-
-### Manual Commands (without just)
+The **Makefile** is the single source of truth for all commands. Run `make help` to see everything available.
 
 ```bash
-# Install dependencies
-uv sync --all-extras
-
-# Run tests
-uv run pytest
-
-# Run linter
-uv run ruff check src/ tests/
-
-# Format code
-uv run ruff format src/ tests/
-
-# Type check
-uv run mypy src/
-
-# Run CLI
-uv run immich-memories --help
+make dev           # Install all dependencies (including dev)
+make test          # Run tests
+make test-cov      # Run tests with coverage
+make lint          # Run ruff linter
+make format        # Format code with ruff
+make typecheck     # Run mypy type checker
+make file-length   # Check all .py files are ≤500 lines
+make complexity    # Check cyclomatic complexity (Xenon grade C)
+make check         # Run all checks (lint + format + type + length + complexity + test)
+make ci            # Full CI-equivalent pipeline (all checks + dead-code)
+make cli           # Run the CLI
+make run           # Launch the UI
+make build         # Build package
+make clean         # Remove build artifacts
 ```
 
 ## Code Style
@@ -186,10 +165,10 @@ docs: update installation instructions for macOS
 
 ```bash
 # All tests
-just test
+make test
 
 # With coverage
-just test-cov
+make test-cov
 
 # Specific test file
 uv run pytest tests/test_specific.py
@@ -208,33 +187,29 @@ uv run pytest tests/test_specific.py::test_function_name -v
 
 ## Project Structure
 
+The codebase enforces a 500-line limit per `.py` file. Large classes use mixins to split logic while keeping a single public API. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full module listing with 23+ files per package.
+
 ```
 immich-memories/
 ├── src/immich_memories/
-│   ├── __init__.py
-│   ├── cli.py              # CLI commands
-│   ├── config.py           # Configuration handling
-│   ├── api/                # Immich API client
-│   │   ├── immich.py
-│   │   └── models.py
-│   ├── analysis/           # Video analysis
-│   │   ├── scenes.py       # Scene detection
-│   │   ├── scoring.py      # Interest scoring
-│   │   ├── duplicates.py   # Duplicate detection
-│   │   └── apple_vision.py # macOS Vision framework
-│   ├── processing/         # Video processing
-│   │   ├── clips.py        # Clip extraction
-│   │   ├── transforms.py   # Aspect ratio transforms
-│   │   ├── assembly.py     # Video assembly
-│   │   └── hardware.py     # Hardware acceleration
-│   └── ui/                 # NiceGUI web interface
-│       ├── app.py
-│       └── pages/          # Step-by-step wizard pages
+│   ├── cli/                # CLI commands (Click)
+│   ├── config.py           # Configuration (re-exports from config_loader, config_models)
+│   ├── api/                # Immich API client (SyncImmichClient + 3 mixins)
+│   ├── analysis/           # Video analysis & clip selection (SmartPipeline + 4 mixins)
+│   ├── processing/         # Video processing (VideoAssembler + 11 mixins)
+│   ├── audio/              # Audio processing, music generation, mood analysis
+│   ├── titles/             # Title screen generation (PIL, Taichi, FFmpeg renderers)
+│   ├── tracking/           # Run history & telemetry (SQLite)
+│   ├── ui/                 # NiceGUI web interface
+│   │   ├── app.py
+│   │   └── pages/          # Step-by-step wizard pages
+│   └── cache/              # Thumbnail, video, and analysis caching
 ├── tests/                  # Test files
 ├── docker/                 # Docker configuration
+├── deploy/                 # Kubernetes & Terraform deployment
 ├── .github/workflows/      # CI/CD workflows
 ├── pyproject.toml          # Project configuration
-├── justfile                # Development commands
+├── Makefile                # Single source of truth for all commands
 └── README.md
 ```
 
@@ -245,8 +220,8 @@ immich-memories/
 For Vision framework development:
 
 ```bash
-# Install Mac-specific dependencies
-uv sync --extra mac
+# Install Mac-specific dependencies (includes Metal GPU acceleration)
+make dev-mac
 
 # Test Vision framework
 python -c "from immich_memories.analysis.apple_vision import is_vision_available; print(is_vision_available())"

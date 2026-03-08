@@ -75,7 +75,7 @@ _SUBMODULE_MAP = {
     "PipelineConfig": "immich_memories.analysis.smart_pipeline",
     "PipelineResult": "immich_memories.analysis.smart_pipeline",
     "SmartPipeline": "immich_memories.analysis.smart_pipeline",
-    "analyze_clip_for_highlight": "immich_memories.analysis.smart_pipeline",
+    "analyze_clip_for_highlight": "immich_memories.analysis.clip_selection",
     "CutPoint": "immich_memories.analysis.unified_analyzer",
     "ScoredSegment": "immich_memories.analysis.unified_analyzer",
     "UnifiedSegmentAnalyzer": "immich_memories.analysis.unified_analyzer",
