@@ -113,9 +113,7 @@ class AudioAnalysisResult:
         default_factory=list
     )  # Ranges to avoid cutting
 
-    def get_safe_cut_points(
-        self, min_gap: float = 0.3, max_gap: float = 2.0
-    ) -> list[float]:
+    def get_safe_cut_points(self, min_gap: float = 0.3, max_gap: float = 2.0) -> list[float]:
         """Get time points that are safe for cutting (not during protected events).
 
         Args:
@@ -205,7 +203,9 @@ class AudioContentAnalyzer:
 
         except Exception as e:
             logger.warning(f"YAMNet audio classification not available: {e}")
-            logger.warning("Falling back to energy-based detection (less accurate for speech/laughter)")
+            logger.warning(
+                "Falling back to energy-based detection (less accurate for speech/laughter)"
+            )
             self._yamnet_available = False
             return False
 
@@ -245,11 +245,7 @@ class AudioContentAnalyzer:
                 try:
                     tf.config.set_logical_device_configuration(
                         gpus[hw.device_index],
-                        [
-                            tf.config.LogicalDeviceConfiguration(
-                                memory_limit=hw.gpu_memory_limit
-                            )
-                        ],
+                        [tf.config.LogicalDeviceConfiguration(memory_limit=hw.gpu_memory_limit)],
                     )
                     logger.debug(f"TensorFlow: GPU memory limit set to {hw.gpu_memory_limit}MB")
                 except Exception as e:
@@ -269,6 +265,7 @@ class AudioContentAnalyzer:
                 try:
                     # Try to get GPU name
                     from tensorflow.python.client import device_lib
+
                     devices = device_lib.list_local_devices()
                     for d in devices:
                         if d.device_type == "GPU":
@@ -298,6 +295,7 @@ class AudioContentAnalyzer:
             # Clear TensorFlow session to release GPU memory
             try:
                 import tensorflow as tf
+
                 tf.keras.backend.clear_session()
                 logger.debug("TensorFlow session cleared")
             except Exception as e:
@@ -364,9 +362,7 @@ class AudioContentAnalyzer:
             logger.debug(f"Audio extraction error: {e}")
             return None
 
-    def analyze(
-        self, video_path: Path, video_duration: float | None = None
-    ) -> AudioAnalysisResult:
+    def analyze(self, video_path: Path, video_duration: float | None = None) -> AudioAnalysisResult:
         """Analyze audio content in a video.
 
         Args:
@@ -415,7 +411,6 @@ class AudioContentAnalyzer:
             AudioAnalysisResult with classified events.
         """
         try:
-
             # Resample if needed (YAMNet expects 16kHz)
             if sample_rate != 16000:
                 # Simple resampling
@@ -457,11 +452,17 @@ class AudioContentAnalyzer:
 
                 # Check for laughter/baby sounds with lower threshold (they're often quieter)
                 class_lower = class_name.lower()
-                is_laughter_class = any(x in class_lower for x in ["laugh", "giggle", "chuckle", "chortle"])
+                is_laughter_class = any(
+                    x in class_lower for x in ["laugh", "giggle", "chuckle", "chortle"]
+                )
                 is_baby_positive = "baby" in class_lower and "cry" not in class_lower
 
                 # Use lower threshold for laughter/baby sounds
-                effective_threshold = self.laughter_confidence if (is_laughter_class or is_baby_positive) else self.min_confidence
+                effective_threshold = (
+                    self.laughter_confidence
+                    if (is_laughter_class or is_baby_positive)
+                    else self.min_confidence
+                )
 
                 if top_score >= effective_threshold:
                     # Check for specific categories
@@ -469,7 +470,9 @@ class AudioContentAnalyzer:
                         has_laughter = True
                         if top_score < self.min_confidence:
                             # Log when we detect subtle laughter
-                            logger.debug(f"Detected subtle laughter: {class_name} ({top_score:.2f})")
+                            logger.debug(
+                                f"Detected subtle laughter: {class_name} ({top_score:.2f})"
+                            )
                     if "speech" in class_lower or "talk" in class_lower:
                         has_speech = True
                     if "music" in class_lower:

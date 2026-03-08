@@ -1,54 +1,6 @@
 """Video analysis modules."""
 
-from immich_memories.analysis.apple_vision import (
-    FaceDetection,
-    VisionFaceDetector,
-    create_face_detector,
-    detect_faces_vision,
-    is_vision_available,
-)
-from immich_memories.analysis.duplicates import (
-    DuplicateGroup,
-    ThumbnailCluster,
-    cluster_thumbnails,
-    compute_thumbnail_hash,
-    compute_video_hash,
-    deduplicate_by_thumbnails,
-    find_duplicate_groups,
-)
-from immich_memories.analysis.pipeline import (
-    ClusterManager,
-    DuplicateCluster,
-    VideoAnalyzer,
-)
-from immich_memories.analysis.progress import (
-    PipelinePhase,
-    PipelineProgress,
-    ProgressTracker,
-)
-from immich_memories.analysis.scenes import (
-    Scene,
-    SceneDetector,
-    detect_scenes,
-)
-from immich_memories.analysis.scoring import (
-    MomentScore,
-    SceneScorer,
-    sample_video,
-    score_scene,
-)
-from immich_memories.analysis.smart_pipeline import (
-    PipelineConfig,
-    PipelineResult,
-    SmartPipeline,
-    analyze_clip_for_highlight,
-)
-from immich_memories.analysis.unified_analyzer import (
-    CutPoint,
-    ScoredSegment,
-    UnifiedSegmentAnalyzer,
-    create_unified_analyzer_from_config,
-)
+import importlib as _importlib
 
 __all__ = [
     # Duplicates
@@ -93,3 +45,46 @@ __all__ = [
     "UnifiedSegmentAnalyzer",
     "create_unified_analyzer_from_config",
 ]
+
+_SUBMODULE_MAP = {
+    "FaceDetection": "immich_memories.analysis.apple_vision",
+    "VisionFaceDetector": "immich_memories.analysis.apple_vision",
+    "create_face_detector": "immich_memories.analysis.apple_vision",
+    "detect_faces_vision": "immich_memories.analysis.apple_vision",
+    "is_vision_available": "immich_memories.analysis.apple_vision",
+    "DuplicateGroup": "immich_memories.analysis.duplicates",
+    "ThumbnailCluster": "immich_memories.analysis.duplicates",
+    "cluster_thumbnails": "immich_memories.analysis.duplicates",
+    "compute_thumbnail_hash": "immich_memories.analysis.duplicates",
+    "compute_video_hash": "immich_memories.analysis.duplicates",
+    "deduplicate_by_thumbnails": "immich_memories.analysis.duplicates",
+    "find_duplicate_groups": "immich_memories.analysis.duplicates",
+    "ClusterManager": "immich_memories.analysis.pipeline",
+    "DuplicateCluster": "immich_memories.analysis.pipeline",
+    "VideoAnalyzer": "immich_memories.analysis.pipeline",
+    "PipelinePhase": "immich_memories.analysis.progress",
+    "PipelineProgress": "immich_memories.analysis.progress",
+    "ProgressTracker": "immich_memories.analysis.progress",
+    "Scene": "immich_memories.analysis.scenes",
+    "SceneDetector": "immich_memories.analysis.scenes",
+    "detect_scenes": "immich_memories.analysis.scenes",
+    "MomentScore": "immich_memories.analysis.scoring",
+    "SceneScorer": "immich_memories.analysis.scoring",
+    "sample_video": "immich_memories.analysis.scoring",
+    "score_scene": "immich_memories.analysis.scoring",
+    "PipelineConfig": "immich_memories.analysis.smart_pipeline",
+    "PipelineResult": "immich_memories.analysis.smart_pipeline",
+    "SmartPipeline": "immich_memories.analysis.smart_pipeline",
+    "analyze_clip_for_highlight": "immich_memories.analysis.smart_pipeline",
+    "CutPoint": "immich_memories.analysis.unified_analyzer",
+    "ScoredSegment": "immich_memories.analysis.unified_analyzer",
+    "UnifiedSegmentAnalyzer": "immich_memories.analysis.unified_analyzer",
+    "create_unified_analyzer_from_config": "immich_memories.analysis.unified_analyzer",
+}
+
+
+def __getattr__(name: str):
+    if name in _SUBMODULE_MAP:
+        module = _importlib.import_module(_SUBMODULE_MAP[name])
+        return getattr(module, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

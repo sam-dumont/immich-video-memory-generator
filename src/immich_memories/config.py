@@ -278,8 +278,9 @@ class AudioConfig(BaseModel):
     )
 
     # Music sources
-    music_source: Literal["pixabay", "local", "musicgen"] = Field(
-        default="pixabay", description="Source for automatic music selection (musicgen = AI generated)"
+    music_source: Literal["pixabay", "local", "musicgen", "ace_step"] = Field(
+        default="pixabay",
+        description="Source for automatic music selection (musicgen = MusicGen API, ace_step = ACE-Step local/API)",
     )
     local_music_dir: str = Field(
         default="~/Music/Memories", description="Directory for local music library"
@@ -353,6 +354,67 @@ class MusicGenConfig(BaseModel):
     )
 
     @field_validator("api_key", "base_url", mode="before")
+    @classmethod
+    def expand_env(cls, v: str) -> str:
+        """Expand environment variables in config values."""
+        if isinstance(v, str):
+            return expand_env_vars(v)
+        return v
+
+
+class ACEStepConfig(BaseModel):
+    """Settings for ACE-Step music generation.
+
+    ACE-Step 1.5 can run locally as a Python library (preferred for desktop)
+    or via a remote Gradio API server.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description="Enable ACE-Step music generation",
+    )
+    mode: Literal["lib", "api"] = Field(
+        default="lib",
+        description="Generation mode: 'lib' for local library, 'api' for remote Gradio server",
+    )
+    api_url: str = Field(
+        default="http://localhost:7860",
+        description="ACE-Step Gradio server URL (only used in API mode)",
+    )
+    model_variant: str = Field(
+        default="turbo",
+        description="Model variant: 'turbo' (8 steps, fast) or 'base' (50 steps, quality)",
+    )
+    lm_model_size: str = Field(
+        default="1.7B",
+        description="Language model size: '0.6B', '1.7B', or '4B'",
+    )
+    use_lm: bool = Field(
+        default=True,
+        description="Use language model for 'thinking mode' (disable to save memory/time)",
+    )
+    bf16: bool = Field(
+        default=True,
+        description="Use bfloat16 precision (set False for Pascal/older GPUs)",
+    )
+    num_versions: int = Field(
+        default=3,
+        ge=1,
+        le=5,
+        description="Number of music versions to generate for selection",
+    )
+    hemisphere: str = Field(
+        default="north",
+        description="Hemisphere for seasonal music prompts ('north' or 'south')",
+    )
+    timeout_seconds: int = Field(
+        default=3600,
+        ge=60,
+        le=18000,
+        description="Maximum time per generation job (seconds)",
+    )
+
+    @field_validator("api_url", mode="before")
     @classmethod
     def expand_env(cls, v: str) -> str:
         """Expand environment variables in config values."""
@@ -562,6 +624,7 @@ class Config(BaseSettings):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     audio: AudioConfig = Field(default_factory=AudioConfig)
     musicgen: MusicGenConfig = Field(default_factory=MusicGenConfig)
+    ace_step: ACEStepConfig = Field(default_factory=ACEStepConfig)
     content_analysis: ContentAnalysisConfig = Field(default_factory=ContentAnalysisConfig)
     audio_content: AudioContentConfig = Field(default_factory=AudioContentConfig)
     title_screens: TitleScreenConfig = Field(default_factory=TitleScreenConfig)
@@ -625,6 +688,14 @@ def get_config(reload: bool = False) -> Config:
             _config.musicgen.base_url = musicgen_url
         if musicgen_key := os.environ.get("MUSICGEN_API_KEY"):
             _config.musicgen.api_key = musicgen_key
+
+        # ACE-Step env var overrides (also supported via IMMICH_MEMORIES_ACE_STEP__*)
+        if ace_step_enabled := os.environ.get("ACE_STEP_ENABLED"):
+            _config.ace_step.enabled = ace_step_enabled.lower() in ("true", "1", "yes")
+        if (ace_step_mode := os.environ.get("ACE_STEP_MODE")) and ace_step_mode in ("lib", "api"):
+            _config.ace_step.mode = ace_step_mode  # type: ignore[assignment]
+        if ace_step_url := os.environ.get("ACE_STEP_API_URL"):
+            _config.ace_step.api_url = ace_step_url
 
     return _config
 

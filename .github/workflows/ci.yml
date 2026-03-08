@@ -34,7 +34,7 @@ jobs:
       - name: Validate commit messages
         run: |
           # Check all commits in the PR
-          uvx cz check --rev-range origin/${{ github.base_ref }}..HEAD
+          uvx --from commitizen cz check --rev-range origin/${{ github.base_ref }}..HEAD
 
   lint:
     name: Lint

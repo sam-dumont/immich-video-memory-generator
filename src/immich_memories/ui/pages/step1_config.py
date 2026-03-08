@@ -20,7 +20,8 @@ from immich_memories.timeperiod import (
 from immich_memories.ui.state import get_app_state
 
 if TYPE_CHECKING:
-    from immich_memories.api.models import PersonInfo
+    from nicegui.elements.menu import Menu
+    from nicegui.elements.number import Number
 
 logger = logging.getLogger(__name__)
 
@@ -41,19 +42,19 @@ def render_step1() -> None:
     # Connection status
     connection_status_container = ui.column().classes("w-full")
     if state.connected_user:
-        with connection_status_container:
+        with connection_status_container:  # noqa: SIM117
             with ui.row().classes("items-center gap-2 p-2 bg-green-100 rounded"):
                 ui.icon("check_circle", color="green")
                 ui.label(f"Connected as: {state.connected_user}").classes("text-green-700")
 
     # URL and API key inputs
     with ui.row().classes("w-full gap-4"):
-        url_input = ui.input(
+        ui.input(
             "Immich Server URL",
             placeholder="https://photos.example.com",
         ).classes("flex-1").bind_value(state, "immich_url")
 
-        api_key_input = ui.input(
+        ui.input(
             "API Key",
             password=True,
             password_toggle_button=True,
@@ -95,7 +96,7 @@ def render_step1() -> None:
                 status_label.classes("text-green-600", remove="text-red-600")
                 # Show connection status immediately
                 connection_status_container.clear()
-                with connection_status_container:
+                with connection_status_container:  # noqa: SIM117
                     with ui.row().classes("items-center gap-2 p-2 bg-green-100 rounded"):
                         ui.icon("check_circle", color="green")
                         ui.label(f"Connected as: {state.connected_user}").classes("text-green-700")
@@ -165,7 +166,6 @@ def render_step1() -> None:
         with ui.tab_panels(tabs, value=_initial_tab).classes("w-full"):
             # --- Year Tab ---
             with ui.tab_panel(year_tab):
-
                 with ui.row().classes("w-full gap-4 items-end"):
                     # Year selector
                     year_options = state.years if state.years else available_years()
@@ -215,11 +215,12 @@ def render_step1() -> None:
                     if state.year_type == "birthday":
                         with birthday_container:
                             current_bday = state.birthday or date(2000, 1, 1)
+                            bday_menu: Menu
                             with ui.input("Birthday") as bday_input:
                                 with bday_input.add_slot("prepend"):
-                                    ui.icon("event").on(
-                                        "click", lambda: bday_menu.open()
-                                    ).classes("cursor-pointer")
+                                    ui.icon("event").on("click", lambda: bday_menu.open()).classes(
+                                        "cursor-pointer"
+                                    )
                                 with ui.menu().props("no-auto-close") as bday_menu:
 
                                     def on_date_pick(e):
@@ -268,11 +269,12 @@ def render_step1() -> None:
 
                     unit_select.on_value_change(on_unit_change)
 
+                    period_start_menu: Menu
                     with ui.input("Starting from") as start_input:
                         with start_input.add_slot("prepend"):
-                            ui.icon("event").on(
-                                "click", lambda: period_start_menu.open()
-                            ).classes("cursor-pointer")
+                            ui.icon("event").on("click", lambda: period_start_menu.open()).classes(
+                                "cursor-pointer"
+                            )
                         with ui.menu().props("no-auto-close") as period_start_menu:
                             start_val = state.custom_start or date.today().replace(month=1, day=1)
 
@@ -299,11 +301,12 @@ def render_step1() -> None:
             # --- Custom Range Tab ---
             with ui.tab_panel(custom_tab):
                 with ui.row().classes("w-full gap-4 items-end"):
+                    custom_start_menu: Menu
                     with ui.input("Start date") as custom_start_input:
                         with custom_start_input.add_slot("prepend"):
-                            ui.icon("event").on(
-                                "click", lambda: custom_start_menu.open()
-                            ).classes("cursor-pointer")
+                            ui.icon("event").on("click", lambda: custom_start_menu.open()).classes(
+                                "cursor-pointer"
+                            )
                         with ui.menu().props("no-auto-close") as custom_start_menu:
                             start_val = state.custom_start or date.today().replace(month=1, day=1)
 
@@ -322,11 +325,12 @@ def render_step1() -> None:
                         state.custom_start or date.today().replace(month=1, day=1)
                     ).strftime("%Y-%m-%d")
 
+                    custom_end_menu: Menu
                     with ui.input("End date") as custom_end_input:
                         with custom_end_input.add_slot("prepend"):
-                            ui.icon("event").on(
-                                "click", lambda: custom_end_menu.open()
-                            ).classes("cursor-pointer")
+                            ui.icon("event").on("click", lambda: custom_end_menu.open()).classes(
+                                "cursor-pointer"
+                            )
                         with ui.menu().props("no-auto-close") as custom_end_menu:
                             end_val = state.custom_end or date.today()
 
@@ -355,7 +359,9 @@ def render_step1() -> None:
 
         # Date range display
         date_range_label = ui.label("").classes("text-blue-600 p-2 bg-blue-50 rounded mt-4")
-        _duration_input = [None]  # mutable ref, wired up after the input is created
+        _duration_input: list[Number | None] = [
+            None
+        ]  # mutable ref, wired up after the input is created
 
         def _real_update_date_range_display() -> None:
             """Update the date range display based on current selections."""
@@ -389,7 +395,9 @@ def render_step1() -> None:
                     _duration_input[0].value = auto_duration
             except Exception as e:
                 date_range_label.set_text(f"Invalid date range: {e}")
-                date_range_label.classes("text-red-600 bg-red-50", remove="text-blue-600 bg-blue-50")
+                date_range_label.classes(
+                    "text-red-600 bg-red-50", remove="text-blue-600 bg-blue-50"
+                )
 
         # Wire up the mutable reference so earlier callbacks use the real implementation
         _updater[0] = _real_update_date_range_display
@@ -420,11 +428,7 @@ def render_step1() -> None:
                     selected = next((p for p in named_people if p.id == value), None)
                     state.selected_person = selected
                     # Auto-set birthday if person has birth_date
-                    if (
-                        selected
-                        and selected.birth_date
-                        and state.time_period_mode == "year"
-                    ):
+                    if selected and selected.birth_date and state.time_period_mode == "year":
                         state.birthday = selected.birth_date.date()
                         state.year_type = "birthday"
                         ui.notify(
@@ -436,12 +440,16 @@ def render_step1() -> None:
             person_select.on_value_change(on_person_change)
 
             # Target duration
-            duration_select = ui.number(
-                "Target Duration (minutes)",
-                value=state.target_duration,
-                min=1,
-                max=60,
-            ).classes("w-48").bind_value(state, "target_duration")
+            duration_select = (
+                ui.number(
+                    "Target Duration (minutes)",
+                    value=state.target_duration,
+                    min=1,
+                    max=60,
+                )
+                .classes("w-48")
+                .bind_value(state, "target_duration")
+            )
             _duration_input[0] = duration_select
 
         # --- Navigation ---

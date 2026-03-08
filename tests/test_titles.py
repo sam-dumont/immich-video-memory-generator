@@ -263,7 +263,7 @@ class TestTitleScreenConfig:
         assert config.enabled is True
         assert config.title_duration == 3.5
         assert config.month_divider_duration == 2.0
-        assert config.ending_duration == 4.0
+        assert config.ending_duration == 7.0
         assert config.locale == "en"
         assert config.orientation == "landscape"
         assert config.resolution == "1080p"
@@ -486,7 +486,8 @@ class TestAssemblyIntegration:
 
         changes = assembler._detect_month_changes(clips)
 
-        # Should detect changes at clips 3 and 5 (Feb and Mar)
-        assert len(changes) == 2
+        # Should detect first month and subsequent month changes
+        assert len(changes) == 3
+        assert (0, 1, 2024) in changes  # January at index 0 (first month)
         assert (2, 2, 2024) in changes  # February at index 2
         assert (4, 3, 2024) in changes  # March at index 4

@@ -48,8 +48,10 @@ def _get_fast_encoder_args() -> list[str]:
     # macOS: Use VideoToolbox hardware encoder
     if sys.platform == "darwin":
         return [
-            "-c:v", "h264_videotoolbox",
-            "-q:v", "65",  # Lower quality OK for previews (faster)
+            "-c:v",
+            "h264_videotoolbox",
+            "-q:v",
+            "65",  # Lower quality OK for previews (faster)
         ]
 
     # Other platforms: Check for available encoders
@@ -65,32 +67,44 @@ def _get_fast_encoder_args() -> list[str]:
         # Try NVIDIA NVENC (GPU accelerated)
         if "h264_nvenc" in encoders:
             return [
-                "-c:v", "h264_nvenc",
-                "-preset", "p1",  # Fastest preset
-                "-rc", "constqp", "-qp", "23",
+                "-c:v",
+                "h264_nvenc",
+                "-preset",
+                "p1",  # Fastest preset
+                "-rc",
+                "constqp",
+                "-qp",
+                "23",
             ]
 
         # Try VAAPI (Linux GPU)
         if "h264_vaapi" in encoders:
             return [
-                "-c:v", "h264_vaapi",
-                "-qp", "23",
+                "-c:v",
+                "h264_vaapi",
+                "-qp",
+                "23",
             ]
 
         # Try Intel QSV
         if "h264_qsv" in encoders:
             return [
-                "-c:v", "h264_qsv",
-                "-preset", "veryfast",
+                "-c:v",
+                "h264_qsv",
+                "-preset",
+                "veryfast",
             ]
     except Exception:
         pass
 
     # Fallback to CPU libx264
     return [
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "23",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "23",
     ]
 
 
@@ -305,6 +319,7 @@ class SmartPipeline:
 
         # Get minimum duration from config
         from immich_memories.config import get_config
+
         config = get_config()
         min_duration = config.analysis.min_segment_duration
 
@@ -325,8 +340,7 @@ class SmartPipeline:
         all_non_favorites = [c for c in clips if not c.asset.is_favorite]
 
         logger.info(
-            f"Initial split: {len(all_favorites)} favorites, "
-            f"{len(all_non_favorites)} non-favorites"
+            f"Initial split: {len(all_favorites)} favorites, {len(all_non_favorites)} non-favorites"
         )
 
         # Apply filters ONLY to non-favorites
@@ -367,8 +381,7 @@ class SmartPipeline:
         if min_res > 0:
             before = len(filtered_non_favorites)
             filtered_non_favorites = [
-                c for c in filtered_non_favorites
-                if max(c.width, c.height) >= min_res
+                c for c in filtered_non_favorites if max(c.width, c.height) >= min_res
             ]
             logger.info(
                 f"Resolution filter on non-favorites: {before} -> {len(filtered_non_favorites)} "
@@ -459,17 +472,22 @@ class SmartPipeline:
             self.tracker.start_item(name, asset_id=clip.asset.id)
 
             try:
-                start, end, score, preview_path, llm_analysis = self._analyze_clip_with_preview(clip)
+                start, end, score, preview_path, llm_analysis = self._analyze_clip_with_preview(
+                    clip
+                )
 
                 # Store LLM analysis in clip for UI display
                 if llm_analysis:
                     from typing import cast
+
                     clip.llm_description = cast(str | None, llm_analysis.get("description"))
                     clip.llm_emotion = cast(str | None, llm_analysis.get("emotion"))
                     clip.llm_setting = cast(str | None, llm_analysis.get("setting"))
                     clip.llm_activities = cast(list[str] | None, llm_analysis.get("activities"))
                     clip.llm_subjects = cast(list[str] | None, llm_analysis.get("subjects"))
-                    clip.llm_interestingness = cast(float | None, llm_analysis.get("interestingness"))
+                    clip.llm_interestingness = cast(
+                        float | None, llm_analysis.get("interestingness")
+                    )
                     clip.llm_quality = cast(float | None, llm_analysis.get("quality"))
 
                 results.append(
@@ -486,10 +504,18 @@ class SmartPipeline:
                     segment=(start, end),
                     score=score,
                     preview_path=preview_path,  # Pass preview path for UI display
-                    llm_description=cast(str | None, llm_analysis.get("description")) if llm_analysis else None,
-                    llm_emotion=cast(str | None, llm_analysis.get("emotion")) if llm_analysis else None,
-                    llm_interestingness=cast(float | None, llm_analysis.get("interestingness")) if llm_analysis else None,
-                    llm_quality=cast(float | None, llm_analysis.get("quality")) if llm_analysis else None,
+                    llm_description=cast(str | None, llm_analysis.get("description"))
+                    if llm_analysis
+                    else None,
+                    llm_emotion=cast(str | None, llm_analysis.get("emotion"))
+                    if llm_analysis
+                    else None,
+                    llm_interestingness=cast(float | None, llm_analysis.get("interestingness"))
+                    if llm_analysis
+                    else None,
+                    llm_quality=cast(float | None, llm_analysis.get("quality"))
+                    if llm_analysis
+                    else None,
                 )
 
                 # Previews are now stored in persistent directory (~/.cache/immich-memories/previews/)
@@ -524,6 +550,7 @@ class SmartPipeline:
 
         # Log session summary for token tracking
         from immich_memories.analysis.content_analyzer import ContentAnalyzer
+
         ContentAnalyzer.log_session_summary()
 
         return results
@@ -643,16 +670,18 @@ class SmartPipeline:
             start, end, score = best.start_time, best.end_time, best.total_score or 0.0
 
             # Extract LLM analysis from cached data if available
-            llm_analysis = None
-            if hasattr(best, 'llm_description') and (best.llm_description or getattr(best, 'llm_emotion', None)):
-                llm_analysis = {
-                    "description": getattr(best, 'llm_description', None),
-                    "emotion": getattr(best, 'llm_emotion', None),
-                    "setting": getattr(best, 'llm_setting', None),
-                    "activities": getattr(best, 'llm_activities', None),
-                    "subjects": getattr(best, 'llm_subjects', None),
-                    "interestingness": getattr(best, 'llm_interestingness', None),
-                    "quality": getattr(best, 'llm_quality', None),
+            cached_llm_analysis = None
+            if hasattr(best, "llm_description") and (
+                best.llm_description or getattr(best, "llm_emotion", None)
+            ):
+                cached_llm_analysis = {
+                    "description": getattr(best, "llm_description", None),
+                    "emotion": getattr(best, "llm_emotion", None),
+                    "setting": getattr(best, "llm_setting", None),
+                    "activities": getattr(best, "llm_activities", None),
+                    "subjects": getattr(best, "llm_subjects", None),
+                    "interestingness": getattr(best, "llm_interestingness", None),
+                    "quality": getattr(best, "llm_quality", None),
                 }
 
             logger.info(
@@ -660,7 +689,7 @@ class SmartPipeline:
                 f"{start:.1f}s - {end:.1f}s (score={score:.2f})"
             )
             # Return immediately - no need to download video or extract preview
-            return start, end, score, None, llm_analysis
+            return start, end, score, None, cached_llm_analysis
 
         # Not cached - need to download and analyze
         start, end, score = 0.0, 0.0, 0.0
@@ -830,11 +859,11 @@ class SmartPipeline:
                     logger.warning(f"Unified analysis failed: {e}, using legacy approach")
                     # Cleanup on exception
                     try:
-                        if 'unified_analyzer' in locals():
+                        if "unified_analyzer" in locals():
                             unified_analyzer.clear_cache()
                             unified_analyzer.scorer.release_capture()  # Release video capture
                             del unified_analyzer
-                        if 'content_analyzer' in locals() and content_analyzer:
+                        if "content_analyzer" in locals() and content_analyzer:
                             del content_analyzer
                         gc.collect()
                     except Exception:
@@ -1174,7 +1203,6 @@ class SmartPipeline:
             Selected clips distributed by density.
         """
         from collections import defaultdict
-        import math
 
         if not clips:
             return []
@@ -1187,7 +1215,9 @@ class SmartPipeline:
         favorites.sort(key=lambda c: c.clip.asset.file_created_at or datetime.min)
         non_favorites.sort(key=lambda c: c.clip.asset.file_created_at or datetime.min)
 
-        logger.info(f"Distribution input: {len(favorites)} favorites, {len(non_favorites)} non-favorites")
+        logger.info(
+            f"Distribution input: {len(favorites)} favorites, {len(non_favorites)} non-favorites"
+        )
 
         if not favorites:
             # No favorites - just take top-scored non-favorites
@@ -1205,7 +1235,9 @@ class SmartPipeline:
 
         # Calculate density: favorites per week
         avg_per_week = len(favorites) / max(num_weeks, 1)
-        logger.info(f"Density: {len(favorites)} favorites across {num_weeks} weeks (avg {avg_per_week:.1f}/week)")
+        logger.info(
+            f"Density: {len(favorites)} favorites across {num_weeks} weeks (avg {avg_per_week:.1f}/week)"
+        )
 
         # Identify HIGH DENSITY weeks (likely events/holidays)
         # High density = more than 1.5x average
@@ -1221,7 +1253,7 @@ class SmartPipeline:
             special_weeks.add(sorted_weeks[-1])  # Last week
 
         # Birthday week detection
-        if hasattr(self.config, 'birthday_month') and self.config.birthday_month:
+        if hasattr(self.config, "birthday_month") and self.config.birthday_month:
             for fav in favorites:
                 fav_date = fav.clip.asset.file_created_at
                 if fav_date.month == self.config.birthday_month and abs(fav_date.day - 7) <= 10:
@@ -1273,19 +1305,25 @@ class SmartPipeline:
                 candidate_week = candidate.clip.asset.file_created_at.strftime("%Y-W%W")
 
                 # Check if this week would have 0 clips after removal
-                week_count = sum(1 for c in removable if c.clip.asset.file_created_at.strftime("%Y-W%W") == candidate_week)
+                week_count = sum(
+                    1
+                    for c in removable
+                    if c.clip.asset.file_created_at.strftime("%Y-W%W") == candidate_week
+                )
                 if week_count <= 1:
                     # Don't remove the last clip from a week - move to protected
                     protected.append(removable.pop(0))
                     continue
 
                 removed = removable.pop(0)
-                total_duration -= (removed.end_time - removed.start_time)
+                total_duration -= removed.end_time - removed.start_time
                 selected_ids.discard(removed.clip.asset.id)
                 removed_count += 1
 
             selected_favorites = protected + removable
-            logger.info(f"Scaled down: removed {removed_count} favorites, kept {len(selected_favorites)}")
+            logger.info(
+                f"Scaled down: removed {removed_count} favorites, kept {len(selected_favorites)}"
+            )
 
         # STEP 4: Fill gaps with non-favorites
         # Group non-favorites by week
@@ -1299,6 +1337,7 @@ class SmartPipeline:
         last_date = favorites[-1].clip.asset.file_created_at
 
         from datetime import timedelta
+
         all_weeks_in_range: list[str] = []
         current = first_date
         while current <= last_date:
@@ -1332,24 +1371,29 @@ class SmartPipeline:
         remaining_slots = target_count - len(selected)
 
         if remaining_slots > 0:
-            clips_per_week = defaultdict(int)
+            clips_per_week: defaultdict[str, int] = defaultdict(int)
             for clip in selected:
                 week_key = clip.clip.asset.file_created_at.strftime("%Y-W%W")
                 clips_per_week[week_key] += 1
 
             remaining_non_favs = [c for c in non_favorites if c.clip.asset.id not in selected_ids]
+            distribution_scores: dict[str, float] = {}
             for clip in remaining_non_favs:
                 week_key = clip.clip.asset.file_created_at.strftime("%Y-W%W")
                 existing = clips_per_week.get(week_key, 0)
-                clip._distribution_score = clip.score - (existing * 0.1)
+                distribution_scores[clip.clip.asset.id] = clip.score - (existing * 0.1)
 
-            remaining_non_favs.sort(key=lambda c: c._distribution_score, reverse=True)
+            remaining_non_favs.sort(
+                key=lambda c: distribution_scores[c.clip.asset.id], reverse=True
+            )
 
             for clip in remaining_non_favs[:remaining_slots]:
                 selected.append(clip)
                 selected_ids.add(clip.clip.asset.id)
 
-            logger.info(f"Added {min(remaining_slots, len(remaining_non_favs))} additional non-favorites")
+            logger.info(
+                f"Added {min(remaining_slots, len(remaining_non_favs))} additional non-favorites"
+            )
 
         # Final stats
         final_favorites = sum(1 for c in selected if c.clip.asset.is_favorite)
@@ -1402,7 +1446,9 @@ class SmartPipeline:
             logger.info(f"Duration {total:.0f}s within target {target_duration:.0f}s (+10%)")
             return clips
 
-        logger.info(f"Duration {total:.0f}s exceeds target {target_duration:.0f}s, removing clips...")
+        logger.info(
+            f"Duration {total:.0f}s exceeds target {target_duration:.0f}s, removing clips..."
+        )
 
         # Protect high-density weeks and first/last weeks
         favorites_by_week: dict[str, list[ClipWithSegment]] = defaultdict(list)
@@ -1415,7 +1461,8 @@ class SmartPipeline:
         if num_favorite_weeks > 0:
             avg_per_week = len([c for c in clips if c.clip.asset.is_favorite]) / num_favorite_weeks
             protected_weeks = {
-                w for w, clips_list in favorites_by_week.items()
+                w
+                for w, clips_list in favorites_by_week.items()
                 if len(clips_list) >= avg_per_week * 1.5
             }
         else:
@@ -1458,7 +1505,9 @@ class SmartPipeline:
         # Sort back by date for chronological order
         result.sort(key=lambda c: c.clip.asset.file_created_at or datetime.min)
 
-        logger.info(f"Removed {removed_count} clips, final duration: {running_total:.0f}s ({len(result)} clips)")
+        logger.info(
+            f"Removed {removed_count} clips, final duration: {running_total:.0f}s ({len(result)} clips)"
+        )
         return result
 
     def _deduplicate_temporal_clusters(
@@ -1572,10 +1621,10 @@ class SmartPipeline:
         # instead of just picking top N by score (which can cluster in certain months)
         # Add 20% buffer so user has room to deselect clips they don't want
         target_with_buffer = int(self.config.target_clips * 1.2)
-        logger.info(f"Selecting with buffer: target={self.config.target_clips}, with_buffer={target_with_buffer}")
-        selected = self._select_clips_distributed_by_date(
-            analyzed, target_with_buffer
+        logger.info(
+            f"Selecting with buffer: target={self.config.target_clips}, with_buffer={target_with_buffer}"
         )
+        selected = self._select_clips_distributed_by_date(analyzed, target_with_buffer)
 
         # Scale down to target duration (removes clips to fit target)
         # Calculate target from config: target_clips * avg_clip_duration
@@ -1591,10 +1640,7 @@ class SmartPipeline:
 
         # Apply max_non_favorite_ratio (limiting non-favorites in final selection)
         # But never drop below target_clips — fill with best non-favorites if needed
-        if (
-            self.config.max_non_favorite_ratio < 1.0
-            and self.config.prioritize_favorites
-        ):
+        if self.config.max_non_favorite_ratio < 1.0 and self.config.prioritize_favorites:
             favorites = [c for c in selected if c.clip.asset.is_favorite]
             non_favorites = [c for c in selected if not c.clip.asset.is_favorite]
 

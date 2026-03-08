@@ -25,18 +25,25 @@ def _get_encoder_args() -> list[str]:
     """Get GPU-accelerated encoder arguments with 10-bit HDR (HLG) support."""
     # HLG colorspace metadata — must match video clips for clean concat
     color_args = [
-        "-color_primaries", "bt2020",
-        "-color_trc", "arib-std-b67",
-        "-colorspace", "bt2020nc",
+        "-color_primaries",
+        "bt2020",
+        "-color_trc",
+        "arib-std-b67",
+        "-colorspace",
+        "bt2020nc",
     ]
 
     # macOS: VideoToolbox (GPU accelerated)
     if sys.platform == "darwin":
         return [
-            "-c:v", "hevc_videotoolbox",
-            "-q:v", "50",
-            "-pix_fmt", "p010le",  # 10-bit
-            "-tag:v", "hvc1",
+            "-c:v",
+            "hevc_videotoolbox",
+            "-q:v",
+            "50",
+            "-pix_fmt",
+            "p010le",  # 10-bit
+            "-tag:v",
+            "hvc1",
             *color_args,
         ]
 
@@ -44,15 +51,23 @@ def _get_encoder_args() -> list[str]:
     try:
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-encoders"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if "hevc_nvenc" in result.stdout:
             return [
-                "-c:v", "hevc_nvenc",
-                "-preset", "p4",
-                "-rc", "constqp", "-qp", "18",
-                "-pix_fmt", "p010le",  # 10-bit
-                "-tag:v", "hvc1",
+                "-c:v",
+                "hevc_nvenc",
+                "-preset",
+                "p4",
+                "-rc",
+                "constqp",
+                "-qp",
+                "18",
+                "-pix_fmt",
+                "p010le",  # 10-bit
+                "-tag:v",
+                "hvc1",
                 *color_args,
             ]
     except Exception:
@@ -60,11 +75,16 @@ def _get_encoder_args() -> list[str]:
 
     # Fallback to CPU libx265 (slower)
     return [
-        "-c:v", "libx265",
-        "-crf", "18",
-        "-preset", "fast",
-        "-pix_fmt", "yuv420p10le",
-        "-tag:v", "hvc1",
+        "-c:v",
+        "libx265",
+        "-crf",
+        "18",
+        "-preset",
+        "fast",
+        "-pix_fmt",
+        "yuv420p10le",
+        "-tag:v",
+        "hvc1",
         *color_args,
     ]
 
@@ -163,7 +183,9 @@ def create_title_ffmpeg(
     # Y position animation (slide up during fade in)
     # Start 30px below, animate to center
     slide_distance = 30
-    y_offset_expr = f"if(lt(t,{cfg.fade_in_duration}),{slide_distance}*(1-t/{cfg.fade_in_duration}),0)"
+    y_offset_expr = (
+        f"if(lt(t,{cfg.fade_in_duration}),{slide_distance}*(1-t/{cfg.fade_in_duration}),0)"
+    )
 
     # Scale animation (subtle zoom from 0.95 to 1.0)
     # We can't directly scale text, but we can animate font size
@@ -217,20 +239,29 @@ def create_title_ffmpeg(
         "ffmpeg",
         "-y",
         # Animated gradient background
-        "-f", "lavfi",
-        "-i", f"gradients=s={cfg.width}x{cfg.height}:c0={cfg.bg_color1}:c1={cfg.bg_color2}:duration={cfg.duration}:speed=1:r={cfg.fps}",
+        "-f",
+        "lavfi",
+        "-i",
+        f"gradients=s={cfg.width}x{cfg.height}:c0={cfg.bg_color1}:c1={cfg.bg_color2}:duration={cfg.duration}:speed=1:r={cfg.fps}",
         # Silent audio
-        "-f", "lavfi",
-        "-i", "anullsrc=r=48000:cl=stereo",
+        "-f",
+        "lavfi",
+        "-i",
+        "anullsrc=r=48000:cl=stereo",
         # Apply text filters
-        "-vf", filter_chain,
+        "-vf",
+        filter_chain,
         # Encoding - GPU accelerated with 10-bit for smooth gradients
         *_get_encoder_args(),
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-t", str(cfg.duration),
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-t",
+        str(cfg.duration),
         "-shortest",
-        "-movflags", "+faststart",
+        "-movflags",
+        "+faststart",
         str(output_path),
     ]
 
@@ -304,7 +335,9 @@ def create_title_with_effects(
 
     # Alpha: fade in, hold, fade out
     # alpha = min(t/fade_in, 1) * (t < fade_out_start ? 1 : (dur-t)/fade_out_dur)
-    alpha = f"min(t/{fade_in}\\,1)*if(lt(t\\,{fade_out_start})\\,1\\,({dur}-t)/{cfg.fade_out_duration})"
+    alpha = (
+        f"min(t/{fade_in}\\,1)*if(lt(t\\,{fade_out_start})\\,1\\,({dur}-t)/{cfg.fade_out_duration})"
+    )
 
     # Shadow for title
     shadow = max(2, title_size // 40)
@@ -340,8 +373,8 @@ def create_title_with_effects(
             f"fontfile='{font_path}':"
             f"fontsize={subtitle_size}:"
             f"fontcolor=black@0.15:"
-            f"x=(w-text_w)/2+{shadow//2}:"
-            f"y={subtitle_y}+{shadow//2}:"
+            f"x=(w-text_w)/2+{shadow // 2}:"
+            f"y={subtitle_y}+{shadow // 2}:"
             f"alpha={alpha}[s1]"
         )
         last_label = "s1"
@@ -367,20 +400,31 @@ def create_title_with_effects(
     cmd = [
         "ffmpeg",
         "-y",
-        "-f", "lavfi",
-        "-i", f"gradients=s={cfg.width}x{cfg.height}:c0={cfg.bg_color1}:c1={cfg.bg_color2}:duration={cfg.duration}:speed=1:r={cfg.fps}",
-        "-f", "lavfi",
-        "-i", "anullsrc=r=48000:cl=stereo",
-        "-filter_complex", filter_complex,
-        "-map", f"[{last_label}]",
-        "-map", "1:a",
+        "-f",
+        "lavfi",
+        "-i",
+        f"gradients=s={cfg.width}x{cfg.height}:c0={cfg.bg_color1}:c1={cfg.bg_color2}:duration={cfg.duration}:speed=1:r={cfg.fps}",
+        "-f",
+        "lavfi",
+        "-i",
+        "anullsrc=r=48000:cl=stereo",
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        f"[{last_label}]",
+        "-map",
+        "1:a",
         # Encoding - GPU accelerated with 10-bit for smooth gradients
         *_get_encoder_args(),
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-t", str(cfg.duration),
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-t",
+        str(cfg.duration),
         "-shortest",
-        "-movflags", "+faststart",
+        "-movflags",
+        "+faststart",
         str(output_path),
     ]
 

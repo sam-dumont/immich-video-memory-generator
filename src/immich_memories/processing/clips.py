@@ -184,7 +184,7 @@ def plan_transitions(
             consecutive_cuts += 1
             consecutive_fades = 0
             logger.debug(
-                f"Transition {i}->{i+1}: forced CUT (buffer unavailable: "
+                f"Transition {i}->{i + 1}: forced CUT (buffer unavailable: "
                 f"out={can_fade_out}, in={can_fade_in})"
             )
             continue
@@ -593,9 +593,14 @@ def extract_clip(
         # Include source path hash to avoid collisions when multiple clips have same times
         source_hash = hashlib.md5(str(source_path).encode()).hexdigest()[:8]
         # Include buffer flags in filename
-        buffer_suffix = f"_b{int(buffer_start)}{int(buffer_end)}" if (buffer_start or buffer_end) else ""
+        buffer_suffix = (
+            f"_b{int(buffer_start)}{int(buffer_end)}" if (buffer_start or buffer_end) else ""
+        )
         enc_suffix = "_enc" if reencode else ""
-        output_path = output_dir / f"clip_{source_hash}_{actual_start:.1f}_{actual_end:.1f}{buffer_suffix}{enc_suffix}.mp4"
+        output_path = (
+            output_dir
+            / f"clip_{source_hash}_{actual_start:.1f}_{actual_end:.1f}{buffer_suffix}{enc_suffix}.mp4"
+        )
 
     segment = ClipSegment(
         source_path=Path(source_path),

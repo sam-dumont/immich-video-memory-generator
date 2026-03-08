@@ -95,9 +95,9 @@ class TestDuckingConfig:
         """Test default ducking configuration."""
         config = DuckingConfig()
         assert config.threshold == 0.02
-        assert config.ratio == 6.0
-        assert config.attack_ms == 50.0
-        assert config.release_ms == 500.0
+        assert config.ratio == 4.0
+        assert config.attack_ms == 100.0
+        assert config.release_ms == 2500.0
         assert config.makeup_db == 0.0
         assert config.music_volume_db == -6.0
 
