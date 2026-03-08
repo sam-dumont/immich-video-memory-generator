@@ -37,12 +37,18 @@ def _extract_audio_with_ffmpeg(video_path: Path) -> tuple[np.ndarray, int] | Non
         cmd = [
             "ffmpeg",
             "-y",
-            "-i", str(video_path),
-            "-map", "0:a:0",  # First audio stream only (skip spatial audio)
-            "-ac", "1",  # Convert to mono
-            "-ar", "16000",  # 16kHz sample rate (sufficient for silence detection)
-            "-acodec", "pcm_s16le",
-            "-loglevel", "error",
+            "-i",
+            str(video_path),
+            "-map",
+            "0:a:0",  # First audio stream only (skip spatial audio)
+            "-ac",
+            "1",  # Convert to mono
+            "-ar",
+            "16000",  # 16kHz sample rate (sufficient for silence detection)
+            "-acodec",
+            "pcm_s16le",
+            "-loglevel",
+            "error",
             tmp_path,
         ]
 
@@ -105,9 +111,7 @@ def detect_silence_gaps(
 
     # Fall back to moviepy if ffmpeg extraction fails
     logger.debug("Falling back to moviepy for audio extraction")
-    return _detect_silence_gaps_moviepy(
-        video_path, threshold_db, min_silence_duration, window_size
-    )
+    return _detect_silence_gaps_moviepy(video_path, threshold_db, min_silence_duration, window_size)
 
 
 def _analyze_audio_for_silence(

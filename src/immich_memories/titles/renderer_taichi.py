@@ -73,6 +73,7 @@ try:
         layout_text,
         measure_text,
     )
+
     SDF_AVAILABLE = True
 except ImportError:
     SDF_AVAILABLE = False
@@ -85,6 +86,7 @@ except ImportError:
 # Taichi is optional - graceful fallback if not installed
 try:
     import taichi as ti
+
     TAICHI_AVAILABLE = True
 except ImportError:
     TAICHI_AVAILABLE = False
@@ -199,8 +201,12 @@ def _compile_kernels():
     @ti.kernel
     def generate_linear_gradient(
         output: ti.types.ndarray(dtype=ti.f32, ndim=3),
-        c0_r: ti.f32, c0_g: ti.f32, c0_b: ti.f32,
-        c1_r: ti.f32, c1_g: ti.f32, c1_b: ti.f32,
+        c0_r: ti.f32,
+        c0_g: ti.f32,
+        c0_b: ti.f32,
+        c1_r: ti.f32,
+        c1_g: ti.f32,
+        c1_b: ti.f32,
         angle: ti.f32,
         width: ti.i32,
         height: ti.i32,
@@ -221,8 +227,12 @@ def _compile_kernels():
     @ti.kernel
     def generate_radial_gradient(
         output: ti.types.ndarray(dtype=ti.f32, ndim=3),
-        c0_r: ti.f32, c0_g: ti.f32, c0_b: ti.f32,
-        c1_r: ti.f32, c1_g: ti.f32, c1_b: ti.f32,
+        c0_r: ti.f32,
+        c0_g: ti.f32,
+        c0_b: ti.f32,
+        c1_r: ti.f32,
+        c1_g: ti.f32,
+        c1_b: ti.f32,
         radius_ratio: ti.f32,
         width: ti.i32,
         height: ti.i32,
@@ -306,7 +316,9 @@ def _compile_kernels():
     @ti.kernel
     def render_bokeh_particles(
         output: ti.types.ndarray(dtype=ti.f32, ndim=3),  # (h, w, 4) RGBA
-        particles: ti.types.ndarray(dtype=ti.f32, ndim=2),  # (n, 7): x, y, size, opacity, angle, r, g, b
+        particles: ti.types.ndarray(
+            dtype=ti.f32, ndim=2
+        ),  # (n, 7): x, y, size, opacity, angle, r, g, b
         num_particles: ti.i32,
         width: ti.i32,
         height: ti.i32,
@@ -486,13 +498,16 @@ def _compile_kernels():
     @ti.kernel
     def render_sdf_text(
         output: ti.types.ndarray(dtype=ti.f32, ndim=3),  # RGB frame buffer
-        atlas: ti.types.ndarray(dtype=ti.f32, ndim=2),   # SDF atlas texture
+        atlas: ti.types.ndarray(dtype=ti.f32, ndim=2),  # SDF atlas texture
         glyph_data: ti.types.ndarray(dtype=ti.f32, ndim=2),  # [n, 8] glyph params
         num_glyphs: ti.i32,
-        color_r: ti.f32, color_g: ti.f32, color_b: ti.f32,
+        color_r: ti.f32,
+        color_g: ti.f32,
+        color_b: ti.f32,
         opacity: ti.f32,
         scale: ti.f32,
-        offset_x: ti.f32, offset_y: ti.f32,
+        offset_x: ti.f32,
+        offset_y: ti.f32,
         smoothing: ti.f32,
     ):
         """Render SDF text directly onto frame buffer.
@@ -569,13 +584,14 @@ def _compile_kernels():
 # Helper Functions
 # =============================================================================
 
+
 def _create_gaussian_kernel(radius: int, sigma: float | None = None) -> np.ndarray:
     """Create 1D Gaussian kernel for separable blur."""
     if sigma is None:
         sigma = radius / 3.0
     size = 2 * radius + 1
     x = np.arange(size) - radius
-    kernel = np.exp(-x**2 / (2 * sigma**2))
+    kernel = np.exp(-(x**2) / (2 * sigma**2))
     kernel /= kernel.sum()
     return kernel.astype(np.float32)
 
@@ -607,6 +623,7 @@ def _get_system_font() -> str:
 # =============================================================================
 # Configuration
 # =============================================================================
+
 
 @dataclass
 class TaichiTitleConfig:
@@ -679,6 +696,7 @@ class TaichiTitleConfig:
 # Main Renderer Class
 # =============================================================================
 
+
 class TaichiTitleRenderer:
     """GPU-accelerated title renderer using Taichi.
 
@@ -748,7 +766,9 @@ class TaichiTitleRenderer:
         if self._use_sdf:
             self._init_sdf_atlas()
 
-        logger.info(f"TaichiTitleRenderer initialized: {w}x{h} @ {self.config.fps}fps (SDF: {self._use_sdf})")
+        logger.info(
+            f"TaichiTitleRenderer initialized: {w}x{h} @ {self.config.fps}fps (SDF: {self._use_sdf})"
+        )
 
     def _init_bokeh_particles(self):
         """Initialize bokeh particle positions, properties, and colors."""
@@ -789,13 +809,13 @@ class TaichiTitleRenderer:
 
         # Festive firework colors (bright, saturated)
         firework_colors = cfg.birthday_colors or [
-            (1.0, 0.85, 0.2),   # Gold
-            (1.0, 0.3, 0.5),    # Hot pink
-            (0.3, 0.8, 1.0),    # Cyan
-            (1.0, 0.5, 0.2),    # Orange
-            (0.6, 0.3, 1.0),    # Purple
-            (0.2, 1.0, 0.5),    # Mint green
-            (1.0, 1.0, 0.4),    # Yellow
+            (1.0, 0.85, 0.2),  # Gold
+            (1.0, 0.3, 0.5),  # Hot pink
+            (0.3, 0.8, 1.0),  # Cyan
+            (1.0, 0.5, 0.2),  # Orange
+            (0.6, 0.3, 1.0),  # Purple
+            (0.2, 1.0, 0.5),  # Mint green
+            (1.0, 1.0, 0.4),  # Yellow
         ]
 
         num_bursts = cfg.fireworks_burst_count
@@ -950,10 +970,9 @@ class TaichiTitleRenderer:
         # Physics constants
         gravity = cfg.fireworks_gravity
         friction = cfg.fireworks_friction
-        fade_speed = cfg.fireworks_fade_speed
 
         # Time since animation start (in seconds)
-        t = progress * cfg.duration
+        progress * cfg.duration
 
         for i in range(n):
             base = self._fireworks_base[i]
@@ -979,13 +998,17 @@ class TaichiTitleRenderer:
             friction_factor = friction ** (age_seconds * 30)  # Decay based on "frames"
 
             # Current velocity with friction
-            vx = vx0 * friction_factor
-            vy = vy0 * friction_factor + gravity * age_seconds * 60  # Gravity pulls down
+            vx0 * friction_factor
+            vy0 * friction_factor + gravity * age_seconds * 60  # Gravity pulls down
 
             # Position from center + integrated velocity
             # Simplified: use average velocity * time
             x = base[0] + vx0 * age_seconds * (1 + friction_factor) / 2
-            y = base[1] + vy0 * age_seconds * (1 + friction_factor) / 2 + 0.5 * gravity * (age_seconds * 60) ** 2
+            y = (
+                base[1]
+                + vy0 * age_seconds * (1 + friction_factor) / 2
+                + 0.5 * gravity * (age_seconds * 60) ** 2
+            )
 
             # Fade out based on age
             base_opacity = base[5]
@@ -1085,7 +1108,9 @@ class TaichiTitleRenderer:
             self._sdf_atlas_float,
             glyph_data,
             len(glyph_data),
-            color[0], color[1], color[2],
+            color[0],
+            color[1],
+            color[2],
             opacity,
             scale,
             center_x + x_offset + shadow_offset,
@@ -1186,7 +1211,9 @@ class TaichiTitleRenderer:
 
         return {"opacity": opacity, "y_offset": y_offset, "scale": scale, "x_offset": 0.0}
 
-    def render_frame(self, frame_number: int, title: str, subtitle: str | None = None) -> np.ndarray:
+    def render_frame(
+        self, frame_number: int, title: str, subtitle: str | None = None
+    ) -> np.ndarray:
         """Render a single frame on GPU."""
         t = frame_number / self.config.fps
         progress = frame_number / self.total_frames
@@ -1199,25 +1226,41 @@ class TaichiTitleRenderer:
 
         if cfg.gradient_type == "aurora":
             # Aurora/mesh gradient with multiple soft color blobs
-            if not hasattr(self, '_aurora_blobs'):
+            if not hasattr(self, "_aurora_blobs"):
                 self._init_aurora_blobs()
             _generate_aurora_gradient(
-                self.frame_buffer, self._aurora_blobs,
-                len(self._aurora_blobs), cfg.width, cfg.height, t,
+                self.frame_buffer,
+                self._aurora_blobs,
+                len(self._aurora_blobs),
+                cfg.width,
+                cfg.height,
+                t,
             )
         elif cfg.gradient_type == "radial":
             _generate_radial_gradient(
                 self.frame_buffer,
-                self.color1[0], self.color1[1], self.color1[2],
-                self.color2[0], self.color2[1], self.color2[2],
-                0.7, cfg.width, cfg.height,
+                self.color1[0],
+                self.color1[1],
+                self.color1[2],
+                self.color2[0],
+                self.color2[1],
+                self.color2[2],
+                0.7,
+                cfg.width,
+                cfg.height,
             )
         else:
             _generate_linear_gradient(
                 self.frame_buffer,
-                self.color1[0], self.color1[1], self.color1[2],
-                self.color2[0], self.color2[1], self.color2[2],
-                current_angle, cfg.width, cfg.height,
+                self.color1[0],
+                self.color1[1],
+                self.color1[2],
+                self.color2[0],
+                self.color2[1],
+                self.color2[2],
+                current_angle,
+                cfg.width,
+                cfg.height,
             )
 
         # 2. Apply blur
@@ -1231,7 +1274,9 @@ class TaichiTitleRenderer:
         _apply_color_pulse(self.frame_buffer, brightness_delta, saturation_mult)
 
         # 4. Vignette
-        vignette_strength = cfg.vignette_strength + cfg.vignette_pulse * math.sin(progress * 2 * math.pi)
+        vignette_strength = cfg.vignette_strength + cfg.vignette_pulse * math.sin(
+            progress * 2 * math.pi
+        )
         _apply_vignette(self.frame_buffer, vignette_strength, cfg.width, cfg.height)
 
         # 5. Bokeh/Fireworks particles
@@ -1244,8 +1289,11 @@ class TaichiTitleRenderer:
             else:
                 particle_count = cfg.bokeh_count
             _render_bokeh_particles(
-                self.bokeh_buffer, self._bokeh_particles,
-                particle_count, cfg.width, cfg.height,
+                self.bokeh_buffer,
+                self._bokeh_particles,
+                particle_count,
+                cfg.width,
+                cfg.height,
             )
             _composite_rgba_over(self.frame_buffer, self.bokeh_buffer, self.temp_buffer, 1.0)
             np.copyto(self.frame_buffer, self.temp_buffer)
@@ -1255,8 +1303,11 @@ class TaichiTitleRenderer:
             # Animate noise seed for film-like grain
             noise_seed = int(frame_number * 12345) % 1000000
             _apply_noise_grain(
-                self.frame_buffer, cfg.noise_intensity,
-                noise_seed, cfg.width, cfg.height,
+                self.frame_buffer,
+                cfg.noise_intensity,
+                noise_seed,
+                cfg.width,
+                cfg.height,
             )
 
         # 7. Render text
@@ -1269,7 +1320,8 @@ class TaichiTitleRenderer:
             # Render shadow first
             if cfg.enable_shadow:
                 self._render_sdf_text_direct(
-                    title, title_size,
+                    title,
+                    title_size,
                     (0.0, 0.0, 0.0),  # Black shadow
                     title_anim["opacity"] * cfg.shadow_opacity,
                     y_offset=title_anim["y_offset"],
@@ -1279,7 +1331,8 @@ class TaichiTitleRenderer:
 
             # Render title
             self._render_sdf_text_direct(
-                title, title_size,
+                title,
+                title_size,
                 self.text_rgb,
                 title_anim["opacity"],
                 y_offset=title_anim["y_offset"],
@@ -1292,7 +1345,8 @@ class TaichiTitleRenderer:
                 # Offset subtitle below title
                 subtitle_y_offset = subtitle_anim["y_offset"] + title_size * 0.8
                 self._render_sdf_text_direct(
-                    subtitle, subtitle_size,
+                    subtitle,
+                    subtitle_size,
                     self.text_rgb,
                     subtitle_anim["opacity"],
                     y_offset=subtitle_y_offset,
@@ -1305,7 +1359,9 @@ class TaichiTitleRenderer:
             if cfg.enable_shadow and self._shadow_layer is not None:
                 shadow_offset = max(2, int(cfg.height * cfg.shadow_offset_ratio))
                 _composite_text_with_offset(
-                    self.frame_buffer, self._shadow_layer, self.temp_buffer,
+                    self.frame_buffer,
+                    self._shadow_layer,
+                    self.temp_buffer,
                     title_anim["opacity"] * cfg.shadow_opacity,
                     title_anim["y_offset"] + shadow_offset,
                     title_anim["x_offset"] + shadow_offset,
@@ -1314,16 +1370,24 @@ class TaichiTitleRenderer:
 
             if self._title_layer is not None:
                 _composite_text_with_offset(
-                    self.frame_buffer, self._title_layer, self.temp_buffer,
-                    title_anim["opacity"], title_anim["y_offset"], title_anim["x_offset"],
+                    self.frame_buffer,
+                    self._title_layer,
+                    self.temp_buffer,
+                    title_anim["opacity"],
+                    title_anim["y_offset"],
+                    title_anim["x_offset"],
                 )
                 np.copyto(self.frame_buffer, self.temp_buffer)
 
             if self._subtitle_layer is not None:
                 subtitle_anim = self._compute_animation(t, progress, is_subtitle=True)
                 _composite_text_with_offset(
-                    self.frame_buffer, self._subtitle_layer, self.temp_buffer,
-                    subtitle_anim["opacity"], subtitle_anim["y_offset"], subtitle_anim["x_offset"],
+                    self.frame_buffer,
+                    self._subtitle_layer,
+                    self.temp_buffer,
+                    subtitle_anim["opacity"],
+                    subtitle_anim["y_offset"],
+                    subtitle_anim["x_offset"],
                 )
                 np.copyto(self.frame_buffer, self.temp_buffer)
 
@@ -1333,6 +1397,7 @@ class TaichiTitleRenderer:
 # =============================================================================
 # Video Creation Function
 # =============================================================================
+
 
 def create_title_video_taichi(
     title: str,
@@ -1357,44 +1422,72 @@ def create_title_video_taichi(
 
     # HLG colorspace metadata — must match video clips for clean concat
     color_args = [
-        "-color_primaries", "bt2020",
-        "-color_trc", "arib-std-b67",
-        "-colorspace", "bt2020nc",
+        "-color_primaries",
+        "bt2020",
+        "-color_trc",
+        "arib-std-b67",
+        "-colorspace",
+        "bt2020nc",
     ]
 
     # Use 10-bit encoding for smooth gradients (no banding)
     if sys.platform == "darwin":
         # macOS: use VideoToolbox HEVC with 10-bit
         video_codec = [
-            "-c:v", "hevc_videotoolbox",
-            "-q:v", "50",
-            "-tag:v", "hvc1",
+            "-c:v",
+            "hevc_videotoolbox",
+            "-q:v",
+            "50",
+            "-tag:v",
+            "hvc1",
             *color_args,
         ]
         pix_fmt = "p010le"  # 10-bit for VideoToolbox
     else:
         # Other platforms: use libx265 with 10-bit
         video_codec = [
-            "-c:v", "libx265",
-            "-crf", "18",
-            "-preset", "fast",
-            "-tag:v", "hvc1",
+            "-c:v",
+            "libx265",
+            "-crf",
+            "18",
+            "-preset",
+            "fast",
+            "-tag:v",
+            "hvc1",
             *color_args,
         ]
         pix_fmt = "yuv420p10le"  # 10-bit for libx265
 
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "rawvideo", "-vcodec", "rawvideo",
-        "-s", f"{cfg.width}x{cfg.height}",
-        "-pix_fmt", "rgb24", "-r", str(cfg.fps),
-        "-i", "-",
-        "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "rawvideo",
+        "-vcodec",
+        "rawvideo",
+        "-s",
+        f"{cfg.width}x{cfg.height}",
+        "-pix_fmt",
+        "rgb24",
+        "-r",
+        str(cfg.fps),
+        "-i",
+        "-",
+        "-f",
+        "lavfi",
+        "-i",
+        "anullsrc=r=48000:cl=stereo",
         *video_codec,
-        "-pix_fmt", pix_fmt,
-        "-c:a", "aac", "-b:a", "128k",
-        "-t", str(cfg.duration),
-        "-movflags", "+faststart",
+        "-pix_fmt",
+        pix_fmt,
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-t",
+        str(cfg.duration),
+        "-movflags",
+        "+faststart",
         str(output_path),
     ]
 
@@ -1404,7 +1497,9 @@ def create_title_video_taichi(
 
     # Fade FROM white at the start (only for intro title, not month dividers)
     fade_in_frames = int(0.8 * cfg.fps) if fade_from_white else 0
-    white_frame = np.full((cfg.height, cfg.width, 3), 255, dtype=np.uint8) if fade_from_white else None
+    white_frame = (
+        np.full((cfg.height, cfg.width, 3), 255, dtype=np.uint8) if fade_from_white else None
+    )
 
     try:
         for frame_num in range(renderer.total_frames):
@@ -1414,6 +1509,7 @@ def create_title_video_taichi(
                 # Fade-in phase: blend FROM white (intro title only)
                 fade_in_progress = frame_num / fade_in_frames
                 blend_alpha = 1.0 - (1.0 - fade_in_progress) ** 2  # Ease out curve
+                assert white_frame is not None
                 frame = (white_frame * (1 - blend_alpha) + frame * blend_alpha).astype(np.uint8)
 
             process.stdin.write(frame.tobytes())

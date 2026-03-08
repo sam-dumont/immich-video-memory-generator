@@ -86,14 +86,32 @@ def ngettext(
 # Month names (fallback if .mo files not present)
 _MONTH_NAMES: dict[str, list[str]] = {
     "en": [
-        "January", "February", "March", "April",
-        "May", "June", "July", "August",
-        "September", "October", "November", "December",
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
     ],
     "fr": [
-        "Janvier", "Février", "Mars", "Avril",
-        "Mai", "Juin", "Juillet", "Août",
-        "Septembre", "Octobre", "Novembre", "Décembre",
+        "Janvier",
+        "Février",
+        "Mars",
+        "Avril",
+        "Mai",
+        "Juin",
+        "Juillet",
+        "Août",
+        "Septembre",
+        "Octobre",
+        "Novembre",
+        "Décembre",
     ],
 }
 
@@ -130,12 +148,32 @@ def get_month_name(month: int, locale_code: str = "en") -> str:
 # Short month names
 _SHORT_MONTH_NAMES: dict[str, list[str]] = {
     "en": [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
     ],
     "fr": [
-        "Jan", "Fév", "Mar", "Avr", "Mai", "Juin",
-        "Juil", "Août", "Sep", "Oct", "Nov", "Déc",
+        "Jan",
+        "Fév",
+        "Mar",
+        "Avr",
+        "Mai",
+        "Juin",
+        "Juil",
+        "Août",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Déc",
     ],
 }
 
@@ -351,7 +389,9 @@ class Translator:
             Formatted date range.
         """
         return format_date_range(
-            start_month, start_year,
-            end_month, end_year,
+            start_month,
+            start_year,
+            end_month,
+            end_year,
             self.locale,
         )

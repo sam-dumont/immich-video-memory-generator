@@ -63,7 +63,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 
-from .colors import extract_dominant_color
 from .renderer_pil import create_title_video
 from .styles import TitleStyle, get_random_style, get_style_for_mood
 
@@ -75,6 +74,7 @@ try:
         init_taichi,
         is_taichi_available,
     )
+
     TAICHI_AVAILABLE = True
 except ImportError:
     TAICHI_AVAILABLE = False
@@ -103,18 +103,25 @@ def _get_gpu_encoder_args() -> list[str]:
 
     # HLG colorspace metadata — must match _encode_single_clip in assembly.py
     color_args = [
-        "-color_primaries", "bt2020",
-        "-color_trc", "arib-std-b67",
-        "-colorspace", "bt2020nc",
+        "-color_primaries",
+        "bt2020",
+        "-color_trc",
+        "arib-std-b67",
+        "-colorspace",
+        "bt2020nc",
     ]
 
     # macOS: VideoToolbox (GPU accelerated)
     if sys.platform == "darwin":
         return [
-            "-c:v", "hevc_videotoolbox",
-            "-q:v", "50",
-            "-pix_fmt", "p010le",  # 10-bit
-            "-tag:v", "hvc1",
+            "-c:v",
+            "hevc_videotoolbox",
+            "-q:v",
+            "50",
+            "-pix_fmt",
+            "p010le",  # 10-bit
+            "-tag:v",
+            "hvc1",
             *color_args,
         ]
 
@@ -122,15 +129,23 @@ def _get_gpu_encoder_args() -> list[str]:
     try:
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-encoders"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if "hevc_nvenc" in result.stdout:
             return [
-                "-c:v", "hevc_nvenc",
-                "-preset", "p4",
-                "-rc", "constqp", "-qp", "18",
-                "-pix_fmt", "p010le",  # 10-bit
-                "-tag:v", "hvc1",
+                "-c:v",
+                "hevc_nvenc",
+                "-preset",
+                "p4",
+                "-rc",
+                "constqp",
+                "-qp",
+                "18",
+                "-pix_fmt",
+                "p010le",  # 10-bit
+                "-tag:v",
+                "hvc1",
                 *color_args,
             ]
     except Exception:
@@ -138,11 +153,16 @@ def _get_gpu_encoder_args() -> list[str]:
 
     # Fallback to CPU libx265 (slower)
     return [
-        "-c:v", "libx265",
-        "-crf", "18",
-        "-preset", "fast",
-        "-pix_fmt", "yuv420p10le",
-        "-tag:v", "hvc1",
+        "-c:v",
+        "libx265",
+        "-crf",
+        "18",
+        "-preset",
+        "fast",
+        "-pix_fmt",
+        "yuv420p10le",
+        "-tag:v",
+        "hvc1",
         *color_args,
     ]
 
@@ -300,6 +320,7 @@ class TitleScreenGenerator:
         elif self.config.style_mode not in ("auto", "random"):
             # Try to load specific style by name
             from .styles import PRESET_STYLES
+
             self.style = PRESET_STYLES.get(self.config.style_mode, get_random_style())
             logger.info(f"Using named style: {self.style.name}")
         else:
@@ -354,16 +375,21 @@ class TitleScreenGenerator:
                 duration=duration,
                 # Background colors from style
                 bg_color1=style.background_colors[0] if style.background_colors else "#FFF5E6",
-                bg_color2=style.background_colors[1] if len(style.background_colors) > 1 else style.background_colors[0] if style.background_colors else "#FFE4CC",
+                bg_color2=style.background_colors[1]
+                if len(style.background_colors) > 1
+                else style.background_colors[0]
+                if style.background_colors
+                else "#FFE4CC",
                 gradient_angle=float(style.background_angle),
                 gradient_type=gradient_type,
                 # Text styling
                 text_color=style.text_color,
                 title_size_ratio=style.title_size_ratio,
-                subtitle_size_ratio=style.subtitle_size_ratio * style.title_size_ratio,  # Convert relative to absolute
+                subtitle_size_ratio=style.subtitle_size_ratio
+                * style.title_size_ratio,  # Convert relative to absolute
                 # Effects
                 enable_bokeh=True,  # Bokeh looks good
-                enable_shadow=getattr(style, 'text_shadow', False),
+                enable_shadow=getattr(style, "text_shadow", False),
                 # Animated background
                 gradient_rotation=10.0 if animated_background else 0.0,
                 color_pulse_amount=0.03 if animated_background else 0.0,
@@ -454,9 +480,9 @@ class TitleScreenGenerator:
 
         # Log generated text
         logger.info("-" * 40)
-        logger.info(f"  Main title: \"{title_info.main_title}\"")
+        logger.info(f'  Main title: "{title_info.main_title}"')
         if title_info.subtitle:
-            logger.info(f"  Subtitle: \"{title_info.subtitle}\"")
+            logger.info(f'  Subtitle: "{title_info.subtitle}"')
         else:
             logger.info("  Subtitle: (none)")
 
@@ -656,21 +682,31 @@ class TitleScreenGenerator:
             "ffmpeg",
             "-y",
             # Input: raw RGB frames from stdin
-            "-f", "rawvideo",
-            "-pix_fmt", "rgb24",
-            "-s", f"{width}x{height}",
-            "-r", str(fps),
-            "-i", "pipe:0",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-s",
+            f"{width}x{height}",
+            "-r",
+            str(fps),
+            "-i",
+            "pipe:0",
             # Add silent audio track (required for assembly compatibility)
-            "-f", "lavfi",
-            "-i", f"anullsrc=r=48000:cl=stereo:d={duration}",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anullsrc=r=48000:cl=stereo:d={duration}",
             # Video encoding - GPU accelerated with 10-bit for smooth gradients
             *encoder_args,
             # Audio encoding
-            "-c:a", "aac",
-            "-b:a", "128k",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
             "-shortest",
-            "-movflags", "+faststart",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -705,6 +741,7 @@ class TitleScreenGenerator:
             for i in range(total_frames):
                 if i < fade_start_frame:
                     # Before fade - reuse cached base background bytes
+                    assert process.stdin is not None
                     process.stdin.write(base_bg_bytes)
                 else:
                     # During fade - blend and write immediately
@@ -712,13 +749,15 @@ class TitleScreenGenerator:
                     fade_progress = min(1.0, fade_progress)
 
                     # Use smooth easing
-                    fade_progress = fade_progress ** 0.5  # Ease out
+                    fade_progress = fade_progress**0.5  # Ease out
 
                     # Blend images
                     frame = Image.blend(base_bg, solid_color, fade_progress)
+                    assert process.stdin is not None
                     process.stdin.write(frame.tobytes())
                     del frame  # Immediate cleanup
 
+            assert process.stdin is not None
             process.stdin.close()
             _, stderr = process.communicate()
 
@@ -769,11 +808,7 @@ class TitleScreenGenerator:
         )
 
         # Generate month dividers if needed
-        if (
-            self.config.show_month_dividers
-            and months_in_video
-            and len(months_in_video) > 1
-        ):
+        if self.config.show_month_dividers and months_in_video and len(months_in_video) > 1:
             for m in months_in_video:
                 screens[f"month_{m:02d}"] = self.generate_month_divider(m, year=year)
 
@@ -784,6 +819,7 @@ class TitleScreenGenerator:
 
 
 # Convenience functions
+
 
 def generate_title_screen(
     title: str,

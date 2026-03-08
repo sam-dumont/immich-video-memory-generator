@@ -62,24 +62,18 @@ def main(ctx: click.Context, config: str | None) -> None:
 @main.command()
 @click.option("--port", "-p", default=8080, help="Port to run the UI on")
 @click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")
-@click.option("--reload/--no-reload", default=True, help="Enable hot reload for development")
+@click.option(
+    "--reload/--no-reload", default=False, help="Enable hot reload (for development only)"
+)
 def ui(port: int, host: str, reload: bool) -> None:
     """Launch the interactive NiceGUI UI."""
-    from nicegui import ui as nicegui_ui
-
     print_info(f"Starting Immich Memories UI on http://{host}:{port}")
 
-    # Import the app module to register routes
-    from immich_memories.ui import app  # noqa: F401
+    # Import the app module to register routes and run
+    from immich_memories.ui.app import main as ui_main  # noqa: F401
 
     try:
-        nicegui_ui.run(
-            title="Immich Memories",
-            favicon="🎬",
-            port=port,
-            host=host,
-            reload=reload,
-        )
+        ui_main(port=port, host=host, reload=reload)
     except KeyboardInterrupt:
         print_info("Shutting down...")
 
@@ -879,14 +873,31 @@ def titles() -> None:
 @click.option(
     "--style",
     "-s",
-    type=click.Choice(["modern_warm", "elegant_minimal", "vintage_charm", "playful_bright", "soft_romantic", "random"]),
+    type=click.Choice(
+        [
+            "modern_warm",
+            "elegant_minimal",
+            "vintage_charm",
+            "playful_bright",
+            "soft_romantic",
+            "random",
+        ]
+    ),
     default="random",
     help="Visual style",
 )
 @click.option("--output", "-O", type=click.Path(), help="Output file path")
-@click.option("--type", "screen_type", type=click.Choice(["title", "month", "ending"]), default="title", help="Screen type")
+@click.option(
+    "--type",
+    "screen_type",
+    type=click.Choice(["title", "month", "ending"]),
+    default="title",
+    help="Screen type",
+)
 @click.option("--download-fonts", is_flag=True, help="Download fonts before generating")
-@click.option("--no-animated-background", is_flag=True, help="Disable animated backgrounds (static gradient)")
+@click.option(
+    "--no-animated-background", is_flag=True, help="Disable animated backgrounds (static gradient)"
+)
 @click.pass_context
 def titles_test(
     ctx: click.Context,
@@ -980,7 +991,10 @@ def titles_test(
     table.add_row("Screen Type", screen_type)
     if screen_type == "title":
         if birthday_age:
-            table.add_row("Title Type", f"Birthday ({birthday_age}{'st' if birthday_age == 1 else 'nd' if birthday_age == 2 else 'rd' if birthday_age == 3 else 'th'} Year)")
+            table.add_row(
+                "Title Type",
+                f"Birthday ({birthday_age}{'st' if birthday_age == 1 else 'nd' if birthday_age == 2 else 'rd' if birthday_age == 3 else 'th'} Year)",
+            )
         else:
             table.add_row("Title Type", "Calendar Year")
         if year:
@@ -1362,7 +1376,9 @@ def runs_show(run_id: str) -> None:
             items_str = (
                 f"{phase.items_processed}/{phase.items_total}"
                 if phase.items_total > 0
-                else str(phase.items_processed) if phase.items_processed > 0 else "-"
+                else str(phase.items_processed)
+                if phase.items_processed > 0
+                else "-"
             )
             errors_str = str(len(phase.errors)) if phase.errors else "-"
 

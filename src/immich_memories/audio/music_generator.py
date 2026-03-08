@@ -69,6 +69,7 @@ def get_seasonal_prompt(month: int, hemisphere: str = "north") -> str:
 # Data Models
 # =============================================================================
 
+
 @dataclass
 class ClipMood:
     """Mood information for a single video clip."""
@@ -84,9 +85,9 @@ class ClipMood:
 class VideoTimeline:
     """Timeline info for music duration calculation."""
 
-    title_duration: float = 3.5       # Opening title screen
-    ending_duration: float = 7.0      # Ending screen (fade to white)
-    fade_buffer: float = 5.0          # Extra for smooth fade out (5s as requested)
+    title_duration: float = 3.5  # Opening title screen
+    ending_duration: float = 7.0  # Ending screen (fade to white)
+    fade_buffer: float = 5.0  # Extra for smooth fade out (5s as requested)
 
     # Per-clip mood information
     clips: list[ClipMood] = field(default_factory=list)
@@ -104,12 +105,7 @@ class VideoTimeline:
     @property
     def total_duration(self) -> float:
         """Total music duration needed."""
-        return (
-            self.title_duration
-            + self.content_duration
-            + self.ending_duration
-            + self.fade_buffer
-        )
+        return self.title_duration + self.content_duration + self.ending_duration + self.fade_buffer
 
     @property
     def content_start(self) -> float:
@@ -161,15 +157,34 @@ class VideoTimeline:
             # Transform mellow moods to be more energetic
             # Memory videos should feel upbeat and fun, not slow and sad
             mood_lower = mood.lower()
-            mellow_words = ["calm", "peaceful", "serene", "gentle", "soft", "quiet", "slow", "relaxed", "mellow", "tender"]
-            sad_words = ["sad", "melancholy", "somber", "nostalgic", "reflective", "wistful", "bittersweet"]
+            mellow_words = [
+                "calm",
+                "peaceful",
+                "serene",
+                "gentle",
+                "soft",
+                "quiet",
+                "slow",
+                "relaxed",
+                "mellow",
+                "tender",
+            ]
+            sad_words = [
+                "sad",
+                "melancholy",
+                "somber",
+                "nostalgic",
+                "reflective",
+                "wistful",
+                "bittersweet",
+            ]
 
             if any(word in mood_lower for word in mellow_words):
                 # Replace mellow with energetic but warm
                 mood = f"upbeat warm groovy {mood}"
             elif any(word in mood_lower for word in sad_words):
                 # Replace sad with warm but still positive
-                mood = f"warm uplifting hopeful"
+                mood = "warm uplifting hopeful"
             else:
                 # For all other moods, ensure they're upbeat
                 if "upbeat" not in mood_lower and "energetic" not in mood_lower:
@@ -180,10 +195,12 @@ class VideoTimeline:
                 if seasonal:
                     mood = f"{mood}, {seasonal}"
 
-            scenes.append({
-                "mood": mood,
-                "duration": scene_duration,
-            })
+            scenes.append(
+                {
+                    "mood": mood,
+                    "duration": scene_duration,
+                }
+            )
 
         return scenes
 
@@ -221,13 +238,15 @@ class VideoTimeline:
             else:
                 duration, mood, month = clip_data
 
-            clip_moods.append(ClipMood(
-                duration=duration,
-                mood=mood,
-                has_transition_after=(i in transitions_after),
-                transition_duration=transition_duration,
-                month=month,
-            ))
+            clip_moods.append(
+                ClipMood(
+                    duration=duration,
+                    mood=mood,
+                    has_transition_after=(i in transitions_after),
+                    transition_duration=transition_duration,
+                    month=month,
+                )
+            )
 
         return cls(
             title_duration=title_duration,
@@ -326,6 +345,7 @@ class StemDuckingConfig:
 # =============================================================================
 # API Client
 # =============================================================================
+
 
 @dataclass
 class MusicGenClientConfig:
@@ -483,11 +503,14 @@ class MusicGenClient:
             output_dir = Path(tempfile.mkdtemp(prefix="musicgen_"))
 
         # Submit generation job
-        job_id = await self._submit_job("/generate", {
-            "prompt": prompt,
-            "duration": min(120, max(10, duration)),  # Clamp to API limits
-            "mood": mood,
-        })
+        job_id = await self._submit_job(
+            "/generate",
+            {
+                "prompt": prompt,
+                "duration": min(120, max(10, duration)),  # Clamp to API limits
+                "mood": mood,
+            },
+        )
 
         logger.info(f"Music generation job submitted: {job_id}")
 
@@ -565,8 +588,10 @@ class MusicGenClient:
                 elif "_other" in url:
                     await self._download_file(url, other_path)
 
-            logger.info(f"4-stem separation complete: drums={drums_path}, bass={bass_path}, "
-                       f"vocals={vocals_path}, other={other_path}")
+            logger.info(
+                f"4-stem separation complete: drums={drums_path}, bass={bass_path}, "
+                f"vocals={vocals_path}, other={other_path}"
+            )
 
             return MusicStems(
                 vocals=vocals_path,
@@ -588,7 +613,9 @@ class MusicGenClient:
                 elif "_accompaniment" in url:
                     await self._download_file(url, accompaniment_path)
 
-            logger.info(f"2-stem separation complete: vocals={vocals_path}, accompaniment={accompaniment_path}")
+            logger.info(
+                f"2-stem separation complete: vocals={vocals_path}, accompaniment={accompaniment_path}"
+            )
 
             return MusicStems(vocals=vocals_path, accompaniment=accompaniment_path)
 
@@ -616,12 +643,15 @@ class MusicGenClient:
             output_dir = Path(tempfile.mkdtemp(prefix="musicgen_"))
 
         # Submit soundtrack job
-        job_id = await self._submit_job("/generate/soundtrack", {
-            "base_prompt": base_prompt,
-            "scenes": scenes,
-            "use_beat_aligned_crossfade": True,
-            "crossfade_duration": crossfade_duration,
-        })
+        job_id = await self._submit_job(
+            "/generate/soundtrack",
+            {
+                "base_prompt": base_prompt,
+                "scenes": scenes,
+                "use_beat_aligned_crossfade": True,
+                "crossfade_duration": crossfade_duration,
+            },
+        )
 
         logger.info(f"Soundtrack generation job submitted: {job_id}")
 
@@ -745,14 +775,16 @@ async def generate_music_for_video(
                 progress_callback=version_progress,
             )
 
-            versions.append(GeneratedMusic(
-                version_id=i,
-                full_mix=music_path,
-                stems=stems,
-                duration=float(total_duration),
-                prompt=base_prompt,
-                mood=primary_mood,
-            ))
+            versions.append(
+                GeneratedMusic(
+                    version_id=i,
+                    full_mix=music_path,
+                    stems=stems,
+                    duration=float(total_duration),
+                    prompt=base_prompt,
+                    mood=primary_mood,
+                )
+            )
 
     return MusicGenerationResult(
         versions=versions,
@@ -765,6 +797,7 @@ async def generate_music_for_video(
 # Sync Wrapper
 # =============================================================================
 
+
 def generate_music_sync(
     timeline: VideoTimeline,
     mood: str,
@@ -773,10 +806,12 @@ def generate_music_sync(
     progress_callback: callable | None = None,
 ) -> MusicGenerationResult:
     """Synchronous wrapper for generate_music_for_video."""
-    return asyncio.run(generate_music_for_video(
-        timeline=timeline,
-        mood=mood,
-        output_dir=output_dir,
-        config=config,
-        progress_callback=progress_callback,
-    ))
+    return asyncio.run(
+        generate_music_for_video(
+            timeline=timeline,
+            mood=mood,
+            output_dir=output_dir,
+            config=config,
+            progress_callback=progress_callback,
+        )
+    )

@@ -8,6 +8,11 @@ from unittest.mock import patch
 
 import pytest
 
+try:
+    import cv2  # noqa: F401
+except ImportError:
+    pytest.skip("cv2 not available", allow_module_level=True)
+
 from immich_memories.analysis.scenes import Scene
 from immich_memories.analysis.scoring import MomentScore, SceneScorer
 

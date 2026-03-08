@@ -362,7 +362,9 @@ def mix_audio_with_stem_ducking(
     accompaniment_filter += f",volume={ducking.music_volume_db}dB"
 
     if config.fade_in_seconds > 0:
-        accompaniment_filter += f",afade=t=in:st={config.music_starts_at}:d={config.fade_in_seconds}"
+        accompaniment_filter += (
+            f",afade=t=in:st={config.music_starts_at}:d={config.fade_in_seconds}"
+        )
     if config.fade_out_seconds > 0:
         fade_start = video_duration - config.fade_out_seconds
         accompaniment_filter += f",afade=t=out:st={fade_start}:d={config.fade_out_seconds}"
@@ -412,15 +414,24 @@ def mix_audio_with_stem_ducking(
     cmd = [
         "ffmpeg",
         "-y",
-        "-i", str(video_path),
-        "-i", str(accompaniment_path),
-        "-i", str(vocals_path),
-        "-filter_complex", filter_complex,
-        "-map", "0:v",
-        "-map", "[mixed]",
-        "-c:v", "copy",
-        "-c:a", "aac",
-        "-b:a", "192k",
+        "-i",
+        str(video_path),
+        "-i",
+        str(accompaniment_path),
+        "-i",
+        str(vocals_path),
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "0:v",
+        "-map",
+        "[mixed]",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
         str(output_path),
     ]
 
@@ -564,17 +575,28 @@ def mix_audio_with_4stem_ducking(
     cmd = [
         "ffmpeg",
         "-y",
-        "-i", str(video_path),
-        "-i", str(drums_path),
-        "-i", str(bass_path),
-        "-i", str(vocals_path),
-        "-i", str(other_path),
-        "-filter_complex", filter_complex,
-        "-map", "0:v",
-        "-map", "[mixed]",
-        "-c:v", "copy",
-        "-c:a", "aac",
-        "-b:a", "192k",
+        "-i",
+        str(video_path),
+        "-i",
+        str(drums_path),
+        "-i",
+        str(bass_path),
+        "-i",
+        str(vocals_path),
+        "-i",
+        str(other_path),
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "0:v",
+        "-map",
+        "[mixed]",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
         str(output_path),
     ]
 

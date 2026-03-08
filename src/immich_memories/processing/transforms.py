@@ -7,7 +7,7 @@ import platform
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
@@ -108,7 +108,7 @@ def _build_encode_args(
     return args
 
 
-class ScaleMode(str, Enum):
+class ScaleMode(StrEnum):
     """Scaling mode for aspect ratio conversion."""
 
     FIT = "fit"  # Letterbox/pillarbox with blur background
@@ -116,7 +116,7 @@ class ScaleMode(str, Enum):
     SMART_CROP = "smart_crop"  # Crop keeping faces centered
 
 
-class Orientation(str, Enum):
+class Orientation(StrEnum):
     """Output orientation."""
 
     LANDSCAPE = "landscape"  # 16:9

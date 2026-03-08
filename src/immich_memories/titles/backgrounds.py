@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
 try:
     from PIL import Image, ImageFilter
+
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
@@ -46,9 +47,7 @@ def _get_coord_grids(width: int, height: int) -> tuple[np.ndarray, np.ndarray]:
     key = (width, height)
     if key not in _COORD_CACHE:
         _COORD_CACHE[key] = np.meshgrid(
-            np.arange(height, dtype=np.float32),
-            np.arange(width, dtype=np.float32),
-            indexing='ij'
+            np.arange(height, dtype=np.float32), np.arange(width, dtype=np.float32), indexing="ij"
         )
     return _COORD_CACHE[key]
 
@@ -83,7 +82,7 @@ def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     hex_color = hex_color.lstrip("#")
     if len(hex_color) == 3:
         hex_color = "".join(c * 2 for c in hex_color)
-    return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore
+    return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore
 
 
 def rgb_to_hex(rgb: tuple[int, int, int]) -> str:
@@ -113,10 +112,7 @@ def interpolate_color(
     Returns:
         Interpolated RGB color.
     """
-    return tuple(
-        int(color1[i] + (color2[i] - color1[i]) * t)
-        for i in range(3)
-    )  # type: ignore
+    return tuple(int(color1[i] + (color2[i] - color1[i]) * t) for i in range(3))  # type: ignore
 
 
 def create_gradient_background(
@@ -149,7 +145,7 @@ def create_gradient_background(
     angle_rad = math.radians(angle)
     cos_a = math.cos(angle_rad)
     sin_a = math.sin(angle_rad)
-    diagonal = math.sqrt(width ** 2 + height ** 2)
+    diagonal = math.sqrt(width**2 + height**2)
 
     # Get cached coordinate grids (memory optimization for 4K)
     y_coords, x_coords = _get_coord_grids(width, height)
@@ -183,7 +179,7 @@ def create_gradient_background(
 
     # Convert to uint8 and create image
     result = np.clip(result, 0, 255).astype(np.uint8)
-    return Image.fromarray(result, mode='RGB')
+    return Image.fromarray(result, mode="RGB")
 
 
 def create_radial_gradient(
@@ -213,7 +209,7 @@ def create_radial_gradient(
 
     center_x = width / 2
     center_y = height / 2
-    max_radius = math.sqrt(center_x ** 2 + center_y ** 2) * radius_ratio
+    max_radius = math.sqrt(center_x**2 + center_y**2) * radius_ratio
 
     # Get cached coordinate grids (memory optimization for 4K)
     y_coords, x_coords = _get_coord_grids(width, height)
@@ -233,7 +229,7 @@ def create_radial_gradient(
 
     # Convert to uint8 and create image
     result = np.clip(result, 0, 255).astype(np.uint8)
-    return Image.fromarray(result, mode='RGB')
+    return Image.fromarray(result, mode="RGB")
 
 
 def create_vignette_background(
@@ -272,14 +268,14 @@ def create_vignette_background(
     # Elliptical distance (normalized)
     dx = (x_coords - center_x) / max_dist_x
     dy = (y_coords - center_y) / max_dist_y
-    dist = np.sqrt(dx ** 2 + dy ** 2)
+    dist = np.sqrt(dx**2 + dy**2)
 
     # Apply vignette curve (vectorized)
     # Fade starts around 0.5 of the radius
     t = np.where(dist < 0.5, 0.0, (dist - 0.5) * 2)
     t = np.clip(t, 0.0, 1.0)
     t = t * strength
-    t = t ** 1.5
+    t = t**1.5
 
     # Vectorized color interpolation
     t_expanded = t[:, :, np.newaxis]
@@ -287,7 +283,7 @@ def create_vignette_background(
 
     # Convert to uint8 and create image
     result = np.clip(result, 0, 255).astype(np.uint8)
-    return Image.fromarray(result, mode='RGB')
+    return Image.fromarray(result, mode="RGB")
 
 
 def create_soft_gradient(
@@ -349,13 +345,21 @@ def create_background_for_style(
         color = hex_to_rgb(colors[0]) if colors else (255, 255, 255)
         return Image.new("RGB", (width, height), color)
 
-    if background_type == "solid_gradient" or background_type == BackgroundType.SOLID_GRADIENT.value:
+    if (
+        background_type == "solid_gradient"
+        or background_type == BackgroundType.SOLID_GRADIENT.value
+    ):
         return create_gradient_background(width, height, colors, angle)
 
-    elif background_type == "soft_gradient" or background_type == BackgroundType.SOFT_GRADIENT.value:
+    elif (
+        background_type == "soft_gradient" or background_type == BackgroundType.SOFT_GRADIENT.value
+    ):
         return create_soft_gradient(width, height, colors, blur_radius=30)
 
-    elif background_type == "radial_gradient" or background_type == BackgroundType.RADIAL_GRADIENT.value:
+    elif (
+        background_type == "radial_gradient"
+        or background_type == BackgroundType.RADIAL_GRADIENT.value
+    ):
         return create_radial_gradient(width, height, colors[0], colors[1])
 
     elif background_type == "vignette" or background_type == BackgroundType.VIGNETTE.value:
@@ -395,6 +399,7 @@ def create_background_array(
 # Animated Background Support
 # =============================================================================
 
+
 @dataclass
 class AnimatedBackgroundConfig:
     """Configuration for animated backgrounds.
@@ -405,26 +410,26 @@ class AnimatedBackgroundConfig:
 
     # Gradient angle animation (degrees) - visible rotation
     angle_shift_range: float = 45.0  # Total degrees to shift (±) - was 25
-    angle_shift_speed: float = 0.5   # Full cycles per duration - slower for elegance
+    angle_shift_speed: float = 0.5  # Full cycles per duration - slower for elegance
 
     # Color pulsing - noticeable color breathing
     color_pulse_amount: float = 0.25  # How much to shift colors (0-1) - was 0.15
-    color_pulse_speed: float = 0.8    # Pulse cycles per duration
+    color_pulse_speed: float = 0.8  # Pulse cycles per duration
 
     # Vignette breathing - more dramatic
     vignette_pulse_amount: float = 0.25  # Vignette intensity variation - was 0.15
-    vignette_pulse_speed: float = 0.5    # Pulse cycles per duration - slower
+    vignette_pulse_speed: float = 0.5  # Pulse cycles per duration - slower
 
     # Radial glow pulse - bigger effect
-    radial_pulse_amount: float = 0.35   # Radius variation - was 0.2
-    radial_pulse_speed: float = 0.4     # Pulse cycles per duration - slower
+    radial_pulse_amount: float = 0.35  # Radius variation - was 0.2
+    radial_pulse_speed: float = 0.4  # Pulse cycles per duration - slower
 
     # Floating bokeh particles overlay
-    enable_bokeh: bool = True           # Add floating bokeh particles
-    bokeh_count: int = 12               # Number of bokeh circles
+    enable_bokeh: bool = True  # Add floating bokeh particles
+    bokeh_count: int = 12  # Number of bokeh circles
     bokeh_size_range: tuple[float, float] = (0.02, 0.08)  # Size as fraction of min dimension
     bokeh_opacity_range: tuple[float, float] = (0.03, 0.12)  # Very subtle
-    bokeh_drift_speed: float = 0.3      # How fast particles drift
+    bokeh_drift_speed: float = 0.3  # How fast particles drift
 
 
 def _shift_color(
@@ -445,10 +450,7 @@ def _shift_color(
     if brightness_only:
         # Simple brightness shift
         factor = 1.0 + shift * 0.15
-        return tuple(
-            max(0, min(255, int(c * factor)))
-            for c in color
-        )  # type: ignore
+        return tuple(max(0, min(255, int(c * factor))) for c in color)  # type: ignore
     else:
         # Shift each channel slightly differently for subtle color variation
         r_shift = shift * 10
@@ -515,7 +517,7 @@ def create_animated_gradient(
     angle_rad = math.radians(animated_angle)
     cos_a = math.cos(angle_rad)
     sin_a = math.sin(angle_rad)
-    diagonal = math.sqrt(width ** 2 + height ** 2)
+    diagonal = math.sqrt(width**2 + height**2)
 
     # Get cached coordinate grids (memory optimization for 4K)
     y_coords, x_coords = _get_coord_grids(width, height)
@@ -541,7 +543,7 @@ def create_animated_gradient(
 
     # Convert to uint8 and create image
     result = np.clip(result, 0, 255).astype(np.uint8)
-    return Image.fromarray(result, mode='RGB')
+    return Image.fromarray(result, mode="RGB")
 
 
 def create_animated_radial(
@@ -583,7 +585,7 @@ def create_animated_radial(
 
     center_x = width / 2
     center_y = height / 2
-    max_radius = math.sqrt(center_x ** 2 + center_y ** 2) * radius_factor
+    max_radius = math.sqrt(center_x**2 + center_y**2) * radius_factor
 
     # Get cached coordinate grids (memory optimization for 4K)
     y_coords, x_coords = _get_coord_grids(width, height)
@@ -599,7 +601,7 @@ def create_animated_radial(
 
     # Convert to uint8 and create image
     result = np.clip(result, 0, 255).astype(np.uint8)
-    return Image.fromarray(result, mode='RGB')
+    return Image.fromarray(result, mode="RGB")
 
 
 def create_animated_vignette(
@@ -650,13 +652,13 @@ def create_animated_vignette(
     # Elliptical distance (vectorized)
     dx = (x_coords - center_x) / max_dist_x
     dy = (y_coords - center_y) / max_dist_y
-    dist = np.sqrt(dx ** 2 + dy ** 2)
+    dist = np.sqrt(dx**2 + dy**2)
 
     # Apply vignette curve (vectorized)
     t = np.where(dist < 0.5, 0.0, (dist - 0.5) * 2)
     t = np.clip(t, 0.0, 1.0)
     t = t * strength
-    t = t ** 1.5
+    t = t**1.5
 
     # Vectorized color interpolation
     t_expanded = t[:, :, np.newaxis]
@@ -664,7 +666,7 @@ def create_animated_vignette(
 
     # Convert to uint8 and create image
     result = np.clip(result, 0, 255).astype(np.uint8)
-    return Image.fromarray(result, mode='RGB')
+    return Image.fromarray(result, mode="RGB")
 
 
 def _create_bokeh_overlay(
@@ -780,21 +782,15 @@ def create_animated_background(
     cfg = config or AnimatedBackgroundConfig()
 
     if bg_type in ("radial_gradient", BackgroundType.RADIAL_GRADIENT.value):
-        image = create_animated_radial(
-            width, height, colors[0], colors[1], progress, config
-        )
+        image = create_animated_radial(width, height, colors[0], colors[1], progress, config)
 
     elif bg_type in ("vignette", BackgroundType.VIGNETTE.value):
         # Vignette should fade to WHITE at edges for a bright, clean look
-        image = create_animated_vignette(
-            width, height, colors[0], "#FFFFFF", progress, config
-        )
+        image = create_animated_vignette(width, height, colors[0], "#FFFFFF", progress, config)
 
     else:
         # Default to animated gradient (works for solid_gradient, soft_gradient)
-        image = create_animated_gradient(
-            width, height, colors, angle, progress, config
-        )
+        image = create_animated_gradient(width, height, colors, angle, progress, config)
 
         # Apply blur for soft gradient
         # Radius scales with image size but capped for performance

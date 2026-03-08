@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 try:
     from PIL import Image
+
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
@@ -37,7 +38,7 @@ def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     hex_color = hex_color.lstrip("#")
     if len(hex_color) == 3:
         hex_color = "".join(c * 2 for c in hex_color)
-    return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore
+    return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore
 
 
 def rgb_to_hex(rgb: tuple[int, int, int]) -> str:
@@ -157,7 +158,7 @@ def quantize_colors(
         return []
 
     # Simple binning approach (divide color space)
-    bin_size = 256 // int(num_clusters ** (1/3) + 1)
+    bin_size = 256 // int(num_clusters ** (1 / 3) + 1)
 
     def bin_color(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
         return (
@@ -249,10 +250,7 @@ def extract_dominant_color(
 
     # Filter dark colors if requested
     if exclude_dark:
-        filtered = [
-            c for c in all_colors
-            if all(v > dark_threshold for v in c)
-        ]
+        filtered = [c for c in all_colors if all(v > dark_threshold for v in c)]
         if filtered:
             all_colors = filtered
 
@@ -303,9 +301,12 @@ def extract_keyframes_from_video(
             # Get video duration first
             probe_cmd = [
                 "ffprobe",
-                "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
                 str(video_path),
             ]
             result = subprocess.run(
@@ -330,10 +331,14 @@ def extract_keyframes_from_video(
                 # This reduces memory from ~32MB/frame to ~0.3MB/frame for 4K source
                 extract_cmd = [
                     "ffmpeg",
-                    "-ss", str(timestamp),
-                    "-i", str(video_path),
-                    "-vf", "scale=320:-1",  # Downsample - color analysis doesn't need full res
-                    "-frames:v", "1",
+                    "-ss",
+                    str(timestamp),
+                    "-i",
+                    str(video_path),
+                    "-vf",
+                    "scale=320:-1",  # Downsample - color analysis doesn't need full res
+                    "-frames:v",
+                    "1",
                     "-y",
                     str(frame_path),
                 ]
@@ -382,10 +387,7 @@ def create_color_fade_frames(
         t = i / max(frame_count - 1, 1)
 
         # Interpolate color
-        color = tuple(
-            int(start_color[j] + (end_color[j] - start_color[j]) * t)
-            for j in range(3)
-        )
+        color = tuple(int(start_color[j] + (end_color[j] - start_color[j]) * t) for j in range(3))
 
         frame = Image.new("RGB", (width, height), color)
         frames.append(frame)

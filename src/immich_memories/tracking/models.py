@@ -112,9 +112,7 @@ class PhaseStats:
             phase_name=data["phase_name"],
             started_at=datetime.fromisoformat(data["started_at"]),
             completed_at=(
-                datetime.fromisoformat(data["completed_at"])
-                if data.get("completed_at")
-                else None
+                datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None
             ),
             duration_seconds=data.get("duration_seconds", 0.0),
             items_processed=data.get("items_processed", 0),
@@ -175,9 +173,7 @@ class RunMetadata:
             "date_range_start": (
                 self.date_range_start.isoformat() if self.date_range_start else None
             ),
-            "date_range_end": (
-                self.date_range_end.isoformat() if self.date_range_end else None
-            ),
+            "date_range_end": (self.date_range_end.isoformat() if self.date_range_end else None),
             "target_duration_minutes": self.target_duration_minutes,
             "output_path": self.output_path,
             "output_size_bytes": self.output_size_bytes,
@@ -197,9 +193,7 @@ class RunMetadata:
             run_id=data["run_id"],
             created_at=datetime.fromisoformat(data["created_at"]),
             completed_at=(
-                datetime.fromisoformat(data["completed_at"])
-                if data.get("completed_at")
-                else None
+                datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None
             ),
             status=data.get("status", "running"),
             person_name=data.get("person_name"),
@@ -210,9 +204,7 @@ class RunMetadata:
                 else None
             ),
             date_range_end=(
-                date.fromisoformat(data["date_range_end"])
-                if data.get("date_range_end")
-                else None
+                date.fromisoformat(data["date_range_end"]) if data.get("date_range_end") else None
             ),
             target_duration_minutes=data.get("target_duration_minutes", 10),
             output_path=data.get("output_path"),
@@ -222,9 +214,7 @@ class RunMetadata:
             clips_selected=data.get("clips_selected", 0),
             errors_count=data.get("errors_count", 0),
             system_info=(
-                SystemInfo.from_dict(data["system_info"])
-                if data.get("system_info")
-                else None
+                SystemInfo.from_dict(data["system_info"]) if data.get("system_info") else None
             ),
             phases=[PhaseStats.from_dict(p) for p in data.get("phases", [])],
         )
