@@ -160,6 +160,9 @@ jobs:
     needs: [analyze]
     if: needs.analyze.outputs.should_release == 'true'
     uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      pull-requests: read
 
   # Create release (requires approval for major releases)
   release:
