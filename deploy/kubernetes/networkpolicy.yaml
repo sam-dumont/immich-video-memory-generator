@@ -1,0 +1,46 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: immich-memories
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: immich-memories
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # Allow inbound HTTP traffic to the UI
+    - ports:
+        - port: 8080
+          protocol: TCP
+
+  egress:
+    # Allow DNS resolution
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+    # Allow HTTPS outbound (Immich API, Pixabay, OpenAI, etc.)
+    - ports:
+        - port: 443
+          protocol: TCP
+        - port: 80
+          protocol: TCP
+
+    # Allow Immich server communication (common port)
+    - ports:
+        - port: 3001
+          protocol: TCP
+
+    # Allow Ollama (if used for mood analysis)
+    - ports:
+        - port: 11434
+          protocol: TCP

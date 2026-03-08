@@ -1345,7 +1345,7 @@ class VideoAssembler:
                 "json",
                 str(video_path),
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
             if result.returncode == 0 and result.stdout.strip():
                 data = json.loads(result.stdout)
                 streams = data.get("streams", [])
@@ -3220,7 +3220,7 @@ class VideoAssembler:
             str(output_path),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         if result.returncode != 0:
             raise RuntimeError(f"Failed to encode clip: {result.stderr[-500:]}")
 
@@ -3255,7 +3255,7 @@ class VideoAssembler:
             str(output_path),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         if result.returncode != 0:
             raise RuntimeError(f"Failed to trim segment: {result.stderr[-500:]}")
 
@@ -3322,7 +3322,7 @@ class VideoAssembler:
             str(output_path),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
 
         # Fallback: if audio extraction failed, use silence only
         if result.returncode != 0:
@@ -3354,7 +3354,7 @@ class VideoAssembler:
                 str(output_path),
             ]
 
-            result = subprocess.run(cmd_silent, capture_output=True, text=True)
+            result = subprocess.run(cmd_silent, capture_output=True, text=True, timeout=1800)
             if result.returncode != 0:
                 raise RuntimeError(f"Failed to trim segment (reencode): {result.stderr[-500:]}")
 
@@ -3614,7 +3614,7 @@ class VideoAssembler:
             str(temp_output),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
 
         if result.returncode != 0:
             # Fallback: use amix with fades
@@ -3654,7 +3654,7 @@ class VideoAssembler:
                 str(temp_output),
             ]
 
-            result = subprocess.run(cmd_fallback, capture_output=True, text=True)
+            result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=1800)
 
             if result.returncode != 0:
                 # Last resort: generate silent audio
@@ -3685,7 +3685,7 @@ class VideoAssembler:
                     str(temp_output),
                 ]
 
-                result = subprocess.run(cmd_silent, capture_output=True, text=True)
+                result = subprocess.run(cmd_silent, capture_output=True, text=True, timeout=1800)
                 if result.returncode != 0:
                     logger.error(f"Failed to add any audio: {result.stderr[-200:]}")
                     return  # Keep video without audio rather than failing
@@ -3766,7 +3766,7 @@ class VideoAssembler:
             str(output),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
 
         # If filter_complex failed (e.g., atrim on audio failed), retry with silence only
         if result.returncode != 0:
@@ -3800,7 +3800,7 @@ class VideoAssembler:
                 str(output),
             ]
 
-            result = subprocess.run(cmd_silent, capture_output=True, text=True)
+            result = subprocess.run(cmd_silent, capture_output=True, text=True, timeout=1800)
             if result.returncode != 0:
                 raise RuntimeError(f"Failed to extract segment: {result.stderr[-500:]}")
 
@@ -3988,7 +3988,7 @@ class VideoAssembler:
                 str(output_path),
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
             if result.returncode != 0:
                 # If acrossfade failed, try manual audio crossfade with amix
                 logger.warning(
@@ -4040,7 +4040,7 @@ class VideoAssembler:
                     str(output_path),
                 ]
 
-                result = subprocess.run(cmd_fallback, capture_output=True, text=True)
+                result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=1800)
                 if result.returncode != 0:
                     # Last resort: video xfade with silent audio
                     logger.warning(
@@ -4082,7 +4082,9 @@ class VideoAssembler:
                         str(output_path),
                     ]
 
-                    result = subprocess.run(cmd_silent, capture_output=True, text=True)
+                    result = subprocess.run(
+                        cmd_silent, capture_output=True, text=True, timeout=1800
+                    )
                     if result.returncode != 0:
                         raise RuntimeError(f"Failed to render transition: {result.stderr[-500:]}")
 
@@ -4706,7 +4708,7 @@ class VideoAssembler:
             str(temp_output),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
 
         if result.returncode != 0:
             logger.warning(f"Failed to add music: {result.stderr}")
@@ -4753,7 +4755,7 @@ class VideoAssembler:
                 "default=noprint_wrappers=1:nokey=1",
                 str(video_path),
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
             if result.returncode == 0 and result.stdout.strip():
                 # Parse fraction like "60/1" or "30000/1001"
                 fps_str = result.stdout.strip()

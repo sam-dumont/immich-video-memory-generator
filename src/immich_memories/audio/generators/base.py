@@ -8,6 +8,7 @@ without changing the rest of the application.
 from __future__ import annotations
 
 import logging
+import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,7 +35,7 @@ class GenerationRequest:
     crossfade_duration: float = 2.0
 
     # Output
-    output_dir: Path = field(default_factory=lambda: Path("/tmp/musicgen"))
+    output_dir: Path = field(default_factory=lambda: Path(tempfile.gettempdir()) / "musicgen")
 
     @property
     def is_multi_scene(self) -> bool:

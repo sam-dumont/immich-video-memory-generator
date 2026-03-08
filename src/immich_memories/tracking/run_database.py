@@ -400,7 +400,7 @@ class RunDatabase:
             params.append(run_id)
 
             conn.execute(
-                f"UPDATE pipeline_runs SET {', '.join(updates)} WHERE run_id = ?",
+                f"UPDATE pipeline_runs SET {', '.join(updates)} WHERE run_id = ?",  # noqa: S608 - column names are hardcoded, values are parameterized
                 params,
             )
             conn.commit()

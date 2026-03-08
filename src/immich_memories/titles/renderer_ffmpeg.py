@@ -273,7 +273,7 @@ def create_title_ffmpeg(
     logger.info(f"Generating title with FFmpeg: {title}")
     logger.debug(f"FFmpeg command: {' '.join(cmd)}")
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
     if result.returncode != 0:
         logger.error(f"FFmpeg failed: {result.stderr}")
@@ -436,7 +436,7 @@ def create_title_with_effects(
     logger.info(f"Generating title: {title}")
     logger.debug(f"Filter: {filter_complex}")
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
     if result.returncode != 0:
         logger.error(f"FFmpeg stderr: {result.stderr}")
