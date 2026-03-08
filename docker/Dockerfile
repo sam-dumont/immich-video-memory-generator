@@ -19,8 +19,8 @@ COPY src/ ./src/
 
 RUN pip install --no-cache-dir build && \
     python -m build --wheel && \
-    pip wheel --no-cache-dir --wheel-dir=/wheels -r <(echo ".[face]") || \
-    pip wheel --no-cache-dir --wheel-dir=/wheels .
+    (pip wheel --no-cache-dir --wheel-dir=/wheels ".[face]" || \
+     pip wheel --no-cache-dir --wheel-dir=/wheels .)
 
 
 # Stage 2: Runtime image
