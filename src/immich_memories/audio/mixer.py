@@ -124,7 +124,7 @@ def loop_audio_to_duration(
     audio_path: Path,
     target_duration: float,
     output_path: Path | None = None,
-    crossfade_seconds: float = 2.0,  # noqa: ARG001 - reserved for future use
+    _crossfade_seconds: float = 2.0,  # noqa: ARG001 - reserved for future use
 ) -> Path:
     """Loop an audio file to reach target duration with crossfade.
 
@@ -163,7 +163,7 @@ def loop_audio_to_duration(
             "2",
             str(output_path),
         ]
-        subprocess.run(cmd, capture_output=True, check=True)
+        subprocess.run(cmd, capture_output=True, check=True, timeout=600)
         return output_path
 
     # Calculate how many loops we need
@@ -194,7 +194,7 @@ def loop_audio_to_duration(
     ]
 
     try:
-        subprocess.run(cmd, capture_output=True, check=True)
+        subprocess.run(cmd, capture_output=True, check=True, timeout=600)
     except subprocess.CalledProcessError as e:
         logger.error(f"Loop failed: {e.stderr.decode() if e.stderr else e}")
         raise
@@ -311,7 +311,7 @@ def mix_audio_with_ducking(
 
     try:
         logger.info("Mixing audio with ducking...")
-        subprocess.run(cmd, capture_output=True, check=True)
+        subprocess.run(cmd, capture_output=True, check=True, timeout=600)
         logger.info(f"Audio mixed successfully: {output_path}")
     except subprocess.CalledProcessError as e:
         logger.error(f"Audio mixing failed: {e.stderr.decode() if e.stderr else e}")
@@ -437,7 +437,7 @@ def mix_audio_with_stem_ducking(
 
     try:
         logger.info("Mixing audio with stem-based ducking...")
-        subprocess.run(cmd, capture_output=True, check=True)
+        subprocess.run(cmd, capture_output=True, check=True, timeout=600)
         logger.info(f"Audio mixed successfully: {output_path}")
     except subprocess.CalledProcessError as e:
         logger.error(f"Stem mixing failed: {e.stderr.decode() if e.stderr else e}")
@@ -606,7 +606,7 @@ def mix_audio_with_4stem_ducking(
             f"bass={ducking_levels.bass_db}dB, vocals={ducking_levels.vocals_db}dB, "
             f"other={ducking_levels.other_db}dB"
         )
-        subprocess.run(cmd, capture_output=True, check=True)
+        subprocess.run(cmd, capture_output=True, check=True, timeout=600)
         logger.info(f"Audio mixed successfully: {output_path}")
     except subprocess.CalledProcessError as e:
         logger.error(f"4-stem mixing failed: {e.stderr.decode() if e.stderr else e}")

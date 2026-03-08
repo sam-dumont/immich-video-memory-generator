@@ -180,10 +180,32 @@ resource "kubernetes_deployment" "this" {
       spec {
         runtime_class_name = var.gpu_enabled ? var.runtime_class_name : null
 
+        # Pod-level security context
+        security_context {
+          run_as_non_root = true
+          run_as_user     = 1000
+          run_as_group    = 1000
+          fs_group        = 1000
+
+          seccomp_profile {
+            type = "RuntimeDefault"
+          }
+        }
+
         container {
           name              = "immich-memories"
           image             = "${var.image_repository}:${var.image_tag}"
           image_pull_policy = "Always"
+
+          # Container-level security context
+          security_context {
+            allow_privilege_escalation = false
+            read_only_root_filesystem  = false # NiceGUI needs write access
+
+            capabilities {
+              drop = ["ALL"]
+            }
+          }
 
           port {
             name           = "http"
@@ -299,7 +321,7 @@ resource "kubernetes_deployment" "this" {
 
           volume_mount {
             name       = "config"
-            mount_path = "/root/.immich-memories"
+            mount_path = "/home/immich/.immich-memories"
             read_only  = true
           }
 
@@ -310,12 +332,17 @@ resource "kubernetes_deployment" "this" {
 
           volume_mount {
             name       = "cache"
-            mount_path = "/root/.cache/immich-memories"
+            mount_path = "/home/immich/.cache/immich-memories"
+          }
+
+          volume_mount {
+            name       = "tmp"
+            mount_path = "/tmp"
           }
 
           liveness_probe {
             http_get {
-              path = "/_stcore/health"
+              path = "/"
               port = "http"
             }
             initial_delay_seconds = 30
@@ -326,7 +353,7 @@ resource "kubernetes_deployment" "this" {
 
           readiness_probe {
             http_get {
-              path = "/_stcore/health"
+              path = "/"
               port = "http"
             }
             initial_delay_seconds = 10
@@ -358,6 +385,13 @@ resource "kubernetes_deployment" "this" {
           name = "cache"
           persistent_volume_claim {
             claim_name = kubernetes_persistent_volume_claim.cache.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "tmp"
+          empty_dir {
+            size_limit = "2Gi"
           }
         }
 

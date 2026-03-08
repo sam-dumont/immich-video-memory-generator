@@ -25,7 +25,7 @@ from nicegui import app, ui
 _sigint_count = 0
 
 
-def _sigint_handler(signum: int, frame: object) -> None:
+def _sigint_handler(_signum: int, frame: object) -> None:
     global _sigint_count
     _sigint_count += 1
     if _sigint_count == 1:
@@ -209,7 +209,7 @@ def initialize_app() -> None:
 app.on_startup(initialize_app)
 
 
-def main(port: int = 8080, host: str = "0.0.0.0", reload: bool = True) -> None:
+def main(port: int = 8080, host: str = "127.0.0.1", reload: bool = True) -> None:
     """Run the NiceGUI application."""
     ui.run(
         title="Immich Memories",

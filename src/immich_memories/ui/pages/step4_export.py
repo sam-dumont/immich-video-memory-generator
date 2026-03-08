@@ -8,6 +8,7 @@ from pathlib import Path
 from nicegui import app as nicegui_app
 from nicegui import run, ui
 
+from immich_memories.security import sanitize_error_message, sanitize_filename
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
@@ -136,10 +137,12 @@ def render_step4() -> None:
             run_id_label.set_text(f"Run ID: {run_id}")
 
             # Create versioned output directory
-            person_slug = person_name.lower().replace(" ", "_") if person_name else "all"
+            person_slug = sanitize_filename(
+                person_name.lower().replace(" ", "_") if person_name else "all"
+            )
             run_output_dir = output_dir / f"{person_slug}_{date_slug}_{run_id}"
             run_output_dir.mkdir(parents=True, exist_ok=True)
-            output_filename = filename_input.value
+            output_filename = sanitize_filename(filename_input.value)
             output_path = run_output_dir / output_filename
 
             # Start run tracking
@@ -391,7 +394,8 @@ def render_step4() -> None:
                 except Exception as e:
                     logger.warning(f"Music generation failed: {e}")
                     ui.notify(
-                        f"Music generation failed: {e}. Video saved without music.", type="warning"
+                        f"Music generation failed: {sanitize_error_message(str(e))}. Video saved without music.",
+                        type="warning",
                     )
                     run_tracker.complete_phase(items_processed=0)
 
@@ -438,7 +442,8 @@ def render_step4() -> None:
                 except Exception as e:
                     logger.warning(f"Music mixing failed: {e}")
                     ui.notify(
-                        f"Music mixing failed: {e}. Video saved without music.", type="warning"
+                        f"Music mixing failed: {sanitize_error_message(str(e))}. Video saved without music.",
+                        type="warning",
                     )
                     run_tracker.complete_phase(items_processed=0)
 
@@ -479,10 +484,11 @@ def render_step4() -> None:
 
         except Exception as e:
             logger.exception("Video generation failed")
-            ui.notify(f"Generation failed: {e}", type="negative")
+            safe_msg = sanitize_error_message(str(e))
+            ui.notify(f"Generation failed: {safe_msg}", type="negative")
             progress_container.clear()
             with progress_container:
-                ui.label(f"Generation failed: {e}").classes("text-red-600")
+                ui.label(f"Generation failed: {safe_msg}").classes("text-red-600")
 
     ui.button(
         "Generate Video",

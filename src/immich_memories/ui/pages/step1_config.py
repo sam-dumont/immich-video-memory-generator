@@ -10,6 +10,7 @@ from nicegui import run, ui
 
 from immich_memories.api.immich import ImmichAPIError, SyncImmichClient
 from immich_memories.config import Config, get_config, set_config
+from immich_memories.security import sanitize_error_message
 from immich_memories.timeperiod import (
     available_years,
     birthday_year,
@@ -104,10 +105,10 @@ def render_step1() -> None:
                 ui.navigate.to("/")
 
             except ImmichAPIError as e:
-                status_label.set_text(f"Connection failed: {e}")
+                status_label.set_text(f"Connection failed: {sanitize_error_message(str(e))}")
                 status_label.classes("text-red-600", remove="text-green-600")
             except Exception as e:
-                status_label.set_text(f"Error: {e}")
+                status_label.set_text(f"Error: {sanitize_error_message(str(e))}")
                 status_label.classes("text-red-600", remove="text-green-600")
 
         def save_config() -> None:

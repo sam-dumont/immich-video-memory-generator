@@ -962,7 +962,7 @@ class UnifiedSegmentAnalyzer:
         self,
         video_path: Path,
         candidates: list[tuple[CutPoint, CutPoint]],
-        all_cut_points: list[CutPoint],
+        _all_cut_points: list[CutPoint],
         audio_content_result: AudioAnalysisResult | None = None,
         video_duration: float | None = None,
     ) -> list[ScoredSegment]:
@@ -973,7 +973,7 @@ class UnifiedSegmentAnalyzer:
         Args:
             video_path: Path to video file.
             candidates: List of (start, end) cut point pairs.
-            all_cut_points: All available cut points (for context).
+            _all_cut_points: All available cut points (for context).
             audio_content_result: Optional audio content analysis results.
             video_duration: Total video duration for duration scoring.
 
@@ -1038,7 +1038,7 @@ class UnifiedSegmentAnalyzer:
         self,
         video_path: Path,
         candidates: list[tuple[CutPoint, CutPoint]],
-        all_cut_points: list[CutPoint],
+        _all_cut_points: list[CutPoint],
     ) -> list[ScoredSegment]:
         """Score candidate segments using visual and optional content analysis.
 
@@ -1047,7 +1047,7 @@ class UnifiedSegmentAnalyzer:
         Args:
             video_path: Path to video file.
             candidates: List of (start, end) cut point pairs.
-            all_cut_points: All available cut points (for context).
+            _all_cut_points: All available cut points (for context).
 
         Returns:
             List of ScoredSegment with scores populated.

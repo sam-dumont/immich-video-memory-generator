@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
 from immich_memories.processing.downscaler import cleanup_downscaled
+from immich_memories.security import sanitize_filename
 from immich_memories.tracking.run_database import RunDatabase
 
 if TYPE_CHECKING:
@@ -593,7 +594,8 @@ class SmartPipeline:
                 )
                 video_path = video_cache.download_or_get(self.client, clip.asset)
             else:
-                suffix = Path(clip.asset.original_file_name or "video.mp4").suffix or ".mp4"
+                safe_name = sanitize_filename(clip.asset.original_file_name or "video.mp4")
+                suffix = Path(safe_name).suffix or ".mp4"
                 with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                     temp_file = Path(tmp.name)
                 self.client.download_asset(clip.asset.id, temp_file)
@@ -716,7 +718,8 @@ class SmartPipeline:
                     enable_downscaling=config.analysis.enable_downscaling,
                 )
             else:
-                suffix = Path(clip.asset.original_file_name or "video.mp4").suffix or ".mp4"
+                safe_name = sanitize_filename(clip.asset.original_file_name or "video.mp4")
+                suffix = Path(safe_name).suffix or ".mp4"
                 with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                     temp_file = Path(tmp.name)
                 self.client.download_asset(clip.asset.id, temp_file)
