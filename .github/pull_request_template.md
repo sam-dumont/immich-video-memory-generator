@@ -25,7 +25,7 @@ Fixes #
 <!-- Mark completed items with an "x" -->
 
 - [ ] My PR title follows [conventional commits](https://www.conventionalcommits.org/) format
-- [ ] I have run `just check` locally and all checks pass
+- [ ] I have run `make check` locally and all checks pass
 - [ ] I have added tests that prove my fix/feature works
 - [ ] I have updated documentation if needed
 - [ ] My changes don't introduce new warnings

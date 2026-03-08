@@ -27,3 +27,19 @@ repos:
     rev: v4.13.9
     hooks:
       - id: commitizen
+
+  - repo: local
+    hooks:
+      - id: file-length
+        name: File length gate (max 500 lines)
+        entry: make file-length
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: complexity
+        name: Complexity gate (Xenon grade C)
+        entry: make complexity
+        language: system
+        pass_filenames: false
+        types: [python]

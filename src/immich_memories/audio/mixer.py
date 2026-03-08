@@ -241,50 +241,7 @@ def mix_audio_with_ducking(
         music_to_use = loop_audio_to_duration(music_path, video_duration, looped_music)
 
     # Build the complex filter for ducking
-    # 1. Take video audio as sidechain input
-    # 2. Lower music volume based on video audio loudness
-    # 3. Mix the ducked music with original audio
-
-    filter_parts = []
-
-    # Prepare music: trim to video length, apply volume, add fades
-    music_filter = f"[1:a]atrim=0:{video_duration}"
-    music_filter += f",volume={ducking.music_volume_db}dB"
-
-    if config.fade_in_seconds > 0:
-        music_filter += f",afade=t=in:st={config.music_starts_at}:d={config.fade_in_seconds}"
-
-    if config.fade_out_seconds > 0:
-        fade_start = video_duration - config.fade_out_seconds
-        music_filter += f",afade=t=out:st={fade_start}:d={config.fade_out_seconds}"
-
-    music_filter += "[music]"
-    filter_parts.append(music_filter)
-
-    # Prepare video audio (normalize if requested)
-    if config.normalize_audio:
-        filter_parts.append("[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[video_audio]")
-    else:
-        filter_parts.append("[0:a]acopy[video_audio]")
-
-    # Apply sidechain compression: duck music when video audio is present
-    # The video audio controls when the music ducks
-    sidechain_filter = (
-        f"[music][video_audio]sidechaincompress="
-        f"threshold={ducking.threshold}:"
-        f"ratio={ducking.ratio}:"
-        f"attack={ducking.attack_ms}:"
-        f"release={ducking.release_ms}:"
-        f"makeup={_db_to_linear(ducking.makeup_db):.2f}"
-        f"[ducked_music]"
-    )
-    filter_parts.append(sidechain_filter)
-
-    # Mix ducked music with video audio
-    filter_parts.append(
-        "[video_audio][ducked_music]amix=inputs=2:duration=first:dropout_transition=2[mixed]"
-    )
-
+    filter_parts = _build_ducking_filter(config, ducking, video_duration)
     filter_complex = ";".join(filter_parts)
 
     cmd = [
@@ -325,410 +282,60 @@ def mix_audio_with_ducking(
     return output_path
 
 
-def mix_audio_with_stem_ducking(
-    video_path: Path,
-    vocals_path: Path,
-    accompaniment_path: Path,
-    output_path: Path,
-    config: MixConfig | None = None,
-    duck_vocals_db: float = -12.0,
-) -> Path:
-    """Mix background music using separated stems for intelligent ducking.
-
-    This approach uses pre-separated stems (from Demucs) to duck only the
-    melodic content while keeping drums/bass at full volume during speech.
-
-    Args:
-        video_path: Path to the video file
-        vocals_path: Path to the vocals/melody stem
-        accompaniment_path: Path to the drums+bass+other stem
-        output_path: Path for the output video
-        config: Mixing configuration
-        duck_vocals_db: How much to lower vocals during speech (dB)
-
-    Returns:
-        Path to the output video
-    """
-    if config is None:
-        config = MixConfig(ducking=DuckingConfig())
-
-    ducking = config.ducking
-    video_duration = get_video_duration(video_path)
-
+def _build_ducking_filter(
+    config: MixConfig, ducking: DuckingConfig, video_duration: float
+) -> list[str]:
+    """Build FFmpeg filter parts for audio ducking."""
     filter_parts = []
 
-    # Prepare accompaniment (drums/bass) - always at full volume
-    accompaniment_filter = f"[1:a]atrim=0:{video_duration}"
-    accompaniment_filter += f",volume={ducking.music_volume_db}dB"
+    # Prepare music: trim to video length, apply volume, add fades
+    music_filter = f"[1:a]atrim=0:{video_duration}"
+    music_filter += f",volume={ducking.music_volume_db}dB"
 
     if config.fade_in_seconds > 0:
-        accompaniment_filter += (
-            f",afade=t=in:st={config.music_starts_at}:d={config.fade_in_seconds}"
-        )
+        music_filter += f",afade=t=in:st={config.music_starts_at}:d={config.fade_in_seconds}"
+
     if config.fade_out_seconds > 0:
         fade_start = video_duration - config.fade_out_seconds
-        accompaniment_filter += f",afade=t=out:st={fade_start}:d={config.fade_out_seconds}"
+        music_filter += f",afade=t=out:st={fade_start}:d={config.fade_out_seconds}"
 
-    accompaniment_filter += "[accompaniment]"
-    filter_parts.append(accompaniment_filter)
+    music_filter += "[music]"
+    filter_parts.append(music_filter)
 
-    # Prepare vocals/melody stem - will be ducked during speech
-    vocals_filter = f"[2:a]atrim=0:{video_duration}"
-    vocals_filter += f",volume={ducking.music_volume_db}dB"
-
-    if config.fade_in_seconds > 0:
-        vocals_filter += f",afade=t=in:st={config.music_starts_at}:d={config.fade_in_seconds}"
-    if config.fade_out_seconds > 0:
-        fade_start = video_duration - config.fade_out_seconds
-        vocals_filter += f",afade=t=out:st={fade_start}:d={config.fade_out_seconds}"
-
-    vocals_filter += "[vocals_prepared]"
-    filter_parts.append(vocals_filter)
-
-    # Prepare video audio
+    # Prepare video audio (normalize if requested)
     if config.normalize_audio:
         filter_parts.append("[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[video_audio]")
     else:
         filter_parts.append("[0:a]acopy[video_audio]")
 
-    # Apply sidechain compression ONLY to vocals/melody
-    # When there's speech, vocals get ducked while accompaniment stays full
+    # Apply sidechain compression: duck music when video audio is present
     sidechain_filter = (
-        f"[vocals_prepared][video_audio]sidechaincompress="
+        f"[music][video_audio]sidechaincompress="
         f"threshold={ducking.threshold}:"
         f"ratio={ducking.ratio}:"
         f"attack={ducking.attack_ms}:"
         f"release={ducking.release_ms}:"
-        f"makeup={_db_to_linear(duck_vocals_db):.2f}"
-        f"[ducked_vocals]"
+        f"makeup={_db_to_linear(ducking.makeup_db):.2f}"
+        f"[ducked_music]"
     )
     filter_parts.append(sidechain_filter)
 
-    # Mix: video audio + accompaniment (full) + ducked vocals
+    # Mix ducked music with video audio
     filter_parts.append(
-        "[video_audio][accompaniment][ducked_vocals]amix=inputs=3:duration=first:dropout_transition=2[mixed]"
+        "[video_audio][ducked_music]amix=inputs=2:duration=first:dropout_transition=2[mixed]"
     )
 
-    filter_complex = ";".join(filter_parts)
-
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        str(video_path),
-        "-i",
-        str(accompaniment_path),
-        "-i",
-        str(vocals_path),
-        "-filter_complex",
-        filter_complex,
-        "-map",
-        "0:v",
-        "-map",
-        "[mixed]",
-        "-c:v",
-        "copy",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
-        str(output_path),
-    ]
-
-    try:
-        logger.info("Mixing audio with stem-based ducking...")
-        subprocess.run(cmd, capture_output=True, check=True, timeout=600)
-        logger.info(f"Audio mixed successfully: {output_path}")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Stem mixing failed: {e.stderr.decode() if e.stderr else e}")
-        raise
-
-    return output_path
+    return filter_parts
 
 
-@dataclass
-class StemDuckingLevels:
-    """Ducking levels for each stem during speech (in dB, negative = quieter).
+# ── Re-exports for backwards compatibility ────────────────────────────────────
+# Stem ducking functions live in mixer_helpers.py but are re-exported here
+# so existing `from immich_memories.audio.mixer import ...` continues to work.
+# AudioMixer class lives in mixer_class.py.
 
-    Different stems can be ducked by different amounts:
-    - Drums: duck least (rhythm keeps energy)
-    - Bass: duck moderately
-    - Vocals/melody: duck most (avoid competing with speech)
-    - Other instruments: duck moderately
-    """
-
-    drums_db: float = -3.0  # Duck drums by 50% (~-3dB)
-    bass_db: float = -6.0  # Duck bass moderately
-    vocals_db: float = -12.0  # Duck melody most (~75%)
-    other_db: float = -9.0  # Duck other instruments
-
-
-def mix_audio_with_4stem_ducking(
-    video_path: Path,
-    drums_path: Path,
-    bass_path: Path,
-    vocals_path: Path,
-    other_path: Path,
-    output_path: Path,
-    config: MixConfig | None = None,
-    ducking_levels: StemDuckingLevels | None = None,
-) -> Path:
-    """Mix background music using 4 separated stems for granular ducking.
-
-    Each stem can be ducked by a different amount during speech:
-    - Drums: minimal ducking (keeps energy)
-    - Bass: moderate ducking
-    - Vocals/melody: aggressive ducking (avoid competing with speech)
-    - Other: moderate ducking
-
-    Args:
-        video_path: Path to the video file
-        drums_path: Path to the drums stem
-        bass_path: Path to the bass stem
-        vocals_path: Path to the vocals/melody stem
-        other_path: Path to the other instruments stem
-        output_path: Path for the output video
-        config: Mixing configuration
-        ducking_levels: Custom ducking levels per stem
-
-    Returns:
-        Path to the output video
-    """
-    if config is None:
-        config = MixConfig(ducking=DuckingConfig())
-    if ducking_levels is None:
-        ducking_levels = StemDuckingLevels()
-
-    ducking = config.ducking
-    video_duration = get_video_duration(video_path)
-
-    filter_parts = []
-
-    # Input mapping: 0=video, 1=drums, 2=bass, 3=vocals, 4=other
-
-    # Prepare each stem with base volume and fades
-    def prepare_stem(input_idx: int, name: str) -> str:
-        stem_filter = f"[{input_idx}:a]atrim=0:{video_duration}"
-        stem_filter += f",volume={ducking.music_volume_db}dB"
-        if config.fade_in_seconds > 0:
-            stem_filter += f",afade=t=in:st={config.music_starts_at}:d={config.fade_in_seconds}"
-        if config.fade_out_seconds > 0:
-            fade_start = video_duration - config.fade_out_seconds
-            stem_filter += f",afade=t=out:st={fade_start}:d={config.fade_out_seconds}"
-        stem_filter += f"[{name}_prepared]"
-        return stem_filter
-
-    filter_parts.append(prepare_stem(1, "drums"))
-    filter_parts.append(prepare_stem(2, "bass"))
-    filter_parts.append(prepare_stem(3, "vocals"))
-    filter_parts.append(prepare_stem(4, "other"))
-
-    # Prepare video audio
-    if config.normalize_audio:
-        filter_parts.append("[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[video_audio]")
-    else:
-        filter_parts.append("[0:a]acopy[video_audio]")
-
-    # Apply sidechain compression to each stem with different ducking levels
-    # Note: makeup is for post-compression gain (linear 1-64), ducking is via threshold/ratio
-    # Using makeup=1.0 for all (no makeup gain), ducking controlled by compression params
-    # Drums: duck least
-    filter_parts.append(
-        f"[drums_prepared][video_audio]sidechaincompress="
-        f"threshold={ducking.threshold}:ratio={ducking.ratio * 0.5}:"
-        f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
-        f"makeup=1.0[ducked_drums]"
-    )
-
-    # Bass: duck moderately
-    filter_parts.append(
-        f"[bass_prepared][video_audio]sidechaincompress="
-        f"threshold={ducking.threshold}:ratio={ducking.ratio * 0.7}:"
-        f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
-        f"makeup=1.0[ducked_bass]"
-    )
-
-    # Vocals/melody: duck most
-    filter_parts.append(
-        f"[vocals_prepared][video_audio]sidechaincompress="
-        f"threshold={ducking.threshold}:ratio={ducking.ratio}:"
-        f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
-        f"makeup=1.0[ducked_vocals]"
-    )
-
-    # Other instruments: duck moderately
-    filter_parts.append(
-        f"[other_prepared][video_audio]sidechaincompress="
-        f"threshold={ducking.threshold}:ratio={ducking.ratio * 0.8}:"
-        f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
-        f"makeup=1.0[ducked_other]"
-    )
-
-    # Mix all 5 audio streams: video + 4 ducked stems
-    filter_parts.append(
-        "[video_audio][ducked_drums][ducked_bass][ducked_vocals][ducked_other]"
-        "amix=inputs=5:duration=first:dropout_transition=2[mixed]"
-    )
-
-    filter_complex = ";".join(filter_parts)
-
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        str(video_path),
-        "-i",
-        str(drums_path),
-        "-i",
-        str(bass_path),
-        "-i",
-        str(vocals_path),
-        "-i",
-        str(other_path),
-        "-filter_complex",
-        filter_complex,
-        "-map",
-        "0:v",
-        "-map",
-        "[mixed]",
-        "-c:v",
-        "copy",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
-        str(output_path),
-    ]
-
-    try:
-        logger.info(
-            f"Mixing audio with 4-stem ducking: drums={ducking_levels.drums_db}dB, "
-            f"bass={ducking_levels.bass_db}dB, vocals={ducking_levels.vocals_db}dB, "
-            f"other={ducking_levels.other_db}dB"
-        )
-        subprocess.run(cmd, capture_output=True, check=True, timeout=600)
-        logger.info(f"Audio mixed successfully: {output_path}")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"4-stem mixing failed: {e.stderr.decode() if e.stderr else e}")
-        raise
-
-    return output_path
-
-
-class AudioMixer:
-    """High-level audio mixer with automatic music selection and ducking."""
-
-    def __init__(
-        self,
-        ducking_config: DuckingConfig | None = None,
-        cache_dir: Path | None = None,
-    ):
-        """Initialize the audio mixer.
-
-        Args:
-            ducking_config: Ducking configuration
-            cache_dir: Directory for caching downloaded music
-        """
-        self.ducking_config = ducking_config or DuckingConfig()
-        self.cache_dir = cache_dir or Path.home() / ".cache" / "immich-memories" / "music"
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-
-    async def add_music_to_video(
-        self,
-        video_path: Path,
-        output_path: Path,
-        music_path: Path | None = None,
-        mood: str | None = None,
-        genre: str | None = None,
-        tempo: str | None = None,
-        fade_in: float = 2.0,
-        fade_out: float = 3.0,
-        music_volume_db: float = -6.0,
-        auto_select: bool = True,
-    ) -> Path:
-        """Add background music to a video with intelligent ducking.
-
-        Args:
-            video_path: Path to the input video
-            output_path: Path for the output video
-            music_path: Path to music file (if provided, skips auto-select)
-            mood: Mood for automatic music selection
-            genre: Genre for automatic music selection
-            tempo: Tempo for automatic music selection
-            fade_in: Fade in duration in seconds
-            fade_out: Fade out duration in seconds
-            music_volume_db: Base music volume in dB
-            auto_select: Auto-select music if no path provided
-
-        Returns:
-            Path to the output video with music
-        """
-        from immich_memories.audio.mood_analyzer import get_mood_analyzer
-        from immich_memories.audio.music_sources import PixabayMusicSource
-
-        video_duration = get_video_duration(video_path)
-
-        # Get or select music
-        if music_path and music_path.exists():
-            selected_music = music_path
-        elif auto_select:
-            # Analyze video mood if not provided
-            if not mood:
-                try:
-                    analyzer = await get_mood_analyzer()
-                    video_mood = await analyzer.analyze_video(video_path)
-                    mood = video_mood.primary_mood
-                    genre = (
-                        video_mood.genre_suggestions[0] if video_mood.genre_suggestions else genre
-                    )
-                    tempo = video_mood.tempo_suggestion
-                    logger.info(f"Detected mood: {mood}, genre: {genre}, tempo: {tempo}")
-                except Exception as e:
-                    logger.warning(f"Mood analysis failed: {e}, using defaults")
-                    mood = "calm"
-                    genre = "ambient"
-
-            # Search for music
-            source = PixabayMusicSource()
-            try:
-                track = await source.get_random_track(
-                    mood=mood,
-                    genre=genre,
-                    tempo=tempo,
-                    min_duration=min(60, video_duration * 0.5),
-                )
-
-                if track:
-                    selected_music = await source.download(track, self.cache_dir)
-                    logger.info(f"Selected music: {track.title} by {track.artist}")
-                else:
-                    logger.warning("No matching music found, output will have original audio only")
-                    # Just copy the video without adding music
-                    import shutil
-
-                    shutil.copy(video_path, output_path)
-                    return output_path
-            finally:
-                await source.close()
-        else:
-            logger.warning("No music provided and auto_select=False")
-            import shutil
-
-            shutil.copy(video_path, output_path)
-            return output_path
-
-        # Configure mixing
-        ducking = DuckingConfig(music_volume_db=music_volume_db)
-        mix_config = MixConfig(
-            ducking=ducking,
-            fade_in_seconds=fade_in,
-            fade_out_seconds=fade_out,
-        )
-
-        # Mix audio
-        return mix_audio_with_ducking(
-            video_path=video_path,
-            music_path=selected_music,
-            output_path=output_path,
-            config=mix_config,
-        )
+from immich_memories.audio.mixer_class import AudioMixer as AudioMixer
+from immich_memories.audio.mixer_helpers import (
+    StemDuckingLevels as StemDuckingLevels,
+    mix_audio_with_4stem_ducking as mix_audio_with_4stem_ducking,
+    mix_audio_with_stem_ducking as mix_audio_with_stem_ducking,
+)

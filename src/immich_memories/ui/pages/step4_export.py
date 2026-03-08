@@ -305,147 +305,29 @@ def render_step4() -> None:
             music_source = gen_options.get("music_source", "None")
 
             if music_source == "AI Generated (MusicGen)":
-                run_tracker.start_phase("music", 1)
-                status_label.set_text("Generating AI music...")
-                progress_bar.value = 0.85
+                from immich_memories.ui.pages._step4_music import apply_ai_music
 
-                try:
-                    from immich_memories.audio.mixer import (
-                        DuckingConfig,
-                        MixConfig,
-                        mix_audio_with_ducking,
-                    )
-                    from immich_memories.audio.music_generator import (
-                        MusicGenClientConfig,
-                        VideoTimeline,
-                        generate_music_for_video,
-                    )
-
-                    # Build timeline
-                    clip_data: list[tuple[float, str, int | None]] = [
-                        (
-                            clip.duration,
-                            clip.llm_emotion or "calm",
-                            int(clip.date.split("-")[1]) if clip.date else None,
-                        )
-                        for clip in assembly_clips
-                    ]
-                    timeline = VideoTimeline.from_clips(
-                        clips=clip_data,
-                        title_duration=(
-                            config.title_screens.title_duration
-                            if config.title_screens.enabled
-                            else 0
-                        ),
-                        ending_duration=(
-                            config.title_screens.ending_duration
-                            if config.title_screens.enabled
-                            else 0
-                        ),
-                    )
-
-                    musicgen_config = MusicGenClientConfig.from_app_config(config.musicgen)
-                    musicgen_config.num_versions = gen_options.get("musicgen_versions", 3)
-
-                    music_output_dir = run_output_dir / "music"
-                    music_output_dir.mkdir(exist_ok=True)
-
-                    def music_progress(version_idx, status, progress, detail):
-                        pct = 0.85 + (version_idx / musicgen_config.num_versions) * 0.1
-                        progress_bar.value = pct
-                        status_label.set_text(f"Generating music v{version_idx + 1}: {status}")
-
-                    music_result = await generate_music_for_video(
-                        timeline=timeline,
-                        output_dir=music_output_dir,
-                        config=musicgen_config,
-                        progress_callback=music_progress,
-                    )
-
-                    music_result.selected_version = 0
-                    selected_music = music_result.selected
-
-                    if selected_music:
-                        status_label.set_text("Mixing audio...")
-                        progress_bar.value = 0.96
-
-                        music_volume = gen_options.get("music_volume", 0.3)
-                        final_path = result_path.with_suffix(".with_music.mp4")
-                        mix_config = MixConfig(
-                            ducking=DuckingConfig(
-                                music_volume_db=-20 + (music_volume * 20),
-                            ),
-                        )
-
-                        await run.io_bound(
-                            mix_audio_with_ducking,
-                            video_path=result_path,
-                            music_path=selected_music.full_mix,
-                            output_path=final_path,
-                            config=mix_config,
-                        )
-
-                        result_path.unlink()
-                        final_path.rename(result_path)
-                        music_result.cleanup_unselected()
-
-                    run_tracker.complete_phase(items_processed=1)
-
-                except Exception as e:
-                    logger.warning(f"Music generation failed: {e}")
-                    ui.notify(
-                        f"Music generation failed: {sanitize_error_message(str(e))}. Video saved without music.",
-                        type="warning",
-                    )
-                    run_tracker.complete_phase(items_processed=0)
+                await apply_ai_music(
+                    result_path,
+                    assembly_clips,
+                    gen_options,
+                    config,
+                    run_output_dir,
+                    run_tracker,
+                    progress_bar,
+                    status_label,
+                )
 
             elif music_source == "Upload file" and gen_options.get("music_file"):
-                run_tracker.start_phase("music", 1)
-                status_label.set_text("Adding music...")
-                progress_bar.value = 0.9
+                from immich_memories.ui.pages._step4_music import apply_uploaded_music
 
-                try:
-                    import tempfile
-
-                    from immich_memories.audio.mixer import (
-                        DuckingConfig,
-                        MixConfig,
-                        mix_audio_with_ducking,
-                    )
-
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-                        tmp.write(gen_options["music_file"])
-                        tmp_music_path = Path(tmp.name)
-
-                    music_volume = gen_options.get("music_volume", 0.3)
-                    final_path = result_path.with_suffix(".with_music.mp4")
-                    mix_config = MixConfig(
-                        ducking=DuckingConfig(
-                            music_volume_db=-20 + (music_volume * 20),
-                        ),
-                    )
-
-                    await run.io_bound(
-                        mix_audio_with_ducking,
-                        video_path=result_path,
-                        music_path=tmp_music_path,
-                        output_path=final_path,
-                        config=mix_config,
-                    )
-
-                    tmp_music_path.unlink()
-                    result_path.unlink()
-                    final_path.rename(result_path)
-
-                    run_tracker.complete_phase(items_processed=1)
-
-                except Exception as e:
-                    logger.warning(f"Music mixing failed: {e}")
-                    ui.notify(
-                        f"Music mixing failed: {sanitize_error_message(str(e))}. Video saved without music.",
-                        type="warning",
-                    )
-                    run_tracker.complete_phase(items_processed=0)
+                await apply_uploaded_music(
+                    result_path,
+                    gen_options,
+                    run_tracker,
+                    progress_bar,
+                    status_label,
+                )
 
             progress_bar.value = 1.0
             status_label.set_text("Complete!")
