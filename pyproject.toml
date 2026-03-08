@@ -242,6 +242,8 @@ known-first-party = ["immich_memories"]
 [tool.ruff.lint.per-file-ignores]
 # app.py needs logging configured before other imports
 "src/immich_memories/ui/app.py" = ["E402"]
+# mixer.py has bottom-of-file re-exports to avoid circular imports with mixer_helpers/mixer_class
+"src/immich_memories/audio/mixer.py" = ["E402", "I001"]
 # Tests use hardcoded /tmp paths as dummy values, not actual temp file usage
 "tests/**" = ["S108"]
 

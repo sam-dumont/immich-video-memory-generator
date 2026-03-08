@@ -51,13 +51,13 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: make dev
 
       - name: Run ruff check
-        run: uv run ruff check src/ tests/
+        run: make lint
 
       - name: Run ruff format check
-        run: uv run ruff format --check src/ tests/
+        run: make format-check
 
   security:
     name: Security Scan
@@ -79,7 +79,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: make dev
 
       # --- SAST ---
       - name: Bandit (Python security linter)
@@ -107,12 +107,13 @@ jobs:
 
       # --- Dead code & complexity ---
       - name: Vulture (dead code detection)
-        run: uvx vulture src/ --min-confidence 90
+        run: make dead-code
 
       - name: Xenon (complexity gate)
-        run: |
-          # Run from /tmp to avoid radon's pyproject.toml parsing bug with Jinja2 template strings
-          cd /tmp && uvx xenon --max-absolute F --max-modules D --max-average C $GITHUB_WORKSPACE/src/
+        run: make complexity
+
+      - name: File length gate (max 500 lines)
+        run: make file-length
 
       # --- Dependency & supply chain ---
       - name: pip-audit (dependency vulnerabilities)
@@ -154,10 +155,10 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: make dev
 
       - name: Run mypy
-        run: uv run mypy src/
+        run: make typecheck
 
   test:
     name: Test (Python ${{ matrix.python-version }} on ${{ matrix.os }})
@@ -188,10 +189,10 @@ jobs:
         run: brew install ffmpeg
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: make dev
 
       - name: Run tests
-        run: uv run pytest --cov=src/immich_memories --cov-report=xml -v
+        run: make test
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -242,7 +243,7 @@ jobs:
           uv sync $ARGS
 
       - name: Run tests
-        run: uv run pytest -v
+        run: make test
 
   build:
     name: Build Package
@@ -259,7 +260,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Build package
-        run: uv build
+        run: make build
 
       - name: Show version
         run: |

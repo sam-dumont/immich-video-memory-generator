@@ -28,15 +28,19 @@ git push
 
 ### `ci.yml` - Continuous Integration
 
-Runs on every push to `main` and on pull requests.
+Runs on every push to `main` and on pull requests. All jobs use `make` targets as the single source of truth for commands.
 
 **Jobs:**
 - **commitlint**: Validates commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
-- **lint**: Runs `ruff check` and `ruff format --check`
-- **typecheck**: Runs `mypy` for type checking
-- **test**: Runs `pytest` on Python 3.11, 3.12, and 3.13, on Ubuntu and macOS
+- **lint**: Runs `make lint` and `make format-check`
+- **typecheck**: Runs `make typecheck`
+- **file-length**: Runs `make file-length` (all `.py` files must be ≤500 lines)
+- **complexity**: Runs `make complexity` (Xenon grade C max)
+- **test**: Runs `make test` on Python 3.11, 3.12, and 3.13, on Ubuntu and macOS
 - **test-extras**: Tests optional extras (face, audio, audio-ml, gpu, mac) on Python 3.13
 - **build**: Builds the package with version from git tags
+
+Run the full CI pipeline locally with `make ci`.
 
 ### `release.yml` - Automatic Release
 
