@@ -55,11 +55,19 @@ COPY --from=builder /app/dist/*.whl /wheels/
 RUN pip install --no-cache-dir /wheels/*.whl && \
     rm -rf /wheels
 
-# Create config and cache directories
-RUN mkdir -p /root/.immich-memories/cache /app/output
+# Create non-root user for security
+RUN groupadd -r immich && useradd -r -g immich -d /home/immich -m immich
+
+# Create config and cache directories with correct ownership
+RUN mkdir -p /home/immich/.immich-memories/cache /app/output && \
+    chown -R immich:immich /home/immich/.immich-memories /app/output
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV HOME=/home/immich
+
+# Switch to non-root user
+USER immich
 
 # Expose NiceGUI port
 EXPOSE 8080

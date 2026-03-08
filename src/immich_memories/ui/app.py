@@ -209,7 +209,7 @@ def initialize_app() -> None:
 app.on_startup(initialize_app)
 
 
-def main(port: int = 8080, host: str = "0.0.0.0", reload: bool = True) -> None:
+def main(port: int = 8080, host: str = "127.0.0.1", reload: bool = True) -> None:
     """Run the NiceGUI application."""
     ui.run(
         title="Immich Memories",

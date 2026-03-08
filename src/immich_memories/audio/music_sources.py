@@ -8,10 +8,15 @@ import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# Allowed domains for music downloads
+_ALLOWED_MUSIC_DOMAINS = {"pixabay.com", "cdn.pixabay.com"}
+_MAX_MUSIC_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
 
 
 @dataclass
@@ -269,11 +274,23 @@ class PixabayMusicSource(MusicSource):
         if not track.url:
             raise ValueError(f"Track {track.id} has no download URL")
 
+        # Validate download URL domain to prevent open redirect abuse
+        parsed = urlparse(track.url)
+        domain = parsed.hostname or ""
+        if not any(domain == d or domain.endswith(f".{d}") for d in _ALLOWED_MUSIC_DOMAINS):
+            raise ValueError(f"Music download URL has untrusted domain: {domain}")
+
         logger.info(f"Downloading: {track.title}")
 
         try:
             response = await self.client.get(track.url, follow_redirects=True)
             response.raise_for_status()
+
+            if len(response.content) > _MAX_MUSIC_DOWNLOAD_BYTES:
+                raise ValueError(
+                    f"Music file too large ({len(response.content)} bytes, "
+                    f"limit {_MAX_MUSIC_DOWNLOAD_BYTES} bytes)"
+                )
 
             with open(output_path, "wb") as f:
                 f.write(response.content)

@@ -22,6 +22,7 @@ from immich_memories.processing.hardware import (
     get_ffmpeg_encoder,
     get_ffmpeg_hwaccel_args,
 )
+from immich_memories.security import validate_video_path
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +230,8 @@ class AspectRatioTransformer:
         Returns:
             Path to transformed video.
         """
+        input_path = validate_video_path(input_path, must_exist=True)
+
         if output_path is None:
             output_dir = Path(tempfile.gettempdir()) / "immich_memories" / "transformed"
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -258,7 +261,7 @@ class AspectRatioTransformer:
             str(video_path),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
             return (0, 0)
 
@@ -749,6 +752,7 @@ def add_date_overlay(
     Returns:
         Path to output video.
     """
+    input_path = validate_video_path(input_path, must_exist=True)
     config = get_config()
 
     # Calculate position

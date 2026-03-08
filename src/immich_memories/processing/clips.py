@@ -16,6 +16,7 @@ from immich_memories.processing.hardware import (
     get_ffmpeg_encoder,
     get_ffmpeg_hwaccel_args,
 )
+from immich_memories.security import validate_video_path
 
 logger = logging.getLogger(__name__)
 
@@ -633,6 +634,7 @@ def get_video_duration(video_path: Path) -> float:
     Returns:
         Duration in seconds.
     """
+    validated = validate_video_path(video_path, must_exist=True)
     cmd = [
         "ffprobe",
         "-v",
@@ -641,10 +643,10 @@ def get_video_duration(video_path: Path) -> float:
         "format=duration",
         "-of",
         "default=noprint_wrappers=1:nokey=1",
-        str(video_path),
+        str(validated),
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
     if result.returncode != 0:
         logger.error(f"FFprobe error: {result.stderr}")
@@ -660,11 +662,12 @@ def get_video_info(video_path: Path) -> dict:
     """Get detailed video information.
 
     Args:
-        video_path: Path to the video file.
+        video_path: Path to the video file (validated for safety).
 
     Returns:
         Dictionary with video metadata.
     """
+    validated = validate_video_path(video_path, must_exist=True)
     cmd = [
         "ffprobe",
         "-v",
@@ -677,10 +680,10 @@ def get_video_info(video_path: Path) -> dict:
         "format=duration,size,bit_rate",
         "-of",
         "json",
-        str(video_path),
+        str(validated),
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
     if result.returncode != 0:
         logger.error(f"FFprobe error: {result.stderr}")
