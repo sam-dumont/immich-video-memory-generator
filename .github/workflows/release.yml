@@ -273,23 +273,30 @@ jobs:
           echo "### Built packages:" >> $GITHUB_STEP_SUMMARY
           ls -la dist/ >> $GITHUB_STEP_SUMMARY
 
-  # Build and push Docker image
-  docker:
-    name: Build Docker Image
+  # Build and push Docker images using native runners per platform
+  docker-build:
+    name: Build Docker Image (${{ matrix.platform }})
     needs: [analyze, release]
     if: inputs.dry_run != 'true' && needs.analyze.outputs.should_release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            slug: amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            slug: arm64
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -301,15 +308,66 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/Dockerfile
           push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ needs.analyze.outputs.next_version }}
-            ghcr.io/${{ github.repository }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=${{ matrix.slug }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.slug }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.slug }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Merge per-platform images into a multi-arch manifest
+  docker-manifest:
+    name: Create Docker Manifest
+    needs: [analyze, docker-build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest
+        working-directory: /tmp/digests
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          VERSION: ${{ needs.analyze.outputs.next_version }}
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:$VERSION" \
+            -t "$IMAGE:latest" \
+            $(printf "$IMAGE@sha256:%s " *)
