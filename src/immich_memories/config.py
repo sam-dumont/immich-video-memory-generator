@@ -647,6 +647,11 @@ class Config(BaseSettings):
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
             yaml.dump(self.model_dump(), f, default_flow_style=False, sort_keys=False)
+        # Restrict config file permissions (contains API keys)
+        try:
+            path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0o600 - owner read/write only
+        except OSError:
+            pass  # Best-effort on non-POSIX systems
 
     @classmethod
     def get_default_path(cls) -> Path:

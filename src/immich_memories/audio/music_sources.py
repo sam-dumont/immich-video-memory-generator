@@ -286,6 +286,13 @@ class PixabayMusicSource(MusicSource):
             response = await self.client.get(track.url, follow_redirects=True)
             response.raise_for_status()
 
+            # Validate final URL domain after redirects to prevent open redirect abuse
+            final_domain = response.url.host or ""
+            if not any(
+                final_domain == d or final_domain.endswith(f".{d}") for d in _ALLOWED_MUSIC_DOMAINS
+            ):
+                raise ValueError(f"Music download redirected to untrusted domain: {final_domain}")
+
             if len(response.content) > _MAX_MUSIC_DOWNLOAD_BYTES:
                 raise ValueError(
                     f"Music file too large ({len(response.content)} bytes, "
