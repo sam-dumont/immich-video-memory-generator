@@ -217,6 +217,7 @@ select = [
     "UP",     # pyupgrade
     "ARG",    # flake8-unused-arguments
     "SIM",    # flake8-simplify
+    "S",      # flake8-bandit (security)
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
@@ -226,6 +227,13 @@ ignore = [
     "ARG001", # unused function argument - often needed for interface compliance
     "ARG002", # unused method argument - often needed for interface compliance
     "B904",   # raise from - not always needed for simple re-raises
+    "S603",   # subprocess call with non-literal args - we validate paths via security.py
+    "S607",   # partial executable path - we use standard system binaries (ffmpeg, ffprobe)
+    "S101",   # assert used - fine for non-security assertions in application code
+    "S311",   # pseudo-random generators - not used for security purposes
+    "S301",   # pickle - not used but would flag stdlib imports
+    "S110",   # try-except-pass - used for cleanup/fallback paths
+    "S112",   # try-except-continue - used for best-effort processing
 ]
 
 [tool.ruff.lint.isort]

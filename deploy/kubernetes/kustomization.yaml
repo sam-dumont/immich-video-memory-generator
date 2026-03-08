@@ -10,6 +10,7 @@ resources:
   - pvc.yaml
   - deployment.yaml
   - service.yaml
+  - networkpolicy.yaml
   # Uncomment to include batch jobs
   # - job.yaml
 

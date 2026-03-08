@@ -14,7 +14,7 @@ services:
       - "8080:8080"
     volumes:
       # Config directory (for persistent settings)
-      - immich-memories-config:/root/.immich-memories
+      - immich-memories-config:/home/immich/.immich-memories
 
       # Output directory for generated videos
       - ./output:/app/output
@@ -25,6 +25,22 @@ services:
       # Immich connection (can also be set in config.yaml)
       - IMMICH_URL=${IMMICH_URL:-}
       - IMMICH_API_KEY=${IMMICH_API_KEY:-}
+
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=2G
+      - /home/immich/.cache:size=1G
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: "4"
+
     networks:
       - immich-memories-net
     # Uncomment to connect to Immich's network

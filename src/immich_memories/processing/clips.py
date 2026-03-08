@@ -478,7 +478,7 @@ class ClipExtractor:
                     )
                 raise RuntimeError(f"Failed to extract clip: {stderr}")
         else:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
             if result.returncode != 0:
                 # If hardware encoding failed, retry with software
                 if hw_caps and hw_caps.has_encoding:
@@ -592,7 +592,7 @@ def extract_clip(
         output_dir = Path(tempfile.gettempdir()) / "immich_memories" / "clips"
         output_dir.mkdir(parents=True, exist_ok=True)
         # Include source path hash to avoid collisions when multiple clips have same times
-        source_hash = hashlib.md5(str(source_path).encode()).hexdigest()[:8]
+        source_hash = hashlib.md5(str(source_path).encode()).hexdigest()[:8]  # noqa: S324 - non-security hash for filename dedup
         # Include buffer flags in filename
         buffer_suffix = (
             f"_b{int(buffer_start)}{int(buffer_end)}" if (buffer_start or buffer_end) else ""

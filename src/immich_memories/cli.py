@@ -61,7 +61,7 @@ def main(ctx: click.Context, config: str | None) -> None:
 
 @main.command()
 @click.option("--port", "-p", default=8080, help="Port to run the UI on")
-@click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")
+@click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")  # noqa: S104 - intentional for Docker/container binding
 @click.option(
     "--reload/--no-reload", default=False, help="Enable hot reload (for development only)"
 )
