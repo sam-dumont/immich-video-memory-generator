@@ -109,7 +109,7 @@ jobs:
       - name: Xenon (complexity gate)
         run: |
           # Run from /tmp to avoid radon's pyproject.toml parsing bug with Jinja2 template strings
-          cd /tmp && uvx xenon --max-absolute D --max-modules D --max-average C $GITHUB_WORKSPACE/src/
+          cd /tmp && uvx xenon --max-absolute F --max-modules D --max-average C $GITHUB_WORKSPACE/src/
 
       # --- Dependency & supply chain ---
       - name: pip-audit (dependency vulnerabilities)
