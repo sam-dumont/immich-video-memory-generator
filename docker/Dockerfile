@@ -19,7 +19,7 @@ COPY src/ ./src/
 
 # hatch-vcs needs git history to detect version, which isn't available in Docker.
 # Use SETUPTOOLS_SCM_PRETEND_VERSION to provide the version explicitly.
-ARG SETUPTOOLS_SCM_PRETEND_VERSION=0.1.0
+ARG SETUPTOOLS_SCM_PRETEND_VERSION=0.2.0
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${SETUPTOOLS_SCM_PRETEND_VERSION}
 
 RUN pip install --no-cache-dir build && \
@@ -33,7 +33,7 @@ FROM python:3.11-slim
 
 LABEL maintainer="Immich Memories Contributors"
 LABEL description="Create video compilations from your Immich library"
-LABEL version="0.1.0"
+LABEL version="0.2.0"
 
 WORKDIR /app
 

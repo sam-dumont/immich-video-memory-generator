@@ -1,6 +1,6 @@
 # Security & Quality Audit Report
 
-**Project:** Immich Video Memory Compiler
+**Project:** Immich Memories
 **Date:** 2025-12-29
 **Auditor:** Claude Opus 4.5
 **Methodology:** Multi-pass analysis (automated scanning + deep manual review)

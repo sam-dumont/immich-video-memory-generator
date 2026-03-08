@@ -77,7 +77,7 @@ By participating in this project, you agree to maintain a respectful and inclusi
 
 ### Prerequisites
 
-- Python 3.12+ (3.13 recommended)
+- Python 3.11+ (3.13 recommended)
 - FFmpeg
 - uv (recommended) or pip
 - just (recommended) for task running
@@ -271,8 +271,8 @@ Releases are automated via GitHub Actions:
 1. Update version in `pyproject.toml`
 2. Create and push a git tag:
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v0.2.0
+   git push origin v0.2.0
    ```
 3. Create a GitHub Release from the tag
 4. CI will automatically:

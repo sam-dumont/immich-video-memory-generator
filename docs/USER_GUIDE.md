@@ -7,9 +7,10 @@ This guide walks you through using Immich Memories to create video compilations 
 1. [Getting Started](#getting-started)
 2. [Configuration (Step 1)](#configuration-step-1)
 3. [Clip Review (Step 2)](#clip-review-step-2)
-4. [Generate Memories](#generate-memories)
-5. [Tips and Best Practices](#tips-and-best-practices)
-6. [Troubleshooting](#troubleshooting)
+4. [Generation Options (Step 3)](#generation-options-step-3)
+5. [Preview & Export (Step 4)](#preview--export-step-4)
+6. [Tips and Best Practices](#tips-and-best-practices)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -85,9 +86,7 @@ After clicking "Next: Review Clips", you'll see all available videos.
 - **Total Duration**: Combined length of all video content
 - **Target Duration**: Your goal for the final compilation
 
-### Generate Memories Section
-
-#### Settings
+### Analysis Settings
 
 | Setting | Description |
 |---------|-------------|
@@ -107,9 +106,9 @@ For example, with 25% max:
 - At most 5 will be non-favorites
 - At least 15 will be favorites (if available)
 
-### The Pipeline
+### The Analysis Pipeline
 
-When you click "Generate Memories", the system runs 4 phases:
+When you click "Analyze", the system runs 4 phases:
 
 1. **Clustering**: Groups similar videos together (avoids duplicates)
 2. **Filtering**: Applies your preferences (HDR, favorites, etc.)
@@ -124,29 +123,76 @@ You'll see:
 - LLM analysis results (if enabled)
 - Progress bar with time estimate
 
----
-
-## Generate Memories
-
-### After Pipeline Completes
-
-You can:
-- **Review & Refine**: Adjust segments, remove clips
-- **Start Over**: Select different clips
-
 ### Review Mode
 
-In review mode, for each clip you can:
-- Toggle inclusion (checkbox)
-- Adjust start/end times (slider)
-- See the video preview
-- View LLM analysis results
+After analysis completes, you can review and refine the selected clips:
 
-### Bulk Actions
+- Toggle inclusion with checkboxes
+- Adjust start/end times with range sliders
+- Preview each clip inline
+- View LLM analysis results (if enabled)
 
-- **Select All**: Include all clips
-- **Deselect All**: Exclude all clips
-- **Invert Selection**: Toggle all selections
+Bulk actions: Select All, Deselect All, Invert Selection.
+
+---
+
+## Generation Options (Step 3)
+
+After reviewing your clips, this step configures how the final video gets assembled.
+
+### Output Settings
+
+| Setting | Options | Default |
+|---------|---------|---------|
+| **Orientation** | Auto (detect from clips), Landscape (16:9), Portrait (9:16), Square (1:1) | Auto |
+| **Scaling Mode** | Smart Crop (keeps faces centered), Fill (crops to fit), Fit (letterbox) | Smart Crop |
+| **Transition Style** | Smart (mix of fades and cuts), Crossfade, Cut, None | Smart |
+| **Resolution** | Auto (match clips), 4K, 1080p, 720p | Auto |
+| **Output Format** | MP4 (H.264), MOV (ProRes) | MP4 |
+| **Date overlay** | Checkbox to burn date text into the video | Off |
+| **Keep intermediate files** | Saves temporary files for debugging | Off |
+
+### Music
+
+Three options for background music:
+
+- **None**: No background music.
+- **Upload file**: Upload your own MP3, M4A, or WAV file. Volume slider controls how loud the music plays relative to original clip audio.
+- **AI Generated (MusicGen)**: Generates a soundtrack based on the mood of your clips. Requires a MusicGen server configured in your settings. You can generate 1-3 versions and pick the best one.
+
+Both upload and AI options include a volume slider (0-100%).
+
+### Summary
+
+Shows a quick overview before you proceed: clip count, total duration, selected resolution, and music source.
+
+---
+
+## Preview & Export (Step 4)
+
+This is where the video gets built.
+
+### Output
+
+The filename defaults to `{person}_{daterange}_memories.mp4` and saves to `~/Videos/Memories/`. You can change the filename before generating.
+
+### Generating
+
+Click **Generate Video** to start the pipeline. Three phases run in sequence:
+
+1. **Downloading and extracting segments** (0-70%): Downloads each clip from Immich, extracts the selected time range
+2. **Assembling** (70-85%): Combines all segments with transitions, applies resolution and orientation settings
+3. **Music** (85-100%): If music is enabled, generates or mixes in the background track with automatic audio ducking
+
+A progress bar and status label update in real time.
+
+### After Generation
+
+The finished video plays directly in the browser. The file path is shown below the player.
+
+From here you can:
+- **Back to Generation Options**: Change settings and re-generate
+- **Start New Project**: Reset everything and start fresh
 
 ---
 
