@@ -86,7 +86,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ["3.13"]  # TensorFlow 2.20+ requires Python 3.13
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -119,6 +119,50 @@ jobs:
         with:
           files: coverage.xml
           fail_ci_if_error: false
+
+  # Test optional extras install and run on Python 3.13
+  test-extras:
+    name: Test Extras (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            extras: "dev,face,audio,audio-ml,gpu"
+          - os: macos-latest
+            extras: "dev,mac,audio,audio-ml,face,gpu"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install "3.13"
+
+      - name: Install FFmpeg (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
+      - name: Install dependencies with extras
+        run: |
+          IFS=',' read -ra EXTRAS <<< "${{ matrix.extras }}"
+          ARGS=""
+          for extra in "${EXTRAS[@]}"; do
+            ARGS="$ARGS --extra $extra"
+          done
+          uv sync $ARGS
+
+      - name: Run tests
+        run: uv run pytest -v
 
   build:
     name: Build Package
@@ -187,7 +231,7 @@ jobs:
   # Summary job that other jobs can depend on
   ci-success:
     name: CI Success
-    needs: [lint, typecheck, test, build]
+    needs: [lint, typecheck, test, test-extras, build]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -196,6 +240,7 @@ jobs:
           if [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.typecheck.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
+             [[ "${{ needs.test-extras.result }}" != "success" ]] || \
              [[ "${{ needs.build.result }}" != "success" ]]; then
             echo "One or more jobs failed"
             exit 1

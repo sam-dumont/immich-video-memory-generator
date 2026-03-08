@@ -75,4 +75,4 @@ If you have questions about this software or its AI-generated nature, please ope
 
 ---
 
-*This disclaimer was last updated: January 2026*
+*This disclaimer was last updated: March 2026*

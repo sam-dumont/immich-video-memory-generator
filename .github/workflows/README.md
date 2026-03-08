@@ -34,7 +34,8 @@ Runs on every push to `main` and on pull requests.
 - **commitlint**: Validates commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
 - **lint**: Runs `ruff check` and `ruff format --check`
 - **typecheck**: Runs `mypy` for type checking
-- **test**: Runs `pytest` on Python 3.12 and 3.13, on Ubuntu and macOS
+- **test**: Runs `pytest` on Python 3.11, 3.12, and 3.13, on Ubuntu and macOS
+- **test-extras**: Tests optional extras (face, audio, audio-ml, gpu, mac) on Python 3.13
 - **build**: Builds the package with version from git tags
 
 ### `release.yml` - Automatic Release

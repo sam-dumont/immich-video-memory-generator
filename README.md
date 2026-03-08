@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/sam-dumont/immich-video-memory-generator/actions/workflows/ci.yml/badge.svg)](https://github.com/sam-dumont/immich-video-memory-generator/actions/workflows/ci.yml)
 [![Release](https://github.com/sam-dumont/immich-video-memory-generator/actions/workflows/release.yml/badge.svg)](https://github.com/sam-dumont/immich-video-memory-generator/actions/workflows/release.yml)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Create beautiful yearly video compilations from your [Immich](https://immich.app/) photo library.**
@@ -64,7 +64,7 @@ Immich Memories connects to your self-hosted Immich server, intelligently select
 
 ### Prerequisites
 
-- **Python 3.12+** (3.13 recommended)
+- **Python 3.11+** (3.13 recommended)
 - **FFmpeg** (for video processing)
 - **Immich server** with API access
 
@@ -209,23 +209,12 @@ immich-memories analyze --year 2024
 
 ### Interactive UI (Recommended)
 
-The NiceGUI web interface provides a 5-step wizard:
+The NiceGUI web interface provides a 4-step wizard:
 
-1. **Configuration**: Connect to Immich, select year and person
-2. **Clip Review**: Browse videos with duplicate grouping, select clips
-3. **Moment Refinement**: Fine-tune in/out points for each clip
-4. **Generation Options**: Choose music, transitions, output format
-5. **Preview & Export**: Generate and download your compilation
-
-### Keyboard Shortcuts (Moment Refinement)
-
-| Key | Action |
-|-----|--------|
-| `J` / `K` / `L` | Rewind / Pause / Forward |
-| `I` | Set in-point |
-| `O` | Set out-point |
-| `Space` | Play/Pause |
-| `←` / `→` | Frame step |
+1. **Configuration**: Connect to Immich, select time period and person
+2. **Clip Review**: Browse videos with duplicate grouping, review and refine selected clips
+3. **Generation Options**: Choose orientation, transitions, resolution, music
+4. **Preview & Export**: Generate and download your compilation
 
 ### CLI Commands
 
@@ -553,7 +542,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ## Requirements
 
-- Python 3.12+ (3.13 recommended)
+- Python 3.11+ (3.13 recommended)
 - FFmpeg (video processing)
 - Immich server with API access
 
