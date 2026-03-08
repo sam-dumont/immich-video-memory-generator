@@ -483,47 +483,40 @@ kubectl logs -n immich-memories -f job/immich-memories-generate
 
 ## Development
 
+The **Makefile** is the single source of truth for all commands. CI, pre-commit hooks, and local development all use the same `make` targets.
+
 ### Setup
 
 ```bash
-# Install uv and just
+# Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
-brew install just  # or: cargo install just
 
-# Setup development environment
-just setup
+# Clone and install dev dependencies
+git clone https://github.com/sam-dumont/immich-video-memory-generator.git
+cd immich-video-memory-generator
+make dev
 
-# Run all checks
-just check
+# Run all checks (lint + format + typecheck + file-length + complexity + tests)
+make check
 ```
 
 ### Common Commands
 
 ```bash
-just test          # Run tests
-just lint          # Lint code
-just fmt           # Format code
-just typecheck     # Type checking
-just run --help    # Run CLI
-just ui            # Launch UI
-just build         # Build package
-just clean         # Clean build artifacts
-```
-
-### Manual Setup
-
-```bash
-# With uv
-uv sync --all-extras
-uv run pytest
-uv run mypy src/
-uv run ruff check src/
-
-# With pip
-pip install -e ".[dev]"
-pytest
-mypy src/
-ruff check src/
+make test          # Run tests
+make test-cov      # Run tests with coverage
+make lint          # Run ruff linter
+make format        # Format code with ruff
+make typecheck     # Run mypy type checker
+make file-length   # Check all .py files are ≤500 lines
+make complexity    # Check cyclomatic complexity (Xenon grade C)
+make check         # Run all checks
+make ci            # Full CI-equivalent pipeline (all checks + dead-code)
+make run           # Launch UI
+make cli           # Run CLI tool
+make build         # Build package
+make clean         # Remove build artifacts
+make help          # Show all available targets
 ```
 
 ## Contributing
@@ -535,7 +528,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
-4. Run checks (`just check`)
+4. Run checks (`make check`)
 5. Commit (`git commit -m 'Add amazing feature'`)
 6. Push (`git push origin feature/amazing-feature`)
 7. Open a Pull Request

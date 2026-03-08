@@ -34,6 +34,15 @@ from .colors import (
     hex_to_rgb,
     rgb_to_hex,
 )
+from .convenience import (
+    generate_ending_screen,
+    generate_month_divider,
+    generate_title_screen,
+)
+from .encoding import (
+    ORIENTATION_RESOLUTIONS,
+    get_resolution_for_orientation,
+)
 from .fonts import (
     FONT_DEFINITIONS,
     FontManager,
@@ -46,14 +55,9 @@ from .fonts import (
     is_font_cached,
 )
 from .generator import (
-    ORIENTATION_RESOLUTIONS,
     GeneratedScreen,
     TitleScreenConfig,
     TitleScreenGenerator,
-    generate_ending_screen,
-    generate_month_divider,
-    generate_title_screen,
-    get_resolution_for_orientation,
 )
 from .renderer_pil import (
     RenderSettings,

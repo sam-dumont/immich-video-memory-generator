@@ -1,7 +1,7 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
-.PHONY: help install dev run preflight test test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run
+.PHONY: help install dev run preflight test test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity security-lint dead-code ci
 
 # Default target
 help:
@@ -23,7 +23,12 @@ help:
 	@echo "  lint         Run ruff linter"
 	@echo "  format       Format code with ruff"
 	@echo "  typecheck    Run mypy type checker"
-	@echo "  check        Run all checks (lint + typecheck + test)"
+	@echo "  file-length  Check all .py files are ≤500 lines"
+	@echo "  complexity   Check cyclomatic complexity (Xenon grade C)"
+	@echo "  dead-code    Detect dead code (Vulture)"
+	@echo "  security-lint Run Bandit security linter"
+	@echo "  check        Run all checks (lint + format + type + length + complexity + test)"
+	@echo "  ci           Full CI-equivalent pipeline (all checks + dead-code)"
 	@echo ""
 	@echo "Building:"
 	@echo "  build        Build the package"
@@ -113,9 +118,44 @@ format-check:
 typecheck:
 	uv run mypy src/immich_memories
 
-# Run all checks
-check: lint typecheck test
+# File length gate (max 500 lines per .py file)
+MAX_LINES := 500
+file-length:
+	@FAILED=0; \
+	for f in $$(find src/ -name '*.py'); do \
+		count=$$(wc -l < "$$f"); \
+		if [ "$$count" -gt $(MAX_LINES) ]; then \
+			echo "ERROR: $$f has $$count lines (max $(MAX_LINES))"; \
+			FAILED=1; \
+		fi; \
+	done; \
+	if [ "$$FAILED" -eq 1 ]; then \
+		echo ""; \
+		echo "Files exceeding $(MAX_LINES) lines must be split into smaller modules."; \
+		echo "See ARCHITECTURE.md for guidance on module structure."; \
+		exit 1; \
+	fi; \
+	echo "All files under $(MAX_LINES) lines."
+
+# Cyclomatic complexity gate (Xenon grade C)
+complexity:
+	cd /tmp && uvx xenon --max-absolute C --max-modules D --max-average C $(CURDIR)/src/
+
+# Dead code detection
+dead-code:
+	uvx vulture src/ --min-confidence 90
+
+# Security lint (Bandit)
+security-lint:
+	uvx bandit -r src/ --severity-level high -q
+
+# Run all checks (same as CI)
+check: lint format-check typecheck file-length complexity test
 	@echo "All checks passed!"
+
+# Full CI-equivalent pipeline (locally)
+ci: lint format-check typecheck file-length complexity dead-code test
+	@echo "Full CI pipeline passed!"
 
 # Pre-commit hooks
 pre-commit:

@@ -27,17 +27,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def render_step1() -> None:
-    """Render Step 1: Configuration."""
-    state = get_app_state()
-
-    # Load existing config if needed
-    if not state.immich_url:
-        config = get_config(reload=True)
-        state.immich_url = config.immich.url
-        state.immich_api_key = config.immich.api_key
-
-    # --- Immich Connection Section ---
+def _render_immich_config_section(state) -> None:
+    """Render the Immich connection configuration section."""
     ui.label("Immich Connection").classes("text-xl font-semibold mt-4")
 
     # Connection status
@@ -128,7 +119,9 @@ def render_step1() -> None:
     if state.immich_url and state.immich_api_key and not state.connected_user:
         ui.timer(0.1, lambda: test_connection(), once=True)
 
-    # --- Time Period Section (only show if connected) ---
+
+def _render_output_config_section(state) -> None:
+    """Render the time period, person filter, and navigation section."""
     if state.people or state.years:
         ui.separator().classes("my-6")
         ui.label("Time Period").classes("text-xl font-semibold")
@@ -479,3 +472,17 @@ def render_step1() -> None:
             ui.label(
                 "Enter your server URL and API key above, then click 'Test Connection'"
             ).classes("text-yellow-600 text-sm")
+
+
+def render_step1() -> None:
+    """Render Step 1: Configuration."""
+    state = get_app_state()
+
+    # Load existing config if needed
+    if not state.immich_url:
+        config = get_config(reload=True)
+        state.immich_url = config.immich.url
+        state.immich_api_key = config.immich.api_key
+
+    _render_immich_config_section(state)
+    _render_output_config_section(state)

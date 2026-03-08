@@ -67,7 +67,7 @@ class TestSceneScorer:
 
     def test_generate_segments_short_video(self, scorer):
         """Short video should return single segment."""
-        with patch("immich_memories.analysis.scoring.get_video_info") as mock_info:
+        with patch("immich_memories.analysis.scoring_segments.get_video_info") as mock_info:
             mock_info.return_value = {"duration": 2.0, "fps": 30}
 
             segments = scorer._generate_segments(Path("test.mp4"), 3.0, 0.5)
@@ -78,7 +78,7 @@ class TestSceneScorer:
 
     def test_generate_segments_normal_video(self, scorer):
         """Normal video should generate overlapping segments."""
-        with patch("immich_memories.analysis.scoring.get_video_info") as mock_info:
+        with patch("immich_memories.analysis.scoring_segments.get_video_info") as mock_info:
             mock_info.return_value = {"duration": 10.0, "fps": 30}
 
             # 3 second segments with 50% overlap = step of 1.5s
@@ -94,7 +94,7 @@ class TestSceneScorer:
 
     def test_generate_segments_zero_duration(self, scorer):
         """Zero duration video should return empty list."""
-        with patch("immich_memories.analysis.scoring.get_video_info") as mock_info:
+        with patch("immich_memories.analysis.scoring_segments.get_video_info") as mock_info:
             mock_info.return_value = {"duration": 0, "fps": 30}
 
             segments = scorer._generate_segments(Path("test.mp4"), 3.0, 0.5)
@@ -349,7 +349,7 @@ class TestSceneAwareSegmentation:
             ]
 
             with (
-                patch("immich_memories.analysis.scoring.get_video_info") as mock_info,
+                patch("immich_memories.analysis.scoring_segments.get_video_info") as mock_info,
                 tempfile.NamedTemporaryFile(suffix=".mp4") as f,
             ):
                 mock_info.return_value = {"duration": 10.0, "fps": 30}
@@ -375,7 +375,7 @@ class TestSceneAwareSegmentation:
             ]
 
             with (
-                patch("immich_memories.analysis.scoring.get_video_info") as mock_info,
+                patch("immich_memories.analysis.scoring_segments.get_video_info") as mock_info,
                 tempfile.NamedTemporaryFile(suffix=".mp4") as f,
             ):
                 mock_info.return_value = {"duration": 25.0, "fps": 30}
