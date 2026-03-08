@@ -13,6 +13,7 @@ from nicegui import run, ui
 from immich_memories.api.immich import SyncImmichClient
 from immich_memories.api.models import VideoClipInfo
 from immich_memories.processing.clips import probe_video_url
+from immich_memories.security import sanitize_error_message
 from immich_memories.ui.state import get_app_state
 
 if TYPE_CHECKING:
@@ -652,7 +653,7 @@ def _load_clips() -> None:
 
         except Exception as e:
             loading_dialog.close()
-            ui.notify(f"Failed to load videos: {e}", type="negative")
+            ui.notify(f"Failed to load videos: {sanitize_error_message(str(e))}", type="negative")
             logger.exception("Failed to load clips")
 
     # Schedule the async loading

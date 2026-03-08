@@ -1,9 +1,9 @@
 # Security & Quality Audit Report
 
 **Project:** Immich Memories
-**Date:** 2025-12-29
-**Auditor:** Claude Opus 4.5
-**Methodology:** Multi-pass analysis (automated scanning + deep manual review)
+**Date:** 2026-03-08
+**Auditor:** Claude Opus 4.6
+**Methodology:** Full pre-release audit — Layer 1 (deterministic tools) + Layer 2 (AI deep analysis per `references/ai-security-prompts.md`)
 
 ---
 
@@ -11,390 +11,201 @@
 
 | Severity | Count | Status |
 |----------|-------|--------|
-| Critical | 0 | - |
-| High | 3 | Action Required |
-| Medium | 7 | Plan Remediation |
-| Low | 12 | Backlog |
+| Critical | 0 | — |
+| High | 0 | — |
+| Medium | 8 | 5 Fixed, 3 Documented (design/architecture) |
+| Low | 9 | Backlog |
 
-**Overall Risk Level:** MEDIUM
+**Overall Risk Level:** LOW (for intended use as single-user desktop/Docker tool)
 
-The codebase demonstrates good security practices in several areas (environment variable handling, input validation via Pydantic). However, there are security concerns around subprocess execution, insecure temporary file handling, and LLM integration that require attention before production deployment.
-
----
-
-## Automated Scan Results
-
-### Dependency Vulnerabilities (pip-audit)
-✅ **PASS** - No known vulnerabilities in 120+ dependencies
-
-### Static Security Analysis (Bandit)
-- **HIGH Severity:** 1 (hash algorithm usage in music_sources.py)
-- **MEDIUM Severity:** 2 (insecure mktemp usage)
-- **LOW Severity:** 46 (subprocess calls without shell=True)
-
-### Linting (Ruff)
-- Import organization issues
-- Unused imports
-- Deprecated typing imports
-
-### Type Safety (Mypy)
-- **70+ type errors** across codebase
-- Missing return type annotations
-- Incorrect `callable` type hints (should be `Callable`)
+The codebase has matured significantly since the December 2025 audit. All three HIGH findings from the prior audit have been resolved: `tempfile.mktemp()` replaced, path validation via `security.py` deployed, and LLM output validated with whitelists. The remaining findings are primarily architectural considerations for multi-user deployment scenarios, which is not the current design target.
 
 ---
 
-## Detailed Findings
+## Layer 1: Deterministic Tool Results
 
-### HIGH-001: Insecure Temporary File Creation (CWE-377)
+### Ruff (Linting & Formatting)
+- **31 findings** — All `S108` (temp file paths in tests). False positives in test fixtures.
+- **Formatting:** 78 files checked, all clean.
 
-**Files:**
-- `src/immich_memories/audio/mixer.py:106`
-- `src/immich_memories/audio/mixer.py:188`
+### Bandit (Security SAST)
+- **0 HIGH severity**
+- **2 MEDIUM severity** — Both acknowledged with `noqa` comments:
+  - `B104` (`0.0.0.0` binding) — Intentional for Docker container use
+  - `B608` (f-string SQL) — Column names are hardcoded; values are parameterized
+- **178 LOW severity** — B603/B607 (subprocess with list args — safe pattern), B311 (random — not used for crypto), B404 (subprocess import — expected)
 
-**Issue:** Use of deprecated `tempfile.mktemp()` which has a race condition vulnerability.
+### Vulture (Dead Code)
+- **0 findings** — Clean.
 
-```python
-# VULNERABLE CODE
-output_path = Path(tempfile.mktemp(suffix=".mp3", prefix="looped_"))
-```
+### pip-audit (Dependency Vulnerabilities)
+- **12 vulnerabilities in 4 build/infra packages** (not runtime dependencies):
+  - `cryptography==41.0.7` (6 CVEs, fix: upgrade to 46.0.5+)
+  - `pip==24.0` (2 CVEs, fix: upgrade to 26.0+)
+  - `setuptools==68.1.2` (3 CVEs, fix: upgrade to 78.1.1+)
+  - `wheel==0.42.0` (1 CVE, fix: upgrade to 0.46.2+)
+- **Note:** These are system-level packages, not application dependencies in `uv.lock`.
 
-**Risk:** An attacker with local access could exploit the race condition between file creation and use, potentially leading to symlink attacks or data tampering.
+### Radon / Xenon (Complexity)
+- Could not run due to `pyproject.toml` config conflict with radon's parser. Filed as known issue.
 
-**Remediation:**
-```python
-# SECURE CODE
-import tempfile
-with tempfile.NamedTemporaryFile(suffix=".mp3", prefix="looped_", delete=False) as f:
-    output_path = Path(f.name)
-```
-
-**Severity:** HIGH
-**CVSS:** 5.5 (Local, Low complexity)
-
----
-
-### HIGH-002: Subprocess Command Injection Risk (CWE-78)
-
-**Files:**
-- `src/immich_memories/audio/mixer.py:69,123,148,251`
-- `src/immich_memories/audio/mood_analyzer.py:132,157`
-- `src/immich_memories/processing/clips.py`
-- `src/immich_memories/processing/transforms.py`
-- `src/immich_memories/processing/hardware.py`
-
-**Issue:** Multiple subprocess calls pass file paths without sanitization. While `shell=False` mitigates command injection, specially crafted filenames from Immich could still cause issues.
-
-```python
-# CURRENT CODE - Paths from external API
-cmd = ["ffmpeg", "-i", str(video_path), ...]
-subprocess.run(cmd, capture_output=True, check=True)
-```
-
-**Risk:** If Immich API returns a malicious filename containing shell metacharacters or null bytes, it could disrupt processing or cause unexpected behavior.
-
-**Remediation:**
-```python
-# Add path validation
-import os
-
-def validate_path(path: Path) -> Path:
-    """Validate and sanitize file path."""
-    resolved = path.resolve()
-    # Ensure path doesn't contain null bytes
-    if '\x00' in str(resolved):
-        raise ValueError("Path contains null bytes")
-    # Ensure path is within expected directory
-    if not str(resolved).startswith(str(ALLOWED_BASE_DIR)):
-        raise ValueError("Path outside allowed directory")
-    return resolved
-
-# Use validated paths
-validated_path = validate_path(video_path)
-cmd = ["ffmpeg", "-i", str(validated_path), ...]
-```
-
-**Severity:** HIGH
-**CVSS:** 6.3 (Network, requires specific conditions)
+### Tests
+- **340 passed, 4 skipped, 0 failed** — Full test suite clean.
 
 ---
 
-### HIGH-003: LLM Output Not Validated (CWE-20)
+## Layer 2: AI Deep Analysis Results
 
-**File:** `src/immich_memories/audio/mood_analyzer.py:169-204`
+### Prompt 1 — Attack Surface Mapping
 
-**Issue:** LLM responses are parsed as JSON and used directly without content validation. While the current use case is low-risk (music selection), this pattern is dangerous.
+**Architecture:** CLI (Click) + local web UI (NiceGUI) + Immich API client + FFmpeg video processing.
 
-```python
-def _parse_mood_response(self, response_text: str) -> VideoMood:
-    # No validation of extracted values
-    data = json.loads(text)
-    return VideoMood(
-        primary_mood=data.get("primary_mood", "calm"),  # Unconstrained string
-        genre_suggestions=data.get("genre_suggestions", []),  # List of any strings
-        ...
-    )
-```
+| Entry Point | Auth | Risk | Notes |
+|---|---|---|---|
+| CLI `main` | None | LOW | Local process, user-invoked |
+| CLI `ui` | None | MEDIUM | Default `0.0.0.0` binding, no auth on web UI |
+| Web `/` (Config) | None | MEDIUM | Accepts Immich URL + API key |
+| Web `/step2` (Review) | None | LOW | Triggers FFmpeg for previews |
+| Web `/step3` (Options) | None | LOW | Music upload accepted |
+| Web `/step4` (Export) | None | MEDIUM | Output filename user-controlled (now sanitized) |
+| Immich API calls | API key | LOW | Key in header, not query param |
+| LLM calls (Ollama/OpenAI) | API key | LOW | Keys in Bearer header |
+| FFmpeg subprocess | N/A | LOW | All list-based, no shell=True |
 
-**Risk:**
-- LLM could return unexpectedly large strings causing memory issues
-- Malicious content in video frames could influence LLM to return harmful data
-- XSS if values are displayed in UI without encoding
+### Prompt 2 — Auth & Authorization
 
-**Remediation:**
-```python
-VALID_MOODS = {"happy", "sad", "calm", "energetic", "romantic", "dramatic", "playful", "nostalgic"}
-VALID_GENRES = {"acoustic", "electronic", "cinematic", "classical", "jazz", "pop", "ambient", "folk", "rock"}
+**Not applicable for v1.** This is a single-user desktop tool. No user authentication, no RBAC, no session management. The web UI is intended for localhost access. The `0.0.0.0` default binding is documented as intentional for Docker.
 
-def _parse_mood_response(self, response_text: str) -> VideoMood:
-    data = json.loads(text)
+**Recommendation for future multi-user deployment:** Add auth middleware before exposing on a network.
 
-    # Validate and constrain mood
-    primary_mood = data.get("primary_mood", "calm")
-    if primary_mood not in VALID_MOODS:
-        primary_mood = "calm"
+### Prompt 3 — Injection & Data Flow
 
-    # Validate genres
-    genres = data.get("genre_suggestions", [])[:5]  # Limit count
-    genres = [g for g in genres if g in VALID_GENRES]
+| Category | Status | Details |
+|---|---|---|
+| SQL Injection | **SAFE** | All SQLite queries use parameterized `?` placeholders. Single f-string at `run_database.py:403` uses hardcoded column names. |
+| Command Injection | **SAFE** | Zero `shell=True`, zero `os.system()`. All subprocess uses list args. |
+| SSRF | **LOW** | Config-driven API URLs send credentials. By design (user configures their own servers). |
+| Path Traversal | **FIXED** | `sanitize_filename()` now applied to output filename and person slug. API suffix sanitized. |
+| Template Injection | **N/A** | No server-side template rendering. |
+| Deserialization | **SAFE** | `yaml.safe_load()` only. No pickle, no unsafe YAML. |
 
-    # Limit description length
-    description = data.get("description", "")[:500]
+### Prompt 4 — Race Conditions & Concurrency
 
-    return VideoMood(
-        primary_mood=primary_mood,
-        genre_suggestions=genres,
-        description=description,
-        ...
-    )
-```
+| Finding | Severity | Notes |
+|---|---|---|
+| `AppState` global shared between UI + background threads | MEDIUM | Single-user tool; thread-safety is cosmetic, not security-critical |
+| Config singleton race on first access | LOW | Write-once pattern, idempotent |
+| Progress dict shared without atomic multi-field update | LOW | Cosmetic (progress display) |
+| Non-atomic config file write | LOW | Crash mid-write could corrupt; rare |
+| No `asyncio.Lock` usage | LOW | Architectural; blocking I/O properly offloaded to threads |
 
-**Severity:** HIGH
-**CVSS:** 5.4 (Indirect injection vector)
+### Prompt 5 — Business Logic
 
----
+| Finding | Severity | Notes |
+|---|---|---|
+| No rate limiting on FFmpeg/LLM | MEDIUM | Design: single-user tool. If network-exposed, add `slowapi`. |
+| Error messages exposed to UI without sanitization | **FIXED** | `sanitize_error_message()` now applied in step2 and step4 |
+| API keys in plaintext config file | LOW | Config dir permissions `0o700`; file now `0o600` on save |
+| No concurrency guard on generate button | LOW | Single-user; worst case = wasted resources |
+| Wizard steps not enforced server-side | LOW | Single-user; no security implication |
 
-### MEDIUM-001: Secrets in Example Files
+### Prompt 6 — FFmpeg / Subprocess Hardening
 
-**Files:**
-- `deploy/kubernetes/secret.yaml` (placeholder values)
-- `deploy/terraform/examples/*/terraform.tfvars.example`
+| Finding | Severity | Notes |
+|---|---|---|
+| No `shell=True` anywhere | **EXCELLENT** | All 88+ subprocess calls use list args |
+| `validate_video_path()` applied at entry points | **GOOD** | Extension + magic bytes + null byte + control char checks |
+| Missing timeout on `_extract_copy()` | MEDIUM | `subprocess.run()` at `clips.py:360` has no `timeout=` |
+| 5 `Popen` calls without timeout mechanism | MEDIUM | `clips.py:451`, `assembly.py:840`, title renderers |
+| No `-threads` limit on most FFmpeg calls | LOW | Can consume all CPU; acceptable for single-user |
+| No `-fs` limit on FFmpeg output | LOW | Could produce large files; user controls input |
+| Full FFmpeg stderr in some exception messages | LOW | Now sanitized before reaching UI |
 
-**Issue:** Secret YAML file contains placeholder values that could be accidentally replaced and committed with real secrets.
+### Prompt 7 — WebSocket / NiceGUI
 
-**Remediation:**
-1. Add `secret.yaml` to `.gitignore`
-2. Create `secret.yaml.template` without any values
-3. Document use of sealed-secrets or external-secrets operator
-4. Add pre-commit hook to detect secret patterns
-
----
-
-### MEDIUM-002: Missing API Rate Limiting
-
-**File:** `src/immich_memories/audio/music_sources.py`
-
-**Issue:** No rate limiting on Pixabay API calls. Runaway processes could exhaust API quota.
-
-**Remediation:** Implement exponential backoff and request counting.
+**Not a significant attack surface for v1.** NiceGUI manages WebSocket lifecycle internally. The app is single-user, localhost-targeted. No custom WS handlers, no message validation needed.
 
 ---
 
-### MEDIUM-003: Type Annotation Inconsistencies
+## Fixes Applied in This Audit
 
-**Files:** Multiple (70+ mypy errors)
+### FIX-001: Output filename sanitization (`step4_export.py`)
+- Applied `sanitize_filename()` to user-provided output filename
+- Applied `sanitize_filename()` to `person_slug` for directory creation
+- **Prevents:** Path traversal via `../../` in filename or person name
 
-**Key Issues:**
-- `callable` used instead of `Callable` (src/immich_memories/api/immich.py:334)
-- Missing return type annotations
-- Incorrect `Any` type usage
+### FIX-002: Error message sanitization (`step4_export.py`, `step2_review.py`)
+- Applied `sanitize_error_message()` to all `ui.notify()` and `ui.label()` calls displaying exceptions
+- **Prevents:** API key or internal path leakage in error displays
 
-**Remediation:** Run `mypy --strict` and fix all errors systematically.
+### FIX-003: API suffix sanitization (`pipeline.py`)
+- Validated suffix from `original_file_name` against known video extensions
+- Falls back to `.mp4` for unrecognized suffixes
+- **Prevents:** Path injection via malicious Immich API filenames
 
----
+### FIX-004: Pixabay redirect domain validation (`music_sources.py`)
+- Added post-redirect domain check on `response.url.host`
+- **Prevents:** Open redirect abuse bypassing the pre-request domain whitelist
 
-### MEDIUM-004: Deprecated Pydantic Patterns
-
-**File:** `src/immich_memories/api/models.py`
-
-**Issue:** Using deprecated `class Config` instead of `model_config = ConfigDict(...)`.
-
-```python
-# DEPRECATED
-class ExifInfo(BaseModel):
-    class Config:
-        extra = "allow"
-
-# MODERN
-class ExifInfo(BaseModel):
-    model_config = ConfigDict(extra="allow")
-```
+### FIX-005: Config file permissions (`config.py`)
+- `save_yaml()` now sets `0o600` on the config file after writing
+- **Prevents:** Other users reading API keys from config file
 
 ---
 
-### MEDIUM-005: Kubernetes Container Security
+## Positive Security Observations
 
-**File:** `deploy/kubernetes/deployment.yaml`
+The codebase demonstrates strong security awareness:
 
-**Issues:**
-1. Container runs with default capabilities (should drop all)
-2. No securityContext for read-only filesystem
-3. No PodSecurityPolicy/PodSecurityStandard reference
-
-**Remediation:**
-```yaml
-securityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-      - ALL
-  readOnlyRootFilesystem: true
-```
+1. **Dedicated `security.py` module** — Centralized path validation, magic bytes checking, filename sanitization, error message scrubbing
+2. **Zero `shell=True`** — All 88+ subprocess calls use list-based arguments
+3. **`yaml.safe_load()` exclusively** — No unsafe YAML deserialization anywhere
+4. **Parameterized SQL throughout** — SQLite queries use `?` placeholders consistently
+5. **Pydantic validation** — Config and API models validated with type constraints and ranges
+6. **Download size limits** — 25 GB per Immich asset, 100 MB per music file, 10 GB video cache
+7. **LLM output whitelists** — Mood, genre, and energy values validated against allowed sets
+8. **Error sanitization** — API keys stripped from error messages before display
+9. **Config directory permissions** — `0o700` enforced on `~/.immich-memories/`
+10. **Domain whitelisting** — Pixabay downloads restricted to trusted domains
 
 ---
 
-### MEDIUM-006: Missing Input Length Limits
+## Remaining Recommendations
 
-**File:** `src/immich_memories/audio/mood_analyzer.py`
+### Before v1 Release
+- [x] Fix output filename sanitization (FIX-001)
+- [x] Fix error message leakage (FIX-002)
+- [x] Fix API suffix sanitization (FIX-003)
+- [x] Fix redirect domain validation (FIX-004)
+- [x] Fix config file permissions (FIX-005)
 
-**Issue:** No maximum limit on video file size or keyframe count, could lead to resource exhaustion.
+### Short-term (Post-v1)
+- Add `timeout=` to `_extract_copy()` subprocess call in `clips.py`
+- Add timeout mechanism to `Popen` calls in assembly and title renderers
+- Upgrade system `cryptography`, `pip`, `setuptools`, `wheel` packages
+- Fix radon/xenon compatibility with pyproject.toml
 
----
-
-### MEDIUM-007: Weak Hash for Cache Keys
-
-**File:** `src/immich_memories/audio/music_sources.py:39`
-
-```python
-hash_id = hashlib.md5(f"{self.source}:{self.id}".encode()).hexdigest()[:12]
-```
-
-**Issue:** MD5 is cryptographically weak. While used only for cache filenames (not security-critical), it's better practice to use SHA-256.
-
----
-
-### LOW Findings (12 total)
-
-| ID | File | Issue |
-|----|------|-------|
-| LOW-001 | Multiple | Unsorted imports (Ruff I001) |
-| LOW-002 | apple_vision.py | Unused import `pathlib.Path` |
-| LOW-003 | apple_vision.py | Unused method arguments `scaleFactor`, `minNeighbors` |
-| LOW-004 | config.py | Missing type stub for `yaml` |
-| LOW-005 | scenes.py | OpenCV CUDA attributes not found by mypy |
-| LOW-006 | Multiple | `from typing import Callable` should use `collections.abc` |
-| LOW-007 | mood_analyzer.py | Missing `-> None` return annotations |
-| LOW-008 | music_sources.py | Missing list type annotation |
-| LOW-009 | api/immich.py | Generic `Any` return types |
-| LOW-010 | Multiple | Subprocess import flagged (expected usage) |
-| LOW-011 | processing/* | Complex filter expressions in subprocess |
-| LOW-012 | Terraform | Node selector dynamic block incomplete |
+### If Deploying Multi-User / Network-Exposed
+- Add authentication middleware to NiceGUI routes
+- Add rate limiting (`slowapi`) to expensive operations
+- Add `threading.Lock` to `AppState` for concurrent access
+- Use atomic file writes (write-to-temp-then-rename) for config and metadata
+- Add CSRF protection and security headers
+- Consider per-session `AppState` isolation
 
 ---
 
-## Infrastructure Security Assessment
+## Tool Versions
 
-### Kubernetes Deployment
-
-| Check | Status | Notes |
-|-------|--------|-------|
-| Namespace isolation | ✅ PASS | Dedicated namespace |
-| Secret management | ⚠️ WARN | Should use sealed-secrets |
-| Resource limits | ✅ PASS | Memory/CPU limits defined |
-| GPU resource requests | ✅ PASS | nvidia.com/gpu specified |
-| RuntimeClass | ✅ PASS | nvidia RuntimeClass used |
-| Health probes | ✅ PASS | Liveness/readiness defined |
-| Security context | ❌ FAIL | Missing capability drops |
-| Network policy | ❌ FAIL | Not defined |
-| Pod security standard | ❌ FAIL | Not enforced |
-
-### Terraform Module
-
-| Check | Status | Notes |
-|-------|--------|-------|
-| Sensitive variable marking | ✅ PASS | API keys marked sensitive |
-| State file security | ⚠️ WARN | Backend not configured |
-| Variable validation | ⚠️ WARN | Could add more validation |
-| Provider pinning | ✅ PASS | Version constraints defined |
+| Tool | Version | Result |
+|------|---------|--------|
+| Ruff | latest (CI) | 31 findings (all false positives) |
+| Bandit | 1.9.4 | 2 MEDIUM (both justified), 178 LOW |
+| Vulture | 2.15 | 0 findings |
+| pip-audit | 2.10.0 | 12 vulns (build deps only) |
+| pytest | 8.x | 340 passed, 4 skipped |
+| Python | 3.13 | — |
 
 ---
 
-## Remediation Roadmap
-
-### Immediate (Before Production)
-
-1. **Fix tempfile.mktemp usage** → Use NamedTemporaryFile
-2. **Add LLM output validation** → Whitelist valid values
-3. **Add container security context** → Drop capabilities, read-only FS
-
-### Short-term (Sprint 1-2)
-
-4. **Add path validation for subprocess** → Sanitize all file paths
-5. **Fix mypy type errors** → Achieve strict compliance
-6. **Add Kubernetes network policies** → Restrict pod communication
-7. **Implement sealed-secrets** → Remove plaintext secrets
-
-### Medium-term (Backlog)
-
-8. **Add rate limiting** → Protect API integrations
-9. **Update Pydantic patterns** → Remove deprecation warnings
-10. **Add pre-commit security hooks** → Detect secrets, validate YAML
-11. **Implement comprehensive logging** → Audit trail for security events
-
----
-
-## Testing Recommendations
-
-### Security Tests to Add
-
-```python
-# tests/test_security.py
-
-def test_path_traversal_rejected():
-    """Ensure path traversal attacks are blocked."""
-    malicious_paths = [
-        "../../../etc/passwd",
-        "/etc/shadow",
-        "file\x00.mp4",  # Null byte injection
-        "$(whoami).mp4",  # Command substitution
-    ]
-    for path in malicious_paths:
-        with pytest.raises(ValueError):
-            validate_path(Path(path))
-
-def test_llm_output_sanitized():
-    """Ensure LLM output is validated."""
-    malicious_response = '{"primary_mood": "<script>alert(1)</script>"}'
-    mood = analyzer._parse_mood_response(malicious_response)
-    assert "<script>" not in mood.primary_mood
-
-def test_subprocess_timeout():
-    """Ensure subprocess calls have timeouts."""
-    # Verify all subprocess.run calls include timeout parameter
-```
-
----
-
-## Compliance Notes
-
-| Standard | Status |
-|----------|--------|
-| OWASP Top 10 2021 | Partial (A03 Injection needs work) |
-| CWE Top 25 | 2 applicable findings addressed |
-| OWASP LLM Top 10 2025 | LLM01 (Prompt Injection) - Low risk in current usage |
-
----
-
-## Appendix: Tool Versions
-
-- Bandit: 1.9.2
-- Ruff: 0.14.10
-- Mypy: 1.19.1
-- pip-audit: 2.10.0
-- Python: 3.13.11
-
----
-
-*Report generated using multi-pass LLM-assisted code auditing methodology.*
+*Report generated using the python-security-audit skill methodology: Layer 1 deterministic scanning + Layer 2 AI deep analysis with structured security prompts.*
