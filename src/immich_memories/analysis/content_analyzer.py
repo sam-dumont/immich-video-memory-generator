@@ -260,19 +260,34 @@ class ContentAnalyzer:
             else:
                 emotion = str(emotion_raw) if emotion_raw else ""
 
+            # Validate and truncate LLM output fields to prevent injection
+            # and bound resource usage from malformed responses
+            MAX_STR = 500
+            MAX_LIST = 10
+            description = str(data.get("description", ""))[:MAX_STR]
+            activities = [str(a)[:MAX_STR] for a in data.get("activities", [])[:MAX_LIST]]
+            subjects = [str(s)[:MAX_STR] for s in data.get("subjects", [])[:MAX_LIST]]
+            setting = str(data.get("setting", ""))[:MAX_STR]
+            emotion = emotion[:MAX_STR]
+
+            raw_interest = float(data.get("interestingness", 0.5))
+            raw_quality = float(data.get("quality", 0.5))
+            interestingness = max(0.0, min(1.0, raw_interest))
+            quality = max(0.0, min(1.0, raw_quality))
+
             return ContentAnalysis(
-                description=data.get("description", ""),
-                activities=data.get("activities", []),
-                subjects=data.get("subjects", []),
-                setting=data.get("setting", ""),
+                description=description,
+                activities=activities,
+                subjects=subjects,
+                setting=setting,
                 emotion=emotion,
-                interestingness=float(data.get("interestingness", 0.5)),
-                quality=float(data.get("quality", 0.5)),
+                interestingness=interestingness,
+                quality=quality,
                 confidence=0.8,
             )
 
         except (json.JSONDecodeError, KeyError, ValueError) as e:
-            logger.warning(f"Failed to parse LLM response: {e}. Raw text: {response_text[:200]}...")
+            logger.warning(f"Failed to parse LLM response: {e}")
             # Try to extract partial data using regex as fallback
             return self._extract_partial_data(response_text)
 

@@ -133,11 +133,16 @@ def _get_system_font() -> str:
 
 def _escape_ffmpeg_text(text: str) -> str:
     """Escape special characters for FFmpeg drawtext filter."""
-    # FFmpeg drawtext special characters
+    # Strip control characters (except space) to prevent filter injection
+    text = "".join(c for c in text if c == " " or (ord(c) >= 32 and ord(c) != 127))
+    # FFmpeg drawtext special characters (backslash must be first)
     text = text.replace("\\", "\\\\")
     text = text.replace(":", "\\:")
     text = text.replace("'", "\\'")
     text = text.replace("%", "\\%")
+    text = text.replace("[", "\\[")
+    text = text.replace("]", "\\]")
+    text = text.replace(";", "\\;")
     return text
 
 

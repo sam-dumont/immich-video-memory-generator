@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
+import stat
 from pathlib import Path
 from typing import Literal
 
@@ -712,6 +714,7 @@ def init_config_dir() -> Path:
     Returns:
         Path to the configuration directory.
     """
+    logger = logging.getLogger(__name__)
     config_dir = Path.home() / ".immich-memories"
     config_dir.mkdir(parents=True, exist_ok=True)
 
@@ -720,5 +723,24 @@ def init_config_dir() -> Path:
 
     projects_dir = config_dir / "projects"
     projects_dir.mkdir(parents=True, exist_ok=True)
+
+    # Enforce restrictive permissions on config directory (owner-only access)
+    # This protects API keys and cached data on multi-user systems.
+    try:
+        for d in (config_dir, cache_dir, projects_dir):
+            d.chmod(0o700)
+
+        # Warn if config file has overly permissive permissions
+        config_file = config_dir / "config.yaml"
+        if config_file.exists():
+            mode = config_file.stat().st_mode
+            if mode & (stat.S_IRGRP | stat.S_IROTH):
+                logger.warning(
+                    "Config file %s is readable by other users. Run: chmod 600 %s",
+                    config_file,
+                    config_file,
+                )
+    except OSError:
+        pass  # Skip on platforms where chmod is not supported (e.g., some Windows setups)
 
     return config_dir

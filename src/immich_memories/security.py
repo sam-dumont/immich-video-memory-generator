@@ -189,3 +189,14 @@ def sanitize_filename(filename: str, max_length: int = 255) -> str:
         sanitized = "unnamed"
 
     return sanitized
+
+
+def sanitize_error_message(msg: str) -> str:
+    """Strip API keys and auth tokens from error messages before displaying to users.
+
+    Prevents accidental exposure of credentials in UI error displays or logs.
+    """
+    msg = re.sub(r"x-api-key['\"]?\s*[:=]\s*['\"]?\S+", "x-api-key=***", msg, flags=re.IGNORECASE)
+    msg = re.sub(r"Bearer\s+\S+", "Bearer ***", msg, flags=re.IGNORECASE)
+    msg = re.sub(r"api[_-]?key['\"]?\s*[:=]\s*['\"]?\S+", "api_key=***", msg, flags=re.IGNORECASE)
+    return msg

@@ -58,6 +58,7 @@ from typing import IO, Any
 
 from immich_memories.config import get_config
 from immich_memories.processing.clips import ClipSegment
+from immich_memories.security import validate_video_path
 from immich_memories.tracking.run_database import RunDatabase
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,7 @@ def _detect_hdr_type(video_path: Path) -> str | None:
         "pq" for HDR10/HDR10+ (Samsung, Pixel, etc.)
         None if SDR or unknown
     """
+    video_path = validate_video_path(video_path, must_exist=True)
     try:
         result = subprocess.run(
             [
@@ -100,6 +102,7 @@ def _detect_hdr_type(video_path: Path) -> str | None:
             ],
             capture_output=True,
             text=True,
+            timeout=30,
         )
         if result.returncode == 0:
             import json
