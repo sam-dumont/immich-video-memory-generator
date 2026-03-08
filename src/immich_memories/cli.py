@@ -1073,7 +1073,7 @@ def titles_test(
 @click.option("--download", "-d", is_flag=True, help="Download all fonts")
 @click.option("--clear", is_flag=True, help="Clear font cache")
 @click.option("--list", "list_fonts", is_flag=True, help="List cached fonts")
-def titles_fonts(download: bool, clear: bool, list_fonts: bool) -> None:
+def titles_fonts(download: bool, clear: bool, _list_fonts: bool) -> None:
     """Manage title screen fonts.
 
     Downloads OFL-licensed fonts from Google Fonts and caches

@@ -391,8 +391,8 @@ class VisionFaceDetectorCV:
     def detectMultiScale(
         self,
         image: np.ndarray,
-        scaleFactor: float = 1.1,  # noqa: ARG002, N803
-        minNeighbors: int = 5,  # noqa: ARG002, N803
+        _scaleFactor: float = 1.1,  # noqa: ARG002, N803
+        _minNeighbors: int = 5,  # noqa: ARG002, N803
         minSize: tuple[int, int] = (30, 30),
         **_kwargs: object,
     ) -> np.ndarray:

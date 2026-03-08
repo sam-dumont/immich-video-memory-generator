@@ -71,7 +71,6 @@ try:
         get_cached_atlas,
         init_sdf_kernels,
         layout_text,
-        measure_text,
     )
 
     SDF_AVAILABLE = True
@@ -81,7 +80,6 @@ except ImportError:
     get_cached_atlas = None
     init_sdf_kernels = None
     layout_text = None
-    measure_text = None
 
 # Taichi is optional - graceful fallback if not installed
 try:
