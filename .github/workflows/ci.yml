@@ -64,6 +64,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for secret scanning
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -76,14 +78,63 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
-      - name: Run pip-audit (dependency vulnerabilities)
-        run: uvx pip-audit -r <(uv pip freeze)
+      # --- SAST ---
+      - name: Bandit (Python security linter)
+        run: uvx bandit -r src/ --severity-level medium -f json -o bandit-report.json || true
+
+      - name: Check Bandit results
+        run: |
+          HIGH=$(python3 -c "import json; r=json.load(open('bandit-report.json')); print(sum(1 for i in r['results'] if i['issue_severity']=='HIGH'))")
+          echo "Bandit HIGH severity findings: $HIGH"
+          if [ "$HIGH" -gt 0 ]; then
+            python3 -c "import json; r=json.load(open('bandit-report.json')); [print(f\"  {i['filename']}:{i['line_number']} [{i['test_id']}] {i['issue_text']}\") for i in r['results'] if i['issue_severity']=='HIGH']"
+            echo "::warning::Bandit found $HIGH HIGH severity findings - review bandit-report.json"
+          fi
+
+      - name: Semgrep (cross-file SAST)
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/python
+            p/owasp-top-ten
+            p/security-audit
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        continue-on-error: true  # Don't fail CI if Semgrep token not configured
+
+      # --- Dead code & complexity ---
+      - name: Vulture (dead code detection)
+        run: uvx vulture src/ --min-confidence 90
+
+      - name: Xenon (complexity gate)
+        run: |
+          # Run from /tmp to avoid radon's pyproject.toml parsing bug with Jinja2 template strings
+          cd /tmp && uvx xenon --max-absolute D --max-modules D --max-average C $GITHUB_WORKSPACE/src/
+
+      # --- Dependency & supply chain ---
+      - name: pip-audit (dependency vulnerabilities)
+        run: uvx pip-audit -r <(uv pip freeze) --strict
         shell: bash
 
-      - name: Run Gitleaks (secret detection)
+      # --- Secret detection ---
+      - name: Gitleaks (secret detection)
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Container security ---
+      - name: Hadolint (Dockerfile linting)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile
+          failure-threshold: error
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.json
 
   typecheck:
     name: Type Check

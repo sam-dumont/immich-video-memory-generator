@@ -25,7 +25,7 @@ from nicegui import app, ui
 _sigint_count = 0
 
 
-def _sigint_handler(signum: int, frame: object) -> None:
+def _sigint_handler(_signum: int, frame: object) -> None:
     global _sigint_count
     _sigint_count += 1
     if _sigint_count == 1:

@@ -124,7 +124,7 @@ def loop_audio_to_duration(
     audio_path: Path,
     target_duration: float,
     output_path: Path | None = None,
-    crossfade_seconds: float = 2.0,  # noqa: ARG001 - reserved for future use
+    _crossfade_seconds: float = 2.0,  # noqa: ARG001 - reserved for future use
 ) -> Path:
     """Loop an audio file to reach target duration with crossfade.
 
