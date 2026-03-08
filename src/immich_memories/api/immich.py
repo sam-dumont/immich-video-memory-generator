@@ -299,7 +299,7 @@ class ImmichClient:
         self,
         asset_id: str,
         output_path: Path,
-        max_size_bytes: int = 10 * 1024**3,  # 10 GB default limit
+        max_size_bytes: int = 25 * 1024**3,  # 25 GB default limit (4K HDR ~2.3 GB/min)
     ) -> Path:
         """Download an asset's original file.
 
