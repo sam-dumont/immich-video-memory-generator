@@ -242,6 +242,8 @@ known-first-party = ["immich_memories"]
 [tool.ruff.lint.per-file-ignores]
 # app.py needs logging configured before other imports
 "src/immich_memories/ui/app.py" = ["E402"]
+# Tests use hardcoded /tmp paths as dummy values, not actual temp file usage
+"tests/**" = ["S108"]
 
 [tool.mypy]
 python_version = "3.11"
