@@ -17,6 +17,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
+# hatch-vcs needs git history to detect version, which isn't available in Docker.
+# Use SETUPTOOLS_SCM_PRETEND_VERSION to provide the version explicitly.
+ARG SETUPTOOLS_SCM_PRETEND_VERSION=0.1.0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${SETUPTOOLS_SCM_PRETEND_VERSION}
+
 RUN pip install --no-cache-dir build && \
     python -m build --wheel && \
     (pip wheel --no-cache-dir --wheel-dir=/wheels ".[face]" || \
@@ -59,9 +64,9 @@ ENV PYTHONUNBUFFERED=1
 # Expose NiceGUI port
 EXPOSE 8080
 
-# Health check
+# Health check (use python instead of curl since slim image doesn't include curl)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/ || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/')" || exit 1
 
 # Default command: run the UI
 CMD ["immich-memories", "ui", "--host", "0.0.0.0"]
