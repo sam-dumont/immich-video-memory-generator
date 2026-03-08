@@ -113,7 +113,7 @@ jobs:
 
       # --- Dependency & supply chain ---
       - name: pip-audit (dependency vulnerabilities)
-        run: uvx pip-audit -r <(uv pip freeze | grep -v '^immich-memories==') --strict
+        run: uvx pip-audit -r <(uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==') --strict
         shell: bash
 
       # --- Secret detection ---
