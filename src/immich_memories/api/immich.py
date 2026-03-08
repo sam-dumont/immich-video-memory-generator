@@ -299,25 +299,52 @@ class ImmichClient:
         self,
         asset_id: str,
         output_path: Path,
+        max_size_bytes: int = 25 * 1024**3,  # 25 GB default limit (4K HDR ~2.3 GB/min)
     ) -> Path:
         """Download an asset's original file.
 
         Args:
             asset_id: The asset's ID.
             output_path: Path to save the file.
+            max_size_bytes: Maximum allowed download size in bytes.
 
         Returns:
             Path to the downloaded file.
+
+        Raises:
+            ValueError: If download exceeds size limit.
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        bytes_downloaded = 0
 
         async with self.client.stream(
             "GET",
             f"/api/assets/{asset_id}/original",
         ) as response:
             response.raise_for_status()
+
+            # Fast-fail on Content-Length if available
+            content_length = response.headers.get("content-length")
+            if content_length:
+                try:
+                    if int(content_length) > max_size_bytes:
+                        raise ValueError(
+                            f"Asset {asset_id} size ({int(content_length)} bytes) "
+                            f"exceeds limit ({max_size_bytes} bytes)"
+                        )
+                except (ValueError, OverflowError):
+                    pass  # Invalid header, fall through to streaming check
+
             with open(output_path, "wb") as f:
                 async for chunk in response.aiter_bytes(chunk_size=8192):
+                    bytes_downloaded += len(chunk)
+                    if bytes_downloaded > max_size_bytes:
+                        f.close()
+                        output_path.unlink(missing_ok=True)
+                        raise ValueError(
+                            f"Download for asset {asset_id} exceeded size limit "
+                            f"({max_size_bytes} bytes)"
+                        )
                     f.write(chunk)
 
         return output_path

@@ -22,6 +22,7 @@ from immich_memories.processing.hardware import (
     get_ffmpeg_encoder,
     get_ffmpeg_hwaccel_args,
 )
+from immich_memories.security import validate_video_path
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +230,8 @@ class AspectRatioTransformer:
         Returns:
             Path to transformed video.
         """
+        input_path = validate_video_path(input_path, must_exist=True)
+
         if output_path is None:
             output_dir = Path(tempfile.gettempdir()) / "immich_memories" / "transformed"
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -258,7 +261,7 @@ class AspectRatioTransformer:
             str(video_path),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
             return (0, 0)
 
@@ -312,7 +315,7 @@ class AspectRatioTransformer:
         cmd.append(str(output_path))
 
         logger.debug(f"Running: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
         if result.returncode != 0:
             # Retry without hardware acceleration if it failed
@@ -358,7 +361,7 @@ class AspectRatioTransformer:
             str(output_path),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if result.returncode != 0:
             raise RuntimeError(f"Failed to transform video: {result.stderr}")
         return output_path
@@ -413,7 +416,7 @@ class AspectRatioTransformer:
 
         cmd.append(str(output_path))
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
         if result.returncode != 0:
             # Fallback to software if hardware failed
@@ -456,7 +459,7 @@ class AspectRatioTransformer:
             str(output_path),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if result.returncode != 0:
             raise RuntimeError(f"Failed to transform video: {result.stderr}")
         return output_path
@@ -648,7 +651,7 @@ class AspectRatioTransformer:
 
         cmd.append(str(output_path))
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
         if result.returncode != 0:
             # Fallback to software
@@ -695,7 +698,7 @@ class AspectRatioTransformer:
             str(output_path),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if result.returncode != 0:
             raise RuntimeError(f"Failed to transform video: {result.stderr}")
         return output_path
@@ -749,6 +752,7 @@ def add_date_overlay(
     Returns:
         Path to output video.
     """
+    input_path = validate_video_path(input_path, must_exist=True)
     config = get_config()
 
     # Calculate position
@@ -790,7 +794,7 @@ def add_date_overlay(
         str(output_path),
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
     if result.returncode != 0:
         raise RuntimeError(f"Failed to add date overlay: {result.stderr}")

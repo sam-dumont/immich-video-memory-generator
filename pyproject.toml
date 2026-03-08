@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["immich", "video", "memories", "compilation", "photo-management"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Environment :: Web Environment",
     "Intended Audience :: End Users/Desktop",
@@ -40,7 +40,7 @@ dependencies = [
     "pyyaml>=6.0",
     "click>=8.1",
     "rich>=13.0",
-    "pillow>=10.0",
+    "pillow>=12.1.1",
     "numpy>=1.24",
     "imagehash>=4.3",
     "watchdog>=3.0",  # File watching for development
@@ -133,7 +133,7 @@ include = [
 # Semantic Release Configuration
 [tool.semantic_release]
 version_toml = ["pyproject.toml:tool.semantic_release.version"]
-version = "0.1.0"
+version = "0.2.0"
 tag_format = "v{version}"
 branch = "main"
 build_command = "uv build"
@@ -217,6 +217,7 @@ select = [
     "UP",     # pyupgrade
     "ARG",    # flake8-unused-arguments
     "SIM",    # flake8-simplify
+    "S",      # flake8-bandit (security)
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
@@ -226,6 +227,13 @@ ignore = [
     "ARG001", # unused function argument - often needed for interface compliance
     "ARG002", # unused method argument - often needed for interface compliance
     "B904",   # raise from - not always needed for simple re-raises
+    "S603",   # subprocess call with non-literal args - we validate paths via security.py
+    "S607",   # partial executable path - we use standard system binaries (ffmpeg, ffprobe)
+    "S101",   # assert used - fine for non-security assertions in application code
+    "S311",   # pseudo-random generators - not used for security purposes
+    "S301",   # pickle - not used but would flag stdlib imports
+    "S110",   # try-except-pass - used for cleanup/fallback paths
+    "S112",   # try-except-continue - used for best-effort processing
 ]
 
 [tool.ruff.lint.isort]
@@ -234,6 +242,8 @@ known-first-party = ["immich_memories"]
 [tool.ruff.lint.per-file-ignores]
 # app.py needs logging configured before other imports
 "src/immich_memories/ui/app.py" = ["E402"]
+# Tests use hardcoded /tmp paths as dummy values, not actual temp file usage
+"tests/**" = ["S108"]
 
 [tool.mypy]
 python_version = "3.11"

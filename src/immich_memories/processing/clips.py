@@ -16,6 +16,7 @@ from immich_memories.processing.hardware import (
     get_ffmpeg_encoder,
     get_ffmpeg_hwaccel_args,
 )
+from immich_memories.security import validate_video_path
 
 logger = logging.getLogger(__name__)
 
@@ -477,7 +478,7 @@ class ClipExtractor:
                     )
                 raise RuntimeError(f"Failed to extract clip: {stderr}")
         else:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
             if result.returncode != 0:
                 # If hardware encoding failed, retry with software
                 if hw_caps and hw_caps.has_encoding:
@@ -591,7 +592,7 @@ def extract_clip(
         output_dir = Path(tempfile.gettempdir()) / "immich_memories" / "clips"
         output_dir.mkdir(parents=True, exist_ok=True)
         # Include source path hash to avoid collisions when multiple clips have same times
-        source_hash = hashlib.md5(str(source_path).encode()).hexdigest()[:8]
+        source_hash = hashlib.md5(str(source_path).encode(), usedforsecurity=False).hexdigest()[:8]  # noqa: S324
         # Include buffer flags in filename
         buffer_suffix = (
             f"_b{int(buffer_start)}{int(buffer_end)}" if (buffer_start or buffer_end) else ""
@@ -633,6 +634,7 @@ def get_video_duration(video_path: Path) -> float:
     Returns:
         Duration in seconds.
     """
+    validated = validate_video_path(video_path, must_exist=True)
     cmd = [
         "ffprobe",
         "-v",
@@ -641,10 +643,10 @@ def get_video_duration(video_path: Path) -> float:
         "format=duration",
         "-of",
         "default=noprint_wrappers=1:nokey=1",
-        str(video_path),
+        str(validated),
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
     if result.returncode != 0:
         logger.error(f"FFprobe error: {result.stderr}")
@@ -660,11 +662,12 @@ def get_video_info(video_path: Path) -> dict:
     """Get detailed video information.
 
     Args:
-        video_path: Path to the video file.
+        video_path: Path to the video file (validated for safety).
 
     Returns:
         Dictionary with video metadata.
     """
+    validated = validate_video_path(video_path, must_exist=True)
     cmd = [
         "ffprobe",
         "-v",
@@ -677,10 +680,10 @@ def get_video_info(video_path: Path) -> dict:
         "format=duration,size,bit_rate",
         "-of",
         "json",
-        str(video_path),
+        str(validated),
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
     if result.returncode != 0:
         logger.error(f"FFprobe error: {result.stderr}")

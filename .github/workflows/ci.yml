@@ -59,6 +59,86 @@ jobs:
       - name: Run ruff format check
         run: uv run ruff format --check src/ tests/
 
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for secret scanning
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      # --- SAST ---
+      - name: Bandit (Python security linter)
+        run: uvx bandit -r src/ --severity-level medium -f json -o bandit-report.json || true
+
+      - name: Check Bandit results
+        run: |
+          HIGH=$(python3 -c "import json; r=json.load(open('bandit-report.json')); print(sum(1 for i in r['results'] if i['issue_severity']=='HIGH'))")
+          echo "Bandit HIGH severity findings: $HIGH"
+          if [ "$HIGH" -gt 0 ]; then
+            python3 -c "import json; r=json.load(open('bandit-report.json')); [print(f\"  {i['filename']}:{i['line_number']} [{i['test_id']}] {i['issue_text']}\") for i in r['results'] if i['issue_severity']=='HIGH']"
+            echo "::warning::Bandit found $HIGH HIGH severity findings - review bandit-report.json"
+          fi
+
+      - name: Semgrep (cross-file SAST)
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/python
+            p/owasp-top-ten
+            p/security-audit
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        continue-on-error: true  # Don't fail CI if Semgrep token not configured
+
+      # --- Dead code & complexity ---
+      - name: Vulture (dead code detection)
+        run: uvx vulture src/ --min-confidence 90
+
+      - name: Xenon (complexity gate)
+        run: |
+          # Run from /tmp to avoid radon's pyproject.toml parsing bug with Jinja2 template strings
+          cd /tmp && uvx xenon --max-absolute F --max-modules D --max-average C $GITHUB_WORKSPACE/src/
+
+      # --- Dependency & supply chain ---
+      - name: pip-audit (dependency vulnerabilities)
+        run: uvx pip-audit -r <(uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==') --strict
+        shell: bash
+
+      # --- Secret detection ---
+      - name: Gitleaks (secret detection)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Container security ---
+      - name: Hadolint (Dockerfile linting)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile
+          failure-threshold: error
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest
@@ -86,7 +166,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ["3.13"]  # TensorFlow 2.20+ requires Python 3.13
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -119,6 +199,50 @@ jobs:
         with:
           files: coverage.xml
           fail_ci_if_error: false
+
+  # Test optional extras install and run on Python 3.13
+  test-extras:
+    name: Test Extras (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            extras: "dev,face,audio,audio-ml,gpu"
+          - os: macos-latest
+            extras: "dev,mac,audio,audio-ml,face,gpu"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install "3.13"
+
+      - name: Install FFmpeg (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
+      - name: Install dependencies with extras
+        run: |
+          IFS=',' read -ra EXTRAS <<< "${{ matrix.extras }}"
+          ARGS=""
+          for extra in "${EXTRAS[@]}"; do
+            ARGS="$ARGS --extra $extra"
+          done
+          uv sync $ARGS
+
+      - name: Run tests
+        run: uv run pytest -v
 
   build:
     name: Build Package
@@ -187,15 +311,17 @@ jobs:
   # Summary job that other jobs can depend on
   ci-success:
     name: CI Success
-    needs: [lint, typecheck, test, build]
+    needs: [lint, security, typecheck, test, test-extras, build]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
           if [[ "${{ needs.lint.result }}" != "success" ]] || \
+             [[ "${{ needs.security.result }}" != "success" ]] || \
              [[ "${{ needs.typecheck.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
+             [[ "${{ needs.test-extras.result }}" != "success" ]] || \
              [[ "${{ needs.build.result }}" != "success" ]]; then
             echo "One or more jobs failed"
             exit 1

@@ -19,7 +19,7 @@ COPY src/ ./src/
 
 # hatch-vcs needs git history to detect version, which isn't available in Docker.
 # Use SETUPTOOLS_SCM_PRETEND_VERSION to provide the version explicitly.
-ARG SETUPTOOLS_SCM_PRETEND_VERSION=0.1.0
+ARG SETUPTOOLS_SCM_PRETEND_VERSION=0.2.0
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${SETUPTOOLS_SCM_PRETEND_VERSION}
 
 RUN pip install --no-cache-dir build && \
@@ -33,7 +33,7 @@ FROM python:3.11-slim
 
 LABEL maintainer="Immich Memories Contributors"
 LABEL description="Create video compilations from your Immich library"
-LABEL version="0.1.0"
+LABEL version="0.2.0"
 
 WORKDIR /app
 
@@ -55,11 +55,19 @@ COPY --from=builder /app/dist/*.whl /wheels/
 RUN pip install --no-cache-dir /wheels/*.whl && \
     rm -rf /wheels
 
-# Create config and cache directories
-RUN mkdir -p /root/.immich-memories/cache /app/output
+# Create non-root user for security
+RUN groupadd -r immich && useradd -r -g immich -d /home/immich -m immich
+
+# Create config and cache directories with correct ownership
+RUN mkdir -p /home/immich/.immich-memories/cache /app/output && \
+    chown -R immich:immich /home/immich/.immich-memories /app/output
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV HOME=/home/immich
+
+# Switch to non-root user
+USER immich
 
 # Expose NiceGUI port
 EXPOSE 8080

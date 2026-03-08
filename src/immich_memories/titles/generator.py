@@ -602,13 +602,13 @@ class TitleScreenGenerator:
     def generate_ending_screen(
         self,
         video_clips: list[Path] | None = None,
-        dominant_color: tuple[int, int, int] | None = None,
+        _dominant_color: tuple[int, int, int] | None = None,
     ) -> GeneratedScreen:
         """Generate the ending screen with fade to white.
 
         Args:
             video_clips: List of video clip paths (unused, kept for API compatibility).
-            dominant_color: Ignored - always fades to white.
+            _dominant_color: Ignored - always fades to white.
 
         Returns:
             GeneratedScreen with path to video file.
@@ -938,7 +938,7 @@ def generate_month_divider(
 
 def generate_ending_screen(
     video_clips: list[Path] | None = None,
-    dominant_color: tuple[int, int, int] | None = None,
+    _dominant_color: tuple[int, int, int] | None = None,
     style: TitleStyle | None = None,
     output_path: Path | None = None,
     orientation: str = "landscape",
@@ -950,7 +950,7 @@ def generate_ending_screen(
 
     Args:
         video_clips: Unused, kept for API compatibility.
-        dominant_color: Unused, always fades to white.
+        _dominant_color: Unused, always fades to white.
         style: Visual style for background.
         output_path: Output path.
         orientation: Video orientation ("landscape", "portrait", "square").

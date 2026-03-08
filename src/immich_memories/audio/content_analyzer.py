@@ -113,12 +113,12 @@ class AudioAnalysisResult:
         default_factory=list
     )  # Ranges to avoid cutting
 
-    def get_safe_cut_points(self, min_gap: float = 0.3, max_gap: float = 2.0) -> list[float]:
+    def get_safe_cut_points(self, min_gap: float = 0.3, _max_gap: float = 2.0) -> list[float]:
         """Get time points that are safe for cutting (not during protected events).
 
         Args:
             min_gap: Minimum gap between cut points.
-            max_gap: Maximum gap between cut points.
+            _max_gap: Maximum gap between cut points (unused).
 
         Returns:
             List of safe cut point times.

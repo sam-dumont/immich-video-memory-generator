@@ -192,7 +192,28 @@ class VideoAnalyzer:
                 video_path = self.video_cache.download_or_get(self.client, clip.asset)
             else:
                 # Create temp file for download
-                suffix = Path(clip.asset.original_file_name or "video.mp4").suffix or ".mp4"
+                raw_suffix = Path(clip.asset.original_file_name or "video.mp4").suffix or ".mp4"
+                # Sanitize suffix from API-provided filename to prevent path injection
+                suffix = (
+                    raw_suffix
+                    if raw_suffix.isalnum()
+                    or raw_suffix
+                    in {
+                        ".mp4",
+                        ".mov",
+                        ".avi",
+                        ".mkv",
+                        ".webm",
+                        ".m4v",
+                        ".wmv",
+                        ".flv",
+                        ".mpeg",
+                        ".mpg",
+                        ".3gp",
+                        ".ts",
+                    }
+                    else ".mp4"
+                )
                 with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                     temp_file = Path(tmp.name)
 

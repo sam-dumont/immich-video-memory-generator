@@ -18,6 +18,11 @@ repos:
         pass_filenames: false
         entry: mypy src/
 
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.3
+    hooks:
+      - id: gitleaks
+
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.13.9
     hooks:
