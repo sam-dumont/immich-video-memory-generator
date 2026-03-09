@@ -25,7 +25,8 @@ __all__ = [
     "VideoMood",
     "MoodAnalyzer",
     "OllamaMoodAnalyzer",
-    "OpenAIMoodAnalyzer",
+    "OpenAICompatibleMoodAnalyzer",
+    "OpenAIMoodAnalyzer",  # backwards compat alias
     "get_mood_analyzer",
     # Audio content analysis
     "AudioEvent",
@@ -59,6 +60,7 @@ _SUBMODULE_MAP = {
     "mix_audio_with_stem_ducking": "immich_memories.audio.mixer",
     "MoodAnalyzer": "immich_memories.audio.mood_analyzer",
     "OllamaMoodAnalyzer": "immich_memories.audio.mood_analyzer",
+    "OpenAICompatibleMoodAnalyzer": "immich_memories.audio.mood_analyzer",
     "OpenAIMoodAnalyzer": "immich_memories.audio.mood_analyzer",
     "VideoMood": "immich_memories.audio.mood_analyzer",
     "get_mood_analyzer": "immich_memories.audio.mood_analyzer",

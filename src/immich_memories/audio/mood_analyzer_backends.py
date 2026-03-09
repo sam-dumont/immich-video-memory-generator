@@ -116,21 +116,21 @@ class OllamaMoodAnalyzer(MoodAnalyzer):
             raise
 
 
-class OpenAIMoodAnalyzer(MoodAnalyzer):
-    """Mood analyzer using OpenAI GPT-4 Vision."""
+class OpenAICompatibleMoodAnalyzer(MoodAnalyzer):
+    """Mood analyzer using any OpenAI-compatible API (OpenAI, local servers, etc.)."""
 
     def __init__(
         self,
-        api_key: str,
         model: str = "gpt-4o-mini",
         base_url: str = "https://api.openai.com/v1",
+        api_key: str = "",
     ):
-        """Initialize OpenAI analyzer.
+        """Initialize OpenAI-compatible analyzer.
 
         Args:
-            api_key: OpenAI API key
-            model: Model name (gpt-4o, gpt-4o-mini, gpt-4-vision-preview)
-            base_url: API base URL (for Azure or compatible APIs)
+            model: Model name
+            base_url: API base URL (OpenAI, Azure, local server, etc.)
+            api_key: API key (optional for local servers)
         """
         self.api_key = api_key
         self.model = model
@@ -141,12 +141,12 @@ class OpenAIMoodAnalyzer(MoodAnalyzer):
     def client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
             self._client = httpx.AsyncClient(
-                timeout=60.0,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
+                timeout=120.0,
+                headers=headers,
             )
         return self._client
 
@@ -224,55 +224,37 @@ class OpenAIMoodAnalyzer(MoodAnalyzer):
 
 
 async def get_mood_analyzer(
-    ollama_url: str = "http://localhost:11434",
-    ollama_model: str = "llava",
-    openai_api_key: str | None = None,
-    openai_model: str = "gpt-4.1-nano",
-    openai_base_url: str = "https://api.openai.com/v1",
-    prefer_local: bool = True,
+    provider: str = "openai-compatible",
+    base_url: str = "http://localhost:8080/v1",
+    model: str = "",
+    api_key: str = "",
 ) -> MoodAnalyzer:
-    """Get a mood analyzer, preferring local Ollama if available.
+    """Get a mood analyzer for the given provider.
 
     Args:
-        ollama_url: Ollama API URL
-        ollama_model: Ollama model name
-        openai_api_key: OpenAI API key (fallback)
-        openai_model: OpenAI model name
-        openai_base_url: OpenAI API base URL (for Azure, on-prem, or compatible endpoints)
-        prefer_local: Try Ollama first if True
+        provider: LLM provider ("ollama" or "openai-compatible")
+        base_url: API base URL
+        model: Model name
+        api_key: API key (optional for local servers)
 
     Returns:
         MoodAnalyzer instance
 
     Raises:
-        RuntimeError: If no analyzer is available
+        RuntimeError: If provider is unknown or unavailable
     """
-    if prefer_local:
-        ollama = OllamaMoodAnalyzer(model=ollama_model, base_url=ollama_url)
+    if provider == "ollama":
+        ollama = OllamaMoodAnalyzer(model=model, base_url=base_url)
         if await ollama.is_available():
-            logger.info(f"Using Ollama ({ollama_model}) for mood analysis")
+            logger.info(f"Using Ollama ({model}) for mood analysis")
             return ollama
-        else:
-            logger.info("Ollama not available, checking OpenAI fallback")
+        raise RuntimeError(f"Ollama not available at {base_url}")
 
-    if openai_api_key:
-        logger.info(f"Using OpenAI ({openai_model}) for mood analysis")
-        return OpenAIMoodAnalyzer(
-            api_key=openai_api_key, model=openai_model, base_url=openai_base_url
-        )
+    if provider == "openai-compatible":
+        logger.info(f"Using OpenAI-compatible ({model}) for mood analysis")
+        return OpenAICompatibleMoodAnalyzer(model=model, base_url=base_url, api_key=api_key)
 
-    if not prefer_local:
-        # Try Ollama as last resort
-        ollama = OllamaMoodAnalyzer(model=ollama_model, base_url=ollama_url)
-        if await ollama.is_available():
-            logger.info(f"Using Ollama ({ollama_model}) for mood analysis")
-            return ollama
-
-    raise RuntimeError(
-        "No mood analyzer available. Either:\n"
-        "  1. Start Ollama locally with a vision model (ollama run llava)\n"
-        "  2. Set OPENAI_API_KEY environment variable"
-    )
+    raise RuntimeError(f"Unknown LLM provider: {provider}")
 
 
 async def get_mood_analyzer_from_config() -> MoodAnalyzer:
@@ -290,15 +272,9 @@ async def get_mood_analyzer_from_config() -> MoodAnalyzer:
 
     config = get_config()
     llm = config.llm
-
-    # Determine preference based on provider setting
-    prefer_local = llm.provider in ("ollama", "auto")
-
     return await get_mood_analyzer(
-        ollama_url=llm.ollama_url,
-        ollama_model=llm.ollama_model,
-        openai_api_key=llm.openai_api_key or None,
-        openai_model=llm.openai_model,
-        openai_base_url=llm.openai_base_url,
-        prefer_local=prefer_local,
+        provider=llm.provider,
+        base_url=llm.base_url,
+        model=llm.model,
+        api_key=llm.api_key,
     )
