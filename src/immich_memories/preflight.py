@@ -109,80 +109,125 @@ def check_immich(config: Config | None = None) -> CheckResult:
         )
 
 
-def check_ollama(config: Config | None = None) -> CheckResult:
-    """Check Ollama server availability.
+def _check_ollama(base_url: str, model: str) -> CheckResult:
+    """Check Ollama server availability via /api/tags.
 
     Args:
-        config: Configuration to use (defaults to global config).
+        base_url: Ollama server URL.
+        model: Configured model name.
 
     Returns:
         CheckResult with status and details.
     """
-    if config is None:
-        config = get_config()
-
-    ollama_url = config.llm.ollama_url
-
-    if not ollama_url:
-        return CheckResult(
-            name="Ollama",
-            status=CheckStatus.SKIPPED,
-            message="Not configured",
-            details="Ollama URL not set in config",
-        )
-
     try:
-        # Normalize URL
-        base_url = ollama_url.rstrip("/")
+        normalized = base_url.rstrip("/")
 
-        # Check if Ollama is reachable
         with httpx.Client(timeout=10.0) as client:
-            response = client.get(f"{base_url}/api/tags")
+            response = client.get(f"{normalized}/api/tags")
             response.raise_for_status()
             data = response.json()
 
             models = data.get("models", [])
             model_names = [m.get("name", "") for m in models]
 
-            # Check if configured model is available
-            configured_model = config.llm.ollama_model
-
-            if configured_model and configured_model not in model_names:
-                # Check with and without tag
-                base_name = configured_model.split(":")[0]
+            if model and model not in model_names:
+                base_name = model.split(":")[0]
                 if not any(m.startswith(base_name) for m in model_names):
                     return CheckResult(
-                        name="Ollama",
+                        name="LLM",
                         status=CheckStatus.WARNING,
-                        message=f"Connected but missing model: {configured_model}",
+                        message=f"Connected but missing model: {model}",
                         details=f"Available: {', '.join(model_names[:5])}{'...' if len(model_names) > 5 else ''}",
                     )
 
             return CheckResult(
-                name="Ollama",
+                name="LLM",
                 status=CheckStatus.OK,
-                message=f"Connected ({len(models)} models available)",
-                details=f"Server: {ollama_url}, Model: {configured_model}",
+                message=f"Connected (ollama, {len(models)} models)",
+                details=f"Server: {base_url}, Model: {model}",
             )
 
     except httpx.ConnectError:
         return CheckResult(
-            name="Ollama",
+            name="LLM",
             status=CheckStatus.WARNING,
             message="Cannot connect",
-            details=f"Server not reachable at {ollama_url}",
+            details=f"Server not reachable at {base_url}",
         )
     except Exception as e:
         return CheckResult(
-            name="Ollama",
+            name="LLM",
             status=CheckStatus.WARNING,
             message="Connection error",
             details=str(e),
         )
 
 
-def check_openai(config: Config | None = None) -> CheckResult:
-    """Check OpenAI API key validity.
+def _check_openai_compatible(base_url: str, model: str, api_key: str) -> CheckResult:
+    """Check OpenAI-compatible server via test completion.
+
+    Args:
+        base_url: API base URL (e.g. http://localhost:8080/v1).
+        model: Model name.
+        api_key: API key (may be empty for local servers).
+
+    Returns:
+        CheckResult with status and details.
+    """
+    try:
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        with httpx.Client(timeout=10.0, headers=headers) as client:
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 1,
+            }
+            response = client.post(
+                f"{base_url.rstrip('/')}/chat/completions",
+                json=payload,
+            )
+
+            if response.status_code == 401:
+                return CheckResult(
+                    name="LLM",
+                    status=CheckStatus.ERROR,
+                    message="Authentication failed",
+                    details=f"API key rejected by {base_url}",
+                )
+
+            response.raise_for_status()
+            return CheckResult(
+                name="LLM",
+                status=CheckStatus.OK,
+                message="Connected (openai-compatible)",
+                details=f"Server: {base_url}, Model: {model}",
+            )
+
+    except httpx.ConnectError:
+        return CheckResult(
+            name="LLM",
+            status=CheckStatus.WARNING,
+            message="Cannot connect",
+            details=f"Server not reachable at {base_url}",
+        )
+    except Exception as e:
+        return CheckResult(
+            name="LLM",
+            status=CheckStatus.WARNING,
+            message="Connection error",
+            details=str(e),
+        )
+
+
+def check_llm(config: Config | None = None) -> CheckResult:
+    """Check LLM provider availability.
+
+    Dispatches to the appropriate check based on config.llm.provider:
+    - "ollama": GET /api/tags
+    - "openai-compatible": POST /chat/completions with minimal payload
 
     Args:
         config: Configuration to use (defaults to global config).
@@ -193,68 +238,28 @@ def check_openai(config: Config | None = None) -> CheckResult:
     if config is None:
         config = get_config()
 
-    api_key = config.llm.openai_api_key
+    provider = config.llm.provider
+    base_url = config.llm.base_url
+    model = config.llm.model
 
-    if not api_key:
+    if not base_url:
         return CheckResult(
-            name="OpenAI",
+            name="LLM",
             status=CheckStatus.SKIPPED,
             message="Not configured",
-            details="API key not set (optional, Ollama preferred)",
+            details="No base_url set",
         )
 
-    try:
-        with httpx.Client(timeout=10.0) as client:
-            response = client.get(
-                "https://api.openai.com/v1/models",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
+    if provider == "ollama":
+        return _check_ollama(base_url, model)
+    if provider == "openai-compatible":
+        return _check_openai_compatible(base_url, model, config.llm.api_key)
 
-            if response.status_code == 401:
-                return CheckResult(
-                    name="OpenAI",
-                    status=CheckStatus.ERROR,
-                    message="Invalid API key",
-                    details="The provided API key is not valid",
-                )
-
-            response.raise_for_status()
-            data = response.json()
-            models = data.get("data", [])
-
-            # Check if configured model is available
-            configured_model = config.llm.openai_model
-            model_ids = [m.get("id", "") for m in models]
-
-            if configured_model not in model_ids:
-                return CheckResult(
-                    name="OpenAI",
-                    status=CheckStatus.WARNING,
-                    message="Connected but configured model not found",
-                    details=f"Looking for: {configured_model}",
-                )
-
-            return CheckResult(
-                name="OpenAI",
-                status=CheckStatus.OK,
-                message="API key valid",
-                details=f"Model: {configured_model}",
-            )
-
-    except httpx.ConnectError:
-        return CheckResult(
-            name="OpenAI",
-            status=CheckStatus.WARNING,
-            message="Cannot connect",
-            details="OpenAI API not reachable",
-        )
-    except Exception as e:
-        return CheckResult(
-            name="OpenAI",
-            status=CheckStatus.WARNING,
-            message="Connection error",
-            details=str(e),
-        )
+    return CheckResult(
+        name="LLM",
+        status=CheckStatus.ERROR,
+        message=f"Unknown provider: {provider}",
+    )
 
 
 def check_pixabay(config: Config | None = None) -> CheckResult:
@@ -393,9 +398,8 @@ def run_preflight_checks(config: Config | None = None) -> PreflightResults:
     # Required checks
     results.add(check_immich(config))
 
-    # Optional provider checks
-    results.add(check_ollama(config))
-    results.add(check_openai(config))
+    # LLM provider check
+    results.add(check_llm(config))
     results.add(check_pixabay(config))
 
     # Hardware check
