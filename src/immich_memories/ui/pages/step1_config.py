@@ -18,6 +18,7 @@ from immich_memories.timeperiod import (
     custom_range,
     from_period,
 )
+from immich_memories.ui.pages.step1_cache import render_cache_management
 from immich_memories.ui.state import get_app_state
 
 if TYPE_CHECKING:
@@ -486,3 +487,4 @@ def render_step1() -> None:
 
     _render_immich_config_section(state)
     _render_output_config_section(state)
+    render_cache_management()
