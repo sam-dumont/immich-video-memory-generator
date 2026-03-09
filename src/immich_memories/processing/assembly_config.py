@@ -114,6 +114,9 @@ class AssemblySettings:
     # If provided, these override the automatic transition decisions
     # Format: list of "fade" or "cut" for each transition between clips
     predecided_transitions: list[str] | None = None
+    # Audio loudness normalization (EBU R128)
+    # Brings all clips to similar perceived loudness while preserving dynamics
+    normalize_clip_audio: bool = True
     # Debug mode: preserve intermediate batch files for troubleshooting
     debug_preserve_intermediates: bool = False
     # Aspect ratio handling mode: "blur", "smart_zoom", "black_bars", "exclude"

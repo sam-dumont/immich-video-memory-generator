@@ -178,12 +178,28 @@ class ContentParsingMixin:
             confidence=0.8,
         )
 
+    @staticmethod
+    def _strip_thinking_blocks(text: str) -> str:
+        """Strip chain-of-thought blocks from models like Qwen3.5.
+
+        Removes ``<think>...</think>`` tags and common preamble patterns
+        like "The user wants..." that appear before the actual JSON output.
+        """
+        # Remove <think>...</think> blocks (Qwen3.5, DeepSeek, etc.)
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+        # Remove common preamble before JSON (e.g., "The user wants...\n{")
+        json_start = text.find("{")
+        if json_start > 0:
+            text = text[json_start:]
+        return text.strip()
+
     def _parse_content_response(self, response_text: str) -> ContentAnalysis:
         """Parse LLM response into ContentAnalysis."""
         try:
             text = response_text.strip()
             logger.debug(f"Raw LLM response: {text[:500]}...")
 
+            text = self._strip_thinking_blocks(text)
             text = self._extract_json_text(text)
             data = self._parse_json_object(text)
 

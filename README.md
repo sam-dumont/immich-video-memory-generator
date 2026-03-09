@@ -44,7 +44,7 @@ Immich Memories connects to your self-hosted Immich server, intelligently select
 - **Duplicate Detection**: Perceptual hashing to find and rank similar videos by quality
 - **Scene Detection**: Natural scene boundaries using PySceneDetect (enabled by default)
 - **Intelligent Moment Selection**: Multi-factor interest scoring (faces, motion, stability, content)
-- **LLM Content Analysis**: Optional AI-powered content understanding via Ollama or OpenAI
+- **LLM Content Analysis**: Optional AI-powered content understanding via any OpenAI-compatible API (mlx-vlm, Ollama, vLLM, Groq, etc.)
 - **Fast Analysis**: Videos downscaled to 480p for 3-5x faster analysis while maintaining accuracy
 - **Memory Optimized**: Aggressive garbage collection and on-demand thumbnail loading prevents OOM
 - **Resume Support**: Previously analyzed clips are cached and shown on restart
@@ -309,16 +309,18 @@ hardware:
   gpu_decode: true
   gpu_analysis: true
 
-audio:
-  auto_music: false          # Auto-select music based on video mood
-  music_source: "pixabay"    # pixabay or local
-  local_music_dir: "~/Music/Memories"
+# Shared LLM settings (used by mood analysis and content analysis)
+# Works with any OpenAI-compatible server: mlx-vlm, Ollama, vLLM, Groq, etc.
+llm:
+  provider: "openai-compatible"   # "ollama" or "openai-compatible"
+  base_url: "http://localhost:8080/v1"
+  model: "mlx-community/Qwen3-VL-2B-Instruct-4bit"
+  api_key: ""                     # Optional, only needed for cloud APIs
 
-  # LLM for mood analysis (Ollama preferred, OpenAI fallback)
-  ollama_url: "http://localhost:11434"
-  ollama_model: "llava"
-  openai_api_key: "${OPENAI_API_KEY}"
-  openai_model: "gpt-4o-mini"
+audio:
+  auto_music: true           # Auto-select music based on video mood
+  music_source: "musicgen"   # pixabay, local, musicgen, or ace_step
+  local_music_dir: "~/Music/Memories"
 
   # Audio ducking (lowers music when speech detected)
   ducking_threshold: 0.02    # Sensitivity (lower = more sensitive)
@@ -327,21 +329,24 @@ audio:
   fade_in_seconds: 2.0
   fade_out_seconds: 3.0
 
+# AI music generation via MusicGen API
+# See: https://github.com/sam-dumont/musicgen-api
+musicgen:
+  enabled: true
+  base_url: "http://your-gpu-server:8000"
+  api_key: "your-api-key"
+  timeout_seconds: 10800     # 3 hours (generation is slow on CPU)
+  num_versions: 1            # Generate N versions, pick the best
+
+# ACE-Step music generation (experimental, local library mode only for now)
+# ace_step:
+#   enabled: false
+#   mode: "lib"              # Only "lib" works reliably (API is Gradio-only)
+
 # LLM-based content analysis for intelligent scoring (optional)
 content_analysis:
   enabled: false             # Disabled by default (adds processing time)
   weight: 0.2                # Weight in scoring (0-1, 20% of total score)
-  provider: "auto"           # auto, ollama, openai (auto = try Ollama first)
-
-  # Ollama settings (local, privacy-friendly)
-  ollama_url: "http://localhost:11434"
-  ollama_model: "llava"      # Vision model (llava, bakllava, llava-llama3)
-
-  # OpenAI settings (fallback)
-  openai_api_key: "${OPENAI_API_KEY}"
-  openai_model: "gpt-4o-mini"
-
-  # Analysis parameters
   analyze_frames: 3          # Frames per segment (1-4)
   min_confidence: 0.5        # Minimum confidence to use score
 ```
@@ -360,12 +365,11 @@ export IMMICH_MEMORIES_IMMICH__API_KEY="your-api-key"
 export IMMICH_MEMORIES_ANALYSIS__USE_SCENE_DETECTION="true"
 export IMMICH_MEMORIES_ANALYSIS__ENABLE_DOWNSCALING="true"
 
-# Content analysis (LLM)
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED="true"
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__PROVIDER="ollama"
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__OLLAMA_URL="http://localhost:11434"
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__OLLAMA_MODEL="llava"
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__OPENAI_API_KEY="sk-..."
+# LLM settings (shared by content analysis and mood analysis)
+export IMMICH_MEMORIES_LLM__PROVIDER="openai-compatible"
+export IMMICH_MEMORIES_LLM__BASE_URL="http://localhost:8080/v1"
+export IMMICH_MEMORIES_LLM__MODEL="mlx-community/Qwen3-VL-2B-Instruct-4bit"
+export IMMICH_MEMORIES_LLM__API_KEY=""
 
 # Hardware acceleration
 export IMMICH_MEMORIES_HARDWARE__BACKEND="nvidia"
@@ -403,12 +407,136 @@ Immich Memories automatically detects and uses available GPU hardware.
 - Neural Engine accelerates face detection (~10x faster than OpenCV)
 - Unified memory eliminates CPU/GPU transfer overhead
 - VideoToolbox encoding is 5-10x faster than software
-- All M1/M2/M3/M4 chips fully supported
+- mlx-vlm runs vision LLMs locally with Metal acceleration (no Docker or CUDA needed)
+- All M1/M2/M3/M4/M5 chips fully supported
 
 ```bash
 # Check your hardware capabilities
 immich-memories hardware
 ```
+
+## Running a Local Vision LLM
+
+Content analysis and mood detection use a vision LLM to understand what's happening in your clips. Any server that speaks the OpenAI `/v1/chat/completions` protocol works: mlx-vlm, Ollama, vLLM, LM Studio, llama.cpp, Groq, OpenAI itself, etc.
+
+### mlx-vlm (recommended on Apple Silicon)
+
+Runs vision models natively on Apple Silicon with Metal acceleration. No Docker, no CUDA, just your Mac.
+
+```bash
+# Install and run in one command (isolated env, no conflicts)
+# --with torch/torchvision needed for Qwen3-VL's video processor
+uvx --python 3.12 --from mlx-vlm --with torch --with torchvision mlx_vlm.server --port 8080
+
+# Config
+llm:
+  provider: "openai-compatible"
+  base_url: "http://localhost:8080/v1"
+  model: "mlx-community/Qwen3.5-9B-MLX-4bit"  # ~6 GB, natively multimodal, recommended
+```
+
+Models are downloaded automatically on first use.
+
+### Ollama
+
+```bash
+ollama pull llava
+ollama serve
+
+# Config
+llm:
+  provider: "ollama"
+  base_url: "http://localhost:11434"
+  model: "llava"
+```
+
+### Cloud APIs (Groq, OpenAI, etc.)
+
+```bash
+# Config
+llm:
+  provider: "openai-compatible"
+  base_url: "https://api.groq.com/openai/v1"  # or https://api.openai.com/v1
+  model: "llama-4-scout-17b-16e-instruct"
+  api_key: "${GROQ_API_KEY}"
+```
+
+## AI Background Music
+
+Immich Memories can generate original background music that matches the mood of your clips. The pipeline works in two steps:
+
+1. **Mood detection**: the vision LLM (see above) watches a few frames from your compilation and describes the overall mood ("happy family gathering", "calm beach sunset", etc.)
+2. **Music generation**: that mood description is sent to a music generation API which produces a matching instrumental track
+
+Two generation backends are supported:
+
+### MusicGen API (recommended)
+
+[MusicGen](https://github.com/facebookresearch/audiocraft) by Meta generates high-quality instrumental music from text prompts. We built a simple REST API wrapper for it: [sam-dumont/musicgen-api](https://github.com/sam-dumont/musicgen-api).
+
+You need a machine with a GPU (NVIDIA recommended, ~8GB VRAM) to run the server. Generation takes 5-30 minutes depending on duration and hardware.
+
+```yaml
+audio:
+  auto_music: true
+  music_source: "musicgen"
+
+musicgen:
+  enabled: true
+  base_url: "http://your-gpu-server:8000"
+  api_key: "your-api-key"
+  timeout_seconds: 10800       # 3 hours max (CPU generation is slow)
+  num_versions: 1              # Generate N versions, UI lets you pick
+```
+
+Deploy the API server on any machine with an NVIDIA GPU:
+```bash
+# Option A: Docker image (recommended)
+docker run -d --gpus all -p 8000:8000 ghcr.io/sam-dumont/musicgen-api:latest
+
+# Option B: Full setup with docker compose
+git clone https://github.com/sam-dumont/musicgen-api.git
+cd musicgen-api
+cp .env.example .env  # Edit with your API key
+docker compose up -d
+```
+
+Source and docs: [sam-dumont/musicgen-api](https://github.com/sam-dumont/musicgen-api) (public, MIT licensed).
+
+### ACE-Step (experimental)
+
+[ACE-Step](https://github.com/ace-step/ACE-Step) generates full songs with lyrics, not just instrumentals. Higher quality output than MusicGen but slower. Two modes:
+
+- **Library mode** (`lib`): runs locally on Apple Silicon (16GB+) or NVIDIA GPUs (8GB+ VRAM). Requires the `ace-step` package installed.
+- **API mode** (`api`): connects to a remote ACE-Step server via its REST API.
+
+The upstream project includes both a Gradio UI and a REST API, but the default Docker image pulls the full base model + 1.7B LM, which needs 32GB+ VRAM. If you have a consumer GPU (8-12GB), use [sam-dumont/ace-step-1.5-turbo](https://github.com/sam-dumont/ace-step-1.5-turbo): a fork that swaps in the turbo model (8 steps instead of 50, ~6x faster) and the 0.6B LM, so it fits in 8GB VRAM with minimal quality loss.
+
+```yaml
+audio:
+  music_source: "ace_step"
+
+ace_step:
+  enabled: true
+  mode: "api"                  # "lib" for local, "api" for remote server
+  api_url: "http://your-gpu-server:8000"
+  model_variant: "turbo"       # "turbo" (fast, 8 steps) or "base" (quality, 50 steps)
+  lm_model_size: "0.6B"       # "0.6B" for constrained GPUs, "1.7B" or "4B" if you have VRAM
+```
+
+Deploy on a consumer GPU:
+```bash
+# Optimized for 8GB VRAM (turbo + 0.6B LM)
+git clone https://github.com/sam-dumont/ace-step-1.5-turbo.git
+cd ace-step-1.5-turbo
+docker compose up -d
+```
+
+Or use the upstream image if you have 32GB+ VRAM: [ace-step/ACE-Step](https://github.com/ace-step/ACE-Step).
+
+### No music / BYO music
+
+You can also upload your own music file in the UI (Step 3), or disable music entirely. The audio ducking system automatically lowers music volume when speech or laughter is detected in the clips.
 
 ## Docker
 

@@ -249,39 +249,85 @@ class CacheConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    """Shared LLM provider settings for Ollama and OpenAI."""
+    """Shared LLM provider settings.
 
-    # Ollama settings (preferred - local, privacy-friendly)
-    ollama_url: str = Field(
-        default="http://localhost:11434",
-        description="Ollama API URL",
-    )
-    ollama_model: str = Field(
-        default="llava",
-        description="Ollama vision model (llava, bakllava, qwen2-vl, etc.)",
-    )
+    Two providers: "ollama" (native Ollama API) or "openai-compatible"
+    (any server speaking /v1/chat/completions — OpenAI, Groq, mlx-vlm, vLLM, etc.).
+    """
 
-    # OpenAI settings (fallback)
-    openai_api_key: str = Field(
+    provider: Literal["ollama", "openai-compatible"] = Field(
+        default="openai-compatible",
+        description="LLM provider: 'ollama' or 'openai-compatible'",
+    )
+    base_url: str = Field(
+        default="http://localhost:8080/v1",
+        description="API base URL",
+    )
+    model: str = Field(
         default="",
-        description="OpenAI API key (fallback if Ollama unavailable)",
+        description="Model name",
     )
-    openai_model: str = Field(
-        default="gpt-4.1-nano",
-        description="OpenAI model for vision tasks (gpt-4.1-nano, gpt-5-mini, gpt-5.2, etc.)",
-    )
-    openai_base_url: str = Field(
-        default="https://api.openai.com/v1",
-        description="OpenAI API base URL (for Azure, on-prem, or compatible endpoints)",
+    api_key: str = Field(
+        default="",
+        description="API key (optional, only needed for cloud APIs)",
     )
 
-    # Provider preference
-    provider: Literal["ollama", "openai", "auto"] = Field(
-        default="auto",
-        description="LLM provider (auto = try Ollama first, fallback to OpenAI)",
-    )
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_old_fields(cls, data: dict) -> dict:
+        """Migrate old ollama_*/openai_* fields to flat fields."""
+        if not isinstance(data, dict):
+            return data
 
-    @field_validator("openai_api_key", mode="before")
+        old_keys = (
+            "ollama_url",
+            "ollama_model",
+            "openai_api_key",
+            "openai_model",
+            "openai_base_url",
+        )
+        has_old = any(k in data for k in old_keys)
+        if not has_old:
+            return data
+
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "LLM config uses deprecated field names (ollama_url, openai_*, etc.). "
+            "Migrate to: provider, base_url, model, api_key"
+        )
+
+        old_provider = data.get("provider", "auto")
+
+        # Only migrate if new-style fields are missing
+        if "base_url" not in data:
+            if old_provider in ("ollama", "auto"):
+                data["base_url"] = data.get("ollama_url", "http://localhost:11434")
+            else:
+                data["base_url"] = data.get("openai_base_url", "https://api.openai.com/v1")
+
+        if "model" not in data:
+            if old_provider in ("ollama", "auto"):
+                data["model"] = data.get("ollama_model", "llava")
+            else:
+                data["model"] = data.get("openai_model", "gpt-4.1-nano")
+
+        if "api_key" not in data:
+            data["api_key"] = data.get("openai_api_key", "")
+
+        # Migrate provider values
+        if old_provider == "auto":
+            data["provider"] = "ollama"
+        elif old_provider == "openai":
+            data["provider"] = "openai-compatible"
+
+        # Clean up old keys so pydantic doesn't complain
+        for old_key in old_keys:
+            data.pop(old_key, None)
+
+        return data
+
+    @field_validator("api_key", mode="before")
     @classmethod
     def expand_env(cls, v: str) -> str:
         """Expand environment variables in config values."""

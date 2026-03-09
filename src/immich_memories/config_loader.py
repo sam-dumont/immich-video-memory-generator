@@ -111,7 +111,7 @@ def get_config(reload: bool = False) -> Config:
         if api_key := os.environ.get("IMMICH_API_KEY"):
             _config.immich.api_key = api_key
         if openai_key := os.environ.get("OPENAI_API_KEY"):
-            _config.llm.openai_api_key = openai_key
+            _config.llm.api_key = openai_key
         if pixabay_key := os.environ.get("PIXABAY_API_KEY"):
             _config.audio.pixabay_api_key = pixabay_key
 
