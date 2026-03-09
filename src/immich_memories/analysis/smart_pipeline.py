@@ -354,6 +354,14 @@ class SmartPipeline(AnalysisMixin, PreviewMixin, RefinementMixin, ScalingMixin):
                 f"{min_duration:.1f}s minimum"
             )
 
+        # Analyze-all mode: skip smart filtering, send all clips to analysis
+        if self.config.analyze_all:
+            self._available_non_favorites = []
+            self.tracker.complete_item("filters")
+            self.tracker.complete_phase()
+            logger.info(f"Phase 2: Analyze-all mode — sending all {len(clips)} clips to analysis")
+            return clips
+
         all_favorites = [c for c in clips if c.asset.is_favorite]
         all_non_favorites = [c for c in clips if not c.asset.is_favorite]
         logger.info(
