@@ -2,8 +2,13 @@
 
 ## Quick Start
 
-Read `ARCHITECTURE.md` first — it maps the full codebase structure, key classes,
-data flow, and mixin architecture. This avoids needing to explore the repo.
+1. **Install dev dependencies first**: `make dev`
+2. Read `ARCHITECTURE.md` — it maps the full codebase structure, key classes,
+   data flow, and mixin architecture. This avoids needing to explore the repo.
+
+> **Important**: Always run `make dev` before running any other make target.
+> This installs all dev tools (pytest, ruff, mypy, etc.) into the project venv.
+> Without it, quality checks will fail with import errors.
 
 ## Commands
 
@@ -42,13 +47,22 @@ make complexity
 # Dead code detection (Vulture)
 make dead-code
 
-# Run ALL checks (same as CI: lint + format + typecheck + file-length + complexity + test)
+# Security lint (Bandit)
+make security-lint
+
+# Commit message lint (conventional commits)
+make commitlint
+
+# Dependency vulnerability audit
+make pip-audit
+
+# Run ALL checks (lint + format + typecheck + file-length + complexity + test)
 make check
 
-# Full CI-equivalent pipeline (all checks + dead-code)
+# Full CI pipeline (check + dead-code + security-lint)
 make ci
 
-# Pre-commit hooks
+# Pre-commit hooks (runs all local hooks: lint, format, mypy, gitleaks, commitizen, file-length, complexity, dead-code, security-lint)
 make pre-commit
 ```
 
@@ -56,17 +70,22 @@ make pre-commit
 
 ### Code Quality Gates (enforced in CI)
 
-- **Max file length**: 500 lines per `.py` file (`make file-length`)
-- **Max complexity**: Xenon grade C — ≤20 cyclomatic complexity per function (`make complexity`)
 - **Lint**: ruff check must pass (`make lint`)
 - **Format**: ruff format must pass (`make format-check`)
 - **Type check**: mypy must pass (`make typecheck`)
+- **Max file length**: 500 lines per `.py` file (`make file-length`)
+- **Max complexity**: Xenon grade C — ≤20 cyclomatic complexity per function (`make complexity`)
+- **Dead code**: Vulture must pass (`make dead-code`)
+- **Security**: Bandit must pass with no HIGH findings (`make security-lint`)
 - **Tests**: all tests must pass (`make test`)
+- **Commit messages**: must follow [Conventional Commits](https://www.conventionalcommits.org/) (`make commitlint`)
+  - Format: `type(scope): description` — e.g., `fix(api): handle timeout errors`
+  - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
 
 ### Before Every Commit
 
-Run `make check` — this runs all CI-equivalent checks locally. If it passes
-locally, CI will pass too.
+Run `make ci` — this runs all CI-equivalent checks locally. If it passes
+locally, CI will pass too. Use conventional commit message format (see above).
 
 ### Splitting Large Files
 
