@@ -156,6 +156,53 @@ class VideoTimeline:
 
         return scenes
 
+    def build_acestep_lyrics(self) -> str:
+        """Build ACE-Step section-tagged lyrics from video timeline.
+
+        Maps video scenes to proportional section tags so ACE-Step generates
+        music that follows the video's emotional arc. ACE-Step doesn't support
+        explicit timestamps — sections are proportional to the overall structure.
+
+        Mood-to-section mapping:
+        - First clip (short, calm) -> [Intro]
+        - Energetic/happy clips -> [Chorus]
+        - Medium/neutral clips -> [Verse]
+        - Clips with transition_after -> [Bridge]
+        - Last clip (calm/ending) -> [Outro]
+
+        Returns:
+            Lyrics string with section tags, e.g.:
+            "[Intro]\\n[Instrumental]\\n\\n[Verse]\\n[Instrumental]"
+        """
+        if not self.clips:
+            return "[Instrumental]"
+
+        sections = []
+        num_clips = len(self.clips)
+
+        for i, clip in enumerate(self.clips):
+            mood_lower = clip.mood.lower()
+            is_first = i == 0
+            is_last = i == num_clips - 1
+
+            # Determine section tag
+            if is_first and num_clips > 1 and clip.duration < 20:
+                section = "Intro"
+            elif is_last and num_clips > 1:
+                section = "Outro"
+            elif clip.has_transition_after:
+                section = "Bridge"
+            elif any(
+                w in mood_lower for w in ("energetic", "upbeat", "happy", "fun", "joyful", "bright")
+            ):
+                section = "Chorus"
+            else:
+                section = "Verse"
+
+            sections.append(f"[{section}]\n[Instrumental]")
+
+        return "\n\n".join(sections)
+
     @classmethod
     def from_clips(
         cls,
