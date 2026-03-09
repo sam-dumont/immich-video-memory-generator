@@ -1,11 +1,12 @@
 """Content analysis for video segments using vision LLMs.
 
-Uses Ollama (local) or OpenAI to analyze video frames and describe
-what's happening, rate interestingness, and detect activities.
+Uses Ollama or any OpenAI-compatible server (mlx-vlm, vLLM, Groq, etc.)
+to analyze video frames and describe what's happening, rate interestingness,
+and detect activities.
 
 Base class and parsing live in ``_content_parsing``; provider
 implementations live in ``_content_providers``.  This module provides
-factory functions and re-exports for backwards compatibility.
+factory functions and re-exports.
 """
 
 from __future__ import annotations
@@ -22,9 +23,6 @@ from immich_memories.analysis._content_providers import (  # noqa: F401
     OllamaContentAnalyzer,
     OpenAICompatibleContentAnalyzer,
 )
-
-# Backwards compatibility alias
-OpenAIContentAnalyzer = OpenAICompatibleContentAnalyzer
 
 logger = logging.getLogger(__name__)
 
