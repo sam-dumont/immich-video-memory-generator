@@ -272,6 +272,109 @@ class LLMConfig(BaseModel):
         description="API key (optional, only needed for cloud APIs)",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_old_fields(cls, data: dict) -> dict:
+        """Migrate old ollama_*/openai_* fields to flat fields."""
+        if not isinstance(data, dict):
+            return data
+
+        old_keys = (
+            "ollama_url",
+            "ollama_model",
+            "openai_api_key",
+            "openai_model",
+            "openai_base_url",
+        )
+        has_old = any(k in data for k in old_keys)
+        if not has_old:
+            return data
+
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "LLM config uses deprecated field names (ollama_url, openai_*, etc.). "
+            "Migrate to: provider, base_url, model, api_key"
+        )
+
+        old_provider = data.get("provider", "auto")
+
+        # Only migrate if new-style fields are missing
+        if "base_url" not in data:
+            if old_provider in ("ollama", "auto"):
+                data["base_url"] = data.get("ollama_url", "http://localhost:11434")
+            else:
+                data["base_url"] = data.get("openai_base_url", "https://api.openai.com/v1")
+
+        if "model" not in data:
+            if old_provider in ("ollama", "auto"):
+                data["model"] = data.get("ollama_model", "llava")
+            else:
+                data["model"] = data.get("openai_model", "gpt-4.1-nano")
+
+        if "api_key" not in data:
+            data["api_key"] = data.get("openai_api_key", "")
+
+        # Migrate provider values
+        if old_provider == "auto":
+            data["provider"] = "ollama"
+        elif old_provider == "openai":
+            data["provider"] = "openai-compatible"
+
+        # Clean up old keys so pydantic doesn't complain
+        for old_key in old_keys:
+            data.pop(old_key, None)
+
+        return data
+
+    # Deprecated property shims for code still using old field names.
+    # These will be removed once all call sites are migrated (Tasks 4-7).
+
+    @property
+    def ollama_url(self) -> str:
+        """Deprecated: use base_url instead."""
+        return self.base_url
+
+    @ollama_url.setter
+    def ollama_url(self, value: str) -> None:
+        self.base_url = value
+
+    @property
+    def ollama_model(self) -> str:
+        """Deprecated: use model instead."""
+        return self.model
+
+    @ollama_model.setter
+    def ollama_model(self, value: str) -> None:
+        self.model = value
+
+    @property
+    def openai_api_key(self) -> str:
+        """Deprecated: use api_key instead."""
+        return self.api_key
+
+    @openai_api_key.setter
+    def openai_api_key(self, value: str) -> None:
+        self.api_key = value
+
+    @property
+    def openai_model(self) -> str:
+        """Deprecated: use model instead."""
+        return self.model
+
+    @openai_model.setter
+    def openai_model(self, value: str) -> None:
+        self.model = value
+
+    @property
+    def openai_base_url(self) -> str:
+        """Deprecated: use base_url instead."""
+        return self.base_url
+
+    @openai_base_url.setter
+    def openai_base_url(self, value: str) -> None:
+        self.base_url = value
+
     @field_validator("api_key", mode="before")
     @classmethod
     def expand_env(cls, v: str) -> str:
