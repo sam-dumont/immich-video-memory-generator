@@ -44,7 +44,7 @@ Immich Memories connects to your self-hosted Immich server, intelligently select
 - **Duplicate Detection**: Perceptual hashing to find and rank similar videos by quality
 - **Scene Detection**: Natural scene boundaries using PySceneDetect (enabled by default)
 - **Intelligent Moment Selection**: Multi-factor interest scoring (faces, motion, stability, content)
-- **LLM Content Analysis**: Optional AI-powered content understanding via Ollama or OpenAI
+- **LLM Content Analysis**: Optional AI-powered content understanding via any OpenAI-compatible API (mlx-vlm, Ollama, vLLM, Groq, etc.)
 - **Fast Analysis**: Videos downscaled to 480p for 3-5x faster analysis while maintaining accuracy
 - **Memory Optimized**: Aggressive garbage collection and on-demand thumbnail loading prevents OOM
 - **Resume Support**: Previously analyzed clips are cached and shown on restart
@@ -309,16 +309,18 @@ hardware:
   gpu_decode: true
   gpu_analysis: true
 
+# Shared LLM settings (used by mood analysis and content analysis)
+# Works with any OpenAI-compatible server: mlx-vlm, Ollama, vLLM, Groq, etc.
+llm:
+  provider: "openai-compatible"   # "ollama" or "openai-compatible"
+  base_url: "http://localhost:8080/v1"
+  model: "mlx-community/Qwen3-VL-2B-Instruct-4bit"
+  api_key: ""                     # Optional, only needed for cloud APIs
+
 audio:
   auto_music: false          # Auto-select music based on video mood
   music_source: "pixabay"    # pixabay or local
   local_music_dir: "~/Music/Memories"
-
-  # LLM for mood analysis (Ollama preferred, OpenAI fallback)
-  ollama_url: "http://localhost:11434"
-  ollama_model: "llava"
-  openai_api_key: "${OPENAI_API_KEY}"
-  openai_model: "gpt-4o-mini"
 
   # Audio ducking (lowers music when speech detected)
   ducking_threshold: 0.02    # Sensitivity (lower = more sensitive)
@@ -331,17 +333,6 @@ audio:
 content_analysis:
   enabled: false             # Disabled by default (adds processing time)
   weight: 0.2                # Weight in scoring (0-1, 20% of total score)
-  provider: "auto"           # auto, ollama, openai (auto = try Ollama first)
-
-  # Ollama settings (local, privacy-friendly)
-  ollama_url: "http://localhost:11434"
-  ollama_model: "llava"      # Vision model (llava, bakllava, llava-llama3)
-
-  # OpenAI settings (fallback)
-  openai_api_key: "${OPENAI_API_KEY}"
-  openai_model: "gpt-4o-mini"
-
-  # Analysis parameters
   analyze_frames: 3          # Frames per segment (1-4)
   min_confidence: 0.5        # Minimum confidence to use score
 ```
@@ -360,12 +351,11 @@ export IMMICH_MEMORIES_IMMICH__API_KEY="your-api-key"
 export IMMICH_MEMORIES_ANALYSIS__USE_SCENE_DETECTION="true"
 export IMMICH_MEMORIES_ANALYSIS__ENABLE_DOWNSCALING="true"
 
-# Content analysis (LLM)
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED="true"
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__PROVIDER="ollama"
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__OLLAMA_URL="http://localhost:11434"
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__OLLAMA_MODEL="llava"
-export IMMICH_MEMORIES_CONTENT_ANALYSIS__OPENAI_API_KEY="sk-..."
+# LLM settings (shared by content analysis and mood analysis)
+export IMMICH_MEMORIES_LLM__PROVIDER="openai-compatible"
+export IMMICH_MEMORIES_LLM__BASE_URL="http://localhost:8080/v1"
+export IMMICH_MEMORIES_LLM__MODEL="mlx-community/Qwen3-VL-2B-Instruct-4bit"
+export IMMICH_MEMORIES_LLM__API_KEY=""
 
 # Hardware acceleration
 export IMMICH_MEMORIES_HARDWARE__BACKEND="nvidia"
@@ -403,11 +393,58 @@ Immich Memories automatically detects and uses available GPU hardware.
 - Neural Engine accelerates face detection (~10x faster than OpenCV)
 - Unified memory eliminates CPU/GPU transfer overhead
 - VideoToolbox encoding is 5-10x faster than software
-- All M1/M2/M3/M4 chips fully supported
+- mlx-vlm runs vision LLMs locally with Metal acceleration (no Docker or CUDA needed)
+- All M1/M2/M3/M4/M5 chips fully supported
 
 ```bash
 # Check your hardware capabilities
 immich-memories hardware
+```
+
+## Running a Local Vision LLM
+
+Content analysis and mood detection use a vision LLM to understand what's happening in your clips. Any server that speaks the OpenAI `/v1/chat/completions` protocol works: mlx-vlm, Ollama, vLLM, LM Studio, llama.cpp, Groq, OpenAI itself, etc.
+
+### mlx-vlm (recommended on Apple Silicon)
+
+Runs vision models natively on Apple Silicon with Metal acceleration. No Docker, no CUDA, just your Mac.
+
+```bash
+# Install and run in one command (isolated env, no conflicts)
+# --with torch/torchvision needed for Qwen3-VL's video processor
+uvx --python 3.12 --from mlx-vlm --with torch --with torchvision mlx_vlm.server --port 8080
+
+# Config
+llm:
+  provider: "openai-compatible"
+  base_url: "http://localhost:8080/v1"
+  model: "mlx-community/Qwen3.5-9B-MLX-4bit"  # ~6 GB, natively multimodal, recommended
+```
+
+Models are downloaded automatically on first use.
+
+### Ollama
+
+```bash
+ollama pull llava
+ollama serve
+
+# Config
+llm:
+  provider: "ollama"
+  base_url: "http://localhost:11434"
+  model: "llava"
+```
+
+### Cloud APIs (Groq, OpenAI, etc.)
+
+```bash
+# Config
+llm:
+  provider: "openai-compatible"
+  base_url: "https://api.groq.com/openai/v1"  # or https://api.openai.com/v1
+  model: "llama-4-scout-17b-16e-instruct"
+  api_key: "${GROQ_API_KEY}"
 ```
 
 ## Docker

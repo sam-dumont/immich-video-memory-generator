@@ -150,6 +150,7 @@ src/immich_memories/
 │   ├── state.py                # Shared UI state
 │   └── pages/
 │       ├── step1_config.py         # Connection & time period config
+│       ├── step1_cache.py          # Cache management UI (stats & clear)
 │       ├── step2_review.py         # Clip review orchestration
 │       ├── step2_loading.py        # Loading state UI
 │       ├── step2_helpers.py        # Shared step2 utilities
