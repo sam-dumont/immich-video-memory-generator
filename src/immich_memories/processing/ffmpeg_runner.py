@@ -7,6 +7,7 @@ FFmpeg commands with real-time progress reporting.
 
 from __future__ import annotations
 
+import logging
 import re
 import subprocess
 import time
@@ -14,6 +15,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Thread
 from typing import IO
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "FFmpegProgress",
@@ -156,39 +159,53 @@ def _run_ffmpeg_with_progress(
         """Read stderr and parse progress."""
         nonlocal last_progress_time
 
+        # Read in chunks and split on \r or \n (FFmpeg uses \r for progress)
         buffer = ""
-
         while True:
-            char = pipe.read(1)
-            if not char:
+            chunk = pipe.read(4096)
+            if not chunk:
+                # Process any remaining buffer
+                if buffer.strip():
+                    stderr_lines.append(buffer.strip())
                 break
 
-            buffer += char
+            buffer += chunk
 
-            # FFmpeg progress lines end with \r or \n
-            if char in ("\r", "\n"):
-                line = buffer.strip()
-                buffer = ""
+            # Split on both \r and \n (FFmpeg uses \r for progress updates)
+            while "\r" in buffer or "\n" in buffer:
+                # Find the earliest line break
+                cr_pos = buffer.find("\r")
+                lf_pos = buffer.find("\n")
+                if cr_pos == -1:
+                    split_pos = lf_pos
+                elif lf_pos == -1:
+                    split_pos = cr_pos
+                else:
+                    split_pos = min(cr_pos, lf_pos)
 
-                if line:
-                    stderr_lines.append(line)
+                line = buffer[:split_pos].strip()
+                buffer = buffer[split_pos + 1 :]
 
-                    # Parse progress (throttle to avoid UI spam)
-                    now = time.time()
-                    if progress_callback and now - last_progress_time >= 0.5:
-                        progress = _parse_ffmpeg_progress(line, total_duration)
-                        if progress:
-                            last_progress_time = now
-                            # Build a clean status message (ETA will be added by UI)
-                            time_str = f"{int(progress.time_seconds // 60)}:{int(progress.time_seconds % 60):02d}"
-                            status = f"Encoding ({time_str})"
-                            if progress.speed > 0:
-                                status += f" @ {progress.speed:.1f}x"
-                            try:
-                                progress_callback(progress.percent, status)
-                            except Exception:
-                                # Ignore Streamlit threading errors
-                                pass
+                if not line:
+                    continue
+
+                stderr_lines.append(line)
+
+                # Parse progress (throttle to avoid UI spam)
+                now = time.time()
+                if progress_callback and now - last_progress_time >= 0.5:
+                    progress = _parse_ffmpeg_progress(line, total_duration)
+                    if progress:
+                        last_progress_time = now
+                        # Build a clean status message (ETA will be added by UI)
+                        time_str = f"{int(progress.time_seconds // 60)}:{int(progress.time_seconds % 60):02d}"
+                        status = f"Encoding ({time_str})"
+                        if progress.speed > 0:
+                            status += f" @ {progress.speed:.1f}x"
+                        try:
+                            progress_callback(progress.percent, status)
+                        except (OSError, RuntimeError):
+                            logger.debug("Progress callback failed", exc_info=True)
 
     # Read stderr in a thread
     stderr_thread = Thread(target=read_stderr, args=(process.stderr,))
@@ -205,9 +222,15 @@ def _run_ffmpeg_with_progress(
 
     stderr_thread.start()
 
-    # Wait for process to complete
-    process.wait()
-    stderr_thread.join()
+    # Wait for process to complete (with timeout to prevent indefinite hangs)
+    try:
+        process.wait(timeout=3600)  # 1 hour max for any FFmpeg operation
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+        raise RuntimeError("FFmpeg process timed out after 1 hour")
+    finally:
+        stderr_thread.join(timeout=10)
 
     return subprocess.CompletedProcess(
         args=cmd,

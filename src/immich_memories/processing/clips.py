@@ -6,6 +6,7 @@ import hashlib
 import logging
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,7 @@ from immich_memories.processing.clip_transitions import (
     TransitionPlan,
     plan_transitions,
 )
+from immich_memories.security import validate_video_path
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +97,32 @@ class ClipExtractor(ClipEncodingMixin):
             output_dir = Path(tempfile.gettempdir()) / "immich_memories" / "clips"
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def cleanup_old_clips(self, max_age_hours: int = 24) -> int:
+        """Remove clip files older than max_age_hours.
+
+        Args:
+            max_age_hours: Maximum age in hours for cached clips.
+
+        Returns:
+            Number of files removed.
+        """
+        if not self.output_dir.exists():
+            return 0
+
+        cutoff = time.time() - (max_age_hours * 3600)
+        removed = 0
+        for path in self.output_dir.iterdir():
+            if path.is_file() and path.suffix == ".mp4":
+                try:
+                    if path.stat().st_mtime < cutoff:
+                        path.unlink()
+                        removed += 1
+                except OSError:
+                    pass
+        if removed:
+            logger.info(f"Cleaned up {removed} old clip(s) from {self.output_dir}")
+        return removed
 
     def extract(
         self,
@@ -199,6 +227,7 @@ class ClipExtractor(ClipEncodingMixin):
 
     def _extract_copy(self, segment: ClipSegment, output_path: Path) -> None:
         """Extract clip using stream copy (fast, no quality loss)."""
+        validate_video_path(segment.source_path, must_exist=True)
         cmd = [
             "ffmpeg",
             "-y",
@@ -244,7 +273,10 @@ class ClipExtractor(ClipEncodingMixin):
         Returns:
             List of paths to extracted clips.
         """
+        self.cleanup_old_clips()
+
         results = []
+        failures: list[tuple[str, str]] = []
 
         for i, segment in enumerate(segments):
             try:
@@ -265,11 +297,18 @@ class ClipExtractor(ClipEncodingMixin):
                     )
                 results.append(path)
             except Exception as e:
-                logger.error(f"Failed to extract segment: {e}")
+                logger.error(f"Failed to extract segment {segment.asset_id}: {e}")
+                failures.append((segment.asset_id, str(e)))
                 continue
 
             if progress_callback:
                 progress_callback(i + 1, len(segments))
+
+        if failures:
+            logger.warning(
+                f"{len(failures)}/{len(segments)} clips failed extraction: "
+                f"{', '.join(asset_id for asset_id, _ in failures[:5])}"
+            )
 
         return results
 

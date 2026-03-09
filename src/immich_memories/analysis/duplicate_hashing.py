@@ -31,27 +31,26 @@ def compute_video_hash(
     """
     video_path = Path(video_path)
     cap = cv2.VideoCapture(str(video_path))
+    try:
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if frame_count <= 0:
+            return ""
 
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    if frame_count <= 0:
+        # Sample frames evenly throughout the video
+        frame_indices = np.linspace(0, frame_count - 1, num_frames, dtype=int)
+
+        frame_hashes = []
+        for idx in frame_indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+
+            # Compute average hash for this frame
+            frame_hash = _compute_frame_hash(frame, hash_size)
+            frame_hashes.append(frame_hash)
+    finally:
         cap.release()
-        return ""
-
-    # Sample frames evenly throughout the video
-    frame_indices = np.linspace(0, frame_count - 1, num_frames, dtype=int)
-
-    frame_hashes = []
-    for idx in frame_indices:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-        ret, frame = cap.read()
-        if not ret:
-            continue
-
-        # Compute average hash for this frame
-        frame_hash = _compute_frame_hash(frame, hash_size)
-        frame_hashes.append(frame_hash)
-
-    cap.release()
 
     if not frame_hashes:
         return ""

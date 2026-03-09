@@ -22,6 +22,7 @@ from immich_memories.processing.hdr_utilities import (
     _get_colorspace_filter,
     _get_gpu_encoder_args,
 )
+from immich_memories.security import validate_video_path
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,8 @@ class AssemblerEncodingMixin:
             output_path: Output path for encoded clip.
             target_resolution: Target (width, height). If None, uses settings.
         """
+        validate_video_path(clip.path, must_exist=True)
+
         # Determine target resolution
         if target_resolution:
             target_w, target_h = target_resolution
@@ -160,6 +163,7 @@ class AssemblerEncodingMixin:
             start: Start time in seconds.
             duration: Duration in seconds.
         """
+        validate_video_path(input_path, must_exist=True)
         cmd = [
             "ffmpeg",
             "-y",
@@ -198,6 +202,8 @@ class AssemblerEncodingMixin:
             start: Start time in seconds.
             duration: Duration in seconds.
         """
+        validate_video_path(input_path, must_exist=True)
+
         # Get encoder args matching main encoding settings
         video_codec_args = _get_gpu_encoder_args(
             crf=self.settings.output_crf,

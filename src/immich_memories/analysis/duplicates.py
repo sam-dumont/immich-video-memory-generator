@@ -137,6 +137,10 @@ def find_duplicate_groups(
 ) -> list[DuplicateGroup]:
     """Find groups of duplicate/similar videos.
 
+    Uses pairwise hash comparison with O(n^2) complexity. This is acceptable
+    for typical usage (< 500 videos per run). For larger datasets, consider
+    locality-sensitive hashing (LSH) for O(n log n) performance.
+
     Args:
         videos: List of video clip info objects.
         threshold: Hamming distance threshold for duplicates.
@@ -244,34 +248,34 @@ def compute_stability_score(video_path: str | Path, sample_count: int = 30) -> f
         Stability score between 0 and 1.
     """
     cap = cv2.VideoCapture(str(video_path))
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    try:
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    if frame_count < 10:
+        if frame_count < 10:
+            return 0.5  # Default for very short videos
+
+        # Sample frame indices
+        indices = np.linspace(10, frame_count - 10, sample_count, dtype=int)
+
+        diffs = []
+        prev_frame = None
+
+        for idx in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.GaussianBlur(gray, (5, 5), 0)
+
+            if prev_frame is not None:
+                diff = cv2.absdiff(prev_frame, gray)
+                diffs.append(np.mean(diff))
+
+            prev_frame = gray
+    finally:
         cap.release()
-        return 0.5  # Default for very short videos
-
-    # Sample frame indices
-    indices = np.linspace(10, frame_count - 10, sample_count, dtype=int)
-
-    diffs = []
-    prev_frame = None
-
-    for idx in indices:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-        ret, frame = cap.read()
-        if not ret:
-            continue
-
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (5, 5), 0)
-
-        if prev_frame is not None:
-            diff = cv2.absdiff(prev_frame, gray)
-            diffs.append(np.mean(diff))
-
-        prev_frame = gray
-
-    cap.release()
 
     if not diffs:
         return 0.5
