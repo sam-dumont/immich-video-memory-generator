@@ -262,79 +262,6 @@ def check_llm(config: Config | None = None) -> CheckResult:
     )
 
 
-def check_pixabay(config: Config | None = None) -> CheckResult:
-    """Check Pixabay API key validity.
-
-    Args:
-        config: Configuration to use (defaults to global config).
-
-    Returns:
-        CheckResult with status and details.
-    """
-    if config is None:
-        config = get_config()
-
-    api_key = config.audio.pixabay_api_key
-
-    if not api_key:
-        return CheckResult(
-            name="Pixabay",
-            status=CheckStatus.SKIPPED,
-            message="Not configured",
-            details="API key not set (needed for auto music selection)",
-        )
-
-    try:
-        with httpx.Client(timeout=10.0) as client:
-            response = client.get(
-                "https://pixabay.com/api/",
-                params={"key": api_key, "q": "test"},
-            )
-
-            if response.status_code == 400:
-                data = response.json()
-                if "API key" in str(data):
-                    return CheckResult(
-                        name="Pixabay",
-                        status=CheckStatus.ERROR,
-                        message="Invalid API key",
-                        details="The provided API key is not valid",
-                    )
-
-            response.raise_for_status()
-            data = response.json()
-
-            if "totalHits" in data:
-                return CheckResult(
-                    name="Pixabay",
-                    status=CheckStatus.OK,
-                    message="API key valid",
-                    details="Music search available",
-                )
-
-            return CheckResult(
-                name="Pixabay",
-                status=CheckStatus.WARNING,
-                message="Unexpected response",
-                details=str(data)[:100],
-            )
-
-    except httpx.ConnectError:
-        return CheckResult(
-            name="Pixabay",
-            status=CheckStatus.WARNING,
-            message="Cannot connect",
-            details="Pixabay API not reachable",
-        )
-    except Exception as e:
-        return CheckResult(
-            name="Pixabay",
-            status=CheckStatus.WARNING,
-            message="Connection error",
-            details=str(e),
-        )
-
-
 def check_hardware() -> CheckResult:
     """Check hardware acceleration availability.
 
@@ -400,8 +327,6 @@ def run_preflight_checks(config: Config | None = None) -> PreflightResults:
 
     # LLM provider check
     results.add(check_llm(config))
-    results.add(check_pixabay(config))
-
     # Hardware check
     results.add(check_hardware())
 
