@@ -2,8 +2,13 @@
 
 ## Quick Start
 
-Read `ARCHITECTURE.md` first — it maps the full codebase structure, key classes,
-data flow, and mixin architecture. This avoids needing to explore the repo.
+1. **Install dev dependencies first**: `make dev`
+2. Read `ARCHITECTURE.md` — it maps the full codebase structure, key classes,
+   data flow, and mixin architecture. This avoids needing to explore the repo.
+
+> **Important**: Always run `make dev` before running any other make target.
+> This installs all dev tools (pytest, ruff, mypy, etc.) into the project venv.
+> Without it, quality checks will fail with import errors.
 
 ## Commands
 

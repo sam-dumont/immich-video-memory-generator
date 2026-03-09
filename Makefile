@@ -1,7 +1,7 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
-.PHONY: help install dev run preflight test test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity security-lint dead-code ci
+.PHONY: help install dev run preflight test test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity security-lint dead-code ci ensure-dev
 
 # Default target
 help:
@@ -149,12 +149,16 @@ dead-code:
 security-lint:
 	uvx bandit -r src/ --severity-level high -q
 
+# Ensure dev dependencies are installed
+ensure-dev:
+	@uv sync --all-extras --quiet
+
 # Run all checks (same as CI)
-check: lint format-check typecheck file-length complexity test
+check: ensure-dev lint format-check typecheck file-length complexity test
 	@echo "All checks passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: lint format-check typecheck file-length complexity dead-code test
+ci: ensure-dev lint format-check typecheck file-length complexity dead-code test
 	@echo "Full CI pipeline passed!"
 
 # Pre-commit hooks
