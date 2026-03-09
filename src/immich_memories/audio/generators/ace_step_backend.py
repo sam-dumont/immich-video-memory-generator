@@ -22,6 +22,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from immich_memories.audio.generators.ace_step_captions import (
+    ACE_CAPTION_TEMPLATES as ACE_CAPTION_TEMPLATES,  # noqa: PLC0414 — re-exported
+)
+from immich_memories.audio.generators.ace_step_captions import (
+    build_ace_caption,
+)
 from immich_memories.audio.generators.base import (
     GenerationRequest,
     GenerationResult,
@@ -71,61 +77,23 @@ class ACEStepConfig:
     extra_args: dict[str, Any] = field(default_factory=dict)
 
 
-# Maps moods to ACE-Step genre tags.
-# ACE-Step uses [tags] in the prompt to specify genre/style.
-_MOOD_TO_TAGS = {
-    "happy": "pop, upbeat, feel-good, major key",
-    "energetic": "electronic, dance, high energy, driving beat",
-    "calm": "ambient, chill, relaxing, soft",
-    "nostalgic": "indie, lo-fi, warm, dreamy",
-    "romantic": "acoustic, soft pop, gentle, warm",
-    "playful": "indie pop, bouncy, fun, quirky",
-    "dramatic": "cinematic, epic, orchestral, powerful",
-    "upbeat": "pop, dance, bright, cheerful",
-    "peaceful": "ambient, acoustic, serene, gentle",
-    "inspiring": "cinematic, uplifting, motivational, soaring",
-}
-
-
 def _mood_to_ace_prompt(mood: str, prompt: str = "") -> tuple[str, str]:
-    """Convert a mood string to ACE-Step tags and lyrics format.
-
-    ACE-Step expects:
-    - tags: Genre/style descriptors (comma-separated)
-    - lyrics: Can be [instrumental] or actual lyrics
-
-    Returns:
-        Tuple of (tags, lyrics).
-    """
+    """Convert a mood string to ACE-Step tags and lyrics format."""
+    # Detect season from mood keywords
+    season = None
     mood_lower = mood.lower()
-
-    # Build tags from mood keywords
-    tags_parts = []
-    for key, tag_str in _MOOD_TO_TAGS.items():
-        if key in mood_lower:
-            tags_parts.append(tag_str)
-            break
-    else:
-        # Default: upbeat instrumental
-        tags_parts.append("pop, upbeat, bright, feel-good")
-
-    # Add any seasonal/specific keywords from the mood
-    if "winter" in mood_lower or "holiday" in mood_lower:
-        tags_parts.append("festive, warm")
+    if "holiday" in mood_lower or "festive" in mood_lower:
+        season = "holiday"
+    elif "winter" in mood_lower:
+        season = "winter"
     elif "summer" in mood_lower or "sunny" in mood_lower:
-        tags_parts.append("tropical, sunny")
-    elif "spring" in mood_lower:
-        tags_parts.append("fresh, bright")
-    elif "autumn" in mood_lower or "fall" in mood_lower:
-        tags_parts.append("cozy, warm")
+        season = "summer"
+    elif "spring" in mood_lower or "fresh" in mood_lower:
+        season = "spring"
+    elif "autumn" in mood_lower or "fall" in mood_lower or "cozy" in mood_lower:
+        season = "autumn"
 
-    # Always add instrumental and no vocals
-    tags_parts.append("instrumental")
-
-    tags = ", ".join(tags_parts)
-    lyrics = "[instrumental]"
-
-    return tags, lyrics
+    return build_ace_caption(mood, season=season)
 
 
 class ACEStepBackend(MusicGenerator):
@@ -157,12 +125,12 @@ class ACEStepBackend(MusicGenerator):
             return await self._check_api()
 
     async def _check_api(self) -> bool:
-        """Check if ACE-Step v1.5 REST API is reachable."""
+        """Check if ACE-Step Gradio server is reachable."""
         try:
             import httpx
 
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(f"{self.config.api_url}/health")
+                resp = await client.get(self.config.api_url)
                 return resp.status_code == 200
         except Exception:
             return False
@@ -308,14 +276,9 @@ class ACEStepBackend(MusicGenerator):
         request: GenerationRequest,
         progress_callback: Any | None = None,
     ) -> GenerationResult:
-        """Generate music via ACE-Step v1.5 REST API.
-
-        Uses the /release_task + /query_result polling pattern from the
-        ACE-Step 1.5 REST API (launched with `uv run acestep-api`).
-        """
+        """Generate music via ACE-Step Gradio API."""
         import asyncio
-
-        import httpx
+        import shutil
 
         request.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -327,105 +290,58 @@ class ACEStepBackend(MusicGenerator):
             tags, lyrics = _mood_to_ace_prompt(request.prompt)
             duration = request.duration_seconds
 
+        duration = min(duration, 300)  # Cap at 5 minutes
+
         if progress_callback:
-            progress_callback("submitting", 0, {})
+            progress_callback("connecting", 0, {})
 
-        headers = {}
-        if self.config.extra_args.get("api_key"):
-            headers["Authorization"] = f"Bearer {self.config.extra_args['api_key']}"
+        def _call_gradio():
+            from gradio_client import Client  # type: ignore[import-untyped]
 
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=None),
-            headers=headers,
-        ) as client:
-            # Submit task via ACE-Step v1.5 REST API
-            task_payload = {
-                "task_type": "text2music",
-                "caption": tags,
-                "lyrics": lyrics,
-                "duration": min(duration, 300),  # Cap at 5 minutes
-                "batch_size": 1,
-                "format": "wav",
-            }
-
-            resp = await client.post(
-                f"{self.config.api_url}/release_task",
-                json=task_payload,
+            client = Client(self.config.api_url)
+            # The ACE-Step Gradio app's main generation function
+            result = client.predict(
+                tags,  # prompt/caption
+                lyrics,  # lyrics
+                duration,  # duration in seconds
+                1,  # batch_size
+                api_name="/generate",
             )
-            resp.raise_for_status()
-            task_result = resp.json()
-            task_id = task_result.get("task_id")
+            return result
 
-            if not task_id:
-                raise RuntimeError(f"No task_id in ACE-Step response: {task_result}")
+        loop = asyncio.get_event_loop()
 
-            logger.info(f"ACE-Step task submitted: {task_id}")
+        if progress_callback:
+            progress_callback("generating", 10, {"tags": tags, "duration": duration})
 
-            if progress_callback:
-                progress_callback("generating", 10, {"task_id": task_id})
+        result = await loop.run_in_executor(None, _call_gradio)
 
-            # Poll for completion
-            import time
+        output_path = request.output_dir / f"ace_step_v{request.variation_index}.wav"
 
-            start_time = time.time()
-            output_path = request.output_dir / f"ace_step_v{request.variation_index}.wav"
+        # Gradio returns file path(s) — could be string, tuple, or list
+        if isinstance(result, (list, tuple)):
+            audio_path = result[0] if result else None
+            if isinstance(audio_path, (list, tuple)):
+                audio_path = audio_path[0]
+        else:
+            audio_path = result
 
-            while True:
-                if time.time() - start_time > self.config.timeout_seconds:
-                    raise TimeoutError(
-                        f"ACE-Step task {task_id} timed out after {self.config.timeout_seconds}s"
-                    )
-
-                poll_resp = await client.post(
-                    f"{self.config.api_url}/query_result",
-                    json={"task_id": task_id},
-                )
-                poll_resp.raise_for_status()
-                poll_data = poll_resp.json()
-
-                status = poll_data.get("status", "unknown")
-
-                if status == "completed" or status == "success":
-                    # Download the audio file
-                    audio_path = poll_data.get("audio_path") or poll_data.get("path")
-                    if audio_path:
-                        audio_resp = await client.get(
-                            f"{self.config.api_url}/v1/audio",
-                            params={"path": audio_path},
-                        )
-                        audio_resp.raise_for_status()
-                        output_path.write_bytes(audio_resp.content)
-                    elif poll_data.get("audio_data"):
-                        # Some versions return base64 audio data inline
-                        import base64
-
-                        audio_bytes = base64.b64decode(poll_data["audio_data"])
-                        output_path.write_bytes(audio_bytes)
-                    else:
-                        raise RuntimeError(f"No audio in completed task: {poll_data}")
-                    break
-                elif status == "failed" or status == "error":
-                    raise RuntimeError(
-                        f"ACE-Step task failed: {poll_data.get('error', 'Unknown error')}"
-                    )
-
-                if progress_callback:
-                    progress = poll_data.get("progress", 0)
-                    progress_callback("generating", progress, {"status": status})
-
-                await asyncio.sleep(2.0)
+        if audio_path and Path(str(audio_path)).exists():
+            shutil.copy2(str(audio_path), str(output_path))
+        else:
+            raise RuntimeError(f"ACE-Step Gradio returned unexpected result: {result}")
 
         if progress_callback:
             progress_callback("completed", 100, {})
 
-        logger.info(f"ACE-Step API generated: {output_path} ({duration}s)")
+        logger.info(f"ACE-Step Gradio generated: {output_path} ({duration}s)")
 
         return GenerationResult(
             audio_path=output_path,
             duration_seconds=float(duration),
             prompt=f"[tags: {tags}] [lyrics: {lyrics}]",
             backend_name=self.name,
-            metadata={"tags": tags, "lyrics": lyrics, "mode": "api", "task_id": task_id},
+            metadata={"tags": tags, "lyrics": lyrics, "mode": "gradio"},
         )
 
     @staticmethod
