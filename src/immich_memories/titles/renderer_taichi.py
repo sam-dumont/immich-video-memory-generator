@@ -19,22 +19,15 @@ import numpy as np
 if TYPE_CHECKING:
     from .sdf_font import SDFFontAtlas
 
-# Re-export public API from submodules for backwards compatibility
+# Import module for runtime access to compiled kernels.
+# Kernels are initially None and compiled lazily by init_taichi().
+# Direct `from .taichi_kernels import _func` would capture None at import time,
+# so we access them as `taichi_kernels._func` at call time instead.
+from . import taichi_kernels
 from .taichi_kernels import (
     SDF_AVAILABLE,
-    _apply_color_pulse,
-    _apply_noise_grain,
-    _apply_vignette,
-    _composite_rgba_over,
-    _composite_text_with_offset,
     _create_gaussian_kernel,
-    _gaussian_blur_h,
-    _gaussian_blur_v,
-    _generate_aurora_gradient,
-    _generate_linear_gradient,
-    _generate_radial_gradient,
     _hex_to_rgb,
-    _render_bokeh_particles,
     is_taichi_available,
 )
 from .taichi_kernels import (
@@ -215,19 +208,23 @@ class TaichiTitleRenderer(TaichiParticlesMixin, TaichiTextMixin):
 
         # 2. Apply blur
         if cfg.blur_radius > 0:
-            _gaussian_blur_h(self.frame_buffer, self.temp_buffer, self.blur_kernel, cfg.blur_radius)
-            _gaussian_blur_v(self.temp_buffer, self.frame_buffer, self.blur_kernel, cfg.blur_radius)
+            taichi_kernels._gaussian_blur_h(
+                self.frame_buffer, self.temp_buffer, self.blur_kernel, cfg.blur_radius
+            )
+            taichi_kernels._gaussian_blur_v(
+                self.temp_buffer, self.frame_buffer, self.blur_kernel, cfg.blur_radius
+            )
 
         # 3. Color pulsing
         brightness_delta = cfg.color_pulse_amount * math.sin(progress * 2 * math.pi)
         saturation_mult = 1.0 + 0.05 * math.sin(progress * 2 * math.pi + math.pi / 2)
-        _apply_color_pulse(self.frame_buffer, brightness_delta, saturation_mult)
+        taichi_kernels._apply_color_pulse(self.frame_buffer, brightness_delta, saturation_mult)
 
         # 4. Vignette
         vignette_strength = cfg.vignette_strength + cfg.vignette_pulse * math.sin(
             progress * 2 * math.pi
         )
-        _apply_vignette(self.frame_buffer, vignette_strength, cfg.width, cfg.height)
+        taichi_kernels._apply_vignette(self.frame_buffer, vignette_strength, cfg.width, cfg.height)
 
         # 5. Bokeh/Fireworks particles
         self._render_particles(progress, cfg)
@@ -235,7 +232,7 @@ class TaichiTitleRenderer(TaichiParticlesMixin, TaichiTextMixin):
         # 6. Apply noise/grain texture
         if cfg.enable_noise and cfg.noise_intensity > 0:
             noise_seed = int(frame_number * 12345) % 1000000
-            _apply_noise_grain(
+            taichi_kernels._apply_noise_grain(
                 self.frame_buffer, cfg.noise_intensity, noise_seed, cfg.width, cfg.height
             )
 
@@ -253,7 +250,7 @@ class TaichiTitleRenderer(TaichiParticlesMixin, TaichiTextMixin):
         if cfg.gradient_type == "aurora":
             if not hasattr(self, "_aurora_blobs"):
                 self._init_aurora_blobs()
-            _generate_aurora_gradient(
+            taichi_kernels._generate_aurora_gradient(
                 self.frame_buffer,
                 self._aurora_blobs,
                 len(self._aurora_blobs),
@@ -262,7 +259,7 @@ class TaichiTitleRenderer(TaichiParticlesMixin, TaichiTextMixin):
                 t,
             )
         elif cfg.gradient_type == "radial":
-            _generate_radial_gradient(
+            taichi_kernels._generate_radial_gradient(
                 self.frame_buffer,
                 self.color1[0],
                 self.color1[1],
@@ -275,7 +272,7 @@ class TaichiTitleRenderer(TaichiParticlesMixin, TaichiTextMixin):
                 cfg.height,
             )
         else:
-            _generate_linear_gradient(
+            taichi_kernels._generate_linear_gradient(
                 self.frame_buffer,
                 self.color1[0],
                 self.color1[1],
@@ -299,10 +296,12 @@ class TaichiTitleRenderer(TaichiParticlesMixin, TaichiTextMixin):
             particle_count = cfg.fireworks_burst_count * cfg.fireworks_particles_per_burst
         else:
             particle_count = cfg.bokeh_count
-        _render_bokeh_particles(
+        taichi_kernels._render_bokeh_particles(
             self.bokeh_buffer, self._bokeh_particles, particle_count, cfg.width, cfg.height
         )
-        _composite_rgba_over(self.frame_buffer, self.bokeh_buffer, self.temp_buffer, 1.0)
+        taichi_kernels._composite_rgba_over(
+            self.frame_buffer, self.bokeh_buffer, self.temp_buffer, 1.0
+        )
         np.copyto(self.frame_buffer, self.temp_buffer)
 
     def _render_text(
@@ -382,7 +381,7 @@ class TaichiTitleRenderer(TaichiParticlesMixin, TaichiTextMixin):
 
         if cfg.enable_shadow and self._shadow_layer is not None:
             shadow_offset = max(2, int(cfg.height * cfg.shadow_offset_ratio))
-            _composite_text_with_offset(
+            taichi_kernels._composite_text_with_offset(
                 self.frame_buffer,
                 self._shadow_layer,
                 self.temp_buffer,
@@ -393,7 +392,7 @@ class TaichiTitleRenderer(TaichiParticlesMixin, TaichiTextMixin):
             np.copyto(self.frame_buffer, self.temp_buffer)
 
         if self._title_layer is not None:
-            _composite_text_with_offset(
+            taichi_kernels._composite_text_with_offset(
                 self.frame_buffer,
                 self._title_layer,
                 self.temp_buffer,
@@ -405,7 +404,7 @@ class TaichiTitleRenderer(TaichiParticlesMixin, TaichiTextMixin):
 
         if self._subtitle_layer is not None:
             subtitle_anim = self._compute_animation(t, progress, is_subtitle=True)
-            _composite_text_with_offset(
+            taichi_kernels._composite_text_with_offset(
                 self.frame_buffer,
                 self._subtitle_layer,
                 self.temp_buffer,

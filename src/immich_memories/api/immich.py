@@ -201,6 +201,7 @@ class SyncImmichClient:
 
     def __init__(self, *args, **kwargs):
         self._async_client = ImmichClient(*args, **kwargs)
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     @property
     def base_url(self) -> str:
@@ -218,22 +219,40 @@ class SyncImmichClient:
         return self._async_client.timeout
 
     def _run(self, coro):
-        """Run an async coroutine synchronously."""
+        """Run an async coroutine synchronously.
+
+        Uses a persistent event loop so httpx's AsyncClient can reuse TCP
+        connections across calls. asyncio.run() creates and destroys a loop
+        each time, which breaks httpx's transport references on the 2nd call.
+        """
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            # No event loop running — safe to use asyncio.run()
-            return asyncio.run(coro)
+            # No event loop running — use persistent loop for connection reuse
+            if self._loop is None or self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+            return self._loop.run_until_complete(coro)
         else:
             # Already inside an event loop (e.g., NiceGUI) — run in a thread
             import concurrent.futures
 
+            def _run_with_persistent_loop():
+                if self._loop is None or self._loop.is_closed():
+                    self._loop = asyncio.new_event_loop()
+                return self._loop.run_until_complete(coro)
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(asyncio.run, coro).result()
+                return pool.submit(_run_with_persistent_loop).result()
 
     def close(self) -> None:
-        """Close the client."""
-        self._run(self._async_client.close())
+        """Close the client and its event loop."""
+        try:
+            if self._loop is None or self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+            self._loop.run_until_complete(self._async_client.close())
+        finally:
+            if self._loop is not None and not self._loop.is_closed():
+                self._loop.close()
 
     def __enter__(self) -> SyncImmichClient:
         return self
