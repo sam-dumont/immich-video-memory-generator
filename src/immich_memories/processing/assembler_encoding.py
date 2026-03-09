@@ -97,9 +97,11 @@ class AssemblerEncodingMixin:
 
         # Build audio filter
         audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
+        # EBU R128 loudness normalization: -16 LUFS target, preserves dynamics (LRA=11)
+        loudnorm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if self.settings.normalize_clip_audio else ""
         if has_audio:
             audio_filter = (
-                f"[0:a]{audio_format},asetpts=PTS-STARTPTS,"
+                f"[0:a]{audio_format},asetpts=PTS-STARTPTS{loudnorm},"
                 f"apad=whole_dur={clip.duration},atrim=0:{clip.duration},asetpts=PTS-STARTPTS[aout]"
             )
         else:
@@ -211,6 +213,8 @@ class AssemblerEncodingMixin:
         )
 
         audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
+        # EBU R128 loudness normalization: -16 LUFS target, preserves dynamics (LRA=11)
+        loudnorm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if self.settings.normalize_clip_audio else ""
 
         # Use filter_complex with anullsrc mixing to guarantee audio
         filter_complex = (
@@ -220,7 +224,7 @@ class AssemblerEncodingMixin:
             f"anullsrc=r=48000:cl=stereo,atrim=0:{duration}[silence];"
             # Try to extract audio
             f"[0:a]atrim=start={start}:duration={duration},{audio_format},"
-            f"asetpts=PTS-STARTPTS,apad=whole_dur={duration}[asrc];"
+            f"asetpts=PTS-STARTPTS{loudnorm},apad=whole_dur={duration}[asrc];"
             # Mix: silence provides guaranteed duration, source provides content
             # Final atrim + asetpts ensures exact duration and resets timestamps
             # to prevent AAC priming issues during concat
