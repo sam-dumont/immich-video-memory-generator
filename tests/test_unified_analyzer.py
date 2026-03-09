@@ -456,12 +456,10 @@ class TestCreateUnifiedAnalyzerFromConfig:
             mock_cfg.return_value.analysis.target_extraction_ratio = 0.3
             mock_cfg.return_value.content_analysis.enabled = True
             mock_cfg.return_value.content_analysis.weight = 0.2
-            mock_cfg.return_value.llm.ollama_url = "http://localhost:11434"
-            mock_cfg.return_value.llm.ollama_model = "llava"
-            mock_cfg.return_value.llm.openai_api_key = ""
-            mock_cfg.return_value.llm.openai_model = "gpt-4o-mini"
-            mock_cfg.return_value.llm.openai_base_url = "https://api.openai.com/v1"
-            mock_cfg.return_value.llm.provider = "auto"
+            mock_cfg.return_value.llm.provider = "ollama"
+            mock_cfg.return_value.llm.base_url = "http://localhost:11434"
+            mock_cfg.return_value.llm.model = "llava"
+            mock_cfg.return_value.llm.api_key = ""
             mock_cfg.return_value.audio_content.enabled = False
             mock_cfg.return_value.audio_content.weight = 0.0
             mock_get_analyzer.return_value = MagicMock()
