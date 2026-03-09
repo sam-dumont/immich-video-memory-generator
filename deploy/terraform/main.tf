@@ -50,7 +50,7 @@ locals {
     }
     audio = {
       auto_music        = false
-      music_source      = "pixabay"
+      music_source      = "musicgen"
       ollama_url        = var.ollama_url
       ollama_model      = var.ollama_model
       ducking_threshold = 0.02
@@ -87,7 +87,6 @@ resource "kubernetes_secret" "this" {
     IMMICH_URL      = var.immich_url
     IMMICH_API_KEY  = var.immich_api_key
     OPENAI_API_KEY  = var.openai_api_key
-    PIXABAY_API_KEY = var.pixabay_api_key
     MUSICGEN_API_KEY = var.musicgen_api_key
   }
 
@@ -239,17 +238,6 @@ resource "kubernetes_deployment" "this" {
               secret_key_ref {
                 name     = kubernetes_secret.this.metadata[0].name
                 key      = "OPENAI_API_KEY"
-                optional = true
-              }
-            }
-          }
-
-          env {
-            name = "PIXABAY_API_KEY"
-            value_from {
-              secret_key_ref {
-                name     = kubernetes_secret.this.metadata[0].name
-                key      = "PIXABAY_API_KEY"
                 optional = true
               }
             }

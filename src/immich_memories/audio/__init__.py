@@ -6,7 +6,6 @@ __all__ = [
     # Music sources
     "MusicTrack",
     "MusicSource",
-    "PixabayMusicSource",
     "LocalMusicSource",
     "get_music_source",
     # AI Music generation
@@ -78,7 +77,6 @@ _SUBMODULE_MAP = {
     "LocalMusicSource": "immich_memories.audio.music_sources",
     "MusicSource": "immich_memories.audio.music_sources",
     "MusicTrack": "immich_memories.audio.music_sources",
-    "PixabayMusicSource": "immich_memories.audio.music_sources",
     "get_music_source": "immich_memories.audio.music_sources",
     "MusicGenerator": "immich_memories.audio.generators.base",
     "GenerationRequest": "immich_memories.audio.generators.base",

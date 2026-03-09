@@ -47,7 +47,7 @@ data:
 
     audio:
       auto_music: false
-      music_source: "pixabay"
+      music_source: "musicgen"
       ollama_url: "http://ollama.ollama.svc.cluster.local:11434"
       ollama_model: "llava"
       ducking_threshold: 0.02

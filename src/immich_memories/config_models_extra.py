@@ -25,14 +25,13 @@ class AudioConfig(BaseModel):
     )
 
     # Music sources
-    music_source: Literal["pixabay", "local", "musicgen", "ace_step"] = Field(
-        default="pixabay",
+    music_source: Literal["local", "musicgen", "ace_step"] = Field(
+        default="musicgen",
         description="Source for automatic music selection (musicgen = MusicGen API, ace_step = ACE-Step local/API)",
     )
     local_music_dir: str = Field(
         default="~/Music/Memories", description="Directory for local music library"
     )
-    pixabay_api_key: str = Field(default="", description="Pixabay API key (optional)")
 
     # Audio ducking settings
     ducking_threshold: float = Field(
@@ -53,14 +52,6 @@ class AudioConfig(BaseModel):
     fade_out_seconds: float = Field(
         default=3.0, ge=0.0, le=10.0, description="Music fade out duration"
     )
-
-    @field_validator("pixabay_api_key", mode="before")
-    @classmethod
-    def expand_env(cls, v: str) -> str:
-        """Expand environment variables in config values."""
-        if isinstance(v, str):
-            return expand_env_vars(v)
-        return v
 
     @property
     def local_music_path(self) -> Path:
