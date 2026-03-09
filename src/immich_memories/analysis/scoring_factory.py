@@ -106,10 +106,10 @@ def create_scorer_from_config() -> SceneScorer:
 
         # Use shared LLM config
         content_analyzer = get_content_analyzer(
-            ollama_url=config.llm.ollama_url,
-            ollama_model=config.llm.ollama_model,
-            openai_api_key=config.llm.openai_api_key,
-            openai_model=config.llm.openai_model,
+            provider=config.llm.provider,
+            base_url=config.llm.base_url,
+            model=config.llm.model,
+            api_key=config.llm.api_key,
         )
 
         if content_analyzer:

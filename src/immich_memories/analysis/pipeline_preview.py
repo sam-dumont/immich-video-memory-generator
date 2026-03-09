@@ -338,6 +338,11 @@ class PreviewMixin:
         # -map 0:a:0 selects only the first audio stream (AAC), ignoring spatial audio
         # Use GPU-accelerated encoding when available
         encoder_args = _get_fast_encoder_args()
+
+        # Note: no explicit HDR→SDR tonemapping here. macOS browsers (Safari, Chrome)
+        # handle HLG/PQ natively via the system display pipeline, so keeping the HDR
+        # metadata intact produces better results than software tonemapping.
+
         cmd = [
             "ffmpeg",
             "-y",

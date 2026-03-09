@@ -12,10 +12,10 @@ import logging
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from . import taichi_kernels
 from .taichi_kernels import (
     SDF_AVAILABLE,
     _get_system_font,
-    _render_sdf_text,
     find_font,
     get_cached_atlas,
     layout_text,
@@ -73,7 +73,7 @@ class TaichiTextMixin:
             x_offset: Horizontal offset for animation
             is_shadow: If True, render as shadow (offset and darker)
         """
-        if not self._use_sdf or self._sdf_atlas is None or _render_sdf_text is None:
+        if not self._use_sdf or self._sdf_atlas is None or taichi_kernels._render_sdf_text is None:
             return
 
         # Calculate scale from atlas size to target size
@@ -104,7 +104,7 @@ class TaichiTextMixin:
         smoothing = max(0.05, min(0.2, 0.15 / scale))
 
         # Render using GPU kernel
-        _render_sdf_text(
+        taichi_kernels._render_sdf_text(
             self.frame_buffer,
             self._sdf_atlas_float,
             glyph_data,

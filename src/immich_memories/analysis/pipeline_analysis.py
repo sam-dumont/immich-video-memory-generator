@@ -243,14 +243,12 @@ class AnalysisMixin:
             from immich_memories.analysis.content_analyzer import get_content_analyzer
 
             analyzer = get_content_analyzer(
-                ollama_url=config.llm.ollama_url,
-                ollama_model=config.llm.ollama_model,
-                openai_api_key=config.llm.openai_api_key,
-                openai_model=config.llm.openai_model,
-                openai_base_url=config.llm.openai_base_url,
-                openai_image_detail=config.content_analysis.openai_image_detail,
-                max_height=config.content_analysis.frame_max_height,
                 provider=config.llm.provider,
+                base_url=config.llm.base_url,
+                model=config.llm.model,
+                api_key=config.llm.api_key,
+                image_detail=config.content_analysis.openai_image_detail,
+                max_height=config.content_analysis.frame_max_height,
             )
             weight = config.content_analysis.weight
             if analyzer:

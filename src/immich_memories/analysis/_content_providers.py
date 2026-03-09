@@ -1,6 +1,6 @@
 """Provider implementations for content analysis.
 
-Contains OllamaContentAnalyzer and OpenAIContentAnalyzer,
+Contains OllamaContentAnalyzer and OpenAICompatibleContentAnalyzer,
 which use local Ollama or OpenAI-compatible APIs respectively.
 """
 
@@ -196,23 +196,23 @@ class OllamaContentAnalyzer(ContentAnalyzer):
                     frame.unlink()
 
 
-class OpenAIContentAnalyzer(ContentAnalyzer):
-    """Content analyzer using OpenAI GPT-4 Vision (also works with Groq)."""
+class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
+    """Content analyzer for any OpenAI-compatible API."""
 
     def __init__(
         self,
-        api_key: str,
         model: str = "gpt-4o-mini",
         base_url: str = "https://api.openai.com/v1",
+        api_key: str = "",
         image_detail: str = "low",
         max_height: int = 480,
     ):
-        """Initialize OpenAI analyzer.
+        """Initialize OpenAI-compatible analyzer.
 
         Args:
-            api_key: OpenAI API key (or Groq key for Groq endpoint)
             model: Model name (gpt-4o, gpt-4o-mini, gpt-4.1-nano, llama-4-scout, etc.)
-            base_url: API base URL (change to https://api.groq.com/openai/v1 for Groq)
+            base_url: API base URL (works with OpenAI, Groq, mlx-vlm, etc.)
+            api_key: API key (optional — local servers don't need one)
             image_detail: Image detail level ("low"=85 tokens, "high"=1889 tokens, "auto")
             max_height: Maximum frame height in pixels (default 480 for speed/cost)
         """
@@ -227,13 +227,10 @@ class OpenAIContentAnalyzer(ContentAnalyzer):
     def client(self) -> httpx.Client:
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
-            self._client = httpx.Client(
-                timeout=60.0,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-            )
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+            self._client = httpx.Client(timeout=120.0, headers=headers)
         return self._client
 
     def close(self):
@@ -243,8 +240,8 @@ class OpenAIContentAnalyzer(ContentAnalyzer):
             self._client = None
 
     def is_available(self) -> bool:
-        """Check if OpenAI is available."""
-        return bool(self.api_key)
+        """Check if the API endpoint is available."""
+        return True
 
     def analyze_segment(
         self,
@@ -282,7 +279,7 @@ class OpenAIContentAnalyzer(ContentAnalyzer):
             payload = {
                 "model": self.model,
                 "messages": [{"role": "user", "content": content}],
-                "max_tokens": 500,
+                "max_tokens": 1024,  # Extra room for thinking models (Qwen3.5, etc.)
             }
 
             response = self.client.post(

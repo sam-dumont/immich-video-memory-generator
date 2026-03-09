@@ -117,3 +117,4 @@ error_log.log
 .terraform.lock.hcl
 *.enc.yaml
 *.enc.json
+.worktrees/

@@ -65,6 +65,10 @@ Choose how to select which videos to include:
 - **Specific Person**: Only include videos featuring a recognized person
 - Uses Immich's face recognition
 
+### Cache Management
+
+An expandable "Cache Management" panel at the bottom of Step 1 shows disk usage for each cache type (analysis database, video files, thumbnails, preview clips). You can clear individual caches or all of them at once. Useful when you want a fresh start or need to reclaim disk space.
+
 ### Target Duration
 
 The suggested duration scales with your time period:
@@ -203,7 +207,7 @@ From here you can:
 1. **Mark favorites in Immich**: The algorithm prioritizes favorites
 2. **Use face recognition**: Create compilations for specific people
 3. **Start with a year**: Full years have more content to choose from
-4. **Enable LLM analysis**: Better segment selection (requires Ollama or OpenAI)
+4. **Enable LLM analysis**: Better segment selection (any OpenAI-compatible server: mlx-vlm, Ollama, vLLM, Groq, etc.)
 
 ### Performance Tips
 
@@ -253,9 +257,13 @@ From here you can:
 ### LLM Not Working
 
 **LLM analysis shows default values**
-- Check Ollama is running: `curl http://localhost:11434/api/tags`
-- Pull a vision model: `ollama pull moondream`
-- Check logs for specific errors
+
+The LLM config lives in a shared `llm:` section of `config.yaml`. Two providers are supported:
+
+- **`openai-compatible`** (default): works with mlx-vlm, vLLM, Groq, OpenAI, LM Studio, llama.cpp, or any server that speaks `/v1/chat/completions`. Check your server is reachable: `curl http://localhost:8080/v1/models`
+- **`ollama`**: uses Ollama's native `/api/generate` endpoint. Check it's running: `curl http://localhost:11434/api/tags`
+
+Run `immich-memories preflight` to test the connection. Check logs for specific errors.
 
 ### Target Exceeds Content
 

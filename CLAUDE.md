@@ -82,6 +82,20 @@ make pre-commit
   - Format: `type(scope): description` — e.g., `fix(api): handle timeout errors`
   - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
 
+### Test-Driven Development (TDD)
+
+All new features and bug fixes **must** use TDD with vertical slices:
+
+1. **ONE test → ONE implementation → repeat** (never write all tests first)
+2. **RED**: Write one failing test for the next behavior
+3. **GREEN**: Write minimal code to make it pass
+4. **REFACTOR**: Clean up only after GREEN, never while RED
+5. Run `make test` after each cycle to confirm
+
+Tests must verify **behavior through public interfaces**, not implementation
+details. A test should survive an internal refactor without breaking. See
+`.agents/skills/tdd/SKILL.md` for the full TDD skill reference.
+
 ### Before Every Commit
 
 Run `make ci` — this runs all CI-equivalent checks locally. If it passes
