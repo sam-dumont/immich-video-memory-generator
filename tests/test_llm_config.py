@@ -127,3 +127,53 @@ class TestOpenAICompatibleProvider:
         client = analyzer.client
         assert client.headers.get("authorization") == "Bearer sk-test"
         analyzer.close()
+
+
+class TestGetContentAnalyzer:
+    def test_ollama_provider_returns_ollama_analyzer(self):
+        from immich_memories.analysis._content_providers import OllamaContentAnalyzer
+        from immich_memories.analysis.content_analyzer import get_content_analyzer
+
+        analyzer = get_content_analyzer(
+            provider="ollama",
+            base_url="http://localhost:11434",
+            model="llava",
+        )
+        assert isinstance(analyzer, OllamaContentAnalyzer)
+        assert analyzer.model == "llava"
+        assert analyzer.base_url == "http://localhost:11434"
+
+    def test_openai_compatible_provider_returns_compat_analyzer(self):
+        from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
+        from immich_memories.analysis.content_analyzer import get_content_analyzer
+
+        analyzer = get_content_analyzer(
+            provider="openai-compatible",
+            base_url="http://localhost:8080/v1",
+            model="qwen3.5-9b",
+            api_key="",
+        )
+        assert isinstance(analyzer, OpenAICompatibleContentAnalyzer)
+        assert analyzer.model == "qwen3.5-9b"
+
+    def test_unknown_provider_returns_none(self):
+        from immich_memories.analysis.content_analyzer import get_content_analyzer
+
+        analyzer = get_content_analyzer(
+            provider="unknown",
+            base_url="http://localhost:8080",
+            model="test",
+        )
+        assert analyzer is None
+
+    def test_no_auto_fallback(self):
+        """Auto mode should not exist - provider must be explicit."""
+        from immich_memories.analysis.content_analyzer import get_content_analyzer
+
+        # "auto" is not a valid provider, should return None
+        analyzer = get_content_analyzer(
+            provider="auto",
+            base_url="http://localhost:11434",
+            model="llava",
+        )
+        assert analyzer is None
