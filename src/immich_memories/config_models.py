@@ -249,39 +249,30 @@ class CacheConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    """Shared LLM provider settings for Ollama and OpenAI."""
+    """Shared LLM provider settings.
 
-    # Ollama settings (preferred - local, privacy-friendly)
-    ollama_url: str = Field(
-        default="http://localhost:11434",
-        description="Ollama API URL",
-    )
-    ollama_model: str = Field(
-        default="llava",
-        description="Ollama vision model (llava, bakllava, qwen2-vl, etc.)",
-    )
+    Two providers: "ollama" (native Ollama API) or "openai-compatible"
+    (any server speaking /v1/chat/completions — OpenAI, Groq, mlx-vlm, vLLM, etc.).
+    """
 
-    # OpenAI settings (fallback)
-    openai_api_key: str = Field(
+    provider: Literal["ollama", "openai-compatible"] = Field(
+        default="openai-compatible",
+        description="LLM provider: 'ollama' or 'openai-compatible'",
+    )
+    base_url: str = Field(
+        default="http://localhost:8080/v1",
+        description="API base URL",
+    )
+    model: str = Field(
         default="",
-        description="OpenAI API key (fallback if Ollama unavailable)",
+        description="Model name",
     )
-    openai_model: str = Field(
-        default="gpt-4.1-nano",
-        description="OpenAI model for vision tasks (gpt-4.1-nano, gpt-5-mini, gpt-5.2, etc.)",
-    )
-    openai_base_url: str = Field(
-        default="https://api.openai.com/v1",
-        description="OpenAI API base URL (for Azure, on-prem, or compatible endpoints)",
+    api_key: str = Field(
+        default="",
+        description="API key (optional, only needed for cloud APIs)",
     )
 
-    # Provider preference
-    provider: Literal["ollama", "openai", "auto"] = Field(
-        default="auto",
-        description="LLM provider (auto = try Ollama first, fallback to OpenAI)",
-    )
-
-    @field_validator("openai_api_key", mode="before")
+    @field_validator("api_key", mode="before")
     @classmethod
     def expand_env(cls, v: str) -> str:
         """Expand environment variables in config values."""
