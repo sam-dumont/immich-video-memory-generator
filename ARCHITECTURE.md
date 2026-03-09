@@ -169,6 +169,15 @@ src/immich_memories/
 │   ├── models.py               # Run/phase data models
 │   └── system_info.py          # System info collection
 │
+├── cache/                         # Analysis caching system
+│   ├── __init__.py                # Re-exports public API
+│   ├── database.py                # VideoAnalysisCache class (CRUD/query/stats)
+│   ├── database_models.py         # CachedSegment, CachedVideoAnalysis, SimilarVideo
+│   ├── database_migrations.py     # DatabaseMigrationsMixin (schema v1-v5)
+│   ├── database_queries.py        # DatabaseQueryMixin (read/query methods)
+│   ├── thumbnail_cache.py         # ThumbnailCache - file-based thumbnail storage
+│   └── video_cache.py             # VideoDownloadCache - downloaded video files
+│
 ├── config.py                   # YAML configuration management (re-exports)
 ├── config_loader.py            # Config loading logic
 ├── config_models.py            # Config data models

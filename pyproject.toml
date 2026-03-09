@@ -435,6 +435,14 @@ disable_error_code = ["attr-defined"]
 module = ["immich_memories.processing.clip_encoding"]
 disable_error_code = ["attr-defined"]
 
+# Cache mixins (access parent class _get_connection via mixin pattern)
+[[tool.mypy.overrides]]
+module = [
+    "immich_memories.cache.database_migrations",
+    "immich_memories.cache.database_queries",
+]
+disable_error_code = ["attr-defined"]
+
 # Tracking mixins (access parent class _get_connection via mixin pattern)
 [[tool.mypy.overrides]]
 module = [
