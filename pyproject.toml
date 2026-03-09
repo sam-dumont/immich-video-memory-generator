@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "immich-memories"
 dynamic = ["version"]
-description = "Create yearly video compilations from your Immich photo library"
+description = "Turn your Immich photo library into video memory compilations with music and smart cuts"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -109,6 +109,7 @@ Homepage = "https://github.com/sam-dumont/immich-video-memory-generator"
 Documentation = "https://github.com/sam-dumont/immich-video-memory-generator#readme"
 Repository = "https://github.com/sam-dumont/immich-video-memory-generator"
 Issues = "https://github.com/sam-dumont/immich-video-memory-generator/issues"
+Changelog = "https://github.com/sam-dumont/immich-video-memory-generator/releases"
 
 [tool.hatch.version]
 source = "vcs"

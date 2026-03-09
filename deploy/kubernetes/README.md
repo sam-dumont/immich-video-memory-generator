@@ -26,9 +26,10 @@ Deploy Immich Memories to Kubernetes with NVIDIA GPU support.
 
 ## Quick Start
 
-1. **Edit the secret** with your Immich credentials:
+1. **Create the secret** with your Immich credentials:
    ```bash
-   # Edit secret.yaml with your values
+   cp secret.yaml.example secret.yaml
+   # Edit with your values
    vim secret.yaml
    ```
 
@@ -111,6 +112,8 @@ For production, use sealed-secrets instead of plain secrets:
 brew install kubeseal
 
 # Seal the secret
+cp secret.yaml.example secret.yaml
+# Fill in your values, then seal
 kubeseal --format=yaml < secret.yaml > sealed-secret.yaml
 
 # Apply sealed secret
