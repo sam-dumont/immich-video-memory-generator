@@ -43,3 +43,17 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
+
+      - id: dead-code
+        name: Dead code detection (Vulture)
+        entry: make dead-code
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: security-lint
+        name: Security lint (Bandit)
+        entry: make security-lint
+        language: system
+        pass_filenames: false
+        types: [python]

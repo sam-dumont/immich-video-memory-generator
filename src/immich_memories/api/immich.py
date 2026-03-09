@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
+from pydantic import ValidationError
 
 from immich_memories.api.client_asset import AssetMixin
 from immich_memories.api.client_person import PersonMixin
@@ -163,12 +164,18 @@ class ImmichClient(AssetMixin, PersonMixin, SearchMixin):
     async def get_server_info(self) -> ServerInfo:
         """Get server version information."""
         data = await self._request("GET", "/server/version")
-        return ServerInfo(**data)
+        try:
+            return ServerInfo(**data)
+        except ValidationError as e:
+            raise ImmichAPIError(f"Unexpected API response format: {e}") from e
 
     async def get_current_user(self) -> UserInfo:
         """Get current user information."""
         data = await self._request("GET", "/users/me")
-        return UserInfo(**data)
+        try:
+            return UserInfo(**data)
+        except ValidationError as e:
+            raise ImmichAPIError(f"Unexpected API response format: {e}") from e
 
     async def validate_connection(self) -> bool:
         """Validate the connection to Immich.
@@ -213,12 +220,16 @@ class SyncImmichClient:
     def _run(self, coro):
         """Run an async coroutine synchronously."""
         try:
-            loop = asyncio.get_event_loop()
+            asyncio.get_running_loop()
         except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            # No event loop running — safe to use asyncio.run()
+            return asyncio.run(coro)
+        else:
+            # Already inside an event loop (e.g., NiceGUI) — run in a thread
+            import concurrent.futures
 
-        return loop.run_until_complete(coro)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(asyncio.run, coro).result()
 
     def close(self) -> None:
         """Close the client."""
