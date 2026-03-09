@@ -15,6 +15,7 @@ from immich_memories.processing.hardware import (
     get_ffmpeg_encoder,
     get_ffmpeg_hwaccel_args,
 )
+from immich_memories.security import validate_video_path
 
 if TYPE_CHECKING:
     from immich_memories.processing.clips import ClipSegment
@@ -52,6 +53,8 @@ class ClipEncodingMixin:
         Returns:
             List of command arguments for FFmpeg.
         """
+        validate_video_path(segment.source_path, must_exist=True)
+
         config = get_config()
         codec = "h264" if config.output.codec in ("h264", "h265") else "h264"
 
@@ -149,34 +152,33 @@ class ClipEncodingMixin:
         cmd.insert(1, "-progress")
         cmd.insert(2, "pipe:1")
 
-        process = subprocess.Popen(
+        with subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-        )
+        ) as process:
+            while process.stdout is not None:
+                line = process.stdout.readline()
+                if not line and process.poll() is not None:
+                    break
 
-        while process.stdout is not None:
-            line = process.stdout.readline()
-            if not line and process.poll() is not None:
-                break
+                if line.startswith("out_time_ms="):
+                    try:
+                        time_ms = int(line.split("=")[1])
+                        progress = min(time_ms / (segment.duration * 1_000_000), 1.0)
+                        progress_callback(progress)
+                    except (ValueError, IndexError):
+                        pass
 
-            if line.startswith("out_time_ms="):
-                try:
-                    time_ms = int(line.split("=")[1])
-                    progress = min(time_ms / (segment.duration * 1_000_000), 1.0)
-                    progress_callback(progress)
-                except (ValueError, IndexError):
-                    pass
-
-        if process.returncode != 0:
-            stderr = process.stderr.read() if process.stderr else ""
-            if hw_caps and hw_caps.has_encoding and "nvenc" in stderr.lower():
-                logger.warning("Hardware encoding failed, falling back to software")
-                return self._extract_with_reencode(
-                    segment, output_path, progress_callback, use_hw_accel=False
-                )
-            raise RuntimeError(f"Failed to extract clip: {stderr}")
+            if process.returncode != 0:
+                stderr = process.stderr.read() if process.stderr else ""
+                if hw_caps and hw_caps.has_encoding and "nvenc" in stderr.lower():
+                    logger.warning("Hardware encoding failed, falling back to software")
+                    return self._extract_with_reencode(
+                        segment, output_path, progress_callback, use_hw_accel=False
+                    )
+                raise RuntimeError(f"Failed to extract clip: {stderr}")
 
     def _extract_with_reencode(
         self,

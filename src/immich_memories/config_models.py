@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def expand_env_vars(value: str) -> str:
@@ -98,6 +98,26 @@ class AnalysisConfig(BaseModel):
         le=0.5,
         description="Target ratio of clip to source duration (0.25 = 25% of source)",
     )
+
+    @model_validator(mode="after")
+    def validate_duration_constraints(self) -> AnalysisConfig:
+        """Ensure min_segment_duration < max_segment_duration and related constraints."""
+        if self.min_segment_duration >= self.max_segment_duration:
+            raise ValueError(
+                f"min_segment_duration ({self.min_segment_duration}) must be less than "
+                f"max_segment_duration ({self.max_segment_duration})"
+            )
+        if self.min_segment_duration >= self.optimal_clip_duration:
+            raise ValueError(
+                f"min_segment_duration ({self.min_segment_duration}) must be less than "
+                f"optimal_clip_duration ({self.optimal_clip_duration})"
+            )
+        if self.optimal_clip_duration > self.max_optimal_duration:
+            raise ValueError(
+                f"optimal_clip_duration ({self.optimal_clip_duration}) must not exceed "
+                f"max_optimal_duration ({self.max_optimal_duration})"
+            )
+        return self
 
     # Speed optimization: downscale videos for analysis
     enable_downscaling: bool = Field(

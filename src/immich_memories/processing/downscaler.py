@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from immich_memories.security import validate_video_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,7 +71,7 @@ def _get_fast_encoder_args() -> list[str]:
                 "-preset",
                 "veryfast",
             ]
-    except Exception:
+    except (subprocess.SubprocessError, OSError, ValueError):
         pass
 
     # Fallback to CPU libx264
@@ -113,6 +115,7 @@ def get_video_height(video_path: Path) -> int:
         Video height in pixels, or 0 if unable to determine.
     """
     try:
+        validate_video_path(video_path, must_exist=True)
         result = subprocess.run(
             [
                 "ffprobe",
@@ -131,7 +134,7 @@ def get_video_height(video_path: Path) -> int:
             timeout=30,
         )
         return int(result.stdout.strip())
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError, ValueError) as e:
         logger.debug(f"Could not get video height: {e}")
         return 0
 
@@ -189,6 +192,7 @@ def downscale_video(
         logger.debug(f"Video already small enough, using original: {source_path}")
         return source_path
 
+    validate_video_path(source_path, must_exist=True)
     logger.info(f"Downscaling {source_path.name} to {target_height}p for faster analysis...")
 
     # ffmpeg command for fast downscaling with GPU acceleration
