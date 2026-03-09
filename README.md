@@ -510,7 +510,7 @@ Source and docs: [sam-dumont/musicgen-api](https://github.com/sam-dumont/musicge
 - **Library mode** (`lib`): runs locally on Apple Silicon (16GB+) or NVIDIA GPUs (8GB+ VRAM). Requires the `ace-step` package installed.
 - **API mode** (`api`): connects to a remote ACE-Step server via its REST API.
 
-The upstream project only ships a Gradio UI. We built a proper REST API wrapper with Docker support: [sam-dumont/ace-step-1.5-turbo](https://github.com/sam-dumont/ace-step-1.5-turbo).
+The upstream project includes both a Gradio UI and a REST API, but the default Docker image pulls the full base model + 1.7B LM, which needs 32GB+ VRAM. If you have a consumer GPU (8-12GB), use [sam-dumont/ace-step-1.5-turbo](https://github.com/sam-dumont/ace-step-1.5-turbo): a fork that swaps in the turbo model (8 steps instead of 50, ~6x faster) and the 0.6B LM, so it fits in 8GB VRAM with minimal quality loss.
 
 ```yaml
 audio:
@@ -521,17 +521,18 @@ ace_step:
   mode: "api"                  # "lib" for local, "api" for remote server
   api_url: "http://your-gpu-server:8000"
   model_variant: "turbo"       # "turbo" (fast, 8 steps) or "base" (quality, 50 steps)
-  lm_model_size: "1.7B"       # Language model: "0.6B", "1.7B", or "4B"
+  lm_model_size: "0.6B"       # "0.6B" for constrained GPUs, "1.7B" or "4B" if you have VRAM
 ```
 
-Deploy the API server:
+Deploy on a consumer GPU:
 ```bash
+# Optimized for 8GB VRAM (turbo + 0.6B LM)
 git clone https://github.com/sam-dumont/ace-step-1.5-turbo.git
 cd ace-step-1.5-turbo
-docker compose up -d  # Requires NVIDIA GPU
+docker compose up -d
 ```
 
-Source and docs: [sam-dumont/ace-step-1.5-turbo](https://github.com/sam-dumont/ace-step-1.5-turbo) (public).
+Or use the upstream image if you have 32GB+ VRAM: [ace-step/ACE-Step](https://github.com/ace-step/ACE-Step).
 
 ### No music / BYO music
 
