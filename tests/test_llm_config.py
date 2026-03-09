@@ -74,3 +74,56 @@ class TestLLMConfigMigration:
         )
         assert config.base_url == "http://new:8080/v1"
         assert config.model == "qwen3.5"
+
+
+class TestOpenAICompatibleProvider:
+    def test_import_new_name(self):
+        """OpenAICompatibleContentAnalyzer should be importable."""
+        from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
+
+        assert OpenAICompatibleContentAnalyzer is not None
+
+    def test_accepts_empty_api_key(self):
+        """Local servers (mlx-vlm) don't need an API key."""
+        from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
+
+        analyzer = OpenAICompatibleContentAnalyzer(
+            model="qwen3.5-9b",
+            base_url="http://localhost:8080/v1",
+            api_key="",
+        )
+        assert analyzer.model == "qwen3.5-9b"
+        assert analyzer.api_key == ""
+
+    def test_timeout_is_120s(self):
+        """Local vision models need longer timeouts."""
+        from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
+
+        analyzer = OpenAICompatibleContentAnalyzer(
+            model="test", base_url="http://localhost:8080/v1", api_key=""
+        )
+        client = analyzer.client
+        assert client.timeout.read == 120.0
+        analyzer.close()
+
+    def test_no_auth_header_when_no_key(self):
+        """Should NOT set Authorization header when api_key is empty."""
+        from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
+
+        analyzer = OpenAICompatibleContentAnalyzer(
+            model="test", base_url="http://localhost:8080/v1", api_key=""
+        )
+        client = analyzer.client
+        assert "authorization" not in {k.lower() for k in client.headers}
+        analyzer.close()
+
+    def test_auth_header_when_key_provided(self):
+        """Should set Authorization header when api_key is non-empty."""
+        from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
+
+        analyzer = OpenAICompatibleContentAnalyzer(
+            model="test", base_url="http://localhost:8080/v1", api_key="sk-test"
+        )
+        client = analyzer.client
+        assert client.headers.get("authorization") == "Bearer sk-test"
+        analyzer.close()

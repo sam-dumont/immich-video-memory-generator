@@ -20,8 +20,11 @@ from immich_memories.analysis._content_parsing import (  # noqa: F401
 )
 from immich_memories.analysis._content_providers import (  # noqa: F401
     OllamaContentAnalyzer,
-    OpenAIContentAnalyzer,
+    OpenAICompatibleContentAnalyzer,
 )
+
+# Backwards compatibility alias
+OpenAIContentAnalyzer = OpenAICompatibleContentAnalyzer
 
 logger = logging.getLogger(__name__)
 
