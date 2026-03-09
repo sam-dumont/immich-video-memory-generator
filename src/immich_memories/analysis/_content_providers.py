@@ -279,7 +279,7 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
             payload = {
                 "model": self.model,
                 "messages": [{"role": "user", "content": content}],
-                "max_tokens": 500,
+                "max_tokens": 1024,  # Extra room for thinking models (Qwen3.5, etc.)
             }
 
             response = self.client.post(
