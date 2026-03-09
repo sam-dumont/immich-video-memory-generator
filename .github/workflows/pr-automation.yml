@@ -122,7 +122,7 @@ jobs:
 
             A maintainer will review your PR soon. In the meantime, please make sure:
             - [ ] Your PR title follows [conventional commits](https://www.conventionalcommits.org/)
-            - [ ] You've run `just check` locally
+            - [ ] You've run `make check` locally
             - [ ] You've added tests for new functionality
 
             Need help? Check out our [contributing guide](CONTRIBUTING.md).

@@ -428,7 +428,8 @@ Deploy to Kubernetes with NVIDIA GPU support. See [`deploy/`](deploy/) for compl
 ```bash
 cd deploy/kubernetes
 
-# Edit secrets with your Immich credentials
+# Create and edit secrets with your Immich credentials
+cp secret.yaml.example secret.yaml
 vim secret.yaml
 
 # Deploy all resources

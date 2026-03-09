@@ -6,7 +6,8 @@ namespace: immich-memories
 resources:
   - namespace.yaml
   - configmap.yaml
-  - secret.yaml
+  # Copy secret.yaml.example to secret.yaml and fill in your values
+  # - secret.yaml
   - pvc.yaml
   - deployment.yaml
   - service.yaml
