@@ -103,16 +103,15 @@ def register_music_commands(main: click.Group) -> None:
         config = ctx.obj["config"]
 
         # Use config values as defaults, allow CLI overrides
-        effective_ollama_url = ollama_url or config.llm.ollama_url
-        effective_ollama_model = ollama_model or config.llm.ollama_model
+        effective_url = ollama_url or config.llm.base_url
+        effective_model = ollama_model or config.llm.model
 
         async def analyze():
             analyzer = await get_mood_analyzer(
-                ollama_url=effective_ollama_url,
-                ollama_model=effective_ollama_model,
-                openai_api_key=config.llm.openai_api_key,
-                openai_model=config.llm.openai_model,
-                openai_base_url=config.llm.openai_base_url,
+                provider=config.llm.provider,
+                base_url=effective_url,
+                model=effective_model,
+                api_key=config.llm.api_key,
             )
             return await analyzer.analyze_video(Path(video_path))
 

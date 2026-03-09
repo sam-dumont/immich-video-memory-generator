@@ -177,3 +177,29 @@ class TestGetContentAnalyzer:
             model="llava",
         )
         assert analyzer is None
+
+
+class TestOpenAICompatibleMoodAnalyzer:
+    def test_import_new_name(self):
+        from immich_memories.audio.mood_analyzer_backends import OpenAICompatibleMoodAnalyzer
+
+        assert OpenAICompatibleMoodAnalyzer is not None
+
+    def test_accepts_empty_api_key(self):
+        from immich_memories.audio.mood_analyzer_backends import OpenAICompatibleMoodAnalyzer
+
+        analyzer = OpenAICompatibleMoodAnalyzer(
+            model="qwen3.5-9b",
+            base_url="http://localhost:8080/v1",
+            api_key="",
+        )
+        assert analyzer.model == "qwen3.5-9b"
+        assert analyzer.api_key == ""
+
+    def test_backwards_compat_alias(self):
+        from immich_memories.audio.mood_analyzer import (
+            OpenAICompatibleMoodAnalyzer,
+            OpenAIMoodAnalyzer,
+        )
+
+        assert OpenAIMoodAnalyzer is OpenAICompatibleMoodAnalyzer
