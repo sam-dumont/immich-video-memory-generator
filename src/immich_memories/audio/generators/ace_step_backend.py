@@ -27,6 +27,7 @@ from immich_memories.audio.generators.ace_step_captions import (
 )
 from immich_memories.audio.generators.ace_step_captions import (
     build_ace_caption,
+    build_ace_caption_structured,
 )
 from immich_memories.audio.generators.base import (
     GenerationRequest,
@@ -77,23 +78,34 @@ class ACEStepConfig:
     extra_args: dict[str, Any] = field(default_factory=dict)
 
 
-def _mood_to_ace_prompt(mood: str, prompt: str = "") -> tuple[str, str]:
-    """Convert a mood string to ACE-Step tags and lyrics format."""
-    # Detect season from mood keywords
-    season = None
+def _detect_season(mood: str) -> str | None:
+    """Detect season from mood keywords."""
     mood_lower = mood.lower()
     if "holiday" in mood_lower or "festive" in mood_lower:
-        season = "holiday"
-    elif "winter" in mood_lower:
-        season = "winter"
-    elif "summer" in mood_lower or "sunny" in mood_lower:
-        season = "summer"
-    elif "spring" in mood_lower or "fresh" in mood_lower:
-        season = "spring"
-    elif "autumn" in mood_lower or "fall" in mood_lower or "cozy" in mood_lower:
-        season = "autumn"
+        return "holiday"
+    if "winter" in mood_lower:
+        return "winter"
+    if "summer" in mood_lower or "sunny" in mood_lower:
+        return "summer"
+    if "spring" in mood_lower or "fresh" in mood_lower:
+        return "spring"
+    if "autumn" in mood_lower or "fall" in mood_lower or "cozy" in mood_lower:
+        return "autumn"
+    return None
 
-    return build_ace_caption(mood, season=season)
+
+def _mood_to_ace_prompt(mood: str, prompt: str = "") -> tuple[str, str]:
+    """Convert a mood string to ACE-Step tags and lyrics format."""
+    return build_ace_caption(mood, season=_detect_season(mood))
+
+
+def _mood_to_structured_prompt(mood: str):
+    """Convert mood to structured ACE-Step caption with explicit musical params.
+
+    Returns ACECaptionResult with caption, lyrics, bpm, key_scale, time_signature.
+    """
+
+    return build_ace_caption_structured(mood, season=_detect_season(mood))
 
 
 class ACEStepBackend(MusicGenerator):
@@ -293,10 +305,10 @@ class ACEStepBackend(MusicGenerator):
 
         if request.is_multi_scene:
             combined_mood = ", ".join(s.get("mood", "upbeat") for s in request.scenes[:3])
-            tags, lyrics = _mood_to_ace_prompt(combined_mood, request.prompt)
+            caption_result = _mood_to_structured_prompt(combined_mood)
             duration = sum(s.get("duration", 30) for s in request.scenes)
         else:
-            tags, lyrics = _mood_to_ace_prompt(request.prompt)
+            caption_result = _mood_to_structured_prompt(request.prompt)
             duration = request.duration_seconds
 
         duration = min(duration, 300)  # Cap at 5 minutes
@@ -312,12 +324,16 @@ class ACEStepBackend(MusicGenerator):
             timeout=httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=None),
             headers=headers,
         ) as client:
-            # Submit task (see docs/API_USAGE.md for field reference)
+            # Submit task with explicit musical params (not embedded in caption)
             task_payload = {
-                "caption": tags,
-                "lyrics": lyrics,
+                "caption": caption_result.caption,
+                "lyrics": caption_result.lyrics,
                 "duration": duration,
                 "batch_size": 1,
+                "bpm": caption_result.bpm,
+                "key_scale": caption_result.key_scale,
+                "time_signature": caption_result.time_signature,
+                "audio_format": "wav",
             }
 
             resp = await client.post(f"{self.config.api_url}/release_task", json=task_payload)
@@ -392,9 +408,17 @@ class ACEStepBackend(MusicGenerator):
         return GenerationResult(
             audio_path=output_path,
             duration_seconds=float(duration),
-            prompt=f"[tags: {tags}] [lyrics: {lyrics}]",
+            prompt=caption_result.caption,
             backend_name=self.name,
-            metadata={"tags": tags, "lyrics": lyrics, "mode": "api", "task_id": task_id},
+            metadata={
+                "caption": caption_result.caption,
+                "lyrics": caption_result.lyrics,
+                "bpm": caption_result.bpm,
+                "key_scale": caption_result.key_scale,
+                "time_signature": caption_result.time_signature,
+                "mode": "api",
+                "task_id": task_id,
+            },
         )
 
     @staticmethod

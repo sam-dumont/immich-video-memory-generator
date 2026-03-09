@@ -101,27 +101,46 @@ async def generate_music_for_video(
     progress_callback: callable | None = None,
     crossfade_duration: float = 2.0,
     hemisphere: str = "north",
+    app_config: object | None = None,
 ) -> MusicGenerationResult:
     """Generate multiple music versions for a video with per-clip moods.
 
-    Uses the soundtrack endpoint to generate music that transitions
-    between moods matching each clip in the video.
+    If app_config is provided and has ACE-Step/MusicGen enabled, uses the
+    multi-provider pipeline (ACE-Step → MusicGen fallback). Otherwise falls
+    back to direct MusicGen client for backwards compatibility.
 
     Args:
         timeline: Video timeline with per-clip mood information
         output_dir: Directory for output files
-        config: MusicGen API configuration
+        config: MusicGen API configuration (legacy, used when app_config is None)
         progress_callback: Optional callback(version, status, progress, detail)
         crossfade_duration: Duration of crossfade between mood sections
         hemisphere: "north" or "south" for seasonal prompt generation
+        app_config: Full app config with .musicgen and .ace_step sections
 
     Returns:
         MusicGenerationResult with multiple versions
     """
+    # Use multi-provider pipeline if app_config available
+    if app_config is not None and _has_pipeline_backends(app_config):
+        from immich_memories.audio.music_pipeline import create_pipeline
+
+        pipeline = create_pipeline(app_config)
+        num_versions = getattr(config, "num_versions", 3) if config else 3
+        async with pipeline:
+            return await pipeline.generate_music_for_video(
+                timeline=timeline,
+                output_dir=output_dir,
+                num_versions=num_versions,
+                progress_callback=progress_callback,
+                crossfade_duration=crossfade_duration,
+                hemisphere=hemisphere,
+            )
+
+    # Legacy path: direct MusicGen client
     config = config or MusicGenConfig()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build scenes from timeline (handles title, transitions, ending, buffer, seasonal prompts)
     scenes = timeline.build_scenes(hemisphere=hemisphere)
     total_duration = sum(s["duration"] for s in scenes)
 
@@ -130,12 +149,9 @@ async def generate_music_for_video(
         logger.info(f"  Scene {i + 1}: {scene['mood']} ({scene['duration']}s)")
 
     versions: list[GeneratedMusic] = []
-
-    # Determine primary mood for result (most common or first)
     primary_mood = scenes[0]["mood"] if scenes else "calm"
 
     async with MusicGenClient(config) as client:
-        # Check API health
         health = await client.health_check()
         logger.info(f"MusicGen API: {health['status']}, device: {health['device']}")
 
@@ -148,7 +164,6 @@ async def generate_music_for_video(
                 if progress_callback:
                     progress_callback(version_idx, status, progress, detail)
 
-            # Always use soundtrack endpoint for mood transitions
             music_path = await client.generate_soundtrack(
                 base_prompt=base_prompt,
                 scenes=scenes,
@@ -157,7 +172,6 @@ async def generate_music_for_video(
                 crossfade_duration=crossfade_duration,
             )
 
-            # Separate stems for intelligent ducking
             logger.info(f"Separating stems for version {i + 1}")
             stems = await client.separate_stems(
                 music_path,
@@ -181,6 +195,13 @@ async def generate_music_for_video(
         timeline=timeline,
         mood=primary_mood,
     )
+
+
+def _has_pipeline_backends(app_config: object) -> bool:
+    """Check if app_config has any pipeline backends enabled."""
+    ace = getattr(app_config, "ace_step", None)
+    mg = getattr(app_config, "musicgen", None)
+    return bool((ace and ace.enabled) or (mg and mg.enabled))
 
 
 # =============================================================================
