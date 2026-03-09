@@ -235,7 +235,11 @@ clean-thumbnail-cache:
 	rm -rf ~/.immich-memories/cache/thumbnails
 	@echo "Thumbnail cache cleared"
 
-clean-all-cache: clean-cache clean-video-cache clean-thumbnail-cache
+clean-preview-cache:
+	rm -rf ~/.immich-memories/cache/preview-cache
+	@echo "Preview cache cleared"
+
+clean-all-cache: clean-cache clean-video-cache clean-thumbnail-cache clean-preview-cache
 	@echo "All caches cleared"
 
 clean-all: clean clean-all-cache
