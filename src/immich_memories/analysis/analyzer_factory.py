@@ -32,12 +32,10 @@ def create_unified_analyzer_from_config():
             from immich_memories.analysis.content_analyzer import get_content_analyzer
 
             content_analyzer = get_content_analyzer(
-                ollama_url=config.llm.ollama_url,
-                ollama_model=config.llm.ollama_model,
-                openai_api_key=config.llm.openai_api_key,
-                openai_model=config.llm.openai_model,
-                openai_base_url=config.llm.openai_base_url,
                 provider=config.llm.provider,
+                base_url=config.llm.base_url,
+                model=config.llm.model,
+                api_key=config.llm.api_key,
             )
             content_weight = config.content_analysis.weight
         except Exception as e:
