@@ -65,7 +65,7 @@ class ACEStepConfig:
     """
 
     mode: str = "lib"  # "lib" or "api"
-    api_url: str = "http://localhost:7860"
+    api_url: str = "http://localhost:8000"
     model_variant: str = "turbo"
     lm_model_size: str = "1.7B"
     use_lm: bool = True
@@ -125,13 +125,16 @@ class ACEStepBackend(MusicGenerator):
             return await self._check_api()
 
     async def _check_api(self) -> bool:
-        """Check if ACE-Step Gradio server is reachable."""
+        """Check if ACE-Step REST API server is reachable."""
         try:
             import httpx
 
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(self.config.api_url)
-                return resp.status_code == 200
+                resp = await client.get(f"{self.config.api_url}/health")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return data.get("data", {}).get("status") == "ok"
+                return False
         except Exception:
             return False
 
@@ -194,7 +197,7 @@ class ACEStepBackend(MusicGenerator):
         """Generate music using ACE-Step.
 
         In library mode, runs the pipeline directly.
-        In API mode, calls the Gradio API.
+        In API mode, calls the ACE-Step REST API.
         """
         mode = self._get_effective_mode()
 
@@ -276,9 +279,15 @@ class ACEStepBackend(MusicGenerator):
         request: GenerationRequest,
         progress_callback: Any | None = None,
     ) -> GenerationResult:
-        """Generate music via ACE-Step Gradio API."""
+        """Generate music via ACE-Step v1.5 REST API.
+
+        Uses the /release_task + /query_result polling pattern from the
+        ACE-Step 1.5 REST API (launched with `acestep-api`).
+        """
         import asyncio
-        import shutil
+        import time
+
+        import httpx
 
         request.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -293,55 +302,99 @@ class ACEStepBackend(MusicGenerator):
         duration = min(duration, 300)  # Cap at 5 minutes
 
         if progress_callback:
-            progress_callback("connecting", 0, {})
+            progress_callback("submitting", 0, {})
 
-        def _call_gradio():
-            from gradio_client import Client  # type: ignore[import-untyped]
+        headers: dict[str, str] = {}
+        if self.config.extra_args.get("api_key"):
+            headers["Authorization"] = f"Bearer {self.config.extra_args['api_key']}"
 
-            client = Client(self.config.api_url)
-            # The ACE-Step Gradio app's main generation function
-            result = client.predict(
-                tags,  # prompt/caption
-                lyrics,  # lyrics
-                duration,  # duration in seconds
-                1,  # batch_size
-                api_name="/generate",
-            )
-            return result
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=None),
+            headers=headers,
+        ) as client:
+            # Submit task (see docs/API_USAGE.md for field reference)
+            task_payload = {
+                "caption": tags,
+                "lyrics": lyrics,
+                "duration": duration,
+                "batch_size": 1,
+            }
 
-        loop = asyncio.get_event_loop()
+            resp = await client.post(f"{self.config.api_url}/release_task", json=task_payload)
+            resp.raise_for_status()
+            task_result = resp.json()
+            task_id = task_result.get("data", {}).get("task_id") or task_result.get("task_id")
 
-        if progress_callback:
-            progress_callback("generating", 10, {"tags": tags, "duration": duration})
+            if not task_id:
+                raise RuntimeError(f"No task_id in ACE-Step response: {task_result}")
 
-        result = await loop.run_in_executor(None, _call_gradio)
+            logger.info(f"ACE-Step task submitted: {task_id}")
 
-        output_path = request.output_dir / f"ace_step_v{request.variation_index}.wav"
+            if progress_callback:
+                progress_callback("generating", 10, {"task_id": task_id})
 
-        # Gradio returns file path(s) — could be string, tuple, or list
-        if isinstance(result, (list, tuple)):
-            audio_path = result[0] if result else None
-            if isinstance(audio_path, (list, tuple)):
-                audio_path = audio_path[0]
-        else:
-            audio_path = result
+            # Poll for completion
+            # NOTE: param is task_id_list (not task_id/task_ids).
+            # Using the wrong name silently returns empty data with 200.
+            start_time = time.time()
+            output_path = request.output_dir / f"ace_step_v{request.variation_index}.wav"
 
-        if audio_path and Path(str(audio_path)).exists():
-            shutil.copy2(str(audio_path), str(output_path))
-        else:
-            raise RuntimeError(f"ACE-Step Gradio returned unexpected result: {result}")
+            while True:
+                if time.time() - start_time > self.config.timeout_seconds:
+                    raise TimeoutError(
+                        f"ACE-Step task {task_id} timed out after {self.config.timeout_seconds}s"
+                    )
+
+                poll_resp = await client.post(
+                    f"{self.config.api_url}/query_result",
+                    json={"task_id_list": [task_id]},
+                )
+                poll_resp.raise_for_status()
+                poll_data = poll_resp.json()
+
+                results = poll_data.get("data", [])
+                if results:
+                    result_item = results[0]
+                    status = result_item.get("status", 0)
+
+                    if status == 2:
+                        raise RuntimeError(f"ACE-Step task {task_id} failed: {result_item}")
+
+                    if status == 1:
+                        # Task complete — parse result JSON string and download audio
+                        import json as _json
+
+                        result_files = _json.loads(result_item.get("result", "[]"))
+                        if not result_files:
+                            raise RuntimeError(f"No files in completed task: {poll_data}")
+
+                        # Download first file — URL is relative (e.g. /v1/audio?path=...)
+                        file_url = result_files[0].get("file", "")
+                        if not file_url:
+                            raise RuntimeError(f"No file URL in result: {result_files[0]}")
+
+                        audio_resp = await client.get(f"{self.config.api_url}{file_url}")
+                        audio_resp.raise_for_status()
+                        output_path.write_bytes(audio_resp.content)
+                        break
+
+                if progress_callback:
+                    elapsed = time.time() - start_time
+                    progress_callback("generating", min(90, int(10 + elapsed / 3)), {})
+
+                await asyncio.sleep(3.0)
 
         if progress_callback:
             progress_callback("completed", 100, {})
 
-        logger.info(f"ACE-Step Gradio generated: {output_path} ({duration}s)")
+        logger.info(f"ACE-Step API generated: {output_path} ({duration}s)")
 
         return GenerationResult(
             audio_path=output_path,
             duration_seconds=float(duration),
             prompt=f"[tags: {tags}] [lyrics: {lyrics}]",
             backend_name=self.name,
-            metadata={"tags": tags, "lyrics": lyrics, "mode": "gradio"},
+            metadata={"tags": tags, "lyrics": lyrics, "mode": "api", "task_id": task_id},
         )
 
     @staticmethod

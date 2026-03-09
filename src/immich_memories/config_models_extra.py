@@ -113,11 +113,11 @@ class ACEStepConfig(BaseModel):
     )
     mode: Literal["lib", "api"] = Field(
         default="lib",
-        description="Generation mode: 'lib' for local library, 'api' for remote Gradio server",
+        description="Generation mode: 'lib' for local library, 'api' for remote REST server",
     )
     api_url: str = Field(
-        default="http://localhost:7860",
-        description="ACE-Step Gradio server URL (only used in API mode)",
+        default="http://localhost:8000",
+        description="ACE-Step REST API server URL (only used in API mode)",
     )
     model_variant: str = Field(
         default="turbo",
