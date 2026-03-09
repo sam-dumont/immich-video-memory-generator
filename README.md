@@ -318,8 +318,8 @@ llm:
   api_key: ""                     # Optional, only needed for cloud APIs
 
 audio:
-  auto_music: false          # Auto-select music based on video mood
-  music_source: "pixabay"    # pixabay or local
+  auto_music: true           # Auto-select music based on video mood
+  music_source: "musicgen"   # pixabay, local, musicgen, or ace_step
   local_music_dir: "~/Music/Memories"
 
   # Audio ducking (lowers music when speech detected)
@@ -328,6 +328,20 @@ audio:
   music_volume_db: -6.0      # Base music volume
   fade_in_seconds: 2.0
   fade_out_seconds: 3.0
+
+# AI music generation via MusicGen API
+# See: https://github.com/sam-dumont/musicgen-api
+musicgen:
+  enabled: true
+  base_url: "http://your-gpu-server:8000"
+  api_key: "your-api-key"
+  timeout_seconds: 10800     # 3 hours (generation is slow on CPU)
+  num_versions: 1            # Generate N versions, pick the best
+
+# ACE-Step music generation (experimental, local library mode only for now)
+# ace_step:
+#   enabled: false
+#   mode: "lib"              # Only "lib" works reliably (API is Gradio-only)
 
 # LLM-based content analysis for intelligent scoring (optional)
 content_analysis:
@@ -446,6 +460,82 @@ llm:
   model: "llama-4-scout-17b-16e-instruct"
   api_key: "${GROQ_API_KEY}"
 ```
+
+## AI Background Music
+
+Immich Memories can generate original background music that matches the mood of your clips. The pipeline works in two steps:
+
+1. **Mood detection**: the vision LLM (see above) watches a few frames from your compilation and describes the overall mood ("happy family gathering", "calm beach sunset", etc.)
+2. **Music generation**: that mood description is sent to a music generation API which produces a matching instrumental track
+
+Two generation backends are supported:
+
+### MusicGen API (recommended)
+
+[MusicGen](https://github.com/facebookresearch/audiocraft) by Meta generates high-quality instrumental music from text prompts. We built a simple REST API wrapper for it: [sam-dumont/musicgen-api](https://github.com/sam-dumont/musicgen-api).
+
+You need a machine with a GPU (NVIDIA recommended, ~8GB VRAM) to run the server. Generation takes 5-30 minutes depending on duration and hardware.
+
+```yaml
+audio:
+  auto_music: true
+  music_source: "musicgen"
+
+musicgen:
+  enabled: true
+  base_url: "http://your-gpu-server:8000"
+  api_key: "your-api-key"
+  timeout_seconds: 10800       # 3 hours max (CPU generation is slow)
+  num_versions: 1              # Generate N versions, UI lets you pick
+```
+
+Deploy the API server on any machine with an NVIDIA GPU:
+```bash
+# Option A: Docker image (recommended)
+docker run -d --gpus all -p 8000:8000 ghcr.io/sam-dumont/musicgen-api:latest
+
+# Option B: Full setup with docker compose
+git clone https://github.com/sam-dumont/musicgen-api.git
+cd musicgen-api
+cp .env.example .env  # Edit with your API key
+docker compose up -d
+```
+
+Source and docs: [sam-dumont/musicgen-api](https://github.com/sam-dumont/musicgen-api) (public, MIT licensed).
+
+### ACE-Step (experimental)
+
+[ACE-Step](https://github.com/ace-step/ACE-Step) generates full songs with lyrics, not just instrumentals. Higher quality output than MusicGen but slower. Two modes:
+
+- **Library mode** (`lib`): runs locally on Apple Silicon (16GB+) or NVIDIA GPUs (8GB+ VRAM). Requires the `ace-step` package installed.
+- **API mode** (`api`): connects to a remote ACE-Step server via its REST API.
+
+The upstream project only ships a Gradio UI. We built a proper REST API wrapper with Docker support: [sam-dumont/ace-step-1.5-turbo](https://github.com/sam-dumont/ace-step-1.5-turbo).
+
+```yaml
+audio:
+  music_source: "ace_step"
+
+ace_step:
+  enabled: true
+  mode: "api"                  # "lib" for local, "api" for remote server
+  api_url: "http://your-gpu-server:8000"
+  model_variant: "turbo"       # "turbo" (fast, 8 steps) or "base" (quality, 50 steps)
+  lm_model_size: "1.7B"       # Language model: "0.6B", "1.7B", or "4B"
+```
+
+Deploy the API server:
+```bash
+git clone https://github.com/sam-dumont/ace-step-1.5-turbo.git
+cd ace-step-1.5-turbo
+docker compose up -d  # Requires NVIDIA GPU
+```
+
+Source and docs: [sam-dumont/ace-step-1.5-turbo](https://github.com/sam-dumont/ace-step-1.5-turbo) (public).
+
+### No music / BYO music
+
+You can also upload your own music file in the UI (Step 3), or disable music entirely. The audio ducking system automatically lowers music volume when speech or laughter is detected in the clips.
 
 ## Docker
 
