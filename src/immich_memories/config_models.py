@@ -327,54 +327,6 @@ class LLMConfig(BaseModel):
 
         return data
 
-    # Deprecated property shims for code still using old field names.
-    # These will be removed once all call sites are migrated (Tasks 4-7).
-
-    @property
-    def ollama_url(self) -> str:
-        """Deprecated: use base_url instead."""
-        return self.base_url
-
-    @ollama_url.setter
-    def ollama_url(self, value: str) -> None:
-        self.base_url = value
-
-    @property
-    def ollama_model(self) -> str:
-        """Deprecated: use model instead."""
-        return self.model
-
-    @ollama_model.setter
-    def ollama_model(self, value: str) -> None:
-        self.model = value
-
-    @property
-    def openai_api_key(self) -> str:
-        """Deprecated: use api_key instead."""
-        return self.api_key
-
-    @openai_api_key.setter
-    def openai_api_key(self, value: str) -> None:
-        self.api_key = value
-
-    @property
-    def openai_model(self) -> str:
-        """Deprecated: use model instead."""
-        return self.model
-
-    @openai_model.setter
-    def openai_model(self, value: str) -> None:
-        self.model = value
-
-    @property
-    def openai_base_url(self) -> str:
-        """Deprecated: use base_url instead."""
-        return self.base_url
-
-    @openai_base_url.setter
-    def openai_base_url(self, value: str) -> None:
-        self.base_url = value
-
     @field_validator("api_key", mode="before")
     @classmethod
     def expand_env(cls, v: str) -> str:

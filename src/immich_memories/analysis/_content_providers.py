@@ -1,6 +1,6 @@
 """Provider implementations for content analysis.
 
-Contains OllamaContentAnalyzer and OpenAIContentAnalyzer,
+Contains OllamaContentAnalyzer and OpenAICompatibleContentAnalyzer,
 which use local Ollama or OpenAI-compatible APIs respectively.
 """
 
