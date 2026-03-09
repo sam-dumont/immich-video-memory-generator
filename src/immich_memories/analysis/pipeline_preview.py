@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 from immich_memories.analysis.clip_selection import (
     _get_fast_encoder_args,
 )
-from immich_memories.processing.hdr_utilities import _detect_hdr_type
 from immich_memories.security import sanitize_filename
 
 if TYPE_CHECKING:
@@ -340,18 +339,9 @@ class PreviewMixin:
         # Use GPU-accelerated encoding when available
         encoder_args = _get_fast_encoder_args()
 
-        # Detect HDR and add tonemapping for browser-compatible SDR preview
-        vf_args: list[str] = []
-        hdr_type = _detect_hdr_type(video_path)
-        if hdr_type:
-            transfer_in = "arib-std-b67" if hdr_type == "hlg" else "smpte2084"
-            vf_args = [
-                "-vf",
-                f"zscale=t=linear:tin={transfer_in}:npl=100,format=gbrpf32le,"
-                f"tonemap=hable:peak=10,"
-                f"zscale=t=bt709:p=bt709:m=bt709,format=yuv420p",
-            ]
-            logger.info(f"Applying HDR→SDR tonemapping for {hdr_type.upper()} preview")
+        # Note: no explicit HDR→SDR tonemapping here. macOS browsers (Safari, Chrome)
+        # handle HLG/PQ natively via the system display pipeline, so keeping the HDR
+        # metadata intact produces better results than software tonemapping.
 
         cmd = [
             "ffmpeg",
@@ -366,7 +356,6 @@ class PreviewMixin:
             "0:v:0",  # First video stream
             "-map",
             "0:a:0?",  # First audio stream (optional - '?' means don't fail if missing)
-            *vf_args,
             *encoder_args,
             "-c:a",
             "aac",  # Re-encode audio to AAC for compatibility
