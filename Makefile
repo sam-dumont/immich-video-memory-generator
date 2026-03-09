@@ -1,7 +1,7 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
-.PHONY: help install dev run preflight test test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity security-lint dead-code ci ensure-dev
+.PHONY: help install dev run preflight test test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity security-lint dead-code ci ensure-dev commitlint pip-audit
 
 # Default target
 help:
@@ -27,8 +27,10 @@ help:
 	@echo "  complexity   Check cyclomatic complexity (Xenon grade C)"
 	@echo "  dead-code    Detect dead code (Vulture)"
 	@echo "  security-lint Run Bandit security linter"
+	@echo "  commitlint   Validate commit messages (conventional commits)"
+	@echo "  pip-audit    Check dependencies for known vulnerabilities"
 	@echo "  check        Run all checks (lint + format + type + length + complexity + test)"
-	@echo "  ci           Full CI-equivalent pipeline (all checks + dead-code)"
+	@echo "  ci           Full CI pipeline (check + dead-code + security-lint)"
 	@echo ""
 	@echo "Building:"
 	@echo "  build        Build the package"
@@ -149,6 +151,14 @@ dead-code:
 security-lint:
 	uvx bandit -r src/ --severity-level high -q
 
+# Commit message lint (Commitizen conventional commits)
+commitlint:
+	uvx --from commitizen cz check --rev-range HEAD~1..HEAD
+
+# Dependency vulnerability audit
+pip-audit:
+	uvx pip-audit -r <(uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==') --strict
+
 # Ensure dev dependencies are installed
 ensure-dev:
 	@uv sync --all-extras --quiet
@@ -158,7 +168,7 @@ check: ensure-dev lint format-check typecheck file-length complexity test
 	@echo "All checks passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity dead-code test
+ci: ensure-dev lint format-check typecheck file-length complexity dead-code security-lint test
 	@echo "Full CI pipeline passed!"
 
 # Pre-commit hooks
