@@ -35,24 +35,22 @@ def register_music_commands(main: click.Group) -> None:
         min_duration: float,
         limit: int,
     ) -> None:
-        """Search for royalty-free music."""
+        """Search for music in local library."""
         import asyncio
 
-        from immich_memories.audio.music_sources import PixabayMusicSource
+        from immich_memories.audio.music_sources import LocalMusicSource
+        from immich_memories.config import Config
 
         async def search():
-            source = PixabayMusicSource()
-            try:
-                tracks = await source.search(
-                    mood=mood,
-                    genre=genre,
-                    tempo=tempo,
-                    min_duration=min_duration,
-                    limit=limit,
-                )
-                return tracks
-            finally:
-                await source.close()
+            config = Config.from_yaml(Config.get_default_path())
+            source = LocalMusicSource(music_dir=config.audio.local_music_path)
+            return await source.search(
+                mood=mood,
+                genre=genre,
+                tempo=tempo,
+                min_duration=min_duration,
+                limit=limit,
+            )
 
         console.print("[bold]Searching for music...[/bold]")
         console.print()

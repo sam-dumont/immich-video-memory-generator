@@ -48,13 +48,6 @@ variable "openai_api_key" {
   sensitive   = true
 }
 
-variable "pixabay_api_key" {
-  description = "Pixabay API key for music search"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
 # MusicGen Configuration
 variable "musicgen_enabled" {
   description = "Enable AI music generation using MusicGen API"

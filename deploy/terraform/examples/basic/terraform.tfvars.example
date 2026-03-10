@@ -6,7 +6,6 @@ immich_api_key = "your-immich-api-key-here"
 
 # Optional: API keys
 openai_api_key  = ""  # For LLM content analysis fallback
-pixabay_api_key = ""  # For music search
 
 # Optional: Ollama for local LLM (privacy-friendly)
 ollama_url = "http://localhost:11434"

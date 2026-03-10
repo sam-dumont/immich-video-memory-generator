@@ -40,7 +40,6 @@ module "immich_memories" {
 
   # Optional API keys
   openai_api_key  = var.openai_api_key
-  pixabay_api_key = var.pixabay_api_key
 
   # MusicGen AI music generation
   musicgen_enabled  = var.musicgen_enabled

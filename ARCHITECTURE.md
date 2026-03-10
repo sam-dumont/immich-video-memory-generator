@@ -102,12 +102,14 @@ src/immich_memories/
 │   ├── music_generator.py      # AI music generation orchestrator
 │   ├── music_generator_client.py # Music generation client
 │   ├── music_generator_models.py # Music generation data models
-│   ├── music_sources.py        # Music source providers (Pixabay, local)
+│   ├── music_sources.py        # Music source providers (local library)
+│   ├── music_pipeline.py       # Multi-provider pipeline (ACE-Step → MusicGen fallback)
 │   └── generators/             # Music generation backends
-│       ├── base.py             # Abstract base class
+│       ├── base.py             # Abstract MusicGenerator interface
 │       ├── factory.py          # Generator factory
-│       ├── musicgen_backend.py
-│       └── ace_step_backend.py
+│       ├── musicgen_backend.py # MusicGen API (generation + Demucs stems)
+│       ├── ace_step_backend.py # ACE-Step REST API (generation)
+│       └── ace_step_captions.py # Dense caption templates (genre, BPM, key, instruments)
 │
 ├── titles/                     # Title screen generation
 │   ├── generator.py            # TitleScreenGenerator orchestrator

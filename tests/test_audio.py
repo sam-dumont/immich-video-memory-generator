@@ -20,7 +20,6 @@ from immich_memories.audio.mood_analyzer import (
 from immich_memories.audio.music_sources import (
     LocalMusicSource,
     MusicTrack,
-    PixabayMusicSource,
     get_music_source,
 )
 
@@ -66,7 +65,7 @@ class TestMusicTrack:
             artist="Artist",
             duration_seconds=60.0,
             url="https://example.com/song.mp3",
-            source="pixabay",
+            source="local",
         )
         filename = track.cache_filename
         assert filename.endswith(".mp3")
@@ -181,69 +180,6 @@ class TestVideoMood:
         assert params["genre"] is None
 
 
-class TestPixabayMusicSource:
-    """Tests for PixabayMusicSource class."""
-
-    def test_mood_mapping(self):
-        """Test mood mapping exists."""
-        source = PixabayMusicSource()
-        assert "happy" in source.MOOD_MAPPING
-        assert "calm" in source.MOOD_MAPPING
-        assert "energetic" in source.MOOD_MAPPING
-
-    def test_genre_mapping(self):
-        """Test genre mapping exists."""
-        source = PixabayMusicSource()
-        assert "acoustic" in source.GENRE_MAPPING
-        assert "electronic" in source.GENRE_MAPPING
-        assert "cinematic" in source.GENRE_MAPPING
-
-    def test_api_key_initialization(self):
-        """Test API key is stored."""
-        source = PixabayMusicSource(api_key="test_key")
-        assert source.api_key == "test_key"
-
-    @pytest.mark.asyncio
-    async def test_search_mock(self):
-        """Test search with mocked response."""
-        source = PixabayMusicSource()
-
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "hits": [
-                {
-                    "id": 123,
-                    "title": "Happy Song",
-                    "user": "TestArtist",
-                    "duration": 120,
-                    "audio": "https://example.com/audio.mp3",
-                    "tags": "happy, upbeat",
-                },
-            ]
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = MagicMock()
-        mock_client.is_closed = False
-        mock_client.get = AsyncMock(return_value=mock_response)
-        source._client = mock_client
-
-        tracks = await source.search(mood="happy", limit=5)
-
-        assert len(tracks) == 1
-        assert tracks[0].title == "Happy Song"
-        assert tracks[0].artist == "TestArtist"
-        assert tracks[0].source == "pixabay"
-
-    @pytest.mark.asyncio
-    async def test_close(self):
-        """Test client close."""
-        source = PixabayMusicSource()
-        source._client = AsyncMock()
-        await source.close()
-        assert source._client is None
-
-
 class TestLocalMusicSource:
     """Tests for LocalMusicSource class."""
 
@@ -291,17 +227,6 @@ class TestLocalMusicSource:
 
 class TestGetMusicSource:
     """Tests for get_music_source function."""
-
-    def test_pixabay_source(self):
-        """Test creating Pixabay source."""
-        source = get_music_source("pixabay")
-        assert isinstance(source, PixabayMusicSource)
-
-    def test_pixabay_source_with_key(self):
-        """Test creating Pixabay source with API key."""
-        source = get_music_source("pixabay", api_key="test_key")
-        assert isinstance(source, PixabayMusicSource)
-        assert source.api_key == "test_key"
 
     def test_local_source(self):
         """Test creating local source."""

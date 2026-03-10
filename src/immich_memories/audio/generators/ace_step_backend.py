@@ -22,6 +22,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from immich_memories.audio.generators.ace_step_captions import (
+    ACE_CAPTION_TEMPLATES as ACE_CAPTION_TEMPLATES,  # noqa: PLC0414 — re-exported
+)
+from immich_memories.audio.generators.ace_step_captions import (
+    build_ace_caption,
+    build_ace_caption_structured,
+)
 from immich_memories.audio.generators.base import (
     GenerationRequest,
     GenerationResult,
@@ -59,7 +66,7 @@ class ACEStepConfig:
     """
 
     mode: str = "lib"  # "lib" or "api"
-    api_url: str = "http://localhost:7860"
+    api_url: str = "http://localhost:8000"
     model_variant: str = "turbo"
     lm_model_size: str = "1.7B"
     use_lm: bool = True
@@ -71,61 +78,34 @@ class ACEStepConfig:
     extra_args: dict[str, Any] = field(default_factory=dict)
 
 
-# Maps moods to ACE-Step genre tags.
-# ACE-Step uses [tags] in the prompt to specify genre/style.
-_MOOD_TO_TAGS = {
-    "happy": "pop, upbeat, feel-good, major key",
-    "energetic": "electronic, dance, high energy, driving beat",
-    "calm": "ambient, chill, relaxing, soft",
-    "nostalgic": "indie, lo-fi, warm, dreamy",
-    "romantic": "acoustic, soft pop, gentle, warm",
-    "playful": "indie pop, bouncy, fun, quirky",
-    "dramatic": "cinematic, epic, orchestral, powerful",
-    "upbeat": "pop, dance, bright, cheerful",
-    "peaceful": "ambient, acoustic, serene, gentle",
-    "inspiring": "cinematic, uplifting, motivational, soaring",
-}
+def _detect_season(mood: str) -> str | None:
+    """Detect season from mood keywords."""
+    mood_lower = mood.lower()
+    if "holiday" in mood_lower or "festive" in mood_lower:
+        return "holiday"
+    if "winter" in mood_lower:
+        return "winter"
+    if "summer" in mood_lower or "sunny" in mood_lower:
+        return "summer"
+    if "spring" in mood_lower or "fresh" in mood_lower:
+        return "spring"
+    if "autumn" in mood_lower or "fall" in mood_lower or "cozy" in mood_lower:
+        return "autumn"
+    return None
 
 
 def _mood_to_ace_prompt(mood: str, prompt: str = "") -> tuple[str, str]:
-    """Convert a mood string to ACE-Step tags and lyrics format.
+    """Convert a mood string to ACE-Step tags and lyrics format."""
+    return build_ace_caption(mood, season=_detect_season(mood))
 
-    ACE-Step expects:
-    - tags: Genre/style descriptors (comma-separated)
-    - lyrics: Can be [instrumental] or actual lyrics
 
-    Returns:
-        Tuple of (tags, lyrics).
+def _mood_to_structured_prompt(mood: str):
+    """Convert mood to structured ACE-Step caption with explicit musical params.
+
+    Returns ACECaptionResult with caption, lyrics, bpm, key_scale, time_signature.
     """
-    mood_lower = mood.lower()
 
-    # Build tags from mood keywords
-    tags_parts = []
-    for key, tag_str in _MOOD_TO_TAGS.items():
-        if key in mood_lower:
-            tags_parts.append(tag_str)
-            break
-    else:
-        # Default: upbeat instrumental
-        tags_parts.append("pop, upbeat, bright, feel-good")
-
-    # Add any seasonal/specific keywords from the mood
-    if "winter" in mood_lower or "holiday" in mood_lower:
-        tags_parts.append("festive, warm")
-    elif "summer" in mood_lower or "sunny" in mood_lower:
-        tags_parts.append("tropical, sunny")
-    elif "spring" in mood_lower:
-        tags_parts.append("fresh, bright")
-    elif "autumn" in mood_lower or "fall" in mood_lower:
-        tags_parts.append("cozy, warm")
-
-    # Always add instrumental and no vocals
-    tags_parts.append("instrumental")
-
-    tags = ", ".join(tags_parts)
-    lyrics = "[instrumental]"
-
-    return tags, lyrics
+    return build_ace_caption_structured(mood, season=_detect_season(mood))
 
 
 class ACEStepBackend(MusicGenerator):
@@ -157,13 +137,16 @@ class ACEStepBackend(MusicGenerator):
             return await self._check_api()
 
     async def _check_api(self) -> bool:
-        """Check if ACE-Step v1.5 REST API is reachable."""
+        """Check if ACE-Step REST API server is reachable."""
         try:
             import httpx
 
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"{self.config.api_url}/health")
-                return resp.status_code == 200
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return data.get("data", {}).get("status") == "ok"
+                return False
         except Exception:
             return False
 
@@ -226,7 +209,7 @@ class ACEStepBackend(MusicGenerator):
         """Generate music using ACE-Step.
 
         In library mode, runs the pipeline directly.
-        In API mode, calls the Gradio API.
+        In API mode, calls the ACE-Step REST API.
         """
         mode = self._get_effective_mode()
 
@@ -311,9 +294,10 @@ class ACEStepBackend(MusicGenerator):
         """Generate music via ACE-Step v1.5 REST API.
 
         Uses the /release_task + /query_result polling pattern from the
-        ACE-Step 1.5 REST API (launched with `uv run acestep-api`).
+        ACE-Step 1.5 REST API (launched with `acestep-api`).
         """
         import asyncio
+        import time
 
         import httpx
 
@@ -321,16 +305,18 @@ class ACEStepBackend(MusicGenerator):
 
         if request.is_multi_scene:
             combined_mood = ", ".join(s.get("mood", "upbeat") for s in request.scenes[:3])
-            tags, lyrics = _mood_to_ace_prompt(combined_mood, request.prompt)
+            caption_result = _mood_to_structured_prompt(combined_mood)
             duration = sum(s.get("duration", 30) for s in request.scenes)
         else:
-            tags, lyrics = _mood_to_ace_prompt(request.prompt)
+            caption_result = _mood_to_structured_prompt(request.prompt)
             duration = request.duration_seconds
+
+        duration = min(duration, 300)  # Cap at 5 minutes
 
         if progress_callback:
             progress_callback("submitting", 0, {})
 
-        headers = {}
+        headers: dict[str, str] = {}
         if self.config.extra_args.get("api_key"):
             headers["Authorization"] = f"Bearer {self.config.extra_args['api_key']}"
 
@@ -338,23 +324,22 @@ class ACEStepBackend(MusicGenerator):
             timeout=httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=None),
             headers=headers,
         ) as client:
-            # Submit task via ACE-Step v1.5 REST API
+            # Submit task with explicit musical params (not embedded in caption)
             task_payload = {
-                "task_type": "text2music",
-                "caption": tags,
-                "lyrics": lyrics,
-                "duration": min(duration, 300),  # Cap at 5 minutes
+                "caption": caption_result.caption,
+                "lyrics": caption_result.lyrics,
+                "duration": duration,
                 "batch_size": 1,
-                "format": "wav",
+                "bpm": caption_result.bpm,
+                "key_scale": caption_result.key_scale,
+                "time_signature": caption_result.time_signature,
+                "audio_format": "wav",
             }
 
-            resp = await client.post(
-                f"{self.config.api_url}/release_task",
-                json=task_payload,
-            )
+            resp = await client.post(f"{self.config.api_url}/release_task", json=task_payload)
             resp.raise_for_status()
             task_result = resp.json()
-            task_id = task_result.get("task_id")
+            task_id = task_result.get("data", {}).get("task_id") or task_result.get("task_id")
 
             if not task_id:
                 raise RuntimeError(f"No task_id in ACE-Step response: {task_result}")
@@ -365,8 +350,8 @@ class ACEStepBackend(MusicGenerator):
                 progress_callback("generating", 10, {"task_id": task_id})
 
             # Poll for completion
-            import time
-
+            # NOTE: param is task_id_list (not task_id/task_ids).
+            # Using the wrong name silently returns empty data with 200.
             start_time = time.time()
             output_path = request.output_dir / f"ace_step_v{request.variation_index}.wav"
 
@@ -378,42 +363,42 @@ class ACEStepBackend(MusicGenerator):
 
                 poll_resp = await client.post(
                     f"{self.config.api_url}/query_result",
-                    json={"task_id": task_id},
+                    json={"task_id_list": [task_id]},
                 )
                 poll_resp.raise_for_status()
                 poll_data = poll_resp.json()
 
-                status = poll_data.get("status", "unknown")
+                results = poll_data.get("data", [])
+                if results:
+                    result_item = results[0]
+                    status = result_item.get("status", 0)
 
-                if status == "completed" or status == "success":
-                    # Download the audio file
-                    audio_path = poll_data.get("audio_path") or poll_data.get("path")
-                    if audio_path:
-                        audio_resp = await client.get(
-                            f"{self.config.api_url}/v1/audio",
-                            params={"path": audio_path},
-                        )
+                    if status == 2:
+                        raise RuntimeError(f"ACE-Step task {task_id} failed: {result_item}")
+
+                    if status == 1:
+                        # Task complete — parse result JSON string and download audio
+                        import json as _json
+
+                        result_files = _json.loads(result_item.get("result", "[]"))
+                        if not result_files:
+                            raise RuntimeError(f"No files in completed task: {poll_data}")
+
+                        # Download first file — URL is relative (e.g. /v1/audio?path=...)
+                        file_url = result_files[0].get("file", "")
+                        if not file_url:
+                            raise RuntimeError(f"No file URL in result: {result_files[0]}")
+
+                        audio_resp = await client.get(f"{self.config.api_url}{file_url}")
                         audio_resp.raise_for_status()
                         output_path.write_bytes(audio_resp.content)
-                    elif poll_data.get("audio_data"):
-                        # Some versions return base64 audio data inline
-                        import base64
-
-                        audio_bytes = base64.b64decode(poll_data["audio_data"])
-                        output_path.write_bytes(audio_bytes)
-                    else:
-                        raise RuntimeError(f"No audio in completed task: {poll_data}")
-                    break
-                elif status == "failed" or status == "error":
-                    raise RuntimeError(
-                        f"ACE-Step task failed: {poll_data.get('error', 'Unknown error')}"
-                    )
+                        break
 
                 if progress_callback:
-                    progress = poll_data.get("progress", 0)
-                    progress_callback("generating", progress, {"status": status})
+                    elapsed = time.time() - start_time
+                    progress_callback("generating", min(90, int(10 + elapsed / 3)), {})
 
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(3.0)
 
         if progress_callback:
             progress_callback("completed", 100, {})
@@ -423,9 +408,17 @@ class ACEStepBackend(MusicGenerator):
         return GenerationResult(
             audio_path=output_path,
             duration_seconds=float(duration),
-            prompt=f"[tags: {tags}] [lyrics: {lyrics}]",
+            prompt=caption_result.caption,
             backend_name=self.name,
-            metadata={"tags": tags, "lyrics": lyrics, "mode": "api", "task_id": task_id},
+            metadata={
+                "caption": caption_result.caption,
+                "lyrics": caption_result.lyrics,
+                "bpm": caption_result.bpm,
+                "key_scale": caption_result.key_scale,
+                "time_signature": caption_result.time_signature,
+                "mode": "api",
+                "task_id": task_id,
+            },
         )
 
     @staticmethod

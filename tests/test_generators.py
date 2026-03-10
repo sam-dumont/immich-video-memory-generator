@@ -804,11 +804,11 @@ class TestACEStepMoodConversion:
         assert "pop" in tags
         assert "upbeat" in tags
         assert "instrumental" in tags
-        assert lyrics == "[instrumental]"
+        assert lyrics.lower() == "[instrumental]"
 
     def test_energetic_mood(self):
         tags, lyrics = _mood_to_ace_prompt("energetic driving")
-        assert "electronic" in tags
+        assert "energetic" in tags or "future bass" in tags
         assert "instrumental" in tags
 
     def test_calm_mood(self):
@@ -834,7 +834,7 @@ class TestACEStepMoodConversion:
         for mood in moods:
             tags, lyrics = _mood_to_ace_prompt(mood)
             assert "instrumental" in tags
-            assert lyrics == "[instrumental]"
+            assert lyrics.lower() == "[instrumental]"
 
 
 # =============================================================================
