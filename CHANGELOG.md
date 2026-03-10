@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Multi-provider music pipeline: ACE-Step → MusicGen fallback with independent enable/disable
+- ACE-Step 1.5 REST API integration with explicit BPM, key, time signature parameters
+- Dense caption templates for 10 mood/genre presets (lofi, pop, cinematic, jazz, etc.)
+- Video timeline → ACE-Step section tag mapping ([Intro], [Verse], [Chorus], [Bridge], [Outro])
+- MusicPipeline orchestrator with automatic backend fallback
+- Stem separation via MusicGen Demucs independent of generation backend
+
+### Removed
+- Pixabay music source (replaced by AI generation backends)
+
+### Changed
+- Default music source changed from "pixabay" to "musicgen"
+- ACE-Step default API port changed from 7860 (Gradio) to 8000 (REST API)
+
 ## [0.2.0] - 2026-03-08
 
 First public release.
@@ -33,7 +48,7 @@ First public release.
 - Review mode: review and refine selected clips after analysis with deselection support
 - Scene detection enabled by default with configurable max/min segment durations
 - Audio-aware cutting: silence detection for natural cut points
-- AI music generation via MusicGen with mood-based soundtrack creation
+- AI music generation via MusicGen and ACE-Step with mood-based soundtrack creation
 - Smart audio ducking: music automatically lowers when speech/sounds detected
 - Flexible output: Portrait (9:16), Landscape (16:9), Square (1:1), and Auto detection
 - Face-aware smart cropping keeps subjects centered during aspect ratio conversion
