@@ -8,15 +8,8 @@ import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import urlparse
-
-import httpx
 
 logger = logging.getLogger(__name__)
-
-# Allowed domains for music downloads
-_ALLOWED_MUSIC_DOMAINS = {"pixabay.com", "cdn.pixabay.com"}
-_MAX_MUSIC_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
 
 
 @dataclass
@@ -119,195 +112,6 @@ class MusicSource(ABC):
             limit=20,
         )
         return random.choice(tracks) if tracks else None
-
-
-class PixabayMusicSource(MusicSource):
-    """Pixabay Music API client.
-
-    Pixabay offers royalty-free music that can be used without attribution.
-    API documentation: https://pixabay.com/api/docs/#api_search_music
-    """
-
-    BASE_URL = "https://pixabay.com/api/music/"
-
-    # Mood to Pixabay category/mood mapping
-    MOOD_MAPPING = {
-        "happy": ["happy", "upbeat", "cheerful"],
-        "sad": ["sad", "melancholic", "emotional"],
-        "calm": ["calm", "relaxing", "peaceful", "ambient"],
-        "energetic": ["energetic", "upbeat", "driving"],
-        "romantic": ["romantic", "love", "tender"],
-        "dramatic": ["dramatic", "epic", "cinematic"],
-        "mysterious": ["mysterious", "suspense", "dark"],
-        "nostalgic": ["nostalgic", "emotional", "reflective"],
-        "playful": ["playful", "fun", "quirky"],
-        "inspiring": ["inspiring", "uplifting", "motivational"],
-    }
-
-    # Genre mapping
-    GENRE_MAPPING = {
-        "acoustic": "acoustic",
-        "electronic": "electronic",
-        "cinematic": "cinematic",
-        "classical": "classical",
-        "jazz": "jazz",
-        "pop": "pop",
-        "rock": "rock",
-        "ambient": "ambient",
-        "folk": "folk",
-    }
-
-    def __init__(self, api_key: str | None = None):
-        """Initialize Pixabay client.
-
-        Args:
-            api_key: Pixabay API key. If not provided, uses limited access.
-        """
-        self.api_key = api_key
-        self._client: httpx.AsyncClient | None = None
-
-    @property
-    def client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client."""
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=30.0)
-        return self._client
-
-    async def close(self):
-        """Close the HTTP client."""
-        if self._client:
-            await self._client.aclose()
-            self._client = None
-
-    async def search(
-        self,
-        mood: str | None = None,
-        genre: str | None = None,
-        tempo: str | None = None,
-        min_duration: float = 60,
-        max_duration: float = 600,
-        limit: int = 10,
-    ) -> list[MusicTrack]:
-        """Search Pixabay for music tracks."""
-        params: dict = {
-            "per_page": min(limit * 2, 200),  # Get extra to filter
-        }
-
-        if self.api_key:
-            params["key"] = self.api_key
-
-        # Build search query
-        search_terms = []
-
-        if mood:
-            mood_lower = mood.lower()
-            if mood_lower in self.MOOD_MAPPING:
-                search_terms.extend(self.MOOD_MAPPING[mood_lower])
-            else:
-                search_terms.append(mood_lower)
-
-        if genre:
-            genre_lower = genre.lower()
-            if genre_lower in self.GENRE_MAPPING:
-                params["genre"] = self.GENRE_MAPPING[genre_lower]
-            search_terms.append(genre_lower)
-
-        if search_terms:
-            params["q"] = " ".join(search_terms[:3])  # Limit query terms
-
-        try:
-            response = await self.client.get(self.BASE_URL, params=params)
-            response.raise_for_status()
-            data = response.json()
-        except httpx.HTTPError as e:
-            logger.error(f"Pixabay API error: {e}")
-            return []
-
-        tracks = []
-        for hit in data.get("hits", []):
-            duration = hit.get("duration", 0)
-
-            # Filter by duration
-            if duration < min_duration or duration > max_duration:
-                continue
-
-            # Filter by tempo if specified
-            if tempo:
-                # Estimate tempo from tags
-                tags = hit.get("tags", "").lower()
-                if tempo == "slow" and any(t in tags for t in ["fast", "upbeat", "energetic"]):
-                    continue
-                if tempo == "fast" and any(t in tags for t in ["slow", "calm", "relaxing"]):
-                    continue
-
-            track = MusicTrack(
-                id=str(hit.get("id")),
-                title=hit.get("title", "Untitled"),
-                artist=hit.get("user", "Unknown Artist"),
-                duration_seconds=duration,
-                url=hit.get("audio", ""),
-                preview_url=hit.get("preview", ""),
-                tags=hit.get("tags", "").split(", "),
-                license="Pixabay License (royalty-free)",
-                source="pixabay",
-            )
-            tracks.append(track)
-
-            if len(tracks) >= limit:
-                break
-
-        return tracks
-
-    async def download(
-        self,
-        track: MusicTrack,
-        output_dir: Path,
-    ) -> Path:
-        """Download a track from Pixabay."""
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / track.cache_filename
-
-        if output_path.exists():
-            logger.info(f"Using cached track: {output_path}")
-            return output_path
-
-        if not track.url:
-            raise ValueError(f"Track {track.id} has no download URL")
-
-        # Validate download URL domain to prevent open redirect abuse
-        parsed = urlparse(track.url)
-        domain = parsed.hostname or ""
-        if not any(domain == d or domain.endswith(f".{d}") for d in _ALLOWED_MUSIC_DOMAINS):
-            raise ValueError(f"Music download URL has untrusted domain: {domain}")
-
-        logger.info(f"Downloading: {track.title}")
-
-        try:
-            response = await self.client.get(track.url, follow_redirects=True)
-            response.raise_for_status()
-
-            # Validate final URL domain after redirects to prevent open redirect abuse
-            final_domain = response.url.host or ""
-            if not any(
-                final_domain == d or final_domain.endswith(f".{d}") for d in _ALLOWED_MUSIC_DOMAINS
-            ):
-                raise ValueError(f"Music download redirected to untrusted domain: {final_domain}")
-
-            if len(response.content) > _MAX_MUSIC_DOWNLOAD_BYTES:
-                raise ValueError(
-                    f"Music file too large ({len(response.content)} bytes, "
-                    f"limit {_MAX_MUSIC_DOWNLOAD_BYTES} bytes)"
-                )
-
-            with open(output_path, "wb") as f:
-                f.write(response.content)
-
-            track.local_path = output_path
-            return output_path
-
-        except httpx.HTTPError as e:
-            logger.error(f"Download failed: {e}")
-            raise
 
 
 class LocalMusicSource(MusicSource):
@@ -446,23 +250,19 @@ class LocalMusicSource(MusicSource):
 
 
 def get_music_source(
-    source_type: str = "pixabay",
-    api_key: str | None = None,
+    source_type: str = "local",
     music_dir: Path | None = None,
 ) -> MusicSource:
     """Get a music source by type.
 
     Args:
-        source_type: "pixabay" or "local"
-        api_key: API key for Pixabay
+        source_type: "local"
         music_dir: Directory for local music
 
     Returns:
         MusicSource instance
     """
-    if source_type == "pixabay":
-        return PixabayMusicSource(api_key=api_key)
-    elif source_type == "local":
+    if source_type == "local":
         if not music_dir:
             raise ValueError("music_dir required for local source")
         return LocalMusicSource(music_dir=music_dir)

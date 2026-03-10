@@ -162,7 +162,7 @@ Three options for background music:
 
 - **None**: No background music.
 - **Upload file**: Upload your own MP3, M4A, or WAV file. Volume slider controls how loud the music plays relative to original clip audio.
-- **AI Generated (MusicGen)**: Generates a soundtrack based on the mood of your clips. Requires a MusicGen server configured in your settings. You can generate 1-3 versions and pick the best one.
+- **AI Generated**: Generates a soundtrack based on the mood of your clips. The pipeline supports ACE-Step (recommended, higher quality) and MusicGen as backends, with automatic fallback. Both require a GPU server configured in your settings. You can generate 1-3 versions and pick the best one.
 
 Both upload and AI options include a volume slider (0-100%).
 

@@ -123,7 +123,7 @@ class AudioMixer:
             Path to selected music, or None if no music found (video copied to output).
         """
         from immich_memories.audio.mood_analyzer import get_mood_analyzer
-        from immich_memories.audio.music_sources import PixabayMusicSource
+        from immich_memories.audio.music_sources import LocalMusicSource
 
         # Analyze video mood if not provided
         if not mood:
@@ -139,25 +139,22 @@ class AudioMixer:
                 mood = "calm"
                 genre = "ambient"
 
-        # Search for music
-        source = PixabayMusicSource()
-        try:
-            track = await source.get_random_track(
-                mood=mood,
-                genre=genre,
-                tempo=tempo,
-                min_duration=min(60, video_duration * 0.5),
-            )
+        # Search for music in local library
+        source = LocalMusicSource(music_dir=self.cache_dir)
+        track = await source.get_random_track(
+            mood=mood,
+            genre=genre,
+            tempo=tempo,
+            min_duration=min(60, video_duration * 0.5),
+        )
 
-            if track:
-                selected_music = await source.download(track, self.cache_dir)
-                logger.info(f"Selected music: {track.title} by {track.artist}")
-                return selected_music
-            else:
-                logger.warning("No matching music found, output will have original audio only")
-                import shutil
+        if track:
+            selected_music = await source.download(track, self.cache_dir)
+            logger.info(f"Selected music: {track.title} by {track.artist}")
+            return selected_music
+        else:
+            logger.warning("No matching music found, output will have original audio only")
+            import shutil
 
-                shutil.copy(video_path, output_path)
-                return None
-        finally:
-            await source.close()
+            shutil.copy(video_path, output_path)
+            return None

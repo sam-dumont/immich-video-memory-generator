@@ -112,9 +112,6 @@ def get_config(reload: bool = False) -> Config:
             _config.immich.api_key = api_key
         if openai_key := os.environ.get("OPENAI_API_KEY"):
             _config.llm.api_key = openai_key
-        if pixabay_key := os.environ.get("PIXABAY_API_KEY"):
-            _config.audio.pixabay_api_key = pixabay_key
-
         # MusicGen env var overrides (also supported via IMMICH_MEMORIES_MUSICGEN__*)
         if musicgen_enabled := os.environ.get("MUSICGEN_ENABLED"):
             _config.musicgen.enabled = musicgen_enabled.lower() in ("true", "1", "yes")

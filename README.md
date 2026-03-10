@@ -50,7 +50,7 @@ Immich Memories connects to your self-hosted Immich server, intelligently select
 - **Resume Support**: Previously analyzed clips are cached and shown on restart
 - **Review Mode**: Review and refine selected clips after AI analysis with deselection support
 - **Smooth Transitions**: Crossfade transitions with configurable buffer footage
-- **Automatic Music**: AI-powered mood detection + royalty-free music from Pixabay
+- **Automatic Music**: AI-powered mood detection + music generation via ACE-Step or MusicGen
 - **Smart Audio Ducking**: Music automatically lowers when speech/sounds are detected
 - **Flexible Output**: Portrait (9:16), Landscape (16:9), and Square (1:1) formats
 - **Smart Cropping**: Face-aware cropping keeps subjects centered
@@ -319,7 +319,7 @@ llm:
 
 audio:
   auto_music: true           # Auto-select music based on video mood
-  music_source: "musicgen"   # pixabay, local, musicgen, or ace_step
+  music_source: "musicgen"   # local, musicgen, or ace_step
   local_music_dir: "~/Music/Memories"
 
   # Audio ducking (lowers music when speech detected)
@@ -338,10 +338,14 @@ musicgen:
   timeout_seconds: 10800     # 3 hours (generation is slow on CPU)
   num_versions: 1            # Generate N versions, pick the best
 
-# ACE-Step music generation (experimental, local library mode only for now)
-# ace_step:
-#   enabled: false
-#   mode: "lib"              # Only "lib" works reliably (API is Gradio-only)
+# ACE-Step music generation via REST API
+# See: https://github.com/sam-dumont/ace-step-1.5-turbo
+ace_step:
+  enabled: true
+  mode: "api"
+  api_url: "http://your-gpu-server:8000"
+  model_variant: "turbo"
+  num_versions: 1
 
 # LLM-based content analysis for intelligent scoring (optional)
 content_analysis:
@@ -463,80 +467,91 @@ llm:
 
 ## AI Background Music
 
-Immich Memories can generate original background music that matches the mood of your clips. The pipeline works in two steps:
+Immich Memories generates original background music that matches the mood of your video. The pipeline:
 
-1. **Mood detection**: the vision LLM (see above) watches a few frames from your compilation and describes the overall mood ("happy family gathering", "calm beach sunset", etc.)
-2. **Music generation**: that mood description is sent to a music generation API which produces a matching instrumental track
+1. **Mood detection**: the vision LLM watches frames from your compilation and describes the mood
+2. **Music generation**: a multi-provider pipeline sends that mood to a music generation API
+3. **Stem separation**: Demucs splits the track into vocals/accompaniment for intelligent audio ducking
 
-Two generation backends are supported:
+The pipeline tries backends in priority order — if ACE-Step is enabled it generates first, falling back to MusicGen if unavailable. Stem separation always runs through MusicGen's Demucs endpoint. Both backends are independently enable/disable-able.
 
-### MusicGen API (recommended)
+### ACE-Step (recommended)
 
-[MusicGen](https://github.com/facebookresearch/audiocraft) by Meta generates high-quality instrumental music from text prompts. We built a simple REST API wrapper for it: [sam-dumont/musicgen-api](https://github.com/sam-dumont/musicgen-api).
+[ACE-Step 1.5](https://github.com/ace-step/ACE-Step) generates higher-quality instrumental tracks than MusicGen. It supports explicit musical parameters (BPM, key, time signature) sent as structured API fields, not just text prompts. Generation takes ~20s per 30-second track on an 8GB GPU.
 
-You need a machine with a GPU (NVIDIA recommended, ~8GB VRAM) to run the server. Generation takes 5-30 minutes depending on duration and hardware.
+We maintain a fork optimized for consumer GPUs: [sam-dumont/ace-step-1.5-turbo](https://github.com/sam-dumont/ace-step-1.5-turbo). It runs the turbo model (8 diffusion steps instead of 50, ~6x faster) with the 0.6B language model, fitting in 8GB VRAM.
 
 ```yaml
 audio:
   auto_music: true
-  music_source: "musicgen"
-
-musicgen:
-  enabled: true
-  base_url: "http://your-gpu-server:8000"
-  api_key: "your-api-key"
-  timeout_seconds: 10800       # 3 hours max (CPU generation is slow)
-  num_versions: 1              # Generate N versions, UI lets you pick
-```
-
-Deploy the API server on any machine with an NVIDIA GPU:
-```bash
-# Option A: Docker image (recommended)
-docker run -d --gpus all -p 8000:8000 ghcr.io/sam-dumont/musicgen-api:latest
-
-# Option B: Full setup with docker compose
-git clone https://github.com/sam-dumont/musicgen-api.git
-cd musicgen-api
-cp .env.example .env  # Edit with your API key
-docker compose up -d
-```
-
-Source and docs: [sam-dumont/musicgen-api](https://github.com/sam-dumont/musicgen-api) (public, MIT licensed).
-
-### ACE-Step (experimental)
-
-[ACE-Step](https://github.com/ace-step/ACE-Step) generates full songs with lyrics, not just instrumentals. Higher quality output than MusicGen but slower. Two modes:
-
-- **Library mode** (`lib`): runs locally on Apple Silicon (16GB+) or NVIDIA GPUs (8GB+ VRAM). Requires the `ace-step` package installed.
-- **API mode** (`api`): connects to a remote ACE-Step server via its REST API.
-
-The upstream project includes both a Gradio UI and a REST API, but the default Docker image pulls the full base model + 1.7B LM, which needs 32GB+ VRAM. If you have a consumer GPU (8-12GB), use [sam-dumont/ace-step-1.5-turbo](https://github.com/sam-dumont/ace-step-1.5-turbo): a fork that swaps in the turbo model (8 steps instead of 50, ~6x faster) and the 0.6B LM, so it fits in 8GB VRAM with minimal quality loss.
-
-```yaml
-audio:
   music_source: "ace_step"
 
 ace_step:
   enabled: true
-  mode: "api"                  # "lib" for local, "api" for remote server
+  mode: "api"
   api_url: "http://your-gpu-server:8000"
-  model_variant: "turbo"       # "turbo" (fast, 8 steps) or "base" (quality, 50 steps)
-  lm_model_size: "0.6B"       # "0.6B" for constrained GPUs, "1.7B" or "4B" if you have VRAM
+  model_variant: "turbo"
+  lm_model_size: "0.6B"       # "0.6B" for 8GB GPUs, "1.7B" or "4B" if you have VRAM
+  num_versions: 1
 ```
 
 Deploy on a consumer GPU:
 ```bash
-# Optimized for 8GB VRAM (turbo + 0.6B LM)
 git clone https://github.com/sam-dumont/ace-step-1.5-turbo.git
 cd ace-step-1.5-turbo
 docker compose up -d
 ```
 
-Or use the upstream image if you have 32GB+ VRAM: [ace-step/ACE-Step](https://github.com/ace-step/ACE-Step).
+The API runs on port 8000 (`acestep-api` command, no Gradio UI). Kubernetes and Terraform examples are included in the repo's `deploy/` directory.
+
+### MusicGen API (fallback / stem separation)
+
+[MusicGen](https://github.com/facebookresearch/audiocraft) by Meta generates instrumental music from text prompts and provides Demucs stem separation. Even when ACE-Step handles generation, MusicGen's Demucs endpoint is used for splitting stems. Deploy it on a second GPU or the same machine.
+
+```yaml
+audio:
+  auto_music: true
+  music_source: "musicgen"    # or "ace_step" if ACE-Step is primary
+
+musicgen:
+  enabled: true
+  base_url: "http://your-gpu-server:8000"
+  api_key: "your-api-key"
+  timeout_seconds: 10800
+  num_versions: 1
+```
+
+Deploy:
+```bash
+docker run -d --gpus all -p 8000:8000 ghcr.io/sam-dumont/musicgen-api:latest
+```
+
+Source and docs: [sam-dumont/musicgen-api](https://github.com/sam-dumont/musicgen-api).
+
+### Multi-provider setup
+
+For the best results, run both backends on separate GPUs. ACE-Step generates the music, MusicGen handles Demucs stem separation for audio ducking:
+
+```yaml
+audio:
+  auto_music: true
+  music_source: "ace_step"
+
+ace_step:
+  enabled: true
+  mode: "api"
+  api_url: "http://couronne-01:8000"   # T1000 8GB
+
+musicgen:
+  enabled: true
+  base_url: "http://couronne-03:8000"  # GTX 1070 (Demucs only)
+```
+
+If ACE-Step is unavailable at generation time, the pipeline falls back to MusicGen automatically.
 
 ### No music / BYO music
 
-You can also upload your own music file in the UI (Step 3), or disable music entirely. The audio ducking system automatically lowers music volume when speech or laughter is detected in the clips.
+You can upload your own music file in the UI (Step 3), or disable music entirely. The audio ducking system automatically lowers music volume when speech or laughter is detected in the clips.
 
 ## Docker
 
