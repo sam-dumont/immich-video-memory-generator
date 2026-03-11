@@ -98,7 +98,9 @@ class AssemblerEncodingMixin:
         # Build audio filter
         audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
         # EBU R128 loudness normalization: -16 LUFS target, preserves dynamics (LRA=11)
-        loudnorm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if self.settings.normalize_clip_audio else ""
+        # Skip for title screens — their silent audio track causes loudnorm to produce NaN
+        use_loudnorm = self.settings.normalize_clip_audio and not clip.is_title_screen
+        loudnorm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if use_loudnorm else ""
         if has_audio:
             audio_filter = (
                 f"[0:a]{audio_format},asetpts=PTS-STARTPTS{loudnorm},"

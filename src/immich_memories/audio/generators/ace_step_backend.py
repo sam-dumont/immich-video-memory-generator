@@ -99,13 +99,13 @@ def _mood_to_ace_prompt(mood: str, prompt: str = "") -> tuple[str, str]:
     return build_ace_caption(mood, season=_detect_season(mood))
 
 
-def _mood_to_structured_prompt(mood: str):
+def _mood_to_structured_prompt(mood: str, scene_moods: list[str] | None = None):
     """Convert mood to structured ACE-Step caption with explicit musical params.
 
     Returns ACECaptionResult with caption, lyrics, bpm, key_scale, time_signature.
     """
 
-    return build_ace_caption_structured(mood, season=_detect_season(mood))
+    return build_ace_caption_structured(mood, season=_detect_season(mood), scene_moods=scene_moods)
 
 
 class ACEStepBackend(MusicGenerator):
@@ -232,9 +232,9 @@ class ACEStepBackend(MusicGenerator):
 
         # Build prompt from scenes or use direct prompt
         if request.is_multi_scene:
-            # Combine scene moods into a single prompt with the dominant mood
-            combined_mood = ", ".join(s.get("mood", "upbeat") for s in request.scenes[:3])
-            tags, lyrics = _mood_to_ace_prompt(combined_mood, request.prompt)
+            scene_moods = [s.get("mood", "upbeat") for s in request.scenes]
+            primary_mood = scene_moods[0] if scene_moods else "upbeat"
+            tags, lyrics = _mood_to_ace_prompt(primary_mood, request.prompt)
             duration = sum(s.get("duration", 30) for s in request.scenes)
         else:
             tags, lyrics = _mood_to_ace_prompt(request.prompt)
@@ -296,16 +296,14 @@ class ACEStepBackend(MusicGenerator):
         Uses the /release_task + /query_result polling pattern from the
         ACE-Step 1.5 REST API (launched with `acestep-api`).
         """
-        import asyncio
-        import time
-
         import httpx
 
         request.output_dir.mkdir(parents=True, exist_ok=True)
 
         if request.is_multi_scene:
-            combined_mood = ", ".join(s.get("mood", "upbeat") for s in request.scenes[:3])
-            caption_result = _mood_to_structured_prompt(combined_mood)
+            scene_moods = [s.get("mood", "upbeat") for s in request.scenes]
+            primary_mood = scene_moods[0] if scene_moods else "upbeat"
+            caption_result = _mood_to_structured_prompt(primary_mood, scene_moods=scene_moods)
             duration = sum(s.get("duration", 30) for s in request.scenes)
         else:
             caption_result = _mood_to_structured_prompt(request.prompt)
@@ -314,7 +312,7 @@ class ACEStepBackend(MusicGenerator):
         duration = min(duration, 300)  # Cap at 5 minutes
 
         if progress_callback:
-            progress_callback("submitting", 0, {})
+            progress_callback("Submitting task...", 0, {})
 
         headers: dict[str, str] = {}
         if self.config.extra_args.get("api_key"):
@@ -324,15 +322,11 @@ class ACEStepBackend(MusicGenerator):
             timeout=httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=None),
             headers=headers,
         ) as client:
-            # Submit task with explicit musical params (not embedded in caption)
             task_payload = {
                 "caption": caption_result.caption,
                 "lyrics": caption_result.lyrics,
                 "duration": duration,
                 "batch_size": 1,
-                "bpm": caption_result.bpm,
-                "key_scale": caption_result.key_scale,
-                "time_signature": caption_result.time_signature,
                 "audio_format": "wav",
             }
 
@@ -346,62 +340,11 @@ class ACEStepBackend(MusicGenerator):
 
             logger.info(f"ACE-Step task submitted: {task_id}")
 
-            if progress_callback:
-                progress_callback("generating", 10, {"task_id": task_id})
-
-            # Poll for completion
-            # NOTE: param is task_id_list (not task_id/task_ids).
-            # Using the wrong name silently returns empty data with 200.
-            start_time = time.time()
             output_path = request.output_dir / f"ace_step_v{request.variation_index}.wav"
-
-            while True:
-                if time.time() - start_time > self.config.timeout_seconds:
-                    raise TimeoutError(
-                        f"ACE-Step task {task_id} timed out after {self.config.timeout_seconds}s"
-                    )
-
-                poll_resp = await client.post(
-                    f"{self.config.api_url}/query_result",
-                    json={"task_id_list": [task_id]},
-                )
-                poll_resp.raise_for_status()
-                poll_data = poll_resp.json()
-
-                results = poll_data.get("data", [])
-                if results:
-                    result_item = results[0]
-                    status = result_item.get("status", 0)
-
-                    if status == 2:
-                        raise RuntimeError(f"ACE-Step task {task_id} failed: {result_item}")
-
-                    if status == 1:
-                        # Task complete — parse result JSON string and download audio
-                        import json as _json
-
-                        result_files = _json.loads(result_item.get("result", "[]"))
-                        if not result_files:
-                            raise RuntimeError(f"No files in completed task: {poll_data}")
-
-                        # Download first file — URL is relative (e.g. /v1/audio?path=...)
-                        file_url = result_files[0].get("file", "")
-                        if not file_url:
-                            raise RuntimeError(f"No file URL in result: {result_files[0]}")
-
-                        audio_resp = await client.get(f"{self.config.api_url}{file_url}")
-                        audio_resp.raise_for_status()
-                        output_path.write_bytes(audio_resp.content)
-                        break
-
-                if progress_callback:
-                    elapsed = time.time() - start_time
-                    progress_callback("generating", min(90, int(10 + elapsed / 3)), {})
-
-                await asyncio.sleep(3.0)
+            await self._poll_and_download(client, task_id, output_path, progress_callback)
 
         if progress_callback:
-            progress_callback("completed", 100, {})
+            progress_callback("Complete!", 100, {})
 
         logger.info(f"ACE-Step API generated: {output_path} ({duration}s)")
 
@@ -420,6 +363,96 @@ class ACEStepBackend(MusicGenerator):
                 "task_id": task_id,
             },
         )
+
+    async def _poll_and_download(
+        self,
+        client: Any,
+        task_id: str,
+        output_path: Path,
+        progress_callback: Any | None,
+    ) -> None:
+        """Poll ACE-Step API for task completion and download the result."""
+        import asyncio
+        import time
+
+        if progress_callback:
+            progress_callback("LLM reasoning...", 5, {"task_id": task_id})
+
+        start_time = time.time()
+
+        while True:
+            if time.time() - start_time > self.config.timeout_seconds:
+                raise TimeoutError(
+                    f"ACE-Step task {task_id} timed out after {self.config.timeout_seconds}s"
+                )
+
+            poll_resp = await client.post(
+                f"{self.config.api_url}/query_result",
+                json={"task_id_list": [task_id]},
+            )
+            poll_resp.raise_for_status()
+            poll_data = poll_resp.json()
+
+            results = poll_data.get("data", [])
+            if results:
+                result_item = results[0]
+                status = result_item.get("status", 0)
+
+                if status == 2:
+                    raise RuntimeError(f"ACE-Step task {task_id} failed: {result_item}")
+
+                if status == 1:
+                    await self._download_result(
+                        client, result_item, output_path, poll_data, progress_callback
+                    )
+                    return
+
+            self._report_estimated_progress(time.time() - start_time, progress_callback)
+            await asyncio.sleep(3.0)
+
+    async def _download_result(
+        self,
+        client: Any,
+        result_item: dict,
+        output_path: Path,
+        poll_data: dict,
+        progress_callback: Any | None,
+    ) -> None:
+        """Download audio from a completed ACE-Step task."""
+        import json as _json
+
+        if progress_callback:
+            progress_callback("Downloading audio...", 90, {})
+
+        result_files = _json.loads(result_item.get("result", "[]"))
+        if not result_files:
+            raise RuntimeError(f"No files in completed task: {poll_data}")
+
+        file_url = result_files[0].get("file", "")
+        if not file_url:
+            raise RuntimeError(f"No file URL in result: {result_files[0]}")
+
+        audio_resp = await client.get(f"{self.config.api_url}{file_url}")
+        audio_resp.raise_for_status()
+        output_path.write_bytes(audio_resp.content)
+
+    @staticmethod
+    def _report_estimated_progress(elapsed: float, progress_callback: Any | None) -> None:
+        """Report estimated progress based on elapsed time."""
+        if not progress_callback:
+            return
+
+        if elapsed < 8:
+            phase = "LLM reasoning..."
+            pct = min(15, int(5 + elapsed))
+        elif elapsed < 30:
+            phase = "Generating audio (diffusion)..."
+            pct = min(80, int(15 + (elapsed - 8) * 2.95))
+        else:
+            phase = "Decoding audio..."
+            pct = min(89, int(80 + (elapsed - 30) * 0.3))
+
+        progress_callback(phase, pct, {})
 
     @staticmethod
     def _save_audio(audio_data, sample_rate: int, output_path: Path):

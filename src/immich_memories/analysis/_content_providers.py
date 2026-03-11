@@ -35,6 +35,7 @@ class OllamaContentAnalyzer(ContentAnalyzer):
         base_url: str = "http://localhost:11434",
         max_height: int = 480,
         num_ctx: int = 4096,
+        timeout: float = 300.0,
     ):
         """Initialize Ollama analyzer.
 
@@ -43,11 +44,13 @@ class OllamaContentAnalyzer(ContentAnalyzer):
             base_url: Ollama API base URL
             max_height: Maximum frame height in pixels (default 480 for speed)
             num_ctx: Context window size for Ollama (default 4096)
+            timeout: HTTP request timeout in seconds (default 300)
         """
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.max_height = max_height
         self.num_ctx = num_ctx
+        self.timeout = timeout
         self._client: httpx.Client | None = None
 
         # Check if this model needs single image mode (small context)
@@ -60,8 +63,7 @@ class OllamaContentAnalyzer(ContentAnalyzer):
     def client(self) -> httpx.Client:
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
-            # Increased timeout for slower vision models (was 120s, now 300s)
-            self._client = httpx.Client(timeout=300.0)
+            self._client = httpx.Client(timeout=self.timeout)
         return self._client
 
     def close(self):
@@ -206,6 +208,7 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
         api_key: str = "",
         image_detail: str = "low",
         max_height: int = 480,
+        timeout: float = 300.0,
     ):
         """Initialize OpenAI-compatible analyzer.
 
@@ -215,12 +218,14 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
             api_key: API key (optional — local servers don't need one)
             image_detail: Image detail level ("low"=85 tokens, "high"=1889 tokens, "auto")
             max_height: Maximum frame height in pixels (default 480 for speed/cost)
+            timeout: HTTP request timeout in seconds (default 300)
         """
         self.api_key = api_key
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.image_detail = image_detail
         self.max_height = max_height
+        self.timeout = timeout
         self._client: httpx.Client | None = None
 
     @property
@@ -230,7 +235,7 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
             headers: dict[str, str] = {"Content-Type": "application/json"}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
-            self._client = httpx.Client(timeout=120.0, headers=headers)
+            self._client = httpx.Client(timeout=self.timeout, headers=headers)
         return self._client
 
     def close(self):

@@ -24,6 +24,56 @@ logger = logging.getLogger(__name__)
 class PreviewMixin:
     """Mixin providing preview extraction and legacy analysis methods for SmartPipeline."""
 
+    def _find_cached_preview(self, asset_id: str, start: float, end: float) -> str | None:
+        """Find or build a preview for a cached clip from the video cache."""
+        from immich_memories.config import get_config
+
+        config = get_config()
+
+        # Check the stable preview-cache first (asset-ID-based, from step2)
+        preview_cache_dir = config.cache.cache_path / "preview-cache"
+        stable_preview = preview_cache_dir / f"{asset_id}.mp4"
+        if stable_preview.exists():
+            return str(stable_preview)
+
+        # Check the pipeline preview dir for any existing preview
+        pipeline_preview_dir = Path.home() / ".cache" / "immich-memories" / "previews"
+        for p in pipeline_preview_dir.glob(f"*{asset_id[:8]}*"):
+            if p.exists():
+                return str(p)
+
+        # Try to build a preview from the video cache
+        video_cache_dir = config.cache.video_cache_path
+        if not video_cache_dir.exists():
+            return None
+
+        subdir = asset_id[:2] if len(asset_id) >= 2 else "00"
+        sub_path = video_cache_dir / subdir
+        if not sub_path.exists():
+            return None
+
+        # Find source video (prefer _480p downscale)
+        source = None
+        for pattern in [f"{asset_id}_480p.*", f"{asset_id}.*"]:
+            matches = list(sub_path.glob(pattern))
+            if matches:
+                source = matches[0]
+                break
+
+        if source is None:
+            return None
+
+        # Extract preview from cached video
+        try:
+            preview_path = self._extract_preview_segment(source, start, end, asset_id=asset_id)
+            if preview_path and Path(preview_path).exists():
+                logger.debug(f"Built preview for cached clip {asset_id}")
+                return preview_path
+        except Exception as e:
+            logger.debug(f"Could not build preview for cached {asset_id}: {e}")
+
+        return None
+
     def _analyze_clip(
         self,
         clip: VideoClipInfo,

@@ -200,8 +200,10 @@ class SegmentScoringMixin:
             audio_result: Full video audio analysis result.
 
         Returns:
-            Dict with score, has_laughter, has_speech, has_music.
+            Dict with score, has_laughter, has_speech, has_music, audio_categories.
         """
+        from immich_memories.audio.audio_models import classify_audio_event
+
         # Find events that overlap with this segment
         segment_events = []
         for event in audio_result.events:
@@ -221,6 +223,7 @@ class SegmentScoringMixin:
                 "has_laughter": False,
                 "has_speech": False,
                 "has_music": False,
+                "audio_categories": set(),
             }
 
         # Calculate weighted score based on overlapping events
@@ -229,13 +232,19 @@ class SegmentScoringMixin:
         has_laughter = False
         has_speech = False
         has_music = False
+        categories: set[str] = set()
 
         for event, duration in segment_events:
             weight = event.weight * event.confidence
             total_weighted += weight * duration
             total_duration += duration
 
-            # Check for specific content types
+            # Classify into high-level category
+            cat = classify_audio_event(event.event_class)
+            if cat:
+                categories.add(cat)
+
+            # Legacy boolean flags
             event_lower = event.event_class.lower()
             if "laugh" in event_lower or "giggle" in event_lower:
                 has_laughter = True
@@ -258,6 +267,7 @@ class SegmentScoringMixin:
             "has_laughter": has_laughter,
             "has_speech": has_speech,
             "has_music": has_music,
+            "audio_categories": categories,
         }
 
     def _compute_total_score(self, segment) -> float:
@@ -360,6 +370,7 @@ class SegmentScoringMixin:
                 segment.has_laughter = audio_score_info["has_laughter"]
                 segment.has_speech = audio_score_info["has_speech"]
                 segment.has_music = audio_score_info["has_music"]
+                segment.audio_categories = audio_score_info["audio_categories"]
 
             # Score duration preference (clips closer to optimal get higher scores)
             if video_duration:

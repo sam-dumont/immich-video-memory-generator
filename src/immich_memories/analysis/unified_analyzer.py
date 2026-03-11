@@ -59,6 +59,7 @@ class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
         max_optimal_duration: float = 10.0,
         target_extraction_ratio: float = 0.15,
         duration_weight: float = 0.15,
+        audio_analyzer: object | None = None,
     ):
         """Initialize the unified analyzer.
 
@@ -94,13 +95,20 @@ class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
         self.duration_weight = duration_weight
 
         self._scene_detector = SceneDetector()
-        self._audio_analyzer = None
+        self._audio_analyzer = audio_analyzer  # Injected or lazy-created
         self._audio_analysis_cache: dict[str, AudioAnalysisResult] = {}
 
-    def clear_cache(self):
-        """Clear internal caches to free memory."""
+    def clear_cache(self, release_audio_analyzer: bool = False):
+        """Clear internal caches to free memory.
+
+        Args:
+            release_audio_analyzer: If True, also release the audio analyzer.
+                Usually False because the analyzer is shared across clips.
+        """
         self._audio_analysis_cache.clear()
-        if self._audio_analyzer is not None:
+        if release_audio_analyzer and self._audio_analyzer is not None:
+            if hasattr(self._audio_analyzer, "cleanup"):
+                self._audio_analyzer.cleanup()
             self._audio_analyzer = None
 
     def _get_max_segment_for_source(
@@ -412,7 +420,7 @@ class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
             if self._audio_analyzer is None:
                 config = get_config()
                 self._audio_analyzer = AudioContentAnalyzer(
-                    use_yamnet=config.audio_content.use_yamnet,
+                    use_panns=config.audio_content.use_panns,
                     min_confidence=config.audio_content.min_confidence,
                     laughter_confidence=config.audio_content.laughter_confidence,
                 )

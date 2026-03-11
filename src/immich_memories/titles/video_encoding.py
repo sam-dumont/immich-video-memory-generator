@@ -30,7 +30,41 @@ except ImportError:
     HAS_PIL = False
 
 
-def _get_best_encoder() -> list[str]:
+def _get_sdr_to_hlg_filter() -> str:
+    """Get video filter to convert sRGB title screen frames to HLG/BT.2020.
+
+    Title screens are rendered in sRGB (8-bit RGB24) but need to match
+    the HLG colorspace of video clips for clean concatenation. Without
+    this conversion, title screens appear pinkish/washed out because
+    sRGB pixel values get misinterpreted as HLG.
+
+    Returns:
+        FFmpeg video filter string for SDR→HLG conversion.
+    """
+    # zscale handles proper transfer function conversion (sRGB → HLG)
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-filters"],
+            capture_output=True,
+            text=True,
+        )
+        if "zscale" in result.stdout:
+            return (
+                "format=yuv420p,"
+                "zscale=tin=bt709:t=arib-std-b67"
+                ":pin=bt709:p=bt2020"
+                ":min=bt709:m=bt2020nc,"
+                "format=p010le"
+            )
+    except Exception:
+        pass
+
+    # Fallback: just do format conversion (colors slightly off but not pink)
+    logger.warning("zscale not available — title screen colors may be slightly inaccurate")
+    return "format=p010le"
+
+
+def _get_best_encoder() -> tuple[list[str], str]:
     """Get the best available video encoder for intermediate files.
 
     Returns encoder flags optimized for:
@@ -40,7 +74,7 @@ def _get_best_encoder() -> list[str]:
     - Compatible with .mp4 container
 
     Returns:
-        List of FFmpeg encoder arguments.
+        Tuple of (encoder args, video filter for SDR→HLG conversion).
     """
     # HLG colorspace metadata — must match video clips for clean concat
     color_args = [
@@ -52,6 +86,8 @@ def _get_best_encoder() -> list[str]:
         "bt2020nc",
     ]
 
+    sdr_to_hlg = _get_sdr_to_hlg_filter()
+
     # macOS: Use VideoToolbox hardware encoder (GPU accelerated, 10-bit support)
     if sys.platform == "darwin":
         return [
@@ -59,12 +95,10 @@ def _get_best_encoder() -> list[str]:
             "hevc_videotoolbox",
             "-q:v",
             "50",  # High quality (lower = better, 0-100)
-            "-pix_fmt",
-            "p010le",  # 10-bit for smooth gradients
             "-tag:v",
             "hvc1",  # Better compatibility
             *color_args,
-        ]
+        ], sdr_to_hlg
 
     # Other platforms: Check for available encoders
     try:
@@ -86,12 +120,10 @@ def _get_best_encoder() -> list[str]:
                 "constqp",
                 "-qp",
                 "18",
-                "-pix_fmt",
-                "p010le",  # 10-bit
                 "-tag:v",
                 "hvc1",
                 *color_args,
-            ]
+            ], sdr_to_hlg
 
         # Fallback to libx265 (CPU, slower but high quality)
         if "libx265" in encoders:
@@ -102,14 +134,12 @@ def _get_best_encoder() -> list[str]:
                 "18",
                 "-preset",
                 "fast",
-                "-pix_fmt",
-                "yuv420p10le",
                 "-tag:v",
                 "hvc1",
                 *color_args,
-            ]
+            ], sdr_to_hlg
 
-        # Last fallback to libx264 (8-bit)
+        # Last fallback to libx264 (8-bit, no HDR)
         return [
             "-c:v",
             "libx264",
@@ -119,7 +149,7 @@ def _get_best_encoder() -> list[str]:
             "fast",
             "-pix_fmt",
             "yuv420p",
-        ]
+        ], ""
 
     except Exception:
         # Default to libx264 if detection fails
@@ -132,7 +162,7 @@ def _get_best_encoder() -> list[str]:
             "fast",
             "-pix_fmt",
             "yuv420p",
-        ]
+        ], ""
 
 
 def create_title_video(
@@ -179,7 +209,7 @@ def create_title_video(
     renderer = TitleRenderer(style, settings)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    encoder_args = _get_best_encoder()
+    encoder_args, video_filter = _get_best_encoder()
 
     # Build FFmpeg command to read raw video from pipe
     cmd = [
@@ -201,19 +231,28 @@ def create_title_video(
         "lavfi",
         "-i",
         "anullsrc=r=48000:cl=stereo",
-        *encoder_args,
-        # Audio codec for the silent track
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        # Duration to match video
-        "-t",
-        str(duration),
-        "-movflags",
-        "+faststart",
-        str(output_path),
     ]
+
+    # SDR→HLG color conversion (fixes pinkish title screens)
+    if video_filter:
+        cmd.extend(["-vf", video_filter])
+
+    cmd.extend(
+        [
+            *encoder_args,
+            # Audio codec for the silent track
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            # Duration to match video
+            "-t",
+            str(duration),
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ]
+    )
 
     # Use a queue to pass frames between threads
     frame_queue: queue.Queue = queue.Queue(maxsize=10)  # Buffer up to 10 frames

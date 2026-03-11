@@ -43,7 +43,7 @@ dependencies = [
     "pillow>=12.1.1",
     "numpy>=1.24",
     "imagehash>=4.3",
-    "watchdog>=3.0",  # File watching for development
+    "watchdog>=3.0",
 ]
 
 [project.optional-dependencies]
@@ -63,10 +63,10 @@ audio = [
     "mutagen>=1.47",
 ]
 # ML-based audio content analysis (laughter/speech detection)
-# TensorFlow 2.20+ supports Python 3.13 and macOS ARM64 natively
+# PANNs replaces TensorFlow/YAMNet — same AudioSet classes, pure PyTorch
 audio-ml = [
-    "tensorflow>=2.20",
-    "tensorflow-hub>=0.16",
+    "torch>=2.0",
+    "panns-inference>=0.1",
 ]
 # GPU-accelerated title rendering with Taichi
 # Supports: Metal (macOS), CUDA (NVIDIA), Vulkan, OpenGL, CPU fallback
@@ -271,9 +271,9 @@ module = [
     "CoreImage.*",
     "Metal.*",
     "objc.*",
-    # TensorFlow (optional for audio content analysis)
-    "tensorflow.*",
-    "tensorflow_hub.*",
+    # PANNs / PyTorch (optional for audio content analysis)
+    "torch.*",
+    "panns_inference.*",
     # Taichi (GPU rendering)
     "taichi.*",
     # Not-yet-implemented modules
@@ -337,11 +337,11 @@ module = [
 ]
 disable_error_code = ["dict-item"]
 
-# Audio content analyzer with TensorFlow/YAMNet (split into mixins)
+# Audio content analyzer with PANNs (split into mixins)
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.audio.content_analyzer",
-    "immich_memories.audio.yamnet_analysis",
+    "immich_memories.audio.panns_analysis",
     "immich_memories.audio.energy_analysis",
 ]
 disable_error_code = ["attr-defined", "assignment", "misc", "has-type"]

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import numpy as np
 import pytest
 
 from immich_memories.audio.mixer import (
@@ -336,3 +337,187 @@ class TestOpenAIMoodAnalyzer:
         response = '{"primary_mood": "energetic"}'
         mood = analyzer._parse_mood_response(response)
         assert mood.primary_mood == "energetic"
+
+
+class TestAudioCategories:
+    """Tests for audio category classification."""
+
+    def test_classify_laughter(self):
+        """Test laughter class names map to laughter category."""
+        from immich_memories.audio.audio_models import classify_audio_event
+
+        assert classify_audio_event("Laughter") == "laughter"
+        assert classify_audio_event("Giggle") == "laughter"
+        assert classify_audio_event("Chuckle, chortle") == "laughter"
+
+    def test_classify_baby_sounds(self):
+        """Test baby class names map to baby category."""
+        from immich_memories.audio.audio_models import classify_audio_event
+
+        assert classify_audio_event("Baby laughter") == "baby"
+        assert classify_audio_event("Baby cry, infant cry") == "baby"
+
+    def test_classify_speech(self):
+        """Test speech class names map to speech category."""
+        from immich_memories.audio.audio_models import classify_audio_event
+
+        assert classify_audio_event("Speech") == "speech"
+        assert classify_audio_event("Conversation") == "speech"
+
+    def test_classify_singing(self):
+        """Test singing is its own category, not speech or music."""
+        from immich_memories.audio.audio_models import classify_audio_event
+
+        assert classify_audio_event("Singing") == "singing"
+        assert classify_audio_event("Choir") == "singing"
+
+    def test_classify_engine(self):
+        """Test engine/vehicle sounds are detected."""
+        from immich_memories.audio.audio_models import classify_audio_event
+
+        assert classify_audio_event("Engine") == "engine"
+        assert classify_audio_event("Motor vehicle (road)") == "engine"
+        assert classify_audio_event("Race car, racing car") == "engine"
+        assert classify_audio_event("Motorcycle") == "engine"
+
+    def test_classify_nature(self):
+        """Test nature sounds are detected."""
+        from immich_memories.audio.audio_models import classify_audio_event
+
+        assert classify_audio_event("Bird") == "nature"
+        assert classify_audio_event("Rain") == "nature"
+        assert classify_audio_event("Thunder") == "nature"
+
+    def test_classify_animals(self):
+        """Test animal sounds are detected."""
+        from immich_memories.audio.audio_models import classify_audio_event
+
+        assert classify_audio_event("Dog") == "animals"
+        assert classify_audio_event("Cat") == "animals"
+
+    def test_classify_unknown(self):
+        """Test unknown class returns None."""
+        from immich_memories.audio.audio_models import classify_audio_event
+
+        assert classify_audio_event("Silence") is None
+        assert classify_audio_event("White noise") is None
+
+    def test_detected_categories_in_result(self):
+        """Test AudioAnalysisResult tracks detected categories."""
+        from immich_memories.audio.audio_models import AudioAnalysisResult
+
+        result = AudioAnalysisResult(detected_categories={"laughter", "engine"})
+        assert "laughter" in result.detected_categories
+        assert "engine" in result.detected_categories
+        assert "speech" not in result.detected_categories
+
+
+class TestPANNsAnalysis:
+    """Tests for PANNs-based audio classification mixin."""
+
+    def test_classify_frame_laughter(self):
+        """Test frame classification detects laughter."""
+        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+
+        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
+        mixin.min_confidence = 0.3
+        mixin.laughter_confidence = 0.2
+
+        meets, category = mixin._classify_frame("Laughter", 0.5)
+        assert meets is True
+        assert category == "laughter"
+
+    def test_classify_frame_laughter_low_threshold(self):
+        """Test laughter uses lower confidence threshold."""
+        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+
+        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
+        mixin.min_confidence = 0.3
+        mixin.laughter_confidence = 0.2
+
+        # Score 0.25 is below min_confidence but above laughter_confidence
+        meets, category = mixin._classify_frame("Laughter", 0.25)
+        assert meets is True
+        assert category == "laughter"
+
+    def test_classify_frame_below_threshold(self):
+        """Test frame below all thresholds is rejected."""
+        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+
+        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
+        mixin.min_confidence = 0.3
+        mixin.laughter_confidence = 0.2
+
+        meets, category = mixin._classify_frame("Laughter", 0.1)
+        assert meets is False
+
+    def test_classify_frame_engine(self):
+        """Test frame classification detects engine sounds."""
+        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+
+        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
+        mixin.min_confidence = 0.3
+        mixin.laughter_confidence = 0.2
+
+        meets, category = mixin._classify_frame("Motor vehicle (road)", 0.5)
+        assert meets is True
+        assert category == "engine"
+
+    def test_classify_frame_singing(self):
+        """Test singing is detected as its own category."""
+        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+
+        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
+        mixin.min_confidence = 0.3
+        mixin.laughter_confidence = 0.2
+
+        meets, category = mixin._classify_frame("Singing", 0.5)
+        assert meets is True
+        assert category == "singing"
+
+    def test_collect_events_from_scores(self):
+        """Test event collection from PANNs score frames."""
+        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+
+        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
+        mixin.min_confidence = 0.3
+        mixin.laughter_confidence = 0.2
+
+        # Create fake scores: 10 frames, 5 classes
+        # Class names: [Laughter, Speech, Music, Silence, Engine]
+        class_names = ["Laughter", "Speech", "Music", "Silence", "Engine"]
+        scores = np.zeros((10, 5))
+        # Frames 2-4: laughter dominant
+        scores[2, 0] = 0.8
+        scores[3, 0] = 0.7
+        scores[4, 0] = 0.6
+        # Frames 7-8: speech dominant
+        scores[7, 1] = 0.5
+        scores[8, 1] = 0.4
+
+        events, energy, categories = mixin._collect_events(
+            scores, class_names, frame_duration=1.0, audio_length_samples=320000
+        )
+
+        assert len(events) >= 2
+        assert "laughter" in categories
+        assert "speech" in categories
+
+        # Check laughter event timing
+        laugh_events = [e for e in events if "Laughter" in e.event_class]
+        assert len(laugh_events) == 1
+        assert laugh_events[0].start_time == pytest.approx(2.0)
+
+    def test_panns_mixin_check_available_import_error(self):
+        """Test graceful fallback when panns_inference is not installed."""
+        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+
+        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
+        mixin._panns_available = None
+        mixin._panns_model = None
+        mixin._class_names = None
+
+        with patch.dict("sys.modules", {"panns_inference": None}):
+            result = mixin._check_panns_available()
+            assert result is False
+            assert mixin._panns_available is False

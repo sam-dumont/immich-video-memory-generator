@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 from .encoding import _get_gpu_encoder_args
+from .video_encoding import _get_sdr_to_hlg_filter
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ class EndingScreenMixin:
 
         # Build FFmpeg command to read raw RGB frames from stdin
         encoder_args = _get_gpu_encoder_args()
+        video_filter = _get_sdr_to_hlg_filter()
         cmd = [
             "ffmpeg",
             "-y",
@@ -80,18 +82,25 @@ class EndingScreenMixin:
             "lavfi",
             "-i",
             f"anullsrc=r=48000:cl=stereo:d={duration}",
-            # Video encoding - GPU accelerated with 10-bit for smooth gradients
-            *encoder_args,
-            # Audio encoding
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            "-shortest",
-            "-movflags",
-            "+faststart",
-            str(output_path),
         ]
+        # SDR→HLG color conversion (fixes pinkish title screens)
+        if video_filter:
+            cmd.extend(["-vf", video_filter])
+        cmd.extend(
+            [
+                # Video encoding - GPU accelerated with 10-bit for smooth gradients
+                *encoder_args,
+                # Audio encoding
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-shortest",
+                "-movflags",
+                "+faststart",
+                str(output_path),
+            ]
+        )
 
         # Create base background (same as title but no text)
         base_bg = create_background_for_style(

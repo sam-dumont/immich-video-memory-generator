@@ -195,7 +195,7 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
         video_info: VideoClipInfo | None = None,
         perceptual_hash: str | None = None,
         thumbnail_hash: str | None = None,
-        segments: list[MomentScore] | None = None,
+        segments: list[MomentScore] | list | None = None,
         scenes: list[Scene] | None = None,
         motion_summary: dict | None = None,
         audio_levels: dict | None = None,
@@ -276,7 +276,7 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
 
             conn.commit()
 
-    def _compute_best_scores(self, segments: list[MomentScore] | None) -> dict:
+    def _compute_best_scores(self, segments: list | None) -> dict:
         """Compute best scores across all segments."""
         if not segments:
             return {}
@@ -294,17 +294,26 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
         self,
         conn: sqlite3.Connection,
         asset_id: str,
-        segments: list[MomentScore],
+        segments: list,
     ) -> None:
-        """Save MomentScore objects as segments."""
+        """Save segment objects as DB rows (MomentScore or SegmentAnalysis)."""
         for i, segment in enumerate(segments):
+            # Serialize list fields to JSON
+            activities = getattr(segment, "llm_activities", None)
+            subjects = getattr(segment, "llm_subjects", None)
+            audio_cats = getattr(segment, "audio_categories", None)
+
             conn.execute(
                 """
                 INSERT INTO video_segments (
                     asset_id, segment_index, start_time, end_time,
                     face_score, motion_score, stability_score,
-                    audio_score, total_score, face_positions
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    audio_score, total_score, face_positions,
+                    llm_description, llm_emotion, llm_setting,
+                    llm_activities, llm_subjects,
+                    llm_interestingness, llm_quality,
+                    audio_categories
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     asset_id,
@@ -317,6 +326,14 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
                     segment.audio_score,
                     segment.total_score,
                     (json.dumps(segment.face_positions) if segment.face_positions else None),
+                    getattr(segment, "llm_description", None),
+                    getattr(segment, "llm_emotion", None),
+                    getattr(segment, "llm_setting", None),
+                    json.dumps(list(activities)) if activities else None,
+                    json.dumps(list(subjects)) if subjects else None,
+                    getattr(segment, "llm_interestingness", None),
+                    getattr(segment, "llm_quality", None),
+                    json.dumps(sorted(audio_cats)) if audio_cats else None,
                 ),
             )
 

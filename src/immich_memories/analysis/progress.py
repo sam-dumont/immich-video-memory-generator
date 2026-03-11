@@ -72,6 +72,9 @@ class PipelineProgress:
     last_completed_llm_interestingness: float | None = None
     last_completed_llm_quality: float | None = None
 
+    # Audio categories for last completed item
+    last_completed_audio_categories: list[str] | None = None
+
     # Speed ratio tracking
     total_video_duration: float = 0.0  # Total video seconds processed
     total_processing_time: float = 0.0  # Total real seconds spent
@@ -196,6 +199,7 @@ class ProgressTracker:
         llm_emotion: str | None = None,
         llm_interestingness: float | None = None,
         llm_quality: float | None = None,
+        audio_categories: list[str] | None = None,
     ) -> None:
         """Mark an item as complete.
 
@@ -230,17 +234,30 @@ class ProgressTracker:
             if len(self.progress.completed) > MAX_COMPLETED_HISTORY:
                 self.progress.completed = self.progress.completed[-MAX_COMPLETED_HISTORY:]
 
-            # Update last completed details for preview
-            self.progress.last_completed_asset_id = item_id
-            self.progress.last_completed_segment = segment
-            self.progress.last_completed_score = score
-            self.progress.last_completed_video_path = preview_path
-
-            # Update LLM analysis results
-            self.progress.last_completed_llm_description = llm_description
-            self.progress.last_completed_llm_emotion = llm_emotion
-            self.progress.last_completed_llm_interestingness = llm_interestingness
-            self.progress.last_completed_llm_quality = llm_quality
+            # Only update "Last Analyzed" display fields when we have
+            # displayable data. Cached clips with no preview/LLM should NOT
+            # overwrite the previous fresh clip's display.
+            has_display_data = (
+                preview_path is not None
+                or llm_description is not None
+                or audio_categories is not None
+            )
+            if has_display_data:
+                self.progress.last_completed_asset_id = item_id
+                self.progress.last_completed_segment = segment
+                self.progress.last_completed_score = score
+                if preview_path is not None:
+                    self.progress.last_completed_video_path = preview_path
+                if llm_description is not None:
+                    self.progress.last_completed_llm_description = llm_description
+                if llm_emotion is not None:
+                    self.progress.last_completed_llm_emotion = llm_emotion
+                if llm_interestingness is not None:
+                    self.progress.last_completed_llm_interestingness = llm_interestingness
+                if llm_quality is not None:
+                    self.progress.last_completed_llm_quality = llm_quality
+                if audio_categories is not None:
+                    self.progress.last_completed_audio_categories = audio_categories
 
             # Track video duration for speed ratio
             if video_duration is not None and video_duration > 0:
@@ -383,4 +400,6 @@ class ProgressTracker:
             "last_completed_llm_emotion": self.progress.last_completed_llm_emotion,
             "last_completed_llm_interestingness": self.progress.last_completed_llm_interestingness,
             "last_completed_llm_quality": self.progress.last_completed_llm_quality,
+            # Audio categories
+            "last_completed_audio_categories": self.progress.last_completed_audio_categories,
         }

@@ -1,7 +1,7 @@
 """Energy-based audio analysis mixin.
 
 Provides fallback audio event detection using RMS energy heuristics
-when YAMNet is not available.
+when PANNs is not available.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ class EnergyAnalysisMixin:
     ) -> AudioAnalysisResult:
         """Analyze audio using energy-based heuristics.
 
-        This is a fallback when YAMNet is not available.
+        This is a fallback when PANNs is not available.
         Uses audio energy patterns to detect interesting moments.
 
         Args:

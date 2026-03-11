@@ -155,7 +155,64 @@ def build_ace_caption(mood: str, season: str | None = None) -> tuple[str, str]:
     return tags, result.lyrics
 
 
-def build_ace_caption_structured(mood: str, season: str | None = None) -> ACECaptionResult:
+def _match_template(mood: str) -> str:
+    """Match a single mood word to a template name.
+
+    Uses exact word matching (not substring) to avoid false positives.
+    For example, "energetic calm" should match "energetic" OR "calm",
+    not accidentally match "happy" because it appears in some other word.
+
+    Args:
+        mood: Single mood string (e.g. "happy", "nostalgic", "energetic calm")
+
+    Returns:
+        Template name from ACE_CAPTION_TEMPLATES.
+    """
+    mood_words = set(mood.lower().split())
+
+    # Check each mood word against the mapping
+    for word in mood_words:
+        # Strip commas/punctuation from individual words
+        word = word.strip(",. ")
+        if word in _MOOD_TO_TEMPLATE:
+            return _MOOD_TO_TEMPLATE[word]
+
+    return "upbeat_pop"
+
+
+def _pick_template_for_scenes(scene_moods: list[str]) -> str:
+    """Pick the best template by voting across scene moods.
+
+    Each scene's mood votes for a template. The template with the most
+    votes wins, with random tiebreaking for variety.
+
+    Args:
+        scene_moods: List of mood strings from individual scenes.
+
+    Returns:
+        Template name from ACE_CAPTION_TEMPLATES.
+    """
+    import random
+    from collections import Counter
+
+    if not scene_moods:
+        return "upbeat_pop"
+
+    votes: list[str] = [_match_template(mood) for mood in scene_moods]
+    counts = Counter(votes)
+
+    # Get all templates tied for the most votes
+    max_count = counts.most_common(1)[0][1]
+    top_templates = [tpl for tpl, count in counts.items() if count == max_count]
+
+    return random.choice(top_templates)
+
+
+def build_ace_caption_structured(
+    mood: str,
+    season: str | None = None,
+    scene_moods: list[str] | None = None,
+) -> ACECaptionResult:
     """Build structured ACE-Step caption with explicit musical parameters.
 
     Returns an ACECaptionResult with caption text, lyrics, and separate
@@ -164,18 +221,12 @@ def build_ace_caption_structured(mood: str, season: str | None = None) -> ACECap
     Args:
         mood: Mood string (e.g. "happy", "nostalgic")
         season: Optional season modifier ("winter", "summer", etc.)
+        scene_moods: Optional list of per-scene mood strings for voting.
 
     Returns:
         ACECaptionResult with all fields populated.
     """
-    mood_lower = mood.lower()
-
-    # Find best matching template
-    template_name = "upbeat_pop"  # default
-    for keyword, tpl_name in _MOOD_TO_TEMPLATE.items():
-        if keyword in mood_lower:
-            template_name = tpl_name
-            break
+    template_name = _pick_template_for_scenes(scene_moods) if scene_moods else _match_template(mood)
 
     template = ACE_CAPTION_TEMPLATES[template_name]
 

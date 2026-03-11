@@ -89,4 +89,9 @@ def _app_config_to_ace_step(app_config) -> Any:
         if hasattr(app_config, field_name):
             kwargs[field_name] = getattr(app_config, field_name)
 
+    # Pass API key via extra_args (used for Bearer auth in API mode)
+    api_key = getattr(app_config, "api_key", "")
+    if api_key:
+        kwargs["extra_args"] = {"api_key": api_key}
+
     return ACEStepConfig(**kwargs)

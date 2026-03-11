@@ -8,6 +8,7 @@ from nicegui import run, ui
 
 from immich_memories.api.models import VideoClipInfo
 from immich_memories.ui.pages.step2_helpers import (
+    _download_immich_preview,
     _get_preview_path,
     format_duration,
     get_thumbnail,
@@ -57,14 +58,23 @@ def _render_review_clip_row(
                     else:
                         ui.element("div").classes("w-full h-24 bg-gray-200 rounded")
 
-                # Async preview loader — replaces thumbnail with video when ready
+                # Async preview loader — replaces thumbnail with video when ready.
+                # Tries local cache first, falls back to downloading from Immich.
                 def make_preview_loader(asset_id: str, container, vid_id: str):
                     async def load_preview():
-                        preview_path = await run.io_bound(_get_preview_path, asset_id)
-                        if preview_path:
-                            from nicegui import app as nicegui_app
+                        from nicegui import app as nicegui_app
 
-                            preview_url = nicegui_app.add_media_file(local_file=preview_path)
+                        # Try local cached preview first (fast, no network)
+                        preview_path = await run.io_bound(_get_preview_path, asset_id)
+
+                        # Fallback: download transcoded preview from Immich
+                        if not preview_path:
+                            preview_path = await run.io_bound(_download_immich_preview, asset_id)
+
+                        if preview_path:
+                            preview_url = nicegui_app.add_media_file(
+                                local_file=preview_path,
+                            )
                             container.clear()
                             with container:
                                 video_el = ui.video(preview_url).classes("w-full rounded")
