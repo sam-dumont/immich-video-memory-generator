@@ -155,7 +155,19 @@ docs: update installation instructions for macOS
 
 ### Documentation
 
-- Update README.md for user-facing changes
+- Docs live in `docs-site/docs/` and are built with [Docusaurus](https://docusaurus.io/)
+- Preview locally: `make docs-dev` (opens at http://localhost:3000)
+- Build: `make docs-build`
+- **When changing user-facing behavior**, update the corresponding docs page:
+  - CLI commands/flags → `docs-site/docs/cli/`
+  - UI wizard changes → `docs-site/docs/ui-walkthrough/`
+  - Config options → `docs-site/docs/configuration/`
+  - Hardware support → `docs-site/docs/hardware/`
+  - Music/audio → `docs-site/docs/music/`
+  - New features → `docs-site/docs/features/` (create new page if needed)
+- If adding new pages, update `docs-site/sidebars.ts`
+- To add screenshots: run the Playwright script (`npx tsx scripts/take-screenshots.ts`),
+  blur faces (`npx tsx scripts/blur-faces.ts`), and commit to `static/img/screenshots/`
 - Add docstrings to all public functions and classes
 - Include type hints in function signatures
 

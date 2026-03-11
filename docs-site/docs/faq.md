@@ -1,0 +1,48 @@
+---
+sidebar_position: 99
+title: FAQ
+---
+
+# FAQ
+
+**Does it modify my Immich library?**
+
+No. It's read-only. The tool downloads copies of your videos for analysis and processing. Nothing in your Immich database or file storage is changed.
+
+**What video formats does it support?**
+
+Anything FFmpeg can decode, which is basically everything — MP4, MOV, AVI, MKV, WebM, you name it. Output is always MP4 (H.264).
+
+**Can I use it without face recognition?**
+
+Yes. Skip the `--person` flag and it'll pull all videos from the selected time period. Face recognition just narrows the selection to videos containing a specific person.
+
+**How long does analysis take?**
+
+Depends on your library size and hardware. Rough numbers:
+
+- CPU only: ~1-2 minutes per video
+- GPU analysis enabled: ~15-30 seconds per video
+- With downscaling to 480p: roughly half the above
+
+Results are cached, so you only pay this cost once per video.
+
+**Can I run it headless?**
+
+Yes. The CLI works without a display. Use `immich-memories generate` with flags instead of `immich-memories ui`. Works fine over SSH, in Docker containers, and in CI pipelines.
+
+**Is it safe for production?**
+
+This project was built primarily with AI assistance. It works, it has tests, and it's read-only against your Immich library. But it generates AI content — music, clip selection, mood analysis — so results vary. Use at your own risk and review what it produces before showing it at grandma's birthday party.
+
+**Can I generate for multiple people at once?**
+
+Not in a single run. But you can script multiple runs — see the [Automation](./guides/automation.md) guide for examples.
+
+**How much disk space does it need?**
+
+The tool downloads videos temporarily for analysis. A rough estimate: 2x the total size of your source videos (original downloads + processed clips). The temporary files are cleaned up after generation. The final output video is typically 50-200MB for a 5-10 minute 1080p video.
+
+**Does it work on Apple Silicon?**
+
+Yes. VideoToolbox hardware acceleration is auto-detected. For music generation, ACE-Step works via MLX on Apple Silicon. For mood detection LLM, mlx-vlm is the recommended server.

@@ -312,10 +312,29 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Validate docs build (catches broken links, missing images, syntax errors)
+  docs:
+    name: Docs Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install docs dependencies
+        run: cd docs-site && npm ci
+
+      - name: Build docs
+        run: make docs-check
+
   # Summary job that other jobs can depend on
   ci-success:
     name: CI Success
-    needs: [lint, security, typecheck, test, test-extras, build]
+    needs: [lint, security, typecheck, test, test-extras, build, docs]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -326,7 +345,8 @@ jobs:
              [[ "${{ needs.typecheck.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
              [[ "${{ needs.test-extras.result }}" != "success" ]] || \
-             [[ "${{ needs.build.result }}" != "success" ]]; then
+             [[ "${{ needs.build.result }}" != "success" ]] || \
+             [[ "${{ needs.docs.result }}" != "success" ]]; then
             echo "One or more jobs failed"
             exit 1
           fi
