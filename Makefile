@@ -1,7 +1,7 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
-.PHONY: help install dev run preflight test test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity security-lint dead-code ci ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check
+.PHONY: help install dev run preflight test benchmark test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity security-lint dead-code ci ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli
 
 # Default target
 help:
@@ -18,6 +18,7 @@ help:
 	@echo "  test         Run all tests"
 	@echo "  test-cov     Run tests with coverage report"
 	@echo "  test-fast    Run tests without slow integration tests"
+	@echo "  benchmark    Run performance benchmarks"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  lint         Run ruff linter"
@@ -89,6 +90,9 @@ preflight:
 
 test:
 	uv run pytest -v
+
+benchmark:
+	uv run pytest tests/benchmarks/ -v --benchmark-only
 
 test-cov:
 	uv run pytest --cov=src/immich_memories --cov-report=html --cov-report=term-missing
@@ -297,6 +301,9 @@ release:
 # =============================================================================
 # Documentation (Docusaurus)
 # =============================================================================
+
+docs-cli:
+	uv run python scripts/generate_cli_docs.py
 
 docs-install:
 	cd docs-site && npm ci

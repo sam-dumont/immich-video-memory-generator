@@ -483,3 +483,8 @@ exclude_lines = [
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest-benchmark>=5.2.3",
+]

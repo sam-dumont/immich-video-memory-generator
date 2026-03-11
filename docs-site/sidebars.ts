@@ -38,6 +38,7 @@ const sidebars: SidebarsConfig = {
         'cli/hardware',
         'cli/runs',
         'cli/titles',
+        'cli/reference',
       ],
     },
     {

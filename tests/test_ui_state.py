@@ -1,0 +1,186 @@
+"""Tests for UI state management and helper functions."""
+
+from __future__ import annotations
+
+from immich_memories.ui.state import AppState, get_app_state, reset_app_state
+from tests.conftest import make_clip
+
+
+class TestAppStateDefaults:
+    """Test AppState default values."""
+
+    def test_default_step(self):
+        """Default step is 1."""
+        state = AppState()
+        assert state.step == 1
+
+    def test_default_config_not_saved(self):
+        """Config is not saved by default."""
+        state = AppState()
+        assert state.config_saved is False
+
+    def test_default_empty_clips(self):
+        """Clips list is empty by default."""
+        state = AppState()
+        assert state.clips == []
+
+    def test_default_empty_selected_ids(self):
+        """Selected clip IDs is empty by default."""
+        state = AppState()
+        assert state.selected_clip_ids == set()
+
+    def test_default_not_processing(self):
+        """Not processing by default."""
+        state = AppState()
+        assert state.processing is False
+
+    def test_default_pipeline_not_running(self):
+        """Pipeline not running by default."""
+        state = AppState()
+        assert state.pipeline_running is False
+
+    def test_default_time_period_mode(self):
+        """Default time period mode is 'year'."""
+        state = AppState()
+        assert state.time_period_mode == "year"
+
+
+class TestAppStateResetClips:
+    """Test reset_clips() method."""
+
+    def test_reset_clears_clips(self):
+        """reset_clips() empties the clips list."""
+        state = AppState()
+        state.clips = [make_clip("c1"), make_clip("c2")]
+        state.reset_clips()
+        assert state.clips == []
+
+    def test_reset_clears_selected_ids(self):
+        """reset_clips() empties selected_clip_ids."""
+        state = AppState()
+        state.selected_clip_ids = {"id1", "id2"}
+        state.reset_clips()
+        assert state.selected_clip_ids == set()
+
+    def test_reset_clears_segments(self):
+        """reset_clips() empties clip_segments."""
+        state = AppState()
+        state.clip_segments = {"id1": (0.0, 5.0)}
+        state.reset_clips()
+        assert state.clip_segments == {}
+
+    def test_reset_clears_pipeline_result(self):
+        """reset_clips() sets pipeline_result to None."""
+        state = AppState()
+        state.pipeline_result = {"some": "data"}
+        state.reset_clips()
+        assert state.pipeline_result is None
+
+    def test_reset_clears_rotations(self):
+        """reset_clips() empties clip_rotations."""
+        state = AppState()
+        state.clip_rotations = {"id1": 90}
+        state.reset_clips()
+        assert state.clip_rotations == {}
+
+
+class TestAppStateGetSelectedClips:
+    """Test get_selected_clips() method."""
+
+    def test_returns_matching_clips(self):
+        """get_selected_clips() returns clips whose asset.id is in selected_clip_ids."""
+        state = AppState()
+        c1 = make_clip("c1")
+        c2 = make_clip("c2")
+        c3 = make_clip("c3")
+        state.clips = [c1, c2, c3]
+        state.selected_clip_ids = {"c1", "c3"}
+
+        selected = state.get_selected_clips()
+        selected_ids = {c.asset.id for c in selected}
+        assert selected_ids == {"c1", "c3"}
+
+    def test_returns_empty_when_none_selected(self):
+        """get_selected_clips() returns empty when no IDs selected."""
+        state = AppState()
+        state.clips = [make_clip("c1")]
+        state.selected_clip_ids = set()
+        assert state.get_selected_clips() == []
+
+    def test_returns_empty_when_no_clips(self):
+        """get_selected_clips() returns empty when clips list is empty."""
+        state = AppState()
+        state.selected_clip_ids = {"c1"}
+        assert state.get_selected_clips() == []
+
+
+class TestAppStateSingleton:
+    """Test global state management."""
+
+    def test_get_returns_same_instance(self):
+        """get_app_state() returns the same instance on repeated calls."""
+        reset_app_state()
+        s1 = get_app_state()
+        s2 = get_app_state()
+        assert s1 is s2
+
+    def test_reset_creates_new_instance(self):
+        """reset_app_state() creates a fresh AppState."""
+        s1 = get_app_state()
+        s1.step = 3
+        s2 = reset_app_state()
+        assert s2.step == 1
+        assert s1 is not s2
+
+
+class TestFormatDuration:
+    """Test format_duration() helper."""
+
+    def test_zero_seconds(self):
+        """0 seconds formats as 0:00."""
+        from immich_memories.ui.pages.step2_helpers import format_duration
+
+        assert format_duration(0) == "0:00"
+
+    def test_sixty_five_seconds(self):
+        """65 seconds formats as 1:05."""
+        from immich_memories.ui.pages.step2_helpers import format_duration
+
+        assert format_duration(65) == "1:05"
+
+    def test_three_minutes(self):
+        """180 seconds formats as 3:00."""
+        from immich_memories.ui.pages.step2_helpers import format_duration
+
+        assert format_duration(180) == "3:00"
+
+    def test_large_duration(self):
+        """3600 seconds formats as 60:00."""
+        from immich_memories.ui.pages.step2_helpers import format_duration
+
+        assert format_duration(3600) == "60:00"
+
+
+class TestAppStateTransitions:
+    """Test state transitions."""
+
+    def test_step_change(self):
+        """Step can be changed."""
+        state = AppState()
+        state.step = 3
+        assert state.step == 3
+
+    def test_config_saved_flag(self):
+        """config_saved flag can be toggled."""
+        state = AppState()
+        assert state.config_saved is False
+        state.config_saved = True
+        assert state.config_saved is True
+
+    def test_pipeline_running_flag(self):
+        """pipeline_running flag tracks pipeline state."""
+        state = AppState()
+        state.pipeline_running = True
+        assert state.pipeline_running is True
+        state.pipeline_running = False
+        assert state.pipeline_running is False
