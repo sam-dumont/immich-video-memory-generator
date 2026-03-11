@@ -19,7 +19,7 @@ You get a grid of thumbnails for every detected scene. Each clip shows:
 
 ## Duplicate Detection
 
-Clips flagged as near-duplicates are grouped and highlighted. This happens a lot if you have burst recordings or multiple takes of the same moment. The tool uses perceptual hashing to catch these — it's not pixel-perfect comparison, it's "does this look basically the same."
+Clips flagged as near-duplicates are grouped and highlighted. This happens a lot if you have burst recordings or multiple takes of the same moment. The tool uses perceptual hashing to catch these: it's not pixel-perfect comparison, it's "does this look basically the same."
 
 ## Selecting and Deselecting
 

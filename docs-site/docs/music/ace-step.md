@@ -5,7 +5,7 @@ title: ACE-Step
 
 # ACE-Step
 
-ACE-Step 1.5 generates higher-quality instrumental tracks than MusicGen. It supports explicit musical parameters — BPM, key, time signature — passed as structured API fields rather than crammed into a text prompt.
+ACE-Step 1.5 generates higher-quality instrumental tracks than MusicGen. It supports explicit musical parameters (BPM, key, time signature) passed as structured API fields rather than crammed into a text prompt.
 
 About ~20 seconds per 30-second track on an 8GB GPU.
 

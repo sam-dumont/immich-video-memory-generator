@@ -37,7 +37,7 @@ This prints what backends are available, which one would be selected, and the sp
 
 ## Per-backend details
 
-- [NVIDIA](./nvidia.md) — NVENC/NVDEC, CUDA scaling and face detection
-- [Apple Silicon](./apple-silicon.md) — VideoToolbox, Vision Framework, mlx-vlm
-- [Intel Quick Sync](./intel-qsv.md) — QSV encoding and scaling
-- [AMD VAAPI](./amd-vaapi.md) — VAAPI encoding and scaling (Linux only)
+- [NVIDIA](./nvidia.md): NVENC/NVDEC, CUDA scaling and face detection
+- [Apple Silicon](./apple-silicon.md): VideoToolbox, Vision Framework, mlx-vlm
+- [Intel Quick Sync](./intel-qsv.md): QSV encoding and scaling
+- [AMD VAAPI](./amd-vaapi.md): VAAPI encoding and scaling (Linux only)

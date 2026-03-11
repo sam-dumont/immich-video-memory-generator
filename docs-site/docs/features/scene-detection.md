@@ -25,9 +25,9 @@ analysis:
 
 The `scene_threshold` controls sensitivity:
 
-- **Lower values** (e.g., 20) — more sensitive, detects subtle lighting changes. Can over-segment.
-- **Default (27.0)** — works well for typical home videos.
-- **Higher values** (e.g., 35) — only detects hard cuts. Misses gradual transitions.
+- **Lower values** (e.g., 20): more sensitive, detects subtle lighting changes. Can over-segment.
+- **Default (27.0)**: works well for typical home videos.
+- **Higher values** (e.g., 35): only detects hard cuts. Misses gradual transitions.
 
 ### Duration constraints
 
@@ -38,7 +38,7 @@ After scene detection splits the video:
 
 ## When scene detection is off
 
-If you set `use_scene_detection: false`, the pipeline falls back to fixed-interval splitting. This is faster but produces worse results — you'll get cuts mid-sentence and mid-action.
+If you set `use_scene_detection: false`, the pipeline falls back to fixed-interval splitting. This is faster but produces worse results: you'll get cuts mid-sentence and mid-action.
 
 ## What happens next
 

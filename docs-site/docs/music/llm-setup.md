@@ -5,7 +5,7 @@ title: LLM Setup for Mood Detection
 
 # LLM Setup for Mood Detection
 
-The music pipeline needs a vision LLM to analyze video keyframes and detect mood. Any server that speaks the OpenAI `/v1/chat/completions` endpoint works — it just needs to handle image inputs.
+The music pipeline needs a vision LLM to analyze video keyframes and detect mood. Any server that speaks the OpenAI `/v1/chat/completions` endpoint works: it just needs to handle image inputs.
 
 ## mlx-vlm (Recommended on Apple Silicon)
 
@@ -45,7 +45,7 @@ llm:
   model: "llava"
 ```
 
-Ollama uses its own native API format (not OpenAI-compatible), so make sure you set `provider: "ollama"` — not `"openai-compatible"`.
+Ollama uses its own native API format (not OpenAI-compatible), so make sure you set `provider: "ollama"`: not `"openai-compatible"`.
 
 ## Cloud APIs (Groq, OpenAI, etc.)
 
@@ -80,4 +80,4 @@ It gets 4-5 keyframes from your video and returns a JSON blob with:
 - Tempo suggestion (slow/medium/fast)
 - Genre suggestions (acoustic, cinematic, ambient, etc.)
 
-This gets translated into generation parameters for ACE-Step or MusicGen. The whole analysis takes a few seconds per video — it's not the bottleneck.
+This gets translated into generation parameters for ACE-Step or MusicGen. The whole analysis takes a few seconds per video: it's not the bottleneck.

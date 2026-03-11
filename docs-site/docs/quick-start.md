@@ -9,7 +9,7 @@ Three steps. Should take about 2 minutes.
 
 ## 1. Install
 
-The fastest way — no clone needed:
+The fastest way: no clone needed:
 
 ```bash
 uvx immich-memories --help
@@ -59,4 +59,4 @@ immich-memories ui
 immich-memories generate --period "last 30 days" --duration 5
 ```
 
-That's it. The UI will walk you through the rest — picking people, time ranges, music, and output settings.
+That's it. The UI will walk you through the rest: picking people, time ranges, music, and output settings.

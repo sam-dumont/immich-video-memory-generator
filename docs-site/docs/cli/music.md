@@ -33,7 +33,7 @@ The local music directory defaults to `~/Music/Memories` (configurable via `audi
 
 ## music analyze
 
-Analyzes a video file to determine its mood. Uses your configured LLM (Ollama or OpenAI-compatible) to extract keyframes and figure out the overall vibe — energy level, color palette, tempo suggestion, genre recommendations.
+Analyzes a video file to determine its mood. Uses your configured LLM (Ollama or OpenAI-compatible) to extract keyframes and figure out the overall vibe: energy level, color palette, tempo suggestion, genre recommendations.
 
 ```bash
 immich-memories music analyze VIDEO_PATH [OPTIONS]
@@ -54,7 +54,7 @@ Output includes primary/secondary mood, energy level, suggested tempo, color pal
 
 ## music add
 
-Adds background music to an existing video. Includes automatic audio ducking — the music volume drops when speech or other sounds are detected.
+Adds background music to an existing video. Includes automatic audio ducking: the music volume drops when speech or other sounds are detected.
 
 ```bash
 immich-memories music add VIDEO_PATH OUTPUT_PATH [OPTIONS]

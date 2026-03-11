@@ -5,7 +5,7 @@ title: Your First Video
 
 # Your First Video
 
-This assumes you have Immich running and some videos in your library. If not, go set that up first — this tool is useless without it.
+This assumes you have Immich running and some videos in your library. If not, go set that up first: this tool is useless without it.
 
 ## 1. Install
 
@@ -35,19 +35,19 @@ immich-memories ui
 
 Opens at `http://localhost:8080`.
 
-## 4. Step 1 — Configuration
+## 4. Step 1: Configuration
 
 - Your Immich connection should already be filled in from the config file.
 - Pick a person from the dropdown (or skip it to use all videos).
-- Choose a time period. Start with a single year — it keeps the first run fast.
+- Choose a time period. Start with a single year: it keeps the first run fast.
 
-## 5. Step 2 — Clip Review
+## 5. Step 2: Clip Review
 
 The tool downloads and analyzes your videos. This takes a while on the first run (roughly 1-2 minutes per video on CPU, much faster with GPU).
 
 Once analysis finishes, you'll see a grid of detected scenes. The best clips are pre-selected. Deselect anything you don't want.
 
-## 6. Step 3 — Generation Options
+## 6. Step 3: Generation Options
 
 For your first video, keep it simple:
 
@@ -55,7 +55,7 @@ For your first video, keep it simple:
 - **Resolution**: 1080p
 - **Music**: None (unless you've already set up a music backend)
 
-## 7. Step 4 — Generate
+## 7. Step 4: Generate
 
 Click generate. Wait. Download your video when it's done.
 

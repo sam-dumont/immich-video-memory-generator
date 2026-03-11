@@ -1,14 +1,18 @@
-"""Integration tests for the SmartPipeline end-to-end flow."""
+"""Integration tests for the SmartPipeline end-to-end flow.
+
+Tests the pipeline through its public API (run()) by mocking at external
+boundaries (caches, clients) rather than internal methods. Changing
+internal method names or restructuring phases should not break these tests.
+"""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from immich_memories.analysis.smart_pipeline import (
-    ClipWithSegment,
     JobCancelledException,
     PipelineConfig,
     PipelineResult,
@@ -37,16 +41,27 @@ def _make_clips(count: int, *, is_favorite: bool = False, hdr: bool = False) -> 
     return clips
 
 
-def _fake_analyze(pipeline: SmartPipeline, clips: list) -> list[ClipWithSegment]:
-    """Return ClipWithSegment for each clip (simulates analysis)."""
-    return [
-        ClipWithSegment(clip=clip, start_time=0.0, end_time=5.0, score=0.5 + i * 0.01)
-        for i, clip in enumerate(clips)
-    ]
+def _make_cached_analysis(asset_id: str, score: float = 0.5) -> MagicMock:
+    """Build a mock CachedVideoAnalysis with one segment so analysis uses cache."""
+    segment = MagicMock()
+    segment.start_time = 0.0
+    segment.end_time = 5.0
+    segment.total_score = score
+    segment.face_score = 0.3
+    segment.motion_score = 0.2
+    segment.stability_score = 0.4
+    segment.llm_description = None
+    segment.llm_emotion = None
+    segment.audio_categories = None
+
+    analysis = MagicMock()
+    analysis.asset_id = asset_id
+    analysis.segments = [segment]
+    return analysis
 
 
 class TestSmartPipelineIntegration:
-    """End-to-end tests for SmartPipeline."""
+    """End-to-end tests for SmartPipeline through the public run() API."""
 
     def _make_pipeline(
         self,
@@ -62,31 +77,34 @@ class TestSmartPipelineIntegration:
             config=config or PipelineConfig(target_clips=10, avg_clip_duration=5.0),
         )
 
-    @patch(
-        "immich_memories.analysis.duplicates.deduplicate_by_thumbnails",
-        side_effect=lambda **kw: kw["clips"],
-    )
+    def _setup_cache_for_clips(self, mock_cache: MagicMock, clips: list) -> None:
+        """Configure mock cache to return cached analysis for all clips."""
+
+        def get_analysis(asset_id: str, include_segments: bool = True):
+            return _make_cached_analysis(asset_id)
+
+        mock_cache.get_analysis.side_effect = get_analysis
+
     def test_full_run_returns_pipeline_result(
         self,
-        _mock_dedup,
         mock_immich_client,
         mock_analysis_cache,
         mock_thumbnail_cache,
         sample_config,
     ):
-        """Full 4-phase run with synthetic clips returns a PipelineResult."""
+        """Full pipeline run with cached analysis returns a PipelineResult."""
+        clips = _make_clips(10, is_favorite=True)
+
+        self._setup_cache_for_clips(mock_analysis_cache, clips)
+
         pipeline = self._make_pipeline(
             mock_immich_client,
             mock_analysis_cache,
             mock_thumbnail_cache,
             config=PipelineConfig(target_clips=5, avg_clip_duration=5.0, analyze_all=True),
         )
-        clips = _make_clips(10, is_favorite=True)
 
-        with patch.object(
-            pipeline, "_phase_analyze", side_effect=lambda c: _fake_analyze(pipeline, c)
-        ):
-            result = pipeline.run(clips)
+        result = pipeline.run(clips)
 
         assert isinstance(result, PipelineResult)
         assert len(result.selected_clips) > 0
@@ -94,13 +112,8 @@ class TestSmartPipelineIntegration:
         assert isinstance(result.stats, dict)
         assert "selected_count" in result.stats
 
-    @patch(
-        "immich_memories.analysis.duplicates.deduplicate_by_thumbnails",
-        side_effect=lambda **kw: kw["clips"],
-    )
     def test_empty_clips_returns_empty_result(
         self,
-        _mock_dedup,
         mock_immich_client,
         mock_analysis_cache,
         mock_thumbnail_cache,
@@ -113,21 +126,15 @@ class TestSmartPipelineIntegration:
             mock_thumbnail_cache,
         )
 
-        with patch.object(pipeline, "_phase_analyze", return_value=[]):
-            result = pipeline.run([])
+        result = pipeline.run([])
 
         assert isinstance(result, PipelineResult)
         assert result.selected_clips == []
         assert result.clip_segments == {}
         assert result.errors == []
 
-    @patch(
-        "immich_memories.analysis.duplicates.deduplicate_by_thumbnails",
-        side_effect=lambda **kw: kw["clips"],
-    )
     def test_hdr_only_filters_sdr_clips(
         self,
-        _mock_dedup,
         mock_immich_client,
         mock_analysis_cache,
         mock_thumbnail_cache,
@@ -144,48 +151,38 @@ class TestSmartPipelineIntegration:
 
         hdr_clips = _make_clips(3, hdr=True, is_favorite=False)
         sdr_clips = _make_clips(3, hdr=False, is_favorite=False)
-        # Differentiate IDs
         for i, c in enumerate(sdr_clips):
             c.asset.id = f"sdr-{i:03d}"
 
         all_clips = hdr_clips + sdr_clips
+        self._setup_cache_for_clips(mock_analysis_cache, all_clips)
 
-        with patch.object(
-            pipeline, "_phase_analyze", side_effect=lambda c: _fake_analyze(pipeline, c)
-        ):
-            result = pipeline.run(all_clips)
+        result = pipeline.run(all_clips)
 
-        # SDR non-favorites should be filtered out in phase 2
         sdr_ids = {c.asset.id for c in sdr_clips}
         selected_ids = {c.asset.id for c in result.selected_clips}
         assert sdr_ids.isdisjoint(selected_ids), "SDR clips should not appear in HDR-only results"
 
-    @patch(
-        "immich_memories.analysis.duplicates.deduplicate_by_thumbnails",
-        side_effect=lambda **kw: kw["clips"],
-    )
     def test_progress_callback_invoked(
         self,
-        _mock_dedup,
         mock_immich_client,
         mock_analysis_cache,
         mock_thumbnail_cache,
         sample_config,
     ):
         """Progress callback is called during pipeline execution."""
+        clips = _make_clips(5, is_favorite=True)
+        self._setup_cache_for_clips(mock_analysis_cache, clips)
+
         pipeline = self._make_pipeline(
             mock_immich_client,
             mock_analysis_cache,
             mock_thumbnail_cache,
             config=PipelineConfig(target_clips=5, analyze_all=True),
         )
-        clips = _make_clips(5, is_favorite=True)
         callback = MagicMock()
 
-        with patch.object(
-            pipeline, "_phase_analyze", side_effect=lambda c: _fake_analyze(pipeline, c)
-        ):
-            pipeline.run(clips, progress_callback=callback)
+        pipeline.run(clips, progress_callback=callback)
 
         assert callback.call_count >= 1, "Progress callback should be called at least once"
 
@@ -207,19 +204,17 @@ class TestSmartPipelineIntegration:
         with pytest.raises(JobCancelledException):
             pipeline.run(_make_clips(5, is_favorite=True))
 
-    @patch(
-        "immich_memories.analysis.duplicates.deduplicate_by_thumbnails",
-        side_effect=lambda **kw: kw["clips"],
-    )
-    def test_analyze_all_sends_all_clips(
+    def test_analyze_all_sends_all_clips_to_analysis(
         self,
-        _mock_dedup,
         mock_immich_client,
         mock_analysis_cache,
         mock_thumbnail_cache,
         sample_config,
     ):
-        """analyze_all mode sends all clips to analysis phase."""
+        """analyze_all mode processes all clips through the pipeline."""
+        clips = _make_clips(8, is_favorite=False)
+        self._setup_cache_for_clips(mock_analysis_cache, clips)
+
         config = PipelineConfig(target_clips=5, analyze_all=True)
         pipeline = self._make_pipeline(
             mock_immich_client,
@@ -227,16 +222,40 @@ class TestSmartPipelineIntegration:
             mock_thumbnail_cache,
             config=config,
         )
-        clips = _make_clips(8, is_favorite=False)
 
-        analyze_calls: list = []
+        pipeline.run(clips)
 
-        def capture_analyze(c: list) -> list[ClipWithSegment]:
-            analyze_calls.append(len(c))
-            return _fake_analyze(pipeline, c)
+        # All 8 clips should have been looked up in cache (one call per clip)
+        cache_calls = mock_analysis_cache.get_analysis.call_args_list
+        queried_ids = {call.args[0] for call in cache_calls}
+        clip_ids = {c.asset.id for c in clips}
+        assert clip_ids.issubset(queried_ids), "All clips should have been queried in the cache"
 
-        with patch.object(pipeline, "_phase_analyze", side_effect=capture_analyze):
-            pipeline.run(clips)
+    def test_favorites_always_analyzed(
+        self,
+        mock_immich_client,
+        mock_analysis_cache,
+        mock_thumbnail_cache,
+        sample_config,
+    ):
+        """Favorites are always included regardless of non-favorite filters."""
+        favorites = _make_clips(3, is_favorite=True)
+        non_favorites = _make_clips(5, is_favorite=False)
+        for i, c in enumerate(non_favorites):
+            c.asset.id = f"nonfav-{i:03d}"
 
-        # All 8 clips should reach analysis (minus any < min duration)
-        assert analyze_calls[0] == 8
+        all_clips = favorites + non_favorites
+        self._setup_cache_for_clips(mock_analysis_cache, all_clips)
+
+        pipeline = self._make_pipeline(
+            mock_immich_client,
+            mock_analysis_cache,
+            mock_thumbnail_cache,
+            config=PipelineConfig(target_clips=5, analyze_all=False),
+        )
+
+        result = pipeline.run(all_clips)
+
+        selected_ids = {c.asset.id for c in result.selected_clips}
+        fav_ids = {c.asset.id for c in favorites}
+        assert fav_ids.issubset(selected_ids), "All favorites should be in the final selection"
