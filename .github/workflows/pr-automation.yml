@@ -22,7 +22,6 @@ jobs:
     steps:
       - uses: actions/labeler@v5
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
           configuration-path: .github/labeler.yml
 
   # Validate PR title follows conventional commits
@@ -116,8 +115,8 @@ jobs:
     steps:
       - uses: actions/first-interaction@v2
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          pr-message: |
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          pr_message: |
             Thanks for your first contribution to Immich Memories! 🎉
 
             A maintainer will review your PR soon. In the meantime, please make sure:
@@ -126,7 +125,7 @@ jobs:
             - [ ] You've added tests for new functionality
 
             Need help? Check out our [contributing guide](CONTRIBUTING.md).
-          issue-message: |
+          issue_message: |
             Thanks for opening your first issue! 🙌
 
             We'll look into this as soon as possible. If you'd like to help fix this issue,
