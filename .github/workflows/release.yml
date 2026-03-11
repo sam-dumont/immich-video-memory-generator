@@ -265,6 +265,16 @@ jobs:
           name: dist-release
           path: dist/
 
+      - name: Summary
+        if: inputs.dry_run != 'true'
+        env:
+          NEXT_VERSION: ${{ needs.analyze.outputs.next_version }}
+        run: |
+          echo "## Release v$NEXT_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Published packages:" >> $GITHUB_STEP_SUMMARY
+          ls -la dist/ >> $GITHUB_STEP_SUMMARY
+
       - name: Dry run summary
         if: inputs.dry_run == 'true'
         run: |
@@ -275,6 +285,28 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Built packages:" >> $GITHUB_STEP_SUMMARY
           ls -la dist/ >> $GITHUB_STEP_SUMMARY
+
+  # Publish to PyPI using Trusted Publishers (OIDC — no API tokens needed)
+  pypi-publish:
+    name: Publish to PyPI
+    needs: [analyze, release]
+    if: inputs.dry_run != 'true' && needs.analyze.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/immich-memories/
+    permissions:
+      id-token: write  # Required for OIDC trusted publishing
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: dist-release
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
 
   # Deploy docs after release (GITHUB_TOKEN events don't trigger other workflows,
   # so we call the docs workflow directly instead of relying on release:published)
