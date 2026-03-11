@@ -276,6 +276,20 @@ jobs:
           echo "### Built packages:" >> $GITHUB_STEP_SUMMARY
           ls -la dist/ >> $GITHUB_STEP_SUMMARY
 
+  # Deploy docs after release (GITHUB_TOKEN events don't trigger other workflows,
+  # so we call the docs workflow directly instead of relying on release:published)
+  deploy-docs:
+    name: Deploy Docs
+    needs: [analyze, release]
+    if: inputs.dry_run != 'true' && needs.analyze.outputs.should_release == 'true'
+    uses: ./.github/workflows/docs.yml
+    with:
+      version: v${{ needs.analyze.outputs.next_version }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
   # Build and push Docker images using native runners per platform
   docker-build:
     name: Build Docker Image (${{ matrix.platform }})
