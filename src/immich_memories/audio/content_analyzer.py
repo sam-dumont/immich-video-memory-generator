@@ -25,7 +25,7 @@ from immich_memories.audio.audio_models import (
     get_audio_content_score,
 )
 from immich_memories.audio.energy_analysis import EnergyAnalysisMixin
-from immich_memories.audio.yamnet_analysis import YAMNetAnalysisMixin
+from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
 
 if TYPE_CHECKING:
     pass
@@ -44,39 +44,42 @@ __all__ = [
 ]
 
 
-class AudioContentAnalyzer(YAMNetAnalysisMixin, EnergyAnalysisMixin):
+class AudioContentAnalyzer(PANNsAnalysisMixin, EnergyAnalysisMixin):
     """Analyze audio content in videos for scoring and boundary detection.
 
     Supports two modes:
-    1. YAMNet-based classification (requires tensorflow/tensorflow_hub)
+    1. PANNs-based classification (requires torch/panns-inference)
     2. Energy-based heuristics (fallback, always available)
     """
 
     def __init__(
         self,
-        use_yamnet: bool = True,
-        sample_rate: int = 16000,
+        use_panns: bool = True,
+        sample_rate: int = 32000,
         window_size: float = 0.5,
         min_confidence: float = 0.3,
         laughter_confidence: float = 0.2,  # Lower threshold for laughter (subtle sounds)
+        # Backward compat: accept use_yamnet as alias
+        use_yamnet: bool | None = None,
     ):
         """Initialize the audio content analyzer.
 
         Args:
-            use_yamnet: Try to use YAMNet for classification (falls back if unavailable).
+            use_panns: Try to use PANNs for classification (falls back if unavailable).
             sample_rate: Audio sample rate for analysis.
             window_size: Analysis window size in seconds.
             min_confidence: Minimum confidence threshold for event detection.
             laughter_confidence: Lower threshold for laughter/baby sounds (often quieter).
+            use_yamnet: Deprecated alias for use_panns.
         """
-        self.use_yamnet = use_yamnet
+        self.use_panns = use_yamnet if use_yamnet is not None else use_panns
         self.sample_rate = sample_rate
         self.window_size = window_size
         self.min_confidence = min_confidence
         self.laughter_confidence = laughter_confidence
 
-        self._yamnet_model = None
-        self._yamnet_available = None
+        self._panns_model = None
+        self._panns_available = None
         self._class_names = None
 
     def _extract_audio(self, video_path: Path) -> tuple[np.ndarray, int] | None:
@@ -165,9 +168,9 @@ class AudioContentAnalyzer(YAMNetAnalysisMixin, EnergyAnalysisMixin):
                 f"Audio/video duration mismatch: audio={audio_duration:.2f}s, video={video_duration:.2f}s"
             )
 
-        # Try YAMNet first if enabled
-        if self.use_yamnet and self._check_yamnet_available():
-            return self._analyze_with_yamnet(audio_array, sample_rate, max_duration)
+        # Try PANNs first if enabled
+        if self.use_panns and self._check_panns_available():
+            return self._analyze_with_panns(audio_array, sample_rate, max_duration)
 
         # Fall back to energy-based analysis
         return self._analyze_with_energy(audio_array, sample_rate, max_duration)

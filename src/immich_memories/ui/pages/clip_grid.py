@@ -96,6 +96,30 @@ def _get_clip_badges(clip: VideoClipInfo) -> list[str]:
     return badges
 
 
+# Colors for audio category tags (muted, distinct)
+_CATEGORY_COLORS: dict[str, str] = {
+    "laughter": "pink-4",
+    "baby": "pink-3",
+    "speech": "blue-grey-4",
+    "singing": "purple-4",
+    "music": "deep-purple-4",
+    "engine": "orange-6",
+    "nature": "green-5",
+    "crowd": "amber-6",
+    "animals": "brown-4",
+}
+
+
+def _render_audio_categories(clip: VideoClipInfo) -> None:
+    """Render detected audio category tags on a clip card."""
+    if not clip.audio_categories:
+        return
+    with ui.row().classes("gap-1 flex-wrap mt-1"):
+        for cat in clip.audio_categories:
+            color = _CATEGORY_COLORS.get(cat, "grey-5")
+            ui.badge(cat, color=color).classes("text-xs")
+
+
 def _render_clip_badges(badges: list[str]) -> None:
     """Render badge icons/labels for a clip card."""
     if badges:
@@ -134,6 +158,9 @@ def _render_clip_card(
 
         # Badges
         _render_clip_badges(_get_clip_badges(clip))
+
+        # Audio category tags (shown after analysis)
+        _render_audio_categories(clip)
 
         # Date and duration
         ui.label(date_str).classes("font-semibold text-sm")

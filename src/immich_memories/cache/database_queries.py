@@ -103,11 +103,25 @@ class DatabaseQueryMixin:
         return [self._row_to_segment(row) for row in rows]
 
     def _row_to_segment(self, row: sqlite3.Row) -> CachedSegment:
-        """Convert database row to CachedSegment."""
+        """Convert database row to CachedSegment (including LLM + audio data)."""
         face_positions = None
         if row["face_positions"]:
             positions = json.loads(row["face_positions"])
             face_positions = [tuple(p) for p in positions]
+
+        # Safely access v6+ columns (absent in pre-migration databases)
+        keys = row.keys()
+
+        def _str(name: str) -> str | None:
+            return str(row[name]) if name in keys and row[name] is not None else None
+
+        def _float(name: str) -> float | None:
+            val = row[name] if name in keys else None
+            return float(val) if val is not None else None
+
+        activities_raw = _str("llm_activities")
+        subjects_raw = _str("llm_subjects")
+        audio_cats_raw = _str("audio_categories")
 
         return CachedSegment(
             segment_index=row["segment_index"],
@@ -123,6 +137,14 @@ class DatabaseQueryMixin:
             face_positions=face_positions,
             motion_vectors=(json.loads(row["motion_vectors"]) if row["motion_vectors"] else None),
             keyframe_path=row["keyframe_path"],
+            llm_description=_str("llm_description"),
+            llm_emotion=_str("llm_emotion"),
+            llm_setting=_str("llm_setting"),
+            llm_activities=(json.loads(activities_raw) if activities_raw else None),
+            llm_subjects=(json.loads(subjects_raw) if subjects_raw else None),
+            llm_interestingness=_float("llm_interestingness"),
+            llm_quality=_float("llm_quality"),
+            audio_categories=(json.loads(audio_cats_raw) if audio_cats_raw else None),
         )
 
     def needs_reanalysis(

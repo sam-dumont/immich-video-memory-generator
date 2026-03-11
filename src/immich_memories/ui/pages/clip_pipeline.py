@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import logging
 from typing import Any
 
@@ -94,10 +95,14 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
     phase_container = ui.column().classes("w-full mb-4")
     progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-full")
 
-    # Stats row: counts + ETA + speed
-    stats_container = ui.row().classes(
-        "w-full justify-between items-center text-sm text-gray-600 mt-1"
-    )
+    # Stats row: persistent labels updated via set_text (avoids clear/rebuild churn)
+    with ui.row().classes("w-full justify-between items-center text-sm text-gray-600 mt-1"):
+        stats_clips_label = ui.label("0/0 clips").classes("font-medium")
+        stats_elapsed_label = ui.label("Elapsed: 0s")
+        stats_speed_label = ui.label("")
+        stats_avg_label = ui.label("")
+        stats_eta_label = ui.label("ETA: --").classes("font-medium")
+        stats_errors_label = ui.label("").classes("text-orange-600")
 
     status_label = ui.label("Starting pipeline...")
 
@@ -130,6 +135,7 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
         "last_completed_llm_emotion": None,
         "last_completed_llm_interestingness": None,
         "last_completed_llm_quality": None,
+        "last_completed_audio_categories": None,
         "done": False,
         "error": None,
         "cancelled": False,
@@ -169,6 +175,7 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
         "current_asset_id": None,
         "last_completed_asset_id": None,
         "phase_number": -1,
+        "prev_media_url": None,  # Track previous media route for cleanup
     }
 
     def poll_progress() -> None:
@@ -186,26 +193,19 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
         # Progress bar — lightweight update
         progress_bar.value = progress_state["progress_fraction"]
 
-        # Stats row — lightweight text updates (rebuild is cheap, no media)
-        stats_container.clear()
-        with stats_container:
-            idx = progress_state["current_index"]
-            total = progress_state["total_items"]
-            errors = progress_state["error_count"]
-            eta = progress_state["eta"]
-            elapsed = progress_state["elapsed"]
-            speed = progress_state["speed_ratio"]
-            avg = progress_state["avg_duration"]
+        # Stats row — update existing labels in-place (no clear/rebuild churn)
+        idx = progress_state["current_index"]
+        total = progress_state["total_items"]
+        errors = progress_state["error_count"]
+        speed = progress_state["speed_ratio"]
+        avg = progress_state["avg_duration"]
 
-            ui.label(f"{idx}/{total} clips").classes("font-medium")
-            ui.label(f"Elapsed: {elapsed}")
-            if speed > 0:
-                ui.label(f"Speed: {speed:.1f}x realtime")
-            if avg > 0:
-                ui.label(f"~{avg:.1f}s/clip")
-            ui.label(f"ETA: {eta}").classes("font-medium")
-            if errors > 0:
-                ui.label(f"{errors} errors").classes("text-orange-600")
+        stats_clips_label.set_text(f"{idx}/{total} clips")
+        stats_elapsed_label.set_text(f"Elapsed: {progress_state['elapsed']}")
+        stats_speed_label.set_text(f"Speed: {speed:.1f}x realtime" if speed > 0 else "")
+        stats_avg_label.set_text(f"~{avg:.1f}s/clip" if avg > 0 else "")
+        stats_eta_label.set_text(f"ETA: {progress_state['eta']}")
+        stats_errors_label.set_text(f"{errors} errors" if errors > 0 else "")
 
         # Status text
         if not progress_state["cancelled"]:
@@ -257,6 +257,16 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
                                 video_url = nicegui_app.add_media_file(
                                     local_file=preview_path,
                                 )
+
+                                # Clean up PREVIOUS route (not current) to prevent
+                                # accumulation — delayed by one cycle so the browser
+                                # finishes streaming the old video first.
+                                prev_url = _rendered_state.get("prev_media_url")
+                                if prev_url and prev_url != video_url:
+                                    with contextlib.suppress(Exception):
+                                        nicegui_app.remove_route(prev_url)
+                                _rendered_state["prev_media_url"] = video_url
+
                                 ui.video(video_url).classes("w-full rounded").props(
                                     "muted autoplay loop"
                                 )
@@ -304,6 +314,26 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
                             with ui.row().classes("gap-1 mt-1 flex-wrap"):
                                 for b in badges:
                                     ui.badge(b, color="purple").props("outline").classes("text-xs")
+
+                        # Audio categories
+                        audio_cats = progress_state["last_completed_audio_categories"]
+                        if audio_cats:
+                            _cat_colors = {
+                                "laughter": "pink-4",
+                                "baby": "pink-3",
+                                "speech": "blue-grey-4",
+                                "singing": "purple-4",
+                                "music": "deep-purple-4",
+                                "engine": "orange-6",
+                                "nature": "green-5",
+                                "crowd": "amber-6",
+                                "animals": "brown-4",
+                            }
+                            with ui.row().classes("gap-1 mt-1 flex-wrap"):
+                                ui.icon("hearing", color="blue").classes("text-sm")
+                                for cat in audio_cats:
+                                    color = _cat_colors.get(cat, "grey-5")
+                                    ui.badge(cat, color=color).classes("text-xs")
 
         # Handle completion
         if progress_state["done"]:
@@ -388,6 +418,9 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
                         )
                         progress_state["last_completed_llm_quality"] = status.get(
                             "last_completed_llm_quality"
+                        )
+                        progress_state["last_completed_audio_categories"] = status.get(
+                            "last_completed_audio_categories"
                         )
 
                     result = pipeline.run(clips=clips, progress_callback=on_progress)

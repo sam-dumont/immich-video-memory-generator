@@ -90,8 +90,8 @@ src/immich_memories/
 │   └── transition_blend.py     # Frame-level transition blending
 │
 ├── audio/                      # Audio processing
-│   ├── content_analyzer.py     # YAMNet audio classification
-│   ├── yamnet_analysis.py      # YAMNet analysis helpers
+│   ├── content_analyzer.py     # PANNs audio classification
+│   ├── panns_analysis.py       # PANNs (PyTorch AudioSet) mixin
 │   ├── energy_analysis.py      # Audio energy analysis
 │   ├── audio_models.py         # Audio data models
 │   ├── mixer.py                # Audio mixing & ducking (re-exports)
