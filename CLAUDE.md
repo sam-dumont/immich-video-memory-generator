@@ -117,6 +117,20 @@ locally, CI will pass too. Use conventional commit message format (see above).
 - **Re-export shims** preserve backward compatibility when moving code
 - After any structural changes, update `ARCHITECTURE.md` to reflect new layout
 
+### Documentation Freshness
+
+- When modifying user-facing features (CLI flags, UI steps, config options, API behavior),
+  **you MUST update the corresponding Docusaurus page** in `docs-site/docs/`.
+- Run `make docs-build` after any docs change to verify the build passes.
+- The mapping of code → docs pages:
+  - CLI commands/flags → `docs-site/docs/cli/`
+  - UI wizard changes → `docs-site/docs/ui-walkthrough/`
+  - Config options → `docs-site/docs/configuration/`
+  - Hardware support → `docs-site/docs/hardware/`
+  - Music/audio → `docs-site/docs/music/`
+  - New features → `docs-site/docs/features/` (create new page if needed)
+- After structural changes, also update `docs-site/sidebars.ts` if new pages were added.
+
 ### Makefile Is The Single Source of Truth
 
 - CI (`ci.yml`) uses `make` targets — not raw commands

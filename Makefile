@@ -1,7 +1,7 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
-.PHONY: help install dev run preflight test test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity security-lint dead-code ci ensure-dev commitlint pip-audit
+.PHONY: help install dev run preflight test test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity security-lint dead-code ci ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check
 
 # Default target
 help:
@@ -46,6 +46,12 @@ help:
 	@echo "  clean-video-cache     Clear video file cache"
 	@echo "  clean-thumbnail-cache Clear thumbnail cache"
 	@echo "  clean-all-cache       Clear all caches"
+	@echo ""
+	@echo "Documentation:"
+	@echo "  docs-install Install docs site dependencies"
+	@echo "  docs-dev     Start docs dev server"
+	@echo "  docs-build   Build docs site for production"
+	@echo "  docs-check   Validate docs build (used in CI)"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  clean        Remove build artifacts"
@@ -287,3 +293,24 @@ version:
 release:
 	uv run semantic-release version
 	uv run semantic-release publish
+
+# =============================================================================
+# Documentation (Docusaurus)
+# =============================================================================
+
+docs-install:
+	cd docs-site && npm ci
+
+docs-dev:
+	cd docs-site && npm start
+
+docs-build:
+	cd docs-site && npm run build
+
+docs-check:
+	@cd docs-site && npm run build 2>&1 | tee /tmp/docs-build.log; \
+	if grep -qiE '(error|broken link)' /tmp/docs-build.log; then \
+		echo "Docs build has errors — see output above"; \
+		exit 1; \
+	fi; \
+	echo "Docs build passed."
