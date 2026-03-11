@@ -106,7 +106,7 @@ immich-memories = "immich_memories.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/sam-dumont/immich-video-memory-generator"
-Documentation = "https://github.com/sam-dumont/immich-video-memory-generator#readme"
+Documentation = "https://sam-dumont.github.io/immich-video-memory-generator/"
 Repository = "https://github.com/sam-dumont/immich-video-memory-generator"
 Issues = "https://github.com/sam-dumont/immich-video-memory-generator/issues"
 Changelog = "https://github.com/sam-dumont/immich-video-memory-generator/releases"
