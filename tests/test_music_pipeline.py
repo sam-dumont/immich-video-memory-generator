@@ -161,3 +161,35 @@ class TestCreatePipeline:
 
         with pytest.raises(ValueError, match="No music generation backends enabled"):
             create_pipeline(config)
+
+
+class TestMusicPipelineEdgeCases:
+    """Edge cases for music pipeline."""
+
+    @pytest.mark.asyncio
+    async def test_zero_versions_raises(self, tmp_path):
+        """Requesting 0 versions raises because no versions are produced."""
+        gen = FakeGenerator("Gen")
+        pipeline = MusicPipeline(generators=[gen])
+
+        async with pipeline:
+            with pytest.raises(RuntimeError, match="All music generation backends failed"):
+                await pipeline.generate_music_for_video(
+                    timeline=VideoTimeline(),
+                    output_dir=tmp_path,
+                    num_versions=0,
+                )
+
+    @pytest.mark.asyncio
+    async def test_single_generator_failure_raises(self, tmp_path):
+        """Single failing generator raises without fallback."""
+        gen = FakeGenerator("Only", fail=True)
+        pipeline = MusicPipeline(generators=[gen])
+
+        async with pipeline:
+            with pytest.raises(RuntimeError, match="All music generation backends failed"):
+                await pipeline.generate_music_for_video(
+                    timeline=VideoTimeline(),
+                    output_dir=tmp_path,
+                    num_versions=1,
+                )

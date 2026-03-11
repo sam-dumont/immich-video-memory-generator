@@ -521,3 +521,74 @@ class TestPANNsAnalysis:
             result = mixin._check_panns_available()
             assert result is False
             assert mixin._panns_available is False
+
+
+class TestMusicTrackEdgeCases:
+    """Edge cases for MusicTrack."""
+
+    def test_cache_filename_idempotent(self):
+        """cache_filename returns the same value on repeated calls."""
+        track = MusicTrack(
+            id="1",
+            title="Test",
+            artist="A",
+            duration_seconds=60.0,
+            url="https://example.com/song.mp3",
+        )
+        assert track.cache_filename == track.cache_filename
+
+    def test_cache_filename_empty_title(self):
+        """Empty title still produces a valid filename."""
+        track = MusicTrack(
+            id="1",
+            title="",
+            artist="A",
+            duration_seconds=60.0,
+            url="https://example.com/song.mp3",
+        )
+        filename = track.cache_filename
+        assert filename.endswith(".mp3")
+        assert len(filename) > 4  # more than just ".mp3"
+
+    def test_zero_duration_track(self):
+        """Track with zero duration is valid."""
+        track = MusicTrack(
+            id="1",
+            title="T",
+            artist="A",
+            duration_seconds=0.0,
+            url="https://example.com/song.mp3",
+        )
+        assert track.duration_seconds == 0.0
+
+
+class TestVideoMoodEdgeCases:
+    """Edge cases for VideoMood."""
+
+    def test_to_search_params_with_empty_genre_list(self):
+        """Empty genre list maps to None genre."""
+        mood = VideoMood(primary_mood="happy", genre_suggestions=[])
+        params = mood.to_search_params()
+        assert params["genre"] is None
+
+    def test_confidence_range(self):
+        """Default confidence is between 0 and 1."""
+        mood = VideoMood(primary_mood="calm")
+        assert 0 <= mood.confidence <= 1
+
+
+class TestOllamaMoodAnalyzerEdgeCases:
+    """Edge cases for mood response parsing."""
+
+    def test_parse_empty_json_object(self):
+        """Empty JSON object returns defaults."""
+        analyzer = OllamaMoodAnalyzer()
+        mood = analyzer._parse_mood_response("{}")
+        assert mood.primary_mood != ""
+
+    def test_parse_partial_json(self):
+        """JSON with only some fields fills defaults for the rest."""
+        analyzer = OllamaMoodAnalyzer()
+        mood = analyzer._parse_mood_response('{"primary_mood": "happy"}')
+        assert mood.primary_mood == "happy"
+        assert mood.energy_level == "medium"  # default

@@ -39,20 +39,27 @@ class TestUrlValidation:
         with pytest.raises(ValueError, match="missing hostname"):
             _validate_url("https:///path/to/video")
 
-    def test_shell_metacharacters_rejected(self):
-        """Test URLs with shell metacharacters are rejected."""
-        dangerous_urls = [
-            "https://example.com/video;rm -rf /",
-            "https://example.com/video|cat /etc/passwd",
-            "https://example.com/video&whoami",
-            "https://example.com/video$(whoami)",
-            "https://example.com/video`whoami`",
-            "https://example.com/video\nX-Inject: header",
-            "https://example.com/video\rX-Inject: header",
-        ]
-        for url in dangerous_urls:
-            with pytest.raises(ValueError, match="suspicious character"):
-                _validate_url(url)
+    @pytest.mark.parametrize(
+        "url",
+        [
+            pytest.param("https://example.com/video;rm -rf /", id="semicolon"),
+            pytest.param("https://example.com/video|cat /etc/passwd", id="pipe"),
+            pytest.param("https://example.com/video&whoami", id="ampersand"),
+            pytest.param("https://example.com/video$(whoami)", id="dollar-paren"),
+            pytest.param("https://example.com/video`whoami`", id="backtick"),
+            pytest.param("https://example.com/video\nX-Inject: header", id="newline"),
+            pytest.param("https://example.com/video\rX-Inject: header", id="carriage-return"),
+        ],
+    )
+    def test_shell_metacharacters_rejected(self, url):
+        """URLs with shell metacharacters are rejected."""
+        with pytest.raises(ValueError, match="suspicious character"):
+            _validate_url(url)
+
+    def test_empty_url_rejected(self):
+        """Empty URL is rejected."""
+        with pytest.raises(ValueError):
+            _validate_url("")
 
 
 class TestHeaderValidation:

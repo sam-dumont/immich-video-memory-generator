@@ -272,3 +272,78 @@ class TestVideoClipInfo:
         )
         assert clip.is_hdr is False
         assert clip.hdr_format == "SDR"
+
+
+class TestVideoClipInfoEdgeCases:
+    """Edge cases for VideoClipInfo."""
+
+    def _make_asset(self):
+        return Asset(
+            id="edge",
+            type=AssetType.VIDEO,
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+
+    def test_square_video_not_portrait_or_landscape(self):
+        """Square video (1:1) is neither portrait nor landscape."""
+        clip = VideoClipInfo(asset=self._make_asset(), width=1080, height=1080)
+        assert clip.is_portrait is False
+        assert clip.is_landscape is False
+
+    def test_aspect_ratio_portrait(self):
+        """Portrait video has aspect ratio < 1."""
+        clip = VideoClipInfo(asset=self._make_asset(), width=1080, height=1920)
+        assert clip.aspect_ratio < 1.0
+
+    def test_zero_bitrate_quality_score(self):
+        """Zero bitrate produces a valid quality score (no division error)."""
+        clip = VideoClipInfo(
+            asset=self._make_asset(),
+            width=1920,
+            height=1080,
+            bitrate=0,
+            duration_seconds=30,
+        )
+        score = clip.quality_score
+        assert 0 <= score <= 1
+
+    def test_duration_zero_seconds(self):
+        """Asset with zero duration parses correctly."""
+        asset = Asset(
+            id="z",
+            type=AssetType.VIDEO,
+            duration="0:00:00.000",
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+        assert asset.duration_seconds == 0.0
+
+    def test_duration_none(self):
+        """Asset with no duration returns None."""
+        asset = Asset(
+            id="n",
+            type=AssetType.VIDEO,
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+        assert asset.duration_seconds is None
+
+
+class TestAssetFaceEdgeCases:
+    """Edge cases for face geometry calculations."""
+
+    def test_zero_area_face(self):
+        """Degenerate face (zero area) calculates correctly."""
+        face = AssetFace(
+            id="f",
+            boundingBoxX1=100,
+            boundingBoxY1=200,
+            boundingBoxX2=100,
+            boundingBoxY2=200,
+        )
+        assert face.area == 0
+        assert face.center == (100.0, 200.0)

@@ -259,3 +259,97 @@ class TestSmartPipelineIntegration:
         selected_ids = {c.asset.id for c in result.selected_clips}
         fav_ids = {c.asset.id for c in favorites}
         assert fav_ids.issubset(selected_ids), "All favorites should be in the final selection"
+
+    def test_single_clip_returns_it(
+        self,
+        mock_immich_client,
+        mock_analysis_cache,
+        mock_thumbnail_cache,
+        sample_config,
+    ):
+        """Single clip input produces a result containing that clip."""
+        clips = _make_clips(1, is_favorite=True)
+        self._setup_cache_for_clips(mock_analysis_cache, clips)
+
+        pipeline = self._make_pipeline(
+            mock_immich_client,
+            mock_analysis_cache,
+            mock_thumbnail_cache,
+            config=PipelineConfig(target_clips=5, analyze_all=True),
+        )
+
+        result = pipeline.run(clips)
+        assert len(result.selected_clips) == 1
+        assert result.selected_clips[0].asset.id == clips[0].asset.id
+
+    def test_duplicate_clip_ids_handled(
+        self,
+        mock_immich_client,
+        mock_analysis_cache,
+        mock_thumbnail_cache,
+        sample_config,
+    ):
+        """Pipeline handles clips with identical IDs gracefully."""
+        clips = _make_clips(3, is_favorite=True)
+        # Duplicate the first clip's ID on the second
+        clips[1].asset.id = clips[0].asset.id
+        self._setup_cache_for_clips(mock_analysis_cache, clips)
+
+        pipeline = self._make_pipeline(
+            mock_immich_client,
+            mock_analysis_cache,
+            mock_thumbnail_cache,
+            config=PipelineConfig(target_clips=5, analyze_all=True),
+        )
+
+        result = pipeline.run(clips)
+        # Should not crash, result is valid
+        assert isinstance(result, PipelineResult)
+
+    def test_result_stats_contain_expected_keys(
+        self,
+        mock_immich_client,
+        mock_analysis_cache,
+        mock_thumbnail_cache,
+        sample_config,
+    ):
+        """Pipeline stats dict contains standard diagnostic keys."""
+        clips = _make_clips(5, is_favorite=True)
+        self._setup_cache_for_clips(mock_analysis_cache, clips)
+
+        pipeline = self._make_pipeline(
+            mock_immich_client,
+            mock_analysis_cache,
+            mock_thumbnail_cache,
+            config=PipelineConfig(target_clips=5, analyze_all=True),
+        )
+
+        result = pipeline.run(clips)
+        assert "selected_count" in result.stats
+        assert "total_analyzed" in result.stats
+
+    def test_idempotent_run(
+        self,
+        mock_immich_client,
+        mock_analysis_cache,
+        mock_thumbnail_cache,
+        sample_config,
+    ):
+        """Running twice with same inputs produces same clip count."""
+        clips = _make_clips(8, is_favorite=True)
+        self._setup_cache_for_clips(mock_analysis_cache, clips)
+
+        config = PipelineConfig(target_clips=5, analyze_all=True)
+        pipeline = self._make_pipeline(
+            mock_immich_client,
+            mock_analysis_cache,
+            mock_thumbnail_cache,
+            config=config,
+        )
+
+        result1 = pipeline.run(clips)
+        # Reset cache call counts
+        mock_analysis_cache.get_analysis.reset_mock()
+        result2 = pipeline.run(clips)
+
+        assert len(result1.selected_clips) == len(result2.selected_clips)

@@ -106,3 +106,34 @@ class TestVideoAssemblerIntegration:
 
         assert assembler.settings.output_crf == 23
         assert assembler.settings.transition_duration == 0.8
+
+    def test_assemble_idempotent_single_clip(self, tmp_path):
+        """Assembling the same single clip twice produces identical output."""
+        assembler = _make_assembler(AssemblySettings(music_path=None))
+        clip = _make_assembly_clip(tmp_path, "input.mp4")
+
+        out1 = tmp_path / "out1.mp4"
+        out2 = tmp_path / "out2.mp4"
+        assembler.assemble([clip], out1)
+        assembler.assemble([clip], out2)
+
+        assert out1.read_bytes() == out2.read_bytes()
+
+    def test_assemble_does_not_modify_input(self, tmp_path):
+        """Assembling does not modify the source clip file."""
+        assembler = _make_assembler(AssemblySettings(music_path=None))
+        clip = _make_assembly_clip(tmp_path, "input.mp4")
+        original_bytes = clip.path.read_bytes()
+
+        assembler.assemble([clip], tmp_path / "output.mp4")
+
+        assert clip.path.read_bytes() == original_bytes
+
+    def test_missing_output_parent_raises(self, tmp_path):
+        """Assembler raises when output parent directory does not exist."""
+        assembler = _make_assembler(AssemblySettings(music_path=None))
+        clip = _make_assembly_clip(tmp_path, "input.mp4")
+        output = tmp_path / "nonexistent" / "output.mp4"
+
+        with pytest.raises(FileNotFoundError):
+            assembler.assemble([clip], output)

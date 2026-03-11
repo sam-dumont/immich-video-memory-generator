@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 
 from immich_memories.logging_config import JsonFormatter, configure_logging
 
@@ -27,33 +26,21 @@ class TestConfigureLogging:
         handler = root.handlers[-1]
         assert isinstance(handler.formatter, JsonFormatter)
 
-    def test_default_is_text(self):
+    def test_default_is_text(self, monkeypatch):
         """Calling with no args defaults to text."""
-        # Ensure env var is not set
-        env_val = os.environ.pop("IMMICH_MEMORIES_LOG_FORMAT", None)
-        try:
-            configure_logging()
-            root = logging.getLogger()
-            handler = root.handlers[-1]
-            assert not isinstance(handler.formatter, JsonFormatter)
-        finally:
-            if env_val is not None:
-                os.environ["IMMICH_MEMORIES_LOG_FORMAT"] = env_val
+        monkeypatch.delenv("IMMICH_MEMORIES_LOG_FORMAT", raising=False)
+        configure_logging()
+        root = logging.getLogger()
+        handler = root.handlers[-1]
+        assert not isinstance(handler.formatter, JsonFormatter)
 
-    def test_env_var_override(self):
+    def test_env_var_override(self, monkeypatch):
         """IMMICH_MEMORIES_LOG_FORMAT env var overrides default."""
-        old = os.environ.get("IMMICH_MEMORIES_LOG_FORMAT")
-        try:
-            os.environ["IMMICH_MEMORIES_LOG_FORMAT"] = "json"
-            configure_logging()
-            root = logging.getLogger()
-            handler = root.handlers[-1]
-            assert isinstance(handler.formatter, JsonFormatter)
-        finally:
-            if old is not None:
-                os.environ["IMMICH_MEMORIES_LOG_FORMAT"] = old
-            else:
-                os.environ.pop("IMMICH_MEMORIES_LOG_FORMAT", None)
+        monkeypatch.setenv("IMMICH_MEMORIES_LOG_FORMAT", "json")
+        configure_logging()
+        root = logging.getLogger()
+        handler = root.handlers[-1]
+        assert isinstance(handler.formatter, JsonFormatter)
 
     def test_log_level_setting(self):
         """Log level is set correctly."""

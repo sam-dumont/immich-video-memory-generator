@@ -184,3 +184,50 @@ class TestAppStateTransitions:
         assert state.pipeline_running is True
         state.pipeline_running = False
         assert state.pipeline_running is False
+
+
+class TestAppStateResetIdempotent:
+    """Idempotency and edge cases for state operations."""
+
+    def test_double_reset_is_safe(self):
+        """Calling reset_clips() twice in a row is harmless."""
+        state = AppState()
+        state.clips = [make_clip("c1")]
+        state.reset_clips()
+        state.reset_clips()
+        assert state.clips == []
+
+    def test_get_selected_clips_with_stale_ids(self):
+        """Selected IDs referencing removed clips return empty."""
+        state = AppState()
+        state.clips = [make_clip("c1")]
+        state.selected_clip_ids = {"c1", "c_gone"}
+        selected = state.get_selected_clips()
+        assert len(selected) == 1
+        assert selected[0].asset.id == "c1"
+
+    def test_reset_preserves_step(self):
+        """reset_clips does not change the current step."""
+        state = AppState()
+        state.step = 3
+        state.clips = [make_clip("c1")]
+        state.reset_clips()
+        assert state.step == 3
+
+
+class TestFormatDurationEdgeCases:
+    """Edge cases for format_duration."""
+
+    def test_negative_seconds(self):
+        """Negative seconds still produce a string (no crash)."""
+        from immich_memories.ui.pages.step2_helpers import format_duration
+
+        result = format_duration(-1)
+        assert isinstance(result, str)
+
+    def test_fractional_seconds(self):
+        """Fractional seconds are truncated to whole."""
+        from immich_memories.ui.pages.step2_helpers import format_duration
+
+        result = format_duration(61.9)
+        assert result == "1:01"

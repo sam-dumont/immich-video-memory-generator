@@ -109,20 +109,19 @@ class TestPeriod:
         assert period.value == 6
         assert period.unit == PeriodUnit.MONTHS
 
-    def test_parse_invalid_format(self):
-        """Test invalid format raises error."""
+    @pytest.mark.parametrize(
+        "input_str",
+        [
+            pytest.param("invalid", id="no-digits-no-unit"),
+            pytest.param("30", id="digits-only"),
+            pytest.param("m", id="unit-only"),
+            pytest.param("3x", id="unknown-unit"),
+        ],
+    )
+    def test_parse_invalid_inputs(self, input_str):
+        """Invalid period strings are rejected."""
         with pytest.raises(ValueError, match="Invalid period format"):
-            Period.parse("invalid")
-
-    def test_parse_missing_unit(self):
-        """Test missing unit raises error."""
-        with pytest.raises(ValueError, match="Invalid period format"):
-            Period.parse("30")
-
-    def test_parse_missing_value(self):
-        """Test missing value raises error."""
-        with pytest.raises(ValueError, match="Invalid period format"):
-            Period.parse("m")
+            Period.parse(input_str)
 
     def test_add_to_date_days(self):
         """Test adding days to date."""
@@ -339,3 +338,44 @@ class TestAvailableYears:
         """Test correct number of years."""
         years = available_years(current_year=2024, years_back=20)
         assert len(years) == 20
+
+    def test_available_years_single(self):
+        """Single year back returns just that year."""
+        years = available_years(current_year=2024, years_back=1)
+        assert years == [2024]
+
+
+class TestDateRangeEdgeCases:
+    """Edge cases for date range operations."""
+
+    def test_contains_boundary_start(self):
+        """Start instant is included."""
+        dr = calendar_year(2024)
+        assert dr.contains(datetime(2024, 1, 1, 0, 0, 0)) is True
+
+    def test_contains_boundary_end(self):
+        """End instant is included."""
+        dr = calendar_year(2024)
+        assert dr.contains(datetime(2024, 12, 31, 23, 59, 59)) is True
+
+    def test_contains_one_second_after_end(self):
+        """One second after end is excluded."""
+        dr = calendar_year(2024)
+        assert dr.contains(datetime(2025, 1, 1, 0, 0, 0)) is False
+
+    def test_birthday_year_jan_1_birthday(self):
+        """Jan 1 birthday year spans exactly one calendar year."""
+        dr = birthday_year(date(2000, 1, 1), 2024)
+        assert dr.start == datetime(2024, 1, 1, 0, 0, 0)
+        assert dr.end == datetime(2024, 12, 31, 23, 59, 59)
+
+    def test_birthday_year_dec_31_birthday(self):
+        """Dec 31 birthday wraps to next year."""
+        dr = birthday_year(date(2000, 12, 31), 2024)
+        assert dr.start == datetime(2024, 12, 31, 0, 0, 0)
+        assert dr.end == datetime(2025, 12, 30, 23, 59, 59)
+
+    def test_custom_range_single_day_has_one_day(self):
+        """Same start and end date produces exactly 1 day."""
+        dr = custom_range(date(2024, 6, 15), date(2024, 6, 15))
+        assert dr.days == 1

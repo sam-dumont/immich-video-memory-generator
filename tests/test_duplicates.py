@@ -41,6 +41,14 @@ class TestHammingDistance:
         dist = hamming_distance("0000", "ffff")
         assert dist == 16  # 4 hex digits * 4 bits each
 
+    def test_empty_hashes(self):
+        """Empty strings return max distance."""
+        assert hamming_distance("", "") == 64
+
+    def test_symmetry(self):
+        """Distance is symmetric: d(a,b) == d(b,a)."""
+        assert hamming_distance("abcd", "1234") == hamming_distance("1234", "abcd")
+
 
 class TestUnionFindGroups:
     """Tests for union-find grouping."""
