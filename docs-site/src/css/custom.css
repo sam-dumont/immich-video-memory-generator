@@ -1,0 +1,24 @@
+/* Immich Memories docs — subtle branding, not heavy-handed */
+
+:root {
+  --ifm-color-primary: #4263eb;
+  --ifm-color-primary-dark: #3554d1;
+  --ifm-color-primary-darker: #2f4ec5;
+  --ifm-color-primary-darkest: #2740a2;
+  --ifm-color-primary-light: #5a78ef;
+  --ifm-color-primary-lighter: #6682f1;
+  --ifm-color-primary-lightest: #8ea1f5;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #748ffc;
+  --ifm-color-primary-dark: #5474fb;
+  --ifm-color-primary-darker: #4467fb;
+  --ifm-color-primary-darkest: #143ffa;
+  --ifm-color-primary-light: #94aafd;
+  --ifm-color-primary-lighter: #a4b7fd;
+  --ifm-color-primary-lightest: #d4ddfe;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}

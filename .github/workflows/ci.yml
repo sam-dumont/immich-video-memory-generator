@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -38,7 +38,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -65,7 +65,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0  # Full history for secret scanning
 
@@ -134,7 +134,7 @@ jobs:
           failure-threshold: error
 
       - name: Upload Bandit report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: bandit-report
@@ -144,7 +144,7 @@ jobs:
     name: Type Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -171,7 +171,7 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -217,7 +217,7 @@ jobs:
             extras: "dev,mac,audio,audio-ml,face,gpu"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -252,7 +252,7 @@ jobs:
     name: Build Package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0  # Full history for version detection
 
@@ -276,7 +276,7 @@ jobs:
         run: uvx twine check dist/*
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: dist-ci
           path: dist/
@@ -297,7 +297,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             platform: linux/arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -312,10 +312,29 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Validate docs build (catches broken links, missing images, syntax errors)
+  docs:
+    name: Docs Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install docs dependencies
+        run: cd docs-site && npm ci
+
+      - name: Build docs
+        run: make docs-check
+
   # Summary job that other jobs can depend on
   ci-success:
     name: CI Success
-    needs: [lint, security, typecheck, test, test-extras, build]
+    needs: [lint, security, typecheck, test, test-extras, build, docs]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -326,7 +345,8 @@ jobs:
              [[ "${{ needs.typecheck.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
              [[ "${{ needs.test-extras.result }}" != "success" ]] || \
-             [[ "${{ needs.build.result }}" != "success" ]]; then
+             [[ "${{ needs.build.result }}" != "success" ]] || \
+             [[ "${{ needs.docs.result }}" != "success" ]]; then
             echo "One or more jobs failed"
             exit 1
           fi

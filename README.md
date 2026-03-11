@@ -4,151 +4,32 @@
 [![Release](https://github.com/sam-dumont/immich-video-memory-generator/actions/workflows/release.yml/badge.svg)](https://github.com/sam-dumont/immich-video-memory-generator/actions/workflows/release.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Docs](https://img.shields.io/badge/docs-Docusaurus-blue)](https://sam-dumont.github.io/immich-video-memory-generator/)
 
 **Create beautiful yearly video compilations from your [Immich](https://immich.app/) photo library.**
 
-Immich Memories connects to your self-hosted Immich server, intelligently selects the best moments from your videos, and compiles them into shareable memory videos - perfect for year-end recaps or celebrating special people in your life.
+Immich Memories connects to your self-hosted Immich server, intelligently selects the best moments from your videos, and compiles them into shareable memory videos — perfect for year-end recaps or celebrating specific people in your life.
+
+> **Full documentation**: [sam-dumont.github.io/immich-video-memory-generator](https://sam-dumont.github.io/immich-video-memory-generator/)
 
 ---
 
-## ⚠️ Important Disclaimer
-
-> **THIS SOFTWARE WAS GENERATED PRIMARILY BY AI (Claude by Anthropic)**
->
-> This project was developed with extensive assistance from large language models. While functional, it comes with **even fewer guarantees than typical open-source software**:
->
-> - **No Warranty**: The code may contain bugs, inefficiencies, or unexpected behaviors
-> - **Use at Your Own Risk**: Always backup your data before use
-> - **Review Before Production**: We recommend code review before deploying in production environments
-> - **Community Maintained**: Contributions to improve code quality are highly encouraged
->
-> By using this software, you acknowledge these limitations. See [DISCLAIMER.md](DISCLAIMER.md) for full details.
-
----
-
-## What It Does
-
-1. **Connects to Immich**: Fetches your video library via Immich's REST API
-2. **Filters by Person/Year**: Use Immich's face recognition to create compilations for specific people
-3. **Finds Duplicates**: Automatically detects similar videos and ranks them by quality
-4. **Selects Best Moments**: Uses scene detection and interest scoring to find the most engaging clips
-5. **Smart Crops for Faces**: Keeps faces centered when converting between aspect ratios
-6. **Compiles Videos**: Assembles clips with transitions and optional music
-7. **Hardware Accelerated**: Uses GPU encoding (NVIDIA, Apple, Intel, AMD) for fast processing
-
-## Features
-
-- **Immich Integration**: Direct connection to your Immich server via REST API
-- **Smart Person Selection**: Compile videos featuring specific people using Immich's face recognition
-- **Flexible Time Periods**: Calendar years, birthday-based years, custom date ranges, or duration-based
-- **Duplicate Detection**: Perceptual hashing to find and rank similar videos by quality
-- **Scene Detection**: Natural scene boundaries using PySceneDetect (enabled by default)
-- **Intelligent Moment Selection**: Multi-factor interest scoring (faces, motion, stability, content)
-- **LLM Content Analysis**: Optional AI-powered content understanding via any OpenAI-compatible API (mlx-vlm, Ollama, vLLM, Groq, etc.)
-- **Fast Analysis**: Videos downscaled to 480p for 3-5x faster analysis while maintaining accuracy
-- **Memory Optimized**: Aggressive garbage collection and on-demand thumbnail loading prevents OOM
-- **Resume Support**: Previously analyzed clips are cached and shown on restart
-- **Review Mode**: Review and refine selected clips after AI analysis with deselection support
-- **Smooth Transitions**: Crossfade transitions with configurable buffer footage
-- **Automatic Music**: AI-powered mood detection + music generation via ACE-Step or MusicGen
-- **Smart Audio Ducking**: Music automatically lowers when speech/sounds are detected
-- **Flexible Output**: Portrait (9:16), Landscape (16:9), and Square (1:1) formats
-- **Smart Cropping**: Face-aware cropping keeps subjects centered
-- **Hardware Acceleration**: GPU-accelerated encoding with NVIDIA NVENC, Apple VideoToolbox, Intel QSV, VAAPI
-- **Apple Silicon Optimized**: Vision framework for Neural Engine-accelerated face detection
-- **Interactive UI**: NiceGUI web interface for easy video curation
-- **CLI Support**: Headless operation for automation and scripting
-- **Docker Ready**: Containerized deployment alongside Immich
-
-## Installation
-
-### Prerequisites
-
-- **Python 3.11+** (3.13 recommended)
-- **FFmpeg** (for video processing)
-- **Immich server** with API access
-
-### Quick Install with uv (Recommended)
-
-[uv](https://github.com/astral-sh/uv) is a modern Python package manager that's 10-100x faster than pip.
+## Quick Install
 
 ```bash
-# Install uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# One-liner (no clone needed)
+uvx immich-memories --help
 
-# Clone and install
+# Or clone and install
 git clone https://github.com/sam-dumont/immich-video-memory-generator.git
 cd immich-video-memory-generator
 uv sync
-
-# Run the app
-uv run immich-memories --help
-```
-
-### One-liner Install (uv)
-
-```bash
-# Install and run directly without cloning
-uvx immich-memories --help
-```
-
-### Using pip
-
-```bash
-pip install immich-memories
-```
-
-### From Source (pip)
-
-```bash
-git clone https://github.com/sam-dumont/immich-video-memory-generator.git
-cd immich-video-memory-generator
-pip install -e .
-```
-
-### Platform-Specific Extras
-
-#### Mac Users (Recommended for Apple Silicon)
-
-```bash
-# With uv
-uv sync --extra mac
-
-# With pip
-pip install immich-memories[mac]
-```
-
-Enables:
-- **Apple Vision Framework**: GPU-accelerated face detection via Neural Engine
-- **VideoToolbox**: Hardware H.264/H.265/ProRes encoding
-- **Metal**: GPU-accelerated image processing
-
-#### Face Recognition (requires dlib)
-
-```bash
-# With uv
-uv sync --extra face
-
-# With pip
-pip install immich-memories[face]
-```
-
-#### All Features
-
-```bash
-# With uv
-uv sync --all-extras
-
-# With pip
-pip install immich-memories[all]
 ```
 
 ## Quick Start
 
-### 1. Configure Immich Connection
-
 ```bash
-# Option A: Config file
+# 1. Configure
 mkdir -p ~/.immich-memories
 cat > ~/.immich-memories/config.yaml << EOF
 immich:
@@ -156,544 +37,57 @@ immich:
   api_key: "your-api-key-here"
 EOF
 
-# Option B: Environment variables
-export IMMICH_URL="https://photos.example.com"
-export IMMICH_API_KEY="your-api-key-here"
-```
-
-### 2. Launch the UI
-
-```bash
+# 2. Launch the UI
 immich-memories ui
 # Opens at http://localhost:8080
+
+# 3. Or use the CLI
+immich-memories generate --year 2024 --person "John" --output ~/Videos/john_2024.mp4
 ```
 
-### 3. Or Use the CLI
-
-```bash
-# Generate a video compilation for a calendar year
-immich-memories generate \
-  --year 2024 \
-  --person "John" \
-  --duration 10 \
-  --orientation landscape \
-  --output ~/Videos/john_2024.mp4
-
-# Generate using birthday-based year (Feb 7, 2024 to Feb 6, 2025)
-immich-memories generate \
-  --birthday 2024-02-07 \
-  --person "John" \
-  --output ~/Videos/john_birthday_year.mp4
-
-# Generate for a specific date range
-immich-memories generate \
-  --start 2024-06-01 \
-  --end 2024-08-31 \
-  --person "John" \
-  --output ~/Videos/john_summer.mp4
-
-# Generate for a period from start date (6 months, 1 year, etc.)
-immich-memories generate \
-  --start 2024-01-01 \
-  --period 6m \
-  --output ~/Videos/first_half_2024.mp4
-
-# Check hardware acceleration
-immich-memories hardware
-
-# Analyze videos (cache metadata)
-immich-memories analyze --year 2024
-```
-
-## Usage Guide
-
-### Interactive UI (Recommended)
-
-The NiceGUI web interface provides a 4-step wizard:
-
-1. **Configuration**: Connect to Immich, select time period and person
-2. **Clip Review**: Browse videos with duplicate grouping, review and refine selected clips
-3. **Generation Options**: Choose orientation, transitions, resolution, music
-4. **Preview & Export**: Generate and download your compilation
-
-### CLI Commands
-
-```bash
-immich-memories --help          # Show all commands
-immich-memories ui              # Launch web UI
-immich-memories generate        # Create compilation
-immich-memories analyze         # Analyze and cache video metadata
-immich-memories hardware        # Show hardware acceleration info
-immich-memories people          # List recognized people
-immich-memories years           # List years with videos
-immich-memories config          # Show/edit configuration
-immich-memories export-project  # Export project for external editing
-immich-memories music search    # Search for royalty-free music
-immich-memories music analyze   # Analyze video mood for music selection
-immich-memories music add       # Add background music to a video
-```
-
-### Time Period Options
-
-The `generate` command supports flexible time period selection:
-
-| Option | Description | Example |
-|--------|-------------|---------|
-| `--year` | Calendar year (Jan 1 - Dec 31) | `--year 2024` |
-| `--birthday` | Birthday-based year | `--birthday 2024-02-07` |
-| `--start` + `--end` | Custom date range | `--start 2024-06-01 --end 2024-08-31` |
-| `--start` + `--period` | Duration from start | `--start 2024-01-01 --period 6m` |
-
-Period format: Number + unit (`d`=days, `w`=weeks, `m`=months, `y`=years). Examples: `6m`, `1y`, `2w`, `90d`
-
-### Music Commands
-
-```bash
-# Search for music by mood/genre
-immich-memories music search --mood happy --genre acoustic --limit 5
-
-# Analyze a video's mood
-immich-memories music analyze ~/Videos/my_video.mp4
-
-# Add background music to a video (auto-selects music based on video mood)
-immich-memories music add ~/Videos/input.mp4 ~/Videos/output.mp4
-
-# Add specific music file with custom settings
-immich-memories music add ~/Videos/input.mp4 ~/Videos/output.mp4 \
-  --music ~/Music/song.mp3 \
-  --volume -8 \
-  --fade-in 3 \
-  --fade-out 4
-```
-
-## Configuration
-
-Configuration file: `~/.immich-memories/config.yaml`
-
-```yaml
-immich:
-  url: "https://photos.example.com"
-  api_key: "${IMMICH_API_KEY}"  # Environment variable substitution
-
-defaults:
-  target_duration_minutes: 10
-  output_orientation: "landscape"  # landscape, portrait, square
-  scale_mode: "smart_crop"         # fit, fill, smart_crop
-  transition: "crossfade"
-  transition_duration: 0.5
-  transition_buffer: 0.5           # Extra footage for smooth fades
-
-analysis:
-  scene_threshold: 27.0
-  min_scene_duration: 1.0
-  duplicate_hash_threshold: 8
-  enable_downscaling: true         # Downscale videos for faster analysis
-  analysis_resolution: 480         # Resolution for analysis (480p = ~3-5x faster)
-
-  # Scene detection (enabled by default for natural boundaries)
-  use_scene_detection: true        # Use PySceneDetect for natural boundaries
-  max_segment_duration: 10.0       # Long scenes are subdivided (seconds)
-  min_segment_duration: 1.5        # Filter out very short segments
-
-output:
-  directory: "~/Videos/Memories"
-  format: "mp4"
-  resolution: "1080p"  # 720p, 1080p, 4k
-  codec: "h264"        # h264, h265, prores
-  crf: 18
-
-hardware:
-  enabled: true
-  backend: "auto"            # auto, nvidia, apple, vaapi, qsv, none
-  encoder_preset: "balanced" # fast, balanced, quality
-  gpu_decode: true
-  gpu_analysis: true
-
-# Shared LLM settings (used by mood analysis and content analysis)
-# Works with any OpenAI-compatible server: mlx-vlm, Ollama, vLLM, Groq, etc.
-llm:
-  provider: "openai-compatible"   # "ollama" or "openai-compatible"
-  base_url: "http://localhost:8080/v1"
-  model: "mlx-community/Qwen3-VL-2B-Instruct-4bit"
-  api_key: ""                     # Optional, only needed for cloud APIs
-
-audio:
-  auto_music: true           # Auto-select music based on video mood
-  music_source: "musicgen"   # local, musicgen, or ace_step
-  local_music_dir: "~/Music/Memories"
-
-  # Audio ducking (lowers music when speech detected)
-  ducking_threshold: 0.02    # Sensitivity (lower = more sensitive)
-  ducking_ratio: 6.0         # How much to lower music
-  music_volume_db: -6.0      # Base music volume
-  fade_in_seconds: 2.0
-  fade_out_seconds: 3.0
-
-# AI music generation via MusicGen API
-# See: https://github.com/sam-dumont/musicgen-api
-musicgen:
-  enabled: true
-  base_url: "http://your-gpu-server:8000"
-  api_key: "your-api-key"
-  timeout_seconds: 10800     # 3 hours (generation is slow on CPU)
-  num_versions: 1            # Generate N versions, pick the best
-
-# ACE-Step music generation via REST API
-# See: https://github.com/sam-dumont/ace-step-1.5-turbo
-ace_step:
-  enabled: true
-  mode: "api"
-  api_url: "http://your-gpu-server:8000"
-  model_variant: "turbo"
-  num_versions: 1
-
-# LLM-based content analysis for intelligent scoring (optional)
-content_analysis:
-  enabled: false             # Disabled by default (adds processing time)
-  weight: 0.2                # Weight in scoring (0-1, 20% of total score)
-  analyze_frames: 3          # Frames per segment (1-4)
-  min_confidence: 0.5        # Minimum confidence to use score
-```
-
-### Environment Variables
-
-All configuration options can be set via environment variables using the pattern:
-`IMMICH_MEMORIES_<section>__<field>` (double underscore for nesting)
-
-```bash
-# Core settings
-export IMMICH_MEMORIES_IMMICH__URL="https://photos.example.com"
-export IMMICH_MEMORIES_IMMICH__API_KEY="your-api-key"
-
-# Analysis settings
-export IMMICH_MEMORIES_ANALYSIS__USE_SCENE_DETECTION="true"
-export IMMICH_MEMORIES_ANALYSIS__ENABLE_DOWNSCALING="true"
-
-# LLM settings (shared by content analysis and mood analysis)
-export IMMICH_MEMORIES_LLM__PROVIDER="openai-compatible"
-export IMMICH_MEMORIES_LLM__BASE_URL="http://localhost:8080/v1"
-export IMMICH_MEMORIES_LLM__MODEL="mlx-community/Qwen3-VL-2B-Instruct-4bit"
-export IMMICH_MEMORIES_LLM__API_KEY=""
-
-# Hardware acceleration
-export IMMICH_MEMORIES_HARDWARE__BACKEND="nvidia"
-export IMMICH_MEMORIES_HARDWARE__GPU_ANALYSIS="true"
-
-# Output settings
-export IMMICH_MEMORIES_OUTPUT__RESOLUTION="1080p"
-export IMMICH_MEMORIES_OUTPUT__CODEC="h265"
-```
-
-## Hardware Acceleration
-
-Immich Memories automatically detects and uses available GPU hardware.
-
-### Supported Backends
-
-| Backend | Platform | Encoder | Notes |
-|---------|----------|---------|-------|
-| **NVIDIA NVENC** | Linux, Windows | h264_nvenc, hevc_nvenc | Requires CUDA drivers |
-| **Apple VideoToolbox** | macOS | h264_videotoolbox, hevc_videotoolbox | Built-in |
-| **Intel Quick Sync** | Linux, Windows | h264_qsv, hevc_qsv | Intel GPU required |
-| **VAAPI** | Linux | h264_vaapi, hevc_vaapi | AMD/Intel on Linux |
-
-### Platform Feature Matrix
-
-| Feature | NVIDIA | Apple Silicon | Intel QSV | AMD VAAPI |
-|---------|--------|---------------|-----------|-----------|
-| Video Encode | ✅ NVENC | ✅ VideoToolbox | ✅ QSV | ✅ VAAPI |
-| Video Decode | ✅ NVDEC | ✅ VideoToolbox | ✅ QSV | ✅ VAAPI |
-| GPU Scaling | ✅ scale_cuda | ⚠️ Software | ✅ scale_qsv | ✅ scale_vaapi |
-| Face Detection | ✅ OpenCV CUDA | ✅ Vision Framework | ❌ CPU | ❌ CPU |
-
-### Apple Silicon Benefits
-
-- Neural Engine accelerates face detection (~10x faster than OpenCV)
-- Unified memory eliminates CPU/GPU transfer overhead
-- VideoToolbox encoding is 5-10x faster than software
-- mlx-vlm runs vision LLMs locally with Metal acceleration (no Docker or CUDA needed)
-- All M1/M2/M3/M4/M5 chips fully supported
-
-```bash
-# Check your hardware capabilities
-immich-memories hardware
-```
-
-## Running a Local Vision LLM
-
-Content analysis and mood detection use a vision LLM to understand what's happening in your clips. Any server that speaks the OpenAI `/v1/chat/completions` protocol works: mlx-vlm, Ollama, vLLM, LM Studio, llama.cpp, Groq, OpenAI itself, etc.
-
-### mlx-vlm (recommended on Apple Silicon)
-
-Runs vision models natively on Apple Silicon with Metal acceleration. No Docker, no CUDA, just your Mac.
-
-```bash
-# Install and run in one command (isolated env, no conflicts)
-# --with torch/torchvision needed for Qwen3-VL's video processor
-uvx --python 3.12 --from mlx-vlm --with torch --with torchvision mlx_vlm.server --port 8080
-
-# Config
-llm:
-  provider: "openai-compatible"
-  base_url: "http://localhost:8080/v1"
-  model: "mlx-community/Qwen3.5-9B-MLX-4bit"  # ~6 GB, natively multimodal, recommended
-```
-
-Models are downloaded automatically on first use.
-
-### Ollama
-
-```bash
-ollama pull llava
-ollama serve
-
-# Config
-llm:
-  provider: "ollama"
-  base_url: "http://localhost:11434"
-  model: "llava"
-```
-
-### Cloud APIs (Groq, OpenAI, etc.)
-
-```bash
-# Config
-llm:
-  provider: "openai-compatible"
-  base_url: "https://api.groq.com/openai/v1"  # or https://api.openai.com/v1
-  model: "llama-4-scout-17b-16e-instruct"
-  api_key: "${GROQ_API_KEY}"
-```
-
-## AI Background Music
-
-Immich Memories generates original background music that matches the mood of your video. The pipeline:
-
-1. **Mood detection**: the vision LLM watches frames from your compilation and describes the mood
-2. **Music generation**: a multi-provider pipeline sends that mood to a music generation API
-3. **Stem separation**: Demucs splits the track into vocals/accompaniment for intelligent audio ducking
-
-The pipeline tries backends in priority order — if ACE-Step is enabled it generates first, falling back to MusicGen if unavailable. Stem separation always runs through MusicGen's Demucs endpoint. Both backends are independently enable/disable-able.
-
-### ACE-Step (recommended)
-
-[ACE-Step 1.5](https://github.com/ace-step/ACE-Step) generates higher-quality instrumental tracks than MusicGen. It supports explicit musical parameters (BPM, key, time signature) sent as structured API fields, not just text prompts. Generation takes ~20s per 30-second track on an 8GB GPU.
-
-We maintain a fork optimized for consumer GPUs: [sam-dumont/ace-step-1.5-turbo](https://github.com/sam-dumont/ace-step-1.5-turbo). It runs the turbo model (8 diffusion steps instead of 50, ~6x faster) with the 0.6B language model, fitting in 8GB VRAM.
-
-```yaml
-audio:
-  auto_music: true
-  music_source: "ace_step"
-
-ace_step:
-  enabled: true
-  mode: "api"
-  api_url: "http://your-gpu-server:8000"
-  model_variant: "turbo"
-  lm_model_size: "0.6B"       # "0.6B" for 8GB GPUs, "1.7B" or "4B" if you have VRAM
-  num_versions: 1
-```
-
-Deploy on a consumer GPU:
-```bash
-git clone https://github.com/sam-dumont/ace-step-1.5-turbo.git
-cd ace-step-1.5-turbo
-docker compose up -d
-```
-
-The API runs on port 8000 (`acestep-api` command, no Gradio UI). Kubernetes and Terraform examples are included in the repo's `deploy/` directory.
-
-### MusicGen API (fallback / stem separation)
-
-[MusicGen](https://github.com/facebookresearch/audiocraft) by Meta generates instrumental music from text prompts and provides Demucs stem separation. Even when ACE-Step handles generation, MusicGen's Demucs endpoint is used for splitting stems. Deploy it on a second GPU or the same machine.
-
-```yaml
-audio:
-  auto_music: true
-  music_source: "musicgen"    # or "ace_step" if ACE-Step is primary
-
-musicgen:
-  enabled: true
-  base_url: "http://your-gpu-server:8000"
-  api_key: "your-api-key"
-  timeout_seconds: 10800
-  num_versions: 1
-```
-
-Deploy:
-```bash
-docker run -d --gpus all -p 8000:8000 ghcr.io/sam-dumont/musicgen-api:latest
-```
-
-Source and docs: [sam-dumont/musicgen-api](https://github.com/sam-dumont/musicgen-api).
-
-### Multi-provider setup
-
-For the best results, run both backends on separate GPUs. ACE-Step generates the music, MusicGen handles Demucs stem separation for audio ducking:
-
-```yaml
-audio:
-  auto_music: true
-  music_source: "ace_step"
-
-ace_step:
-  enabled: true
-  mode: "api"
-  api_url: "http://couronne-01:8000"   # T1000 8GB
-
-musicgen:
-  enabled: true
-  base_url: "http://couronne-03:8000"  # GTX 1070 (Demucs only)
-```
-
-If ACE-Step is unavailable at generation time, the pipeline falls back to MusicGen automatically.
-
-### No music / BYO music
-
-You can upload your own music file in the UI (Step 3), or disable music entirely. The audio ducking system automatically lowers music volume when speech or laughter is detected in the clips.
-
-## Docker
-
-```bash
-cd docker
-docker-compose up -d
-
-# Access UI at http://localhost:8080
-```
-
-## Kubernetes Deployment
-
-Deploy to Kubernetes with NVIDIA GPU support. See [`deploy/`](deploy/) for complete examples.
-
-### Quick Start with kubectl
-
-```bash
-cd deploy/kubernetes
-
-# Create and edit secrets with your Immich credentials
-cp secret.yaml.example secret.yaml
-vim secret.yaml
-
-# Deploy all resources
-kubectl apply -k .
-
-# Access the UI
-kubectl port-forward -n immich-memories svc/immich-memories 8080:80
-```
-
-### Terraform Module
-
-```bash
-cd deploy/terraform/examples/basic
-
-# Configure your settings
-cp terraform.tfvars.example terraform.tfvars
-vim terraform.tfvars
-
-# Deploy
-terraform init
-terraform apply
-```
-
-### NVIDIA GPU Support
-
-The deployment includes:
-
-- **RuntimeClass**: Uses `nvidia` runtime for GPU access
-- **Resource Limits**: Requests `nvidia.com/gpu: 1`
-- **Node Selection**: Targets nodes with `nvidia.com/gpu.present=true`
-- **Environment Variables**: Sets `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`
-
-Prerequisites:
-1. [NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/overview.html) installed
-2. NVIDIA RuntimeClass configured
-3. GPU nodes labeled appropriately
-
-### Batch Processing
-
-Run one-off generation jobs:
-
-```bash
-# Edit job parameters
-vim deploy/kubernetes/job.yaml
-
-# Run the job
-kubectl apply -f deploy/kubernetes/job.yaml
-
-# Watch progress
-kubectl logs -n immich-memories -f job/immich-memories-generate
-```
+## Key Features
+
+- **Immich Integration** — Direct REST API connection with face recognition support
+- **Smart Clip Selection** — Scene detection, interest scoring, duplicate filtering
+- **Face-Aware Cropping** — Keeps faces centered when converting aspect ratios
+- **Hardware Acceleration** — NVIDIA NVENC, Apple VideoToolbox, Intel QSV, AMD VAAPI
+- **AI Music Generation** — ACE-Step or MusicGen with automatic mood detection
+- **Audio Ducking** — Music lowers automatically during speech
+- **Web UI + CLI** — 4-step wizard or headless automation
+- **Docker & Kubernetes** — Containerized deployment with GPU support
+
+## Documentation
+
+See the [full documentation](https://sam-dumont.github.io/immich-video-memory-generator/) for:
+
+- [Installation options](https://sam-dumont.github.io/immich-video-memory-generator/docs/installation/uv) (uv, pip, Docker, Kubernetes, Terraform)
+- [UI Walkthrough](https://sam-dumont.github.io/immich-video-memory-generator/docs/ui-walkthrough/overview)
+- [CLI Reference](https://sam-dumont.github.io/immich-video-memory-generator/docs/cli/overview)
+- [Configuration](https://sam-dumont.github.io/immich-video-memory-generator/docs/configuration/config-file)
+- [Hardware Acceleration](https://sam-dumont.github.io/immich-video-memory-generator/docs/hardware/overview)
+- [AI Music](https://sam-dumont.github.io/immich-video-memory-generator/docs/music/overview)
+- [Guides](https://sam-dumont.github.io/immich-video-memory-generator/docs/guides/first-video)
 
 ## Development
 
-The **Makefile** is the single source of truth for all commands. CI, pre-commit hooks, and local development all use the same `make` targets.
-
-### Setup
-
 ```bash
-# Install uv
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Clone and install dev dependencies
-git clone https://github.com/sam-dumont/immich-video-memory-generator.git
-cd immich-video-memory-generator
-make dev
-
-# Run all checks (lint + format + typecheck + file-length + complexity + tests)
-make check
+make dev      # Install all dependencies
+make check    # Run all checks (lint, format, typecheck, tests)
+make ci       # Full CI pipeline
+make help     # Show all available targets
 ```
 
-### Common Commands
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-```bash
-make test          # Run tests
-make test-cov      # Run tests with coverage
-make lint          # Run ruff linter
-make format        # Format code with ruff
-make typecheck     # Run mypy type checker
-make file-length   # Check all .py files are ≤500 lines
-make complexity    # Check cyclomatic complexity (Xenon grade C)
-make check         # Run all checks
-make ci            # Full CI-equivalent pipeline (all checks + dead-code)
-make run           # Launch UI
-make cli           # Run CLI tool
-make build         # Build package
-make clean         # Remove build artifacts
-make help          # Show all available targets
-```
+## Disclaimer
 
-## Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Quick Contribution Guide
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run checks (`make check`)
-5. Commit (`git commit -m 'Add amazing feature'`)
-6. Push (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-## Requirements
-
-- Python 3.11+ (3.13 recommended)
-- FFmpeg (video processing)
-- Immich server with API access
+> This project was developed primarily with AI assistance (Claude by Anthropic).
+> It comes with fewer guarantees than typical open-source software.
+> See [DISCLAIMER.md](DISCLAIMER.md) for full details.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Acknowledgments
-
-- [Immich](https://immich.app/) - Self-hosted photo and video backup
-- [MoviePy](https://zulko.github.io/moviepy/) - Video editing with Python
-- [PySceneDetect](https://scenedetect.com/) - Scene detection library
-- [uv](https://github.com/astral-sh/uv) - Fast Python package manager
-- [Claude](https://anthropic.com/claude) - AI assistance in initial development
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
