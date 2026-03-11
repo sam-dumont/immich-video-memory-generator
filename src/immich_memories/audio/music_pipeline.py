@@ -150,7 +150,9 @@ class MusicPipeline:
 
         def _progress(status, progress, detail):
             if progress_callback:
-                progress_callback(version_idx, status, progress, detail)
+                # Generation covers 0-80% of overall progress
+                scaled = progress * 0.8
+                progress_callback(version_idx, status, scaled, detail)
 
         for gen in self._generators:
             try:
@@ -184,7 +186,9 @@ class MusicPipeline:
 
         def _progress(status, progress, detail):
             if progress_callback:
-                progress_callback(version_idx, status, progress, detail)
+                # Stem separation covers 80-100% of overall progress
+                scaled = 80 + progress * 0.2
+                progress_callback(version_idx, f"Separating stems: {status}", scaled, detail)
 
         try:
             if not await self._stem_separator.is_available():
@@ -232,16 +236,20 @@ def create_pipeline(app_config) -> MusicPipeline:
     stem_separator: MusicGenerator | None = None
 
     # ACE-Step as primary generator (if enabled)
-    if getattr(app_config, "ace_step", None) and app_config.ace_step.enabled:
+    ace_step_enabled = getattr(app_config, "ace_step", None) and app_config.ace_step.enabled
+    if ace_step_enabled:
         generators.append(create_generator("ace_step", app_config.ace_step))
         logger.info(f"Pipeline: ACE-Step enabled (mode={app_config.ace_step.mode})")
 
-    # MusicGen as fallback generator + stem separator
+    # MusicGen: stem separator always, generation fallback only if ACE-Step is off
     if getattr(app_config, "musicgen", None) and app_config.musicgen.enabled:
         musicgen = create_generator("musicgen", app_config.musicgen)
-        generators.append(musicgen)
         stem_separator = musicgen
-        logger.info("Pipeline: MusicGen enabled (generation fallback + Demucs stems)")
+        if ace_step_enabled:
+            logger.info("Pipeline: MusicGen enabled (Demucs stems only)")
+        else:
+            generators.append(musicgen)
+            logger.info("Pipeline: MusicGen enabled (generation + Demucs stems)")
 
     if not generators:
         raise ValueError(

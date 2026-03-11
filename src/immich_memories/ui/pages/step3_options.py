@@ -31,8 +31,7 @@ def render_step3() -> None:
             "add_date": False,
             "music_source": "AI Generated (MusicGen)" if musicgen_available else "None",
             "music_file": None,
-            "music_volume": 0.4,
-            "musicgen_versions": 1,
+            "music_volume": 0.5,
         }
 
     options = state.generation_options
@@ -192,7 +191,7 @@ def render_step3() -> None:
                         min=0.0,
                         max=1.0,
                         step=0.05,
-                        value=options.get("music_volume", 0.3),
+                        value=options.get("music_volume", 0.5),
                     ).classes("w-64")
 
                     def on_upload_volume_change(e):
@@ -207,35 +206,27 @@ def render_step3() -> None:
                         "AI will generate music based on the mood of your video clips"
                     ).classes("text-blue-700")
 
-                with ui.row().classes("w-full gap-8 mt-4"):
-                    versions_select = ui.select(
-                        options=[1, 2, 3],
-                        label="Generate versions",
-                        value=options.get("musicgen_versions", 3),
-                    ).classes("w-40")
+                with ui.row().classes("items-center gap-4 mt-4"):
+                    ui.label("Music volume:").classes("text-sm")
+                    volume_slider = ui.slider(
+                        min=0.0,
+                        max=1.0,
+                        step=0.05,
+                        value=options.get("music_volume", 0.5),
+                    ).classes("w-48")
 
-                    def on_versions_change(e):
-                        options["musicgen_versions"] = e.value
+                    def on_ai_volume_change(e):
+                        options["music_volume"] = e.value
 
-                    versions_select.on_value_change(on_versions_change)
+                    volume_slider.on_value_change(on_ai_volume_change)
+                    ui.label().bind_text_from(volume_slider, "value", lambda v: f"{int(v * 100)}%")
 
-                    with ui.column():
-                        ui.label("Music volume").classes("text-sm text-gray-500")
-                        with ui.row().classes("items-center gap-2"):
-                            volume_slider = ui.slider(
-                                min=0.0,
-                                max=1.0,
-                                step=0.05,
-                                value=options.get("music_volume", 0.3),
-                            ).classes("w-48")
+                # Music preview: generate, listen, select
+                from immich_memories.ui.pages._step3_music_preview import (
+                    render_music_preview_section,
+                )
 
-                            def on_ai_volume_change(e):
-                                options["music_volume"] = e.value
-
-                            volume_slider.on_value_change(on_ai_volume_change)
-                            ui.label().bind_text_from(
-                                volume_slider, "value", lambda v: f"{int(v * 100)}%"
-                            )
+                render_music_preview_section(options)
 
     music_source_select = ui.select(
         options=music_sources,

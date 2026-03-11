@@ -45,7 +45,10 @@ def _get_preview_path(asset_id: str) -> Path | None:
 
     preview_path = preview_dir / f"{asset_id}.mp4"
     if preview_path.exists():
-        return preview_path
+        # Invalidate broken/tiny previews (< 10KB means failed transcode)
+        if preview_path.stat().st_size > 10_000:
+            return preview_path
+        preview_path.unlink(missing_ok=True)
 
     # Find the source video in the video cache
     # Cache uses two-level dirs: {cache_dir}/{id[:2]}/{id}{ext}
@@ -70,20 +73,27 @@ def _get_preview_path(asset_id: str) -> Path | None:
     if source is None:
         return None
 
-    # Transcode to H.264 480p — fast, small, plays everywhere
+    # Transcode to H.264 480p SDR — fast, small, plays everywhere.
+    # Force yuv420p + BT.709 color to handle HLG/HDR sources that browsers can't render.
     cmd = [
         "ffmpeg",
         "-y",
         "-i",
         str(source),
         "-vf",
-        "scale=-2:480",
+        "scale=-2:480,format=yuv420p",
         "-c:v",
         "libx264",
         "-preset",
         "ultrafast",
         "-crf",
         "28",
+        "-colorspace",
+        "bt709",
+        "-color_trc",
+        "bt709",
+        "-color_primaries",
+        "bt709",
         "-c:a",
         "aac",
         "-b:a",
@@ -100,6 +110,41 @@ def _get_preview_path(asset_id: str) -> Path | None:
         logger.warning(f"Preview transcode failed for {asset_id}: {result.stderr[-200:]}")
     except Exception as e:
         logger.warning(f"Preview transcode error for {asset_id}: {e}")
+
+    return None
+
+
+def _download_immich_preview(asset_id: str) -> Path | None:
+    """Download transcoded preview from Immich and cache locally.
+
+    Used as fallback when the source video isn't in the local cache
+    (e.g. clips loaded from analysis cache without re-downloading).
+    """
+    from immich_memories.config import get_config
+
+    state = get_app_state()
+    if not state.immich_url or not state.immich_api_key:
+        return None
+
+    config = get_config()
+    preview_dir = config.cache.cache_path / "preview-cache"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    preview_path = preview_dir / f"{asset_id}.mp4"
+
+    if preview_path.exists() and preview_path.stat().st_size > 10_000:
+        return preview_path
+
+    try:
+        from immich_memories.api.immich import SyncImmichClient
+
+        client = SyncImmichClient(state.immich_url, state.immich_api_key)
+        video_bytes: bytes = client.get_video_playback(asset_id)
+        if video_bytes and len(video_bytes) > 10_000:
+            preview_path.write_bytes(video_bytes)
+            return preview_path
+        logger.warning(f"Immich preview too small for {asset_id}: {len(video_bytes)} bytes")
+    except Exception as e:
+        logger.warning(f"Failed to download preview from Immich for {asset_id}: {e}")
 
     return None
 

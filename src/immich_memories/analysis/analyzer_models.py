@@ -60,6 +60,7 @@ class ScoredSegment:
     has_laughter: bool = False
     has_speech: bool = False
     has_music: bool = False
+    audio_categories: set[str] | None = None  # e.g. {"laughter", "engine", "crowd"}
 
     # LLM analysis results (populated by content analyzer)
     llm_description: str | None = None

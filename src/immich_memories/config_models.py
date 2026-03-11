@@ -271,6 +271,12 @@ class LLMConfig(BaseModel):
         default="",
         description="API key (optional, only needed for cloud APIs)",
     )
+    timeout_seconds: int = Field(
+        default=300,
+        ge=10,
+        le=3600,
+        description="HTTP timeout for LLM requests in seconds (increase for slow local models)",
+    )
 
     @model_validator(mode="before")
     @classmethod

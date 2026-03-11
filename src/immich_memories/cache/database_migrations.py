@@ -8,7 +8,7 @@ import sqlite3
 logger = logging.getLogger(__name__)
 
 # Current schema version - increment when schema changes
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class DatabaseMigrationsMixin:
@@ -44,6 +44,7 @@ class DatabaseMigrationsMixin:
             3: self._migration_v3_remove_thumbnail_blobs,
             4: self._migration_v4_run_tracking,
             5: self._migration_v5_add_rotation,
+            6: self._migration_v6_add_llm_and_audio,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):
@@ -249,3 +250,23 @@ class DatabaseMigrationsMixin:
             ALTER TABLE video_metadata ADD COLUMN rotation INTEGER DEFAULT 0
         """)
         logger.info("Added rotation column to video_metadata table")
+
+    def _migration_v6_add_llm_and_audio(self, conn: sqlite3.Connection) -> None:
+        """Add LLM analysis and audio category columns to video_segments.
+
+        These fields were computed during analysis but never persisted,
+        causing cached clips to lose their LLM descriptions and audio tags.
+        """
+        columns = [
+            ("llm_description", "TEXT"),
+            ("llm_emotion", "TEXT"),
+            ("llm_setting", "TEXT"),
+            ("llm_activities", "TEXT"),  # JSON array
+            ("llm_subjects", "TEXT"),  # JSON array
+            ("llm_interestingness", "REAL"),
+            ("llm_quality", "REAL"),
+            ("audio_categories", "TEXT"),  # JSON array
+        ]
+        for col_name, col_type in columns:
+            conn.execute(f"ALTER TABLE video_segments ADD COLUMN {col_name} {col_type}")
+        logger.info("Added LLM and audio_categories columns to video_segments")
