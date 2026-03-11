@@ -4,6 +4,13 @@ on:
   # Deploy only on releases (not every push to main)
   release:
     types: [published]
+  # Called from release pipeline (GITHUB_TOKEN events don't trigger other workflows)
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version tag to inject into docs (e.g. v1.2.3)'
+        required: false
+        type: string
   # Allow manual deploys
   workflow_dispatch:
 
@@ -34,8 +41,10 @@ jobs:
 
       - name: Inject version from release tag
         run: |
-          # Use release tag if available, otherwise git describe
-          if [[ "${{ github.event_name }}" == "release" ]]; then
+          # Use workflow_call input, release tag, or git describe
+          if [[ -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
             VERSION="${{ github.event.release.tag_name }}"
           else
             VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
