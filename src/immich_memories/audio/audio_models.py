@@ -35,22 +35,71 @@ AUDIO_EVENT_WEIGHTS = {
     "Speech": 0.4,
     "Conversation": 0.5,
     "Narration, monologue": 0.3,
-    "Singing": 0.8,
     "Children shouting": 0.6,
+    # Singing (separate from speech — often a highlight)
+    "Singing": 0.8,
+    "Choir": 0.7,
     # Music (can be good)
     "Music": 0.4,
     "Musical instrument": 0.5,
+    # Engine / vehicles (action-packed moments)
+    "Engine": 0.5,
+    "Motor vehicle (road)": 0.4,
+    "Car": 0.4,
+    "Motorcycle": 0.5,
+    "Race car, racing car": 0.7,
+    "Aircraft": 0.4,
+    "Boat, Water vehicle": 0.4,
     # Nature sounds (atmospheric)
     "Bird": 0.3,
     "Ocean": 0.3,
     "Wind": 0.2,
     "Water": 0.3,
+    "Rain": 0.3,
+    "Thunder": 0.4,
+    # Animals (can be fun)
+    "Dog": 0.4,
+    "Cat": 0.3,
+    "Animal": 0.3,
     # Negative/neutral (lower priority)
     "Silence": 0.0,
     "White noise": 0.0,
     "Static": 0.0,
     "Noise": 0.1,
 }
+
+# Map AudioSet class names to high-level categories for detection flags.
+# Keys are substrings matched case-insensitively against the class name.
+# Ordered list — first match wins. More specific categories come first
+# so "Baby laughter" matches "baby" before "laughter".
+AUDIO_CATEGORY_KEYWORDS: list[tuple[str, list[str]]] = [
+    ("baby", ["baby", "infant"]),
+    ("laughter", ["laugh", "giggle", "chuckle", "chortle"]),
+    ("singing", ["singing", "choir", "vocal music"]),
+    ("speech", ["speech", "talk", "conversation", "narration", "monologue"]),
+    ("crowd", ["cheering", "applause", "crowd", "clapping", "whoop"]),
+    ("engine", ["engine", "motor vehicle", "race car", "motorcycle", "aircraft"]),
+    ("music", ["music", "instrument", "guitar", "piano", "drum", "flute", "violin"]),
+    ("nature", ["bird", "ocean", "wind", "water", "rain", "thunder", "stream"]),
+    ("animals", ["dog", "cat", "bark", "meow", "purr", "animal"]),
+]
+
+
+def classify_audio_event(class_name: str) -> str | None:
+    """Map an AudioSet class name to a high-level category.
+
+    Args:
+        class_name: AudioSet class label (e.g. "Laughter", "Motor vehicle (road)").
+
+    Returns:
+        Category string or None if no match.
+    """
+    lower = class_name.lower()
+    for category, keywords in AUDIO_CATEGORY_KEYWORDS:
+        if any(kw in lower for kw in keywords):
+            return category
+    return None
+
 
 # Events that shouldn't be cut during (provide smooth boundaries)
 PROTECTED_EVENTS = {
@@ -98,6 +147,7 @@ class AudioAnalysisResult:
     has_laughter: bool = False
     has_speech: bool = False
     has_music: bool = False
+    detected_categories: set[str] = field(default_factory=set)  # e.g. {"laughter", "engine"}
     energy_profile: list[float] = field(default_factory=list)  # Energy over time
     protected_ranges: list[tuple[float, float]] = field(
         default_factory=list
@@ -193,6 +243,6 @@ def get_audio_content_score(video_path: Path) -> float:
     # Import here to avoid circular dependency
     from immich_memories.audio.content_analyzer import AudioContentAnalyzer
 
-    analyzer = AudioContentAnalyzer(use_yamnet=True)
+    analyzer = AudioContentAnalyzer(use_panns=True)
     result = analyzer.analyze(video_path)
     return result.audio_score

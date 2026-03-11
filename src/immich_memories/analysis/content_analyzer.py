@@ -40,6 +40,7 @@ def get_content_analyzer(
     image_detail: str = "low",
     max_height: int = 480,
     num_ctx: int = 4096,
+    timeout: float = 300.0,
 ) -> ContentAnalyzer | None:
     """Get content analyzer for the configured provider.
 
@@ -51,6 +52,7 @@ def get_content_analyzer(
         image_detail: Image detail level for OpenAI-compatible.
         max_height: Maximum frame height in pixels.
         num_ctx: Context window size (Ollama only).
+        timeout: HTTP request timeout in seconds.
 
     Returns:
         ContentAnalyzer instance or None if provider is unknown.
@@ -61,6 +63,7 @@ def get_content_analyzer(
             base_url=base_url,
             max_height=max_height,
             num_ctx=num_ctx,
+            timeout=timeout,
         )
         logger.info(f"Using Ollama for content analysis (model: {model}, num_ctx: {num_ctx})")
         return ollama
@@ -72,6 +75,7 @@ def get_content_analyzer(
             api_key=api_key,
             image_detail=image_detail,
             max_height=max_height,
+            timeout=timeout,
         )
         logger.info(
             f"Using OpenAI-compatible for content analysis (model: {model}, url: {base_url})"
@@ -108,4 +112,5 @@ def get_content_analyzer_from_config() -> ContentAnalyzer | None:
         api_key=llm.api_key,
         image_detail=ca.openai_image_detail,
         max_height=ca.frame_max_height,
+        timeout=float(llm.timeout_seconds),
     )

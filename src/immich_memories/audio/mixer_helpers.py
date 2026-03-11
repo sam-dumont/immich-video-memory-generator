@@ -225,16 +225,9 @@ def mix_audio_with_4stem_ducking(
     else:
         filter_parts.append("[0:a]acopy[video_audio]")
 
-    # Apply sidechain compression to each stem with different ducking levels
-    # Note: makeup is for post-compression gain (linear 1-64), ducking is via threshold/ratio
-    # Using makeup=1.0 for all (no makeup gain), ducking controlled by compression params
-    # Drums: duck least
-    filter_parts.append(
-        f"[drums_prepared][video_audio]sidechaincompress="
-        f"threshold={ducking.threshold}:ratio={ducking.ratio * 0.5}:"
-        f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
-        f"makeup=1.0[ducked_drums]"
-    )
+    # Apply sidechain compression to stems that should duck during speech.
+    # Drums: NO ducking — constant level keeps rhythmic energy.
+    filter_parts.append("[drums_prepared]acopy[final_drums]")
 
     # Bass: duck moderately
     filter_parts.append(
@@ -260,9 +253,9 @@ def mix_audio_with_4stem_ducking(
         f"makeup=1.0[ducked_other]"
     )
 
-    # Mix all 5 audio streams: video + 4 ducked stems
+    # Mix all 5 audio streams: video + 4 stems (drums constant, others ducked)
     filter_parts.append(
-        "[video_audio][ducked_drums][ducked_bass][ducked_vocals][ducked_other]"
+        "[video_audio][final_drums][ducked_bass][ducked_vocals][ducked_other]"
         "amix=inputs=5:duration=first:dropout_transition=2[mixed]"
     )
 

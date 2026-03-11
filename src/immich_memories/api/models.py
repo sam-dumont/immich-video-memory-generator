@@ -324,6 +324,9 @@ class VideoClipInfo(BaseModel):
     color_primaries: str | None = None  # e.g., "bt2020"
     bit_depth: int | None = None  # 8, 10, 12
 
+    # Audio categories detected (populated during pipeline analysis)
+    audio_categories: list[str] | None = None  # e.g. ["laughter", "speech", "engine"]
+
     # LLM Content Analysis results (populated during pipeline analysis)
     llm_description: str | None = None  # Brief description of what's happening
     llm_emotion: str | None = None  # Detected emotional tone (happy, calm, excited, etc.)

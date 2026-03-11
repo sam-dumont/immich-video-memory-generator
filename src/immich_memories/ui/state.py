@@ -57,6 +57,10 @@ class AppState:
     processing: bool = False
     output_path: Path | None = None
 
+    # Music preview (generated in Step 3, used in Step 4)
+    music_preview_result: Any | None = None  # MusicGenerationResult
+    music_generating: bool = False
+
     # Pipeline state
     auto_analyze_pending: bool = False
     review_selected_mode: bool = False

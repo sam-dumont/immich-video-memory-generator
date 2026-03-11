@@ -1,7 +1,4 @@
-"""Analysis phase mixin for the smart pipeline.
-
-Contains methods for Phase 3: downloading, analyzing, and scoring video clips.
-"""
+"""Analysis phase mixin: downloading, analyzing, and scoring video clips."""
 
 from __future__ import annotations
 
@@ -14,14 +11,19 @@ from immich_memories.processing.downscaler import cleanup_downscaled
 from immich_memories.security import sanitize_filename
 
 if TYPE_CHECKING:
+    from immich_memories.analysis._content_parsing import ContentAnalyzer
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
     from immich_memories.api.models import VideoClipInfo
+    from immich_memories.audio.content_analyzer import AudioContentAnalyzer
 
 logger = logging.getLogger(__name__)
 
 
 class AnalysisMixin:
     """Mixin providing analysis phase methods for SmartPipeline."""
+
+    _cached_content_analyzer: ContentAnalyzer | None
+    _cached_audio_analyzer: AudioContentAnalyzer | None
 
     def _phase_analyze(self, clips: list[VideoClipInfo]) -> list[ClipWithSegment]:
         """Phase 3: Analyze clips for best segments.
@@ -94,6 +96,7 @@ class AnalysisMixin:
                     llm_quality=cast(float | None, llm_analysis.get("quality"))
                     if llm_analysis
                     else None,
+                    audio_categories=clip.audio_categories,
                 )
 
                 # Previews are now stored in persistent directory (~/.cache/immich-memories/previews/)
@@ -124,6 +127,9 @@ class AnalysisMixin:
 
         self.tracker.complete_phase()
 
+        # Clean up pipeline-level cached resources (PANNs model, LLM client)
+        self._cleanup_pipeline_resources()
+
         logger.info(f"Phase 3: Analyzed {len(results)} clips")
 
         # Log session summary for token tracking
@@ -139,11 +145,8 @@ class AnalysisMixin:
     ) -> tuple[float, float, float, str | None, dict[str, object] | None] | None:
         """Check if analysis is cached and return it.
 
-        Args:
-            clip: Clip to check cache for.
-
         Returns:
-            Tuple of (start, end, score, None, llm_analysis) if cached, None otherwise.
+            Tuple of (start, end, score, preview_path, llm_analysis) if cached.
         """
         cached = self.analysis_cache.get_analysis(clip.asset.id)
         if not (cached and cached.segments and len(cached.segments) > 0):
@@ -152,39 +155,39 @@ class AnalysisMixin:
         best = max(cached.segments, key=lambda s: s.total_score or 0.0)
         start, end, score = best.start_time, best.end_time, best.total_score or 0.0
 
-        # Extract LLM analysis from cached data if available
+        # Extract LLM analysis from persisted segment data
         cached_llm_analysis = None
-        if hasattr(best, "llm_description") and (
-            best.llm_description or getattr(best, "llm_emotion", None)
-        ):
+        if best.llm_description or best.llm_emotion:
             cached_llm_analysis = {
-                "description": getattr(best, "llm_description", None),
-                "emotion": getattr(best, "llm_emotion", None),
-                "setting": getattr(best, "llm_setting", None),
-                "activities": getattr(best, "llm_activities", None),
-                "subjects": getattr(best, "llm_subjects", None),
-                "interestingness": getattr(best, "llm_interestingness", None),
-                "quality": getattr(best, "llm_quality", None),
+                "description": best.llm_description,
+                "emotion": best.llm_emotion,
+                "setting": best.llm_setting,
+                "activities": best.llm_activities,
+                "subjects": best.llm_subjects,
+                "interestingness": best.llm_interestingness,
+                "quality": best.llm_quality,
             }
 
+        # Restore audio categories from cache
+        if best.audio_categories:
+            clip.audio_categories = list(best.audio_categories)
+
+        # Try to find/build a preview from the video cache
+        preview_path = self._find_cached_preview(clip.asset.id, start, end)
+
+        has_llm = "with LLM" if cached_llm_analysis else "no LLM"
+        has_preview = "with preview" if preview_path else "no preview"
         logger.info(
             f"Using cached analysis for {clip.asset.id}: "
-            f"{start:.1f}s - {end:.1f}s (score={score:.2f})"
+            f"{start:.1f}s - {end:.1f}s (score={score:.2f}, {has_llm}, {has_preview})"
         )
-        return start, end, score, None, cached_llm_analysis
+        return start, end, score, preview_path, cached_llm_analysis
 
     def _download_analysis_video(
         self,
         clip: VideoClipInfo,
     ) -> tuple[Path, Path, Path | None]:
-        """Download video for analysis, potentially downscaled.
-
-        Args:
-            clip: Clip to download.
-
-        Returns:
-            Tuple of (analysis_video, original_video, temp_file_to_cleanup).
-        """
+        """Download video for analysis, potentially downscaled."""
         import tempfile
 
         from immich_memories.cache.video_cache import VideoDownloadCache
@@ -228,7 +231,11 @@ class AnalysisMixin:
         return analysis_video, original_video, temp_file
 
     def _init_content_analyzer(self) -> tuple[object | None, float]:
-        """Initialize LLM content analyzer if enabled.
+        """Get or create cached LLM content analyzer.
+
+        The analyzer is cached at the pipeline level to avoid recreating
+        httpx.Client connections on every clip. Cleaned up in
+        _cleanup_pipeline_resources().
 
         Returns:
             Tuple of (content_analyzer, content_weight).
@@ -238,6 +245,10 @@ class AnalysisMixin:
         config = get_config()
         if not config.content_analysis.enabled:
             return None, 0.0
+
+        # Return cached analyzer if available
+        if hasattr(self, "_cached_content_analyzer") and self._cached_content_analyzer:
+            return self._cached_content_analyzer, config.content_analysis.weight
 
         try:
             from immich_memories.analysis.content_analyzer import get_content_analyzer
@@ -249,6 +260,7 @@ class AnalysisMixin:
                 api_key=config.llm.api_key,
                 image_detail=config.content_analysis.openai_image_detail,
                 max_height=config.content_analysis.frame_max_height,
+                timeout=float(config.llm.timeout_seconds),
             )
             weight = config.content_analysis.weight
             if analyzer:
@@ -256,6 +268,7 @@ class AnalysisMixin:
                     f"LLM content analysis enabled "
                     f"(provider={config.llm.provider}, weight={weight:.0%})"
                 )
+                self._cached_content_analyzer = analyzer
             else:
                 logger.warning("Content analysis enabled but no analyzer available")
             return analyzer, weight
@@ -263,18 +276,71 @@ class AnalysisMixin:
             logger.warning(f"Failed to initialize content analyzer: {e}")
             return None, 0.0
 
+    def _get_cached_audio_analyzer(self) -> object | None:
+        """Get or create a pipeline-level cached AudioContentAnalyzer.
+
+        The PANNs model is ~312MB — loading it per clip causes massive
+        memory leaks. This caches it for the entire analysis phase.
+        """
+        from immich_memories.config import get_config
+
+        config = get_config()
+        if not config.audio_content.enabled:
+            return None
+
+        if hasattr(self, "_cached_audio_analyzer") and self._cached_audio_analyzer:
+            return self._cached_audio_analyzer
+
+        try:
+            from immich_memories.audio.content_analyzer import AudioContentAnalyzer
+
+            analyzer = AudioContentAnalyzer(
+                use_panns=config.audio_content.use_panns,
+                min_confidence=config.audio_content.min_confidence,
+                laughter_confidence=config.audio_content.laughter_confidence,
+            )
+            self._cached_audio_analyzer = analyzer
+            logger.info("Audio content analyzer cached at pipeline level")
+            return analyzer
+        except Exception as e:
+            logger.warning(f"Failed to create audio analyzer: {e}")
+            return None
+
     def _cleanup_analyzer(
-        self, unified_analyzer: object | None, content_analyzer: object | None
+        self, unified_analyzer: object | None, content_analyzer: object | None = None
     ) -> None:
-        """Clean up analyzer resources to prevent OOM."""
+        """Clean up analyzer resources to prevent OOM.
+
+        Note: content_analyzer is NOT cleaned here — it's cached at
+        pipeline level and cleaned in _cleanup_pipeline_resources().
+        """
         try:
             if unified_analyzer is not None:
                 unified_analyzer.clear_cache()
                 unified_analyzer.scorer.release_capture()
+                # Detach audio analyzer so it's not deleted with the unified analyzer
+                if hasattr(unified_analyzer, "_audio_analyzer"):
+                    unified_analyzer._audio_analyzer = None
                 del unified_analyzer
-            if content_analyzer is not None:
-                del content_analyzer
             gc.collect()
+        except Exception:
+            pass
+
+    def _cleanup_pipeline_resources(self) -> None:
+        """Clean up long-lived pipeline resources after analysis phase."""
+        try:
+            if hasattr(self, "_cached_content_analyzer") and self._cached_content_analyzer:
+                if hasattr(self._cached_content_analyzer, "close"):
+                    self._cached_content_analyzer.close()
+                del self._cached_content_analyzer
+                self._cached_content_analyzer = None
+            if hasattr(self, "_cached_audio_analyzer") and self._cached_audio_analyzer:
+                if hasattr(self._cached_audio_analyzer, "cleanup"):
+                    self._cached_audio_analyzer.cleanup()
+                del self._cached_audio_analyzer
+                self._cached_audio_analyzer = None
+            gc.collect()
+            logger.debug("Pipeline resources cleaned up")
         except Exception:
             pass
 
@@ -285,23 +351,17 @@ class AnalysisMixin:
         original_video: Path,
         video_duration: float,
     ) -> tuple[float, float, float, dict[str, object] | None]:
-        """Run unified audio-aware analysis.
-
-        Args:
-            clip: Clip being analyzed.
-            analysis_video: Downscaled video for visual analysis.
-            original_video: Original video for audio analysis.
-            video_duration: Duration of the video.
-
-        Returns:
-            Tuple of (start, end, score, llm_analysis). Returns (0, 0, 0, None) on failure.
-        """
+        """Run unified audio-aware analysis."""
         from immich_memories.analysis.scoring import SceneScorer
         from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
         from immich_memories.config import get_config
 
         config = get_config()
         content_analyzer, content_weight = self._init_content_analyzer()
+
+        # Cache audio analyzer at pipeline level — PANNs model is ~312MB,
+        # must NOT be reloaded per clip
+        audio_analyzer = self._get_cached_audio_analyzer()
 
         unified_analyzer = UnifiedSegmentAnalyzer(
             scorer=SceneScorer(),
@@ -313,6 +373,7 @@ class AnalysisMixin:
             content_weight=content_weight,
             audio_content_enabled=config.audio_content.enabled,
             audio_content_weight=config.audio_content.weight,
+            audio_analyzer=audio_analyzer,
         )
 
         try:
@@ -331,6 +392,10 @@ class AnalysisMixin:
             end = best_segment.end_time
             score = best_segment.total_score
 
+            # Store audio categories on clip for UI display
+            if best_segment.audio_categories:
+                clip.audio_categories = sorted(best_segment.audio_categories)
+
             llm_analysis = None
             if best_segment.llm_description or best_segment.llm_emotion:
                 llm_analysis = {
@@ -343,12 +408,13 @@ class AnalysisMixin:
                     "quality": best_segment.llm_quality,
                 }
 
-            moments = [seg.to_moment_score() for seg in segments]
+            # Save SegmentAnalysis objects directly (not MomentScore)
+            # so LLM fields and audio_categories are persisted to the DB
             self.analysis_cache.save_analysis(
                 asset=clip.asset,
                 video_info=clip,
                 perceptual_hash=None,
-                segments=moments,
+                segments=segments,
             )
 
             logger.info(
@@ -357,7 +423,6 @@ class AnalysisMixin:
             )
 
             del segments
-            del moments
             return start, end, score, llm_analysis
         finally:
             self._cleanup_analyzer(unified_analyzer, content_analyzer)

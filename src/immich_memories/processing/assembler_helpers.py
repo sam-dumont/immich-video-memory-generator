@@ -56,24 +56,35 @@ class AssemblerHelpersMixin:
         if self.settings.target_resolution:
             target_w, target_h = self.settings.target_resolution
             logger.info(f"Using specified resolution {target_w}x{target_h}")
+            # Only swap for explicit resolution — auto-detect already handles orientation
+            target_w, target_h = self._swap_if_portrait(clips, target_w, target_h)
         elif self.settings.auto_resolution:
+            # _detect_best_resolution already handles orientation detection
             target_w, target_h = self._detect_best_resolution(clips)
         else:
             config = get_config()
             target_w, target_h = config.output.resolution_tuple
             logger.info(f"Using config resolution {target_w}x{target_h}")
+            # Swap for config resolution if clips are portrait
+            target_w, target_h = self._swap_if_portrait(clips, target_w, target_h)
 
-        # Detect portrait orientation and swap if needed
+        return target_w, target_h
+
+    def _swap_if_portrait(
+        self,
+        clips: list[AssemblyClip],
+        target_w: int,
+        target_h: int,
+    ) -> tuple[int, int]:
+        """Swap width/height if majority of clips are portrait and target is landscape."""
         portrait_count = 0
         for clip in clips:
             res = self._get_video_resolution(clip.path)
             if res and res[1] > res[0]:
                 portrait_count += 1
-
-        if portrait_count > len(clips) // 2:
+        if portrait_count > len(clips) // 2 and target_w > target_h:
             target_w, target_h = target_h, target_w
             logger.info(f"Detected portrait orientation, swapping to {target_w}x{target_h}")
-
         return target_w, target_h
 
     def _create_assembly_context(

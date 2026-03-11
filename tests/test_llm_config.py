@@ -99,15 +99,26 @@ class TestOpenAICompatibleProvider:
         assert analyzer.model == "qwen3.5-9b"
         assert analyzer.api_key == ""
 
-    def test_timeout_is_120s(self):
-        """Local vision models need longer timeouts."""
+    def test_timeout_default_is_300s(self):
+        """Local vision models need longer timeouts (default 300s)."""
         from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
 
         analyzer = OpenAICompatibleContentAnalyzer(
             model="test", base_url="http://localhost:8080/v1", api_key=""
         )
         client = analyzer.client
-        assert client.timeout.read == 120.0
+        assert client.timeout.read == 300.0
+        analyzer.close()
+
+    def test_timeout_configurable(self):
+        """Timeout can be configured via parameter."""
+        from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
+
+        analyzer = OpenAICompatibleContentAnalyzer(
+            model="test", base_url="http://localhost:8080/v1", api_key="", timeout=600.0
+        )
+        client = analyzer.client
+        assert client.timeout.read == 600.0
         analyzer.close()
 
     def test_no_auth_header_when_no_key(self):

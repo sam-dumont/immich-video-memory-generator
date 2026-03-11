@@ -61,7 +61,7 @@ install:
 dev:
 	uv sync --all-extras
 
-# Install with macOS Metal GPU acceleration for TensorFlow
+# Install with macOS-specific extras (Apple Vision, Metal GPU, etc.)
 dev-mac:
 	uv sync --extra all-mac --extra dev
 

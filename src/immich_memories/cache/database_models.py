@@ -29,6 +29,18 @@ class CachedSegment:
     motion_vectors: dict | None = None
     keyframe_path: str | None = None
 
+    # LLM analysis results (persisted from unified analysis)
+    llm_description: str | None = None
+    llm_emotion: str | None = None
+    llm_setting: str | None = None
+    llm_activities: list[str] | None = None
+    llm_subjects: list[str] | None = None
+    llm_interestingness: float | None = None
+    llm_quality: float | None = None
+
+    # Audio content categories (from PANNs analysis)
+    audio_categories: list[str] | None = None
+
     @property
     def duration(self) -> float:
         """Get segment duration."""
