@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-12
+
+
+### Features
+
+### Bug Fixes
+- fix(ci): merge release pipeline into CI workflow (d5cba87)
+- fix(ci): use PR-based changelog updates instead of direct push to main (#21) (a8983db)
+- fix(ci): enhance testing framework with new tests, error handling, and docs (#20) (1b8af9e)
+### Changed
+
+
+
 ## [0.5.0] - 2026-03-12
 
 
@@ -94,6 +107,7 @@ First public release.
 - Preview extraction: `-map 0:a:0?` to skip unsupported spatial audio streams
 - Type error in `content_analyzer.py` for OpenAI content list
 
-[Unreleased]: https://github.com/sam-dumont/immich-video-memory-generator/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/sam-dumont/immich-video-memory-generator/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/sam-dumont/immich-video-memory-generator/compare/v0.2.0...v0.5.1
 [0.5.0]: https://github.com/sam-dumont/immich-video-memory-generator/compare/v0.2.0...v0.5.0
 [0.2.0]: https://github.com/sam-dumont/immich-video-memory-generator/releases/tag/v0.2.0
