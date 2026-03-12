@@ -7,6 +7,8 @@ title: "Step 1: Configuration"
 
 This is where you tell the tool what to work with.
 
+![Step 1 Configuration](/img/screenshots/step1-config-connected.png)
+
 ## Immich Connection
 
 Enter your Immich server URL and API key. If you've set these in your `config.yaml` or environment variables, they'll be pre-filled.
@@ -20,6 +22,8 @@ Each preset auto-configures the date range and target duration. For example, "Se
 The presets also drive the output filename and title screen. A Multi-Person preset with Sam and Emile for March 2026 produces `sam_emile_march_2026_memories.mp4` with "Sam & Emile" as the title subtitle.
 
 ## Person Selection
+
+![Person Selection](/img/screenshots/step1-person-dropdown.png)
 
 A dropdown populated from Immich's face recognition data. Pick the person you want the memory video to focus on. The tool only pulls videos containing this person.
 

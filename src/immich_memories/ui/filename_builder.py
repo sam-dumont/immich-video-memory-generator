@@ -116,6 +116,53 @@ def should_show_month_dividers(
     return month_span > 3
 
 
+def get_divider_mode(
+    memory_type: str | None,
+    date_start: date | None,
+    date_end: date | None,
+) -> str:
+    """Decide which divider style to use: "none", "month", or "year".
+
+    Rules:
+    - Monthly highlights / trip: no dividers
+    - On This Day: always year dividers (same date across years)
+    - Short ranges (<=3 months): no dividers
+    - Multi-year ranges: year dividers
+    - Everything else (4+ months, single year): month dividers
+
+    Args:
+        memory_type: Memory type key or None.
+        date_start: Start date of the range.
+        date_end: End date of the range.
+
+    Returns:
+        "none", "month", or "year".
+    """
+    # Types that never get dividers
+    if memory_type in ("monthly_highlights", "trip"):
+        return "none"
+
+    # On This Day always uses year dividers
+    if memory_type == "on_this_day":
+        return "year"
+
+    if not date_start or not date_end:
+        return "month"
+
+    month_span = (date_end.year - date_start.year) * 12 + (date_end.month - date_start.month) + 1
+
+    # Short range: no dividers
+    if month_span <= 3:
+        return "none"
+
+    # Multi-year range: year dividers
+    if date_start.year != date_end.year:
+        return "year"
+
+    # Single year, 4+ months: month dividers
+    return "month"
+
+
 def _build_who_part(
     memory_type: str | None,
     preset_params: dict,

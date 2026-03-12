@@ -7,6 +7,8 @@ title: "Step 4: Preview & Export"
 
 Hit generate and watch it work.
 
+![Step 4 Preview & Export](/img/screenshots/step4-preview-export.png)
+
 ## Output Filename
 
 The filename is auto-generated from your selections: person names, date range, and memory type. Examples:
@@ -18,9 +20,13 @@ The filename is auto-generated from your selections: person names, date range, a
 
 You can edit the filename before generating.
 
-## Month Dividers
+## Dividers
 
-For memories spanning 4+ months, the video includes month divider cards between clips (e.g., "January", "February"). Shorter ranges (3 months or fewer) skip dividers entirely: there's not enough content to justify them.
+The tool automatically picks the right divider style based on your date range:
+
+- **Month dividers** (e.g., "January", "February"): for 4+ month ranges within a single year
+- **Year dividers** (e.g., "2023", "2024"): for multi-year ranges and "On This Day" memories
+- **No dividers**: for trips, single months, and ranges of 3 months or less
 
 ## Generation Progress
 

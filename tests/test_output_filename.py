@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from immich_memories.ui.filename_builder import build_output_filename
+from immich_memories.ui.filename_builder import build_output_filename, get_divider_mode
 
 
 class TestBuildOutputFilename:
@@ -158,3 +158,45 @@ class TestBuildOutputFilename:
             date_end=date(2025, 12, 31),
         )
         assert result == "jean-pierre_2025_memories.mp4"
+
+
+class TestGetDividerMode:
+    """Test divider mode selection based on memory type and date range."""
+
+    def test_monthly_highlights_returns_none(self):
+        result = get_divider_mode("monthly_highlights", date(2026, 3, 1), date(2026, 3, 31))
+        assert result == "none"
+
+    def test_on_this_day_returns_year(self):
+        """On This Day spans multiple years: use year dividers."""
+        result = get_divider_mode("on_this_day", date(2021, 3, 12), date(2026, 3, 12))
+        assert result == "year"
+
+    def test_short_range_returns_none(self):
+        """Ranges of 3 months or less: no dividers."""
+        result = get_divider_mode("custom", date(2026, 1, 1), date(2026, 3, 31))
+        assert result == "none"
+
+    def test_long_same_year_range_returns_month(self):
+        """4+ month range within same year: month dividers."""
+        result = get_divider_mode("year_in_review", date(2025, 1, 1), date(2025, 12, 31))
+        assert result == "month"
+
+    def test_multi_year_range_returns_year(self):
+        """Range spanning multiple years: year dividers."""
+        result = get_divider_mode("custom", date(2023, 1, 1), date(2026, 3, 31))
+        assert result == "year"
+
+    def test_trip_returns_none(self):
+        """Trip: no dividers regardless of length."""
+        result = get_divider_mode("trip", date(2026, 1, 1), date(2026, 6, 30))
+        assert result == "none"
+
+    def test_season_4_months_returns_month(self):
+        """Season spanning 4 months: month dividers."""
+        result = get_divider_mode("season", date(2025, 6, 1), date(2025, 9, 30))
+        assert result == "month"
+
+    def test_no_dates_defaults_to_month(self):
+        result = get_divider_mode("year_in_review", None, None)
+        assert result == "month"

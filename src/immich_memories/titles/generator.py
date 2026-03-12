@@ -360,6 +360,55 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin):
             screen_type="month_divider",
         )
 
+    def generate_year_divider(
+        self,
+        year: int,
+    ) -> GeneratedScreen:
+        """Generate a year divider screen.
+
+        Args:
+            year: Year number (e.g. 2024).
+
+        Returns:
+            GeneratedScreen with path to video file.
+        """
+        year_text = str(year)
+
+        divider_style = TitleStyle(
+            name=f"{self.style.name}_year_divider",
+            font_family=self.style.font_family,
+            font_weight="light",
+            title_size_ratio=0.10,
+            text_color=self.style.text_color,
+            background_type=self.style.background_type,
+            background_colors=self.style.background_colors,
+            animation_preset="slow_fade",
+            use_line_accent=False,
+        )
+
+        output_path = self.output_dir / f"year_divider_{year}.mp4"
+        width, height = self.config.output_resolution
+
+        self._create_title_video(
+            title=year_text,
+            subtitle=None,
+            style=divider_style,
+            output_path=output_path,
+            width=width,
+            height=height,
+            duration=self.config.month_divider_duration,
+            fps=self.config.fps,
+            animated_background=self.config.animated_background,
+        )
+
+        logger.info(f"Generated year divider: {year_text}")
+
+        return GeneratedScreen(
+            path=output_path,
+            duration=self.config.month_divider_duration,
+            screen_type="year_divider",
+        )
+
     def generate_ending_screen(
         self,
         video_clips: list[Path] | None = None,

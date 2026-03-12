@@ -77,20 +77,55 @@ MUSIC_PROMPTS = [
 ]
 
 
-def _get_base_prompt(variation: int = 0, seed: int | None = None) -> str:
+# Memory type-specific MusicGen prompts: picks a style that fits the preset
+_MEMORY_TYPE_PROMPTS: dict[str, list[str]] = {
+    "trip": [
+        "modern tropical house, steel drums, bouncy beat, sunny and fun, instrumental only",
+        "upbeat acoustic guitar, light percussion, carefree summer vibes, no vocals",
+    ],
+    "person_spotlight": [
+        "warm acoustic guitar, soft percussion, gentle and heartfelt, instrumental",
+        "gentle indie folk, fingerpicked guitar, warm piano, intimate feel, no vocals",
+    ],
+    "on_this_day": [
+        "upbeat lo-fi hip hop beat, bouncy drums, warm synths, feel-good groove, no vocals",
+        "nostalgic chillwave, warm analog synths, tape hiss, dreamy and reflective, instrumental",
+    ],
+    "year_in_review": [
+        "cinematic orchestral, strings and piano, emotional and powerful, instrumental",
+        "epic cinematic, building strings, triumphant brass, emotional journey, no vocals",
+    ],
+    "season": [
+        "happy indie electronic, driving beat, synth melody, uplifting energy, no singing",
+        "modern pop electronic, punchy drums, synth bass, bright and fun, instrumental",
+    ],
+}
+
+
+def _get_base_prompt(
+    variation: int = 0,
+    seed: int | None = None,
+    memory_type: str | None = None,
+) -> str:
     """Generate a simple prompt for music generation.
 
     Uses simple, clear prompts to avoid artifacts from overly complex descriptions.
+    If memory_type is provided, picks a prompt style that fits the preset.
 
     Args:
         variation: Variation index for deterministic variety
         seed: Optional random seed for reproducibility
+        memory_type: Optional memory type for style-appropriate prompts
 
     Returns:
         Simple prompt string for MusicGen
     """
-    # Use seed for reproducibility if provided
     rng = random.Random(seed + variation) if seed is not None else random.Random(variation * 42)
+
+    # Use memory type-specific prompts when available
+    if memory_type and memory_type in _MEMORY_TYPE_PROMPTS:
+        return rng.choice(_MEMORY_TYPE_PROMPTS[memory_type])
+
     return rng.choice(MUSIC_PROMPTS)
 
 
@@ -102,6 +137,7 @@ async def generate_music_for_video(
     crossfade_duration: float = 2.0,
     hemisphere: str = "north",
     app_config: object | None = None,
+    memory_type: str | None = None,
 ) -> MusicGenerationResult:
     """Generate multiple music versions for a video with per-clip moods.
 
@@ -135,6 +171,7 @@ async def generate_music_for_video(
                 progress_callback=progress_callback,
                 crossfade_duration=crossfade_duration,
                 hemisphere=hemisphere,
+                memory_type=memory_type,
             )
 
     # Legacy path: direct MusicGen client
@@ -158,7 +195,7 @@ async def generate_music_for_video(
         for i in range(config.num_versions):
             logger.info(f"Generating version {i + 1}/{config.num_versions}")
 
-            base_prompt = _get_base_prompt(variation=i)
+            base_prompt = _get_base_prompt(variation=i, memory_type=memory_type)
 
             def version_progress(status, progress, detail, version_idx=i):
                 if progress_callback:

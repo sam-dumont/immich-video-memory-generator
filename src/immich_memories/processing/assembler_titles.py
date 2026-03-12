@@ -155,6 +155,111 @@ class AssemblerTitleMixin:
             return "1080p"
         return "720p"
 
+    def _detect_year_changes(
+        self,
+        clips: list[AssemblyClip],
+    ) -> list[tuple[int, int]]:
+        """Detect where year changes occur in the clip list.
+
+        Args:
+            clips: List of clips with dates.
+
+        Returns:
+            List of (insert_index, year) for each year change.
+        """
+        year_changes: list[tuple[int, int]] = []
+        current_year: int | None = None
+
+        for i, clip in enumerate(clips):
+            clip_date = self._parse_clip_date(clip)
+            if clip_date is None:
+                continue
+
+            if current_year is None or clip_date.year != current_year:
+                year_changes.append((i, clip_date.year))
+                if current_year is not None:
+                    logger.info(
+                        f"Year change detected at clip {i}: {current_year} -> {clip_date.year}"
+                    )
+                current_year = clip_date.year
+
+        logger.info(f"Year detection: {len(year_changes)} year changes found")
+        return year_changes
+
+    def _generate_year_dividers(
+        self,
+        clips: list[AssemblyClip],
+        generator: Any,
+        title_settings: Any,
+        progress_callback: Callable[[float, str], None] | None,
+    ) -> dict[int, Path]:
+        """Generate year divider screens for year transitions.
+
+        Args:
+            clips: Content clips.
+            generator: TitleScreenGenerator instance.
+            title_settings: Title screen settings.
+            progress_callback: Progress callback.
+
+        Returns:
+            Dict of year -> divider video path.
+        """
+        year_changes = self._detect_year_changes(clips)
+        year_divider_paths: dict[int, Path] = {}
+
+        if not year_changes:
+            return year_divider_paths
+
+        if progress_callback:
+            progress_callback(0.05, "Generating year dividers...")
+
+        for _, year in year_changes:
+            if year not in year_divider_paths:
+                divider = generator.generate_year_divider(year)
+                year_divider_paths[year] = divider.path
+                logger.info(f"Generated year divider: {year}")
+
+        return year_divider_paths
+
+    def _build_clips_with_year_dividers(
+        self,
+        clips: list[AssemblyClip],
+        year_divider_paths: dict[int, Path],
+        title_settings: Any,
+    ) -> list[AssemblyClip]:
+        """Interleave clips with year divider screens.
+
+        Args:
+            clips: Content clips.
+            year_divider_paths: Generated year divider paths.
+            title_settings: Title screen settings.
+
+        Returns:
+            List of clips with year dividers inserted at year boundaries.
+        """
+        result: list[AssemblyClip] = []
+        current_year: int | None = None
+
+        for clip in clips:
+            clip_date = self._parse_clip_date(clip)
+            if clip_date:
+                if (
+                    current_year is None or clip_date.year != current_year
+                ) and clip_date.year in year_divider_paths:
+                    result.append(
+                        AssemblyClip(
+                            path=year_divider_paths[clip_date.year],
+                            duration=title_settings.month_divider_duration,
+                            date=None,
+                            asset_id=f"year_divider_{clip_date.year}",
+                            is_title_screen=True,
+                        )
+                    )
+                current_year = clip_date.year
+            result.append(clip)
+
+        return result
+
     def _generate_month_dividers(
         self,
         clips: list[AssemblyClip],
@@ -327,13 +432,25 @@ class AssemblerTitleMixin:
         ]
         logger.info(f"Generated title screen: {title_screen.path}")
 
-        # 2-3. Clips with month dividers
-        month_divider_paths = self._generate_month_dividers(
-            clips, generator, title_settings, progress_callback
-        )
-        final_clips.extend(
-            self._build_clips_with_dividers(clips, month_divider_paths, title_settings)
-        )
+        # 2-3. Clips with dividers (month or year based on divider_mode)
+        divider_mode = getattr(title_settings, "divider_mode", "month")
+        if divider_mode == "year":
+            year_divider_paths = self._generate_year_dividers(
+                clips, generator, title_settings, progress_callback
+            )
+            final_clips.extend(
+                self._build_clips_with_year_dividers(clips, year_divider_paths, title_settings)
+            )
+        elif divider_mode == "month" and title_settings.show_month_dividers:
+            month_divider_paths = self._generate_month_dividers(
+                clips, generator, title_settings, progress_callback
+            )
+            final_clips.extend(
+                self._build_clips_with_dividers(clips, month_divider_paths, title_settings)
+            )
+        else:
+            # No dividers
+            final_clips.extend(clips)
 
         # 4. Ending screen
         if title_settings.show_ending_screen:

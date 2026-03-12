@@ -77,3 +77,39 @@ def test_structured_caption_bpm_not_in_caption_text():
 def test_structured_caption_seasonal_modifier():
     result = build_ace_caption_structured("happy", season="winter")
     assert "cozy" in result.caption.lower() or "warm" in result.caption.lower()
+
+
+def test_memory_type_trip_picks_tropical_or_acoustic():
+    """Trip memory type should pick travel-appropriate music."""
+    result = build_ace_caption_structured("happy", memory_type="trip")
+    # Trip maps to tropical or acoustic
+    assert "tropical" in result.caption.lower() or "acoustic" in result.caption.lower()
+
+
+def test_memory_type_person_spotlight_picks_acoustic():
+    """Person Spotlight should pick intimate/acoustic music."""
+    result = build_ace_caption_structured("happy", memory_type="person_spotlight")
+    assert "acoustic" in result.caption.lower() or "gentle" in result.caption.lower()
+
+
+def test_memory_type_on_this_day_picks_nostalgic():
+    """On This Day should pick nostalgic music."""
+    result = build_ace_caption_structured("happy", memory_type="on_this_day")
+    assert "lo-fi" in result.caption.lower() or "lofi" in result.caption.lower()
+
+
+def test_memory_type_overrides_mood():
+    """Memory type should take priority over mood for template selection."""
+    # Without memory_type, "calm" maps to ambient
+    without = build_ace_caption_structured("calm")
+    assert "ambient" in without.caption.lower()
+
+    # With trip memory_type, should pick tropical instead
+    with_trip = build_ace_caption_structured("calm", memory_type="trip")
+    assert "tropical" in with_trip.caption.lower() or "acoustic" in with_trip.caption.lower()
+
+
+def test_unknown_memory_type_falls_back_to_mood():
+    """Unknown memory type should fall back to mood-based selection."""
+    result = build_ace_caption_structured("calm", memory_type="unknown_type")
+    assert "ambient" in result.caption.lower()

@@ -127,7 +127,7 @@ def render_step4() -> None:
     from immich_memories.ui.filename_builder import (
         build_output_filename,
         build_title_person_name,
-        should_show_month_dividers,
+        get_divider_mode,
     )
 
     date_range = state.date_range
@@ -320,6 +320,15 @@ def render_step4() -> None:
                     use_first_name_only=config.title_screens.use_first_name_only,
                 )
 
+                divider_mode = get_divider_mode(
+                    memory_type=state.memory_type,
+                    date_start=date_range.start if date_range else None,
+                    date_end=date_range.end if date_range else None,
+                )
+                # Respect config toggle: if dividers disabled globally, force "none"
+                if not config.title_screens.show_month_dividers:
+                    divider_mode = "none"
+
                 title_screen_settings = TitleScreenSettings(
                     enabled=True,
                     person_name=title_person_name,
@@ -330,12 +339,8 @@ def render_step4() -> None:
                     title_duration=config.title_screens.title_duration,
                     month_divider_duration=config.title_screens.month_divider_duration,
                     ending_duration=config.title_screens.ending_duration,
-                    show_month_dividers=config.title_screens.show_month_dividers
-                    and should_show_month_dividers(
-                        memory_type=state.memory_type,
-                        date_start=date_range.start if date_range else None,
-                        date_end=date_range.end if date_range else None,
-                    ),
+                    show_month_dividers=divider_mode == "month",
+                    divider_mode=divider_mode,
                     month_divider_threshold=config.title_screens.month_divider_threshold,
                     use_first_name_only=config.title_screens.use_first_name_only,
                 )
@@ -374,6 +379,7 @@ def render_step4() -> None:
                     run_tracker,
                     progress_bar,
                     status_label,
+                    memory_type=state.memory_type,
                 )
 
             elif music_source == "Upload file" and gen_options.get("music_file"):

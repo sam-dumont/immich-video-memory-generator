@@ -110,6 +110,18 @@ _MOOD_TO_TEMPLATE = {
     "cozy": "lofi",
 }
 
+# Maps memory type presets to preferred music templates.
+# Memory type takes priority over mood when provided.
+_MEMORY_TYPE_TO_TEMPLATE: dict[str, str] = {
+    "trip": "tropical",
+    "season": "indie_electronic",
+    "person_spotlight": "acoustic",
+    "on_this_day": "lofi",
+    "monthly_highlights": "upbeat_pop",
+    "multi_person": "upbeat_pop",
+    "year_in_review": "cinematic",
+}
+
 # Seasonal modifiers appended to tags
 _SEASON_TAG_MODIFIERS = {
     "winter": "cozy, warm tones, intimate",
@@ -212,6 +224,7 @@ def build_ace_caption_structured(
     mood: str,
     season: str | None = None,
     scene_moods: list[str] | None = None,
+    memory_type: str | None = None,
 ) -> ACECaptionResult:
     """Build structured ACE-Step caption with explicit musical parameters.
 
@@ -222,11 +235,19 @@ def build_ace_caption_structured(
         mood: Mood string (e.g. "happy", "nostalgic")
         season: Optional season modifier ("winter", "summer", etc.)
         scene_moods: Optional list of per-scene mood strings for voting.
+        memory_type: Optional memory type preset for template selection.
+            Takes priority over mood when a known mapping exists.
 
     Returns:
         ACECaptionResult with all fields populated.
     """
-    template_name = _pick_template_for_scenes(scene_moods) if scene_moods else _match_template(mood)
+    # Memory type takes priority for template selection
+    if memory_type and memory_type in _MEMORY_TYPE_TO_TEMPLATE:
+        template_name = _MEMORY_TYPE_TO_TEMPLATE[memory_type]
+    elif scene_moods:
+        template_name = _pick_template_for_scenes(scene_moods)
+    else:
+        template_name = _match_template(mood)
 
     template = ACE_CAPTION_TEMPLATES[template_name]
 

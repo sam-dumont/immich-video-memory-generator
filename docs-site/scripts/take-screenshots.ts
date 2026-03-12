@@ -28,15 +28,15 @@ const SCREENSHOT_DIR = path.join(__dirname, '..', 'static', 'img', 'screenshots'
 const REDACTIONS: Array<{selector: string; value: string}> = [
   {selector: 'input[aria-label="Immich Server URL"]', value: 'https://photos.example.com'},
   {selector: 'input[aria-label="API Key"]', value: 'your-api-key-here'},
-  {selector: 'input[aria-label="Output filename"]', value: 'everyone_2026_memories.mp4'},
+  {selector: 'input[aria-label="Output filename"]', value: 'alice_2025_memories.mp4'},
 ];
 
 // Text replacements applied via JS on the page
 const TEXT_REDACTIONS: Array<{find: RegExp; replace: string}> = [
   {find: /Connected as: .+/, replace: 'Connected as: user@example.com'},
-  {find: /\/Users\/\w+\/Videos\/Memories\/.*/, replace: '/home/user/Videos/Memories/everyone_2026_memories.mp4'},
+  {find: /\/Users\/\w+\/Videos\/Memories\/.*/, replace: '/home/user/Videos/Memories/alice_2025_memories.mp4'},
   {find: /http:\/\/\d+\.\d+\.\d+\.\d+:\d+/, replace: 'https://photos.example.com'},
-  {find: /Will be saved to: .*/, replace: 'Will be saved to: /home/user/Videos/Memories/everyone_2026_memories.mp4'},
+  {find: /Will be saved to: .*/, replace: 'Will be saved to: /home/user/Videos/Memories/alice_2025_memories.mp4'},
 ];
 
 async function redactPage(page: Page) {
@@ -152,6 +152,21 @@ async function main() {
     await redactPage(page);
     await screenshot(page, 'step1-config-connected');
 
+    // Screenshot: memory type preset cards
+    console.log('  Capturing memory type presets...');
+    const presetCard = page.locator('[class*="preset"], [class*="memory-type"]').first();
+    if (await presetCard.isVisible()) {
+      await screenshot(page, 'step1-preset-cards');
+    }
+
+    // Click "Year in Review" preset if visible (for a good screenshot flow)
+    const yearPreset = page.getByText('Year in Review');
+    if (await yearPreset.isVisible()) {
+      await yearPreset.click();
+      await page.waitForTimeout(500);
+      await screenshot(page, 'step1-preset-selected');
+    }
+
     // Open person dropdown
     const personCombo = page.getByRole('combobox', {name: 'Person'});
     if (await personCombo.isVisible()) {
@@ -159,44 +174,24 @@ async function main() {
       await page.waitForTimeout(500);
       await redactPersonNames(page);
       await screenshot(page, 'step1-person-dropdown');
-      await page.getByRole('option', {name: 'All people'}).click();
+      // Pick first real person (not "All people")
+      const options = page.getByRole('option');
+      const count = await options.count();
+      if (count > 1) {
+        await options.nth(1).click();
+      } else {
+        await page.getByRole('option', {name: 'All people'}).click();
+      }
       await page.waitForTimeout(300);
     }
 
-    // Switch to "Duration" tab and set 1 month for a fast flow
-    console.log('  Setting time period to 1 month...');
-    const durationTab = page.getByRole('tab', {name: /Duration/i});
-    if (await durationTab.isVisible()) {
-      await durationTab.click();
-      await page.waitForTimeout(500);
-
-      // Set duration to 1 month
-      const durationInput = page.locator('input[aria-label="Duration"]');
-      if (await durationInput.isVisible()) {
-        await durationInput.fill('1');
-      }
-
-      // Select "Months" unit
-      const unitSelect = page.getByRole('combobox', {name: /Unit/i});
-      if (await unitSelect.isVisible()) {
-        await unitSelect.click();
-        await page.waitForTimeout(200);
-        const monthsOption = page.getByRole('option', {name: 'Months'});
-        if (await monthsOption.isVisible()) {
-          await monthsOption.click();
-          await page.waitForTimeout(200);
-        }
-      }
-    }
-
-    // Expand cache management — scroll down to show it in viewport
+    // Expand cache management
     const cacheButton = page.getByRole('button', {name: /Cache Management/});
     if (await cacheButton.isVisible()) {
       await cacheButton.scrollIntoViewIfNeeded();
       await cacheButton.click();
       await page.waitForTimeout(500);
       await redactPage(page);
-      // Scroll so cache panel is visible in viewport
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
       await page.waitForTimeout(300);
       await screenshot(page, 'step1-cache-panel');

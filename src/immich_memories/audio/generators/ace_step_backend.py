@@ -50,20 +50,7 @@ def _is_ace_step_importable() -> bool:
 
 @dataclass
 class ACEStepConfig:
-    """Configuration for ACE-Step backend.
-
-    Attributes:
-        mode: 'lib' for local library, 'api' for remote Gradio server.
-        api_url: Gradio server URL (only used in API mode).
-        model_variant: 'turbo' (8 steps, fast) or 'base' (50 steps, quality).
-        lm_model_size: Language model size: '0.6B', '1.7B', or '4B'.
-        use_lm: Whether to use the language model for "thinking mode".
-        disable_offload: Disable CPU offloading (only if you have plenty of VRAM).
-        num_versions: Number of versions to generate for selection.
-        hemisphere: 'north' or 'south' for seasonal prompts.
-        timeout_seconds: Max time per generation.
-        bf16: Use bfloat16 (requires Ampere+ GPU). Set False for Pascal GPUs.
-    """
+    """Configuration for ACE-Step backend."""
 
     mode: str = "lib"  # "lib" or "api"
     api_url: str = "http://localhost:8000"
@@ -99,13 +86,21 @@ def _mood_to_ace_prompt(mood: str, prompt: str = "") -> tuple[str, str]:
     return build_ace_caption(mood, season=_detect_season(mood))
 
 
-def _mood_to_structured_prompt(mood: str, scene_moods: list[str] | None = None):
+def _mood_to_structured_prompt(
+    mood: str,
+    scene_moods: list[str] | None = None,
+    memory_type: str | None = None,
+):
     """Convert mood to structured ACE-Step caption with explicit musical params.
 
     Returns ACECaptionResult with caption, lyrics, bpm, key_scale, time_signature.
     """
-
-    return build_ace_caption_structured(mood, season=_detect_season(mood), scene_moods=scene_moods)
+    return build_ace_caption_structured(
+        mood,
+        season=_detect_season(mood),
+        scene_moods=scene_moods,
+        memory_type=memory_type,
+    )
 
 
 class ACEStepBackend(MusicGenerator):
@@ -303,10 +298,14 @@ class ACEStepBackend(MusicGenerator):
         if request.is_multi_scene:
             scene_moods = [s.get("mood", "upbeat") for s in request.scenes]
             primary_mood = scene_moods[0] if scene_moods else "upbeat"
-            caption_result = _mood_to_structured_prompt(primary_mood, scene_moods=scene_moods)
+            caption_result = _mood_to_structured_prompt(
+                primary_mood, scene_moods=scene_moods, memory_type=request.memory_type
+            )
             duration = sum(s.get("duration", 30) for s in request.scenes)
         else:
-            caption_result = _mood_to_structured_prompt(request.prompt)
+            caption_result = _mood_to_structured_prompt(
+                request.prompt, memory_type=request.memory_type
+            )
             duration = request.duration_seconds
 
         duration = min(duration, 300)  # Cap at 5 minutes
