@@ -1,0 +1,422 @@
+name: Release
+
+on:
+  # Automatic release on push to main (semantic-release determines if needed)
+  push:
+    branches: [main]
+  # Manual trigger for releases
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no actual release)'
+        required: false
+        default: 'false'
+        type: boolean
+      force_version:
+        description: 'Force version bump type (optional)'
+        required: false
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  # Determine if a release is needed based on commits AND branch names
+  analyze:
+    name: Analyze Commits & Branches
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.analyze.outputs.should_release }}
+      next_version: ${{ steps.analyze.outputs.next_version }}
+      release_type: ${{ steps.analyze.outputs.release_type }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Analyze commits and merged branches
+        id: analyze
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE_VERSION: ${{ inputs.force_version }}
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [[ -z "$PREV_TAG" ]]; then
+            echo "No previous tag found, this will be the first release"
+            PREV_VERSION="0.0.0"
+            # Get all commits when no previous tag exists
+            COMMIT_RANGE="HEAD"
+          else
+            PREV_VERSION=${PREV_TAG#v}
+            COMMIT_RANGE="$PREV_TAG..HEAD"
+          fi
+          echo "Previous version: $PREV_VERSION"
+
+          # Initialize release type from commits
+          RELEASE_TYPE="none"
+
+          # Check merged branch names since last tag for version hints
+          echo "Checking merged branches..."
+          if [[ -n "$PREV_TAG" ]]; then
+            MERGED_BRANCHES=$(git log $COMMIT_RANGE --merges --pretty=format:"%s" 2>/dev/null || echo "")
+          else
+            MERGED_BRANCHES=$(git log --merges --pretty=format:"%s" 2>/dev/null || echo "")
+          fi
+
+          echo "Merged branches:"
+          echo "$MERGED_BRANCHES"
+
+          # Check branch names for version indicators
+          # breaking/* or major/* -> major
+          # feat/* or feature/* or minor/* -> minor
+          # fix/* or bugfix/* or patch/* -> patch
+          if echo "$MERGED_BRANCHES" | grep -qiE "(breaking/|major/)"; then
+            echo "Found breaking/major branch merge"
+            RELEASE_TYPE="major"
+          elif echo "$MERGED_BRANCHES" | grep -qiE "(feat/|feature/|minor/)"; then
+            echo "Found feature/minor branch merge"
+            if [[ "$RELEASE_TYPE" != "major" ]]; then
+              RELEASE_TYPE="minor"
+            fi
+          elif echo "$MERGED_BRANCHES" | grep -qiE "(fix/|bugfix/|patch/|hotfix/)"; then
+            echo "Found fix/patch branch merge"
+            if [[ "$RELEASE_TYPE" == "none" ]]; then
+              RELEASE_TYPE="patch"
+            fi
+          fi
+
+          # Also check commit messages (conventional commits)
+          if [[ -n "$PREV_TAG" ]]; then
+            COMMITS=$(git log $COMMIT_RANGE --pretty=format:"%s" 2>/dev/null || echo "")
+          else
+            COMMITS=$(git log --pretty=format:"%s" 2>/dev/null || echo "")
+          fi
+
+          if echo "$COMMITS" | grep -qE "^feat(\(.+\))?!:|BREAKING CHANGE"; then
+            RELEASE_TYPE="major"
+          elif echo "$COMMITS" | grep -qE "^feat(\(.+\))?:"; then
+            if [[ "$RELEASE_TYPE" != "major" ]]; then
+              RELEASE_TYPE="minor"
+            fi
+          elif echo "$COMMITS" | grep -qE "^(fix|perf)(\(.+\))?:"; then
+            if [[ "$RELEASE_TYPE" == "none" ]]; then
+              RELEASE_TYPE="patch"
+            fi
+          fi
+
+          # Allow manual override
+          if [[ "$FORCE_VERSION" != "" && "$FORCE_VERSION" != "auto" ]]; then
+            echo "Forcing version bump: $FORCE_VERSION"
+            RELEASE_TYPE="$FORCE_VERSION"
+          fi
+
+          echo "Determined release type: $RELEASE_TYPE"
+
+          if [[ "$RELEASE_TYPE" == "none" ]]; then
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "No releasable changes found"
+          else
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "release_type=$RELEASE_TYPE" >> $GITHUB_OUTPUT
+
+            # Calculate next version
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$PREV_VERSION"
+            MAJOR=${MAJOR:-0}
+            MINOR=${MINOR:-0}
+            PATCH=${PATCH:-0}
+
+            case "$RELEASE_TYPE" in
+              major)
+                NEXT_VERSION="$((MAJOR + 1)).0.0"
+                ;;
+              minor)
+                NEXT_VERSION="$MAJOR.$((MINOR + 1)).0"
+                ;;
+              patch)
+                NEXT_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+                ;;
+            esac
+
+            echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+            echo "Next version: $NEXT_VERSION"
+          fi
+
+  # Run CI before release
+  ci:
+    name: CI
+    needs: [analyze]
+    if: needs.analyze.outputs.should_release == 'true'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      pull-requests: read
+
+  # Create release (requires approval for major releases)
+  release:
+    name: Create Release
+    needs: [analyze, ci]
+    if: needs.analyze.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.analyze.outputs.release_type == 'major' && 'production-major' || 'production' }}
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Create tag and release
+        if: inputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT_VERSION: ${{ needs.analyze.outputs.next_version }}
+        run: |
+          # Create tag
+          git tag -a "v$NEXT_VERSION" -m "Release v$NEXT_VERSION"
+          git push origin "v$NEXT_VERSION"
+
+      - name: Build package
+        run: uv build
+
+      - name: Show built version
+        run: |
+          echo "Built packages:"
+          ls -la dist/
+          unzip -p dist/*.whl '*/METADATA' | grep '^Version:'
+
+      - name: Generate changelog
+        id: changelog
+        env:
+          NEXT_VERSION: ${{ needs.analyze.outputs.next_version }}
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          echo "## What's Changed" > release_notes.md
+          echo "" >> release_notes.md
+
+          if [ -n "$PREV_TAG" ]; then
+            # Group commits by type
+            echo "### Features" >> release_notes.md
+            git log $PREV_TAG..HEAD --pretty=format:"- %s (%h)" --grep="^feat" >> release_notes.md || true
+            echo "" >> release_notes.md
+
+            echo "### Bug Fixes" >> release_notes.md
+            git log $PREV_TAG..HEAD --pretty=format:"- %s (%h)" --grep="^fix" >> release_notes.md || true
+            echo "" >> release_notes.md
+
+            echo "### Other Changes" >> release_notes.md
+            git log $PREV_TAG..HEAD --pretty=format:"- %s (%h)" --grep="^feat" --grep="^fix" --invert-grep >> release_notes.md || true
+
+            echo "" >> release_notes.md
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...v$NEXT_VERSION" >> release_notes.md
+          else
+            # First release - list all commits
+            echo "### Initial Release" >> release_notes.md
+            git log --pretty=format:"- %s (%h)" >> release_notes.md || true
+            echo "" >> release_notes.md
+          fi
+
+      - name: Create GitHub Release
+        if: inputs.dry_run != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.analyze.outputs.next_version }}
+          name: v${{ needs.analyze.outputs.next_version }}
+          body_path: release_notes.md
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+          draft: false
+          prerelease: false
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: dist-release
+          path: dist/
+
+      - name: Summary
+        if: inputs.dry_run != 'true'
+        env:
+          NEXT_VERSION: ${{ needs.analyze.outputs.next_version }}
+        run: |
+          echo "## Release v$NEXT_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Published packages:" >> $GITHUB_STEP_SUMMARY
+          ls -la dist/ >> $GITHUB_STEP_SUMMARY
+
+      - name: Dry run summary
+        if: inputs.dry_run == 'true'
+        run: |
+          echo "## Dry Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Would release version: **v${{ needs.analyze.outputs.next_version }}**" >> $GITHUB_STEP_SUMMARY
+          echo "Release type: **${{ needs.analyze.outputs.release_type }}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Built packages:" >> $GITHUB_STEP_SUMMARY
+          ls -la dist/ >> $GITHUB_STEP_SUMMARY
+
+  # Publish to PyPI using Trusted Publishers (OIDC — no API tokens needed)
+  pypi-publish:
+    name: Publish to PyPI
+    needs: [analyze, release]
+    if: inputs.dry_run != 'true' && needs.analyze.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/immich-memories/
+    permissions:
+      id-token: write  # Required for OIDC trusted publishing
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: dist-release
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  # Deploy docs after release (GITHUB_TOKEN events don't trigger other workflows,
+  # so we call the docs workflow directly instead of relying on release:published)
+  deploy-docs:
+    name: Deploy Docs
+    needs: [analyze, release]
+    if: inputs.dry_run != 'true' && needs.analyze.outputs.should_release == 'true'
+    uses: ./.github/workflows/docs.yml
+    with:
+      version: v${{ needs.analyze.outputs.next_version }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+  # Build and push Docker images using native runners per platform
+  docker-build:
+    name: Build Docker Image (${{ matrix.platform }})
+    needs: [analyze, release]
+    if: inputs.dry_run != 'true' && needs.analyze.outputs.should_release == 'true'
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            slug: amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            slug: arm64
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=${{ matrix.slug }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.slug }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v5
+        with:
+          name: digests-${{ matrix.slug }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Merge per-platform images into a multi-arch manifest
+  docker-manifest:
+    name: Create Docker Manifest
+    needs: [analyze, docker-build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v5
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest
+        working-directory: /tmp/digests
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          VERSION: ${{ needs.analyze.outputs.next_version }}
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:$VERSION" \
+            -t "$IMAGE:latest" \
+            $(printf "$IMAGE@sha256:%s " *)
