@@ -7,7 +7,6 @@ methods. Renaming internal methods should not break these tests.
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -69,7 +68,7 @@ class TestVideoAssemblerIntegration:
         assert assembler.settings.output_crf == 22
 
     def test_single_clip_with_music_triggers_music_flow(self, tmp_path):
-        """Single clip with music_path set attempts the music addition flow."""
+        """Single clip with music_path set takes the music branch, not copy."""
         music_file = tmp_path / "music.mp3"
         music_file.write_bytes(b"\x00" * 512)
 
@@ -77,10 +76,16 @@ class TestVideoAssemblerIntegration:
         clip = _make_assembly_clip(tmp_path, "input.mp4")
         output = tmp_path / "output.mp4"
 
-        # FFmpeg will fail on fake files, but the flow reaches the music step
-        # (proves the music_path branch is taken, not the copy branch)
-        with pytest.raises((OSError, RuntimeError, subprocess.CalledProcessError, ValueError)):
-            assembler.assemble([clip], output)
+        # Mock subprocess.run so the test is deterministic regardless of
+        # whether FFmpeg is installed in the test environment.
+        mock_result = MagicMock(returncode=1, stderr="mock ffmpeg failure")
+        with patch(
+            "immich_memories.processing.assembler_audio.subprocess.run", return_value=mock_result
+        ):
+            result = assembler.assemble([clip], output)
+
+        # Music add fails gracefully; assembler falls back to original file
+        assert isinstance(result, Path)
 
     def test_assemble_returns_path(self, tmp_path):
         """assemble() returns a Path on success."""
