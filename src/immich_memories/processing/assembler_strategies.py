@@ -71,10 +71,14 @@ class AssemblerStrategyMixin:
         for i, _clip in enumerate(clips):
             hdr_conversion = ""
             if self.settings.preserve_hdr and ctx.clip_hdr_types[i] != ctx.hdr_type:
-                hdr_conversion = _get_hdr_conversion_filter(ctx.clip_hdr_types[i], ctx.hdr_type)
+                source_pri = ctx.clip_primaries[i] if i < len(ctx.clip_primaries) else None
+                hdr_conversion = _get_hdr_conversion_filter(
+                    ctx.clip_hdr_types[i], ctx.hdr_type, source_primaries=source_pri
+                )
                 if hdr_conversion:
                     logger.info(
-                        f"Converting clip {i} from {ctx.clip_hdr_types[i]} to {ctx.hdr_type}"
+                        f"Converting clip {i} from {ctx.clip_hdr_types[i]} "
+                        f"(primaries={source_pri}) to {ctx.hdr_type}"
                     )
 
             filter_parts.append(

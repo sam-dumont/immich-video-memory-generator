@@ -23,6 +23,7 @@ from immich_memories.processing.ffmpeg_runner import (
     _run_ffmpeg_with_progress,
 )
 from immich_memories.processing.hdr_utilities import (
+    _detect_color_primaries,
     _get_clip_hdr_types,
     _get_colorspace_filter,
     _get_dominant_hdr_type,
@@ -117,10 +118,17 @@ class AssemblerHelpersMixin:
         # HDR type detection
         hdr_type = _get_dominant_hdr_type(clips) if self.settings.preserve_hdr else "hlg"
 
-        # Per-clip HDR types
+        # Per-clip HDR types and color primaries
         clip_hdr_types = (
             _get_clip_hdr_types(clips) if self.settings.preserve_hdr else [None] * len(clips)
         )
+        # Detect per-clip color primaries for accurate SDR→HDR conversion
+        clip_primaries: list[str | None] = []
+        if self.settings.preserve_hdr:
+            for clip in clips:
+                clip_primaries.append(_detect_color_primaries(clip.path))
+        else:
+            clip_primaries = [None] * len(clips)
 
         # Log mixed HDR content warning
         unique_types = {t for t in clip_hdr_types if t is not None}
@@ -138,6 +146,7 @@ class AssemblerHelpersMixin:
             pix_fmt=pix_fmt,
             hdr_type=hdr_type,
             clip_hdr_types=clip_hdr_types,
+            clip_primaries=clip_primaries,
             colorspace_filter=colorspace_filter,
             target_fps=target_fps,
             fade_duration=self.settings.transition_duration,
@@ -172,12 +181,18 @@ class AssemblerHelpersMixin:
             rotation_filter = _get_rotation_filter(clip.rotation_override) + ","
             logger.info(f"Applying {clip.rotation_override}° rotation to clip {i}")
 
-        # HDR conversion filter
+        # HDR conversion filter (uses actual source primaries for accurate conversion)
         hdr_conversion = ""
         if self.settings.preserve_hdr and ctx.clip_hdr_types[i] != ctx.hdr_type:
-            hdr_conversion = _get_hdr_conversion_filter(ctx.clip_hdr_types[i], ctx.hdr_type)
+            source_pri = ctx.clip_primaries[i] if i < len(ctx.clip_primaries) else None
+            hdr_conversion = _get_hdr_conversion_filter(
+                ctx.clip_hdr_types[i], ctx.hdr_type, source_primaries=source_pri
+            )
             if hdr_conversion:
-                logger.info(f"Converting clip {i} from {ctx.clip_hdr_types[i]} to {ctx.hdr_type}")
+                logger.info(
+                    f"Converting clip {i} from {ctx.clip_hdr_types[i]} "
+                    f"(primaries={source_pri}) to {ctx.hdr_type}"
+                )
 
         # Check for aspect ratio handling
         if use_aspect_ratio_handling and not clip.is_title_screen:
