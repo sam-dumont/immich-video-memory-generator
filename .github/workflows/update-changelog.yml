@@ -13,10 +13,8 @@ jobs:
   update-changelog:
     name: Update CHANGELOG.md
     runs-on: ubuntu-latest
-    # Skip if the last commit is already a changelog update (prevent loops)
-    if: >-
-      !startsWith(github.event.pull_request.title, 'chore(release)')
-      && !contains(github.event.head_commit.message || '', 'chore(changelog)')
+    # Skip release-chore PRs entirely
+    if: "!startsWith(github.event.pull_request.title, 'chore(release)')"
     steps:
       - uses: actions/checkout@v5
         with:
@@ -30,7 +28,19 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Check if last commit is a changelog update
+        id: guard
+        run: |
+          LAST_MSG=$(git log -1 --pretty=format:"%s")
+          if [[ "$LAST_MSG" == chore\(changelog\):* ]]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Last commit is already a changelog update, skipping"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Determine next version
+        if: steps.guard.outputs.skip != 'true'
         id: version
         run: |
           # Get the previous tag
@@ -100,7 +110,7 @@ jobs:
           echo "Next version: $NEXT_VERSION (type: $RELEASE_TYPE)"
 
       - name: Generate release notes
-        if: steps.version.outputs.skip != 'true'
+        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
         env:
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
           PREV_TAG: ${{ steps.version.outputs.prev_tag }}
@@ -127,7 +137,7 @@ jobs:
           fi
 
       - name: Update CHANGELOG.md
-        if: steps.version.outputs.skip != 'true'
+        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
         env:
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
         run: |
@@ -201,13 +211,13 @@ jobs:
           rm -f new_section.md release_notes.md
 
       - name: Commit and push if changed
-        if: steps.version.outputs.skip != 'true'
+        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
         run: |
           git add CHANGELOG.md
           if git diff --cached --quiet; then
             echo "No changelog changes to commit"
           else
-            git commit -m "chore(changelog): update for projected v${NEXT_VERSION} [skip ci]"
+            git commit -m "chore(changelog): update for projected v${NEXT_VERSION}"
             git push
           fi
         env:
