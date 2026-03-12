@@ -259,6 +259,96 @@ jobs:
           draft: false
           prerelease: false
 
+      - name: Update CHANGELOG.md
+        if: inputs.dry_run != 'true'
+        env:
+          NEXT_VERSION: ${{ needs.analyze.outputs.next_version }}
+        run: |
+          DATE=$(date +%Y-%m-%d)
+
+          # Build the new version section from release_notes.md
+          # Convert the GitHub Release format to Keep a Changelog format
+          {
+            echo "## [${NEXT_VERSION}] - ${DATE}"
+            echo ""
+            # Transform headings: ### Features -> ### Added, ### Bug Fixes -> ### Fixed
+            sed -e 's/^### Features$/### Added/' \
+                -e 's/^### Bug Fixes$/### Fixed/' \
+                -e 's/^### Other Changes$/### Changed/' \
+                -e '/^## /d' \
+                -e '/^$/N;/^\n$/d' \
+                release_notes.md
+            echo ""
+          } > new_section.md
+
+          # Insert new section after the [Unreleased] header line,
+          # and update the comparison links at the bottom
+          python3 <<'PYEOF'
+          import re
+          from pathlib import Path
+          import os
+
+          version = os.environ["NEXT_VERSION"]
+          date = os.environ.get("DATE", "")
+          new_section = Path("new_section.md").read_text()
+          changelog = Path("CHANGELOG.md").read_text()
+
+          # Find the [Unreleased] section and insert new version after it
+          # Pattern: find "## [Unreleased]" and everything until the next "## ["
+          unreleased_pattern = r'(## \[Unreleased\]\n)'
+          changelog = re.sub(
+              unreleased_pattern,
+              r'\1\n' + new_section,
+              changelog,
+              count=1,
+          )
+
+          # Clear the [Unreleased] section content (keep the heading)
+          # Remove lines between "## [Unreleased]" and the new version section
+          changelog = re.sub(
+              r'(## \[Unreleased\])\n([\s\S]*?)\n(## \[' + re.escape(version) + r'\])',
+              r'\1\n\n\3',
+              changelog,
+              count=1,
+          )
+
+          # Update the [Unreleased] comparison link
+          changelog = re.sub(
+              r'\[Unreleased\]: .+',
+              f'[Unreleased]: https://github.com/${{ github.repository }}/compare/v{version}...HEAD',
+              changelog,
+          )
+
+          # Add the new version comparison link (before the last link)
+          prev_tag_match = re.search(r'\[[\d.]+\]: .+/releases/tag/(v[\d.]+)', changelog)
+          prev_tag = prev_tag_match.group(1) if prev_tag_match else None
+
+          if prev_tag:
+              version_link = f'[{version}]: https://github.com/${{ github.repository }}/compare/{prev_tag}...v{version}'
+          else:
+              version_link = f'[{version}]: https://github.com/${{ github.repository }}/releases/tag/v{version}'
+
+          # Insert new version link after the [Unreleased] link
+          changelog = re.sub(
+              r'(\[Unreleased\]: .+\n)',
+              r'\1' + version_link + '\n',
+              changelog,
+          )
+
+          Path("CHANGELOG.md").write_text(changelog)
+          PYEOF
+
+          rm -f new_section.md
+
+          # Commit and push the updated changelog
+          git add CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "No changelog changes to commit"
+          else
+            git commit -m "chore(release): update CHANGELOG.md for v${NEXT_VERSION} [skip ci]"
+            git push origin HEAD:main
+          fi
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
         with:
