@@ -367,7 +367,7 @@ def render_step4() -> None:
             # Phase 3: Add music if requested
             music_source = gen_options.get("music_source", "None")
 
-            if music_source == "AI Generated (MusicGen)":
+            if music_source == "AI Generated":
                 from immich_memories.ui.pages._step4_music import apply_ai_music
 
                 await apply_ai_music(

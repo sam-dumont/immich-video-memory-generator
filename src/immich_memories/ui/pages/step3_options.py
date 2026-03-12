@@ -25,7 +25,10 @@ def render_step3() -> None:
     state = get_app_state()
 
     config = get_config()
-    musicgen_available = config.musicgen.enabled and config.musicgen.base_url
+    ace_step_available = getattr(config, "ace_step", None) and config.ace_step.enabled
+    musicgen_available = (
+        config.musicgen.enabled and config.musicgen.base_url
+    ) or ace_step_available
 
     if not state.generation_options:
         state.generation_options = {
@@ -35,7 +38,7 @@ def render_step3() -> None:
             "resolution": "Auto (match clips)",
             "format": "MP4 (H.264)",
             "add_date": False,
-            "music_source": "AI Generated (MusicGen)" if musicgen_available else "None",
+            "music_source": "AI Generated" if musicgen_available else "None",
             "music_file": None,
             "music_volume": 0.5,
         }
@@ -150,7 +153,7 @@ def render_step3() -> None:
 
     music_sources = ["None", "Upload file"]
     if musicgen_available:
-        music_sources.append("AI Generated (MusicGen)")
+        music_sources.append("AI Generated")
 
     music_options_container = ui.column().classes("w-full")
 
@@ -193,7 +196,7 @@ def render_step3() -> None:
                     volume_slider.on_value_change(on_upload_volume_change)
                     ui.label().bind_text_from(volume_slider, "value", lambda v: f"{int(v * 100)}%")
 
-            elif source == "AI Generated (MusicGen)":
+            elif source == "AI Generated":
                 im_info_card(
                     "AI will generate music based on the mood of your video clips",
                     variant="info",
@@ -251,7 +254,7 @@ def render_step3() -> None:
     secs = int(total_duration % 60)
     music_str = "None"
     current_music = options.get("music_source", "None")
-    if current_music == "AI Generated (MusicGen)":
+    if current_music == "AI Generated":
         music_str = "AI"
     elif current_music == "Upload file" and options.get("music_filename"):
         music_str = "Custom"

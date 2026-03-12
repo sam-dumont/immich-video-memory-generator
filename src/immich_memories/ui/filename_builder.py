@@ -194,6 +194,16 @@ def _build_when_part(
     date_end: date | None,
 ) -> str:
     """Build the 'when' portion of the filename."""
+    # Trip: use location name if available
+    if memory_type == "trip":
+        location = preset_params.get("location_name")
+        if location:
+            return location.lower().replace(" ", "_")
+        # Fallback to date range
+        if date_start and date_end:
+            return _date_range_slug(date_start, date_end)
+        return str(preset_params.get("year", ""))
+
     # Season preset: season + year
     if memory_type == "season":
         season = preset_params.get("season", "")

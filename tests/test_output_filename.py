@@ -159,6 +159,28 @@ class TestBuildOutputFilename:
         )
         assert result == "jean-pierre_2025_memories.mp4"
 
+    def test_trip_with_location(self):
+        """Trip preset with location name: use location in filename."""
+        result = build_output_filename(
+            memory_type="trip",
+            preset_params={"location_name": "Lisbon", "year": 2025},
+            person_name="sam",
+            date_start=date(2025, 7, 10),
+            date_end=date(2025, 7, 20),
+        )
+        assert result == "sam_lisbon_memories.mp4"
+
+    def test_trip_without_location(self):
+        """Trip preset without location: fallback to date range."""
+        result = build_output_filename(
+            memory_type="trip",
+            preset_params={"year": 2025},
+            person_name="sam",
+            date_start=date(2025, 7, 10),
+            date_end=date(2025, 7, 20),
+        )
+        assert result == "sam_july_2025_memories.mp4"
+
 
 class TestGetDividerMode:
     """Test divider mode selection based on memory type and date range."""
