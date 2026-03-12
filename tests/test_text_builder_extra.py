@@ -13,6 +13,7 @@ from immich_memories.titles.text_builder import (
     generate_title,
     get_month_name,
     get_ordinal,
+    get_season_name,
     infer_selection_type,
 )
 
@@ -216,3 +217,93 @@ class TestInferSelectionTypeEdgeCases:
             end_date=date(2024, 12, 31),
         )
         assert result == SelectionType.BIRTHDAY_YEAR
+
+
+class TestMemoryTypeTitles:
+    """Tests for memory type title generation."""
+
+    def test_season_summer(self):
+        """Season type generates 'Summer 2024' title."""
+        result = generate_title(
+            SelectionType.SEASON,
+            season="summer",
+            year=2024,
+        )
+        assert result.main_title == "Summer 2024"
+        assert result.subtitle is None
+
+    def test_season_winter_spans_years(self):
+        """Winter season spanning years generates 'Winter 2023-2024'."""
+        result = generate_title(
+            SelectionType.SEASON,
+            season="winter",
+            year=2023,
+            end_year=2024,
+        )
+        assert result.main_title == "Winter 2023-2024"
+
+    def test_season_with_person(self):
+        """Season with person name uses person as subtitle."""
+        result = generate_title(
+            SelectionType.SEASON,
+            season="spring",
+            year=2024,
+            person_name="Alice",
+        )
+        assert result.main_title == "Spring 2024"
+        assert result.subtitle == "Alice"
+
+    def test_person_spotlight(self):
+        """Person spotlight generates year title with person subtitle."""
+        result = generate_title(
+            SelectionType.PERSON_SPOTLIGHT,
+            year=2024,
+            person_name="Alice",
+        )
+        assert result.main_title == "2024"
+        assert result.subtitle == "Your Year with Alice"
+
+    def test_multi_person(self):
+        """Multi-person generates year title with joined names subtitle."""
+        result = generate_title(
+            SelectionType.MULTI_PERSON,
+            year=2024,
+            person_names=["Alice", "Bob"],
+        )
+        assert result.main_title == "2024"
+        assert result.subtitle == "Alice & Bob"
+
+    def test_multi_person_three_people(self):
+        """Multi-person with 3+ people joins with commas and ampersand."""
+        result = generate_title(
+            SelectionType.MULTI_PERSON,
+            year=2024,
+            person_names=["Alice", "Bob", "Charlie"],
+        )
+        assert result.main_title == "2024"
+        assert result.subtitle == "Alice, Bob & Charlie"
+
+    def test_on_this_day(self):
+        """On This Day generates date title with 'Through the Years' subtitle."""
+        result = generate_title(
+            SelectionType.ON_THIS_DAY,
+            start_date=date(2024, 3, 12),
+        )
+        assert result.main_title == "March 12"
+        assert result.subtitle == "Through the Years"
+
+    def test_season_french(self):
+        """Season title in French."""
+        result = generate_title(
+            SelectionType.SEASON,
+            season="summer",
+            year=2024,
+            locale="fr",
+        )
+        assert result.main_title == "Été 2024"
+
+    def test_get_season_name(self):
+        """get_season_name returns localized season names."""
+        assert get_season_name("summer") == "Summer"
+        assert get_season_name("autumn") == "Fall"
+        assert get_season_name("summer", "fr") == "Été"

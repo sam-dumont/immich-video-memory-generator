@@ -22,7 +22,11 @@ immich-memories generate [OPTIONS]
 | `--start` | — | string | — | Start date (`YYYY-MM-DD` or `DD/MM/YYYY`) |
 | `--end` | — | string | — | End date (use with `--start`) |
 | `--period` | — | string | — | Period from start date (e.g., `6m`, `1y`, `2w`) |
-| `--person` | `-p` | string | — | Filter by person name (from Immich face recognition) |
+| `--person` | `-p` | string | — | Filter by person name (repeatable for multi-person) |
+| `--memory-type` | — | choice | — | Memory type preset (see below) |
+| `--season` | — | choice | — | Season: `spring`, `summer`, `fall`, `autumn`, `winter` |
+| `--month` | — | int | — | Month 1-12 (use with `monthly_highlights`) |
+| `--hemisphere` | — | choice | `north` | `north` or `south` (for season date calculation) |
 | `--duration` | `-d` | int | `10` | Target duration in minutes |
 | `--orientation` | `-o` | choice | `landscape` | `landscape`, `portrait`, or `square` |
 | `--scale-mode` | `-s` | choice | `smart_crop` | `fit`, `fill`, or `smart_crop` |
@@ -30,6 +34,21 @@ immich-memories generate [OPTIONS]
 | `--output` | `-O` | path | auto | Output file path |
 | `--music` | `-m` | path | — | Background music file |
 | `--dry-run` | — | flag | — | Show what would be done, don't generate |
+
+## Memory types
+
+The `--memory-type` flag selects a preset that configures date ranges, scoring weights, and title templates:
+
+| Type | Description | Required flags |
+|------|-------------|----------------|
+| `year_in_review` | Full calendar year compilation | `--year` |
+| `season` | Seasonal highlights with boosted motion scoring | `--year`, `--season` |
+| `person_spotlight` | Single person focus with boosted face scoring | `--year`, `--person` |
+| `multi_person` | Multiple people together | `--year`, `--person` (2+) |
+| `monthly_highlights` | Single month, shorter output | `--year`, `--month` |
+| `on_this_day` | Same date across multiple past years | (uses today by default) |
+
+You can still use `--start`/`--end`/`--period` without `--memory-type` for manual date ranges.
 
 ## Examples
 
@@ -49,9 +68,49 @@ Your kid's birthday is July 21st. Generate their "2nd year" (Jul 21 2024 to Jul 
 immich-memories generate --year 2024 --birthday 07/21 --person "Emma" --duration 15
 ```
 
+### Season highlights
+
+Summer 2024 with boosted motion scoring (catches action shots):
+
+```bash
+immich-memories generate --memory-type season --season summer --year 2024
+```
+
+### Person spotlight
+
+A year of videos featuring one person, with face scoring cranked up:
+
+```bash
+immich-memories generate --memory-type person_spotlight --person "Emma" --year 2024
+```
+
+### Multi-person
+
+Videos where both Alice and Bob appear together:
+
+```bash
+immich-memories generate --memory-type multi_person --person "Alice" --person "Bob" --year 2024
+```
+
+### Monthly highlights
+
+Just July 2024, shorter output (3 min default):
+
+```bash
+immich-memories generate --memory-type monthly_highlights --month 7 --year 2024
+```
+
+### On This Day
+
+Same date across multiple past years (like Google Photos memories):
+
+```bash
+immich-memories generate --memory-type on_this_day
+```
+
 ### Custom date range
 
-Just the summer:
+Just the summer (manual, without memory type preset):
 
 ```bash
 immich-memories generate --start 2024-06-01 --end 2024-08-31

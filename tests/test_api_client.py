@@ -425,3 +425,68 @@ class TestAvailableYears:
 
         years = await client.get_available_years()
         assert years == []
+
+
+class TestGetVideosForAnyPerson:
+    """Tests for OR-query across multiple person IDs."""
+
+    @pytest.mark.asyncio
+    async def test_single_person_returns_same_as_regular_query(self, _mock_config):
+        """Single person_id delegates to get_videos_for_person_and_date_range."""
+        from datetime import UTC, datetime
+
+        from immich_memories.timeperiod import DateRange
+        from tests.conftest import make_asset
+
+        client = ImmichClient()
+        a1 = make_asset("a1", file_created_at=datetime(2024, 3, 1, tzinfo=UTC))
+        a2 = make_asset("a2", file_created_at=datetime(2024, 6, 1, tzinfo=UTC))
+        date_range = DateRange(start=datetime(2024, 1, 1), end=datetime(2024, 12, 31, 23, 59, 59))
+
+        client.get_videos_for_person_and_date_range = AsyncMock(return_value=[a1, a2])
+
+        result = await client.get_videos_for_any_person(["person-1"], date_range)
+        assert len(result) == 2
+        assert result[0].id == "a1"
+        assert result[1].id == "a2"
+
+    @pytest.mark.asyncio
+    async def test_two_people_deduplicates_shared_videos(self, _mock_config):
+        """Videos appearing for both people are deduplicated in the union."""
+        from datetime import UTC, datetime
+
+        from immich_memories.timeperiod import DateRange
+        from tests.conftest import make_asset
+
+        client = ImmichClient()
+        shared = make_asset("shared", file_created_at=datetime(2024, 2, 1, tzinfo=UTC))
+        only_a = make_asset("only-a", file_created_at=datetime(2024, 1, 1, tzinfo=UTC))
+        only_b = make_asset("only-b", file_created_at=datetime(2024, 3, 1, tzinfo=UTC))
+        date_range = DateRange(start=datetime(2024, 1, 1), end=datetime(2024, 12, 31, 23, 59, 59))
+
+        async def mock_query(person_id, date_range, progress_callback=None):
+            if person_id == "person-a":
+                return [only_a, shared]
+            return [shared, only_b]
+
+        client.get_videos_for_person_and_date_range = AsyncMock(side_effect=mock_query)
+
+        result = await client.get_videos_for_any_person(["person-a", "person-b"], date_range)
+        assert len(result) == 3
+        ids = [a.id for a in result]
+        assert ids == ["only-a", "shared", "only-b"]
+
+    @pytest.mark.asyncio
+    async def test_empty_person_list_returns_empty(self, _mock_config):
+        """Empty person_ids list returns empty result without any queries."""
+        from datetime import datetime
+
+        from immich_memories.timeperiod import DateRange
+
+        client = ImmichClient()
+        date_range = DateRange(start=datetime(2024, 1, 1), end=datetime(2024, 12, 31, 23, 59, 59))
+        client.get_videos_for_person_and_date_range = AsyncMock()
+
+        result = await client.get_videos_for_any_person([], date_range)
+        assert result == []
+        client.get_videos_for_person_and_date_range.assert_not_called()

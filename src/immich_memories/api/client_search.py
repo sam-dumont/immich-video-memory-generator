@@ -235,6 +235,34 @@ class SearchMixin:
         all_assets.sort(key=lambda a: a.file_created_at)
         return all_assets
 
+    async def get_videos_for_any_person(
+        self,
+        person_ids: list[str],
+        date_range: DateRange,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[Asset]:
+        """Get videos containing ANY of the specified people (OR query).
+
+        Makes one query per person_id, deduplicates by asset ID, returns union sorted by date.
+        """
+        if not person_ids:
+            return []
+
+        seen: dict[str, Asset] = {}
+        for person_id in person_ids:
+            assets = await self.get_videos_for_person_and_date_range(
+                person_id=person_id,
+                date_range=date_range,
+                progress_callback=progress_callback,
+            )
+            for asset in assets:
+                if asset.id not in seen:
+                    seen[asset.id] = asset
+
+        result = list(seen.values())
+        result.sort(key=lambda a: a.file_created_at)
+        return result
+
     async def iter_videos_for_date_range(
         self,
         date_range: DateRange,

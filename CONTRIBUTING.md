@@ -2,17 +2,12 @@
 
 Thank you for your interest in contributing to Immich Memories! This document provides guidelines and instructions for contributing.
 
-## Important Context: AI-Generated Codebase
+## Context: AI-built codebase
 
-> **This project was developed primarily using AI assistance (Claude by Anthropic).**
->
-> This means:
-> - The codebase may have inconsistencies or suboptimal patterns
-> - Some edge cases may not be fully handled
-> - Your contributions to improve code quality are especially valuable
-> - Don't hesitate to refactor or improve existing AI-generated code
->
-> We welcome all contributions that improve reliability, performance, security, or maintainability.
+> This project is written almost entirely with AI (Claude by Anthropic) as an experiment in
+> pushing AI-assisted development on a real, complex codebase. The quality gates are strict
+> (870+ tests, type checking, complexity limits, security scanning), so don't be shy about
+> holding contributions to the same bar. If you spot something the AI got wrong, fix it.
 
 ## Code of Conduct
 

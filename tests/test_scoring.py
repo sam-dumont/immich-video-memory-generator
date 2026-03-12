@@ -13,6 +13,8 @@ try:
 except ImportError:
     pytest.skip("cv2 not available", allow_module_level=True)
 
+from dataclasses import dataclass
+
 from immich_memories.analysis.scenes import Scene
 from immich_memories.analysis.scoring import MomentScore, SceneScorer
 
@@ -181,6 +183,58 @@ class TestSceneScorer:
         assert key_uniform[0] == key_varied[0]
         # Varied should have lower (more negative) variance key
         assert key_varied[1] < key_uniform[1]
+
+
+@dataclass
+class FakeScoringProfile:
+    """Minimal stand-in for ScoringProfile."""
+
+    face_weight: float = 0.5
+    motion_weight: float = 0.3
+    stability_weight: float = 0.1
+    audio_weight: float = 0.05
+    content_weight: float = 0.0
+    duration_weight: float = 0.05
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "face_weight": self.face_weight,
+            "motion_weight": self.motion_weight,
+            "stability_weight": self.stability_weight,
+            "audio_weight": self.audio_weight,
+            "content_weight": self.content_weight,
+            "duration_weight": self.duration_weight,
+        }
+
+
+class TestFromProfile:
+    """Tests for SceneScorer.from_profile classmethod."""
+
+    def test_creates_scorer_with_profile_weights(self):
+        """from_profile should create a scorer with weights from the profile."""
+        profile = FakeScoringProfile()
+        scorer = SceneScorer.from_profile(profile)
+
+        assert scorer.face_weight == 0.5
+        assert scorer.motion_weight == 0.3
+        assert scorer.stability_weight == 0.1
+        assert scorer.audio_weight == 0.05
+        assert scorer.content_weight == 0.0
+        assert scorer.duration_weight == 0.05
+
+    def test_passes_through_additional_kwargs(self):
+        """from_profile should forward extra kwargs to __init__."""
+        profile = FakeScoringProfile()
+        scorer = SceneScorer.from_profile(
+            profile,
+            optimal_duration=8.0,
+            min_duration=3.0,
+        )
+
+        assert scorer._optimal_duration == 8.0
+        assert scorer._min_duration == 3.0
+        # Weights still come from the profile
+        assert scorer.face_weight == 0.5
 
 
 class TestSampleAndScoreVideo:

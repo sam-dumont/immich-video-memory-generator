@@ -22,9 +22,9 @@ You point it at your Immich instance, tell it a time period (or a person), and i
 - **AI music generation**: generates soundtrack music that matches the mood of your video via MusicGen or ACE-Step.
 - **Interactive UI + CLI**: web UI at localhost:8080 for visual configuration, or a CLI if you prefer scripts and cron jobs.
 
-## AI Disclaimer
+## Built with AI
 
-This project was built primarily with AI assistance. The code, tests, and documentation were generated using LLMs. It works, it has tests, but you should know what you're getting into.
+This entire project: code, tests, docs, all of it, was written with AI (Claude). On purpose. It's an experiment in building a real, complex codebase cleanly with AI assistance. 870+ tests, strict linting, type checking, security scanning. See [DISCLAIMER.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/DISCLAIMER.md) for the full story.
 
 ## Next Steps
 

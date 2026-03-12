@@ -7,7 +7,7 @@ title: FAQ
 
 **Does it modify my Immich library?**
 
-No. It's read-only. The tool downloads copies of your videos for analysis and processing. Nothing in your Immich database or file storage is changed.
+Currently it only reads from Immich: it downloads copies of your videos for analysis and processing. Upload-back to Immich is on the roadmap.
 
 **What video formats does it support?**
 
@@ -33,11 +33,11 @@ Yes. The CLI works without a display. Use `immich-memories generate` with flags 
 
 **Is it safe for production?**
 
-This project was built primarily with AI assistance. It works, it has tests, and it's read-only against your Immich library. But it generates AI content (music, clip selection, mood analysis), so results vary. Use at your own risk and review what it produces before showing it at grandma's birthday party.
+The codebase is AI-written (on purpose, as an experiment) with 870+ tests and strict quality gates. The output (music, clip selection, mood analysis) is AI-generated too, so results vary. Review what it produces before showing it at grandma's birthday party.
 
 **Can I generate for multiple people at once?**
 
-Not in a single run. But you can script multiple runs: see the [Automation](./guides/automation.md) guide for examples.
+Yes. Use `--person "Alice" --person "Bob"` with `--memory-type multi_person`. By default it finds videos where both people appear together. See the CLI docs for all memory type options.
 
 **How much disk space does it need?**
 
