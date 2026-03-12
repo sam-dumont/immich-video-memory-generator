@@ -132,6 +132,55 @@ def cluster_live_photos(
     return [LivePhotoCluster(assets=c, clip_duration=clip_duration) for c in clusters]
 
 
+def probe_clip_has_video(clip_path: Path) -> bool:
+    """Check if a video clip has at least one decodable video frame."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-count_frames",
+                "-show_entries",
+                "stream=nb_read_frames",
+                "-of",
+                "csv=p=0",
+                str(clip_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        frame_count = result.stdout.strip()
+        return frame_count.isdigit() and int(frame_count) > 0
+    except Exception:
+        return False
+
+
+def filter_valid_clips(
+    clip_paths: list[Path],
+    trim_points: list[tuple[float, float]],
+) -> tuple[list[Path], list[tuple[float, float]]]:
+    """Remove clips that have no valid video stream.
+
+    Probes each clip with ffprobe and filters out those with zero frames.
+    Returns the surviving clip paths and their corresponding trim points.
+    """
+    valid_paths: list[Path] = []
+    valid_trims: list[tuple[float, float]] = []
+
+    for path, trim in zip(clip_paths, trim_points, strict=True):
+        if probe_clip_has_video(path):
+            valid_paths.append(path)
+            valid_trims.append(trim)
+
+    return valid_paths, valid_trims
+
+
 def _detect_clip_hdr(clip_path: Path) -> bool:
     """Check if a video clip is HDR by probing color_transfer."""
     import subprocess

@@ -33,7 +33,10 @@ def _download_and_merge_burst(client, video_cache, clip, output_dir: Path) -> Pa
     """Download all live photo burst videos and merge into one file."""
     import subprocess
 
-    from immich_memories.processing.live_photo_merger import build_merge_command
+    from immich_memories.processing.live_photo_merger import (
+        build_merge_command,
+        filter_valid_clips,
+    )
 
     burst_ids = clip.live_burst_video_ids
     trim_points = clip.live_burst_trim_points
@@ -74,6 +77,19 @@ def _download_and_merge_burst(client, video_cache, clip, output_dir: Path) -> Pa
             logger.info(f"Merged {len(clip_paths)} live photos into {merged_path}")
             return merged_path
         logger.warning(f"Live photo merge failed: {result.stderr[-200:]}")
+
+        # Retry: filter out clips with no valid video frames and re-merge
+        valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
+        if valid_paths and len(valid_paths) < len(clip_paths):
+            logger.info(f"Retrying merge with {len(valid_paths)}/{len(clip_paths)} valid clips")
+            if merged_path.exists():
+                merged_path.unlink()
+            retry_cmd = build_merge_command(valid_paths, valid_trims, merged_path)
+            retry_result = subprocess.run(retry_cmd, capture_output=True, text=True, timeout=120)
+            if retry_result.returncode == 0 and merged_path.exists():
+                logger.info(f"Retry merge succeeded with {len(valid_paths)} clips")
+                return merged_path
+            logger.warning(f"Retry merge also failed: {retry_result.stderr[-200:]}")
     except Exception as e:
         logger.warning(f"Live photo merge error: {e}")
 

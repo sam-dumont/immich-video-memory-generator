@@ -568,6 +568,64 @@ class TestLivePhotoConfig:
         assert config.live_photo_min_burst_count == 2
 
 
+class TestFilterValidClips:
+    """Slice 7: Filter out burst clips with no valid video stream before merging."""
+
+    def test_removes_invalid_clips_and_their_trim_points(self):
+        """Clips that fail probe should be removed along with their trim points."""
+        from unittest.mock import patch
+
+        from immich_memories.processing.live_photo_merger import filter_valid_clips
+
+        clip_paths = [Path("/tmp/ok1.mov"), Path("/tmp/bad.mov"), Path("/tmp/ok2.mov")]
+        trim_points = [(0.0, 2.0), (1.5, 3.0), (0.0, 3.0)]
+
+        with patch(
+            "immich_memories.processing.live_photo_merger.probe_clip_has_video",
+            side_effect=[True, False, True],
+        ):
+            valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
+
+        assert valid_paths == [Path("/tmp/ok1.mov"), Path("/tmp/ok2.mov")]
+        assert valid_trims == [(0.0, 2.0), (0.0, 3.0)]
+
+    def test_all_clips_invalid_returns_empty(self):
+        """When all clips are invalid, return empty lists."""
+        from unittest.mock import patch
+
+        from immich_memories.processing.live_photo_merger import filter_valid_clips
+
+        clip_paths = [Path("/tmp/bad1.mov"), Path("/tmp/bad2.mov")]
+        trim_points = [(0.0, 2.0), (1.5, 3.0)]
+
+        with patch(
+            "immich_memories.processing.live_photo_merger.probe_clip_has_video",
+            return_value=False,
+        ):
+            valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
+
+        assert valid_paths == []
+        assert valid_trims == []
+
+    def test_all_clips_valid_returns_all(self):
+        """When all clips are valid, return everything unchanged."""
+        from unittest.mock import patch
+
+        from immich_memories.processing.live_photo_merger import filter_valid_clips
+
+        clip_paths = [Path("/tmp/ok1.mov"), Path("/tmp/ok2.mov")]
+        trim_points = [(0.0, 2.0), (1.5, 3.0)]
+
+        with patch(
+            "immich_memories.processing.live_photo_merger.probe_clip_has_video",
+            return_value=True,
+        ):
+            valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
+
+        assert valid_paths == clip_paths
+        assert valid_trims == trim_points
+
+
 class TestCLILivePhotosFlag:
     """Slice 5b: CLI --include-live-photos flag."""
 
