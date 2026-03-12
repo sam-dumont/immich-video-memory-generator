@@ -156,23 +156,12 @@ prerelease = true
 prerelease_token = "dev"
 
 [tool.semantic_release.changelog]
-template_dir = ".github/templates"
 changelog_file = "CHANGELOG.md"
 exclude_commit_patterns = [
     "^chore\\(release\\):",
     "^ci:",
     "^Merge",
 ]
-
-[tool.semantic_release.changelog.environment]
-block_start_string = "{%"
-block_end_string = "%}"
-variable_start_string = "{{"
-variable_end_string = "}}"
-comment_start_string = "{#"
-comment_end_string = "#}"
-trim_blocks = true
-lstrip_blocks = true
 
 [tool.semantic_release.commit_parser_options]
 allowed_tags = ["build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "style", "test"]
