@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Video timeline → ACE-Step section tag mapping ([Intro], [Verse], [Chorus], [Bridge], [Outro])
 - MusicPipeline orchestrator with automatic backend fallback
 - Stem separation via MusicGen Demucs independent of generation backend
+- Structured JSON logging option for production (`IMMICH_MEMORIES_LOG_FORMAT=json`)
+- User-friendly config validation error messages for YAML parse and Pydantic errors
+- Auto-generated CLI reference docs from Click command tree (`make docs-cli`)
+- CPU-only mode documentation: detailed feature comparison table, performance expectations
+- Performance benchmarks with pytest-benchmark (hashing, scoring, config, duplicates)
+- 300+ new tests: pipeline integration, assembler, CLI smoke, UI state, API client, clip transitions, run tracking, system info, title styles, frame blending
+
+### Fixed
+- Release pipeline now auto-updates CHANGELOG.md on each release
 
 ### Removed
 - Pixabay music source (replaced by AI generation backends)
