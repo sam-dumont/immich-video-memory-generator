@@ -60,16 +60,16 @@ def _render_review_clip_row(
 
                 # Async preview loader — replaces thumbnail with video when ready.
                 # Tries local cache first, falls back to downloading from Immich.
-                def make_preview_loader(asset_id: str, container, vid_id: str):
+                def make_preview_loader(video_aid: str, container, vid_id: str):
                     async def load_preview():
                         from nicegui import app as nicegui_app
 
                         # Try local cached preview first (fast, no network)
-                        preview_path = await run.io_bound(_get_preview_path, asset_id)
+                        preview_path = await run.io_bound(_get_preview_path, video_aid)
 
                         # Fallback: download transcoded preview from Immich
                         if not preview_path:
-                            preview_path = await run.io_bound(_download_immich_preview, asset_id)
+                            preview_path = await run.io_bound(_download_immich_preview, video_aid)
 
                         if preview_path:
                             preview_url = nicegui_app.add_media_file(
@@ -84,7 +84,7 @@ def _render_review_clip_row(
 
                 ui.timer(
                     0.1,
-                    make_preview_loader(clip.asset.id, video_container, video_id),
+                    make_preview_loader(clip.video_asset_id, video_container, video_id),
                     once=True,
                 )
 

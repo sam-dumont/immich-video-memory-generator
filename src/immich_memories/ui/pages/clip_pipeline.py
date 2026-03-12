@@ -258,13 +258,20 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
                                     local_file=preview_path,
                                 )
 
-                                # Clean up PREVIOUS route (not current) to prevent
-                                # accumulation — delayed by one cycle so the browser
-                                # finishes streaming the old video first.
+                                # Track URLs for cleanup but don't remove routes
+                                # while they may still be streaming — Starlette raises
+                                # RuntimeError if a route is removed mid-request.
                                 prev_url = _rendered_state.get("prev_media_url")
+                                urls_to_clean = _rendered_state.setdefault(
+                                    "media_urls_to_clean", []
+                                )
                                 if prev_url and prev_url != video_url:
+                                    urls_to_clean.append(prev_url)
+                                # Only clean up old URLs (2+ cycles stale)
+                                while len(urls_to_clean) > 3:
+                                    old_url = urls_to_clean.pop(0)
                                     with contextlib.suppress(Exception):
-                                        nicegui_app.remove_route(prev_url)
+                                        nicegui_app.remove_route(old_url)
                                 _rendered_state["prev_media_url"] = video_url
 
                                 ui.video(video_url).classes("w-full rounded").props(

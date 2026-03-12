@@ -13,6 +13,7 @@ from immich_memories.memory_types.date_builders import (
     build_month,
     build_on_this_day,
     build_season,
+    build_trip,
 )
 from immich_memories.memory_types.presets import (
     MemoryPreset,
@@ -100,6 +101,7 @@ def _year_in_review(
         person_filter=person_filter,
         scoring=ScoringProfile(),
         title_template="{year}",
+        default_duration_minutes=10,
     )
 
 
@@ -130,6 +132,7 @@ def _season(
         person_filter=person_filter,
         scoring=ScoringProfile(motion_weight=0.35),
         title_template="{season} {year}",
+        default_duration_minutes=3,
     )
 
 
@@ -155,6 +158,7 @@ def _person_spotlight(
         scoring=ScoringProfile(face_weight=0.6, motion_weight=0.15),
         title_template="{year}",
         subtitle_template="Your Year with {person}",
+        default_duration_minutes=2,
     )
 
 
@@ -186,6 +190,7 @@ def _multi_person(
         scoring=ScoringProfile(face_weight=0.5, motion_weight=0.2),
         title_template="{year}",
         subtitle_template="{persons}",
+        default_duration_minutes=5,
     )
 
 
@@ -217,7 +222,7 @@ def _monthly_highlights(
         person_filter=person_filter,
         scoring=ScoringProfile(),
         title_template="{month} {year}",
-        default_duration_minutes=3,
+        default_duration_minutes=1,
     )
 
 
@@ -249,4 +254,48 @@ def _on_this_day(
         title_template="{month} {day}",
         subtitle_template="Through the Years",
         default_duration_minutes=2,
+    )
+
+
+@register_preset(
+    MemoryType.TRIP,
+    name="Trip",
+    description="Automatic trip detection from GPS data",
+)
+def _trip(
+    year: int,  # noqa: ARG001
+    trip_start: date | None = None,
+    trip_end: date | None = None,
+    location_name: str | None = None,
+    asset_count: int = 10,
+    person_names: list[str] | None = None,
+    **kwargs,  # noqa: ARG001
+) -> MemoryPreset:
+    if trip_start is None or trip_end is None:
+        raise ValueError("trip_start and trip_end are required for TRIP memory type")
+
+    location = location_name or "Unknown Location"
+    date_range = build_trip(trip_start, trip_end)
+    duration = min(max(asset_count // 5, 2), 10)
+    person_filter = PersonFilter()
+    if person_names:
+        person_filter = PersonFilter(mode="single", person_names=person_names[:1])
+
+    return MemoryPreset(
+        memory_type=MemoryType.TRIP,
+        name=location,
+        description=f"Trip to {location}",
+        date_ranges=[date_range],
+        person_filter=person_filter,
+        scoring=ScoringProfile(
+            motion_weight=0.3,
+            content_weight=0.3,
+            face_weight=0.2,
+            stability_weight=0.1,
+            audio_weight=0.0,
+            duration_weight=0.1,
+        ),
+        title_template="{location}",
+        subtitle_template="{start_date} - {end_date}",
+        default_duration_minutes=duration,
     )

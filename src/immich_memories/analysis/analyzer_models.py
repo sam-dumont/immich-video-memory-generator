@@ -62,6 +62,9 @@ class ScoredSegment:
     has_music: bool = False
     audio_categories: set[str] | None = None  # e.g. {"laughter", "engine", "crowd"}
 
+    # Face position data for framing (list of normalized (x, y) tuples)
+    face_positions: list[tuple[float, float]] | None = None
+
     # LLM analysis results (populated by content analyzer)
     llm_description: str | None = None
     llm_emotion: str | None = None

@@ -1,4 +1,4 @@
-"""Main NiceGUI application."""
+"""Main NiceGUI application with Immich-inspired theme."""
 
 from __future__ import annotations
 
@@ -17,8 +17,21 @@ from nicegui import app, ui
 
 from immich_memories.config import get_config, init_config_dir
 from immich_memories.ui.state import get_app_state
+from immich_memories.ui.theme import apply_theme, render_theme_toggle
 
 logger = logging.getLogger(__name__)
+
+_STEPS = [
+    ("Configuration", "settings", "/"),
+    ("Clip Review", "video_library", "/step2"),
+    ("Options", "tune", "/step3"),
+    ("Export", "download", "/step4"),
+]
+
+_EXTRA_NAV = [
+    ("Config", "description", "/settings/config"),
+    ("Cache", "cached", "/settings/cache"),
+]
 
 
 # ============================================================================
@@ -27,85 +40,126 @@ logger = logging.getLogger(__name__)
 
 
 def render_step_indicator(current_step: int) -> None:
-    """Render the step progress indicator at the top of the page."""
-    step_names = [
-        "Configuration",
-        "Clip Review",
-        "Generation Options",
-        "Preview & Export",
-    ]
+    """Render connected-dot step progress indicator using inline HTML."""
+    items: list[str] = []
+    for i, (name, _icon, _path) in enumerate(_STEPS):
+        step_num = i + 1
 
-    with ui.row().classes("w-full justify-center gap-4 mb-6"):
-        for i, name in enumerate(step_names):
-            step_num = i + 1
-            if step_num < current_step:
-                # Completed step
-                with ui.row().classes("items-center gap-1"):
-                    ui.icon("check_circle", color="green").classes("text-xl")
-                    ui.label(name).classes("text-green-600 font-medium")
-            elif step_num == current_step:
-                # Current step
-                with ui.row().classes("items-center gap-1"):
-                    ui.icon("radio_button_checked", color="blue").classes("text-xl")
-                    ui.label(name).classes("text-blue-600 font-bold")
-            else:
-                # Future step
-                with ui.row().classes("items-center gap-1"):
-                    ui.icon("radio_button_unchecked", color="gray").classes("text-xl")
-                    ui.label(name).classes("text-gray-400")
+        if step_num < current_step:
+            circle = (
+                '<div style="width:28px;height:28px;border-radius:50%;'
+                "background:var(--im-success);display:flex;"
+                'align-items:center;justify-content:center">'
+                '<span class="material-icons" style="color:#fff;font-size:16px">check</span>'
+                "</div>"
+            )
+            label = f'<span style="font-size:11px;color:var(--im-success);font-weight:500">{name}</span>'
+        elif step_num == current_step:
+            circle = (
+                '<div style="width:28px;height:28px;border-radius:50%;'
+                "background:var(--im-primary);display:flex;"
+                'align-items:center;justify-content:center">'
+                f'<span style="color:#fff;font-size:13px;font-weight:700">{step_num}</span>'
+                "</div>"
+            )
+            label = f'<span style="font-size:11px;color:var(--im-primary);font-weight:700">{name}</span>'
+        else:
+            circle = (
+                '<div style="width:28px;height:28px;border-radius:50%;'
+                "border:2px solid var(--im-border);display:flex;"
+                'align-items:center;justify-content:center">'
+                f'<span style="color:var(--im-text-secondary);font-size:13px">{step_num}</span>'
+                "</div>"
+            )
+            label = f'<span style="font-size:11px;color:var(--im-text-secondary)">{name}</span>'
 
-            # Add separator except for last step
-            if i < len(step_names) - 1:
-                ui.label("—").classes("text-gray-300 mx-2")
+        step_html = (
+            '<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
+            f"{circle}{label}</div>"
+        )
+        items.append(step_html)
+
+        if i < len(_STEPS) - 1:
+            color = "var(--im-success)" if step_num < current_step else "var(--im-border)"
+            line = f'<div style="width:40px;height:2px;background:{color};align-self:center;margin-bottom:20px"></div>'
+            items.append(line)
+
+    html = (
+        '<div style="display:flex;align-items:flex-start;justify-content:center;gap:0;margin-bottom:16px">'
+        + "".join(items)
+        + "</div>"
+    )
+    ui.html(html)
 
 
-def render_sidebar() -> None:
-    """Render the sidebar navigation."""
+def render_sidebar(current_step: int) -> None:
+    """Render Immich-style sidebar navigation."""
     state = get_app_state()
 
-    with ui.left_drawer().classes("bg-gray-100 p-4"):
-        ui.label("Immich Memories").classes("text-xl font-bold mb-4")
+    with ui.left_drawer(value=True).classes("p-0"):
+        # Branding
+        with ui.row().classes("items-center gap-3 px-5 py-4"):
+            ui.icon("movie").classes("text-2xl").style("color: var(--im-primary)")
+            ui.label("Immich Memories").classes("text-lg font-bold").style("color: var(--im-text)")
 
-        ui.separator()
+        # Nav items
+        with ui.column().classes("gap-0 px-3 mt-2"):
+            for i, (name, icon, path) in enumerate(_STEPS):
+                step_num = i + 1
+                is_active = step_num == current_step
 
-        # Navigation links
-        with ui.column().classes("gap-2 mt-4"):
+                def make_nav(s: int, p: str):
+                    def handler():
+                        state.step = s
+                        ui.navigate.to(p)
 
-            def nav_to(step: int, path: str) -> None:
-                state.step = step
-                ui.navigate.to(path)
+                    return handler
 
-            ui.button(
-                "1. Configuration",
-                on_click=lambda: nav_to(1, "/"),
-                icon="settings",
-            ).props("flat").classes("w-full justify-start")
+                classes = "im-nav-item"
+                if is_active:
+                    classes += " im-nav-active"
 
-            ui.button(
-                "2. Clip Review",
-                on_click=lambda: nav_to(2, "/step2"),
-                icon="video_library",
-            ).props("flat").classes("w-full justify-start")
+                with (
+                    ui.element("div").classes(classes).on("click", make_nav(step_num, path)),
+                    ui.row().classes("items-center gap-3 w-full"),
+                ):
+                    ui.icon(icon).classes("text-xl")
+                    ui.label(name).classes("text-sm")
 
-            ui.button(
-                "3. Options",
-                on_click=lambda: nav_to(3, "/step3"),
-                icon="tune",
-            ).props("flat").classes("w-full justify-start")
+        # Extra nav (settings)
+        ui.element("div").classes("mx-4 my-3").style(
+            "height: 1px; background: var(--im-border-light)"
+        )
+        with ui.column().classes("gap-0 px-3"):
+            for name, icon, path in _EXTRA_NAV:
 
-            ui.button(
-                "4. Export",
-                on_click=lambda: nav_to(4, "/step4"),
-                icon="download",
-            ).props("flat").classes("w-full justify-start")
+                def make_extra_nav(p: str):
+                    def handler():
+                        ui.navigate.to(p)
+
+                    return handler
+
+                with (
+                    ui.element("div").classes("im-nav-item").on("click", make_extra_nav(path)),
+                    ui.row().classes("items-center gap-3 w-full"),
+                ):
+                    ui.icon(icon).classes("text-xl")
+                    ui.label(name).classes("text-sm")
+
+        # Spacer + theme toggle at bottom
+        ui.element("div").classes("flex-grow")
+        with ui.column().classes("px-5 pb-4 mt-auto"):
+            ui.element("div").classes("mb-3").style(
+                "height: 1px; background: var(--im-border-light)"
+            )
+            render_theme_toggle()
 
 
 def page_header(title: str, step: int) -> None:
     """Render a consistent page header with step indicator."""
     ui.page_title(f"Immich Memories - {title}")
     render_step_indicator(step)
-    ui.separator()
-    ui.label(title).classes("text-2xl font-bold mt-4 mb-4")
+    ui.label(title).classes("text-xl font-semibold mb-4").style("color: var(--im-text)")
 
 
 # ============================================================================
@@ -118,7 +172,8 @@ def index_page() -> None:
     """Step 1: Configuration page."""
     from immich_memories.ui.pages.step1_config import render_step1
 
-    render_sidebar()
+    apply_theme()
+    render_sidebar(1)
     with ui.column().classes("w-full max-w-4xl mx-auto p-6"):
         page_header("Configuration", 1)
         render_step1()
@@ -129,7 +184,8 @@ def step2_page() -> None:
     """Step 2: Clip Review page."""
     from immich_memories.ui.pages.step2_review import render_step2
 
-    render_sidebar()
+    apply_theme()
+    render_sidebar(2)
     with ui.column().classes("w-full max-w-6xl mx-auto p-6"):
         page_header("Clip Review", 2)
         render_step2()
@@ -140,7 +196,8 @@ def step3_page() -> None:
     """Step 3: Generation Options page."""
     from immich_memories.ui.pages.step3_options import render_step3
 
-    render_sidebar()
+    apply_theme()
+    render_sidebar(3)
     with ui.column().classes("w-full max-w-4xl mx-auto p-6"):
         page_header("Generation Options", 3)
         render_step3()
@@ -151,10 +208,39 @@ def step4_page() -> None:
     """Step 4: Preview & Export page."""
     from immich_memories.ui.pages.step4_export import render_step4
 
-    render_sidebar()
+    apply_theme()
+    render_sidebar(4)
     with ui.column().classes("w-full max-w-4xl mx-auto p-6"):
         page_header("Preview & Export", 4)
         render_step4()
+
+
+@ui.page("/settings/config")
+def config_page() -> None:
+    """Configuration viewer/editor page."""
+    from immich_memories.ui.pages.settings_config import render_config_page
+
+    apply_theme()
+    render_sidebar(0)
+    with ui.column().classes("w-full max-w-4xl mx-auto p-6"):
+        ui.page_title("Immich Memories - Configuration")
+        ui.label("Configuration").classes("text-2xl font-bold mb-4").style("color: var(--im-text)")
+        render_config_page()
+
+
+@ui.page("/settings/cache")
+def cache_page() -> None:
+    """Cache management settings page."""
+    from immich_memories.ui.pages.step1_cache import render_cache_management
+
+    apply_theme()
+    render_sidebar(0)
+    with ui.column().classes("w-full max-w-4xl mx-auto p-6"):
+        ui.page_title("Immich Memories - Cache")
+        ui.label("Cache Management").classes("text-2xl font-bold mb-4").style(
+            "color: var(--im-text)"
+        )
+        render_cache_management()
 
 
 # ============================================================================
@@ -169,6 +255,7 @@ def initialize_app() -> None:
     config = get_config(reload=True)
     state.immich_url = config.immich.url
     state.immich_api_key = config.immich.api_key
+    state.include_live_photos = config.analysis.include_live_photos
     logger.info("Application initialized")
 
 
@@ -267,6 +354,7 @@ def main(port: int = 8080, host: str = "0.0.0.0", reload: bool = False) -> None:
         "port": port,
         "host": host,
         "reload": reload,
+        "storage_secret": "immich-memories-ui",
     }
     if reload:
         kwargs["uvicorn_reload_includes"] = "*.py"

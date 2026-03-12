@@ -76,9 +76,17 @@ class AppState:
     analyze_all: bool = False
     max_non_favorite_pct: int = 25
     max_non_favorite_ratio: float = 0.25
+    include_live_photos: bool = False
 
     # Connection
     connected_user: str | None = None
+
+    # Memory type preset (selected in Step 1)
+    memory_type: str | None = None
+    memory_preset_params: dict[str, Any] = field(default_factory=dict)
+
+    # Trip detection results (populated dynamically in Step 1 for trip preset)
+    detected_trips: list[Any] = field(default_factory=list)
 
     # Duplicate tracking
     _duplicates_processed: bool = False

@@ -57,6 +57,11 @@ analysis:
   enable_downscaling: true                  # Downscale for analysis (~3-5x faster)
   analysis_resolution: 480                  # Target height for analysis (240-1080)
 
+  # Live Photos (iPhone 3s video clips)
+  include_live_photos: false               # Include Live Photo clips (opt-in)
+  live_photo_merge_window_seconds: 10      # Max gap to group as burst (1-60s)
+  live_photo_min_burst_count: 3            # Min photos for burst merging (2-20)
+
   # Audio-aware boundaries
   use_unified_analysis: true                # Avoid mid-sentence cuts
   cut_point_merge_tolerance: 0.5            # Window for merging nearby boundaries (0.1-2s)
@@ -160,4 +165,32 @@ title_screens:
   month_divider_threshold: 2                # Min clips in a month to show divider
   use_first_name_only: true                 # "Emma" instead of "Emma Smith"
   custom_font_path: null                    # Path to custom TTF/OTF font
+
+# ── Trip detection ──────────────────────────────────────────
+trips:
+  homebase_latitude: 0.0                    # Your home latitude (required for --memory-type trip)
+  homebase_longitude: 0.0                   # Your home longitude
+  min_distance_km: 50                       # Beyond this radius = "away from home" (1+)
+  min_duration_days: 2                      # Consecutive days away to count as trip (1+)
+  max_gap_days: 2                           # Max gap between videos before splitting trips (1+)
+
+# ── Upload back to Immich ────────────────────────────────────
+upload:
+  enabled: false                            # Upload generated video to Immich
+  album_name: null                          # Album name (created if missing, reused if exists)
+
+# ── Scheduler (automatic generation) ───────────────────────
+scheduler:
+  enabled: false                            # Enable the scheduler daemon
+  timezone: "UTC"                           # Timezone for cron evaluation
+  schedules:
+    - name: "yearly-recap"                  # Human-readable name
+      memory_type: "year_in_review"         # Preset type
+      cron: "0 9 15 1 *"                    # Cron expression (min hour day month weekday)
+      enabled: true                         # Active or paused
+      upload_to_immich: false               # Upload result to Immich
+      album_name: "{year} Memories"         # Album name template
+      person_names: []                      # Person name filters
+      duration_minutes: null                # Override target duration
+      params: {}                            # Extra params (year, month, etc.)
 ```

@@ -6,7 +6,7 @@ Thank you for your interest in contributing to Immich Memories! This document pr
 
 > This project is written almost entirely with AI (Claude by Anthropic) as an experiment in
 > pushing AI-assisted development on a real, complex codebase. The quality gates are strict
-> (870+ tests, type checking, complexity limits, security scanning), so don't be shy about
+> (970+ tests, type checking, complexity limits, security scanning), so don't be shy about
 > holding contributions to the same bar. If you spot something the AI got wrong, fix it.
 
 ## Code of Conduct
@@ -35,6 +35,8 @@ By participating in this project, you agree to maintain a respectful and inclusi
    - Any additional context
 
 ### Pull Requests
+
+**Keep PRs small: under 200-300 lines of diff.** Large PRs are hard to review and tend to hide bugs. If your change is bigger, split it into focused, reviewable chunks (one concern per PR). Yes, the pre-v1 history has some monster PRs. Do as I say, not as I did.
 
 1. **Fork the repository**
 2. **Create a feature branch** from `main`:
@@ -115,14 +117,14 @@ make clean         # Remove build artifacts
 
 ### Python
 
-- We use **Ruff** for linting and formatting
+- The project uses **Ruff** for linting and formatting
 - Code is automatically formatted on CI
 - Type hints are required for all public functions
 - Follow PEP 8 naming conventions
 
 ### Commit Messages
 
-We follow [Conventional Commits](https://www.conventionalcommits.org/):
+This project follows [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
 <type>(<scope>): <description>

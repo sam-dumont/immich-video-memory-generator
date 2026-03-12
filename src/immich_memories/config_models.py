@@ -99,6 +99,24 @@ class AnalysisConfig(BaseModel):
         description="Target ratio of clip to source duration (0.25 = 25% of source)",
     )
 
+    # Live Photo settings
+    include_live_photos: bool = Field(
+        default=False,
+        description="Include Live Photo video clips (opt-in, fetches 3s clips from iPhone Live Photos)",
+    )
+    live_photo_merge_window_seconds: float = Field(
+        default=10.0,
+        ge=1.0,
+        le=60.0,
+        description="Max gap between Live Photos to group into a burst cluster",
+    )
+    live_photo_min_burst_count: int = Field(
+        default=3,
+        ge=2,
+        le=20,
+        description="Minimum photos in a cluster to qualify as a burst (merged into one clip)",
+    )
+
     @model_validator(mode="after")
     def validate_duration_constraints(self) -> AnalysisConfig:
         """Ensure min_segment_duration < max_segment_duration and related constraints."""
@@ -340,3 +358,24 @@ class LLMConfig(BaseModel):
         if isinstance(v, str):
             return expand_env_vars(v)
         return v
+
+
+class TripsConfig(BaseModel):
+    """Trip detection configuration: homebase location and clustering thresholds."""
+
+    homebase_latitude: float = Field(default=0.0, description="Home latitude (required for trips)")
+    homebase_longitude: float = Field(
+        default=0.0, description="Home longitude (required for trips)"
+    )
+    min_distance_km: float = Field(default=50, ge=1, description="Min km from home to count")
+    min_duration_days: int = Field(default=2, ge=1, description="Min days to qualify as a trip")
+    max_gap_days: int = Field(default=2, ge=1, description="Max gap before splitting trips")
+
+    def validate_homebase(self) -> None:
+        """Raise if homebase is still at Null Island (0,0)."""
+        if self.homebase_latitude == 0.0 and self.homebase_longitude == 0.0:
+            msg = (
+                "Set your home coordinates in config "
+                "(trips.homebase_latitude / trips.homebase_longitude)"
+            )
+            raise ValueError(msg)

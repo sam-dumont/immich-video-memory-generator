@@ -80,27 +80,22 @@ def _build_similarity_pairs(
     """
     similar_pairs: list[tuple[str, str]] = []
     clip_ids = list(hashes.keys())
-    clip_times = {c.asset.id: c.asset.file_created_at for c in clips}
+    clip_durations = {c.asset.id: c.duration_seconds or 0 for c in clips}
 
     for i, id1 in enumerate(clip_ids):
+        dur1 = clip_durations.get(id1, 0)
         for id2 in clip_ids[i + 1 :]:
+            # Duration gate: true duplicates (same video, different codec)
+            # always have nearly identical duration. Skip if durations differ
+            # by more than 20% — these are different videos, not duplicates.
+            dur2 = clip_durations.get(id2, 0)
+            max_dur = max(dur1, dur2, 0.1)
+            if abs(dur1 - dur2) / max_dur > 0.2:
+                continue
+
             distance = hamming_distance(hashes[id1], hashes[id2])
-
-            # Check time proximity (clips within 2 minutes are likely related)
-            time1 = clip_times.get(id1)
-            time2 = clip_times.get(id2)
-            time_close = False
-            if time1 and time2:
-                time_diff = abs((time1 - time2).total_seconds())
-                time_close = time_diff < 120
-
             if distance <= threshold:
                 similar_pairs.append((id1, id2))
-            elif time_close and distance <= threshold * 1.5:
-                similar_pairs.append((id1, id2))
-                logger.debug(
-                    f"Time-based cluster: {id1[:8]} + {id2[:8]} (dist={distance}, time_diff={time_diff:.0f}s)"
-                )
 
     return similar_pairs
 

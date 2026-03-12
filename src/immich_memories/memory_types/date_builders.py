@@ -162,3 +162,19 @@ def _subtract_one_day(d: date) -> date:
 def _add_one_day(d: date) -> date:
     """Add one day to a date."""
     return date.fromordinal(d.toordinal() + 1)
+
+
+def build_trip(start: date, end: date) -> DateRange:
+    """Build a DateRange for a trip from start to end date (inclusive).
+
+    Args:
+        start: Trip start date.
+        end: Trip end date.
+
+    Returns:
+        DateRange covering the full trip.
+    """
+    return DateRange(
+        start=datetime(start.year, start.month, start.day, 0, 0, 0),
+        end=datetime(end.year, end.month, end.day, 23, 59, 59),
+    )

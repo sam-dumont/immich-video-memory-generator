@@ -7,7 +7,7 @@ title: FAQ
 
 **Does it modify my Immich library?**
 
-Currently it only reads from Immich: it downloads copies of your videos for analysis and processing. Upload-back to Immich is on the roadmap.
+By default, no. It downloads copies of your videos for analysis and processing. If you enable `--upload-to-immich`, the generated compilation video is uploaded as a new asset (optionally into an album). Your original videos are never modified or deleted.
 
 **What video formats does it support?**
 
@@ -33,7 +33,7 @@ Yes. The CLI works without a display. Use `immich-memories generate` with flags 
 
 **Is it safe for production?**
 
-The codebase is AI-written (on purpose, as an experiment) with 870+ tests and strict quality gates. The output (music, clip selection, mood analysis) is AI-generated too, so results vary. Review what it produces before showing it at grandma's birthday party.
+The codebase is AI-written (on purpose, as an experiment) with 970+ tests and strict quality gates. The output (music, clip selection, mood analysis) is AI-generated too, so results vary. Review what it produces before showing it at grandma's birthday party.
 
 **Can I generate for multiple people at once?**
 
@@ -42,6 +42,16 @@ Yes. Use `--person "Alice" --person "Bob"` with `--memory-type multi_person`. By
 **How much disk space does it need?**
 
 The tool downloads videos temporarily for analysis. A rough estimate: 2x the total size of your source videos (original downloads + processed clips). The temporary files are cleaned up after generation. The final output video is typically 50-200MB for a 5-10 minute 1080p video.
+
+**Can it use iPhone Live Photos?**
+
+Yes. Use `--include-live-photos` or set `analysis.include_live_photos: true` in your config. Live Photos are ~3 second video clips captured with every iPhone photo. When you took photos in rapid succession, the tool detects overlapping clips and merges them into longer continuous moments: transitions happen at each shutter press. A burst of 5 Live Photos becomes one ~8 second clip.
+
+Tested on iPhones. Samsung and Google Pixel motion photos should work (Immich normalizes them to the same field), but I only use iOS so it hasn't been tested firsthand. PRs from Android users welcome.
+
+**How big should my PRs be?**
+
+Under 200-300 lines of diff. Smaller PRs get reviewed faster and catch bugs earlier. If your change is bigger, split it into focused chunks. Yes, the git history has some thousand-line PRs from pre-v1 development: do as I say, not as I did. See [CONTRIBUTING.md](https://github.com/sam-dumont/immich-video-memory-generator/blob/main/CONTRIBUTING.md) for the full guidelines.
 
 **Does it work on Apple Silicon?**
 

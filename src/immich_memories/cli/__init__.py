@@ -77,6 +77,7 @@ from immich_memories.cli.generate import register_generate_commands  # noqa: E40
 from immich_memories.cli.hardware_cmd import register_hardware_commands  # noqa: E402
 from immich_memories.cli.music_cmd import register_music_commands  # noqa: E402
 from immich_memories.cli.runs import register_runs_commands  # noqa: E402
+from immich_memories.cli.scheduler_cmd import register_scheduler_commands  # noqa: E402
 from immich_memories.cli.titles import register_titles_commands  # noqa: E402
 
 register_generate_commands(main)
@@ -85,6 +86,7 @@ register_hardware_commands(main)
 register_titles_commands(main)
 register_music_commands(main)
 register_runs_commands(main)
+register_scheduler_commands(main)
 
 
 if __name__ == "__main__":

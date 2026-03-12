@@ -102,7 +102,7 @@ class TestCreatePresetMonthlyHighlights:
 
     def test_shorter_default_duration(self) -> None:
         preset = create_preset(MemoryType.MONTHLY_HIGHLIGHTS, year=2024, month=7)
-        assert preset.default_duration_minutes == 3
+        assert preset.default_duration_minutes == 1
 
     def test_requires_month(self) -> None:
         with pytest.raises((ValueError, TypeError)):
@@ -156,6 +156,67 @@ class TestListMemoryTypes:
             assert "type" in t
             assert "name" in t
             assert "description" in t
+
+
+class TestCreatePresetTrip:
+    """Trip preset uses explicit date range and travel scoring weights."""
+
+    def test_creates_preset(self) -> None:
+        preset = create_preset(
+            MemoryType.TRIP,
+            year=2024,
+            trip_start=date(2024, 6, 12),
+            trip_end=date(2024, 6, 18),
+            location_name="Barcelona, Spain",
+        )
+        assert isinstance(preset, MemoryPreset)
+        assert preset.memory_type == MemoryType.TRIP
+
+    def test_date_range_matches_trip(self) -> None:
+        preset = create_preset(
+            MemoryType.TRIP,
+            year=2024,
+            trip_start=date(2024, 6, 12),
+            trip_end=date(2024, 6, 18),
+            location_name="Barcelona, Spain",
+        )
+        assert len(preset.date_ranges) == 1
+        assert preset.date_ranges[0].start.month == 6
+        assert preset.date_ranges[0].start.day == 12
+        assert preset.date_ranges[0].end.month == 6
+        assert preset.date_ranges[0].end.day == 18
+
+    def test_title_uses_location(self) -> None:
+        preset = create_preset(
+            MemoryType.TRIP,
+            year=2024,
+            trip_start=date(2024, 6, 12),
+            trip_end=date(2024, 6, 18),
+            location_name="Barcelona, Spain",
+        )
+        assert "Barcelona" in preset.name
+        assert preset.title_template == "{location}"
+
+    def test_scoring_boosts_motion_and_content(self) -> None:
+        preset = create_preset(
+            MemoryType.TRIP,
+            year=2024,
+            trip_start=date(2024, 6, 12),
+            trip_end=date(2024, 6, 18),
+            location_name="Barcelona, Spain",
+        )
+        assert preset.scoring.motion_weight == 0.3
+        assert preset.scoring.content_weight == 0.3
+        assert preset.scoring.face_weight == 0.2
+
+    def test_requires_trip_dates(self) -> None:
+        with pytest.raises(ValueError, match="trip_start.*required"):
+            create_preset(MemoryType.TRIP, year=2024)
+
+    def test_in_list_memory_types(self) -> None:
+        types = list_memory_types()
+        names = [t["type"] for t in types]
+        assert "trip" in names
 
 
 class TestUnregisteredType:

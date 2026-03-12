@@ -1,10 +1,8 @@
-"""Generate and analyze commands for Immich Memories CLI."""
+"""Generate command for Immich Memories CLI."""
 
 from __future__ import annotations
 
-import json
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import click
@@ -16,7 +14,7 @@ from immich_memories.timeperiod import DateRange
 
 
 def register_generate_commands(main: click.Group) -> None:
-    """Register generate, analyze, and export-project commands on the main CLI group."""
+    """Register the generate command on the main CLI group."""
 
     @main.command()
     @click.option(
@@ -39,6 +37,7 @@ def register_generate_commands(main: click.Group) -> None:
                 "multi_person",
                 "monthly_highlights",
                 "on_this_day",
+                "trip",
             ]
         ),
         default=None,
@@ -84,6 +83,31 @@ def register_generate_commands(main: click.Group) -> None:
     @click.option("--output", "-O", type=click.Path(), help="Output file path")
     @click.option("--music", "-m", type=click.Path(exists=True), help="Background music file")
     @click.option("--dry-run", is_flag=True, help="Show what would be done without generating")
+    @click.option(
+        "--upload-to-immich",
+        is_flag=True,
+        default=False,
+        help="Upload generated video back to Immich",
+    )
+    @click.option("--album", type=str, default=None, help="Immich album name for uploaded video")
+    @click.option(
+        "--include-live-photos",
+        is_flag=True,
+        default=False,
+        help="Include Live Photo video clips (3s iPhone clips, merged when burst-captured)",
+    )
+    @click.option(
+        "--trip-index",
+        type=int,
+        default=None,
+        help="Select a specific trip by index (use with --memory-type trip)",
+    )
+    @click.option(
+        "--all-trips",
+        is_flag=True,
+        default=False,
+        help="Generate a video for every detected trip (use with --memory-type trip)",
+    )
     @click.pass_context
     def generate(
         ctx: click.Context,
@@ -104,6 +128,11 @@ def register_generate_commands(main: click.Group) -> None:
         output: str | None,
         music: str | None,
         dry_run: bool,
+        upload_to_immich: bool,
+        album: str | None,
+        include_live_photos: bool,
+        trip_index: int | None,
+        all_trips: bool,
     ) -> None:
         """Generate a video compilation.
 
@@ -134,6 +163,14 @@ def register_generate_commands(main: click.Group) -> None:
         # Validate memory type constraints
         if memory_type in ("person_spotlight", "multi_person") and not person_names:
             print_error(f"--person is required with --memory-type {memory_type}")
+            sys.exit(1)
+
+        if memory_type == "trip" and not year:
+            print_error("--year is required with --memory-type trip")
+            sys.exit(1)
+
+        if (trip_index is not None or all_trips) and memory_type != "trip":
+            print_error("--trip-index and --all-trips require --memory-type trip")
             sys.exit(1)
 
         # Resolve date range(s)
@@ -207,6 +244,10 @@ def register_generate_commands(main: click.Group) -> None:
         table.add_row("Scale Mode", scale_mode)
         table.add_row("Transition", transition)
         table.add_row("Output", str(output_path))
+        # Resolve live photos: CLI flag OR config
+        use_live_photos = include_live_photos or config.analysis.include_live_photos
+        if use_live_photos:
+            table.add_row("Live Photos", "Enabled")
         if music:
             table.add_row("Music", music)
 
@@ -236,6 +277,48 @@ def register_generate_commands(main: click.Group) -> None:
                 ) as client:
                     progress.update(task, completed=True)
                     print_success("Connected to Immich")
+
+                    # Trip detection flow: branch early
+                    if memory_type == "trip" and year:
+                        from immich_memories.cli._trip_display import (
+                            format_trips_table,
+                            run_trip_detection,
+                            select_trips,
+                        )
+
+                        trips = run_trip_detection(client, config, year, progress, person_names)
+
+                        trips_table = format_trips_table(trips)
+                        if trips_table:
+                            progress.stop()
+                            console.print()
+                            console.print(trips_table)
+                            console.print()
+                        else:
+                            print_error("No trips detected for this year")
+                            sys.exit(0)
+
+                        try:
+                            selected = select_trips(trips, trip_index, all_trips)
+                        except ValueError as e:
+                            print_error(str(e))
+                            sys.exit(1)
+
+                        if not selected:
+                            print_info(
+                                "Use --trip-index N to generate a specific trip, "
+                                "or --all-trips to generate all"
+                            )
+                            return
+
+                        # TODO: pipe selected trips into generation pipeline
+                        for trip in selected:
+                            print_info(
+                                f"Would generate: {trip.location_name} "
+                                f"({trip.start_date} to {trip.end_date}, "
+                                f"{trip.asset_count} videos)"
+                            )
+                        return
 
                     # Find person(s) if specified
                     person_ids: list[str] = []
@@ -300,6 +383,17 @@ def register_generate_commands(main: click.Group) -> None:
                     print_info("Full generation pipeline coming soon!")
                     print_info(f"Output would be saved to: {output_path}")
 
+                    # Upload to Immich if requested (or config-enabled)
+                    should_upload = upload_to_immich or config.upload.enabled
+                    album_name = album or config.upload.album_name
+                    if should_upload and output_path.exists():
+                        task = progress.add_task("Uploading to Immich...", total=None)
+                        result = client.upload_memory(output_path, album_name=album_name)
+                        progress.update(task, completed=True)
+                        print_success(f"Uploaded to Immich (asset: {result['asset_id']})")
+                        if result["album_id"]:
+                            print_success(f"Added to album: {album_name}")
+
         except ImmichAPIError as e:
             print_error(f"Immich API error: {e}")
             sys.exit(1)
@@ -307,120 +401,7 @@ def register_generate_commands(main: click.Group) -> None:
             print_error(f"Error: {e}")
             sys.exit(1)
 
-    @main.command()
-    @click.option("--year", "-y", type=int, help="Year to analyze")
-    @click.option("--force", "-f", is_flag=True, help="Force re-analysis of cached videos")
-    @click.pass_context
-    def analyze(ctx: click.Context, year: int | None, force: bool) -> None:  # noqa: ARG001
-        """Analyze videos and cache metadata."""
-        from rich.progress import Progress, SpinnerColumn, TextColumn
+    # Register analyze and export-project commands from separate module
+    from immich_memories.cli._analyze_export import register_analyze_export_commands
 
-        config = ctx.obj["config"]
-
-        if not config.immich.url or not config.immich.api_key:
-            print_error("Immich not configured. Run 'immich-memories config' first.")
-            sys.exit(1)
-
-        from immich_memories.api.immich import SyncImmichClient
-
-        console.print("[bold]Analyzing videos...[/bold]")
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Connecting to Immich...", total=None)
-
-            with SyncImmichClient(
-                base_url=config.immich.url,
-                api_key=config.immich.api_key,
-            ) as client:
-                progress.update(task, completed=True)
-
-                if year:
-                    years = [year]
-                else:
-                    task = progress.add_task("Getting available years...", total=None)
-                    years = client.get_available_years()
-                    progress.update(task, completed=True)
-
-                for y in years:
-                    task = progress.add_task(f"Fetching videos for {y}...", total=None)
-                    assets = client.get_all_videos_for_year(y)
-                    progress.update(task, completed=True)
-                    console.print(f"  {y}: {len(assets)} videos")
-
-        print_success("Analysis complete")
-
-    @main.command("export-project")
-    @click.option("--year", "-y", type=int, required=True, help="Year")
-    @click.option("--person", "-p", type=str, help="Person name")
-    @click.option("--output", "-o", type=click.Path(), required=True, help="Output JSON file")
-    @click.pass_context
-    def export_project(
-        ctx: click.Context,
-        year: int,
-        person: str | None,
-        output: str,
-    ) -> None:
-        """Export project state for later editing."""
-        config = ctx.obj["config"]
-
-        if not config.immich.url or not config.immich.api_key:
-            print_error("Immich not configured.")
-            sys.exit(1)
-
-        from immich_memories.api.immich import SyncImmichClient
-
-        with SyncImmichClient(
-            base_url=config.immich.url,
-            api_key=config.immich.api_key,
-        ) as client:
-            # Find person
-            person_id = None
-            person_name = None
-            if person:
-                found = client.get_person_by_name(person)
-                if found:
-                    person_id = found.id
-                    person_name = found.name
-
-            # Get assets
-            if person_id:
-                assets = client.get_videos_for_person_and_year(person_id, year)
-            else:
-                assets = client.get_all_videos_for_year(year)
-
-            # Build project structure
-            project = {
-                "version": "1.0",
-                "created_at": datetime.now().isoformat(),
-                "settings": {
-                    "year": year,
-                    "person_id": person_id,
-                    "person_name": person_name,
-                },
-                "clips": [
-                    {
-                        "asset_id": a.id,
-                        "filename": a.original_file_name,
-                        "date": a.file_created_at.isoformat(),
-                        "duration": a.duration_seconds,
-                        "selected": True,
-                        "segment": {
-                            "start": 0,
-                            "end": a.duration_seconds or 0,
-                        },
-                    }
-                    for a in assets
-                ],
-            }
-
-            # Write to file
-            output_path = Path(output)
-            with open(output_path, "w") as f:
-                json.dump(project, f, indent=2)
-
-            print_success(f"Project exported to {output_path}")
-            console.print(f"  {len(assets)} clips included")
+    register_analyze_export_commands(main)
