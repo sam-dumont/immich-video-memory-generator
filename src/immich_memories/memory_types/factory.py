@@ -101,7 +101,7 @@ def _year_in_review(
         person_filter=person_filter,
         scoring=ScoringProfile(),
         title_template="{year}",
-        default_duration_minutes=10,
+        default_duration_minutes=8,
     )
 
 
@@ -276,7 +276,9 @@ def _trip(
 
     location = location_name or "Unknown Location"
     date_range = build_trip(trip_start, trip_end)
-    duration = min(max(asset_count // 5, 2), 10)
+    # Trips: 1 minute per 3 days of travel, capped at 10
+    trip_days = (trip_end - trip_start).days + 1
+    duration = max(1, min(10, round(trip_days / 3)))
     person_filter = PersonFilter()
     if person_names:
         person_filter = PersonFilter(mode="single", person_names=person_names[:1])

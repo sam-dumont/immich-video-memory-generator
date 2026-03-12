@@ -7,7 +7,20 @@ title: "Step 4: Preview & Export"
 
 Hit generate and watch it work.
 
-![Step 4: Preview & Export](/img/screenshots/step4-preview-export.png)
+## Output Filename
+
+The filename is auto-generated from your selections: person names, date range, and memory type. Examples:
+
+- `sam_emile_march_2026_memories.mp4` (Multi-Person, March 2026)
+- `emile_summer_2025_memories.mp4` (Season preset)
+- `sam_2025_memories.mp4` (Year in Review)
+- `everyone_jan-apr_2026_memories.mp4` (Custom, no person)
+
+You can edit the filename before generating.
+
+## Month Dividers
+
+For memories spanning 4+ months, the video includes month divider cards between clips (e.g., "January", "February"). Shorter ranges (3 months or fewer) skip dividers entirely: there's not enough content to justify them.
 
 ## Generation Progress
 
@@ -20,11 +33,8 @@ Progress is shown in real-time as the tool:
 
 ## Download
 
-When generation completes, you get a download button. Click it and the final video downloads to your browser.
-
-The video is also saved to your configured output directory (default: the current working directory, or whatever you set in `output.directory` in your config).
+When generation completes, you get a download button. The video is also saved to `~/Videos/Memories/` in a timestamped directory.
 
 ## Re-generating
 
 Not happy with the result? Go back to Step 2 or 3, adjust your clip selection or settings, and generate again. The analysis cache means you won't have to re-analyze anything.
-

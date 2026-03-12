@@ -115,7 +115,26 @@ def _load_clips() -> None:
             clips.sort(key=lambda c: c.asset.file_created_at)
 
             state.clips = clips
-            state.selected_clip_ids = {c.asset.id for c in clips}
+
+            # Prioritize real videos over live photos: if there's enough
+            # video footage to fill the target duration, only pre-select
+            # videos. Live photos stay visible but unchecked by default.
+            has_live = state.include_live_photos and any(c.asset.is_live_photo for c in clips)
+            if has_live:
+                video_clips = [c for c in clips if not c.asset.is_live_photo]
+                video_duration = sum(c.duration_seconds or 0 for c in video_clips)
+                target_seconds = state.target_duration * 60
+
+                if video_duration >= target_seconds:
+                    state.selected_clip_ids = {c.asset.id for c in video_clips}
+                    logger.info(
+                        f"Enough video ({video_duration:.0f}s >= {target_seconds}s target), "
+                        f"live photos available but not pre-selected"
+                    )
+                else:
+                    state.selected_clip_ids = {c.asset.id for c in clips}
+            else:
+                state.selected_clip_ids = {c.asset.id for c in clips}
 
             # Load thumbnails and metadata with progress
             status_label.set_text(f"Found {len(clips)} videos. Loading thumbnails...")

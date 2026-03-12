@@ -141,6 +141,8 @@ def _update_duration_summary(clips: list[VideoClipInfo], container: ui.element) 
 def _get_clip_badges(clip: VideoClipInfo) -> list[str]:
     """Build the list of badge labels for a clip card."""
     badges = []
+    if clip.asset.is_live_photo:
+        badges.append("Live")
     if clip.asset.is_favorite:
         badges.append("star")
     if clip.is_hdr:
@@ -184,6 +186,8 @@ def _render_clip_badges(badges: list[str]) -> None:
             for badge in badges:
                 if badge == "star":
                     ui.icon("star", color="yellow").classes("text-xs")
+                elif badge == "Live":
+                    ui.badge(badge, color="purple").classes("text-xs")
                 else:
                     ui.badge(badge, color="blue").classes("text-xs")
 

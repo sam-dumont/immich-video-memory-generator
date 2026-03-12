@@ -475,9 +475,9 @@ def _apply_preset_to_state(memory_type: MemoryType) -> None:
         if preset.default_duration_minutes:
             state.target_duration = preset.default_duration_minutes
         elif preset.date_ranges:
-            # Auto-compute duration from date range: ~1 min per month
+            # Auto-compute duration from date range: ~1 min/month, ~8 min/year
             days = preset.date_ranges[0].days
-            state.target_duration = max(1, min(60, round(days / 30)))
+            state.target_duration = max(1, min(10, round(days / 45)))
     except (ValueError, TypeError) as exc:
         # Preset not fully configured yet (e.g. no person selected) — clear stale date range
         state.date_range = None
