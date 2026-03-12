@@ -13,7 +13,7 @@ ConnectionError: Cannot connect to Immich at https://photos.example.com
 
 - Double-check your URL. Include the protocol (`https://`). Don't include a trailing slash.
 - Verify your API key is correct: **Immich > Account Settings > API Keys**.
-- Make sure Immich is actually reachable from wherever you're running this tool. If you're in Docker, `localhost` means the container, not your host machine — use the host's IP or Docker network hostname.
+- Make sure Immich is actually reachable from wherever you're running this tool. If you're in Docker, `localhost` means the container, not your host machine: use the host's IP or Docker network hostname.
 
 ## No Videos Found
 

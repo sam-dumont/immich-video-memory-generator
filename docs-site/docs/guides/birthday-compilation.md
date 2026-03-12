@@ -5,7 +5,7 @@ title: Birthday Compilations
 
 # Birthday Compilations
 
-A birthday compilation spans from one birthday to the next — for example, Jul 21, 2024 through Jul 20, 2025. It captures a full year of someone's life, which makes for a great video to play at their birthday party.
+A birthday compilation spans from one birthday to the next: for example, Jul 21, 2024 through Jul 20, 2025. It captures a full year of someone's life, which makes for a great video to play at their birthday party.
 
 ## CLI
 

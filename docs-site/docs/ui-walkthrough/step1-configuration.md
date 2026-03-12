@@ -25,9 +25,9 @@ You can also skip this and generate from all videos in the time period.
 
 Three options:
 
-- **Year** — All videos from a specific year (e.g., 2024).
-- **Birthday** — A birthday-year range (e.g., Jul 21, 2024 to Jul 20, 2025). Good for birthday party compilations.
-- **Date range** — Any custom start and end date.
+- **Year**: All videos from a specific year (e.g., 2024).
+- **Birthday**: A birthday-year range (e.g., Jul 21, 2024 to Jul 20, 2025). Good for birthday party compilations.
+- **Date range**: Any custom start and end date.
 
 ## Analysis Cache
 

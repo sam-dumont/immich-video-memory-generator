@@ -38,6 +38,7 @@ const sidebars: SidebarsConfig = {
         'cli/hardware',
         'cli/runs',
         'cli/titles',
+        'cli/reference',
       ],
     },
     {
@@ -71,6 +72,7 @@ const sidebars: SidebarsConfig = {
         'hardware/apple-silicon',
         'hardware/intel-qsv',
         'hardware/amd-vaapi',
+        'hardware/cpu-only',
       ],
     },
     {

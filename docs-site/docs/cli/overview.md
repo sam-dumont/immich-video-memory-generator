@@ -5,7 +5,7 @@ title: CLI Overview
 
 # CLI Overview
 
-Everything in immich-memories is available through the `immich-memories` command. No subcommand soup — just straightforward verbs.
+Everything in immich-memories is available through the `immich-memories` command. No subcommand soup: just straightforward verbs.
 
 ## Commands
 

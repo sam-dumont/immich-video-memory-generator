@@ -5,7 +5,7 @@ title: runs
 
 # runs
 
-Every time you generate a video, immich-memories tracks the run — what settings you used, how long it took, how many clips were processed, errors, system info. The `runs` command lets you browse that history.
+Every time you generate a video, immich-memories tracks the run: what settings you used, how long it took, how many clips were processed, errors, system info. The `runs` command lets you browse that history.
 
 ## runs list
 
@@ -40,7 +40,7 @@ Detailed view of a single run. Shows status, date range, clip counts, output fil
 immich-memories runs show RUN_ID
 ```
 
-You can use a partial run ID — if it's unambiguous, it'll match:
+You can use a partial run ID: if it's unambiguous, it'll match:
 
 ```bash
 immich-memories runs show 20260105_1430

@@ -10,6 +10,7 @@ from immich_memories.api.models import (
     Asset,
     AssetFace,
     AssetType,
+    ExifInfo,
     Person,
     VideoClipInfo,
 )
@@ -272,3 +273,244 @@ class TestVideoClipInfo:
         )
         assert clip.is_hdr is False
         assert clip.hdr_format == "SDR"
+
+
+class TestVideoClipInfoEdgeCases:
+    """Edge cases for VideoClipInfo."""
+
+    def _make_asset(self):
+        return Asset(
+            id="edge",
+            type=AssetType.VIDEO,
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+
+    def test_square_video_not_portrait_or_landscape(self):
+        """Square video (1:1) is neither portrait nor landscape."""
+        clip = VideoClipInfo(asset=self._make_asset(), width=1080, height=1080)
+        assert clip.is_portrait is False
+        assert clip.is_landscape is False
+
+    def test_aspect_ratio_portrait(self):
+        """Portrait video has aspect ratio < 1."""
+        clip = VideoClipInfo(asset=self._make_asset(), width=1080, height=1920)
+        assert clip.aspect_ratio < 1.0
+
+    def test_zero_bitrate_quality_score(self):
+        """Zero bitrate produces a valid quality score (no division error)."""
+        clip = VideoClipInfo(
+            asset=self._make_asset(),
+            width=1920,
+            height=1080,
+            bitrate=0,
+            duration_seconds=30,
+        )
+        score = clip.quality_score
+        assert 0 <= score <= 1
+
+    def test_duration_zero_seconds(self):
+        """Asset with zero duration parses correctly."""
+        asset = Asset(
+            id="z",
+            type=AssetType.VIDEO,
+            duration="0:00:00.000",
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+        assert asset.duration_seconds == 0.0
+
+    def test_duration_none(self):
+        """Asset with no duration returns None."""
+        asset = Asset(
+            id="n",
+            type=AssetType.VIDEO,
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+        assert asset.duration_seconds is None
+
+
+class TestAssetFaceEdgeCases:
+    """Edge cases for face geometry calculations."""
+
+    def test_zero_area_face(self):
+        """Degenerate face (zero area) calculates correctly."""
+        face = AssetFace(
+            id="f",
+            boundingBoxX1=100,
+            boundingBoxY1=200,
+            boundingBoxX2=100,
+            boundingBoxY2=200,
+        )
+        assert face.area == 0
+        assert face.center == (100.0, 200.0)
+
+
+class TestHDRDetectionParametrized:
+    """Parametrized HDR format detection."""
+
+    def _make_clip(self, color_transfer=None, color_primaries=None):
+        asset = Asset(
+            id="hdr",
+            type=AssetType.VIDEO,
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+        return VideoClipInfo(
+            asset=asset,
+            width=3840,
+            height=2160,
+            color_transfer=color_transfer,
+            color_primaries=color_primaries,
+        )
+
+    @pytest.mark.parametrize(
+        "transfer,primaries,expected_hdr,expected_format",
+        [
+            pytest.param("smpte2084", "bt2020", True, "HDR10", id="hdr10"),
+            pytest.param("arib-std-b67", None, True, "HLG", id="hlg"),
+            pytest.param("bt709", None, False, "SDR", id="bt709-sdr"),
+            pytest.param(None, None, False, "SDR", id="none-sdr"),
+            pytest.param("unknown_transfer", None, False, "SDR", id="unknown-sdr"),
+        ],
+    )
+    def test_hdr_format_detection(self, transfer, primaries, expected_hdr, expected_format):
+        """HDR detection maps transfer function to correct format."""
+        clip = self._make_clip(color_transfer=transfer, color_primaries=primaries)
+        assert clip.is_hdr is expected_hdr
+        assert clip.hdr_format == expected_format
+
+
+class TestDurationParsingParametrized:
+    """Parametrized duration string parsing."""
+
+    @pytest.mark.parametrize(
+        "duration_str,expected",
+        [
+            pytest.param("0:00:10.000", 10.0, id="hhmmss-10s"),
+            pytest.param("00:01:30.500", 90.5, id="hhmmss-90.5s"),
+            pytest.param("02:30.000", 150.0, id="mmss-150s"),
+            pytest.param("0:00:00.000", 0.0, id="zero"),
+            pytest.param(None, None, id="none"),
+        ],
+    )
+    def test_duration_parsing(self, duration_str, expected):
+        """Duration strings parse to correct seconds."""
+        asset = Asset(
+            id="d",
+            type=AssetType.VIDEO,
+            duration=duration_str,
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+        assert asset.duration_seconds == expected
+
+    def test_invalid_duration_returns_none(self):
+        """Unparseable duration returns None."""
+        asset = Asset(
+            id="d",
+            type=AssetType.VIDEO,
+            duration="not-a-duration",
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+        assert asset.duration_seconds is None
+
+
+class TestRotationParametrized:
+    """Parametrized rotation dimension swapping."""
+
+    def _make_clip(self, rotation=0):
+        asset = Asset(
+            id="r",
+            type=AssetType.VIDEO,
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+        return VideoClipInfo(asset=asset, width=1920, height=1080, rotation=rotation)
+
+    @pytest.mark.parametrize(
+        "rotation,exp_width,exp_height",
+        [
+            pytest.param(0, 1920, 1080, id="0-deg"),
+            pytest.param(90, 1080, 1920, id="90-deg-swapped"),
+            pytest.param(180, 1920, 1080, id="180-deg"),
+            pytest.param(270, 1080, 1920, id="270-deg-swapped"),
+            pytest.param(0, 1920, 1080, id="no-rotation"),
+        ],
+    )
+    def test_displayed_dimensions(self, rotation, exp_width, exp_height):
+        """Rotation swaps displayed dimensions for 90/270."""
+        clip = self._make_clip(rotation=rotation)
+        assert clip.displayed_width == exp_width
+        assert clip.displayed_height == exp_height
+
+
+class TestIsCameraOriginal:
+    """Tests for is_camera_original property."""
+
+    def test_with_exif_make_and_model(self):
+        """Camera original when exif has make and model."""
+        asset = Asset(
+            id="c",
+            type=AssetType.VIDEO,
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+            exifInfo=ExifInfo(make="Apple", model="iPhone 15 Pro"),
+        )
+        clip = VideoClipInfo(asset=asset, width=1920, height=1080)
+        assert clip.is_camera_original is True
+
+    def test_without_exif(self):
+        """Not camera original without exif info."""
+        asset = Asset(
+            id="c",
+            type=AssetType.VIDEO,
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+        clip = VideoClipInfo(asset=asset, width=1920, height=1080)
+        assert clip.is_camera_original is False
+
+    def test_with_exif_no_make_no_model(self):
+        """Not camera original when exif has neither make nor model."""
+        asset = Asset(
+            id="c",
+            type=AssetType.VIDEO,
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+            exifInfo=ExifInfo(),
+        )
+        clip = VideoClipInfo(asset=asset, width=1920, height=1080)
+        assert clip.is_camera_original is False
+
+
+class TestPersonDisplayName:
+    """Edge cases for Person.display_name."""
+
+    def test_empty_name(self):
+        """Empty name falls back to ID-based display name."""
+        person = Person(id="abc12345-rest", name="")
+        assert person.display_name == "Person abc12345"
+
+    def test_whitespace_name(self):
+        """Whitespace-only name is used as-is (not stripped)."""
+        person = Person(id="abc12345", name="  ")
+        # name is non-empty so it's used
+        assert person.display_name == "  "
+
+    def test_default_name_is_empty(self):
+        """Default name is empty string."""
+        person = Person(id="abc12345")
+        assert person.name == ""

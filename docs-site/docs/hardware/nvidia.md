@@ -9,10 +9,10 @@ NVIDIA GPUs with NVENC provide hardware-accelerated video encoding that's signif
 
 ## What you get
 
-- **NVENC encoding** — h264_nvenc, hevc_nvenc. Offloads encoding to dedicated hardware on the GPU.
-- **NVDEC decoding** — hardware-accelerated decode, keeps the full pipeline on GPU.
-- **CUDA scaling** — `scale_cuda` resizes frames on the GPU instead of pulling them back to CPU.
-- **OpenCV CUDA face detection** — face-aware cropping runs on the GPU. Faster than CPU, though not as fast as Apple's Neural Engine.
+- **NVENC encoding**: h264_nvenc, hevc_nvenc. Offloads encoding to dedicated hardware on the GPU.
+- **NVDEC decoding**: hardware-accelerated decode, keeps the full pipeline on GPU.
+- **CUDA scaling**: `scale_cuda` resizes frames on the GPU instead of pulling them back to CPU.
+- **OpenCV CUDA face detection**: face-aware cropping runs on the GPU. Faster than CPU, though not as fast as Apple's Neural Engine.
 
 ## Requirements
 

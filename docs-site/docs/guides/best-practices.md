@@ -52,11 +52,11 @@ Once you're happy with the results, scale up.
 
 ## Review Clips Before Generating
 
-Step 2 exists for a reason. Spend 2 minutes deselecting clips that don't belong — that shaky hallway video, the accidental recording of your pocket, the 45-second clip of a wall. The tool's scoring is good but not perfect.
+Step 2 exists for a reason. Spend 2 minutes deselecting clips that don't belong: that shaky hallway video, the accidental recording of your pocket, the 45-second clip of a wall. The tool's scoring is good but not perfect.
 
 ## Enable LLM Analysis for Large Libraries
 
-For libraries with hundreds of videos, LLM content analysis dramatically improves clip selection. It adds a few seconds per video to analysis time but catches things that motion/face detection misses — a quiet but meaningful conversation, a funny reaction shot, etc.
+For libraries with hundreds of videos, LLM content analysis dramatically improves clip selection. It adds a few seconds per video to analysis time but catches things that motion/face detection misses: a quiet but meaningful conversation, a funny reaction shot, etc.
 
 ```yaml
 content_analysis:
