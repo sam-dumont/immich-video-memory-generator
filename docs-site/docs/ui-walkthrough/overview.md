@@ -13,10 +13,10 @@ immich-memories ui
 
 The UI is a 4-step wizard:
 
-1. **Configuration** — Connect to your Immich server, pick a person and time period.
-2. **Clip Review** — See what the analysis found, deselect clips you don't want.
-3. **Generation Options** — Choose orientation, resolution, transitions, and music.
-4. **Preview & Export** — Generate the video and download it.
+1. **Configuration**: Connect to your Immich server, pick a person and time period.
+2. **Clip Review**: See what the analysis found, deselect clips you don't want.
+3. **Generation Options**: Choose orientation, resolution, transitions, and music.
+4. **Preview & Export**: Generate the video and download it.
 
 Each step builds on the previous one. You can go back and change things without losing your selections.
 

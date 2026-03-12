@@ -61,4 +61,4 @@ The job runs to completion and writes the output video to the configured volume.
 
 ## Headless Mode
 
-The CLI runs fully headless — no display needed. This means it works fine in Docker containers, SSH sessions, and CI pipelines. All configuration comes from `config.yaml` and CLI flags.
+The CLI runs fully headless: no display needed. This means it works fine in Docker containers, SSH sessions, and CI pipelines. All configuration comes from `config.yaml` and CLI flags.

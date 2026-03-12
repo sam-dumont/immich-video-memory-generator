@@ -9,9 +9,9 @@ VAAPI (Video Acceleration API) provides hardware-accelerated video encoding on A
 
 ## What you get
 
-- **VAAPI encoding** — h264_vaapi, hevc_vaapi. Hardware-accelerated encoding.
-- **VAAPI scaling** — `scale_vaapi` resizes frames on the GPU.
-- **Face detection** — falls back to CPU (OpenCV Haar cascades). AMD doesn't expose a GPU-accelerated face detection path.
+- **VAAPI encoding**: h264_vaapi, hevc_vaapi. Hardware-accelerated encoding.
+- **VAAPI scaling**: `scale_vaapi` resizes frames on the GPU.
+- **Face detection**: falls back to CPU (OpenCV Haar cascades). AMD doesn't expose a GPU-accelerated face detection path.
 
 ## Requirements
 
@@ -44,6 +44,6 @@ hardware:
 
 ## Limitations
 
-- **Linux only** — VAAPI isn't available on macOS or Windows
-- **No GPU face detection** — face-aware cropping uses CPU OpenCV, which is slower but still functional
+- **Linux only**: VAAPI isn't available on macOS or Windows
+- **No GPU face detection**: face-aware cropping uses CPU OpenCV, which is slower but still functional
 - Encoding quality varies by GPU generation. Newer RDNA chips produce better output than older GCN cards at the same bitrate.

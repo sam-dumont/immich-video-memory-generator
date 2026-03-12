@@ -11,8 +11,8 @@ The `generate` command needs to know what time range to pull videos from. There 
 
 | Method | Flags | What you get |
 |--------|-------|-------------|
-| Calendar year | `--year 2024` | Jan 1 2024 — Dec 31 2024 |
-| Birthday year | `--year 2024 --birthday 07/21` | Jul 21 2024 — Jul 20 2025 |
+| Calendar year | `--year 2024` | Jan 1 2024 to Dec 31 2024 |
+| Birthday year | `--year 2024 --birthday 07/21` | Jul 21 2024 to Jul 20 2025 |
 | Custom range | `--start 2024-06-01 --end 2024-08-31` | Exact start and end dates |
 | Period from start | `--start 2024-01-01 --period 6m` | 6 months from the start date |
 

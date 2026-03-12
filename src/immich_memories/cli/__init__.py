@@ -22,15 +22,34 @@ def main(ctx: click.Context, config: str | None) -> None:
     """Immich Memories - Create video compilations from your Immich library."""
     ctx.ensure_object(dict)
 
+    # Configure logging early
+    from immich_memories.logging_config import configure_logging
+
+    configure_logging()
+
     # Initialize config directory
     init_config_dir()
 
     # Load configuration
-    if config:
-        config_path = Path(config)
-        ctx.obj["config"] = Config.from_yaml(config_path)
-    else:
-        ctx.obj["config"] = get_config()
+    import sys
+
+    import yaml
+    from pydantic import ValidationError
+
+    from immich_memories.cli._config_errors import format_validation_error, format_yaml_error
+
+    try:
+        if config:
+            config_path = Path(config)
+            ctx.obj["config"] = Config.from_yaml(config_path)
+        else:
+            ctx.obj["config"] = get_config()
+    except ValidationError as e:
+        print_error(format_validation_error(e))
+        sys.exit(1)
+    except yaml.YAMLError as e:
+        print_error(format_yaml_error(e))
+        sys.exit(1)
 
 
 @main.command()

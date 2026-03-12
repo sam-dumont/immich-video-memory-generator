@@ -55,4 +55,4 @@ services:
       - immich-server
 ```
 
-This connects directly to Immich's internal network — no need to expose Immich externally.
+This connects directly to Immich's internal network: no need to expose Immich externally.

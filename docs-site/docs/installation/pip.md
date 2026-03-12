@@ -5,7 +5,7 @@ title: pip
 
 # Install with pip
 
-Works fine, just slower than uv. Use a virtual environment — don't install into your system Python.
+Works fine, just slower than uv. Use a virtual environment: don't install into your system Python.
 
 ## From PyPI
 

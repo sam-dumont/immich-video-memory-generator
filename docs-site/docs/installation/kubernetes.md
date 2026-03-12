@@ -75,7 +75,7 @@ kubectl apply -f job.yaml
 kubectl logs -n immich-memories -f job/immich-memories-generate
 
 # Check output
-kubectl exec -n immich-memories deployment/immich-memories — ls -la /output/
+kubectl exec -n immich-memories deployment/immich-memories -- ls -la /output/
 ```
 
 ## Configuration

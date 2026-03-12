@@ -8,13 +8,10 @@ import signal
 import socket
 import sys
 
-# Configure logging to show in console before importing our modules
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-    force=True,
-)
+# Configure logging before importing our modules
+from immich_memories.logging_config import configure_logging
+
+configure_logging()
 
 from nicegui import app, ui
 

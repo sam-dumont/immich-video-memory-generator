@@ -5,13 +5,13 @@ title: Custom Music
 
 # Custom Music
 
-Not interested in AI-generated music? You have options.
+You don't have to use AI-generated music. There are other options.
 
 ## Upload Your Own
 
-In the UI at Step 3 (Generation Options), you can upload your own music file. Any format FFmpeg can read works — MP3, WAV, FLAC, M4A, OGG, etc.
+In the UI at Step 3 (Generation Options), you can upload your own music file. Any format FFmpeg can read works: MP3, WAV, FLAC, M4A, OGG, etc.
 
-The uploaded track gets used as the background music for your final video. Audio ducking still applies — the music volume will drop automatically when your clips contain speech or laughter (assuming Demucs stem separation is available via MusicGen).
+The uploaded track gets used as the background music for your final video. Audio ducking still applies: the music volume will drop automatically when your clips contain speech or laughter (assuming Demucs stem separation is available via MusicGen).
 
 ## Disable Music Entirely
 
@@ -34,4 +34,4 @@ audio:
   local_music_dir: "~/Music/Memories"
 ```
 
-The tool will scan the directory and pick a track. It does basic mood matching based on filename and directory structure, but don't expect miracles — it's not Shazam.
+The tool will scan the directory and pick a track. It does basic mood matching based on filename and directory structure, but don't expect miracles: it's not Shazam.

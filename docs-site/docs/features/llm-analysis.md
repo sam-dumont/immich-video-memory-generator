@@ -11,10 +11,10 @@ Optional feature that uses a vision LLM to understand *what's actually happening
 
 This works with anything that speaks the OpenAI chat completions API:
 
-- **[mlx-vlm](https://github.com/Blaizzy/mlx-vlm)** — local on Apple Silicon, no API costs
-- **[Ollama](https://ollama.ai)** — local, supports vision models like LLaVA
-- **[vLLM](https://vllm.ai)** — self-hosted, great for NVIDIA GPUs
-- **[Groq](https://groq.com)** — cloud, fast inference
+- **[mlx-vlm](https://github.com/Blaizzy/mlx-vlm)**: local on Apple Silicon, no API costs
+- **[Ollama](https://ollama.ai)**: local, supports vision models like LLaVA
+- **[vLLM](https://vllm.ai)**: self-hosted, great for NVIDIA GPUs
+- **[Groq](https://groq.com)**: cloud, fast inference
 - **Any other provider** with an OpenAI-compatible endpoint
 
 ## How it works
@@ -43,7 +43,7 @@ The `weight` parameter (0.0 to 1.0) controls how much the LLM score matters rela
 
 ### Frames per segment
 
-More frames = better understanding but slower and more expensive. For most use cases, 2 frames per segment is the sweet spot — one near the start, one near the end.
+More frames = better understanding but slower and more expensive. For most use cases, 2 frames per segment is the sweet spot: one near the start, one near the end.
 
 ## Cost considerations
 

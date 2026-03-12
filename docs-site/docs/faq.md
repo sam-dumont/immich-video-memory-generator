@@ -11,7 +11,7 @@ No. It's read-only. The tool downloads copies of your videos for analysis and pr
 
 **What video formats does it support?**
 
-Anything FFmpeg can decode, which is basically everything — MP4, MOV, AVI, MKV, WebM, you name it. Output is always MP4 (H.264).
+Anything FFmpeg can decode, which is basically everything: MP4, MOV, AVI, MKV, WebM, you name it. Output is always MP4 (H.264).
 
 **Can I use it without face recognition?**
 
@@ -33,11 +33,11 @@ Yes. The CLI works without a display. Use `immich-memories generate` with flags 
 
 **Is it safe for production?**
 
-This project was built primarily with AI assistance. It works, it has tests, and it's read-only against your Immich library. But it generates AI content — music, clip selection, mood analysis — so results vary. Use at your own risk and review what it produces before showing it at grandma's birthday party.
+This project was built primarily with AI assistance. It works, it has tests, and it's read-only against your Immich library. But it generates AI content (music, clip selection, mood analysis), so results vary. Use at your own risk and review what it produces before showing it at grandma's birthday party.
 
 **Can I generate for multiple people at once?**
 
-Not in a single run. But you can script multiple runs — see the [Automation](./guides/automation.md) guide for examples.
+Not in a single run. But you can script multiple runs: see the [Automation](./guides/automation.md) guide for examples.
 
 **How much disk space does it need?**
 

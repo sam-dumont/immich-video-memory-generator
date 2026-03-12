@@ -9,9 +9,9 @@ Intel Quick Sync Video (QSV) is built into most Intel CPUs with integrated graph
 
 ## What you get
 
-- **QSV encoding** — h264_qsv, hevc_qsv. Hardware-accelerated encoding on the integrated GPU.
-- **QSV scaling** — `scale_qsv` resizes frames on the GPU.
-- **Face detection** — falls back to CPU (OpenCV Haar cascades). Intel GPUs don't have a dedicated neural accelerator exposed for this.
+- **QSV encoding**: h264_qsv, hevc_qsv. Hardware-accelerated encoding on the integrated GPU.
+- **QSV scaling**: `scale_qsv` resizes frames on the GPU.
+- **Face detection**: falls back to CPU (OpenCV Haar cascades). Intel GPUs don't have a dedicated neural accelerator exposed for this.
 
 ## Requirements
 
@@ -37,4 +37,4 @@ hardware:
 
 ## Good for headless servers
 
-QSV is common in home server setups — Intel NUCs, older desktops repurposed as media servers. The encoding speed bump is nice (3-5x over software), and since it uses the integrated GPU, it doesn't require a discrete graphics card.
+QSV is common in home server setups: Intel NUCs, older desktops repurposed as media servers. The encoding speed bump is nice (3-5x over software), and since it uses the integrated GPU, it doesn't require a discrete graphics card.

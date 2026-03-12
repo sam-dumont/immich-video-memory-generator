@@ -9,10 +9,10 @@ Apple Silicon Macs (M1, M2, M3, M4, M5) are probably the best platform for this 
 
 ## What you get
 
-- **VideoToolbox encoding** — 5-10x faster than software libx264. Uses the dedicated media engine on the chip.
-- **Vision Framework face detection** — runs on the Neural Engine, ~10x faster than OpenCV CPU. More accurate too, especially with small or partially occluded faces.
-- **Unified memory** — no CPU/GPU transfer overhead. Frames stay in the same memory pool whether the CPU, GPU, or Neural Engine is working on them.
-- **mlx-vlm for local LLMs** — run vision models locally with Metal acceleration for [LLM content analysis](../features/llm-analysis.md). No API costs, no data leaving your machine.
+- **VideoToolbox encoding**: 5-10x faster than software libx264. Uses the dedicated media engine on the chip.
+- **Vision Framework face detection**: runs on the Neural Engine, ~10x faster than OpenCV CPU. More accurate too, especially with small or partially occluded faces.
+- **Unified memory**: no CPU/GPU transfer overhead. Frames stay in the same memory pool whether the CPU, GPU, or Neural Engine is working on them.
+- **mlx-vlm for local LLMs**: run vision models locally with Metal acceleration for [LLM content analysis](../features/llm-analysis.md). No API costs, no data leaving your machine.
 
 ## Installation
 

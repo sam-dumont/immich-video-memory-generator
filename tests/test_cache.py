@@ -327,3 +327,54 @@ class TestCachedVideoAnalysis:
         )
 
         assert analysis.get_best_segment() is None
+
+
+class TestVideoAnalysisCacheEdgeCases:
+    """Edge cases for cache operations."""
+
+    def test_save_same_asset_twice_overwrites(self, cache, mock_asset, mock_video_info):
+        """Saving the same asset twice overwrites the first entry."""
+        cache.save_analysis(
+            asset=mock_asset,
+            video_info=mock_video_info,
+            perceptual_hash="aaaa1111bbbb2222",
+        )
+        cache.save_analysis(
+            asset=mock_asset,
+            video_info=mock_video_info,
+            perceptual_hash="cccc3333dddd4444",
+        )
+        analysis = cache.get_analysis(mock_asset.id)
+        assert analysis.perceptual_hash == "cccc3333dddd4444"
+
+    def test_save_with_no_segments(self, cache, mock_asset, mock_video_info):
+        """Saving without segments stores the analysis but with empty segments."""
+        cache.save_analysis(asset=mock_asset, video_info=mock_video_info)
+        analysis = cache.get_analysis(mock_asset.id, include_segments=True)
+        assert analysis is not None
+        assert analysis.segments == []
+
+    def test_delete_nonexistent_returns_false(self, cache):
+        """Deleting a nonexistent asset returns False."""
+        result = cache.delete_analysis("no-such-id")
+        assert result is False
+
+    def test_clear_empty_cache_returns_zero(self, cache):
+        """Clearing an empty cache returns 0."""
+        assert cache.clear_all() == 0
+
+    def test_get_uncached_asset_ids_all_uncached(self, cache):
+        """All IDs are returned when none are cached."""
+        ids = ["a", "b", "c"]
+        uncached = cache.get_uncached_asset_ids(ids)
+        assert set(uncached) == {"a", "b", "c"}
+
+    def test_get_uncached_asset_ids_empty_input(self, cache):
+        """Empty input list returns empty."""
+        assert cache.get_uncached_asset_ids([]) == []
+
+    def test_stats_empty_cache(self, cache):
+        """Stats on empty cache return zeros."""
+        stats = cache.get_stats()
+        assert stats["total_videos"] == 0
+        assert stats["total_segments"] == 0

@@ -127,6 +127,7 @@ class TestMusicGeneratorABC:
         gen = DummyGenerator()
         assert gen.name == "Dummy"
 
+    @pytest.mark.asyncio
     async def test_default_generate_with_stems_returns_none_stems(self):
         """Default generate_with_stems should return None for stems."""
 
@@ -149,6 +150,7 @@ class TestMusicGeneratorABC:
         assert result.audio_path == Path("/tmp/dummy.wav")
         assert stems is None
 
+    @pytest.mark.asyncio
     async def test_default_health_check(self):
         """Default health_check should return backend name and availability."""
 
@@ -168,6 +170,7 @@ class TestMusicGeneratorABC:
         assert health["backend"] == "Dummy"
         assert health["available"] is True
 
+    @pytest.mark.asyncio
     async def test_context_manager(self):
         """Default __aenter__/__aexit__ should work."""
 

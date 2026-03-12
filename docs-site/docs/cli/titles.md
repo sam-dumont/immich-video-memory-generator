@@ -64,4 +64,4 @@ immich-memories titles fonts --download
 immich-memories titles fonts --clear
 ```
 
-If you haven't downloaded fonts yet, title generation will still work — it'll just use whatever's available on your system. But the downloaded fonts look better.
+If you haven't downloaded fonts yet, title generation will still work: it'll just use whatever's available on your system. But the downloaded fonts look better.
