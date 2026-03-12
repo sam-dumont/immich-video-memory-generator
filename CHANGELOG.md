@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-12
+
+
+### Features
+- feat: add 6 quality improvements across tests, logging, config errors, benchmarks, and docs (0c6281c)
+### Fixed
+- fix(release): auto-update CHANGELOG.md on release (b446c3d)
+- fix(test): reduce run_id uniqueness sample to avoid birthday-paradox collisions (2be17a6)
+- fix(test): mock FFmpeg in assembler music test for CI compatibility (51dfc71)
+- fix(deps): move pytest-benchmark to optional-dependencies dev (a2310af)
+- fix(docs): replace em dashes with colons per voice guide, refactor tests to test flows (ae7f1e9)
+### Changed
+- ci(changelog): add PR-based changelog update workflow (8ec0f95)
+- docs(changelog): add unreleased entries for quality improvements (f6a7dee)
+- docs: add CPU-only mode page documenting GPU-free operation (2723e96)
+- test: add 152 tests for run_id, transitions, text_builder, tracker, system_info, styles, and blend (9b4d11b)
+- test: add API client, ClipExtractor, and duplicate detection tests with parametrized edge cases (a98182d)
+- test: improve test quality with edge cases, parametrize, and isolation fixes (147a155)
+
+
 ### Added
 - Multi-provider music pipeline: ACE-Step → MusicGen fallback with independent enable/disable
 - ACE-Step 1.5 REST API integration with explicit BPM, key, time signature parameters
@@ -74,5 +94,6 @@ First public release.
 - Preview extraction: `-map 0:a:0?` to skip unsupported spatial audio streams
 - Type error in `content_analyzer.py` for OpenAI content list
 
-[Unreleased]: https://github.com/sam-dumont/immich-video-memory-generator/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/sam-dumont/immich-video-memory-generator/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/sam-dumont/immich-video-memory-generator/compare/v0.2.0...v0.5.0
 [0.2.0]: https://github.com/sam-dumont/immich-video-memory-generator/releases/tag/v0.2.0
