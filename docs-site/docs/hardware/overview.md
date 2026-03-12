@@ -5,6 +5,8 @@ title: Hardware Acceleration Overview
 
 # Hardware Acceleration Overview
 
+The pipeline is designed around GPU acceleration for the best quality and speed: animated title screens, fast encoding, GPU-accelerated face detection, and more. However, **every feature has a CPU fallback**, so it works on any machine. See [CPU-Only Mode](./cpu-only.md) for details on running without a GPU.
+
 Encoding video in software (libx264) works everywhere but it's slow. If you have a GPU or dedicated media engine, hardware acceleration can speed up encoding by 5-10x. The pipeline auto-detects your hardware and picks the best available backend.
 
 ## Supported backends
@@ -41,3 +43,4 @@ This prints what backends are available, which one would be selected, and the sp
 - [Apple Silicon](./apple-silicon.md): VideoToolbox, Vision Framework, mlx-vlm
 - [Intel Quick Sync](./intel-qsv.md): QSV encoding and scaling
 - [AMD VAAPI](./amd-vaapi.md): VAAPI encoding and scaling (Linux only)
+- [CPU-Only Mode](./cpu-only.md): Running without any GPU

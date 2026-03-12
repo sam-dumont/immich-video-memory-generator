@@ -72,6 +72,7 @@ const sidebars: SidebarsConfig = {
         'hardware/apple-silicon',
         'hardware/intel-qsv',
         'hardware/amd-vaapi',
+        'hardware/cpu-only',
       ],
     },
     {
