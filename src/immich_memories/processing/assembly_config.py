@@ -85,6 +85,8 @@ class TitleScreenSettings:
     trip_locations: list[tuple[float, float]] | None = None  # (lat, lon) pairs for map pins
     trip_title_text: str | None = None  # e.g. "TWO WEEKS IN SPAIN, SUMMER 2025"
     show_location_cards: bool = True  # Insert location cards between clips
+    home_lat: float | None = None  # Homebase latitude for globe animation
+    home_lon: float | None = None  # Homebase longitude for globe animation
 
 
 @dataclass

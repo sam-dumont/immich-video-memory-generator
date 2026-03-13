@@ -243,6 +243,45 @@ class TestLocationCardWithMap:
         assert result.size == (1920, 1080)
 
 
+class TestEquirectangularMap:
+    """Equirectangular map fetching for globe projection texture."""
+
+    def test_renders_wide_area_map_array(self):
+        """render_equirectangular_map returns float32 array for globe texture."""
+        from immich_memories.titles.map_renderer import render_equirectangular_map
+
+        mock_map_img = Image.new("RGB", (720, 360), color=(100, 150, 200))
+        with patch("immich_memories.titles.map_renderer.StaticMap") as mock_sm:
+            mock_sm.return_value.render.return_value = mock_map_img
+            result = render_equirectangular_map(
+                center_lat=45.0,
+                center_lon=2.0,
+                width=720,
+                height=360,
+            )
+
+        assert isinstance(result, np.ndarray)
+        assert result.shape == (360, 720, 3)
+        assert result.dtype == np.float32
+        assert 0.0 <= result.max() <= 1.0
+
+    def test_fallback_on_tile_error(self):
+        """Returns solid dark array if tile fetch fails."""
+        from immich_memories.titles.map_renderer import render_equirectangular_map
+
+        with patch("immich_memories.titles.map_renderer.StaticMap") as mock_sm:
+            mock_sm.return_value.render.side_effect = Exception("Network error")
+            result = render_equirectangular_map(
+                center_lat=45.0,
+                center_lon=2.0,
+                width=720,
+                height=360,
+            )
+
+        assert result.shape == (360, 720, 3)
+        assert result.max() < 0.3  # Dark fallback
+
+
 class TestMapTitleRatioConsistency:
     """Font size should be consistent across orientations."""
 

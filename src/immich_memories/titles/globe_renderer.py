@@ -2,12 +2,19 @@
 
 Generates camera paths for animated trip map transitions,
 flying between destinations on a 3D globe.
+
+Camera model: close → pull-back → close. Start and end at the same
+zoom level, with mid-flight altitude proportional to distance (like
+watching a plane at 30,000m for long trips, lower for short hops).
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+
+# Close-up zoom for start/end of each segment
+_CLOSE_DISTANCE = 2.2
 
 
 @dataclass
@@ -27,6 +34,9 @@ def generate_camera_keyframes(
 ) -> list[GlobeCameraKeyframe]:
     """Generate camera keyframes from home to destinations.
 
+    All keyframes use the same close zoom. The mid-flight pull-back
+    is computed during interpolation based on segment distance.
+
     Args:
         home_lat: Home latitude (degrees).
         home_lon: Home longitude (degrees).
@@ -41,12 +51,11 @@ def generate_camera_keyframes(
 
     for i, (lat, lon) in enumerate(points):
         t = i / max(1, n - 1)
-        distance = _compute_overview_distance(home_lat, home_lon, destinations) if i == 0 else 2.2
         keyframes.append(
             GlobeCameraKeyframe(
                 lat=math.radians(lat),
                 lon=math.radians(lon),
-                distance=distance,
+                distance=_CLOSE_DISTANCE,
                 time=t,
             )
         )
@@ -59,6 +68,10 @@ def interpolate_camera(
     t: float,
 ) -> tuple[float, float, float]:
     """Interpolate camera position at time t with cosine easing.
+
+    Mid-flight pull-back is proportional to the great-circle distance
+    between consecutive keyframes. Short hops barely zoom out;
+    long flights pull back like a plane at 30,000m.
 
     Returns:
         (lat_rad, lon_rad, distance).
@@ -81,12 +94,11 @@ def interpolate_camera(
             lat = k0.lat + (k1.lat - k0.lat) * eased
             lon = k0.lon + (k1.lon - k0.lon) * eased
 
-            # Pull-back mid-transition for distant moves
-            mid_dist = max(k0.distance, k1.distance) * 1.3
-            if eased < 0.5:
-                d = k0.distance + (mid_dist - k0.distance) * (eased * 2)
-            else:
-                d = mid_dist + (k1.distance - mid_dist) * ((eased - 0.5) * 2)
+            # Mid-flight pull-back proportional to segment distance
+            mid_dist = _segment_cruise_altitude(k0.lat, k0.lon, k1.lat, k1.lon)
+            # Smooth bell curve: close → cruise → close
+            bell = math.sin(math.pi * eased)
+            d = k0.distance + (mid_dist - k0.distance) * bell
 
             return (lat, lon, d)
 
@@ -94,18 +106,22 @@ def interpolate_camera(
     return (kf.lat, kf.lon, kf.distance)
 
 
-def _compute_overview_distance(
-    home_lat: float,
-    home_lon: float,
-    destinations: list[tuple[float, float]],
-) -> float:
-    """Compute camera distance that shows both home and farthest destination."""
-    from immich_memories.analysis.trip_detection import haversine_km
+def _segment_cruise_altitude(lat0: float, lon0: float, lat1: float, lon1: float) -> float:
+    """Compute mid-flight camera distance based on segment arc length.
 
-    max_dist_km = 0.0
-    for lat, lon in destinations:
-        d = haversine_km(home_lat, home_lon, lat, lon)
-        max_dist_km = max(max_dist_km, d)
+    Uses great-circle distance on the unit sphere (radians input).
+    Maps to camera distance:
+        ~100km  (0.016 rad) → 2.5  (barely zoom out)
+        ~800km  (0.125 rad) → 3.5  (moderate pull-back)
+        ~2500km (0.39 rad)  → 5.5  (high altitude, like a plane)
+        ~5000km+            → 7.0  (max pull-back)
+    """
+    # Great-circle distance on unit sphere (haversine formula, radians)
+    dlat = lat1 - lat0
+    dlon = lon1 - lon0
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat0) * math.cos(lat1) * math.sin(dlon / 2) ** 2
+    arc = 2 * math.asin(min(1.0, math.sqrt(a)))
 
-    # Mapping: 500km → 3.0, 2000km → 5.0, 10000km → 8.0
-    return min(8.0, max(2.5, 2.5 + math.log1p(max_dist_km / 500)))
+    # arc is in radians; π = half the globe (~20,000km)
+    # Map: 0 → _CLOSE_DISTANCE, π → 7.0
+    return min(7.0, _CLOSE_DISTANCE + arc * 3.0)

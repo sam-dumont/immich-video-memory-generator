@@ -113,6 +113,40 @@ def render_location_card(
     return img
 
 
+def render_equirectangular_map(
+    center_lat: float,
+    center_lon: float,
+    width: int = 720,
+    height: int = 360,
+    map_style: str = DEFAULT_MAP_STYLE,
+) -> np.ndarray:
+    """Fetch satellite tiles as a wide-area equirectangular texture.
+
+    Used as the globe projection texture — no pins or text, just the
+    raw satellite imagery centered on the trip area.
+
+    Returns:
+        float32 array (height, width, 3) normalized to [0, 1].
+    """
+    url_template = MAP_STYLES.get(map_style, MAP_STYLES[DEFAULT_MAP_STYLE])
+    m = StaticMap(width, height, url_template=url_template)
+
+    # Add an invisible marker at center to set the map viewport
+    m.add_marker(CircleMarker((center_lon, center_lat), "transparent", 1))
+
+    try:
+        image = m.render()
+    except Exception:
+        logger.warning("Equirectangular tile fetch failed, using dark fallback")
+        dark = np.full((height, width, 3), 0.15, dtype=np.float32)
+        return dark
+
+    if image.size != (width, height):
+        image = image.resize((width, height))
+
+    return np.array(image.convert("RGB"), dtype=np.float32) / 255.0
+
+
 # ---------------------------------------------------------------------------
 # Internal rendering helpers
 # ---------------------------------------------------------------------------

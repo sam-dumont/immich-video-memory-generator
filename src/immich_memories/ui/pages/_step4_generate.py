@@ -339,6 +339,8 @@ def _build_assembly_settings(state, config, assembly_clips):
             memory_type=state.memory_type,
             trip_locations=trip_locations,
             trip_title_text=trip_title_text,
+            home_lat=state.memory_preset_params.get("home_lat"),
+            home_lon=state.memory_preset_params.get("home_lon"),
         )
 
     settings = AssemblySettings(

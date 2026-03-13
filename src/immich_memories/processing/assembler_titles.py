@@ -1,8 +1,4 @@
-"""Title screen integration methods for VideoAssembler.
-
-This mixin provides title screen generation, month divider handling,
-date parsing, and the assemble_with_titles entry point.
-"""
+"""Title screen integration: generation, dividers, and assemble_with_titles."""
 
 from __future__ import annotations
 
@@ -437,6 +433,8 @@ class AssemblerTitleMixin(AssemblerTripMixin):
             title_screen = generator.generate_trip_map_screen(
                 locations=title_settings.trip_locations,
                 title_text=title_settings.trip_title_text,
+                home_lat=getattr(title_settings, "home_lat", None),
+                home_lon=getattr(title_settings, "home_lon", None),
             )
             logger.info(f"Generated trip map intro: {title_screen.path}")
         else:
