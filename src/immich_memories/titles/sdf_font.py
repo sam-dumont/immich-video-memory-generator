@@ -87,6 +87,8 @@ class SDFFontAtlas:
 
 # Common font paths by platform
 FONT_SEARCH_PATHS = [
+    # App-managed font cache (downloaded OFL fonts)
+    Path.home() / ".immich-memories" / "fonts",
     # macOS
     Path("/System/Library/Fonts"),
     Path("/Library/Fonts"),

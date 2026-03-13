@@ -16,13 +16,14 @@ def _make_asset(
     city: str | None = None,
     country: str | None = None,
     asset_id: str | None = None,
+    asset_type: AssetType = AssetType.VIDEO,
 ) -> Asset:
     """Helper to build a minimal Asset with GPS and timestamp."""
     ts = datetime.fromisoformat(created_at).replace(tzinfo=UTC)
     exif = ExifInfo(latitude=lat, longitude=lon, city=city, country=country) if lat else None
     return Asset(
         id=asset_id or f"asset-{created_at}",
-        type=AssetType.VIDEO,
+        type=asset_type,
         fileCreatedAt=ts,
         fileModifiedAt=ts,
         updatedAt=ts,
@@ -89,6 +90,13 @@ class TestDetectTrips:
     # Brussels homebase
     HOME_LAT = 50.8468
     HOME_LON = 4.3525
+
+    @pytest.fixture(autouse=True)
+    def _no_geocode(self, monkeypatch):
+        """Disable network geocoding in trip detection tests."""
+        monkeypatch.setattr(
+            "immich_memories.analysis.trip_detection.reverse_geocode", lambda *_args: None
+        )
 
     def test_filters_assets_near_home(self):
         """Assets within min_distance_km should be excluded."""
@@ -237,6 +245,42 @@ class TestDetectTrips:
         trips = detect_trips(assets, self.HOME_LAT, self.HOME_LON)
         assert len(trips) == 1
         assert trips[0].asset_count == 6
+
+    def test_detects_trips_from_photos_and_videos(self):
+        """Trip detection should work with mixed asset types (photos + videos)."""
+        from immich_memories.analysis.trip_detection import detect_trips
+
+        assets = [
+            # Pre-2018 trip: only photos
+            _make_asset(
+                41.39,
+                2.17,
+                "2015-06-12T10:00:00",
+                city="Barcelona",
+                country="Spain",
+                asset_type=AssetType.IMAGE,
+            ),
+            _make_asset(
+                41.39,
+                2.17,
+                "2015-06-13T10:00:00",
+                city="Barcelona",
+                country="Spain",
+                asset_type=AssetType.IMAGE,
+            ),
+            _make_asset(
+                41.39,
+                2.17,
+                "2015-06-14T10:00:00",
+                city="Barcelona",
+                country="Spain",
+                asset_type=AssetType.IMAGE,
+            ),
+        ]
+        trips = detect_trips(assets, self.HOME_LAT, self.HOME_LON)
+        assert len(trips) == 1
+        assert trips[0].location_name == "Barcelona, Spain"
+        assert trips[0].asset_count == 3
 
 
 class TestTripCLI:
@@ -408,6 +452,72 @@ class TestFormatTripsTable:
         ]
         selected = select_trips(trips)
         assert selected == []
+
+
+class TestReverseGeocode:
+    """Reverse geocoding for trip location naming."""
+
+    def test_geocode_returns_location_name(self):
+        """reverse_geocode should return a formatted location string."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        mock_location = MagicMock()
+        mock_location.raw = {"address": {"state": "Charente-Maritime", "country": "France"}}
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = mock_location
+            result = reverse_geocode(45.95, -1.15)
+
+        assert result == "Charente-Maritime, France"
+
+    def test_geocode_returns_none_on_failure(self):
+        """reverse_geocode should return None when geocoding fails."""
+        from unittest.mock import patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.side_effect = Exception("Network error")
+            result = reverse_geocode(45.95, -1.15)
+
+        assert result is None
+
+    def test_naming_prefers_geocode_over_exif(self):
+        """_derive_location_name should prefer geocoded result over EXIF."""
+        from unittest.mock import patch
+
+        from immich_memories.analysis.trip_detection import _derive_location_name
+
+        assets = [
+            _make_asset(45.95, -1.15, "2024-07-12T10:00:00", city="Dolus", country="France"),
+            _make_asset(45.96, -1.14, "2024-07-13T10:00:00", city="Dolus", country="France"),
+        ]
+
+        with patch(
+            "immich_memories.analysis.trip_detection.reverse_geocode",
+            return_value="Île d'Oléron, France",
+        ):
+            result = _derive_location_name(assets, centroid_lat=45.955, centroid_lon=-1.145)
+
+        assert result == "Île d'Oléron, France"
+
+    def test_naming_falls_back_to_exif_when_geocode_fails(self):
+        """When geocode returns None, fall back to EXIF city/country."""
+        from unittest.mock import patch
+
+        from immich_memories.analysis.trip_detection import _derive_location_name
+
+        assets = [
+            _make_asset(41.39, 2.17, "2024-06-12T10:00:00", city="Barcelona", country="Spain"),
+            _make_asset(41.39, 2.17, "2024-06-13T10:00:00", city="Barcelona", country="Spain"),
+        ]
+
+        with patch("immich_memories.analysis.trip_detection.reverse_geocode", return_value=None):
+            result = _derive_location_name(assets, centroid_lat=41.39, centroid_lon=2.17)
+
+        assert result == "Barcelona, Spain"
 
 
 class TestTripInUI:

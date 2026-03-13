@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import numpy as np
+
 from .renderer_pil import create_title_video
 from .styles import TitleStyle
 
@@ -147,3 +149,77 @@ class RenderingMixin:
             is_birthday=is_birthday,
         )
         return create_title_video_taichi(title, subtitle, output_path, config, fade_from_white)
+
+    def _create_map_video(
+        self,
+        title: str,
+        subtitle: str | None,
+        background_array: np.ndarray,
+        output_path: Path,
+        width: int,
+        height: int,
+        duration: float,
+        fps: float,
+    ) -> Path:
+        """Create a map video using a pre-rendered map as background.
+
+        Uses Taichi GPU for text animation/encoding if available,
+        falls back to PIL rendering with the map as static background.
+        No bokeh/particles — clean map aesthetic.
+        """
+        if self._use_gpu and create_title_video_taichi is not None:
+            # Dim the map so white text pops
+            dimmed = background_array * 0.55
+            # Target same absolute font size regardless of orientation
+            # 0.09 of min(w,h), converted to height-relative ratio
+            map_title_ratio = 0.135 * min(width, height) / height
+            config = TaichiTitleConfig(
+                width=width,
+                height=height,
+                fps=fps,
+                duration=duration,
+                background_image=dimmed,
+                # Bold white text on dimmed map
+                text_color="#FFFFFF",
+                title_size_ratio=map_title_ratio,
+                subtitle_size_ratio=0.0,
+                font_family="Montserrat",
+                use_sdf_text=False,  # PIL text = pixel-sharp on maps
+                enable_shadow=True,
+                shadow_opacity=0.5,
+                shadow_offset_ratio=0.004,
+                # No blur — map must stay sharp
+                blur_radius=0,
+                # No particles/bokeh for maps
+                enable_bokeh=False,
+                enable_noise=False,
+                # Slight edge darkening only
+                gradient_rotation=0.0,
+                color_pulse_amount=0.0,
+                vignette_strength=0.15,
+                vignette_pulse=0.0,
+            )
+            return create_title_video_taichi(
+                title, subtitle, output_path, config, fade_from_white=True
+            )
+        else:
+            # PIL fallback: use map_renderer.render_trip_map_frame directly
+
+            # The background_array was already rendered, create video from it
+            return create_title_video(
+                title=title,
+                subtitle=subtitle,
+                style=TitleStyle(
+                    name="map",
+                    text_color="#FFFFFF",
+                    background_type="solid",
+                    background_colors=["#2D3748"],
+                ),
+                output_path=output_path,
+                width=width,
+                height=height,
+                duration=duration,
+                fps=fps,
+                animated_background=False,
+                fade_from_white=True,
+            )

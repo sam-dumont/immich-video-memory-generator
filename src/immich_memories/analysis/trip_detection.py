@@ -6,12 +6,17 @@ homebase, then grouping temporally contiguous assets into trip clusters.
 
 from __future__ import annotations
 
+import logging
 import math
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date
 
+from geopy.geocoders import Nominatim  # type: ignore[import-untyped]
+
 from immich_memories.api.models import Asset
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -90,9 +95,11 @@ def detect_trips(
         if span_days < min_duration_days:
             continue
 
-        location = _derive_location_name(group)
         lats = [a.exif_info.latitude for a in group if a.exif_info and a.exif_info.latitude]
         lons = [a.exif_info.longitude for a in group if a.exif_info and a.exif_info.longitude]
+        c_lat = sum(lats) / len(lats) if lats else 0.0
+        c_lon = sum(lons) / len(lons) if lons else 0.0
+        location = _derive_location_name(group, centroid_lat=c_lat, centroid_lon=c_lon)
 
         trips.append(
             DetectedTrip(
@@ -100,8 +107,8 @@ def detect_trips(
                 end_date=last_date,
                 location_name=location,
                 asset_count=len(group),
-                centroid_lat=sum(lats) / len(lats) if lats else 0.0,
-                centroid_lon=sum(lons) / len(lons) if lons else 0.0,
+                centroid_lat=c_lat,
+                centroid_lon=c_lon,
                 asset_ids=[a.id for a in group],
             )
         )
@@ -109,8 +116,44 @@ def detect_trips(
     return trips
 
 
-def _derive_location_name(assets: list[Asset]) -> str:
-    """Derive a human-readable location name from EXIF city/country fields."""
+def reverse_geocode(lat: float, lon: float) -> str | None:
+    """Reverse geocode coordinates to a region-level location name.
+
+    Uses Nominatim at zoom level 8 (state/region) for trip-level naming.
+    Returns "Region, Country" or None on failure.
+    """
+    try:
+        geolocator = Nominatim(user_agent="immich-memories")
+        location = geolocator.reverse(f"{lat}, {lon}", zoom=8, language="en")
+        if location is None:
+            return None
+        addr = location.raw.get("address", {})
+        region = addr.get("state") or addr.get("region") or addr.get("county")
+        country = addr.get("country")
+        if region and country:
+            return f"{region}, {country}"
+        if country:
+            return country
+        if region:
+            return region
+    except Exception:
+        logger.debug("Reverse geocoding failed for (%s, %s)", lat, lon)
+    return None
+
+
+def _derive_location_name(
+    assets: list[Asset],
+    centroid_lat: float | None = None,
+    centroid_lon: float | None = None,
+) -> str:
+    """Derive a human-readable location name, preferring reverse geocoding."""
+    # Try reverse geocoding the centroid first
+    if centroid_lat is not None and centroid_lon is not None:
+        geocoded = reverse_geocode(centroid_lat, centroid_lon)
+        if geocoded:
+            return geocoded
+
+    # Fallback to EXIF city/country
     pairs: list[tuple[str | None, str | None]] = []
     for asset in assets:
         if asset.exif_info:
@@ -119,7 +162,6 @@ def _derive_location_name(assets: list[Asset]) -> str:
     if not pairs:
         return "Unknown Location"
 
-    # Count (city, country) pairs
     counter: Counter[tuple[str | None, str | None]] = Counter(pairs)
     city, country = counter.most_common(1)[0][0]
 

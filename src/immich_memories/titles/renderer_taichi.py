@@ -113,6 +113,10 @@ class TaichiTitleConfig:
     scale_from: float = 0.85
     stagger_delay: float = 0.12
 
+    # Custom background image (numpy float32 array, overrides gradient)
+    # Used for map frames — the map is rendered once, then used as static background
+    background_image: np.ndarray | None = None
+
     _bokeh_particles: np.ndarray = field(default_factory=lambda: np.array([]))
     _bokeh_seed: int = 42
 
@@ -203,8 +207,11 @@ class TaichiTitleRenderer(TaichiParticlesMixin, TaichiTextMixin):
         progress = frame_number / self.total_frames
         cfg = self.config
 
-        # 1. Generate gradient
-        self._render_gradient(t, progress, cfg)
+        # 1. Generate background (custom image or gradient)
+        if cfg.background_image is not None:
+            np.copyto(self.frame_buffer, cfg.background_image)
+        else:
+            self._render_gradient(t, progress, cfg)
 
         # 2. Apply blur
         if cfg.blur_radius > 0:

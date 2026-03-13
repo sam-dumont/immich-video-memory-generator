@@ -80,6 +80,12 @@ class TitleScreenSettings:
     show_ending_screen: bool = True
     use_first_name_only: bool = True  # Use only first name for titles
 
+    # Trip map settings (used when memory_type == "trip")
+    memory_type: str | None = None  # "trip" enables map intro + location cards
+    trip_locations: list[tuple[float, float]] | None = None  # (lat, lon) pairs for map pins
+    trip_title_text: str | None = None  # e.g. "TWO WEEKS IN SPAIN, SUMMER 2025"
+    show_location_cards: bool = True  # Insert location cards between clips
+
 
 @dataclass
 class AssemblySettings:
@@ -139,6 +145,10 @@ class AssemblyClip:
     llm_emotion: str | None = None
     # Title screen flag - ensures fade transitions are used for this clip
     is_title_screen: bool = False
+    # GPS location (used for trip location interstitials)
+    latitude: float | None = None
+    longitude: float | None = None
+    location_name: str | None = None
     # Audio analysis results for targeted ducking
     has_speech: bool = False  # Segment contains speech (from audio analysis)
     # Pre-decided outgoing transition (from clips.plan_transitions)

@@ -449,17 +449,11 @@ def _compile_kernels():
     logger.debug("Taichi kernels compiled")
 
 
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-
 def _create_gaussian_kernel(radius: int, sigma: float | None = None) -> np.ndarray:
     """Create 1D Gaussian kernel for separable blur."""
     if sigma is None:
         sigma = radius / 3.0
-    size = 2 * radius + 1
-    x = np.arange(size) - radius
+    x = np.arange(2 * radius + 1) - radius
     kernel = np.exp(-(x**2) / (2 * sigma**2))
     kernel /= kernel.sum()
     return kernel.astype(np.float32)
@@ -467,23 +461,38 @@ def _create_gaussian_kernel(radius: int, sigma: float | None = None) -> np.ndarr
 
 def _hex_to_rgb(hex_color: str) -> tuple[float, float, float]:
     """Convert hex color to normalized RGB floats."""
-    hex_color = hex_color.lstrip("#")
-    r = int(hex_color[0:2], 16) / 255.0
-    g = int(hex_color[2:4], 16) / 255.0
-    b = int(hex_color[4:6], 16) / 255.0
-    return (r, g, b)
+    h = hex_color.lstrip("#")
+    return (int(h[0:2], 16) / 255.0, int(h[2:4], 16) / 255.0, int(h[4:6], 16) / 255.0)
 
 
-def _get_system_font() -> str:
-    """Get a reliable system font path."""
-    font_paths = [
-        "/System/Library/Fonts/Helvetica.ttc",
-        "/System/Library/Fonts/SFNSDisplay.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf",
-        "C:\\Windows\\Fonts\\arial.ttf",
-    ]
-    for path in font_paths:
+_OFL_FONTS = {"Montserrat", "Outfit", "Raleway", "Quicksand"}
+_SYSTEM_FONTS = [
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/System/Library/Fonts/SFNSDisplay.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    "C:\\Windows\\Fonts\\arial.ttf",
+]
+
+
+def _get_system_font(font_family: str = "Helvetica") -> str:
+    """Get a reliable font path, preferring app-cached OFL fonts."""
+    cache_dir = Path.home() / ".immich-memories" / "fonts"
+    family_clean = font_family.replace(" ", "")
+    family_dir = cache_dir / family_clean
+    if not family_dir.exists() and family_clean in _OFL_FONTS:
+        try:
+            from immich_memories.titles.fonts import download_font
+
+            download_font(family_clean)
+        except Exception:
+            pass
+    if family_dir.exists():
+        for w in ["Bold", "SemiBold", "Medium", "Regular"]:
+            candidate = family_dir / f"{family_clean}-{w}.ttf"
+            if candidate.exists():
+                return str(candidate)
+    for path in _SYSTEM_FONTS:
         if Path(path).exists():
             return path
     return "Arial"
