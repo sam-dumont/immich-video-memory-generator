@@ -53,13 +53,19 @@ def main(ctx: click.Context, config: str | None) -> None:
 
 
 @main.command()
-@click.option("--port", "-p", default=8080, help="Port to run the UI on")
-@click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")  # noqa: S104 - intentional for Docker/container binding
+@click.option(
+    "--port", "-p", default=None, type=int, help="Port to run the UI on (default: config or 8080)"
+)
+@click.option("--host", "-h", default=None, help="Host to bind to (default: config or 0.0.0.0)")  # noqa: S104
 @click.option(
     "--reload/--no-reload", default=False, help="Enable hot reload (for development only)"
 )
-def ui(port: int, host: str, reload: bool) -> None:
+@click.pass_context
+def ui(ctx: click.Context, port: int | None, host: str | None, reload: bool) -> None:
     """Launch the interactive NiceGUI UI."""
+    config: Config = ctx.obj["config"]
+    host = host or config.server.host
+    port = port or config.server.port
     print_info(f"Starting Immich Memories UI on http://{host}:{port}")
 
     # Import the app module to register routes and run

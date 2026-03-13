@@ -21,7 +21,7 @@ from immich_memories.memory_types.presets import (
     ScoringProfile,
 )
 from immich_memories.memory_types.registry import MemoryType
-from immich_memories.timeperiod import calendar_year
+from immich_memories.timeperiod import birthday_year, calendar_year
 
 # Registry: maps MemoryType -> factory callable
 _REGISTRY: dict[MemoryType, Callable[..., MemoryPreset]] = {}
@@ -144,16 +144,19 @@ def _season(
 def _person_spotlight(
     year: int,
     person_names: list[str] | None = None,
+    use_birthday: bool = False,
+    birthday: date | None = None,
     **kwargs,  # noqa: ARG001
 ) -> MemoryPreset:
     if not person_names:
         raise ValueError("person_names is required for PERSON_SPOTLIGHT memory type")
     name = person_names[0]
+    date_range = birthday_year(birthday, year) if use_birthday and birthday else calendar_year(year)
     return MemoryPreset(
         memory_type=MemoryType.PERSON_SPOTLIGHT,
         name=f"Your Year with {name}",
         description=f"Best moments with {name} in {year}",
-        date_ranges=[calendar_year(year)],
+        date_ranges=[date_range],
         person_filter=PersonFilter(mode="single", person_names=[name]),
         scoring=ScoringProfile(face_weight=0.6, motion_weight=0.15),
         title_template="{year}",

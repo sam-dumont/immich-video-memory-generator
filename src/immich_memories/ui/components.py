@@ -60,19 +60,18 @@ def im_info_card(
     variant: str = "info",
 ) -> ui.element:
     """Alert-style info card with color variants."""
-    color_map = {
-        "info": ("var(--im-info)", "rgba(37,99,235,0.06)"),
-        "warning": ("var(--im-warning)", "rgba(217,119,6,0.06)"),
-        "success": ("var(--im-success)", "rgba(5,150,105,0.06)"),
-        "error": ("var(--im-error)", "rgba(220,38,38,0.06)"),
-    }
-    text_color, bg_color = color_map.get(variant, color_map["info"])
+    text_color = (
+        f"var(--im-{variant})"
+        if variant in ("info", "warning", "success", "error")
+        else "var(--im-info)"
+    )
+    bg_class = (
+        f"im-alert-{variant}"
+        if variant in ("info", "warning", "success", "error")
+        else "im-alert-info"
+    )
 
-    with (
-        ui.element("div")
-        .classes("w-full rounded-lg p-3")
-        .style(f"background-color: {bg_color}") as container
-    ):
+    with ui.element("div").classes(f"w-full rounded-lg p-3 {bg_class}") as container:
         ui.label(text).classes("text-sm").style(f"color: {text_color}")
     return container
 

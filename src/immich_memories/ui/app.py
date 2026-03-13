@@ -39,57 +39,12 @@ _EXTRA_NAV = [
 # ============================================================================
 
 
-def render_step_indicator(current_step: int) -> None:
-    """Render connected-dot step progress indicator using inline HTML."""
-    items: list[str] = []
-    for i, (name, _icon, _path) in enumerate(_STEPS):
-        step_num = i + 1
+def render_step_indicator(current_step: int) -> None:  # noqa: ARG001
+    """Step indicator — removed in favor of sidebar navigation.
 
-        if step_num < current_step:
-            circle = (
-                '<div style="width:28px;height:28px;border-radius:50%;'
-                "background:var(--im-success);display:flex;"
-                'align-items:center;justify-content:center">'
-                '<span class="material-icons" style="color:#fff;font-size:16px">check</span>'
-                "</div>"
-            )
-            label = f'<span style="font-size:11px;color:var(--im-success);font-weight:500">{name}</span>'
-        elif step_num == current_step:
-            circle = (
-                '<div style="width:28px;height:28px;border-radius:50%;'
-                "background:var(--im-primary);display:flex;"
-                'align-items:center;justify-content:center">'
-                f'<span style="color:#fff;font-size:13px;font-weight:700">{step_num}</span>'
-                "</div>"
-            )
-            label = f'<span style="font-size:11px;color:var(--im-primary);font-weight:700">{name}</span>'
-        else:
-            circle = (
-                '<div style="width:28px;height:28px;border-radius:50%;'
-                "border:2px solid var(--im-border);display:flex;"
-                'align-items:center;justify-content:center">'
-                f'<span style="color:var(--im-text-secondary);font-size:13px">{step_num}</span>'
-                "</div>"
-            )
-            label = f'<span style="font-size:11px;color:var(--im-text-secondary)">{name}</span>'
-
-        step_html = (
-            '<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
-            f"{circle}{label}</div>"
-        )
-        items.append(step_html)
-
-        if i < len(_STEPS) - 1:
-            color = "var(--im-success)" if step_num < current_step else "var(--im-border)"
-            line = f'<div style="width:40px;height:2px;background:{color};align-self:center;margin-bottom:20px"></div>'
-            items.append(line)
-
-    html = (
-        '<div style="display:flex;align-items:flex-start;justify-content:center;gap:0;margin-bottom:16px">'
-        + "".join(items)
-        + "</div>"
-    )
-    ui.html(html)
+    The sidebar already highlights the active step. Keeping this function
+    as a no-op so callers don't need to change.
+    """
 
 
 def render_sidebar(current_step: int) -> None:
@@ -321,8 +276,9 @@ def _kill_port_holders(port: int) -> bool:
 
 
 def _is_port_free(host: str, port: int) -> bool:
-    """Check if a port is available for binding."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    """Check if a port is available for binding (IPv4 and IPv6)."""
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    sock = socket.socket(family, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         sock.bind((host, port))

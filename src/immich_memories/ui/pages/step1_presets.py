@@ -193,10 +193,9 @@ def _render_season_params() -> None:
 
 
 def _render_person_spotlight_params() -> None:
-    """Year (with All Time) + single person picker."""
+    """Year (with All Time) + single person picker + birthday toggle."""
     state = get_app_state()
     named_people = [p for p in state.people if p.name]
-    # Map display names to person objects for lookup
     name_to_person = {p.name: p for p in named_people}
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
@@ -225,6 +224,10 @@ def _render_person_spotlight_params() -> None:
                 state.memory_preset_params["person_id"] = selected.id
                 state.memory_preset_params["person_names"] = [selected.name]
                 state.selected_person = selected
+                # Auto-enable birthday mode if person has a birth_date
+                if hasattr(selected, "birth_date") and selected.birth_date:
+                    state.memory_preset_params["use_birthday"] = True
+                    state.memory_preset_params["birthday"] = selected.birth_date
             _apply_preset_to_state(MemoryType.PERSON_SPOTLIGHT)
 
         ui.select(
@@ -233,6 +236,17 @@ def _render_person_spotlight_params() -> None:
             value=current_name,
             on_change=on_person,
         ).classes("w-48")
+
+    # Birthday-to-birthday toggle
+    def on_birthday_toggle(e):
+        state.memory_preset_params["use_birthday"] = e.value
+        _apply_preset_to_state(MemoryType.PERSON_SPOTLIGHT)
+
+    ui.checkbox(
+        "Birthday to birthday",
+        value=state.memory_preset_params.get("use_birthday", False),
+        on_change=on_birthday_toggle,
+    ).classes("mt-2").tooltip("Year runs from birthday to birthday instead of January to December")
 
     state.memory_preset_params.setdefault("year", saved_year)
     _apply_preset_to_state(MemoryType.PERSON_SPOTLIGHT)

@@ -360,6 +360,13 @@ class LLMConfig(BaseModel):
         return v
 
 
+class ServerConfig(BaseModel):
+    """UI server settings (host, port)."""
+
+    host: str = Field(default="0.0.0.0", description="Listen address (IPv4, IPv6, or hostname)")  # noqa: S104
+    port: int = Field(default=8080, ge=1, le=65535, description="Listen port")
+
+
 class TripsConfig(BaseModel):
     """Trip detection configuration: homebase location and clustering thresholds."""
 

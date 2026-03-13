@@ -327,6 +327,10 @@ class ACEStepBackend(MusicGenerator):
                 "duration": duration,
                 "batch_size": 1,
                 "audio_format": "wav",
+                "instrumental": True,
+                "bpm": caption_result.bpm,
+                "keyscale": caption_result.key_scale,
+                "timesignature": caption_result.time_signature,
             }
 
             resp = await client.post(f"{self.config.api_url}/release_task", json=task_payload)

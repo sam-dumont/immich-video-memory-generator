@@ -27,9 +27,9 @@ _THEME_CSS = """
     --im-sidebar-active: rgba(66, 80, 175, 0.08);
     --im-sidebar-text: #374151;
     --im-sidebar-text-active: #4250af;
-    --im-success: #81c784;
-    --im-warning: #ffb74d;
-    --im-error: #e57373;
+    --im-success: #2e7d32;
+    --im-warning: #b45309;
+    --im-error: #c62828;
     --im-info: #4250af;
     --im-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
     --im-shadow-md: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04);
@@ -39,17 +39,17 @@ _THEME_CSS = """
     --im-primary: #accbfa;
     --im-primary-hover: #8bb8f8;
     --im-primary-light: rgba(172, 203, 250, 0.10);
-    --im-bg: #101010;
-    --im-bg-surface: #1a1a1a;
-    --im-bg-elevated: #242424;
-    --im-text: #e5e7eb;
-    --im-text-secondary: #a1a1aa;
-    --im-text-muted: #71717a;
-    --im-border: #3f3f46;
-    --im-border-light: #2e2e35;
-    --im-sidebar-bg: #101010;
-    --im-sidebar-active: rgba(172, 203, 250, 0.12);
-    --im-sidebar-text: #d4d4d8;
+    --im-bg: #000000;
+    --im-bg-surface: #222222;
+    --im-bg-elevated: #222222;
+    --im-text: #dbdbdb;
+    --im-text-secondary: #d4d4d4;
+    --im-text-muted: #a1a1a1;
+    --im-border: #262626;
+    --im-border-light: #262626;
+    --im-sidebar-bg: #000000;
+    --im-sidebar-active: rgba(172, 203, 250, 0.10);
+    --im-sidebar-text: #d4d4d4;
     --im-sidebar-text-active: #accbfa;
     --im-success: #81c784;
     --im-warning: #f57c00;
@@ -139,6 +139,16 @@ body {
     outline-offset: -2px;
     background-color: var(--im-primary-light) !important;
 }
+
+/* Alert/info card backgrounds — adaptive for light and dark */
+.im-alert-info { background-color: rgba(66, 80, 175, 0.10); }
+.im-alert-warning { background-color: rgba(217, 119, 6, 0.10); }
+.im-alert-success { background-color: rgba(5, 150, 105, 0.10); }
+.im-alert-error { background-color: rgba(220, 38, 38, 0.10); }
+.body--dark .im-alert-info { background-color: rgba(172, 203, 250, 0.08); }
+.body--dark .im-alert-warning { background-color: rgba(245, 124, 0, 0.08); }
+.body--dark .im-alert-success { background-color: rgba(129, 199, 132, 0.08); }
+.body--dark .im-alert-error { background-color: rgba(229, 115, 115, 0.08); }
 """
 
 
@@ -153,11 +163,13 @@ def apply_theme() -> None:
     pref = app.storage.user.get("theme", "system")
     if pref == "dark":
         ui.dark_mode(True)
+        ui.colors(primary="#accbfa")
     elif pref == "light":
         ui.dark_mode(False)
+        ui.colors(primary="#4250af")
     else:
         ui.dark_mode(None)
-    ui.colors(primary="#4250af")
+        ui.colors(primary="#4250af")
 
 
 def render_theme_toggle() -> None:

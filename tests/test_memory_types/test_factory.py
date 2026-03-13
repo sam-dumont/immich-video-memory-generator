@@ -74,6 +74,36 @@ class TestCreatePresetPersonSpotlight:
         with pytest.raises((ValueError, TypeError)):
             create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024)
 
+    def test_default_uses_calendar_year(self) -> None:
+        """Without use_birthday, defaults to Jan 1 - Dec 31."""
+        preset = create_preset(MemoryType.PERSON_SPOTLIGHT, year=2024, person_names=["Alice"])
+        assert preset.date_ranges[0].start == datetime(2024, 1, 1, 0, 0, 0)
+        assert preset.date_ranges[0].end == datetime(2024, 12, 31, 23, 59, 59)
+
+    def test_birthday_range_when_enabled(self) -> None:
+        """With use_birthday=True and a birthday, uses birthday-to-birthday range."""
+        preset = create_preset(
+            MemoryType.PERSON_SPOTLIGHT,
+            year=2024,
+            person_names=["Alice"],
+            use_birthday=True,
+            birthday=date(1990, 3, 15),
+        )
+        # Should start on March 15, 2024
+        assert preset.date_ranges[0].start == datetime(2024, 3, 15, 0, 0, 0)
+        # Should end on March 14, 2025 (day before next birthday)
+        assert preset.date_ranges[0].end == datetime(2025, 3, 14, 23, 59, 59)
+
+    def test_birthday_flag_without_birthday_falls_back_to_calendar(self) -> None:
+        """use_birthday=True but no birthday date falls back to calendar year."""
+        preset = create_preset(
+            MemoryType.PERSON_SPOTLIGHT,
+            year=2024,
+            person_names=["Alice"],
+            use_birthday=True,
+        )
+        assert preset.date_ranges[0].start == datetime(2024, 1, 1, 0, 0, 0)
+
 
 class TestCreatePresetMultiPerson:
     """Multi-person preset requires co-occurrence by default."""

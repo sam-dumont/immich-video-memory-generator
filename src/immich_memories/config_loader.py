@@ -24,6 +24,7 @@ from immich_memories.config_models import (
     ImmichConfig,
     LLMConfig,
     OutputConfig,
+    ServerConfig,
     TripsConfig,
 )
 from immich_memories.config_models_extra import (
@@ -47,6 +48,7 @@ class Config(BaseSettings):
         case_sensitive=False,
     )
 
+    server: ServerConfig = Field(default_factory=ServerConfig)
     immich: ImmichConfig = Field(default_factory=ImmichConfig)
     defaults: DefaultsConfig = Field(default_factory=DefaultsConfig)
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
