@@ -44,6 +44,32 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
+def filter_near_home(
+    assets: list[Asset],
+    home_lat: float,
+    home_lon: float,
+    min_distance_km: float = 50,
+) -> list[Asset]:
+    """Remove assets that are within min_distance_km of home.
+
+    Assets without GPS data are kept (they may be from the trip
+    but missing coordinates).
+    """
+    result: list[Asset] = []
+    for asset in assets:
+        if (
+            not asset.exif_info
+            or asset.exif_info.latitude is None
+            or asset.exif_info.longitude is None
+        ):
+            result.append(asset)  # Keep assets without GPS
+            continue
+        dist = haversine_km(home_lat, home_lon, asset.exif_info.latitude, asset.exif_info.longitude)
+        if dist >= min_distance_km:
+            result.append(asset)
+    return result
+
+
 def detect_trips(
     assets: list[Asset],
     home_lat: float,
@@ -117,12 +143,14 @@ def detect_trips(
 
 
 def reverse_geocode(lat: float, lon: float, spread_km: float | None = None) -> str | None:
-    """Reverse geocode coordinates to a location name.
+    """Reverse geocode coordinates to the most specific location name.
 
-    Always queries at zoom=10 (which returns the full address hierarchy),
-    then picks the appropriate specificity based on trip spread:
-      - Small spread (<100km): county/island/province level ("Ardennes")
-      - Large spread (>=100km): country level ("Cyprus")
+    Always queries at zoom=10 for full address hierarchy.
+    Returns the most specific name available: island > county > province > state.
+    The caller (_derive_location_name) handles multi-country and spread logic.
+
+    The spread_km parameter is accepted but no longer used for zoom selection —
+    kept for API compatibility.
 
     Returns "Location, Country" or None on failure.
     """
@@ -134,26 +162,24 @@ def reverse_geocode(lat: float, lon: float, spread_km: float | None = None) -> s
         addr = location.raw.get("address", {})
         country = addr.get("country")
 
-        if spread_km is not None and spread_km >= 100:
-            # Wide trip (whole island/country): just return country
-            return country
-
-        # Detailed: island > county > province > state_district > state
+        # Return most specific: island > county > province > state_district > state
+        # Skip 'region' — it's too broad (e.g., "Metropolitan France") and
+        # the EXIF fallback in _derive_location_name gives better results.
         region = (
             addr.get("island")
             or addr.get("county")
             or addr.get("province")
             or addr.get("state_district")
             or addr.get("state")
-            or addr.get("region")
         )
 
         if region and country:
+            # Avoid "Cyprus, Cyprus" — if region equals country, just return country
+            if region == country:
+                return country
             return f"{region}, {country}"
-        if country:
-            return country
-        if region:
-            return region
+        # No useful region found — return None so EXIF fallback kicks in
+        return None
     except Exception:
         logger.debug("Reverse geocoding failed for (%s, %s)", lat, lon)
     return None

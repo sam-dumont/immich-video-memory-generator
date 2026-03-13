@@ -611,28 +611,26 @@ class TestReverseGeocodeGranularity:
 
         assert result == "Provence, France"
 
-    def test_uses_country_for_wide_spread_trips(self):
-        """For trips spanning >=100km, return just the country name."""
+    def test_deduplicates_region_and_country(self):
+        """When state == country (e.g., Cyprus), return just country name."""
         from unittest.mock import MagicMock, patch
 
         from immich_memories.analysis.trip_detection import reverse_geocode
 
-        # zoom=10 returns full hierarchy, but spread>=100 picks country only
-        full_location = MagicMock()
-        full_location.raw = {
+        # Cyprus: state == country, no useful county/island/province
+        location = MagicMock()
+        location.raw = {
             "address": {
-                "county": "Σύμπλεγμα Κοινοτήτων Τροόδους",
-                "state_district": "Limassol District",
                 "state": "Cyprus",
                 "country": "Cyprus",
             }
         }
 
         with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
-            mock_nom.return_value.reverse.return_value = full_location
-            result = reverse_geocode(34.85, 32.85, spread_km=150.0)
+            mock_nom.return_value.reverse.return_value = location
+            result = reverse_geocode(34.85, 32.85)
 
-        assert result == "Cyprus"
+        assert result == "Cyprus"  # Not "Cyprus, Cyprus"
 
     def test_uses_detailed_zoom_for_small_spread_trips(self):
         """For trips in a small area (<80km), use detailed zoom."""
@@ -807,6 +805,38 @@ class TestCrossYearBoundary:
         assert len(trips) == 2
         assert trips[0].location_name == "Tenerife"
         assert trips[1].location_name == "Croatia"
+
+
+class TestFilterNearHome:
+    """GPS distance filter for removing near-home assets from trip clips."""
+
+    HOME_LAT = 50.8468
+    HOME_LON = 4.3525
+
+    def test_filters_out_near_home_assets(self):
+        """Assets within min_distance_km of home should be removed."""
+        from immich_memories.analysis.trip_detection import filter_near_home
+
+        assets = [
+            # Barcelona: ~1000km from Brussels → keep
+            _make_asset(41.39, 2.17, "2025-06-01T10:00:00"),
+            # Brussels suburb: ~10km from home → filter out
+            _make_asset(50.88, 4.40, "2025-06-01T18:00:00"),
+        ]
+        result = filter_near_home(assets, self.HOME_LAT, self.HOME_LON, min_distance_km=50)
+        assert len(result) == 1
+        assert result[0].exif_info.latitude == 41.39
+
+    def test_keeps_assets_without_gps(self):
+        """Assets with no GPS data should be kept (might be from trip)."""
+        from immich_memories.analysis.trip_detection import filter_near_home
+
+        assets = [
+            _make_asset(None, None, "2025-06-01T12:00:00"),  # No GPS
+            _make_asset(41.39, 2.17, "2025-06-01T14:00:00"),  # Far from home
+        ]
+        result = filter_near_home(assets, self.HOME_LAT, self.HOME_LON, min_distance_km=50)
+        assert len(result) == 2
 
 
 class TestTripInUI:

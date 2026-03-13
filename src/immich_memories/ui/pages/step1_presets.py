@@ -430,12 +430,16 @@ def _render_trip_params() -> None:
 
             def on_trip(e):
                 idx = e.value
-                state.memory_preset_params["trip_index"] = idx
                 trip = detected[idx]
-                state.memory_preset_params["trip_start"] = trip.start_date
-                state.memory_preset_params["trip_end"] = trip.end_date
-                state.memory_preset_params["location_name"] = trip.location_name
-                state.memory_preset_params["asset_count"] = trip.asset_count
+                p = state.memory_preset_params
+                p["trip_index"] = idx
+                p["trip_start"] = trip.start_date
+                p["trip_end"] = trip.end_date
+                p["location_name"] = trip.location_name
+                p["asset_count"] = trip.asset_count
+                p["home_lat"] = trips_config.homebase_latitude
+                p["home_lon"] = trips_config.homebase_longitude
+                p["min_distance_km"] = trips_config.min_distance_km
                 _apply_preset_to_state(MemoryType.TRIP)
 
             ui.select(
@@ -447,11 +451,8 @@ def _render_trip_params() -> None:
 
     async def on_year_change(e):
         state.memory_preset_params["year"] = e.value
-        # Clear trip selection when year changes
-        state.memory_preset_params.pop("trip_index", None)
-        state.memory_preset_params.pop("trip_start", None)
-        state.memory_preset_params.pop("trip_end", None)
-        state.memory_preset_params.pop("location_name", None)
+        for k in ("trip_index", "trip_start", "trip_end", "location_name"):
+            state.memory_preset_params.pop(k, None)
         state.detected_trips = []
         state.date_range = None
         await _detect_trips_for_year(e.value)
