@@ -95,7 +95,8 @@ class TestDetectTrips:
     def _no_geocode(self, monkeypatch):
         """Disable network geocoding in trip detection tests."""
         monkeypatch.setattr(
-            "immich_memories.analysis.trip_detection.reverse_geocode", lambda *_args: None
+            "immich_memories.analysis.trip_detection.reverse_geocode",
+            lambda *_args, **_kwargs: None,
         )
 
     def test_filters_assets_near_home(self):
@@ -609,6 +610,93 @@ class TestReverseGeocodeGranularity:
             result = reverse_geocode(43.30, 5.37)
 
         assert result == "Provence, France"
+
+    def test_uses_country_for_wide_spread_trips(self):
+        """For trips spanning >=100km, return just the country name."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        # zoom=10 returns full hierarchy, but spread>=100 picks country only
+        full_location = MagicMock()
+        full_location.raw = {
+            "address": {
+                "county": "Σύμπλεγμα Κοινοτήτων Τροόδους",
+                "state_district": "Limassol District",
+                "state": "Cyprus",
+                "country": "Cyprus",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = full_location
+            result = reverse_geocode(34.85, 32.85, spread_km=150.0)
+
+        assert result == "Cyprus"
+
+    def test_uses_detailed_zoom_for_small_spread_trips(self):
+        """For trips in a small area (<80km), use detailed zoom."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        detailed_location = MagicMock()
+        detailed_location.raw = {
+            "address": {
+                "county": "Ardennes",
+                "state": "Grand Est",
+                "country": "France",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = detailed_location
+            result = reverse_geocode(49.77, 4.72, spread_km=30.0)
+
+        assert result == "Ardennes, France"
+
+    def test_multi_country_trip_lists_countries(self):
+        """A cross-country trip (>300km, multiple countries) lists countries."""
+        from unittest.mock import patch
+
+        from immich_memories.analysis.trip_detection import _derive_location_name
+
+        # European road trip: Belgium → France → Spain (spread >> 300km)
+        assets = [
+            _make_asset(50.85, 4.35, "2024-06-01T10:00:00", country="Belgium"),
+            _make_asset(48.86, 2.35, "2024-06-03T10:00:00", country="France"),
+            _make_asset(41.39, 2.17, "2024-06-06T10:00:00", country="Spain"),
+            _make_asset(41.39, 2.17, "2024-06-07T10:00:00", country="Spain"),
+        ]
+
+        with patch("immich_memories.analysis.trip_detection.reverse_geocode"):
+            result = _derive_location_name(assets, centroid_lat=47.0, centroid_lon=3.0)
+
+        assert result == "Belgium → France → Spain"
+
+    def test_dominant_country_ignores_layovers(self):
+        """If 90%+ assets are in one country, use that country (ignore layovers)."""
+        from unittest.mock import patch
+
+        from immich_memories.analysis.trip_detection import _derive_location_name
+
+        # 9 assets in Cyprus, 1 in Greece (Athens layover) — 90%+ in Cyprus
+        # Athens (37.97, 23.72) to Paphos (34.78, 32.42) is ~850km
+        assets = [
+            _make_asset(37.97, 23.72, "2024-08-20T10:00:00", country="Greece"),
+        ] + [
+            _make_asset(34.78, 32.42, f"2024-08-{21 + i}T10:00:00", country="Cyprus")
+            for i in range(9)
+        ]
+
+        with patch(
+            "immich_memories.analysis.trip_detection.reverse_geocode",
+            return_value="Cyprus",
+        ):
+            result = _derive_location_name(assets, centroid_lat=34.90, centroid_lon=33.00)
+
+        assert result == "Cyprus"
+        assert "Greece" not in result
 
     def test_falls_back_to_state_when_no_finer_detail(self):
         """When no island/county/state_district, fall back to state."""

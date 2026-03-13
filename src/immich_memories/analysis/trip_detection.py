@@ -116,11 +116,14 @@ def detect_trips(
     return trips
 
 
-def reverse_geocode(lat: float, lon: float) -> str | None:
-    """Reverse geocode coordinates to a specific location name.
+def reverse_geocode(lat: float, lon: float, spread_km: float | None = None) -> str | None:
+    """Reverse geocode coordinates to a location name.
 
-    Uses Nominatim at zoom level 10 (county/island) for trip-level naming.
-    Prefers specific names (island, county, département) over broad regions.
+    Always queries at zoom=10 (which returns the full address hierarchy),
+    then picks the appropriate specificity based on trip spread:
+      - Small spread (<100km): county/island/province level ("Ardennes")
+      - Large spread (>=100km): country level ("Cyprus")
+
     Returns "Location, Country" or None on failure.
     """
     try:
@@ -129,7 +132,13 @@ def reverse_geocode(lat: float, lon: float) -> str | None:
         if location is None:
             return None
         addr = location.raw.get("address", {})
-        # Prefer specific → broad: island > county > province > state_district > state
+        country = addr.get("country")
+
+        if spread_km is not None and spread_km >= 100:
+            # Wide trip (whole island/country): just return country
+            return country
+
+        # Detailed: island > county > province > state_district > state
         region = (
             addr.get("island")
             or addr.get("county")
@@ -138,7 +147,7 @@ def reverse_geocode(lat: float, lon: float) -> str | None:
             or addr.get("state")
             or addr.get("region")
         )
-        country = addr.get("country")
+
         if region and country:
             return f"{region}, {country}"
         if country:
@@ -150,15 +159,74 @@ def reverse_geocode(lat: float, lon: float) -> str | None:
     return None
 
 
+def _extract_unique_countries(assets: list[Asset]) -> list[str]:
+    """Extract unique country names from EXIF, ordered by first appearance."""
+    seen: set[str] = set()
+    countries: list[str] = []
+    for a in assets:
+        if a.exif_info and a.exif_info.country and a.exif_info.country not in seen:
+            seen.add(a.exif_info.country)
+            countries.append(a.exif_info.country)
+    return countries
+
+
+def _get_dominant_country(assets: list[Asset], threshold: float = 0.9) -> str | None:
+    """Return the country name if it accounts for >= threshold of tagged assets."""
+    country_counts: Counter[str] = Counter()
+    total = 0
+    for a in assets:
+        if a.exif_info and a.exif_info.country:
+            country_counts[a.exif_info.country] += 1
+            total += 1
+    if total == 0:
+        return None
+    top_country, top_count = country_counts.most_common(1)[0]
+    if top_count / total >= threshold:
+        return top_country
+    return None
+
+
+def _compute_spread_km(assets: list[Asset]) -> float:
+    """Compute max distance between any two GPS-tagged assets in km."""
+    coords = [
+        (a.exif_info.latitude, a.exif_info.longitude)
+        for a in assets
+        if a.exif_info and a.exif_info.latitude and a.exif_info.longitude
+    ]
+    if len(coords) < 2:
+        return 0.0
+    max_dist = 0.0
+    for i, (lat1, lon1) in enumerate(coords):
+        for lat2, lon2 in coords[i + 1 :]:
+            d = haversine_km(lat1, lon1, lat2, lon2)
+            if d > max_dist:
+                max_dist = d
+    return max_dist
+
+
 def _derive_location_name(
     assets: list[Asset],
     centroid_lat: float | None = None,
     centroid_lon: float | None = None,
 ) -> str:
     """Derive a human-readable location name, preferring reverse geocoding."""
+    # Compute geographic spread to decide zoom level
+    spread_km = _compute_spread_km(assets)
+
+    # Multi-country trips: if spread is very large and multiple countries
+    # are represented, check if one country dominates (90%+ of assets).
+    # Layovers with a few photos shouldn't change the trip name.
+    if spread_km > 300:
+        countries = _extract_unique_countries(assets)
+        if len(countries) > 1:
+            dominant = _get_dominant_country(assets, threshold=0.9)
+            if dominant:
+                return dominant
+            return " → ".join(countries)
+
     # Try reverse geocoding the centroid first
     if centroid_lat is not None and centroid_lon is not None:
-        geocoded = reverse_geocode(centroid_lat, centroid_lon)
+        geocoded = reverse_geocode(centroid_lat, centroid_lon, spread_km=spread_km)
         if geocoded:
             return geocoded
 
