@@ -177,6 +177,10 @@ def _build_who_part(
                 return "_".join(n.lower() for n in names)
             return "_".join(n.lower() for n in names[:3]) + "_and_others"
 
+    # Trip: use "trip" as the who part
+    if memory_type == "trip":
+        return "trip"
+
     # Single person from preset params or state
     preset_names = preset_params.get("person_names", [])
     if preset_names:
@@ -198,7 +202,9 @@ def _build_when_part(
     if memory_type == "trip":
         location = preset_params.get("location_name")
         if location:
-            return location.lower().replace(" ", "_")
+            import re
+
+            return re.sub(r"[^a-z0-9]+", "_", location.lower()).strip("_")
         # Fallback to date range
         if date_start and date_end:
             return _date_range_slug(date_start, date_end)

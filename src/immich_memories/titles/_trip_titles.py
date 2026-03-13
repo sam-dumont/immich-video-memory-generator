@@ -55,7 +55,9 @@ def _get_time_label(start_date: date, end_date: date) -> str:
     Cross-month → season name ("SUMMER 2025").
     """
     if start_date.month == end_date.month and start_date.year == end_date.year:
-        month_name = start_date.strftime("%B").upper()
+        import calendar
+
+        month_name = calendar.month_name[start_date.month].upper()
         return f"{month_name} {start_date.year}"
     season = _get_season(start_date)
     return f"{season} {start_date.year}"

@@ -58,6 +58,7 @@ async def _extract_clips(
                 extract_clip, video_path, start_time=start_time, end_time=end_time
             )
 
+            exif = clip.asset.exif_info
             assembly_clips.append(
                 AssemblyClip(
                     path=segment_path,
@@ -66,6 +67,9 @@ async def _extract_clips(
                     asset_id=clip.asset.id,
                     rotation_override=state.clip_rotations.get(clip.asset.id),
                     llm_emotion=clip.llm_emotion,
+                    latitude=exif.latitude if exif else None,
+                    longitude=exif.longitude if exif else None,
+                    location_name=_clip_location_name(exif),
                 )
             )
         except Exception as e:
@@ -311,6 +315,13 @@ def _build_assembly_settings(state, config, assembly_clips):
         if not config.title_screens.show_month_dividers:
             divider_mode = "none"
 
+        # Trip-specific title settings: map intro + location dividers
+        trip_locations = None
+        trip_title_text = None
+        if state.memory_type == "trip":
+            trip_locations = _extract_trip_locations(state, assembly_clips)
+            trip_title_text = _generate_trip_title_text(state)
+
         title_screen_settings = TitleScreenSettings(
             enabled=True,
             person_name=title_person_name,
@@ -325,6 +336,9 @@ def _build_assembly_settings(state, config, assembly_clips):
             divider_mode=divider_mode,
             month_divider_threshold=config.title_screens.month_divider_threshold,
             use_first_name_only=config.title_screens.use_first_name_only,
+            memory_type=state.memory_type,
+            trip_locations=trip_locations,
+            trip_title_text=trip_title_text,
         )
 
     settings = AssemblySettings(
@@ -337,3 +351,43 @@ def _build_assembly_settings(state, config, assembly_clips):
         debug_preserve_intermediates=gen_options.get("keep_intermediates", False),
     )
     return settings, VideoAssembler(settings)
+
+
+def _clip_location_name(exif) -> str | None:
+    """Extract a location name from EXIF data."""
+    if not exif:
+        return None
+    city = exif.city
+    country = exif.country
+    if city and country:
+        return f"{city}, {country}"
+    return country or city
+
+
+def _extract_trip_locations(state, assembly_clips) -> list[tuple[float, float]]:
+    """Extract unique GPS locations from assembly clips for map pins."""
+    seen: set[tuple[float, float]] = set()
+    locations: list[tuple[float, float]] = []
+    for clip in assembly_clips:
+        if clip.latitude is not None and clip.longitude is not None:
+            # Round to ~1km precision to deduplicate nearby points
+            key = (round(clip.latitude, 2), round(clip.longitude, 2))
+            if key not in seen:
+                seen.add(key)
+                locations.append((clip.latitude, clip.longitude))
+    return locations
+
+
+def _generate_trip_title_text(state) -> str | None:
+    """Generate trip title text from state preset params."""
+    from immich_memories.titles._trip_titles import generate_trip_title
+
+    params = state.memory_preset_params
+    location_name = params.get("location_name")
+    trip_start = params.get("trip_start")
+    trip_end = params.get("trip_end")
+
+    if not location_name or not trip_start or not trip_end:
+        return None
+
+    return generate_trip_title(location_name, trip_start, trip_end)
