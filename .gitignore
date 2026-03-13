@@ -84,7 +84,8 @@ dmypy.json
 *.avi
 *.mkv
 output/
-cache/
+# Runtime cache dirs only (not src/immich_memories/cache/ which is source code)
+/cache/
 *.db
 
 # Config files with secrets
