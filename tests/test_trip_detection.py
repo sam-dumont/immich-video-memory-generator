@@ -520,6 +520,207 @@ class TestReverseGeocode:
         assert result == "Barcelona, Spain"
 
 
+class TestReverseGeocodeGranularity:
+    """Reverse geocoding should prefer specific names over broad regions."""
+
+    def test_prefers_island_over_state(self):
+        """For islands, should return island name not state."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        mock_location = MagicMock()
+        mock_location.raw = {
+            "address": {
+                "island": "Tenerife",
+                "state": "Canary Islands",
+                "country": "Spain",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = mock_location
+            result = reverse_geocode(28.2916, -16.6291)
+
+        assert result == "Tenerife, Spain"
+
+    def test_prefers_province_over_state(self):
+        """For Spanish provinces, should use province over state.
+
+        Nominatim returns 'province' for Spanish islands (e.g., 'Santa Cruz de Tenerife').
+        """
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        mock_location = MagicMock()
+        mock_location.raw = {
+            "address": {
+                "province": "Santa Cruz de Tenerife",
+                "state": "Canary Islands",
+                "country": "Spain",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = mock_location
+            result = reverse_geocode(28.2916, -16.6291)
+
+        assert result == "Santa Cruz de Tenerife, Spain"
+
+    def test_prefers_county_over_state(self):
+        """For Ardennes, should return 'Ardennes, France' not 'Grand Est, France'."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        mock_location = MagicMock()
+        mock_location.raw = {
+            "address": {
+                "county": "Ardennes",
+                "state": "Grand Est",
+                "country": "France",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = mock_location
+            result = reverse_geocode(49.77, 4.72)
+
+        assert result == "Ardennes, France"
+
+    def test_prefers_state_district_over_state(self):
+        """state_district should be preferred over state."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        mock_location = MagicMock()
+        mock_location.raw = {
+            "address": {
+                "state_district": "Provence",
+                "state": "Provence-Alpes-Côte d'Azur",
+                "country": "France",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = mock_location
+            result = reverse_geocode(43.30, 5.37)
+
+        assert result == "Provence, France"
+
+    def test_falls_back_to_state_when_no_finer_detail(self):
+        """When no island/county/state_district, fall back to state."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        mock_location = MagicMock()
+        mock_location.raw = {
+            "address": {
+                "state": "California",
+                "country": "United States",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = mock_location
+            result = reverse_geocode(34.05, -118.24)
+
+        assert result == "California, United States"
+
+
+class TestCrossYearBoundary:
+    """Trip detection should handle trips spanning year boundaries."""
+
+    def test_run_trip_detection_extends_date_range(self):
+        """run_trip_detection should query with buffer around year boundaries."""
+        from datetime import datetime
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.cli._trip_display import run_trip_detection
+        from immich_memories.config_loader import Config
+
+        config = Config()
+        config.trips.homebase_latitude = 50.8468
+        config.trips.homebase_longitude = 4.3525
+
+        mock_client = MagicMock()
+        mock_client.get_assets_for_date_range.return_value = []
+        mock_progress = MagicMock()
+
+        with patch(
+            "immich_memories.cli._trip_display.detect_trips",
+            return_value=[],
+        ):
+            run_trip_detection(mock_client, config, 2015, mock_progress)
+
+        # Verify the date range was extended with a buffer
+        call_args = mock_client.get_assets_for_date_range.call_args
+        date_range = call_args[0][0]
+        # Should start Dec 1 of previous year (full month buffer)
+        assert date_range.start <= datetime(2014, 12, 1)
+        # Should end Jan 31 of next year (full month buffer)
+        assert date_range.end >= datetime(2016, 1, 31)
+
+    def test_run_trip_detection_filters_to_requested_year(self):
+        """Trips outside the requested year should be filtered out."""
+        from datetime import date
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import DetectedTrip
+        from immich_memories.cli._trip_display import run_trip_detection
+        from immich_memories.config_loader import Config
+
+        config = Config()
+        config.trips.homebase_latitude = 50.8468
+        config.trips.homebase_longitude = 4.3525
+
+        mock_client = MagicMock()
+        mock_client.get_assets_for_date_range.return_value = []
+        mock_progress = MagicMock()
+
+        # Trip entirely in 2014 (should be filtered out when querying 2015)
+        trip_2014 = DetectedTrip(
+            start_date=date(2014, 12, 5),
+            end_date=date(2014, 12, 10),
+            location_name="Paris",
+            asset_count=20,
+            centroid_lat=48.86,
+            centroid_lon=2.35,
+        )
+        # Trip spanning Dec 2014 → Jan 2015 (should be kept for year 2015)
+        trip_boundary = DetectedTrip(
+            start_date=date(2014, 12, 25),
+            end_date=date(2015, 1, 3),
+            location_name="Tenerife",
+            asset_count=50,
+            centroid_lat=28.29,
+            centroid_lon=-16.63,
+        )
+        # Trip entirely in 2015 (should be kept)
+        trip_2015 = DetectedTrip(
+            start_date=date(2015, 7, 1),
+            end_date=date(2015, 7, 10),
+            location_name="Croatia",
+            asset_count=80,
+            centroid_lat=43.51,
+            centroid_lon=16.44,
+        )
+
+        with patch(
+            "immich_memories.cli._trip_display.detect_trips",
+            return_value=[trip_2014, trip_boundary, trip_2015],
+        ):
+            trips = run_trip_detection(mock_client, config, 2015, mock_progress)
+
+        # Should keep the boundary trip and 2015 trip, exclude the 2014-only trip
+        assert len(trips) == 2
+        assert trips[0].location_name == "Tenerife"
+        assert trips[1].location_name == "Croatia"
+
+
 class TestTripInUI:
     """Trip memory type appears in the UI preset selector."""
 

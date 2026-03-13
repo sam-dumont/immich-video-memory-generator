@@ -117,18 +117,27 @@ def detect_trips(
 
 
 def reverse_geocode(lat: float, lon: float) -> str | None:
-    """Reverse geocode coordinates to a region-level location name.
+    """Reverse geocode coordinates to a specific location name.
 
-    Uses Nominatim at zoom level 8 (state/region) for trip-level naming.
-    Returns "Region, Country" or None on failure.
+    Uses Nominatim at zoom level 10 (county/island) for trip-level naming.
+    Prefers specific names (island, county, département) over broad regions.
+    Returns "Location, Country" or None on failure.
     """
     try:
         geolocator = Nominatim(user_agent="immich-memories")
-        location = geolocator.reverse(f"{lat}, {lon}", zoom=8, language="en")
+        location = geolocator.reverse(f"{lat}, {lon}", zoom=10, language="en")
         if location is None:
             return None
         addr = location.raw.get("address", {})
-        region = addr.get("state") or addr.get("region") or addr.get("county")
+        # Prefer specific → broad: island > county > province > state_district > state
+        region = (
+            addr.get("island")
+            or addr.get("county")
+            or addr.get("province")
+            or addr.get("state_district")
+            or addr.get("state")
+            or addr.get("region")
+        )
         country = addr.get("country")
         if region and country:
             return f"{region}, {country}"
