@@ -371,6 +371,7 @@ module = [
     "immich_memories.titles.renderer_taichi",
     "immich_memories.titles.sdf_font",
     "immich_memories.titles.taichi_kernels",
+    "immich_memories.titles.taichi_globe",
     "immich_memories.titles.sdf_font_rendering",
     "immich_memories.titles.taichi_video",
 ]
