@@ -63,9 +63,11 @@ def _get_preview_path(asset_id: str) -> Path | None:
         return None
 
     # Prefer the _480p downscale (already small, faster to transcode)
+    # Filter to video extensions only — cache may contain .heic from live photo images
+    video_exts = {".mov", ".mp4", ".mkv", ".avi", ".webm", ".m4v", ".3gp", ".ts", ".mpg", ".mpeg"}
     source = None
     for pattern in [f"{asset_id}_480p.*", f"{asset_id}.*"]:
-        matches = list(sub_path.glob(pattern))
+        matches = [f for f in sub_path.glob(pattern) if f.suffix.lower() in video_exts]
         if matches:
             source = matches[0]
             break
@@ -75,11 +77,18 @@ def _get_preview_path(asset_id: str) -> Path | None:
 
     # Transcode to H.264 480p SDR — fast, small, plays everywhere.
     # Force yuv420p + BT.709 color to handle HLG/HDR sources that browsers can't render.
+    from immich_memories.processing.clip_probing import get_main_video_stream_map
+
+    stream_map = get_main_video_stream_map(source)
     cmd = [
         "ffmpeg",
         "-y",
         "-i",
         str(source),
+        "-map",
+        stream_map,
+        "-map",
+        "0:a:0?",
         "-vf",
         "scale=-2:480,format=yuv420p",
         "-c:v",
@@ -159,8 +168,10 @@ def render_duration_summary(
     container.clear()
     with container, ui.row().classes("w-full gap-8"):
         with ui.column().classes("items-center"):
-            ui.label("Selected Clips").classes("text-sm text-gray-500")
-            ui.label(str(clip_count)).classes("text-2xl font-bold")
+            ui.label("Selected Clips").classes("text-sm").style("color: var(--im-text-secondary)")
+            ui.label(str(clip_count)).classes("text-xl font-bold").style("color: var(--im-text)")
         with ui.column().classes("items-center"):
-            ui.label("Total Duration").classes("text-sm text-gray-500")
-            ui.label(format_duration(total_duration)).classes("text-2xl font-bold")
+            ui.label("Total Duration").classes("text-sm").style("color: var(--im-text-secondary)")
+            ui.label(format_duration(total_duration)).classes("text-xl font-bold").style(
+                "color: var(--im-text)"
+            )

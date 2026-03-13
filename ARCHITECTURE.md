@@ -26,6 +26,13 @@ src/immich_memories/
 │   ├── client_search.py        # SearchMixin - search operations
 │   └── models.py               # API data models (Asset, Person, etc.)
 │
+├── memory_types/                  # Memory type presets & factory
+│   ├── __init__.py                # Re-export shim (public API)
+│   ├── registry.py                # MemoryType enum
+│   ├── presets.py                 # ScoringProfile, PersonFilter, MemoryPreset
+│   ├── date_builders.py           # build_season(), build_month(), build_on_this_day()
+│   └── factory.py                 # Registry + 6 built-in preset factories
+│
 ├── analysis/                   # Video analysis & clip selection
 │   ├── smart_pipeline.py       # SmartPipeline - main orchestrator (uses 4 mixins)
 │   ├── pipeline.py             # Pipeline base/helpers
@@ -112,6 +119,7 @@ src/immich_memories/
 │       └── ace_step_captions.py # Dense caption templates (genre, BPM, key, instruments)
 │
 ├── titles/                     # Title screen generation
+│   ├── _text_memory_types.py      # Memory type title helpers
 │   ├── generator.py            # TitleScreenGenerator orchestrator
 │   ├── rendering_mixin.py      # Rendering mixin for generator
 │   ├── ending_mixin.py         # Ending screen mixin
@@ -145,7 +153,8 @@ src/immich_memories/
 │   ├── runs.py                 # `runs list`, `runs show`, `runs stats`
 │   ├── music_cmd.py            # `music search`, `music analyze`
 │   ├── hardware_cmd.py         # `hardware` info display
-│   └── _helpers.py             # Shared console/print utilities
+│   ├── _helpers.py             # Shared console/print utilities
+│   └── _date_resolution.py     # Date range resolution for memory types
 │
 ├── ui/                         # NiceGUI web interface
 │   ├── app.py                  # App setup & routing

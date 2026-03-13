@@ -9,9 +9,16 @@ ACE-Step 1.5 generates higher-quality instrumental tracks than MusicGen. It supp
 
 About ~20 seconds per 30-second track on an 8GB GPU.
 
-## Turbo Model
+## Model Variants
 
-The recommended fork is [sam-dumont/ace-step-1.5-turbo](https://github.com/sam-dumont/ace-step-1.5-turbo). The turbo variant uses 8 inference steps instead of 50, making it roughly 6x faster with minimal quality loss.
+| Variant | Steps | Speed (30s track) | Quality |
+|---------|-------|-------------------|---------|
+| `turbo` | 8 | ~20s on 8GB GPU | Fast but MIDI-sounding, synthetic timbres |
+| `base` | 50 | ~2min on 8GB GPU | More realistic instruments, natural dynamics |
+
+**Recommendation**: Use `base` for final exports (better audio quality). Use `turbo` for quick previews during editing.
+
+The recommended fork is [sam-dumont/ace-step-1.5-turbo](https://github.com/sam-dumont/ace-step-1.5-turbo), which ships both variants.
 
 ## Language Model Sizes
 
@@ -50,8 +57,9 @@ ace_step:
 
 The pipeline converts your video's detected mood into ACE-Step's structured format:
 
-- **Caption**: Genre tags and mood descriptors (e.g., "acoustic, warm, nostalgic, instrumental")
-- **Lyrics**: Section-tagged instrumental markers ("[intro]\n[verse]\n[chorus]")
-- **BPM, key, time signature**: Explicit API fields based on mood energy level
+- **Caption**: Descriptive natural-language prompt (e.g., "Gentle acoustic folk instrumental with fingerpicked guitar, soft brushed percussion..."). Descriptive sentences work better than comma-separated tag lists.
+- **Lyrics**: Section-tagged instrumental markers (`[Intro]\n[Instrumental]\n[Verse]\n[Instrumental]`)
+- **BPM, key, time signature**: Sent as explicit API fields (not embedded in the caption text)
+- **Instrumental flag**: Explicitly set to prevent the model from generating vocals
 
-This is more precise than MusicGen's freeform text prompts, which is why ACE-Step tends to produce better-fitting results.
+The pipeline detects each clip's mood and maps it to a genre template (lo-fi, acoustic, cinematic, etc.), so different video moods produce different music styles.

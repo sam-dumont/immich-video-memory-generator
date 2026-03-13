@@ -36,13 +36,13 @@ class AssemblerProbingMixin:
             Tuple of (width, height) after applying rotation, or None if detection fails.
         """
         try:
-            # Get width, height, and rotation in one call
+            # Probe ALL video streams — iPhone Live Photos can have depth map as v:0
             cmd = [
                 "ffprobe",
                 "-v",
                 "error",
                 "-select_streams",
-                "v:0",
+                "v",
                 "-show_entries",
                 "stream=width,height:stream_side_data=rotation",
                 "-of",
@@ -54,7 +54,11 @@ class AssemblerProbingMixin:
                 data = json.loads(result.stdout)
                 streams = data.get("streams", [])
                 if streams:
-                    stream = streams[0]
+                    # Pick highest-resolution stream (avoids depth maps)
+                    stream = max(
+                        streams,
+                        key=lambda s: s.get("width", 0) * s.get("height", 0),
+                    )
                     width = stream.get("width", 0)
                     height = stream.get("height", 0)
 
@@ -395,26 +399,33 @@ class AssemblerProbingMixin:
             Frame rate in fps, or None if detection fails.
         """
         try:
+            # Probe all video streams, pick highest fps (avoids depth map at 1fps)
             cmd = [
                 "ffprobe",
                 "-v",
                 "error",
                 "-select_streams",
-                "v:0",
+                "v",
                 "-show_entries",
-                "stream=r_frame_rate",
+                "stream=r_frame_rate,width,height",
                 "-of",
-                "default=noprint_wrappers=1:nokey=1",
+                "json",
                 str(video_path),
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
             if result.returncode == 0 and result.stdout.strip():
-                # Parse fraction like "60/1" or "30000/1001"
-                fps_str = result.stdout.strip()
-                if "/" in fps_str:
-                    num, den = fps_str.split("/")
-                    return float(num) / float(den)
-                return float(fps_str)
+                data = json.loads(result.stdout)
+                streams = data.get("streams", [])
+                # Pick highest-resolution stream's frame rate
+                if streams:
+                    best = max(streams, key=lambda s: s.get("width", 0) * s.get("height", 0))
+                    fps_str = best.get("r_frame_rate", "")
+                    if "/" in fps_str:
+                        num, den = fps_str.split("/")
+                        if float(den) > 0:
+                            return float(num) / float(den)
+                    elif fps_str:
+                        return float(fps_str)
         except Exception as e:
             logger.debug(f"Failed to detect frame rate: {e}")
         return None

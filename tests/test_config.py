@@ -14,6 +14,7 @@ from immich_memories.config import (
     OutputConfig,
     expand_env_vars,
 )
+from immich_memories.config_models import ServerConfig
 
 
 class TestExpandEnvVars:
@@ -181,6 +182,36 @@ class TestOutputConfig:
         assert config.resolution_tuple == expected
 
 
+class TestServerConfig:
+    """Tests for server configuration."""
+
+    def test_defaults(self):
+        """Default host is 0.0.0.0 and port is 8080."""
+        cfg = ServerConfig()
+        assert cfg.host == "0.0.0.0"  # noqa: S104
+        assert cfg.port == 8080
+
+    def test_port_validation_rejects_zero(self):
+        """Port 0 is rejected."""
+        with pytest.raises(Exception):  # noqa: B017
+            ServerConfig(port=0)
+
+    def test_port_validation_rejects_too_high(self):
+        """Port above 65535 is rejected."""
+        with pytest.raises(Exception):  # noqa: B017
+            ServerConfig(port=70000)
+
+    def test_ipv6_any(self):
+        """IPv6 any-address (::) is accepted."""
+        cfg = ServerConfig(host="::")
+        assert cfg.host == "::"
+
+    def test_ipv6_loopback(self):
+        """IPv6 loopback (::1) is accepted."""
+        cfg = ServerConfig(host="::1")
+        assert cfg.host == "::1"
+
+
 class TestConfig:
     """Tests for main Config class."""
 
@@ -190,6 +221,20 @@ class TestConfig:
         assert config.immich.url == ""
         assert config.defaults.target_duration_minutes == 10
         assert config.output.format == "mp4"
+
+    def test_default_server_config(self):
+        """Default config includes server with standard defaults."""
+        config = Config()
+        assert config.server.host == "0.0.0.0"  # noqa: S104
+        assert config.server.port == 8080
+
+    def test_server_from_yaml(self, tmp_path):
+        """Server section loads from YAML with IPv6 and custom port."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("server:\n  host: '::'\n  port: 9090\n")
+        loaded = Config.from_yaml(config_path)
+        assert loaded.server.host == "::"
+        assert loaded.server.port == 9090
 
     def test_yaml_roundtrip(self, tmp_path):
         """Config survives a save-then-load cycle with values intact."""

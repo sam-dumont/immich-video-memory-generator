@@ -349,3 +349,12 @@ class AudioContentConfig(BaseModel):
         default=True,
         description="Avoid cutting during speech events",
     )
+
+
+class UploadConfig(BaseModel):
+    """Upload generated videos back to Immich."""
+
+    enabled: bool = Field(default=False, description="Upload generated video to Immich")
+    album_name: str | None = Field(
+        default=None, description="Album name (created if missing, reused if exists)"
+    )

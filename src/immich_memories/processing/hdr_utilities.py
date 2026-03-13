@@ -16,6 +16,7 @@ from immich_memories.security import validate_video_path
 
 __all__ = [
     "_detect_hdr_type",
+    "_detect_color_primaries",
     "_get_dominant_hdr_type",
     "_get_colorspace_filter",
     "_get_hdr_conversion_filter",
@@ -71,6 +72,42 @@ def _detect_hdr_type(video_path: Path) -> str | None:
     return None
 
 
+def _detect_color_primaries(video_path: Path | str) -> str | None:
+    """Detect the color primaries of a video file.
+
+    Returns primaries string like "bt709", "smpte432" (Display P3),
+    "bt2020", or None if detection fails.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=color_primaries",
+                "-of",
+                "json",
+                str(video_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            import json
+
+            data = json.loads(result.stdout)
+            streams = data.get("streams", [])
+            if streams:
+                return streams[0].get("color_primaries") or None
+    except Exception as e:
+        logger.debug(f"Color primaries detection failed for {video_path}: {e}")
+    return None
+
+
 def _get_dominant_hdr_type(clips: list) -> str:
     """Detect the dominant HDR type from a list of clips.
 
@@ -114,7 +151,11 @@ def _get_colorspace_filter(hdr_type: str) -> str:
         return ",setparams=colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67"
 
 
-def _get_hdr_conversion_filter(source_type: str | None, target_type: str) -> str:
+def _get_hdr_conversion_filter(
+    source_type: str | None,
+    target_type: str,
+    source_primaries: str | None = None,
+) -> str:
     """Get filter to convert between HDR formats (HLG <-> PQ) or SDR -> HDR.
 
     Uses zscale for proper colorspace and transfer function conversion.
@@ -123,6 +164,8 @@ def _get_hdr_conversion_filter(source_type: str | None, target_type: str) -> str
     Args:
         source_type: Source HDR type ("hlg", "pq", "sdr", or None for unknown)
         target_type: Target HDR type ("hlg" or "pq")
+        source_primaries: Source color primaries (e.g. "bt709", "smpte432" for
+            Display P3). When None, defaults to "bt709" for SDR sources.
 
     Returns:
         FFmpeg filter string for conversion, or empty string if no conversion needed
@@ -144,19 +187,20 @@ def _get_hdr_conversion_filter(source_type: str | None, target_type: str) -> str
 
     # SDR -> HDR conversion (upscale SDR to HDR colorspace)
     if source_type is None or source_type == "sdr":
+        # Use actual source primaries if known (e.g. smpte432 for Display P3)
+        src_pri = source_primaries or "bt709"
+        src_matrix = "bt709" if src_pri in ("bt709", "smpte432") else src_pri
         if target_type == "hlg":
-            # SDR (BT.709) -> HLG (BT.2020)
             if has_zscale:
-                logger.debug("Converting SDR -> HLG")
-                return ",zscale=transfer=arib-std-b67:transferin=bt709:primaries=bt2020:primariesin=bt709:matrix=bt2020nc:matrixin=bt709"
+                logger.debug(f"Converting SDR ({src_pri}) -> HLG")
+                return f",zscale=transfer=arib-std-b67:transferin=bt709:primaries=bt2020:primariesin={src_pri}:matrix=bt2020nc:matrixin={src_matrix}"
             else:
                 logger.warning("zscale not available - SDR to HDR conversion may look washed out")
                 return ""
         elif target_type == "pq":
-            # SDR (BT.709) -> PQ/HDR10 (BT.2020)
             if has_zscale:
-                logger.debug("Converting SDR -> PQ/HDR10")
-                return ",zscale=transfer=smpte2084:transferin=bt709:primaries=bt2020:primariesin=bt709:matrix=bt2020nc:matrixin=bt709"
+                logger.debug(f"Converting SDR ({src_pri}) -> PQ/HDR10")
+                return f",zscale=transfer=smpte2084:transferin=bt709:primaries=bt2020:primariesin={src_pri}:matrix=bt2020nc:matrixin={src_matrix}"
             else:
                 logger.warning("zscale not available - SDR to HDR conversion may look washed out")
                 return ""

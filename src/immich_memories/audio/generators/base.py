@@ -33,6 +33,7 @@ class GenerationRequest:
     # Generation options
     variation_index: int = 0
     crossfade_duration: float = 2.0
+    memory_type: str | None = None
 
     # Output
     output_dir: Path = field(default_factory=lambda: Path(tempfile.gettempdir()) / "musicgen")

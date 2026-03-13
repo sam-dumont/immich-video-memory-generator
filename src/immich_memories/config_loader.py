@@ -24,6 +24,8 @@ from immich_memories.config_models import (
     ImmichConfig,
     LLMConfig,
     OutputConfig,
+    ServerConfig,
+    TripsConfig,
 )
 from immich_memories.config_models_extra import (
     ACEStepConfig,
@@ -32,7 +34,9 @@ from immich_memories.config_models_extra import (
     ContentAnalysisConfig,
     MusicGenConfig,
     TitleScreenConfig,
+    UploadConfig,
 )
+from immich_memories.scheduling.models import SchedulerConfig
 
 
 class Config(BaseSettings):
@@ -44,6 +48,7 @@ class Config(BaseSettings):
         case_sensitive=False,
     )
 
+    server: ServerConfig = Field(default_factory=ServerConfig)
     immich: ImmichConfig = Field(default_factory=ImmichConfig)
     defaults: DefaultsConfig = Field(default_factory=DefaultsConfig)
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
@@ -57,6 +62,9 @@ class Config(BaseSettings):
     content_analysis: ContentAnalysisConfig = Field(default_factory=ContentAnalysisConfig)
     audio_content: AudioContentConfig = Field(default_factory=AudioContentConfig)
     title_screens: TitleScreenConfig = Field(default_factory=TitleScreenConfig)
+    upload: UploadConfig = Field(default_factory=UploadConfig)
+    scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
+    trips: TripsConfig = Field(default_factory=TripsConfig)
 
     @classmethod
     def from_yaml(cls, path: Path) -> Config:

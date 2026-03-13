@@ -156,8 +156,13 @@ class Asset(BaseModel):
     people: list[Person] = Field(default_factory=list)
     faces: list[AssetFace] = Field(default_factory=list)
     checksum: str | None = None
+    live_photo_video_id: str | None = Field(default=None, alias="livePhotoVideoId")
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @property
+    def is_live_photo(self) -> bool:
+        return self.live_photo_video_id is not None
 
     @field_validator("type", mode="before")
     @classmethod
@@ -324,6 +329,10 @@ class VideoClipInfo(BaseModel):
     color_primaries: str | None = None  # e.g., "bt2020"
     bit_depth: int | None = None  # 8, 10, 12
 
+    # Live Photo burst: video IDs + trim points for merging multiple clips
+    live_burst_video_ids: list[str] | None = None
+    live_burst_trim_points: list[tuple[float, float]] | None = None
+
     # Audio categories detected (populated during pipeline analysis)
     audio_categories: list[str] | None = None  # e.g. ["laughter", "speech", "engine"]
 
@@ -335,6 +344,15 @@ class VideoClipInfo(BaseModel):
     llm_subjects: list[str] | None = None  # Who/what is in the video
     llm_interestingness: float | None = None  # Score 0-1 for how interesting
     llm_quality: float | None = None  # Score 0-1 for visual quality
+
+    @property
+    def video_asset_id(self) -> str:
+        """Get the asset ID for the actual video content.
+
+        For regular videos, this is the asset ID. For Live Photos, the video
+        component lives at a different ID (live_photo_video_id).
+        """
+        return self.asset.live_photo_video_id or self.asset.id
 
     @property
     def has_llm_analysis(self) -> bool:

@@ -207,6 +207,8 @@ def downscale_video(
         "-vf",
         f"scale=-2:{target_height}",
         *encoder_args,
+        "-movflags",
+        "+faststart",
         "-an",  # No audio needed for analysis
         "-threads",
         "2",  # Limit CPU usage (for CPU fallback)
