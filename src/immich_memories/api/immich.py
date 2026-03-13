@@ -52,7 +52,7 @@ class ImmichNotFoundError(ImmichAPIError):
     pass
 
 
-class ImmichClient(AllAssetsMixin, AlbumMixin, AssetMixin, PersonMixin, SearchMixin):
+class ImmichClient(AlbumMixin, AssetMixin, PersonMixin, SearchMixin, AllAssetsMixin):
     """Client for interacting with the Immich API."""
 
     def __init__(
