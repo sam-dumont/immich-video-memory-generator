@@ -160,7 +160,7 @@ class TestBuildOutputFilename:
         assert result == "jean-pierre_2025_memories.mp4"
 
     def test_trip_with_location(self):
-        """Trip preset with location name: use location in filename."""
+        """Trip preset with location name: use 'trip' who + sanitized location."""
         result = build_output_filename(
             memory_type="trip",
             preset_params={"location_name": "Lisbon", "year": 2025},
@@ -168,7 +168,7 @@ class TestBuildOutputFilename:
             date_start=date(2025, 7, 10),
             date_end=date(2025, 7, 20),
         )
-        assert result == "sam_lisbon_memories.mp4"
+        assert result == "trip_lisbon_memories.mp4"
 
     def test_trip_without_location(self):
         """Trip preset without location: fallback to date range."""
@@ -179,7 +179,18 @@ class TestBuildOutputFilename:
             date_start=date(2025, 7, 10),
             date_end=date(2025, 7, 20),
         )
-        assert result == "sam_july_2025_memories.mp4"
+        assert result == "trip_july_2025_memories.mp4"
+
+    def test_trip_location_with_special_chars(self):
+        """Trip location with commas and special chars gets sanitized."""
+        result = build_output_filename(
+            memory_type="trip",
+            preset_params={"location_name": "Ostend, Belgium", "year": 2025},
+            person_name=None,
+            date_start=date(2025, 8, 1),
+            date_end=date(2025, 8, 10),
+        )
+        assert result == "trip_ostend_belgium_memories.mp4"
 
 
 class TestGetDividerMode:

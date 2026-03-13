@@ -243,7 +243,9 @@ def _on_this_day(
     if target_date is None:
         target_date = date.today()
     date_ranges = build_on_this_day(target_date, years_back)
-    month_name = target_date.strftime("%B")
+    import calendar
+
+    month_name = calendar.month_name[target_date.month]
     person_filter = PersonFilter()
     if person_names:
         person_filter = PersonFilter(mode="single", person_names=person_names[:1])

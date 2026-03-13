@@ -23,7 +23,8 @@ src/immich_memories/
 │   ├── immich.py               # SyncImmichClient - REST API wrapper (uses 3 mixins)
 │   ├── client_asset.py         # AssetMixin - asset/video operations
 │   ├── client_person.py        # PersonMixin - person/face operations
-│   ├── client_search.py        # SearchMixin - search operations
+│   ├── client_search.py        # SearchMixin - search/video query operations
+│   ├── client_all_assets.py    # AllAssetsMixin - type-agnostic queries (trip detection)
 │   └── models.py               # API data models (Asset, Person, etc.)
 │
 ├── memory_types/                  # Memory type presets & factory
@@ -41,6 +42,8 @@ src/immich_memories/
 │   ├── pipeline_refinement.py  # RefinementMixin - clip refinement
 │   ├── pipeline_scaling.py     # ScalingMixin - duration scaling
 │   ├── progress.py             # Progress tracking helpers
+│   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
+│   ├── trip_scoring.py         # Location diversity scoring for trip clips
 │   ├── clip_selection.py       # Standalone clip selection functions
 │   ├── clip_refinement.py      # Standalone refinement functions
 │   ├── clip_scaling.py         # Duration scaling helpers
@@ -79,6 +82,7 @@ src/immich_memories/
 │   ├── assembler_helpers.py    # Shared helper methods
 │   ├── assembler_scalable.py   # Scalable chunked assembly
 │   ├── assembler_batch.py      # Batch merge/direct assembly
+│   ├── assembler_trip_mixin.py # Trip-specific assembly (location dividers)
 │   ├── assembler_probing.py    # FFprobe-based duration probing
 │   ├── clips.py                # ClipExtractor - download & re-encode
 │   ├── clip_encoding.py        # Clip encoding helpers
@@ -120,8 +124,11 @@ src/immich_memories/
 │
 ├── titles/                     # Title screen generation
 │   ├── _text_memory_types.py      # Memory type title helpers
+│   ├── _trip_titles.py         # Trip title text generation (duration/season-aware)
 │   ├── generator.py            # TitleScreenGenerator orchestrator
-│   ├── rendering_mixin.py      # Rendering mixin for generator
+│   ├── rendering_mixin.py      # Rendering mixin for generator (incl. map videos)
+│   ├── trip_mixin.py           # Trip map/location card screen generation
+│   ├── map_renderer.py         # Map tile rendering (staticmap + PIL overlay)
 │   ├── ending_mixin.py         # Ending screen mixin
 │   ├── convenience.py          # Convenience/factory functions
 │   ├── encoding.py             # Title video encoding
@@ -149,11 +156,13 @@ src/immich_memories/
 │   ├── __init__.py             # Main CLI group + `ui` command
 │   ├── generate.py             # `generate`, `analyze`, `export-project`
 │   ├── config_cmd.py           # `config`, `people`, `years`, `preflight`
+│   ├── scheduler_cmd.py        # `scheduler start/stop/status/list`
 │   ├── titles.py               # `titles test`, `titles fonts`
 │   ├── runs.py                 # `runs list`, `runs show`, `runs stats`
 │   ├── music_cmd.py            # `music search`, `music analyze`
 │   ├── hardware_cmd.py         # `hardware` info display
 │   ├── _helpers.py             # Shared console/print utilities
+│   ├── _trip_display.py        # Trip detection display & selection
 │   └── _date_resolution.py     # Date range resolution for memory types
 │
 ├── ui/                         # NiceGUI web interface
@@ -170,7 +179,9 @@ src/immich_memories/
 │       ├── clip_pipeline.py        # Pipeline execution UI
 │       ├── step3_options.py        # Assembly options
 │       ├── step4_export.py         # Export & download
-│       └── _step4_music.py         # Music generation/mixing helpers
+│       ├── _step4_generate.py     # Generation logic (extracted from export)
+│       ├── _step4_upload.py       # Upload-back to Immich controls
+│       └── _step4_music.py        # Music generation/mixing helpers
 │
 ├── tracking/                   # Run history & telemetry
 │   ├── run_database.py         # SQLite run storage
@@ -189,6 +200,11 @@ src/immich_memories/
 │   ├── database_queries.py        # DatabaseQueryMixin (read/query methods)
 │   ├── thumbnail_cache.py         # ThumbnailCache - file-based thumbnail storage
 │   └── video_cache.py             # VideoDownloadCache - downloaded video files
+│
+├── scheduling/                 # Scheduled memory generation
+│   ├── engine.py               # Scheduler - cron parsing, next job calculation
+│   ├── executor.py             # JobExecutor - parameter resolution
+│   └── daemon.py               # Daemon loop (foreground, SIGINT/SIGTERM)
 │
 ├── config.py                   # YAML configuration management (re-exports)
 ├── config_loader.py            # Config loading logic
@@ -261,10 +277,17 @@ VideoAssembler.assemble_with_titles()
 - `AssemblerBatchMixin` (assembler_batch.py)
 - `AssemblerTitleMixin` (assembler_titles.py)
 
-**SyncImmichClient** inherits from:
+**ImmichClient** inherits from:
+- `AllAssetsMixin` (client_all_assets.py)
+- `AlbumMixin` (client_album.py)
 - `AssetMixin` (client_asset.py)
 - `PersonMixin` (client_person.py)
 - `SearchMixin` (client_search.py)
+
+**TitleScreenGenerator** inherits from:
+- `RenderingMixin` (rendering_mixin.py) — GPU/CPU renderer selection, map videos
+- `TripMapMixin` (trip_mixin.py) — trip map + location card screen generation
+- `EndingMixin` (ending_mixin.py) — ending screen generation
 
 **TaichiTitleRenderer** inherits from:
 - `TaichiParticlesMixin` (taichi_particles.py)

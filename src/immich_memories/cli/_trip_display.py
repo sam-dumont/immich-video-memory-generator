@@ -28,7 +28,7 @@ def format_trips_table(trips: list[DetectedTrip]) -> Table | None:
     table.add_column("Location", style="cyan")
     table.add_column("Dates", style="green")
     table.add_column("Days", justify="right")
-    table.add_column("Videos", justify="right")
+    table.add_column("Assets", justify="right")
 
     for i, trip in enumerate(trips, 1):
         days = (trip.end_date - trip.start_date).days + 1
@@ -81,16 +81,20 @@ def run_trip_detection(
     trips_config = config.trips
     trips_config.validate_homebase()
 
-    # Build date range for the full year
+    # Build date range with 1-month buffer on each side to catch
+    # trips that span year boundaries (e.g., Dec 25 → Jan 5).
+    from datetime import date as date_cls
     from datetime import datetime
 
     date_range = DateRange(
-        start=datetime(year, 1, 1, 0, 0, 0),
-        end=datetime(year, 12, 31, 23, 59, 59),
+        start=datetime(year - 1, 12, 1, 0, 0, 0),
+        end=datetime(year + 1, 1, 31, 23, 59, 59),
     )
 
-    # Fetch all videos for the year
-    task = progress.add_task(f"Fetching videos for {year}...", total=None)
+    # Fetch ALL assets (photos + videos + live photos) for trip detection.
+    # Trip detection uses GPS data from any asset type — critical for pre-2018
+    # trips where users may only have photos, not videos.
+    task = progress.add_task(f"Fetching assets for {year}...", total=None)
 
     if person_names:
         person_ids: list[str] = []
@@ -99,18 +103,18 @@ def run_trip_detection(
             if found:
                 person_ids.append(found.id)
         if len(person_ids) > 1:
-            assets = client.get_videos_for_any_person(person_ids, date_range)
+            assets = client.get_assets_for_any_person(person_ids, date_range)
         elif len(person_ids) == 1:
-            assets = client.get_videos_for_person_and_date_range(person_ids[0], date_range)
+            assets = client.get_assets_for_person_and_date_range(person_ids[0], date_range)
         else:
-            assets = client.get_videos_for_date_range(date_range)
+            assets = client.get_assets_for_date_range(date_range)
     else:
-        assets = client.get_videos_for_date_range(date_range)
+        assets = client.get_assets_for_date_range(date_range)
 
     progress.update(task, completed=True)
-    print_success(f"Found {len(assets)} videos for {year}")
+    print_success(f"Found {len(assets)} assets for {year}")
 
-    # Run trip detection
+    # Run trip detection on the extended date range
     task = progress.add_task("Detecting trips from GPS data...", total=None)
     trips = detect_trips(
         assets,
@@ -121,6 +125,12 @@ def run_trip_detection(
         max_gap_days=trips_config.max_gap_days,
     )
     progress.update(task, completed=True)
-    print_success(f"Detected {len(trips)} trip(s)")
 
+    # Filter to trips that overlap the requested year.
+    # A trip overlaps the year if it ends on/after Jan 1 AND starts on/before Dec 31.
+    year_start = date_cls(year, 1, 1)
+    year_end = date_cls(year, 12, 31)
+    trips = [t for t in trips if t.end_date >= year_start and t.start_date <= year_end]
+
+    print_success(f"Detected {len(trips)} trip(s)")
     return trips

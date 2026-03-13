@@ -12,6 +12,7 @@ import httpx
 from pydantic import ValidationError
 
 from immich_memories.api.client_album import AlbumMixin
+from immich_memories.api.client_all_assets import AllAssetsMixin
 from immich_memories.api.client_asset import AssetMixin
 from immich_memories.api.client_person import PersonMixin
 from immich_memories.api.client_search import SearchMixin
@@ -51,7 +52,7 @@ class ImmichNotFoundError(ImmichAPIError):
     pass
 
 
-class ImmichClient(AlbumMixin, AssetMixin, PersonMixin, SearchMixin):
+class ImmichClient(AlbumMixin, AssetMixin, PersonMixin, SearchMixin, AllAssetsMixin):
     """Client for interacting with the Immich API."""
 
     def __init__(
@@ -340,6 +341,15 @@ class SyncImmichClient:
             self._async_client.get_videos_for_date_range(date_range, progress_callback)
         )
 
+    def get_assets_for_date_range(
+        self,
+        date_range: DateRange,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[Asset]:
+        return self._run(
+            self._async_client.get_assets_for_date_range(date_range, progress_callback)
+        )
+
     def get_videos_for_person_and_date_range(
         self,
         person_id: str,
@@ -376,6 +386,28 @@ class SyncImmichClient:
     ) -> list[Asset]:
         return self._run(
             self._async_client.get_videos_for_any_person(person_ids, date_range, progress_callback)
+        )
+
+    def get_assets_for_person_and_date_range(
+        self,
+        person_id: str,
+        date_range: DateRange,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[Asset]:
+        return self._run(
+            self._async_client.get_assets_for_person_and_date_range(
+                person_id, date_range, progress_callback
+            )
+        )
+
+    def get_assets_for_any_person(
+        self,
+        person_ids: list[str],
+        date_range: DateRange,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[Asset]:
+        return self._run(
+            self._async_client.get_assets_for_any_person(person_ids, date_range, progress_callback)
         )
 
     def get_videos_for_all_persons(

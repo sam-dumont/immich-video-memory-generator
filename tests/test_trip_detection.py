@@ -16,13 +16,14 @@ def _make_asset(
     city: str | None = None,
     country: str | None = None,
     asset_id: str | None = None,
+    asset_type: AssetType = AssetType.VIDEO,
 ) -> Asset:
     """Helper to build a minimal Asset with GPS and timestamp."""
     ts = datetime.fromisoformat(created_at).replace(tzinfo=UTC)
     exif = ExifInfo(latitude=lat, longitude=lon, city=city, country=country) if lat else None
     return Asset(
         id=asset_id or f"asset-{created_at}",
-        type=AssetType.VIDEO,
+        type=asset_type,
         fileCreatedAt=ts,
         fileModifiedAt=ts,
         updatedAt=ts,
@@ -89,6 +90,14 @@ class TestDetectTrips:
     # Brussels homebase
     HOME_LAT = 50.8468
     HOME_LON = 4.3525
+
+    @pytest.fixture(autouse=True)
+    def _no_geocode(self, monkeypatch):
+        """Disable network geocoding in trip detection tests."""
+        monkeypatch.setattr(
+            "immich_memories.analysis.trip_detection.reverse_geocode",
+            lambda *_args, **_kwargs: None,
+        )
 
     def test_filters_assets_near_home(self):
         """Assets within min_distance_km should be excluded."""
@@ -237,6 +246,42 @@ class TestDetectTrips:
         trips = detect_trips(assets, self.HOME_LAT, self.HOME_LON)
         assert len(trips) == 1
         assert trips[0].asset_count == 6
+
+    def test_detects_trips_from_photos_and_videos(self):
+        """Trip detection should work with mixed asset types (photos + videos)."""
+        from immich_memories.analysis.trip_detection import detect_trips
+
+        assets = [
+            # Pre-2018 trip: only photos
+            _make_asset(
+                41.39,
+                2.17,
+                "2015-06-12T10:00:00",
+                city="Barcelona",
+                country="Spain",
+                asset_type=AssetType.IMAGE,
+            ),
+            _make_asset(
+                41.39,
+                2.17,
+                "2015-06-13T10:00:00",
+                city="Barcelona",
+                country="Spain",
+                asset_type=AssetType.IMAGE,
+            ),
+            _make_asset(
+                41.39,
+                2.17,
+                "2015-06-14T10:00:00",
+                city="Barcelona",
+                country="Spain",
+                asset_type=AssetType.IMAGE,
+            ),
+        ]
+        trips = detect_trips(assets, self.HOME_LAT, self.HOME_LON)
+        assert len(trips) == 1
+        assert trips[0].location_name == "Barcelona, Spain"
+        assert trips[0].asset_count == 3
 
 
 class TestTripCLI:
@@ -408,6 +453,390 @@ class TestFormatTripsTable:
         ]
         selected = select_trips(trips)
         assert selected == []
+
+
+class TestReverseGeocode:
+    """Reverse geocoding for trip location naming."""
+
+    def test_geocode_returns_location_name(self):
+        """reverse_geocode should return a formatted location string."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        mock_location = MagicMock()
+        mock_location.raw = {"address": {"state": "Charente-Maritime", "country": "France"}}
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = mock_location
+            result = reverse_geocode(45.95, -1.15)
+
+        assert result == "Charente-Maritime, France"
+
+    def test_geocode_returns_none_on_failure(self):
+        """reverse_geocode should return None when geocoding fails."""
+        from unittest.mock import patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.side_effect = Exception("Network error")
+            result = reverse_geocode(45.95, -1.15)
+
+        assert result is None
+
+    def test_naming_prefers_geocode_over_exif(self):
+        """_derive_location_name should prefer geocoded result over EXIF."""
+        from unittest.mock import patch
+
+        from immich_memories.analysis.trip_detection import _derive_location_name
+
+        assets = [
+            _make_asset(45.95, -1.15, "2024-07-12T10:00:00", city="Dolus", country="France"),
+            _make_asset(45.96, -1.14, "2024-07-13T10:00:00", city="Dolus", country="France"),
+        ]
+
+        with patch(
+            "immich_memories.analysis.trip_detection.reverse_geocode",
+            return_value="Île d'Oléron, France",
+        ):
+            result = _derive_location_name(assets, centroid_lat=45.955, centroid_lon=-1.145)
+
+        assert result == "Île d'Oléron, France"
+
+    def test_naming_falls_back_to_exif_when_geocode_fails(self):
+        """When geocode returns None, fall back to EXIF city/country."""
+        from unittest.mock import patch
+
+        from immich_memories.analysis.trip_detection import _derive_location_name
+
+        assets = [
+            _make_asset(41.39, 2.17, "2024-06-12T10:00:00", city="Barcelona", country="Spain"),
+            _make_asset(41.39, 2.17, "2024-06-13T10:00:00", city="Barcelona", country="Spain"),
+        ]
+
+        with patch("immich_memories.analysis.trip_detection.reverse_geocode", return_value=None):
+            result = _derive_location_name(assets, centroid_lat=41.39, centroid_lon=2.17)
+
+        assert result == "Barcelona, Spain"
+
+
+class TestReverseGeocodeGranularity:
+    """Reverse geocoding should prefer specific names over broad regions."""
+
+    def test_prefers_island_over_state(self):
+        """For islands, should return island name not state."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        mock_location = MagicMock()
+        mock_location.raw = {
+            "address": {
+                "island": "Tenerife",
+                "state": "Canary Islands",
+                "country": "Spain",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = mock_location
+            result = reverse_geocode(28.2916, -16.6291)
+
+        assert result == "Tenerife, Spain"
+
+    def test_prefers_province_over_state(self):
+        """For Spanish provinces, should use province over state.
+
+        Nominatim returns 'province' for Spanish islands (e.g., 'Santa Cruz de Tenerife').
+        """
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        mock_location = MagicMock()
+        mock_location.raw = {
+            "address": {
+                "province": "Santa Cruz de Tenerife",
+                "state": "Canary Islands",
+                "country": "Spain",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = mock_location
+            result = reverse_geocode(28.2916, -16.6291)
+
+        assert result == "Santa Cruz de Tenerife, Spain"
+
+    def test_prefers_county_over_state(self):
+        """For Ardennes, should return 'Ardennes, France' not 'Grand Est, France'."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        mock_location = MagicMock()
+        mock_location.raw = {
+            "address": {
+                "county": "Ardennes",
+                "state": "Grand Est",
+                "country": "France",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = mock_location
+            result = reverse_geocode(49.77, 4.72)
+
+        assert result == "Ardennes, France"
+
+    def test_prefers_state_district_over_state(self):
+        """state_district should be preferred over state."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        mock_location = MagicMock()
+        mock_location.raw = {
+            "address": {
+                "state_district": "Provence",
+                "state": "Provence-Alpes-Côte d'Azur",
+                "country": "France",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = mock_location
+            result = reverse_geocode(43.30, 5.37)
+
+        assert result == "Provence, France"
+
+    def test_deduplicates_region_and_country(self):
+        """When state == country (e.g., Cyprus), return just country name."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        # Cyprus: state == country, no useful county/island/province
+        location = MagicMock()
+        location.raw = {
+            "address": {
+                "state": "Cyprus",
+                "country": "Cyprus",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = location
+            result = reverse_geocode(34.85, 32.85)
+
+        assert result == "Cyprus"  # Not "Cyprus, Cyprus"
+
+    def test_uses_detailed_zoom_for_small_spread_trips(self):
+        """For trips in a small area (<80km), use detailed zoom."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        detailed_location = MagicMock()
+        detailed_location.raw = {
+            "address": {
+                "county": "Ardennes",
+                "state": "Grand Est",
+                "country": "France",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = detailed_location
+            result = reverse_geocode(49.77, 4.72, spread_km=30.0)
+
+        assert result == "Ardennes, France"
+
+    def test_multi_country_trip_lists_countries(self):
+        """A cross-country trip (>300km, multiple countries) lists countries."""
+        from unittest.mock import patch
+
+        from immich_memories.analysis.trip_detection import _derive_location_name
+
+        # European road trip: Belgium → France → Spain (spread >> 300km)
+        assets = [
+            _make_asset(50.85, 4.35, "2024-06-01T10:00:00", country="Belgium"),
+            _make_asset(48.86, 2.35, "2024-06-03T10:00:00", country="France"),
+            _make_asset(41.39, 2.17, "2024-06-06T10:00:00", country="Spain"),
+            _make_asset(41.39, 2.17, "2024-06-07T10:00:00", country="Spain"),
+        ]
+
+        with patch("immich_memories.analysis.trip_detection.reverse_geocode"):
+            result = _derive_location_name(assets, centroid_lat=47.0, centroid_lon=3.0)
+
+        assert result == "Belgium → France → Spain"
+
+    def test_dominant_country_ignores_layovers(self):
+        """If 90%+ assets are in one country, use that country (ignore layovers)."""
+        from unittest.mock import patch
+
+        from immich_memories.analysis.trip_detection import _derive_location_name
+
+        # 9 assets in Cyprus, 1 in Greece (Athens layover) — 90%+ in Cyprus
+        # Athens (37.97, 23.72) to Paphos (34.78, 32.42) is ~850km
+        assets = [
+            _make_asset(37.97, 23.72, "2024-08-20T10:00:00", country="Greece"),
+        ] + [
+            _make_asset(34.78, 32.42, f"2024-08-{21 + i}T10:00:00", country="Cyprus")
+            for i in range(9)
+        ]
+
+        with patch(
+            "immich_memories.analysis.trip_detection.reverse_geocode",
+            return_value="Cyprus",
+        ):
+            result = _derive_location_name(assets, centroid_lat=34.90, centroid_lon=33.00)
+
+        assert result == "Cyprus"
+        assert "Greece" not in result
+
+    def test_falls_back_to_state_when_no_finer_detail(self):
+        """When no island/county/state_district, fall back to state."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import reverse_geocode
+
+        mock_location = MagicMock()
+        mock_location.raw = {
+            "address": {
+                "state": "California",
+                "country": "United States",
+            }
+        }
+
+        with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
+            mock_nom.return_value.reverse.return_value = mock_location
+            result = reverse_geocode(34.05, -118.24)
+
+        assert result == "California, United States"
+
+
+class TestCrossYearBoundary:
+    """Trip detection should handle trips spanning year boundaries."""
+
+    def test_run_trip_detection_extends_date_range(self):
+        """run_trip_detection should query with buffer around year boundaries."""
+        from datetime import datetime
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.cli._trip_display import run_trip_detection
+        from immich_memories.config_loader import Config
+
+        config = Config()
+        config.trips.homebase_latitude = 50.8468
+        config.trips.homebase_longitude = 4.3525
+
+        mock_client = MagicMock()
+        mock_client.get_assets_for_date_range.return_value = []
+        mock_progress = MagicMock()
+
+        with patch(
+            "immich_memories.cli._trip_display.detect_trips",
+            return_value=[],
+        ):
+            run_trip_detection(mock_client, config, 2015, mock_progress)
+
+        # Verify the date range was extended with a buffer
+        call_args = mock_client.get_assets_for_date_range.call_args
+        date_range = call_args[0][0]
+        # Should start Dec 1 of previous year (full month buffer)
+        assert date_range.start <= datetime(2014, 12, 1)
+        # Should end Jan 31 of next year (full month buffer)
+        assert date_range.end >= datetime(2016, 1, 31)
+
+    def test_run_trip_detection_filters_to_requested_year(self):
+        """Trips outside the requested year should be filtered out."""
+        from datetime import date
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.analysis.trip_detection import DetectedTrip
+        from immich_memories.cli._trip_display import run_trip_detection
+        from immich_memories.config_loader import Config
+
+        config = Config()
+        config.trips.homebase_latitude = 50.8468
+        config.trips.homebase_longitude = 4.3525
+
+        mock_client = MagicMock()
+        mock_client.get_assets_for_date_range.return_value = []
+        mock_progress = MagicMock()
+
+        # Trip entirely in 2014 (should be filtered out when querying 2015)
+        trip_2014 = DetectedTrip(
+            start_date=date(2014, 12, 5),
+            end_date=date(2014, 12, 10),
+            location_name="Paris",
+            asset_count=20,
+            centroid_lat=48.86,
+            centroid_lon=2.35,
+        )
+        # Trip spanning Dec 2014 → Jan 2015 (should be kept for year 2015)
+        trip_boundary = DetectedTrip(
+            start_date=date(2014, 12, 25),
+            end_date=date(2015, 1, 3),
+            location_name="Tenerife",
+            asset_count=50,
+            centroid_lat=28.29,
+            centroid_lon=-16.63,
+        )
+        # Trip entirely in 2015 (should be kept)
+        trip_2015 = DetectedTrip(
+            start_date=date(2015, 7, 1),
+            end_date=date(2015, 7, 10),
+            location_name="Croatia",
+            asset_count=80,
+            centroid_lat=43.51,
+            centroid_lon=16.44,
+        )
+
+        with patch(
+            "immich_memories.cli._trip_display.detect_trips",
+            return_value=[trip_2014, trip_boundary, trip_2015],
+        ):
+            trips = run_trip_detection(mock_client, config, 2015, mock_progress)
+
+        # Should keep the boundary trip and 2015 trip, exclude the 2014-only trip
+        assert len(trips) == 2
+        assert trips[0].location_name == "Tenerife"
+        assert trips[1].location_name == "Croatia"
+
+
+class TestFilterNearHome:
+    """GPS distance filter for removing near-home assets from trip clips."""
+
+    HOME_LAT = 50.8468
+    HOME_LON = 4.3525
+
+    def test_filters_out_near_home_assets(self):
+        """Assets within min_distance_km of home should be removed."""
+        from immich_memories.analysis.trip_detection import filter_near_home
+
+        assets = [
+            # Barcelona: ~1000km from Brussels → keep
+            _make_asset(41.39, 2.17, "2025-06-01T10:00:00"),
+            # Brussels suburb: ~10km from home → filter out
+            _make_asset(50.88, 4.40, "2025-06-01T18:00:00"),
+        ]
+        result = filter_near_home(assets, self.HOME_LAT, self.HOME_LON, min_distance_km=50)
+        assert len(result) == 1
+        assert result[0].exif_info.latitude == 41.39
+
+    def test_keeps_assets_without_gps(self):
+        """Assets with no GPS data should be kept (might be from trip)."""
+        from immich_memories.analysis.trip_detection import filter_near_home
+
+        assets = [
+            _make_asset(None, None, "2025-06-01T12:00:00"),  # No GPS
+            _make_asset(41.39, 2.17, "2025-06-01T14:00:00"),  # Far from home
+        ]
+        result = filter_near_home(assets, self.HOME_LAT, self.HOME_LON, min_distance_km=50)
+        assert len(result) == 2
 
 
 class TestTripInUI:

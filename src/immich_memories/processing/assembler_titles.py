@@ -12,6 +12,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from immich_memories.processing.assembler_trip_mixin import AssemblerTripMixin
 from immich_memories.processing.assembly_config import (
     AssemblyClip,
     TransitionType,
@@ -23,7 +24,7 @@ from immich_memories.processing.scaling_utilities import (
 logger = logging.getLogger(__name__)
 
 
-class AssemblerTitleMixin:
+class AssemblerTitleMixin(AssemblerTripMixin):
     """Mixin providing title screen integration methods for VideoAssembler."""
 
     def _parse_clip_date(self, clip: AssemblyClip) -> date | None:
@@ -86,23 +87,12 @@ class AssemblerTitleMixin:
             # Count clips in this month
             month_clip_counts[month_key] = month_clip_counts.get(month_key, 0) + 1
 
-            # Detect month change OR first month
             if current_month is None or month_key != current_month:
                 month_changes.append((i, clip_date.month, clip_date.year))
-                if current_month is None:
-                    logger.info(f"First month detected at clip {i}: {month_key}")
-                else:
-                    logger.info(
-                        f"Month change detected at clip {i}: {current_month} -> {month_key}"
-                    )
-
+                logger.debug(f"Month change at clip {i}: {current_month} -> {month_key}")
             current_month = month_key
 
-        logger.info(
-            f"Month detection: {clips_with_dates}/{len(clips)} clips have dates, {len(month_changes)} month changes found"
-        )
-        if month_clip_counts:
-            logger.info(f"Clips per month: {month_clip_counts}")
+        logger.info(f"Month detection: {len(month_changes)} changes in {clips_with_dates} clips")
 
         return month_changes
 
@@ -347,6 +337,35 @@ class AssemblerTitleMixin:
 
         return result
 
+    def _select_divider_strategy(
+        self,
+        clips: list[AssemblyClip],
+        generator: Any,
+        title_settings: Any,
+        progress_callback: Callable[[float, str], None] | None,
+        is_trip: bool,
+    ) -> list[AssemblyClip]:
+        """Select and apply the appropriate divider strategy for clips."""
+        if is_trip and getattr(title_settings, "show_location_cards", True):
+            return self._build_clips_with_location_dividers(
+                clips, generator, title_settings, progress_callback
+            )
+
+        divider_mode = getattr(title_settings, "divider_mode", "month")
+        if divider_mode == "year":
+            year_divider_paths = self._generate_year_dividers(
+                clips, generator, title_settings, progress_callback
+            )
+            return self._build_clips_with_year_dividers(clips, year_divider_paths, title_settings)
+
+        if divider_mode == "month" and title_settings.show_month_dividers:
+            month_divider_paths = self._generate_month_dividers(
+                clips, generator, title_settings, progress_callback
+            )
+            return self._build_clips_with_dividers(clips, month_divider_paths, title_settings)
+
+        return list(clips)
+
     def assemble_with_titles(
         self,
         clips: list[AssemblyClip],
@@ -409,18 +428,28 @@ class AssemblerTitleMixin:
             config=title_config, mood=mood, output_dir=title_output_dir
         )
 
-        # 1. Opening title screen
+        # 1. Opening title screen (trip map or standard)
         if progress_callback:
             progress_callback(0.0, "Generating title screen...")
 
-        title_screen = generator.generate_title_screen(
-            year=title_settings.year,
-            month=title_settings.month,
-            start_date=title_settings.start_date,
-            end_date=title_settings.end_date,
-            person_name=title_settings.person_name,
-            birthday_age=title_settings.birthday_age,
-        )
+        is_trip = getattr(title_settings, "memory_type", None) == "trip"
+        if is_trip and title_settings.trip_locations and title_settings.trip_title_text:
+            title_screen = generator.generate_trip_map_screen(
+                locations=title_settings.trip_locations,
+                title_text=title_settings.trip_title_text,
+            )
+            logger.info(f"Generated trip map intro: {title_screen.path}")
+        else:
+            title_screen = generator.generate_title_screen(
+                year=title_settings.year,
+                month=title_settings.month,
+                start_date=title_settings.start_date,
+                end_date=title_settings.end_date,
+                person_name=title_settings.person_name,
+                birthday_age=title_settings.birthday_age,
+            )
+            logger.info(f"Generated title screen: {title_screen.path}")
+
         final_clips: list[AssemblyClip] = [
             AssemblyClip(
                 path=title_screen.path,
@@ -430,27 +459,12 @@ class AssemblerTitleMixin:
                 is_title_screen=True,
             )
         ]
-        logger.info(f"Generated title screen: {title_screen.path}")
 
-        # 2-3. Clips with dividers (month or year based on divider_mode)
-        divider_mode = getattr(title_settings, "divider_mode", "month")
-        if divider_mode == "year":
-            year_divider_paths = self._generate_year_dividers(
-                clips, generator, title_settings, progress_callback
-            )
-            final_clips.extend(
-                self._build_clips_with_year_dividers(clips, year_divider_paths, title_settings)
-            )
-        elif divider_mode == "month" and title_settings.show_month_dividers:
-            month_divider_paths = self._generate_month_dividers(
-                clips, generator, title_settings, progress_callback
-            )
-            final_clips.extend(
-                self._build_clips_with_dividers(clips, month_divider_paths, title_settings)
-            )
-        else:
-            # No dividers
-            final_clips.extend(clips)
+        # 2-3. Clips with dividers
+        content_clips = self._select_divider_strategy(
+            clips, generator, title_settings, progress_callback, is_trip
+        )
+        final_clips.extend(content_clips)
 
         # 4. Ending screen
         if title_settings.show_ending_screen:

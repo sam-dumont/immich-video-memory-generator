@@ -34,6 +34,7 @@ from .text_builder import (
     generate_title,
     infer_selection_type,
 )
+from .trip_mixin import TripScreenMixin
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ class GeneratedScreen:
     screen_type: str  # "title", "month_divider", "ending"
 
 
-class TitleScreenGenerator(RenderingMixin, EndingScreenMixin):
+class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
     """Generates title screens, month dividers, and ending screens.
 
     Main entry point for generating all title-related video clips.

@@ -45,6 +45,8 @@ dependencies = [
     "imagehash>=4.3",
     "watchdog>=3.0",
     "croniter>=1.3",
+    "geopy>=2.4",
+    "staticmap>=0.5",
 ]
 
 [project.optional-dependencies]
@@ -279,6 +281,10 @@ module = [
     "av.*",
     # Streamlit runtime (optional UI)
     "streamlit.runtime.scriptrunner.*",
+    # Map rendering (staticmap)
+    "staticmap.*",
+    # Geocoding (geopy)
+    "geopy.*",
 ]
 ignore_missing_imports = true
 
@@ -318,8 +324,11 @@ module = [
     "immich_memories.ui.components",
     "immich_memories.ui.app",
     "immich_memories.ui.pages._step4_music",
+    "immich_memories.ui.pages._step4_upload",
+    "immich_memories.ui.pages._step4_generate",
+    "immich_memories.ui.pages.step4_export",
 ]
-disable_error_code = ["assignment", "misc", "arg-type", "import-untyped", "attr-defined"]
+disable_error_code = ["assignment", "misc", "arg-type", "import-untyped", "attr-defined", "func-returns-value"]
 
 # Audio mood analyzer with dynamic LLM outputs
 [[tool.mypy.overrides]]
@@ -392,7 +401,12 @@ disable_error_code = ["union-attr", "arg-type"]
 # Title rendering mixin with optional Taichi imports
 [[tool.mypy.overrides]]
 module = ["immich_memories.titles.rendering_mixin"]
-disable_error_code = ["assignment", "misc", "attr-defined"]
+disable_error_code = ["assignment", "misc", "attr-defined", "arg-type"]
+
+# Trip map/location mixin (access parent class attributes via mixin pattern)
+[[tool.mypy.overrides]]
+module = ["immich_memories.titles.trip_mixin"]
+disable_error_code = ["attr-defined"]
 
 # Unified analyzer with complex audio analysis
 [[tool.mypy.overrides]]
@@ -419,6 +433,7 @@ module = [
     "immich_memories.processing.assembler_transitions",
     "immich_memories.processing.assembler_transition_render",
     "immich_memories.processing.assembler_titles",
+    "immich_memories.processing.assembler_trip_mixin",
 ]
 disable_error_code = ["attr-defined"]
 

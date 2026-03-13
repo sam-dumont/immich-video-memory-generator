@@ -21,6 +21,77 @@ from .taichi_kernels import (
     layout_text,
 )
 
+
+def _split_text_for_rendering(draw, text: str, font, max_width: float) -> list[str]:
+    """Split text into lines using pixel widths, preferring comma boundaries."""
+
+    def _measure(t: str) -> int:
+        bbox = draw.textbbox((0, 0), t, font=font)
+        return bbox[2] - bbox[0]
+
+    if _measure(text) <= max_width:
+        return [text]
+
+    # Try comma split first
+    if "," in text:
+        parts = [p.strip() for p in text.split(",", 1)]
+        parts[0] += ","
+        if all(_measure(p) <= max_width for p in parts):
+            return parts
+
+    # Word-wrap fallback
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        test = f"{current} {word}".strip()
+        if _measure(test) > max_width and current:
+            lines.append(current)
+            current = word
+        else:
+            current = test
+    if current:
+        lines.append(current)
+    return lines or [text]
+
+
+def split_title_lines(text: str, max_chars: int) -> list[str]:
+    """Split title text into lines, preferring comma boundaries.
+
+    Args:
+        text: Title text to split.
+        max_chars: Approximate max characters per line.
+
+    Returns:
+        List of lines.
+    """
+    if len(text) <= max_chars:
+        return [text]
+
+    # Prefer splitting at comma
+    if "," in text:
+        parts = [p.strip() for p in text.split(",", 1)]
+        # Keep comma on first part for visual continuity
+        parts[0] += ","
+        if all(len(p) <= max_chars for p in parts):
+            return parts
+
+    # Word-wrap fallback
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        test = f"{current} {word}".strip()
+        if len(test) > max_chars and current:
+            lines.append(current)
+            current = word
+        else:
+            current = test
+    if current:
+        lines.append(current)
+    return lines or [text]
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -125,41 +196,61 @@ class TaichiTextMixin:
         font_size: int,
         color: tuple[int, int, int, int],
     ) -> np.ndarray:
-        """Render text to RGBA numpy array using PIL."""
-        img = Image.new("RGBA", (self.config.width, self.config.height), (0, 0, 0, 0))
+        """Render text to RGBA numpy array using PIL.
+
+        For portrait (height > width), uses multiline word-wrapping
+        to keep the font large and readable.
+        """
+        w, h = self.config.width, self.config.height
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
+        font_path = _get_system_font(self.config.font_family)
 
-        font_path = _get_system_font()
+        try:
+            font = ImageFont.truetype(font_path, font_size)
+        except Exception:
+            font = ImageFont.load_default()
 
-        # Apply safe margin - text should fit within 80% of screen width
-        safe_width = self.config.width * 0.8
-        current_font_size = font_size
-
-        while current_font_size > 12:  # Don't go below 12px
-            try:
-                font = ImageFont.truetype(font_path, current_font_size)
-            except Exception:
-                font = ImageFont.load_default()
-                break
-
-            bbox = draw.textbbox((0, 0), text, font=font)
-            text_width = bbox[2] - bbox[0]
-
-            if text_width <= safe_width:
-                break
-
-            # Reduce font size proportionally
-            current_font_size = int(current_font_size * safe_width / text_width * 0.95)
-
+        safe_width = w * 0.88
         bbox = draw.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
 
-        x = (self.config.width - text_width) // 2
-        y = (self.config.height - text_height) // 2
+        if text_width > safe_width:
+            # Word-wrap into multiple lines (both portrait and landscape)
+            self._draw_multiline_centered(draw, text, font, font_size, safe_width, w, h, color)
+        else:
+            bbox = draw.textbbox((0, 0), text, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            x = (w - tw) // 2
+            y = (h - th) // 2
+            draw.text((x, y), text, font=font, fill=color)
 
-        draw.text((x, y), text, font=font, fill=color)
         return np.array(img, dtype=np.float32) / 255.0
+
+    @staticmethod
+    def _draw_multiline_centered(
+        draw,
+        text: str,
+        font,
+        font_size: int,
+        max_width: float,
+        width: int,
+        height: int,
+        color: tuple[int, int, int, int],
+    ) -> None:
+        """Word-wrap text with comma-aware splitting and draw centered."""
+        lines = _split_text_for_rendering(draw, text, font, max_width)
+
+        line_height = int(font_size * 1.2)
+        total_h = line_height * len(lines)
+        start_y = (height - total_h) // 2
+
+        for i, line in enumerate(lines):
+            bbox = draw.textbbox((0, 0), line, font=font)
+            lw = bbox[2] - bbox[0]
+            x = (width - lw) // 2
+            y = start_y + i * line_height
+            draw.text((x, y), line, font=font, fill=color)
 
     def _render_text_layers(self, title: str, subtitle: str | None):
         """Pre-render text layers (cached)."""

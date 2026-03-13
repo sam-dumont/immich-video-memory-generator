@@ -109,6 +109,10 @@ def register_scheduler_commands(main: click.Group) -> None:
         print_info(f"Timezone: {config.scheduler.timezone}")
         print_info(f"Schedules: {len(config.scheduler.schedules)}")
 
-        # TODO: Implement the actual daemon loop
-        # This will use Scheduler + resolve_schedule_params + pipeline execution
-        print_info("Scheduler daemon loop coming soon!")
+        from immich_memories.scheduling.daemon import run_daemon_loop
+
+        if foreground:
+            run_daemon_loop(config.scheduler)
+        else:
+            print_error("Background mode not yet supported. Use --foreground.")
+            return

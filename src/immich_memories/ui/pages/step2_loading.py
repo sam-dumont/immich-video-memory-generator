@@ -10,7 +10,7 @@ from immich_memories.api.immich import SyncImmichClient
 from immich_memories.api.models import VideoClipInfo
 from immich_memories.processing.clips import probe_video_url
 from immich_memories.security import sanitize_error_message
-from immich_memories.timeperiod import DateRange
+from immich_memories.ui.pages._step2_live_photos import fetch_live_photo_clips
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
@@ -64,6 +64,20 @@ def _load_clips() -> None:
                     return assets, client
 
             assets, client = await run.io_bound(fetch_assets)
+
+            # For trip memory type, filter out videos near home
+            home_lat = state.memory_preset_params.get("home_lat")
+            home_lon = state.memory_preset_params.get("home_lon")
+            min_dist = state.memory_preset_params.get("min_distance_km")
+            if home_lat and home_lon and min_dist:
+                from immich_memories.analysis.trip_detection import filter_near_home
+
+                before = len(assets)
+                assets = filter_near_home(assets, home_lat, home_lon, min_dist)
+                filtered = before - len(assets)
+                if filtered:
+                    logger.info(f"Filtered {filtered} near-home videos from trip")
+
             status_label.set_text(f"Found {len(assets)} assets. Filtering...")
             progress_bar.value = 0.05
 
@@ -93,7 +107,7 @@ def _load_clips() -> None:
 
                 def fetch_live():
                     with SyncImmichClient(state.immich_url, state.immich_api_key) as lp_client:
-                        return _fetch_live_photo_clips(
+                        return fetch_live_photo_clips(
                             lp_client,
                             date_range,
                             person_id=lp_person_id,
@@ -315,183 +329,3 @@ def _render_cached_analysis_summary(clips: list[VideoClipInfo]) -> None:
             "Use Cached Analysis (Skip Re-analysis)",
             on_click=use_cached,
         ).props("outline size=sm")
-
-
-def _expand_to_neighbors(
-    tagged: list,
-    all_live: list,
-) -> list:
-    """Include untagged live photos that are near tagged ones.
-
-    If photos 1, 2, 3 were taken within the merge window and only 2 is
-    tagged with the person, 1 and 3 are clearly from the same moment and
-    should be included too.
-    """
-    from immich_memories.config import get_config
-
-    config = get_config()
-    window = config.analysis.live_photo_merge_window_seconds
-
-    tagged_ids = {a.id for a in tagged}
-    tagged_times = [a.file_created_at for a in tagged]
-
-    result_ids = set(tagged_ids)
-    for asset in all_live:
-        if asset.id in result_ids:
-            continue
-        # Check if this untagged photo is within the merge window of any tagged one
-        for t in tagged_times:
-            diff = abs((asset.file_created_at - t).total_seconds())
-            if diff <= window:
-                result_ids.add(asset.id)
-                break
-
-    # Build final list preserving chronological order
-    by_id = {a.id: a for a in all_live}
-    by_id.update({a.id: a for a in tagged})
-    result = [by_id[aid] for aid in result_ids if aid in by_id]
-    result.sort(key=lambda a: a.file_created_at)
-    return result
-
-
-def _search_live_photos(
-    client: SyncImmichClient,
-    date_range: DateRange,
-    person_id: str | None = None,
-    person_ids: list[str] | None = None,
-) -> list:
-    """Search for live photo assets, handling person filtering.
-
-    When a person is selected, we search by person with NO asset type
-    filter, then keep only ``is_live_photo`` results.  This works around
-    an Immich quirk where IMAGE+person search omits ``livePhotoVideoId``.
-
-    Without a person filter we use the dedicated live photo endpoint.
-    """
-    from immich_memories.api.models import Asset
-
-    # Multi-person AND: intersect per-person results
-    if person_ids and len(person_ids) >= 2:
-        per_person: list[set[str]] = []
-        assets_by_id: dict[str, Asset] = {}
-        for pid in person_ids:
-            results = _search_live_photos(client, date_range, person_id=pid)
-            per_person.append({a.id for a in results})
-            assets_by_id.update({a.id: a for a in results})
-        common = per_person[0]
-        for s in per_person[1:]:
-            common &= s
-        result = [assets_by_id[aid] for aid in common]
-        result.sort(key=lambda a: a.file_created_at)
-        return result
-
-    # Single person: search by person, no type filter, filter for live photos
-    if person_id:
-        tagged: list[Asset] = []
-        page = 1
-        while True:
-            result = client._run(
-                client._async_client.search_metadata(
-                    person_ids=[person_id],
-                    taken_after=date_range.start,
-                    taken_before=date_range.end,
-                    page=page,
-                    size=100,
-                )
-            )
-            for asset in result.all_assets:
-                if asset.is_live_photo:
-                    tagged.append(asset)
-            if not result.next_page:
-                break
-            page += 1
-
-        if not tagged:
-            logger.info("Live photo person search: 0 tagged live photos")
-            return []
-
-        # Smart grouping: fetch ALL live photos and include untagged
-        # neighbors within the merge window of tagged ones.
-        all_live = client.get_live_photos_for_date_range(date_range)
-        merged = _expand_to_neighbors(tagged, all_live)
-        logger.info(
-            f"Live photo person search: {len(tagged)} tagged, "
-            f"{len(merged)} after neighbor expansion (from {len(all_live)} total)"
-        )
-        return merged
-
-    # No person filter: use dedicated endpoint
-    return client.get_live_photos_for_date_range(date_range)
-
-
-def _fetch_live_photo_clips(
-    client: SyncImmichClient,
-    date_range: DateRange,
-    person_id: str | None = None,
-    person_ids: list[str] | None = None,
-) -> tuple[list[VideoClipInfo], set[str]]:
-    """Fetch Live Photo assets and convert to VideoClipInfo clips.
-
-    For person filtering we search by person with NO asset type filter,
-    then filter client-side for ``is_live_photo``.  Immich doesn't
-    populate ``livePhotoVideoId`` when searching IMAGE+person directly.
-
-    Returns:
-        Tuple of (live_photo_clips, live_video_ids).
-    """
-    from immich_memories.config import get_config
-    from immich_memories.processing.live_photo_merger import cluster_live_photos
-
-    config = get_config()
-
-    try:
-        live_assets = _search_live_photos(
-            client,
-            date_range,
-            person_id=person_id,
-            person_ids=person_ids,
-        )
-    except Exception:
-        logger.warning("Failed to fetch live photos", exc_info=True)
-        return [], set()
-
-    if not live_assets:
-        logger.info("No live photos found in date range")
-        return [], set()
-
-    # Collect all video component IDs so we can remove them from regular results
-    live_video_ids = {a.live_photo_video_id for a in live_assets if a.live_photo_video_id}
-
-    clusters = cluster_live_photos(
-        live_assets,
-        merge_window_seconds=config.analysis.live_photo_merge_window_seconds,
-    )
-
-    clips: list[VideoClipInfo] = []
-    for cluster in clusters:
-        first_asset = cluster.assets[0]
-        video_id = first_asset.live_photo_video_id
-        if not video_id:
-            continue
-
-        # Store burst metadata for multi-photo clusters so assembly can merge them
-        burst_ids = cluster.video_asset_ids if cluster.count > 1 else None
-        burst_trims = cluster.trim_points() if cluster.count > 1 else None
-
-        clip = VideoClipInfo(
-            asset=first_asset,
-            duration_seconds=cluster.estimated_duration,
-            live_burst_video_ids=burst_ids,
-            live_burst_trim_points=burst_trims,
-        )
-        # Propagate favorite from cluster (any photo favorite → clip favorite)
-        if cluster.is_favorite:
-            clip.asset.is_favorite = True
-
-        clips.append(clip)
-
-    logger.info(
-        f"Live Photos: {len(live_assets)} photos → {len(clusters)} clusters → "
-        f"{len(clips)} clips ({len(live_video_ids)} video components to filter)"
-    )
-    return clips, live_video_ids
