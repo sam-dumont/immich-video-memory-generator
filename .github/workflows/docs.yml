@@ -40,12 +40,16 @@ jobs:
         run: cd docs-site && npm ci
 
       - name: Inject version from release tag
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           # Use workflow_call input, release tag, or git describe
-          if [[ -n "${{ inputs.version }}" ]]; then
-            VERSION="${{ inputs.version }}"
-          elif [[ "${{ github.event_name }}" == "release" ]]; then
-            VERSION="${{ github.event.release.tag_name }}"
+          if [[ -n "$INPUT_VERSION" ]]; then
+            VERSION="$INPUT_VERSION"
+          elif [[ "$EVENT_NAME" == "release" ]]; then
+            VERSION="$RELEASE_TAG"
           else
             VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
           fi
@@ -54,11 +58,13 @@ jobs:
 
           # Set version in docusaurus config via env var
           # (customFields.version is available in React components)
+          # Set version in package.json safely via env var
           cd docs-site
+          export DOCS_VERSION_CLEAN="${VERSION#v}"
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json'));
-            pkg.version = '${VERSION}'.replace(/^v/, '');
+            pkg.version = process.env.DOCS_VERSION_CLEAN;
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
           "
 
