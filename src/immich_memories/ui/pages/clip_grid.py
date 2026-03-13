@@ -29,23 +29,80 @@ def clip_quality_score(c: VideoClipInfo) -> tuple[int, int, int, int]:
 def _detect_duplicates(
     clips: list[VideoClipInfo],
 ) -> tuple[set[str], set[str]]:
-    """Detect duplicate clips and identify lower quality ones."""
-    clips_by_datetime = _group_clips_by_datetime(clips)
+    """Detect duplicate clips and identify lower quality ones.
 
+    Uses two strategies:
+    1. Same-minute + same-duration: exact duplicate (different codec/quality)
+    2. Thumbnail perceptual hash: catches messaging app copies (WhatsApp, etc.)
+       that have different timestamps but visually identical content
+    """
     duplicate_ids: set[str] = set()
     lower_quality_ids: set[str] = set()
 
+    # Strategy 1: exact datetime+duration match
+    clips_by_datetime = _group_clips_by_datetime(clips)
     for _key, group in clips_by_datetime.items():
         if len(group) > 1:
-            sorted_group = sorted(group, key=clip_quality_score, reverse=True)
-            best_clip = sorted_group[0]
+            _mark_lower_quality(group, duplicate_ids, lower_quality_ids)
 
-            for c in group:
-                duplicate_ids.add(c.asset.id)
-                if c.asset.id != best_clip.asset.id:
-                    lower_quality_ids.add(c.asset.id)
+    # Strategy 2: thumbnail perceptual hash deduplication
+    _detect_thumbnail_duplicates(clips, duplicate_ids, lower_quality_ids)
 
     return duplicate_ids, lower_quality_ids
+
+
+def _mark_lower_quality(
+    group: list[VideoClipInfo],
+    duplicate_ids: set[str],
+    lower_quality_ids: set[str],
+) -> None:
+    """Within a group of duplicates, mark all but the best as lower quality."""
+    sorted_group = sorted(group, key=clip_quality_score, reverse=True)
+    best_clip = sorted_group[0]
+    for c in group:
+        duplicate_ids.add(c.asset.id)
+        if c.asset.id != best_clip.asset.id:
+            lower_quality_ids.add(c.asset.id)
+
+
+def _detect_thumbnail_duplicates(
+    clips: list[VideoClipInfo],
+    duplicate_ids: set[str],
+    lower_quality_ids: set[str],
+) -> None:
+    """Detect duplicates using thumbnail perceptual hashing.
+
+    Catches messaging app copies (WhatsApp, Telegram, etc.) that have
+    different timestamps/filenames but visually identical content.
+    """
+    state = get_app_state()
+    thumbnail_cache = state.thumbnail_cache
+    if thumbnail_cache is None:
+        return
+
+    try:
+        from immich_memories.analysis.thumbnail_clustering import cluster_thumbnails
+
+        clusters = cluster_thumbnails(
+            clips=clips,
+            thumbnail_cache=thumbnail_cache,
+        )
+
+        for cluster in clusters:
+            if len(cluster.clip_ids) <= 1:
+                continue
+            # All members are duplicates; non-representatives are lower quality
+            for clip_id in cluster.clip_ids:
+                duplicate_ids.add(clip_id)
+                if clip_id != cluster.representative_id:
+                    lower_quality_ids.add(clip_id)
+
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).debug(
+            "Thumbnail dedup failed, falling back to datetime only", exc_info=True
+        )
 
 
 def _group_clips_by_datetime(clips: list[VideoClipInfo]) -> dict[str, list[VideoClipInfo]]:
@@ -84,6 +141,8 @@ def _update_duration_summary(clips: list[VideoClipInfo], container: ui.element) 
 def _get_clip_badges(clip: VideoClipInfo) -> list[str]:
     """Build the list of badge labels for a clip card."""
     badges = []
+    if clip.asset.is_live_photo:
+        badges.append("Live")
     if clip.asset.is_favorite:
         badges.append("star")
     if clip.is_hdr:
@@ -127,6 +186,8 @@ def _render_clip_badges(badges: list[str]) -> None:
             for badge in badges:
                 if badge == "star":
                     ui.icon("star", color="yellow").classes("text-xs")
+                elif badge == "Live":
+                    ui.badge(badge, color="purple").classes("text-xs")
                 else:
                     ui.badge(badge, color="blue").classes("text-xs")
 
@@ -139,7 +200,7 @@ def _render_clip_card(
     lower_quality_ids: set[str],
     summary_container: ui.element,
 ) -> None:
-    """Render a single clip card within the clip grid."""
+    """Render a single themed clip card."""
     is_selected = clip.asset.id in state.selected_clip_ids
     is_duplicate = clip.asset.id in duplicate_ids
     is_best = is_duplicate and clip.asset.id not in lower_quality_ids
@@ -147,44 +208,52 @@ def _render_clip_card(
     date_str = clip.asset.file_created_at.strftime("%b %d %H:%M")
     duration_str = format_duration(clip.duration_seconds) if clip.duration_seconds else "N/A"
 
-    with ui.card().classes("p-2"):
+    with (
+        ui.card()
+        .classes("p-2 rounded-xl")
+        .style("background-color: var(--im-bg-elevated); border: 1px solid var(--im-border)")
+    ):
         # Thumbnail
         thumb = get_thumbnail(clip.asset.id)
         if thumb:
             b64 = base64.b64encode(thumb).decode()
-            ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-24 object-cover")
+            ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-24 object-cover rounded-lg")
         else:
-            ui.element("div").classes("w-full h-24 bg-gray-200 flex items-center justify-center")
+            ui.element("div").classes(
+                "w-full h-24 rounded-lg flex items-center justify-center"
+            ).style("background-color: var(--im-bg-surface)")
 
         # Badges
         _render_clip_badges(_get_clip_badges(clip))
 
-        # Audio category tags (shown after analysis)
+        # Audio category tags
         _render_audio_categories(clip)
 
         # Date and duration
-        ui.label(date_str).classes("font-semibold text-sm")
-        ui.label(f"\u23f1 {duration_str}").classes("text-xs text-gray-500")
+        ui.label(date_str).classes("font-semibold text-sm").style("color: var(--im-text)")
+        ui.label(f"\u23f1 {duration_str}").classes("text-xs").style(
+            "color: var(--im-text-secondary)"
+        )
 
         # Filename
         filename = clip.asset.original_file_name or "Unknown"
         if len(filename) > 20:
             filename = filename[:17] + "..."
-        ui.label(filename).classes("text-xs text-gray-400 truncate")
+        ui.label(filename).classes("text-xs truncate").style("color: var(--im-text-secondary)")
 
         # Resolution
         if clip.width and clip.height:
             res_str = f"{clip.width}x{clip.height}"
             if clip.color_space:
                 res_str += f" \u2022 {clip.color_space}"
-            ui.label(res_str).classes("text-xs text-gray-400")
+            ui.label(res_str).classes("text-xs").style("color: var(--im-text-secondary)")
 
         # Duplicate indicator
         if is_duplicate:
             if is_best:
-                ui.label("Best").classes("text-green-600 text-xs font-semibold")
+                ui.label("Best").classes("text-xs font-semibold").style("color: var(--im-success)")
             else:
-                ui.label("Duplicate").classes("text-orange-600 text-xs")
+                ui.label("Duplicate").classes("text-xs").style("color: var(--im-warning)")
 
         # Selection checkbox
         def make_toggle_handler(asset_id: str):
@@ -208,11 +277,13 @@ def _render_clip_grid(
     lower_quality_ids: set[str],
     summary_container: ui.element,
 ) -> None:
-    """Render a grid of clip cards."""
+    """Render a responsive grid of clip cards."""
     state = get_app_state()
     all_clips = state.clips
 
-    with ui.element("div").classes("grid grid-cols-5 gap-4"):
+    with ui.element("div").classes(
+        "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
+    ):
         for clip in clips:
             _render_clip_card(
                 clip, state, all_clips, duplicate_ids, lower_quality_ids, summary_container
@@ -231,7 +302,6 @@ def _render_clip_grid_paginated(
         _render_clip_grid(clips, duplicate_ids, lower_quality_ids, summary_container)
         return
 
-    # Show first page immediately
     grid_container = ui.column().classes("w-full")
     with grid_container:
         _render_clip_grid(clips[:page_size], duplicate_ids, lower_quality_ids, summary_container)

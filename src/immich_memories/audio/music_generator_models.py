@@ -293,8 +293,8 @@ def _transform_mood(mood: str) -> str:
         # Replace mellow with energetic but warm
         return f"upbeat warm groovy {mood}"
     elif any(word in mood_lower for word in sad_words):
-        # Replace sad with warm but still positive
-        return "warm uplifting hopeful"
+        # Boost with warm positive words but keep original for template matching
+        return f"warm hopeful {mood}"
     else:
         # For all other moods, ensure they're upbeat
         if "upbeat" not in mood_lower and "energetic" not in mood_lower:

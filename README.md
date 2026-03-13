@@ -79,11 +79,11 @@ make help     # Show all available targets
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## Disclaimer
+## Built with AI
 
-> This project was developed primarily with AI assistance (Claude by Anthropic).
-> It comes with fewer guarantees than typical open-source software.
-> See [DISCLAIMER.md](DISCLAIMER.md) for full details.
+> This entire codebase was written with AI (Claude) as an experiment in building complex
+> software cleanly with AI assistance. 870+ tests, strict quality gates, the works.
+> See [DISCLAIMER.md](DISCLAIMER.md) for the full story.
 
 ## License
 

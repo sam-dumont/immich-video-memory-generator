@@ -45,8 +45,54 @@ def get_video_duration(video_path: Path) -> float:
         return 0.0
 
 
+def get_main_video_stream_map(video_path: Path) -> str:
+    """Find the main (highest-resolution) video stream in a file.
+
+    iPhone Live Photo videos can embed a depth map as stream 0
+    (512x512, 1fps, hevc). This function probes all video streams
+    and returns the ffmpeg -map argument for the largest one.
+
+    Returns:
+        ffmpeg map string like "0:v:0" or "0:1" for use with -map.
+    """
+    validated = validate_video_path(video_path, must_exist=True)
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v",
+        "-show_entries",
+        "stream=index,width,height",
+        "-of",
+        "json",
+        str(validated),
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            streams = data.get("streams", [])
+            if len(streams) > 1:
+                best = max(streams, key=lambda s: s.get("width", 0) * s.get("height", 0))
+                idx = best.get("index", 0)
+                logger.debug(
+                    "Multi-stream file: selected stream %d (%dx%d)",
+                    idx,
+                    best.get("width", 0),
+                    best.get("height", 0),
+                )
+                return f"0:{idx}"
+    except Exception:
+        pass
+    return "0:v:0"
+
+
 def get_video_info(video_path: Path) -> dict:
     """Get detailed video information.
+
+    Probes all video streams and picks the highest-resolution one
+    (avoids iPhone depth maps in Live Photo videos).
 
     Args:
         video_path: Path to the video file (validated for safety).
@@ -60,9 +106,9 @@ def get_video_info(video_path: Path) -> dict:
         "-v",
         "error",
         "-select_streams",
-        "v:0",
+        "v",
         "-show_entries",
-        "stream=width,height,r_frame_rate,codec_name,bit_rate,color_space,color_transfer,color_primaries,bits_per_raw_sample",
+        "stream=index,width,height,r_frame_rate,codec_name,bit_rate,color_space,color_transfer,color_primaries,bits_per_raw_sample",
         "-show_entries",
         "format=duration,size,bit_rate",
         "-of",
@@ -78,38 +124,7 @@ def get_video_info(video_path: Path) -> dict:
 
     try:
         data = json.loads(result.stdout)
-        stream = data.get("streams", [{}])[0]
-        fmt = data.get("format", {})
-
-        # Parse frame rate
-        fps = 0.0
-        if "r_frame_rate" in stream:
-            parts = stream["r_frame_rate"].split("/")
-            if len(parts) == 2 and int(parts[1]) > 0:
-                fps = int(parts[0]) / int(parts[1])
-
-        # Parse bit depth
-        bit_depth = None
-        if "bits_per_raw_sample" in stream:
-            try:
-                bit_depth = int(stream["bits_per_raw_sample"])
-            except (ValueError, TypeError):
-                pass
-
-        return {
-            "width": stream.get("width", 0),
-            "height": stream.get("height", 0),
-            "fps": fps,
-            "codec": stream.get("codec_name", ""),
-            "bitrate": int(fmt.get("bit_rate", 0)),
-            "duration": float(fmt.get("duration", 0)),
-            "size": int(fmt.get("size", 0)),
-            # HDR metadata
-            "color_space": stream.get("color_space"),
-            "color_transfer": stream.get("color_transfer"),
-            "color_primaries": stream.get("color_primaries"),
-            "bit_depth": bit_depth,
-        }
+        return _parse_probe_streams(data)
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         logger.error(f"Failed to parse video info: {e}")
         return {}
@@ -199,13 +214,22 @@ def _validate_header(key: str, value: str) -> tuple[str, str]:
 def _parse_probe_streams(data: dict) -> dict:
     """Parse ffprobe JSON output into a normalized metadata dictionary.
 
+    Picks the highest-resolution video stream to avoid iPhone depth maps
+    (512x512 HEVC at 1fps) that appear as the first stream in some Live Photos.
+
     Args:
         data: Parsed JSON output from ffprobe.
 
     Returns:
         Dictionary with normalized video metadata.
     """
-    stream = data.get("streams", [{}])[0]
+    streams = data.get("streams", [{}])
+    # Pick the stream with the highest resolution (avoids depth maps)
+    stream: dict = max(
+        streams,
+        key=lambda s: s.get("width", 0) * s.get("height", 0),
+        default={},
+    )
     fmt = data.get("format", {})
 
     fps = _parse_frame_rate(stream)
@@ -227,6 +251,9 @@ def _parse_probe_streams(data: dict) -> dict:
         "bit_depth": bit_depth,
         # Rotation metadata
         "rotation": rotation,
+        # Stream index — used to select the right stream in ffmpeg commands
+        # (important for Live Photos where depth map may be stream 0)
+        "video_stream_index": stream.get("index", 0),
     }
 
 
@@ -301,15 +328,16 @@ def probe_video_url(url: str, headers: dict[str, str] | None = None) -> dict:
         logger.error(f"Invalid URL for ffprobe: {e}")
         return {}
 
-    # Build ffprobe command for URL
+    # Build ffprobe command for URL — probe ALL video streams so we can pick
+    # the highest-resolution one (iPhone Live Photos have depth maps as stream 0)
     cmd = [
         "ffprobe",
         "-v",
         "error",
         "-select_streams",
-        "v:0",
+        "v",
         "-show_entries",
-        "stream=width,height,r_frame_rate,codec_name,bit_rate,color_space,color_transfer,color_primaries,bits_per_raw_sample:stream_side_data=rotation",
+        "stream=index,width,height,r_frame_rate,codec_name,bit_rate,color_space,color_transfer,color_primaries,bits_per_raw_sample:stream_side_data=rotation",
         "-show_entries",
         "format=duration,size,bit_rate",
         "-of",

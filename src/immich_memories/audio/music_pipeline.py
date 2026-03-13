@@ -73,6 +73,7 @@ class MusicPipeline:
         progress_callback: Any | None = None,
         crossfade_duration: float = 2.0,
         hemisphere: str = "north",
+        memory_type: str | None = None,
     ) -> MusicGenerationResult:
         """Generate music using the first available backend, with fallback.
 
@@ -107,6 +108,7 @@ class MusicPipeline:
                 variation_index=i,
                 crossfade_duration=crossfade_duration,
                 output_dir=output_dir,
+                memory_type=memory_type,
             )
 
             # Try each generator in priority order

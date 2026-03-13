@@ -91,3 +91,112 @@ class TestCLIGenerateErrors:
         result = _invoke(["generate", "--year", "2024", "--dry-run"], config=config)
         # Should error about missing Immich connection
         assert result.exit_code != 0
+
+
+class TestCLIMemoryTypeFlags:
+    """Test that new memory type CLI flags appear in help."""
+
+    def test_memory_type_in_help(self):
+        """generate --help shows --memory-type flag."""
+        result = _invoke(["generate", "--help"])
+        assert "--memory-type" in result.output
+
+    def test_season_in_help(self):
+        """generate --help shows --season flag."""
+        result = _invoke(["generate", "--help"])
+        assert "--season" in result.output
+
+    def test_month_in_help(self):
+        """generate --help shows --month flag."""
+        result = _invoke(["generate", "--help"])
+        assert "--month" in result.output
+
+    def test_hemisphere_in_help(self):
+        """generate --help shows --hemisphere flag."""
+        result = _invoke(["generate", "--help"])
+        assert "--hemisphere" in result.output
+
+    def test_person_allows_multiple(self):
+        """--person flag accepts multiple values."""
+        result = _invoke(["generate", "--help"])
+        assert "--person" in result.output
+
+
+class TestCLIMemoryTypeResolve:
+    """Test memory type date resolution in dry-run mode."""
+
+    def test_season_dry_run(self):
+        """--memory-type season --season summer resolves to summer date range."""
+        config = Config()
+        config.immich.url = "http://immich:2283"
+        config.immich.api_key = "test-key"
+        result = _invoke(
+            [
+                "generate",
+                "--memory-type",
+                "season",
+                "--season",
+                "summer",
+                "--year",
+                "2024",
+                "--dry-run",
+            ],
+            config=config,
+        )
+        assert result.exit_code == 0
+        assert "Dry run" in result.output
+
+    def test_monthly_dry_run(self):
+        """--memory-type monthly_highlights --month 7 resolves correctly."""
+        config = Config()
+        config.immich.url = "http://immich:2283"
+        config.immich.api_key = "test-key"
+        result = _invoke(
+            [
+                "generate",
+                "--memory-type",
+                "monthly_highlights",
+                "--month",
+                "7",
+                "--year",
+                "2024",
+                "--dry-run",
+            ],
+            config=config,
+        )
+        assert result.exit_code == 0
+        assert "Dry run" in result.output
+
+    def test_on_this_day_dry_run(self):
+        """--memory-type on_this_day resolves with default target date."""
+        config = Config()
+        config.immich.url = "http://immich:2283"
+        config.immich.api_key = "test-key"
+        result = _invoke(
+            ["generate", "--memory-type", "on_this_day", "--dry-run"],
+            config=config,
+        )
+        assert result.exit_code == 0
+        assert "Dry run" in result.output
+
+    def test_year_in_review_default(self):
+        """--memory-type year_in_review with --year works (backward compat)."""
+        config = Config()
+        config.immich.url = "http://immich:2283"
+        config.immich.api_key = "test-key"
+        result = _invoke(
+            ["generate", "--memory-type", "year_in_review", "--year", "2024", "--dry-run"],
+            config=config,
+        )
+        assert result.exit_code == 0
+
+    def test_person_spotlight_requires_person(self):
+        """--memory-type person_spotlight without --person shows error."""
+        config = Config()
+        config.immich.url = "http://immich:2283"
+        config.immich.api_key = "test-key"
+        result = _invoke(
+            ["generate", "--memory-type", "person_spotlight", "--year", "2024", "--dry-run"],
+            config=config,
+        )
+        assert result.exit_code != 0

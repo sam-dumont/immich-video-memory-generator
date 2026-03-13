@@ -213,7 +213,8 @@ class AnalysisMixin:
             suffix = Path(safe_name).suffix or ".mp4"
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                 temp_file = Path(tmp.name)
-            self.client.download_asset(clip.asset.id, temp_file)
+            download_id = clip.asset.live_photo_video_id or clip.asset.id
+            self.client.download_asset(download_id, temp_file)
             analysis_video = temp_file
             original_video = temp_file
 

@@ -28,15 +28,15 @@ const SCREENSHOT_DIR = path.join(__dirname, '..', 'static', 'img', 'screenshots'
 const REDACTIONS: Array<{selector: string; value: string}> = [
   {selector: 'input[aria-label="Immich Server URL"]', value: 'https://photos.example.com'},
   {selector: 'input[aria-label="API Key"]', value: 'your-api-key-here'},
-  {selector: 'input[aria-label="Output filename"]', value: 'everyone_2026_memories.mp4'},
+  {selector: 'input[aria-label="Output filename"]', value: 'alice_2025_memories.mp4'},
 ];
 
 // Text replacements applied via JS on the page
 const TEXT_REDACTIONS: Array<{find: RegExp; replace: string}> = [
   {find: /Connected as: .+/, replace: 'Connected as: user@example.com'},
-  {find: /\/Users\/\w+\/Videos\/Memories\/.*/, replace: '/home/user/Videos/Memories/everyone_2026_memories.mp4'},
+  {find: /\/Users\/\w+\/Videos\/Memories\/.*/, replace: '/home/user/Videos/Memories/alice_2025_memories.mp4'},
   {find: /http:\/\/\d+\.\d+\.\d+\.\d+:\d+/, replace: 'https://photos.example.com'},
-  {find: /Will be saved to: .*/, replace: 'Will be saved to: /home/user/Videos/Memories/everyone_2026_memories.mp4'},
+  {find: /Will be saved to: .*/, replace: 'Will be saved to: /home/user/Videos/Memories/alice_2025_memories.mp4'},
 ];
 
 async function redactPage(page: Page) {
@@ -134,6 +134,34 @@ async function screenshot(page: Page, name: string, fullPage = false) {
   console.log(`  Saved: ${name}.png`);
 }
 
+async function switchToDarkMode(page: Page) {
+  // The theme toggle is rendered as icon buttons at the bottom of the sidebar.
+  // Icons: light_mode (sun), brightness_auto (gear), dark_mode (moon).
+  // Click the moon icon to switch to dark mode.
+  const darkBtn = page.locator('button:has(i:text("dark_mode"))');
+  if (await darkBtn.isVisible()) {
+    await darkBtn.click();
+    // Theme toggle triggers a full page reload
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2000);
+    console.log('  Switched to dark mode');
+  } else {
+    console.log('  WARNING: dark mode button not found');
+  }
+}
+
+async function switchToLightMode(page: Page) {
+  const lightBtn = page.locator('button:has(i:text("light_mode"))');
+  if (await lightBtn.isVisible()) {
+    await lightBtn.click();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2000);
+    console.log('  Switched to light mode');
+  } else {
+    console.log('  WARNING: light mode button not found');
+  }
+}
+
 async function main() {
   fs.mkdirSync(SCREENSHOT_DIR, {recursive: true});
 
@@ -145,12 +173,37 @@ async function main() {
   const page = await context.newPage();
 
   try {
+    // ══════════════════════════════════════════════════════════════
+    // LIGHT MODE
+    // ══════════════════════════════════════════════════════════════
+
+    // ── Ensure light mode ──
+    console.log('\nEnsuring light mode...');
+    await page.goto(BASE_URL);
+    await waitForReady(page);
+    await switchToLightMode(page);
+
     // ── Step 1: Configuration ──
-    console.log('\nStep 1: Configuration');
+    console.log('\nStep 1: Configuration (light)');
     await page.goto(BASE_URL);
     await waitForReady(page);
     await redactPage(page);
     await screenshot(page, 'step1-config-connected');
+
+    // Screenshot: memory type preset cards (scroll down to show them)
+    console.log('  Capturing memory type presets...');
+    const yearPreset = page.getByText('Year in Review');
+    if (await yearPreset.isVisible()) {
+      await yearPreset.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(300);
+      await redactPage(page);
+      await screenshot(page, 'step1-preset-cards');
+      // Click to show selected state
+      await yearPreset.click();
+      await page.waitForTimeout(500);
+      await redactPage(page);
+      await screenshot(page, 'step1-preset-selected');
+    }
 
     // Open person dropdown
     const personCombo = page.getByRole('combobox', {name: 'Person'});
@@ -159,51 +212,31 @@ async function main() {
       await page.waitForTimeout(500);
       await redactPersonNames(page);
       await screenshot(page, 'step1-person-dropdown');
-      await page.getByRole('option', {name: 'All people'}).click();
+      // Pick first real person (not "All people")
+      const options = page.getByRole('option');
+      const count = await options.count();
+      if (count > 1) {
+        await options.nth(1).click();
+      } else {
+        await page.getByRole('option', {name: 'All people'}).click();
+      }
       await page.waitForTimeout(300);
     }
 
-    // Switch to "Duration" tab and set 1 month for a fast flow
-    console.log('  Setting time period to 1 month...');
-    const durationTab = page.getByRole('tab', {name: /Duration/i});
-    if (await durationTab.isVisible()) {
-      await durationTab.click();
-      await page.waitForTimeout(500);
-
-      // Set duration to 1 month
-      const durationInput = page.locator('input[aria-label="Duration"]');
-      if (await durationInput.isVisible()) {
-        await durationInput.fill('1');
-      }
-
-      // Select "Months" unit
-      const unitSelect = page.getByRole('combobox', {name: /Unit/i});
-      if (await unitSelect.isVisible()) {
-        await unitSelect.click();
-        await page.waitForTimeout(200);
-        const monthsOption = page.getByRole('option', {name: 'Months'});
-        if (await monthsOption.isVisible()) {
-          await monthsOption.click();
-          await page.waitForTimeout(200);
-        }
-      }
-    }
-
-    // Expand cache management — scroll down to show it in viewport
+    // Expand cache management
     const cacheButton = page.getByRole('button', {name: /Cache Management/});
     if (await cacheButton.isVisible()) {
       await cacheButton.scrollIntoViewIfNeeded();
       await cacheButton.click();
       await page.waitForTimeout(500);
       await redactPage(page);
-      // Scroll so cache panel is visible in viewport
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
       await page.waitForTimeout(300);
       await screenshot(page, 'step1-cache-panel');
     }
 
     // ── Step 2: Clip Review ──
-    console.log('\nStep 2: Clip Review');
+    console.log('\nStep 2: Clip Review (light)');
     // Scroll back to top so "Next" button is clickable
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(200);
@@ -214,11 +247,23 @@ async function main() {
 
     // Wait for loading dialog to disappear (can take a while with many videos)
     console.log('  Waiting for videos to load...');
+    try {
+      await page.waitForSelector('[role="dialog"]', {timeout: 5_000});
+    } catch {
+      // Dialog may have already gone or never appeared (cached data)
+    }
     await page.waitForFunction(
       () => !document.querySelector('[role="dialog"]'),
       {timeout: 300_000}
     );
     await waitForReady(page);
+
+    // Wait for actual content to render (month buttons with clip counts)
+    try {
+      await page.waitForSelector('button:has-text("clips")', {timeout: 30_000});
+    } catch {
+      // Content might not appear, take screenshot anyway
+    }
     // Viewport screenshot: shows top of clip review (stats, generate button, month list)
     await screenshot(page, 'step2-clip-review');
 
@@ -242,7 +287,7 @@ async function main() {
     await screenshot(page, 'step2-refine-moments');
 
     // ── Step 3: Generation Options ──
-    console.log('\nStep 3: Generation Options');
+    console.log('\nStep 3: Generation Options (light)');
     const continueButton = page.getByRole('button', {name: 'Continue to Generation'});
     await continueButton.scrollIntoViewIfNeeded();
     await continueButton.click();
@@ -253,8 +298,28 @@ async function main() {
     // Step 3 fits in viewport — shows output settings, music, and summary
     await screenshot(page, 'step3-options');
 
+    // ── Music Preview ──
+    console.log('  Generating music preview...');
+    const musicPreviewBtn = page.getByRole('button', {name: /Generate Music Preview/});
+    if (await musicPreviewBtn.isVisible()) {
+      await musicPreviewBtn.click();
+      // Wait for generation to complete (up to 5 minutes)
+      try {
+        await page.waitForSelector('text=Music generated', {timeout: 300_000});
+        await page.waitForTimeout(1000);
+        // Scroll to show the music player
+        const playerSection = page.locator('audio').first();
+        if (await playerSection.isVisible()) {
+          await playerSection.scrollIntoViewIfNeeded();
+        }
+        await screenshot(page, 'step3-music-preview');
+      } catch {
+        console.log('  Music preview timed out or failed, continuing...');
+      }
+    }
+
     // ── Step 4: Preview & Export ──
-    console.log('\nStep 4: Preview & Export');
+    console.log('\nStep 4: Preview & Export (light)');
     await page.getByRole('button', {name: 'Next: Preview & Export'}).click();
 
     // Wait for actual navigation to /step4
@@ -263,6 +328,103 @@ async function main() {
     await redactPage(page);
     // Step 4 fits in viewport — shows summary, output path, and generate button
     await screenshot(page, 'step4-preview-export');
+
+    // Note: video generation is skipped in automated screenshots because it
+    // requires FFmpeg encoding which takes too long. The step4-preview-export
+    // screenshot shows the pre-generation state with the Generate button.
+
+    // ══════════════════════════════════════════════════════════════
+    // DARK MODE — re-capture key pages
+    // ══════════════════════════════════════════════════════════════
+    console.log('\n── Switching to Dark Mode ──');
+
+    // Go to step 1 and switch to dark mode
+    await page.goto(BASE_URL);
+    await waitForReady(page);
+    await switchToDarkMode(page);
+    await redactPage(page);
+    await screenshot(page, 'dark-step1-config');
+
+    // Capture preset cards in dark mode
+    const darkYearPreset = page.getByText('Year in Review');
+    if (await darkYearPreset.isVisible()) {
+      await darkYearPreset.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(300);
+      await screenshot(page, 'dark-step1-presets');
+    }
+
+    // Navigate to step 2 in dark mode
+    console.log('  Dark mode: Step 2');
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(200);
+    const nextBtn2 = page.getByRole('button', {name: 'Next: Review Clips'});
+    if (await nextBtn2.isVisible()) {
+      await nextBtn2.click();
+      await page.waitForURL('**/step2', {timeout: 30_000});
+
+      // Wait for loading dialog to appear AND disappear
+      console.log('  Dark mode: waiting for clips to load...');
+      try {
+        // First wait for the dialog to appear (it may take a moment)
+        await page.waitForSelector('[role="dialog"]', {timeout: 5_000});
+      } catch {
+        // Dialog may have already gone, that's fine
+      }
+      await page.waitForFunction(
+        () => !document.querySelector('[role="dialog"]'),
+        {timeout: 300_000}
+      );
+      await waitForReady(page);
+
+      // Wait for actual content (month buttons with clip counts)
+      try {
+        await page.waitForSelector('button:has-text("clips")', {timeout: 30_000});
+      } catch {
+        // Clips might not appear, take screenshot anyway
+      }
+      await screenshot(page, 'dark-step2-clip-review');
+
+      // Expand first month
+      const darkMonthButton = page.locator('button').filter({hasText: /\(\d+ clips?\)/}).first();
+      if (await darkMonthButton.isVisible()) {
+        await darkMonthButton.scrollIntoViewIfNeeded();
+        await darkMonthButton.click();
+        await page.waitForTimeout(1000);
+        await darkMonthButton.scrollIntoViewIfNeeded();
+        await screenshot(page, 'dark-step2-clip-grid');
+      }
+    }
+
+    // Navigate to step 3 in dark mode
+    console.log('  Dark mode: Step 3');
+    const darkRefine = page.getByRole('button', {name: 'Next: Refine Moments'});
+    if (await darkRefine.isVisible()) {
+      await darkRefine.scrollIntoViewIfNeeded();
+      await darkRefine.click();
+      await waitForReady(page);
+    }
+    const darkContinue = page.getByRole('button', {name: 'Continue to Generation'});
+    if (await darkContinue.isVisible()) {
+      await darkContinue.scrollIntoViewIfNeeded();
+      await darkContinue.click();
+      await page.waitForURL('**/step3', {timeout: 30_000});
+      await waitForReady(page);
+      await screenshot(page, 'dark-step3-options');
+    }
+
+    // Navigate to step 4 in dark mode
+    console.log('  Dark mode: Step 4');
+    const darkNext4 = page.getByRole('button', {name: 'Next: Preview & Export'});
+    if (await darkNext4.isVisible()) {
+      await darkNext4.click();
+      await page.waitForURL('**/step4', {timeout: 30_000});
+      await waitForReady(page);
+      await redactPage(page);
+      await screenshot(page, 'dark-step4-preview');
+    }
+
+    // Switch back to light mode to leave the app in its default state
+    await switchToLightMode(page);
 
     console.log('\nDone! Screenshots saved to static/img/screenshots/');
     console.log('Next step: run blur-faces.ts to blur faces in thumbnails.');

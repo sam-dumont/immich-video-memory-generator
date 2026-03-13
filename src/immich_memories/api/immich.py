@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import httpx
 from pydantic import ValidationError
 
+from immich_memories.api.client_album import AlbumMixin
 from immich_memories.api.client_asset import AssetMixin
 from immich_memories.api.client_person import PersonMixin
 from immich_memories.api.client_search import SearchMixin
@@ -50,7 +51,7 @@ class ImmichNotFoundError(ImmichAPIError):
     pass
 
 
-class ImmichClient(AssetMixin, PersonMixin, SearchMixin):
+class ImmichClient(AlbumMixin, AssetMixin, PersonMixin, SearchMixin):
     """Client for interacting with the Immich API."""
 
     def __init__(
@@ -350,3 +351,53 @@ class SyncImmichClient:
                 person_id, date_range, progress_callback
             )
         )
+
+    def get_live_photos_for_date_range(
+        self,
+        date_range: DateRange,
+        progress_callback: Callable[[int, int], None] | None = None,
+        person_id: str | None = None,
+        person_ids: list[str] | None = None,
+    ) -> list[Asset]:
+        return self._run(
+            self._async_client.get_live_photos_for_date_range(
+                date_range,
+                progress_callback,
+                person_id=person_id,
+                person_ids=person_ids,
+            )
+        )
+
+    def get_videos_for_any_person(
+        self,
+        person_ids: list[str],
+        date_range: DateRange,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[Asset]:
+        return self._run(
+            self._async_client.get_videos_for_any_person(person_ids, date_range, progress_callback)
+        )
+
+    def get_videos_for_all_persons(
+        self,
+        person_ids: list[str],
+        date_range: DateRange,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[Asset]:
+        return self._run(
+            self._async_client.get_videos_for_all_persons(person_ids, date_range, progress_callback)
+        )
+
+    def upload_asset(self, file_path: Path) -> str:
+        return self._run(self._async_client.upload_asset(file_path))
+
+    def create_album(self, name: str, description: str | None = None) -> str:
+        return self._run(self._async_client.create_album(name, description))
+
+    def add_assets_to_album(self, album_id: str, asset_ids: list[str]) -> None:
+        self._run(self._async_client.add_assets_to_album(album_id, asset_ids))
+
+    def upload_memory(
+        self, video_path: Path, album_name: str | None = None
+    ) -> dict[str, str | None]:
+        return self._run(self._async_client.upload_memory(video_path, album_name))

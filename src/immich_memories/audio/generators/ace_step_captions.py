@@ -12,75 +12,106 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # Dense caption templates for ACE-Step.
-# Each template specifies genre, instruments, key, BPM, time signature.
-# Tested prompts that produce good results on ACE-Step 1.5 turbo.
+# Each template uses a descriptive sentence (not just tags) for better LLM guidance.
+# BPM, key, and time_signature are sent as separate API params.
+# "instrumental, no vocals" is reinforced in every caption to prevent singing.
 ACE_CAPTION_TEMPLATES: dict[str, dict[str, str | int]] = {
     "lofi": {
-        "tags": "lo-fi hip hop, chill beats, jazzy, mellow, smooth, vinyl crackle",
-        "instruments": "dusty drum machine, Rhodes electric piano, warm sub bass, vinyl noise, soft guitar",
+        "caption": (
+            "A mellow lo-fi hip hop instrumental with dusty drum machine grooves, "
+            "warm Rhodes electric piano chords, and smooth sub bass. "
+            "Vinyl crackle texture, jazzy and relaxed. Instrumental, no vocals, no singing"
+        ),
         "key": "D minor",
         "bpm": 75,
         "time_signature": "4/4",
     },
     "upbeat_pop": {
-        "tags": "pop, upbeat, feel-good, bright, catchy",
-        "instruments": "punchy drums, synth bass, bright synth pads, claps, electric guitar",
+        "caption": (
+            "A bright, upbeat pop instrumental with punchy drums, synth bass, "
+            "and shimmering synth pads. Feel-good energy with handclaps "
+            "and electric guitar accents. Instrumental, no vocals, no singing"
+        ),
         "key": "C major",
         "bpm": 120,
         "time_signature": "4/4",
     },
     "indie_electronic": {
-        "tags": "indie electronic, dreamy, atmospheric, driving beat",
-        "instruments": "analog synths, programmed drums, arpeggiated synth, warm pads, subtle bass",
+        "caption": (
+            "Dreamy indie electronic instrumental with analog synths, "
+            "a driving programmed beat, and arpeggiated melodies over warm pads. "
+            "Atmospheric and hypnotic. Instrumental, no vocals, no singing"
+        ),
         "key": "A minor",
         "bpm": 110,
         "time_signature": "4/4",
     },
     "tropical": {
-        "tags": "tropical house, sunny, bouncy, fun, summery",
-        "instruments": "steel drums, marimba, tropical percussion, synth bass, bright pads",
+        "caption": (
+            "A warm, sunny electronic pop instrumental with plucked guitar loops, "
+            "soft synth chords, light claps, and a groovy bass line. "
+            "Relaxed summer feel with airy pads. Instrumental, no vocals, no singing"
+        ),
         "key": "F major",
-        "bpm": 115,
+        "bpm": 112,
         "time_signature": "4/4",
     },
     "cinematic": {
-        "tags": "cinematic, epic, orchestral, emotional, powerful",
-        "instruments": "strings ensemble, brass section, timpani, piano, choir pads",
+        "caption": (
+            "Epic cinematic orchestral instrumental with sweeping strings, "
+            "powerful brass, timpani hits, and emotional piano melodies. "
+            "Grand and dynamic. Instrumental, no vocals, no singing"
+        ),
         "key": "E minor",
         "bpm": 90,
         "time_signature": "4/4",
     },
     "acoustic": {
-        "tags": "acoustic, warm, gentle, folk, heartfelt",
-        "instruments": "acoustic guitar, soft percussion, upright bass, light piano, subtle strings",
+        "caption": (
+            "Gentle acoustic folk instrumental with fingerpicked guitar, "
+            "soft brushed percussion, upright bass, and light piano. "
+            "Warm and heartfelt. Instrumental, no vocals, no singing"
+        ),
         "key": "G major",
         "bpm": 100,
         "time_signature": "4/4",
     },
     "future_bass": {
-        "tags": "future bass, energetic, euphoric, bright, bouncy",
-        "instruments": "supersaw synths, heavy sidechained bass, chopped vocal chops, snappy drums, bright leads",
+        "caption": (
+            "Energetic future bass instrumental with massive supersaw synths, "
+            "heavy sidechained bass drops, and snappy drums. "
+            "Euphoric and bouncy with bright lead melodies. Instrumental, no vocals, no singing"
+        ),
         "key": "Bb major",
         "bpm": 150,
         "time_signature": "4/4",
     },
     "jazz": {
-        "tags": "jazz, smooth, sophisticated, laid-back",
-        "instruments": "upright bass, brushed drums, jazz guitar, tenor saxophone, Rhodes piano",
+        "caption": (
+            "Smooth jazz instrumental with walking upright bass, brushed drums, "
+            "mellow jazz guitar, tenor saxophone solos, and Rhodes piano. "
+            "Sophisticated and laid-back. Instrumental, no vocals, no singing"
+        ),
         "key": "F major",
         "bpm": 95,
         "time_signature": "4/4",
     },
     "ambient": {
-        "tags": "ambient, ethereal, spacious, calming, atmospheric",
-        "instruments": "lush reverb pads, granular textures, soft piano, wind chimes, subtle field recordings",
+        "caption": (
+            "Lush ambient instrumental with ethereal reverb pads, "
+            "granular textures, soft piano notes, and subtle wind chimes. "
+            "Spacious and calming. Instrumental, no vocals, no singing"
+        ),
         "key": "C major",
         "bpm": 70,
         "time_signature": "4/4",
     },
     "holiday": {
-        "tags": "holiday, festive, joyful, warm, celebratory",
-        "instruments": "sleigh bells, glockenspiel, warm strings, piano, gentle brass, soft drums",
+        "caption": (
+            "Festive holiday instrumental with sleigh bells, glockenspiel, "
+            "warm orchestral strings, gentle brass, and soft piano. "
+            "Joyful and celebratory. Instrumental, no vocals, no singing"
+        ),
         "key": "G major",
         "bpm": 110,
         "time_signature": "4/4",
@@ -108,6 +139,23 @@ _MOOD_TO_TEMPLATE = {
     "holiday": "holiday",
     "festive": "holiday",
     "cozy": "lofi",
+    "mysterious": "ambient",
+    "tender": "acoustic",
+    "melancholic": "lofi",
+    "exciting": "future_bass",
+    "uplifting": "cinematic",
+}
+
+# Maps memory type presets to preferred music templates.
+# Memory type takes priority over mood when provided.
+_MEMORY_TYPE_TO_TEMPLATE: dict[str, str] = {
+    "trip": "tropical",
+    "season": "indie_electronic",
+    "person_spotlight": "acoustic",
+    "on_this_day": "lofi",
+    "monthly_highlights": "upbeat_pop",
+    "multi_person": "upbeat_pop",
+    "year_in_review": "cinematic",
 }
 
 # Seasonal modifiers appended to tags
@@ -150,30 +198,37 @@ def build_ace_caption(mood: str, season: str | None = None) -> tuple[str, str]:
         Tuple of (tags, lyrics) for backwards compatibility.
     """
     result = build_ace_caption_structured(mood, season=season)
-    # Include key/BPM in tags string for backwards compat
-    tags = f"{result.caption}, key of {result.key_scale}"
+    # Include key in caption string for backwards compat (lib mode)
+    tags = f"{result.caption}. Key of {result.key_scale}"
     return tags, result.lyrics
 
 
 def _match_template(mood: str) -> str:
     """Match a single mood word to a template name.
 
-    Uses exact word matching (not substring) to avoid false positives.
-    For example, "energetic calm" should match "energetic" OR "calm",
-    not accidentally match "happy" because it appears in some other word.
+    Prioritizes specific mood words over generic booster words that
+    _transform_mood() prepends. For example, "upbeat romantic" should
+    match "romantic" → acoustic, not "upbeat" → upbeat_pop.
 
     Args:
-        mood: Single mood string (e.g. "happy", "nostalgic", "energetic calm")
+        mood: Single mood string (e.g. "happy", "nostalgic", "upbeat romantic")
 
     Returns:
         Template name from ACE_CAPTION_TEMPLATES.
     """
-    mood_words = set(mood.lower().split())
+    # Generic words that _transform_mood prepends to everything.
+    # These should only match if no more specific word is found.
+    _BOOSTER_WORDS = {"upbeat", "warm", "groovy", "hopeful"}
 
-    # Check each mood word against the mapping
+    mood_words = [w.strip(",. ") for w in mood.lower().split() if w.strip(",. ")]
+
+    # First pass: check specific (non-booster) words
     for word in mood_words:
-        # Strip commas/punctuation from individual words
-        word = word.strip(",. ")
+        if word not in _BOOSTER_WORDS and word in _MOOD_TO_TEMPLATE:
+            return _MOOD_TO_TEMPLATE[word]
+
+    # Second pass: fall back to booster words
+    for word in mood_words:
         if word in _MOOD_TO_TEMPLATE:
             return _MOOD_TO_TEMPLATE[word]
 
@@ -212,6 +267,7 @@ def build_ace_caption_structured(
     mood: str,
     season: str | None = None,
     scene_moods: list[str] | None = None,
+    memory_type: str | None = None,
 ) -> ACECaptionResult:
     """Build structured ACE-Step caption with explicit musical parameters.
 
@@ -222,22 +278,30 @@ def build_ace_caption_structured(
         mood: Mood string (e.g. "happy", "nostalgic")
         season: Optional season modifier ("winter", "summer", etc.)
         scene_moods: Optional list of per-scene mood strings for voting.
+        memory_type: Optional memory type preset for template selection.
+            Takes priority over mood when a known mapping exists.
 
     Returns:
         ACECaptionResult with all fields populated.
     """
-    template_name = _pick_template_for_scenes(scene_moods) if scene_moods else _match_template(mood)
+    # Memory type takes priority for template selection
+    if memory_type and memory_type in _MEMORY_TYPE_TO_TEMPLATE:
+        template_name = _MEMORY_TYPE_TO_TEMPLATE[memory_type]
+    elif scene_moods:
+        template_name = _pick_template_for_scenes(scene_moods)
+    else:
+        template_name = _match_template(mood)
 
     template = ACE_CAPTION_TEMPLATES[template_name]
 
-    # Build caption without BPM/key/time_sig (those go as explicit params)
-    caption = f"{template['tags']}, {template['instruments']}, instrumental, loop background"
+    # Use the descriptive caption directly from the template
+    caption = str(template["caption"])
 
-    # Add seasonal modifier
+    # Add seasonal modifier if not already implied by the template
     if season:
         modifier = _SEASON_TAG_MODIFIERS.get(season.lower(), "")
         if modifier:
-            caption = f"{caption}, {modifier}"
+            caption = f"{caption}. {modifier}"
 
     return ACECaptionResult(
         caption=caption,

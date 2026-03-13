@@ -12,6 +12,7 @@ Full localization support for English and French (extensible).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
@@ -29,6 +30,10 @@ class SelectionType(Enum):
     SINGLE_MONTH = "single_month"
     MONTH_RANGE = "month_range"
     DATE_RANGE = "date_range"
+    SEASON = "season"
+    PERSON_SPOTLIGHT = "person_spotlight"
+    MULTI_PERSON = "multi_person"
+    ON_THIS_DAY = "on_this_day"
 
 
 @dataclass
@@ -72,6 +77,24 @@ MONTH_NAMES: dict[str, list[str]] = {
     ],
 }
 
+# Season names by locale
+SEASON_NAMES: dict[str, dict[str, str]] = {
+    "en": {
+        "spring": "Spring",
+        "summer": "Summer",
+        "fall": "Fall",
+        "autumn": "Fall",
+        "winter": "Winter",
+    },
+    "fr": {
+        "spring": "Printemps",
+        "summer": "Été",
+        "fall": "Automne",
+        "autumn": "Automne",
+        "winter": "Hiver",
+    },
+}
+
 # Title patterns by locale
 TITLE_PATTERNS: dict[str, dict[str, str]] = {
     "en": {
@@ -79,12 +102,22 @@ TITLE_PATTERNS: dict[str, dict[str, str]] = {
         "month_year": "{month} {year}",
         "month_range_same_year": "{start_month} to {end_month} {year}",
         "month_range_different_year": "{start_month} {start_year} to {end_month} {end_year}",
+        "season_year": "{season} {year}",
+        "season_year_span": "{season} {start_year}-{end_year}",
+        "on_this_day": "{month} {day}",
+        "on_this_day_subtitle": "Through the Years",
+        "person_spotlight_subtitle": "Your Year with {person}",
     },
     "fr": {
         "year_ordinal": "{ordinal} Année",
         "month_year": "{month} {year}",
         "month_range_same_year": "{start_month} à {end_month} {year}",
         "month_range_different_year": "{start_month} {start_year} à {end_month} {end_year}",
+        "season_year": "{season} {year}",
+        "season_year_span": "{season} {start_year}-{end_year}",
+        "on_this_day": "{month} {day}",
+        "on_this_day_subtitle": "À travers les années",
+        "person_spotlight_subtitle": "Votre année avec {person}",
     },
 }
 
@@ -106,6 +139,28 @@ def get_month_name(month: int, locale: str = "en") -> str:
         raise ValueError(f"Month must be 1-12, got {month}")
 
     return MONTH_NAMES[locale][month - 1]
+
+
+def get_season_name(season: str, locale: str = "en") -> str:
+    """Get the localized season name.
+
+    Args:
+        season: Season key ("spring", "summer", "fall", "autumn", "winter").
+        locale: Language code ("en", "fr").
+
+    Returns:
+        Localized season name.
+
+    Raises:
+        ValueError: If season name is not recognized.
+    """
+    names = SEASON_NAMES.get(locale, SEASON_NAMES["en"])
+    season_lower = season.lower()
+    if season_lower not in names:
+        raise ValueError(
+            f"Unknown season: '{season}'. Expected: spring, summer, fall, autumn, winter"
+        )
+    return names[season_lower]
 
 
 def get_ordinal(n: int, locale: str = "en") -> str:
@@ -132,6 +187,119 @@ def get_ordinal(n: int, locale: str = "en") -> str:
         return str(n)
 
 
+def _title_calendar_year(**kwargs) -> TitleInfo:
+    if kwargs["year"] is None:
+        raise ValueError("Year required for calendar year selection")
+    return TitleInfo(
+        main_title=str(kwargs["year"]),
+        subtitle=kwargs["person_name"],
+        selection_type=SelectionType.CALENDAR_YEAR,
+    )
+
+
+def _title_birthday_year(**kwargs) -> TitleInfo:
+    if kwargs["birthday_age"] is None:
+        raise ValueError("Birthday age required for birthday year selection")
+    patterns = TITLE_PATTERNS.get(kwargs["locale"], TITLE_PATTERNS["en"])
+    ordinal = get_ordinal(kwargs["birthday_age"], kwargs["locale"])
+    return TitleInfo(
+        main_title=patterns["year_ordinal"].format(ordinal=ordinal),
+        subtitle=kwargs["person_name"],
+        selection_type=SelectionType.BIRTHDAY_YEAR,
+    )
+
+
+def _title_single_month(**kwargs) -> TitleInfo:
+    if kwargs["month"] is None or kwargs["year"] is None:
+        raise ValueError("Month and year required for single month selection")
+    patterns = TITLE_PATTERNS.get(kwargs["locale"], TITLE_PATTERNS["en"])
+    month_name = get_month_name(kwargs["month"], kwargs["locale"])
+    return TitleInfo(
+        main_title=patterns["month_year"].format(month=month_name, year=kwargs["year"]),
+        subtitle=kwargs["person_name"],
+        selection_type=SelectionType.SINGLE_MONTH,
+    )
+
+
+def _title_month_range(**kwargs) -> TitleInfo:
+    if kwargs["start_month"] is None or kwargs["end_month"] is None:
+        raise ValueError("Start and end month required for month range")
+    patterns = TITLE_PATTERNS.get(kwargs["locale"], TITLE_PATTERNS["en"])
+    start_month_name = get_month_name(kwargs["start_month"], kwargs["locale"])
+    end_month_name = get_month_name(kwargs["end_month"], kwargs["locale"])
+    s_year = kwargs["start_year"] or kwargs["year"]
+    e_year = kwargs["end_year"] or kwargs["year"]
+    if s_year is None or e_year is None:
+        raise ValueError("Year(s) required for month range selection")
+    if s_year == e_year:
+        main_title = patterns["month_range_same_year"].format(
+            start_month=start_month_name, end_month=end_month_name, year=s_year
+        )
+    else:
+        main_title = patterns["month_range_different_year"].format(
+            start_month=start_month_name,
+            start_year=s_year,
+            end_month=end_month_name,
+            end_year=e_year,
+        )
+    return TitleInfo(
+        main_title=main_title,
+        subtitle=kwargs["person_name"],
+        selection_type=SelectionType.MONTH_RANGE,
+    )
+
+
+def _title_date_range(**kwargs) -> TitleInfo:
+    if kwargs["start_date"] is None or kwargs["end_date"] is None:
+        raise ValueError("Start and end date required for date range selection")
+    return _generate_date_range_title(
+        kwargs["start_date"], kwargs["end_date"], kwargs["person_name"], kwargs["locale"]
+    )
+
+
+def _title_season(**kwargs) -> TitleInfo:
+    from immich_memories.titles._text_memory_types import generate_season_title
+
+    return generate_season_title(
+        kwargs["season"],
+        kwargs["year"],
+        kwargs["end_year"],
+        kwargs["person_name"],
+        kwargs["locale"],
+    )
+
+
+def _title_person_spotlight(**kwargs) -> TitleInfo:
+    from immich_memories.titles._text_memory_types import generate_person_spotlight_title
+
+    return generate_person_spotlight_title(kwargs["year"], kwargs["person_name"], kwargs["locale"])
+
+
+def _title_multi_person(**kwargs) -> TitleInfo:
+    from immich_memories.titles._text_memory_types import generate_multi_person_title
+
+    return generate_multi_person_title(kwargs["year"], kwargs["person_names"], kwargs["locale"])
+
+
+def _title_on_this_day(**kwargs) -> TitleInfo:
+    from immich_memories.titles._text_memory_types import generate_on_this_day_title
+
+    return generate_on_this_day_title(kwargs["start_date"], kwargs["locale"])
+
+
+_TITLE_DISPATCH: dict[SelectionType, Callable[..., TitleInfo]] = {
+    SelectionType.CALENDAR_YEAR: _title_calendar_year,
+    SelectionType.BIRTHDAY_YEAR: _title_birthday_year,
+    SelectionType.SINGLE_MONTH: _title_single_month,
+    SelectionType.MONTH_RANGE: _title_month_range,
+    SelectionType.DATE_RANGE: _title_date_range,
+    SelectionType.SEASON: _title_season,
+    SelectionType.PERSON_SPOTLIGHT: _title_person_spotlight,
+    SelectionType.MULTI_PERSON: _title_multi_person,
+    SelectionType.ON_THIS_DAY: _title_on_this_day,
+}
+
+
 def generate_title(
     selection_type: SelectionType,
     *,
@@ -144,119 +312,36 @@ def generate_title(
     start_date: date | None = None,
     end_date: date | None = None,
     person_name: str | None = None,
+    person_names: list[str] | None = None,
     birthday_age: int | None = None,
+    season: str | None = None,
     locale: str = "en",
 ) -> TitleInfo:
-    """Generate dynamic title based on video selection criteria.
-
-    Args:
-        selection_type: Type of selection (calendar year, birthday, month, etc.).
-        year: Year for calendar year or single month selections.
-        month: Month number for single month selections.
-        start_month: Starting month for month range.
-        end_month: Ending month for month range.
-        start_year: Starting year for range spanning years.
-        end_year: Ending year for range spanning years.
-        start_date: Start date for date range selections.
-        end_date: End date for date range selections.
-        person_name: Name of person (used as subtitle).
-        birthday_age: Age for birthday year selections.
-        locale: Language code ("en", "fr").
-
-    Returns:
-        TitleInfo with main title and optional subtitle.
-    """
-    patterns = TITLE_PATTERNS.get(locale, TITLE_PATTERNS["en"])
-
-    if selection_type == SelectionType.CALENDAR_YEAR:
-        # Simple year display
-        if year is None:
-            raise ValueError("Year required for calendar year selection")
-        return TitleInfo(
-            main_title=str(year),
-            subtitle=person_name,
-            selection_type=selection_type,
-        )
-
-    elif selection_type == SelectionType.BIRTHDAY_YEAR:
-        # Birthday year with ordinal
-        if birthday_age is None:
-            raise ValueError("Birthday age required for birthday year selection")
-
-        ordinal = get_ordinal(birthday_age, locale)
-        main_title = patterns["year_ordinal"].format(ordinal=ordinal)
-
-        return TitleInfo(
-            main_title=main_title,
-            subtitle=person_name,
-            selection_type=selection_type,
-        )
-
-    elif selection_type == SelectionType.SINGLE_MONTH:
-        # Single month display
-        if month is None or year is None:
-            raise ValueError("Month and year required for single month selection")
-
-        month_name = get_month_name(month, locale)
-        main_title = patterns["month_year"].format(month=month_name, year=year)
-
-        return TitleInfo(
-            main_title=main_title,
-            subtitle=person_name,
-            selection_type=selection_type,
-        )
-
-    elif selection_type == SelectionType.MONTH_RANGE:
-        # Month range display
-        if start_month is None or end_month is None:
-            raise ValueError("Start and end month required for month range")
-
-        start_month_name = get_month_name(start_month, locale)
-        end_month_name = get_month_name(end_month, locale)
-
-        # Determine if same year or different years
-        s_year = start_year or year
-        e_year = end_year or year
-
-        if s_year is None or e_year is None:
-            raise ValueError("Year(s) required for month range selection")
-
-        if s_year == e_year:
-            # Same year: "January to March 2024"
-            main_title = patterns["month_range_same_year"].format(
-                start_month=start_month_name,
-                end_month=end_month_name,
-                year=s_year,
-            )
-        else:
-            # Different years: "November 2023 to February 2024"
-            main_title = patterns["month_range_different_year"].format(
-                start_month=start_month_name,
-                start_year=s_year,
-                end_month=end_month_name,
-                end_year=e_year,
-            )
-
-        return TitleInfo(
-            main_title=main_title,
-            subtitle=person_name,
-            selection_type=selection_type,
-        )
-
-    elif selection_type == SelectionType.DATE_RANGE:
-        # Date range - analyze to determine best display format
-        if start_date is None or end_date is None:
-            raise ValueError("Start and end date required for date range selection")
-
-        return _generate_date_range_title(start_date, end_date, person_name, locale)
-
-    else:
-        # Fallback
-        return TitleInfo(
-            main_title=str(year) if year else "Memories",
-            subtitle=person_name,
-            selection_type=selection_type,
-        )
+    """Generate dynamic title based on video selection criteria."""
+    # Pack all kwargs so dispatch handlers can pick what they need
+    kwargs = {
+        "year": year,
+        "month": month,
+        "start_month": start_month,
+        "end_month": end_month,
+        "start_year": start_year,
+        "end_year": end_year,
+        "start_date": start_date,
+        "end_date": end_date,
+        "person_name": person_name,
+        "person_names": person_names,
+        "birthday_age": birthday_age,
+        "season": season,
+        "locale": locale,
+    }
+    handler = _TITLE_DISPATCH.get(selection_type)
+    if handler is not None:
+        return handler(**kwargs)
+    return TitleInfo(
+        main_title=str(year) if year else "Memories",
+        subtitle=person_name,
+        selection_type=selection_type,
+    )
 
 
 def _generate_date_range_title(

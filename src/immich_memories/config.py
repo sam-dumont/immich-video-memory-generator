@@ -20,6 +20,7 @@ from immich_memories.config_models import (  # noqa: F401
     ImmichConfig,
     LLMConfig,
     OutputConfig,
+    ServerConfig,
     expand_env_vars,
 )
 from immich_memories.config_models_extra import (  # noqa: F401
@@ -45,6 +46,7 @@ __all__ = [
     "LLMConfig",
     "MusicGenConfig",
     "OutputConfig",
+    "ServerConfig",
     "TitleScreenConfig",
     "expand_env_vars",
     "get_config",

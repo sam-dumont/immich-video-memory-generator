@@ -2,17 +2,12 @@
 
 Thank you for your interest in contributing to Immich Memories! This document provides guidelines and instructions for contributing.
 
-## Important Context: AI-Generated Codebase
+## Context: AI-built codebase
 
-> **This project was developed primarily using AI assistance (Claude by Anthropic).**
->
-> This means:
-> - The codebase may have inconsistencies or suboptimal patterns
-> - Some edge cases may not be fully handled
-> - Your contributions to improve code quality are especially valuable
-> - Don't hesitate to refactor or improve existing AI-generated code
->
-> We welcome all contributions that improve reliability, performance, security, or maintainability.
+> This project is written almost entirely with AI (Claude by Anthropic) as an experiment in
+> pushing AI-assisted development on a real, complex codebase. The quality gates are strict
+> (970+ tests, type checking, complexity limits, security scanning), so don't be shy about
+> holding contributions to the same bar. If you spot something the AI got wrong, fix it.
 
 ## Code of Conduct
 
@@ -40,6 +35,8 @@ By participating in this project, you agree to maintain a respectful and inclusi
    - Any additional context
 
 ### Pull Requests
+
+**Keep PRs small: under 200-300 lines of diff.** Large PRs are hard to review and tend to hide bugs. If your change is bigger, split it into focused, reviewable chunks (one concern per PR). Yes, the pre-v1 history has some monster PRs. Do as I say, not as I did.
 
 1. **Fork the repository**
 2. **Create a feature branch** from `main`:
@@ -120,14 +117,14 @@ make clean         # Remove build artifacts
 
 ### Python
 
-- We use **Ruff** for linting and formatting
+- The project uses **Ruff** for linting and formatting
 - Code is automatically formatted on CI
 - Type hints are required for all public functions
 - Follow PEP 8 naming conventions
 
 ### Commit Messages
 
-We follow [Conventional Commits](https://www.conventionalcommits.org/):
+This project follows [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
 <type>(<scope>): <description>

@@ -24,6 +24,7 @@ async def apply_ai_music(
     run_tracker: object,
     progress_bar: object,
     status_label: object,
+    memory_type: str | None = None,
 ) -> None:
     """Generate AI music with MusicGen and mix it into the video.
 
@@ -106,6 +107,7 @@ async def apply_ai_music(
                 config=musicgen_config,
                 progress_callback=music_progress,
                 app_config=config,
+                memory_type=memory_type,
             )
 
             music_result.selected_version = 0

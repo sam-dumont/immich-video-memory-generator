@@ -40,6 +40,7 @@ from immich_memories.analysis.scoring_segments import (
 
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
+    from immich_memories.memory_types.presets import ScoringProfile
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +142,12 @@ class SceneScorer:
         # Video capture caching to avoid reopening same file for multiple candidates
         self._current_cap: cv2.VideoCapture | None = None
         self._current_path: str | None = None
+
+    @classmethod
+    def from_profile(cls, profile: ScoringProfile, **kwargs) -> SceneScorer:
+        """Create a SceneScorer from a ScoringProfile dataclass."""
+        weights = profile.to_dict()
+        return cls(**weights, **kwargs)  # type: ignore[arg-type]
 
     def _get_capture(self, video_path: Path) -> cv2.VideoCapture:
         """Get or create video capture, reusing if same file."""
@@ -478,15 +485,12 @@ class SceneScorer:
 
     # Backward-compatible shims delegating to helper modules
     def _generate_segments(self, video_path, segment_duration, overlap):
-        """Delegate to scoring_segments.generate_segments."""
         return generate_segments(video_path, segment_duration, overlap)
 
     def _generate_scene_aware_segments(self, **kwargs):
-        """Delegate to scoring_segments.generate_scene_aware_segments."""
         return generate_scene_aware_segments(**kwargs)
 
     def _subdivide_scene(self, scene, target_duration, overlap, fps):
-        """Delegate to scoring_segments.subdivide_scene."""
         from immich_memories.analysis.scoring_segments import subdivide_scene
 
         return subdivide_scene(
