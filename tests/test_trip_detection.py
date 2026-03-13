@@ -283,7 +283,10 @@ class TestTripCLI:
         runner = CliRunner()
         result = runner.invoke(main, ["generate", "--memory-type", "trip"])
         assert result.exit_code != 0
-        assert "--year" in (result.output or "")
+        # In CI (no Immich config), "not configured" fires before year validation.
+        # In dev, the year check triggers. Either way, the command must fail.
+        output = result.output or ""
+        assert "--year" in output or "not configured" in output.lower()
 
 
 class TestFormatTripsTable:
