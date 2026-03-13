@@ -451,6 +451,8 @@ def _compile_kernels():
 
 def _create_gaussian_kernel(radius: int, sigma: float | None = None) -> np.ndarray:
     """Create 1D Gaussian kernel for separable blur."""
+    if radius == 0:
+        return np.array([1.0], dtype=np.float32)
     if sigma is None:
         sigma = radius / 3.0
     x = np.arange(2 * radius + 1) - radius

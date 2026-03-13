@@ -122,14 +122,15 @@ def create_title_video_taichi(
             process.stdin.write(frame.tobytes())
 
         process.stdin.close()
-        _, stderr = process.communicate()
-
-        if process.returncode != 0:
-            raise RuntimeError(f"FFmpeg failed: {stderr.decode()[-500:]}")
 
     except BrokenPipeError:
-        _, stderr = process.communicate()
-        raise RuntimeError(f"FFmpeg pipe broken: {stderr.decode()[-500:]}")
+        pass  # FFmpeg closed pipe early — check returncode below
+
+    process.wait()
+    stderr = process.stderr.read() if process.stderr else b""
+
+    if process.returncode != 0:
+        raise RuntimeError(f"FFmpeg failed: {stderr.decode()[-500:]}")
 
     logger.info(f"Title generated: {output_path}")
     return output_path
