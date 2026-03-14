@@ -218,8 +218,8 @@ async def generate_title_with_llm(
             prompt,
             llm_config,
             temperature=temperature,
-            max_tokens=4000,
-            timeout_seconds=180,
+            max_tokens=8000,
+            timeout_seconds=300,
         )
         return parse_title_response(raw)
     except Exception:
