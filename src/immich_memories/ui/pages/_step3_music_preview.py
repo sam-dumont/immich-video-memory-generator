@@ -180,6 +180,28 @@ def render_title_section() -> None:
 
         subtitle_input.on_value_change(on_subtitle_change)
 
+        # Locale dropdown + regenerate button
+        config = get_config()
+        with ui.row().classes("w-full gap-2 items-end"):
+            locale_select = ui.select(
+                label="Language",
+                options=["auto", "en", "fr", "de", "es", "it", "nl", "pt", "ja", "ko"],
+                value=config.title_screens.locale if config.title_screens else "en",
+            ).classes("w-32")
+
+            async def regenerate_title():
+                from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
+
+                # Update locale in config for this generation
+                if config.title_screens:
+                    config.title_screens.locale = locale_select.value
+                await generate_title_after_pipeline(state)
+                # Refresh the input fields
+                title_input.value = state.title_suggestion_title or ""
+                subtitle_input.value = state.title_suggestion_subtitle or ""
+
+            ui.button("Regenerate", on_click=regenerate_title).props("flat dense")
+
         # Read-only metadata chips
         if state.title_suggestion_trip_type or state.title_suggestion_map_mode:
             with ui.row().classes("gap-2 mt-1"):

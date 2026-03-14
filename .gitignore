@@ -104,6 +104,9 @@ src/immich_memories/_version.py
 # Claude Code
 .claude/
 
+# Internal plans/marketing (not for public repo)
+docs/plans/
+
 # Streamlit (legacy)
 .streamlit/
 
