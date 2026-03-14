@@ -72,11 +72,14 @@ class TestBuildTitlePrompt:
             start_date="2023-09-23",
             end_date="2023-09-29",
             duration_days=7,
-            locations=["Brasparts (4 nights)", "Frehel (3 nights)"],
+            daily_locations=[
+                "2023-09-23: Brasparts (48.30, -3.96)",
+                "2023-09-24: Camaret (48.28, -4.59)",
+                "2023-09-27: Frehel (48.69, -2.34)",
+            ],
             country="France",
             clip_descriptions=["hiking along cliffs", "sunset over bay"],
             smart_objects=["person", "beach"],
-            overnight_summary="2 home bases, no excursions",
         )
         assert "trip" in prompt.lower()
         assert "Brasparts" in prompt
@@ -99,7 +102,7 @@ class TestBuildTitlePrompt:
         assert "Emile" in prompt
         assert "French" in prompt
 
-    def test_includes_few_shot_examples(self):
+    def test_includes_rules(self):
         from immich_memories.titles.llm_titles import build_title_prompt
 
         prompt = build_title_prompt(
@@ -109,7 +112,8 @@ class TestBuildTitlePrompt:
             end_date="2024-12-31",
             duration_days=366,
         )
-        assert "Example" in prompt or "example" in prompt
+        assert "RULES" in prompt
+        assert "weekend" in prompt.lower()  # constraint about weekend usage
 
 
 class TestGenerateTitleWithLlm:
@@ -138,7 +142,10 @@ class TestGenerateTitleWithLlm:
                 start_date="2019-07-04",
                 end_date="2019-07-14",
                 duration_days=11,
-                locations=["Platanos (4 nights)", "Sitia (4 nights)"],
+                daily_locations=[
+                    "2019-07-04: Platanos (35.50, 23.96)",
+                    "2019-07-10: Sitia (35.19, 26.10)",
+                ],
                 country="Greece",
                 llm_config=config,
             )

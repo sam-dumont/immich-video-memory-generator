@@ -56,6 +56,9 @@ class Config(BaseSettings):
     cache: CacheConfig = Field(default_factory=CacheConfig)
     hardware: HardwareAccelConfig = Field(default_factory=HardwareAccelConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    title_llm: LLMConfig | None = Field(
+        default=None, description="LLM for title generation (falls back to llm)"
+    )
     audio: AudioConfig = Field(default_factory=AudioConfig)
     musicgen: MusicGenConfig = Field(default_factory=MusicGenConfig)
     ace_step: ACEStepConfig = Field(default_factory=ACEStepConfig)

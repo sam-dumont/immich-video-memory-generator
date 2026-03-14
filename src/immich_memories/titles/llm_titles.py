@@ -120,52 +120,51 @@ def build_title_prompt(
     end_date: str,
     duration_days: int,
     *,
-    locations: list[str] | None = None,
+    daily_locations: list[str] | None = None,
     country: str | None = None,
     person_names: list[str] | None = None,
     clip_descriptions: list[str] | None = None,
     smart_objects: list[str] | None = None,
-    overnight_summary: str | None = None,
 ) -> str:
     """Build a context-rich prompt for title generation."""
     lang = _LOCALE_NAMES.get(locale, locale.capitalize())
 
     lines = [
-        "You are generating a title for a personal memory video.",
-        f"Language: {lang}",
+        f"Generate a title for a personal memory video. Language: {lang}.",
         "",
         f"Memory type: {memory_type}",
         f"Dates: {start_date} to {end_date} ({duration_days} days)",
     ]
 
-    if locations:
-        lines.append(f"Locations: {', '.join(locations)}")
+    if daily_locations:
+        lines.append("Daily locations (raw GPS data — detect the travel pattern):")
+        for loc in daily_locations[:30]:
+            lines.append(f"  {loc}")
     if country:
         lines.append(f"Country: {country}")
     if person_names:
         lines.append(f"People: {', '.join(person_names)}")
     if clip_descriptions:
-        lines.append(f"Clip descriptions: {', '.join(clip_descriptions[:10])}")
+        lines.append(f"Clip content: {', '.join(clip_descriptions[:10])}")
     if smart_objects:
-        lines.append(f"Objects detected: {', '.join(smart_objects[:20])}")
-    if overnight_summary:
-        lines.append(f"Overnight pattern: {overnight_summary}")
+        lines.append(f"Objects: {', '.join(smart_objects[:20])}")
 
     lines.extend(
         [
             "",
-            "Return ONLY valid JSON with these keys:",
-            "- title: short, evocative title (max 60 chars)",
-            "- subtitle: optional second line (max 80 chars), null if not needed",
-            '- trip_type: one of "multi_base", "base_camp", "road_trip", "hiking_trail", or null for non-trips',
-            '- map_mode: one of "title_only", "excursions", "overnight_stops", or null for non-trips',
-            "- map_mode_reason: one sentence explaining why (or null)",
+            "RULES:",
+            f"- Write title and subtitle in {lang}",
+            "- Never use 'weekend' for trips longer than 4 days",
+            "- Use the actual region/area name, not a generic country name",
+            "- For trips: analyze the daily locations to determine the pattern:",
+            "  * base_camp: same location every night, day trips around",
+            "  * multi_base: 2-3 bases with travel between them",
+            "  * road_trip: different location each day, progressing geographically",
+            "  * hiking_trail: similar to road_trip but shorter daily distances",
+            "- map_mode: title_only (single base), excursions (base+trips), overnight_stops (moving)",
             "",
-            "Example for a trip:",
-            '{"title": "A Week in Bretagne", "subtitle": "From Brasparts to the Emerald Coast", "trip_type": "multi_base", "map_mode": "excursions", "map_mode_reason": "Two bases with day trips from each"}',
-            "",
-            "Example for a person memory:",
-            '{"title": "Alice & Emile Through the Years", "subtitle": "2019 - 2025", "trip_type": null, "map_mode": null, "map_mode_reason": null}',
+            "Return ONLY valid JSON (no explanation, no markdown):",
+            '{"title": "...", "subtitle": "..." or null, "trip_type": "..." or null, "map_mode": "..." or null, "map_mode_reason": "..." or null}',
         ]
     )
 
@@ -179,14 +178,13 @@ async def generate_title_with_llm(
     end_date: str,
     duration_days: int,
     *,
-    locations: list[str] | None = None,
+    daily_locations: list[str] | None = None,
     country: str | None = None,
     person_names: list[str] | None = None,
     clip_descriptions: list[str] | None = None,
     smart_objects: list[str] | None = None,
-    overnight_summary: str | None = None,
     llm_config: LLMConfig | None = None,
-    temperature: float = 0.3,
+    temperature: float = 0.1,
 ) -> TitleSuggestion | None:
     """Generate a title using the LLM. Returns None on failure."""
     if llm_config is None:
@@ -198,12 +196,11 @@ async def generate_title_with_llm(
         start_date=start_date,
         end_date=end_date,
         duration_days=duration_days,
-        locations=locations,
+        daily_locations=daily_locations,
         country=country,
         person_names=person_names,
         clip_descriptions=clip_descriptions,
         smart_objects=smart_objects,
-        overnight_summary=overnight_summary,
     )
 
     try:

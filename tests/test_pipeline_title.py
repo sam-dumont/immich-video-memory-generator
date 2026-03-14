@@ -72,37 +72,6 @@ class TestCollectClipDescriptions:
         assert result == []
 
 
-class TestBuildOvernightSummary:
-    """Build overnight summary string from stops."""
-
-    def test_returns_none_for_empty(self):
-        from immich_memories.ui.pages.pipeline_title import _build_overnight_summary
-
-        assert _build_overnight_summary([]) is None
-
-    def test_joins_location_names(self):
-        from immich_memories.ui.pages.pipeline_title import _build_overnight_summary
-
-        stop1 = MagicMock()
-        stop1.location_name = "Brasparts"
-        stop2 = MagicMock()
-        stop2.location_name = "Frehel"
-
-        result = _build_overnight_summary([stop1, stop2])
-        assert result == "Brasparts → Frehel"
-
-    def test_skips_stops_with_no_name(self):
-        from immich_memories.ui.pages.pipeline_title import _build_overnight_summary
-
-        stop1 = MagicMock()
-        stop1.location_name = "Paris"
-        stop2 = MagicMock()
-        stop2.location_name = None
-
-        result = _build_overnight_summary([stop1, stop2])
-        assert result == "Paris"
-
-
 class TestGenerateTitleAfterPipeline:
     """Wire generate_title_with_llm into AppState."""
 
@@ -122,6 +91,7 @@ class TestGenerateTitleAfterPipeline:
                 new_callable=AsyncMock,
             ) as mock_llm,
         ):
+            mock_cfg.return_value.title_llm = None
             mock_cfg.return_value.llm.model = ""
             await generate_title_after_pipeline(state)
 
@@ -276,11 +246,9 @@ class TestGenerateTitleAfterPipeline:
                 new_callable=AsyncMock,
                 return_value=suggestion,
             ),
-            patch(
-                "immich_memories.ui.pages.pipeline_title.detect_overnight_stops", return_value=[]
-            ),
         ):
             cfg = mock_cfg.return_value
+            cfg.title_llm = None
             cfg.llm.model = "omlx"
             cfg.title_screens.locale = "en"
             await generate_title_after_pipeline(state)

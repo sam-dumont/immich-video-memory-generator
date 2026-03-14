@@ -10,7 +10,6 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from immich_memories.analysis.trip_detection import detect_overnight_stops
 from immich_memories.config import get_config
 from immich_memories.titles.llm_titles import generate_title_with_llm
 
@@ -22,9 +21,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class _TripContext:
-    locations: list[str] | None = None
+    daily_locations: list[str] | None = None  # raw daily GPS data for LLM
     country: str | None = None
-    overnight_summary: str | None = None
 
 
 def _collect_clip_descriptions(state: AppState) -> list[str]:
@@ -42,16 +40,6 @@ def _collect_clip_descriptions(state: AppState) -> list[str]:
     return descriptions
 
 
-def _build_overnight_summary(stops) -> str | None:
-    """Summarise overnight stop list into a single string."""
-    if not stops:
-        return None
-    names = [s.location_name for s in stops if s.location_name]
-    if not names:
-        return None
-    return " → ".join(names)
-
-
 def _gather_person_names(state: AppState) -> list[str]:
     """Get person names from selected person or preset params."""
     if state.selected_person and state.selected_person.name:
@@ -62,18 +50,51 @@ def _gather_person_names(state: AppState) -> list[str]:
 
 
 def _gather_trip_context(state: AppState) -> _TripContext:
-    """Gather trip-specific context: overnight stops, locations, country."""
+    """Gather trip context: raw daily GPS clusters for the LLM to analyze.
+
+    Shows photo count per location cluster per day so the LLM can detect:
+    - Base camp: same cluster appears every day
+    - Road trip: different cluster each day, large distances
+    - Hiking trail: progressive short-distance moves
+    """
+    from collections import defaultdict
+
+    from immich_memories.analysis.trip_detection import haversine_km
+
     ctx = _TripContext()
     if state.memory_type != "trip" or not state.clips:
         return ctx
     try:
-        assets = [c.asset for c in state.clips]
-        stops = detect_overnight_stops(assets)
-        ctx.locations = [s.location_name for s in stops if s.location_name] or None
-        ctx.overnight_summary = _build_overnight_summary(stops)
+        by_date: defaultdict[str, list[tuple[str, float, float]]] = defaultdict(list)
+        for clip in state.clips:
+            a = clip.asset
+            if not a.exif_info or not a.exif_info.latitude:
+                continue
+            dt = a.local_date_time or a.file_created_at
+            city = a.exif_info.city or "Unknown"
+            by_date[str(dt.date())].append((city, a.exif_info.latitude, a.exif_info.longitude or 0))
+
+        # Build per-day cluster summaries
+        daily: list[str] = []
+        for d in sorted(by_date):
+            entries = by_date[d]
+            # Cluster photos within 5km
+            clusters: list[tuple[str, float, float, int]] = []  # city, lat, lon, count
+            for city, lat, lon in entries:
+                merged = False
+                for i, (cc, cl, co, cn) in enumerate(clusters):
+                    if haversine_km(lat, lon, cl, co) < 5:
+                        clusters[i] = (cc, cl, co, cn + 1)
+                        merged = True
+                        break
+                if not merged:
+                    clusters.append((city, lat, lon, 1))
+            parts = [f"{c}({n})" for c, _, _, n in sorted(clusters, key=lambda x: -x[3])]
+            daily.append(f"{d}: {', '.join(parts)}")
+        ctx.daily_locations = daily or None
         ctx.country = _extract_single_country(state)
     except Exception:
-        logger.debug("Overnight stop detection failed", exc_info=True)
+        logger.debug("Trip context gathering failed", exc_info=True)
     return ctx
 
 
@@ -103,7 +124,8 @@ async def generate_title_after_pipeline(state: AppState) -> None:
     """
     config = get_config()
 
-    if not config.llm.model:
+    llm_cfg = config.title_llm if config.title_llm and config.title_llm.model else config.llm
+    if not llm_cfg.model:
         logger.debug("LLM model not configured — skipping title generation")
         return
 
@@ -125,12 +147,11 @@ async def generate_title_after_pipeline(state: AppState) -> None:
             start_date=str(start_date),
             end_date=str(end_date),
             duration_days=(end_date - start_date).days,
-            locations=trip.locations,
+            daily_locations=trip.daily_locations,
             country=trip.country,
             person_names=_gather_person_names(state) or None,
             clip_descriptions=_collect_clip_descriptions(state) or None,
-            overnight_summary=trip.overnight_summary,
-            llm_config=config.llm,
+            llm_config=llm_cfg,
         )
     except Exception:
         logger.warning("LLM title generation failed", exc_info=True)
