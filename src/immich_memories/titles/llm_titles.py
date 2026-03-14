@@ -64,13 +64,25 @@ def parse_title_response(raw: str) -> TitleSuggestion | None:
         return None
 
     text = raw.strip()
+    # Strip markdown code blocks
     text = re.sub(r"^```(?:json)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
 
+    # Try direct parse first, then extract JSON from thinking model output
+    data = None
     try:
         data = json.loads(text)
     except (json.JSONDecodeError, ValueError):
-        logger.warning("LLM title response is not valid JSON: %.100s", raw)
+        # Thinking models (Qwen3.5) output reasoning before JSON —
+        # extract the last JSON object from the response
+        json_match = re.search(r'\{[^{}]*"title"[^{}]*\}', text)
+        if json_match:
+            try:
+                data = json.loads(json_match.group())
+            except (json.JSONDecodeError, ValueError):
+                pass
+    if data is None:
+        logger.warning("LLM title response has no valid JSON: %.100s", raw)
         return None
 
     if not isinstance(data, dict) or "title" not in data:
@@ -195,7 +207,7 @@ async def generate_title_with_llm(
     )
 
     try:
-        raw = await query_llm(prompt, llm_config, temperature=temperature)
+        raw = await query_llm(prompt, llm_config, temperature=temperature, max_tokens=2000)
         return parse_title_response(raw)
     except Exception:
         logger.warning("LLM title generation failed", exc_info=True)
