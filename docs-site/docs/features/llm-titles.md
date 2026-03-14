@@ -1,75 +1,77 @@
 # LLM Title Generation
 
-Generate context-aware, multilingual titles for your memory videos using a local LLM.
+Instead of generic "TWO WEEKS IN SPAIN, SUMMER 2025" template titles, the app feeds your trip's raw GPS data to a local LLM and gets back something like "Sous les falaises de la Saxe" or "Odyssée à travers l'Ombrie et les Marches". It works in any language and classifies your trip pattern too.
 
-## How It Works
+## What the LLM gets
 
-After the analysis phase, the LLM receives:
-- **Daily GPS clusters** — photo counts per location per day
-- **Clip descriptions** — what the VLM saw in each clip
-- **Trip metadata** — dates, duration, country
+After the analysis phase completes, the LLM receives daily GPS clusters: how many photos you took at each location, each day. Something like:
 
-From this raw data, the LLM detects the travel pattern and generates:
-- A **title** and optional **subtitle** in your locale
-- **Trip type** classification (base_camp, multi_base, road_trip, hiking_trail)
+```
+07-22: La Thuile(136), Courmayeur(100), Ville Sur Sarre(3)
+07-23: Ville Sur Sarre(146)
+07-24: Ville Sur Sarre(89)
+07-25: Saint-Rhémy(176), Ville Sur Sarre(1)
+```
+
+From that raw data, it figures out the travel pattern (base camp? road trip? hiking trail?) and generates a title + subtitle in your locale. No pre-processing, no clustering algorithm telling it what to think: just the raw photo distribution and the model's own reasoning.
+
+## What it produces
+
+- **Title** and optional **subtitle** in your configured language
+- **Trip type**: `base_camp`, `multi_base`, `road_trip`, or `hiking_trail`
 - **Map mode** recommendation for the animated map intro
+- A one-line **reason** explaining why it picked that classification
+
+You see everything in Step 3 of the UI and can edit before rendering.
 
 ## Configuration
 
-The LLM for titles can be configured separately from the vision model:
+The title LLM can be different from the vision model (and probably should be):
 
 ```yaml
-# Vision model (for content analysis)
+# Vision model (content analysis, clip scoring)
 llm:
   provider: openai-compatible
   base_url: http://localhost:9999/v1
   model: Qwen2.5-VL-7B-Instruct-4bit
 
-# Text model for titles (optional — falls back to llm if not set)
+# Text model for titles (optional, falls back to llm if not set)
 title_llm:
   provider: openai-compatible
   base_url: http://localhost:9999/v1
   model: Qwen3.5-9B-MLX-4bit
 ```
 
-The locale from `title_screens.locale` is used for title language.
+Title language comes from `title_screens.locale` in your config (`fr`, `en`, `it`, `de`, etc.).
 
-## Recommended Model
+## Model recommendations
 
-**Qwen3.5-9B-MLX-4bit** with thinking disabled is the best option:
-- 7-17 seconds per title on Apple Silicon
-- Beautiful, creative, multilingual titles
-- Correct trip classification in most cases
-- ~5.5GB VRAM
+**Qwen3.5-9B-MLX-4bit with thinking disabled** is what you want. 5.5GB, 7-17 seconds per title on Apple Silicon, 100% JSON reliability, and genuinely creative multilingual output.
 
-**Critical**: Disable thinking mode in omlx admin panel. Set `chat_template_kwargs` to `{"enable_thinking": false}` for the Qwen3.5 model. Without this, the model wastes tokens on chain-of-thought reasoning and often fails to produce JSON.
+One catch: you MUST disable thinking mode in the omlx admin panel (`/admin`). Set `chat_template_kwargs` to `{"enable_thinking": false}` for the Qwen3.5 model. With thinking enabled, the model burns 2000-8000 tokens on chain-of-thought before it even starts the JSON, and most requests time out.
 
-## All Tested Models
+| Model | Size | Speed | Quality | Reliability | Notes |
+|-------|------|-------|---------|-------------|-------|
+| **Qwen3.5-9B (no think)** | 5.5GB | 7-17s | Great | 100% | Best overall |
+| Qwen3.5-4B (no think) | 2.9GB | ~10s | Good | ~90% | Lighter alternative |
+| Qwen2.5-VL-7B | 4.5GB | 4-5s | OK | T=0.1 only | Vision model doing text: works but generic |
+| Qwen3.5-9B (thinking ON) | 5.5GB | 300s+ | Great | ~30% | Don't. Disable thinking. |
 
-| Model | Size | Thinking | Speed | Title Quality | JSON Reliability | Recommendation |
-|-------|------|----------|-------|--------------|-----------------|----------------|
-| **Qwen3.5-9B (no think)** | 5.5GB | Disabled | 7-17s | Excellent | 100% | **Best choice** |
-| Qwen3.5-9B (thinking) | 5.5GB | Enabled | 300s+ | Excellent | ~30% | Too slow, tokens wasted |
-| Qwen3.5-4B (no think) | 2.9GB | Disabled | ~10s | Good | ~90% | Good budget option |
-| Qwen2.5-VL-7B | 4.5GB | N/A | 4-5s | OK | Only at T=0.1 | Fallback only |
+## Trip classification
 
-### Known Issues
+The LLM looks at which locations repeat across days:
 
-- **Qwen3.5 with thinking enabled** uses 2000-8000 tokens on reasoning before JSON — disable thinking in omlx admin
-- **Qwen2.5-VL** returns `null` content at temperature > 0.1 and can't handle long prompts — retry logic handles this
-- **Temperature 0.1** is the most reliable for structured JSON output across all models
+| Pattern | Classification | Map mode | Real example |
+|---------|---------------|----------|-------------|
+| Same spot every night, excursions during the day | `base_camp` | `excursions` | Val d'Aoste: Ville Sur Sarre as base, hikes to Cogne and La Thuile |
+| 2-3 spots, each for multiple consecutive days | `multi_base` | `overnight_stops` | Cyprus: 5 nights in Nicosia, 5 nights in Geroskipou |
+| Different town each day, big distances | `road_trip` | `overnight_stops` | Italy 2022: 14 days from Umbria through Marche to Alsace |
+| Daily moves but short distances, progressive | `hiking_trail` | `overnight_stops` | Saxon Switzerland: Hohnstein to Bad Schandau to Königstein |
 
-## Trip Type Detection
+## Editing the prompt
 
-The LLM analyzes daily GPS clusters to classify the trip:
-
-| Pattern | Type | Map Mode | Example |
-|---------|------|----------|---------|
-| Same location every night, varied day locations | `base_camp` | `title_only` | Val d'Aoste: Ville Sur Sarre base + daily hikes |
-| 2-3 locations appearing across multiple days | `multi_base` | `excursions` | Cyprus: Nicosia 5 nights → Geroskipou 5 nights |
-| Different location each day, large distances | `road_trip` | `overnight_stops` | Italy 2022: 14 days across Umbria → Marche → Emilia |
-| Progressive short-distance moves | `hiking_trail` | `overnight_stops` | Saxon Switzerland: daily 5-15km moves |
+The prompt lives in `src/immich_memories/prompts/title_generation.md`, not in Python code. You can tweak it without touching the source: change the examples, adjust the rules, add banned words. Changes take effect on next generation.
 
 ## Fallback
 
-If the LLM is not configured or fails, the existing template-based title generation is used automatically. You can also edit the title manually in Step 3 of the UI.
+No LLM configured? The app falls back to the template-based title system (the "TWO WEEKS IN X" style). You can also just type your own title in the Step 3 text field.
