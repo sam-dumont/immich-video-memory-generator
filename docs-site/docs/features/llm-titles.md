@@ -34,19 +34,29 @@ title_llm:
 
 The locale from `title_screens.locale` is used for title language.
 
-## Tested Models
+## Recommended Model
 
-| Model | Size | Provider | Structured JSON | Title Quality | Notes |
-|-------|------|----------|----------------|--------------|-------|
-| **Qwen2.5-VL-7B-Instruct-4bit** | ~4.5GB | omlx/mlx-vlm | Reliable at T=0.1 | Good | Vision model doing text — works but formulaic |
-| **Qwen3.5-9B-MLX-4bit** | ~5.5GB | omlx/mlx-vlm | Needs thinking parser | Excellent | Thinking model — outputs reasoning chain before JSON |
-| **Qwen2.5-7B-Instruct** | ~4.5GB | Ollama/mlx-lm | Reliable | Good | Pure text model, better than VL for this task |
-| Ollama models (llama3, etc.) | Varies | Ollama | Varies | Varies | Most instruction-tuned models work |
+**Qwen3.5-9B-MLX-4bit** with thinking disabled is the best option:
+- 7-17 seconds per title on Apple Silicon
+- Beautiful, creative, multilingual titles
+- Correct trip classification in most cases
+- ~5.5GB VRAM
+
+**Critical**: Disable thinking mode in omlx admin panel. Set `chat_template_kwargs` to `{"enable_thinking": false}` for the Qwen3.5 model. Without this, the model wastes tokens on chain-of-thought reasoning and often fails to produce JSON.
+
+## All Tested Models
+
+| Model | Size | Thinking | Speed | Title Quality | JSON Reliability | Recommendation |
+|-------|------|----------|-------|--------------|-----------------|----------------|
+| **Qwen3.5-9B (no think)** | 5.5GB | Disabled | 7-17s | Excellent | 100% | **Best choice** |
+| Qwen3.5-9B (thinking) | 5.5GB | Enabled | 300s+ | Excellent | ~30% | Too slow, tokens wasted |
+| Qwen3.5-4B (no think) | 2.9GB | Disabled | ~10s | Good | ~90% | Good budget option |
+| Qwen2.5-VL-7B | 4.5GB | N/A | 4-5s | OK | Only at T=0.1 | Fallback only |
 
 ### Known Issues
 
-- **Qwen2.5-VL** returns `null` content at temperature > 0.1 — the retry logic handles this
-- **Qwen3.5** is a thinking model — outputs chain-of-thought before JSON. The parser extracts JSON from the thinking output, but `max_tokens` must be high enough (2000+) to include the JSON after the reasoning
+- **Qwen3.5 with thinking enabled** uses 2000-8000 tokens on reasoning before JSON — disable thinking in omlx admin
+- **Qwen2.5-VL** returns `null` content at temperature > 0.1 and can't handle long prompts — retry logic handles this
 - **Temperature 0.1** is the most reliable for structured JSON output across all models
 
 ## Trip Type Detection
