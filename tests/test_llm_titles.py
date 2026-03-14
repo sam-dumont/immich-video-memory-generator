@@ -112,8 +112,8 @@ class TestBuildTitlePrompt:
             end_date="2024-12-31",
             duration_days=366,
         )
-        assert "RULES" in prompt
-        assert "weekend" in prompt.lower()  # constraint about weekend usage
+        assert "Rules" in prompt
+        assert "weekend" in prompt.lower()
 
 
 class TestGenerateTitleWithLlm:

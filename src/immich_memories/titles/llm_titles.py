@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from immich_memories.analysis.llm_query import query_llm
@@ -113,6 +114,18 @@ def _sanitize(text: str, max_len: int) -> str:
     return cleaned[:max_len]
 
 
+_PROMPT_TEMPLATE: str | None = None
+_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "title_generation.md"
+
+
+def _load_prompt_template() -> str:
+    """Load prompt template from external file (cached after first load)."""
+    global _PROMPT_TEMPLATE  # noqa: PLW0603
+    if _PROMPT_TEMPLATE is None:
+        _PROMPT_TEMPLATE = _PROMPT_PATH.read_text(encoding="utf-8")
+    return _PROMPT_TEMPLATE
+
+
 def build_title_prompt(
     memory_type: str,
     locale: str,
@@ -126,59 +139,32 @@ def build_title_prompt(
     clip_descriptions: list[str] | None = None,
     smart_objects: list[str] | None = None,
 ) -> str:
-    """Build a context-rich prompt for title generation."""
+    """Build prompt from external template + context data."""
     lang = _LOCALE_NAMES.get(locale, locale.capitalize())
 
-    lines = [
-        f"Generate a title for a personal memory video. Language: {lang}.",
-        "",
-        f"Memory type: {memory_type}",
-        f"Dates: {start_date} to {end_date} ({duration_days} days)",
-    ]
-
+    context_lines: list[str] = []
     if daily_locations:
-        lines.append("Daily locations (raw GPS data — detect the travel pattern):")
+        context_lines.append("Daily locations (detect the travel pattern):")
         for loc in daily_locations[:30]:
-            lines.append(f"  {loc}")
+            context_lines.append(f"  {loc}")
     if country:
-        lines.append(f"Country: {country}")
+        context_lines.append(f"Country: {country}")
     if person_names:
-        lines.append(f"People: {', '.join(person_names)}")
+        context_lines.append(f"People: {', '.join(person_names)}")
     if clip_descriptions:
-        lines.append(f"Clip content: {', '.join(clip_descriptions[:10])}")
+        context_lines.append(f"Clip content: {', '.join(clip_descriptions[:10])}")
     if smart_objects:
-        lines.append(f"Objects: {', '.join(smart_objects[:20])}")
+        context_lines.append(f"Objects: {', '.join(smart_objects[:20])}")
 
-    lines.extend(
-        [
-            "",
-            "RULES:",
-            f"- Write title and subtitle in {lang}. Be creative and evocative.",
-            "- Never use 'weekend' for trips longer than 4 days. Use 'séjour', 'semaine', 'vacances'...",
-            "- Use the actual region/area name (Vallée d'Aoste, Île d'Oléron, Saxe), NOT the country",
-            "- Analyze the daily location clusters to classify the trip type:",
-            "",
-            "PATTERN GUIDE (look at which locations REPEAT across days):",
-            "  base_camp: ONE location appears on most days (you return there each night)",
-            "    → e.g. Ville Sur Sarre on days 1,2,3,4,5,7,8 with excursions to Cogne, Aosta",
-            "    → map_mode: excursions (show base + day trip destinations)",
-            "  multi_base: 2-3 locations each appear on MULTIPLE consecutive days",
-            "    → e.g. Nicosia on days 1-5, then Geroskipou on days 6-10",
-            "    → map_mode: overnight_stops (show the bases and transition)",
-            "  road_trip: different location EACH day, covering large distances",
-            "    → e.g. Castiglione day1, Bagnoregio day2, Ancona day3 (45-125km/day)",
-            "    → map_mode: overnight_stops (show the daily route)",
-            "  hiking_trail: like road_trip but short distances (<30km/day), progressive",
-            "    → e.g. Hohnstein day1, Bad Schandau day2, Sebnitz day3 (5-15km/day)",
-            "    → map_mode: overnight_stops (show the trail progression)",
-            "",
-            "Return ONLY valid JSON (no explanation, no markdown, no thinking):",
-            '{"title": "...", "subtitle": "..." or null, "trip_type": "..." or null, '
-            '"map_mode": "..." or null, "map_mode_reason": "..." or null}',
-        ]
+    template = _load_prompt_template()
+    return (
+        template.replace("{lang}", lang)
+        .replace("{memory_type}", memory_type)
+        .replace("{start_date}", start_date)
+        .replace("{end_date}", end_date)
+        .replace("{duration_days}", str(duration_days))
+        .replace("{context_lines}", "\n".join(context_lines))
     )
-
-    return "\n".join(lines)
 
 
 async def generate_title_with_llm(
