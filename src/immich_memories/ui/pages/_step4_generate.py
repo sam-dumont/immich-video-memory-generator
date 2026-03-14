@@ -351,6 +351,7 @@ def _build_assembly_settings(state, config, assembly_clips):
         target_resolution=target_resolution,
         title_screens=title_screen_settings,
         debug_preserve_intermediates=gen_options.get("keep_intermediates", False),
+        privacy_mode=state.demo_mode,
     )
     return settings, VideoAssembler(settings)
 

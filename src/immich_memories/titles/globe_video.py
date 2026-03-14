@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import logging
 import subprocess
-import sys
 from pathlib import Path
 
 import numpy as np
 
+from .encoding import _get_gpu_encoder_args
 from .globe_renderer import GlobeCameraKeyframe, interpolate_camera
 from .taichi_globe import project_globe_frame
 
@@ -30,6 +30,7 @@ def create_globe_animation_video(
     fov: float = 0.8,
     hold_start: float = 0.5,
     hold_end: float = 1.0,
+    hdr: bool = True,
 ) -> Path:
     """Create an animated globe fly-over video.
 
@@ -55,7 +56,7 @@ def create_globe_animation_video(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     total_frames = int(duration * fps)
 
-    cmd = _build_ffmpeg_command(width, height, fps, duration, output_path)
+    cmd = _build_ffmpeg_command(width, height, fps, duration, output_path, hdr=hdr)
     logger.info(f"Rendering globe animation: {total_frames} frames, {duration}s")
 
     process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -107,41 +108,13 @@ def _build_ffmpeg_command(
     fps: float,
     duration: float,
     output_path: Path,
+    hdr: bool = True,
 ) -> list[str]:
-    """Build FFmpeg command for HLG HDR globe video encoding."""
-    color_args = [
-        "-color_primaries",
-        "bt2020",
-        "-color_trc",
-        "arib-std-b67",
-        "-colorspace",
-        "bt2020nc",
-    ]
+    """Build FFmpeg command for globe video encoding.
 
-    if sys.platform == "darwin":
-        video_codec = [
-            "-c:v",
-            "hevc_videotoolbox",
-            "-q:v",
-            "50",
-            "-tag:v",
-            "hvc1",
-            *color_args,
-        ]
-        pix_fmt = "p010le"
-    else:
-        video_codec = [
-            "-c:v",
-            "libx265",
-            "-crf",
-            "18",
-            "-preset",
-            "fast",
-            "-tag:v",
-            "hvc1",
-            *color_args,
-        ]
-        pix_fmt = "yuv420p10le"
+    Uses the shared encoder from encoding.py (single source of truth).
+    """
+    encoder_args = _get_gpu_encoder_args(hdr=hdr)
 
     return [
         "ffmpeg",
@@ -162,9 +135,7 @@ def _build_ffmpeg_command(
         "lavfi",
         "-i",
         "anullsrc=r=48000:cl=stereo",
-        *video_codec,
-        "-pix_fmt",
-        pix_fmt,
+        *encoder_args,
         "-c:a",
         "aac",
         "-b:a",

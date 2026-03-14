@@ -134,6 +134,25 @@ def _get_dominant_hdr_type(clips: list) -> str:
         return "hlg"
 
 
+def has_any_hdr_clip(clips: list) -> bool:
+    """Check if at least one clip has HDR metadata.
+
+    Used to decide whether title screens should be HDR or SDR.
+
+    Args:
+        clips: List of clips (AssemblyClip or Path objects).
+
+    Returns:
+        True if at least one clip is HDR (HLG or PQ), False otherwise.
+    """
+    for clip in clips:
+        path = clip.path if hasattr(clip, "path") else clip
+        hdr_type = _detect_hdr_type(path)
+        if hdr_type is not None:
+            return True
+    return False
+
+
 def _get_colorspace_filter(hdr_type: str) -> str:
     """Get the setparams filter string for the given HDR type.
 

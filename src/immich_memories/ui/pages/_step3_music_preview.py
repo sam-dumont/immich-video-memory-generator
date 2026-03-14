@@ -173,7 +173,7 @@ def render_music_preview_section(options: dict) -> None:
 
     # Generate / Regenerate button
     has_preview = state.music_preview_result and state.music_preview_result.versions
-    button_text = "Regenerate Music" if has_preview else "Generate Music Preview"
+    button_text = "Regenerate Music" if has_preview else "Generate Music"
     button_icon = "refresh" if has_preview else "music_note"
 
     async def on_generate():

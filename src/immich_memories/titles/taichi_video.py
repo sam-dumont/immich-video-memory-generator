@@ -7,11 +7,11 @@ from __future__ import annotations
 
 import logging
 import subprocess
-import sys
 from pathlib import Path
 
 import numpy as np
 
+from .encoding import _get_gpu_encoder_args
 from .renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,7 @@ def create_title_video_taichi(
     output_path: Path,
     config: TaichiTitleConfig | None = None,
     fade_from_white: bool = False,
+    hdr: bool = True,
 ) -> Path:
     """Create title video using Taichi GPU rendering."""
     cfg = config or TaichiTitleConfig()
@@ -30,41 +31,8 @@ def create_title_video_taichi(
 
     renderer = TaichiTitleRenderer(cfg)
 
-    # HLG colorspace metadata -- must match video clips for clean concat
-    color_args = [
-        "-color_primaries",
-        "bt2020",
-        "-color_trc",
-        "arib-std-b67",
-        "-colorspace",
-        "bt2020nc",
-    ]
-
-    # Use 10-bit encoding for smooth gradients (no banding)
-    if sys.platform == "darwin":
-        video_codec = [
-            "-c:v",
-            "hevc_videotoolbox",
-            "-q:v",
-            "50",
-            "-tag:v",
-            "hvc1",
-            *color_args,
-        ]
-        pix_fmt = "p010le"
-    else:
-        video_codec = [
-            "-c:v",
-            "libx265",
-            "-crf",
-            "18",
-            "-preset",
-            "fast",
-            "-tag:v",
-            "hvc1",
-            *color_args,
-        ]
-        pix_fmt = "yuv420p10le"
+    # Encoder args from single source of truth (encoding.py)
+    encoder_args = _get_gpu_encoder_args(hdr=hdr)
 
     cmd = [
         "ffmpeg",
@@ -85,9 +53,7 @@ def create_title_video_taichi(
         "lavfi",
         "-i",
         "anullsrc=r=48000:cl=stereo",
-        *video_codec,
-        "-pix_fmt",
-        pix_fmt,
+        *encoder_args,
         "-c:a",
         "aac",
         "-b:a",

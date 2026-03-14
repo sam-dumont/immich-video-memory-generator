@@ -1,8 +1,8 @@
 """Trip map and location card generation mixin for TitleScreenGenerator.
 
 Provides methods for generating trip-specific title screens:
-- Animated globe fly-over (GPU-accelerated, Relive-style)
-- Fallback: static satellite map with pins
+- Animated satellite map fly-over (city zoom → pan → city zoom)
+- Fallback: static satellite map with pins (when no home coords)
 - Location interstitial cards between clips
 """
 
@@ -32,66 +32,49 @@ class TripScreenMixin:
         subtitle_text: str | None = None,
         home_lat: float | None = None,
         home_lon: float | None = None,
+        location_names: list[str] | None = None,
     ):  # -> GeneratedScreen
         """Generate a trip map overview screen.
 
-        When GPU is available and homebase is set, renders an animated
-        3D globe fly-over from home to destinations (Relive-style).
-        Falls back to static satellite map with pins otherwise.
+        When home coordinates are provided, renders an animated satellite
+        map fly-over: city-level at departure → zoom out → pan → zoom in
+        at destination. Falls back to static map otherwise.
 
         Args:
-            locations: List of (lat, lon) for map pins / destinations.
+            locations: List of (lat, lon) for destination pins.
             title_text: Title overlay text.
-            subtitle_text: Optional subtitle.
-            home_lat: Homebase latitude (degrees) for globe animation.
-            home_lon: Homebase longitude (degrees) for globe animation.
+            subtitle_text: Optional subtitle (static map only).
+            home_lat: Departure latitude (degrees).
+            home_lon: Departure longitude (degrees).
+            location_names: City names for each destination.
 
         Returns:
             GeneratedScreen with path to map video.
         """
-        if self._use_gpu and home_lat is not None and home_lon is not None:
-            return self._generate_globe_animation(locations, title_text, home_lat, home_lon)
-        return self._generate_static_map(locations, title_text, subtitle_text)
+        if home_lat is not None and home_lon is not None:
+            return self._generate_map_fly(locations, title_text, home_lat, home_lon, location_names)
+        return self._generate_static_map(locations, title_text, subtitle_text, location_names)
 
-    def _generate_globe_animation(
+    def _generate_map_fly(
         self,
-        locations: list[tuple[float, float]],
+        destinations: list[tuple[float, float]],
         title_text: str,
         home_lat: float,
         home_lon: float,
+        location_names: list[str] | None = None,
     ):  # -> GeneratedScreen
-        """Animated 3D globe fly-over from home to destinations."""
+        """Animated satellite map fly-over from home to destinations."""
         from .generator import GeneratedScreen
-        from .globe_renderer import generate_camera_keyframes
-        from .globe_video import create_globe_animation_video
-        from .map_renderer import render_equirectangular_map
+        from .map_animation import create_map_fly_video
 
         width, height = self.config.output_resolution
         duration = self.config.title_duration
 
-        # Compute centroid of all locations for texture center
-        all_lats = [home_lat] + [lat for lat, _ in locations]
-        all_lons = [home_lon] + [lon for _, lon in locations]
-        center_lat = sum(all_lats) / len(all_lats)
-        center_lon = sum(all_lons) / len(all_lons)
-
-        # Fetch equirectangular satellite texture
-        tex_w = min(width, 1440)  # Cap texture size for performance
-        tex_h = tex_w // 2
-        texture = render_equirectangular_map(
-            center_lat=center_lat,
-            center_lon=center_lon,
-            width=tex_w,
-            height=tex_h,
-        )
-
-        # Generate camera keyframes: home → destinations
-        keyframes = generate_camera_keyframes(home_lat, home_lon, locations)
-
-        output_path = self.output_dir / "trip_globe_intro.mp4"
-        create_globe_animation_video(
-            texture=texture,
-            keyframes=keyframes,
+        output_path = self.output_dir / "trip_map_fly_intro.mp4"
+        create_map_fly_video(
+            departure=(home_lat, home_lon),
+            destinations=destinations,
+            title_text=title_text,
             output_path=output_path,
             width=width,
             height=height,
@@ -99,9 +82,11 @@ class TripScreenMixin:
             fps=self.config.fps,
             hold_start=0.5,
             hold_end=1.0,
+            hdr=self.config.hdr,
+            destination_names=location_names,
         )
 
-        logger.info(f"Globe animation generated: {output_path}")
+        logger.info(f"Map fly animation generated: {output_path}")
         return GeneratedScreen(
             path=output_path,
             duration=duration,
@@ -113,13 +98,14 @@ class TripScreenMixin:
         locations: list[tuple[float, float]],
         title_text: str,
         subtitle_text: str | None,
+        location_names: list[str] | None = None,
     ):  # -> GeneratedScreen
-        """Static satellite map with pins (fallback when globe unavailable)."""
+        """Static satellite map with pins (fallback when no home coords)."""
         from .generator import GeneratedScreen
         from .map_renderer import render_trip_map_array
 
         width, height = self.config.output_resolution
-        map_array = render_trip_map_array(locations, width, height)
+        map_array = render_trip_map_array(locations, width, height, location_names=location_names)
 
         output_path = self.output_dir / "trip_map_intro.mp4"
         self._create_map_video(

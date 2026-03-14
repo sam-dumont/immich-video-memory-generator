@@ -81,6 +81,9 @@ class TitleScreenConfig:
     resolution: str = "1080p"  # "720p", "1080p", or "4k"
     fps: float = 60.0  # 60fps for smooth animations (downsample later if needed)
 
+    # HDR: match source clips. True = HLG bt2020, False = SDR yuv420p.
+    hdr: bool = True
+
     @property
     def output_resolution(self) -> tuple[int, int]:
         """Get the output resolution based on orientation and resolution settings."""
@@ -435,6 +438,7 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
             height=height,
             duration=self.config.ending_duration,
             fps=self.config.fps,
+            hdr=self.config.hdr,
         )
 
         logger.info("Generated ending screen with fade to white")

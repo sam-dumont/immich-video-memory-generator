@@ -132,7 +132,7 @@ def render_equirectangular_map(
     m = StaticMap(width, height, url_template=url_template)
 
     # Add an invisible marker at center to set the map viewport
-    m.add_marker(CircleMarker((center_lon, center_lat), "transparent", 1))
+    m.add_marker(CircleMarker((center_lon, center_lat), "#00000000", 1))
 
     try:
         image = m.render()
@@ -445,3 +445,53 @@ def _get_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFo
         except OSError:
             continue
     return ImageFont.load_default()
+
+
+def _wrap_text(
+    text: str,
+    draw: ImageDraw.ImageDraw,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    max_w: int,
+) -> list[str]:
+    """Word-wrap text to fit within max_w pixels."""
+    if "," in text:
+        parts = [p.strip() for p in text.split(",", 1)]
+        if all(draw.textbbox((0, 0), p, font=font)[2] <= max_w for p in parts):
+            return parts
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        test = f"{current} {word}".strip()
+        if draw.textbbox((0, 0), test, font=font)[2] > max_w and current:
+            lines.append(current)
+            current = word
+        else:
+            current = test
+    if current:
+        lines.append(current)
+    return lines or [text]
+
+
+def _draw_gradient_band(draw: ImageDraw.ImageDraw, y: int, bh: int, w: int, h: int) -> None:
+    """Soft dark gradient band for text readability."""
+    cy, half = y + bh // 2, bh // 2
+    for dy in range(-half, half + 1):
+        row = cy + dy
+        if 0 <= row < h:
+            a = int(100 * (1 - (abs(dy) / max(1, half)) ** 2))
+            draw.line([(0, row), (w, row)], fill=(0, 0, 0, a))
+
+
+def _overlay_composite(frame: Image.Image, ov: Image.Image, alpha: float) -> Image.Image:
+    """Composite RGBA overlay onto RGB frame with given opacity."""
+    import numpy as np
+
+    if alpha >= 0.99:
+        return Image.alpha_composite(frame.convert("RGBA"), ov).convert("RGB")
+    arr = np.array(ov.copy())
+    arr[:, :, 3] = (arr[:, :, 3].astype(np.float32) * alpha).astype(np.uint8)
+    return Image.alpha_composite(
+        frame.convert("RGBA"),
+        Image.fromarray(arr, "RGBA"),
+    ).convert("RGB")

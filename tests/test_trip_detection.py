@@ -17,16 +17,19 @@ def _make_asset(
     country: str | None = None,
     asset_id: str | None = None,
     asset_type: AssetType = AssetType.VIDEO,
+    local_dt: str | None = None,
 ) -> Asset:
     """Helper to build a minimal Asset with GPS and timestamp."""
     ts = datetime.fromisoformat(created_at).replace(tzinfo=UTC)
     exif = ExifInfo(latitude=lat, longitude=lon, city=city, country=country) if lat else None
+    ldt = datetime.fromisoformat(local_dt) if local_dt else None
     return Asset(
         id=asset_id or f"asset-{created_at}",
         type=asset_type,
         fileCreatedAt=ts,
         fileModifiedAt=ts,
         updatedAt=ts,
+        localDateTime=ldt,
         exifInfo=exif,
     )
 
@@ -855,3 +858,533 @@ class TestTripInUI:
 
         # Just verify the enum value is recognized
         assert MemoryType("trip") == MemoryType.TRIP
+
+
+class TestDetectOvernightStops:
+    """Overnight stop detection: group trip days into base camps."""
+
+    def test_hiking_trip_different_stop_each_night(self):
+        """Multi-city trip: different overnight stop each day → multiple bases.
+
+        Uses "woke up here" heuristic: night N location = first photo of day N+1.
+        Morning photos at accommodation tell us where we slept.
+        """
+        from immich_memories.analysis.trip_detection import detect_overnight_stops
+
+        # 3 days, morning photos at the accommodation (all >5km apart)
+        assets = [
+            # Day 1: morning in Dresden, evening hiking
+            _make_asset(
+                50.98, 14.00, "2022-04-04T09:00:00", local_dt="2022-04-04T09:00:00", city="Dresden"
+            ),
+            _make_asset(
+                50.978,
+                14.109,
+                "2022-04-04T18:00:00",
+                local_dt="2022-04-04T18:00:00",
+                city="Hohnstein",
+            ),
+            # Day 2: MORNING at Bad Schandau (= where we slept night 1)
+            _make_asset(
+                50.915,
+                14.200,
+                "2022-04-05T08:00:00",
+                local_dt="2022-04-05T08:00:00",
+                city="Bad Schandau",
+            ),
+            _make_asset(
+                50.92, 14.18, "2022-04-05T17:00:00", local_dt="2022-04-05T17:00:00", city="Schmilka"
+            ),
+            # Day 3: MORNING at Konigstein (= where we slept night 2)
+            _make_asset(
+                50.919,
+                14.071,
+                "2022-04-06T08:00:00",
+                local_dt="2022-04-06T08:00:00",
+                city="Konigstein",
+            ),
+            # Last photo far from both BS and Konigstein (>5km each)
+            _make_asset(
+                50.85, 14.25, "2022-04-06T17:00:00", local_dt="2022-04-06T17:00:00", city="Pirna"
+            ),
+        ]
+        bases = detect_overnight_stops(assets)
+        assert len(bases) == 3
+        # Night 1 → woke up at Bad Schandau (first photo day 2)
+        assert bases[0].location_name == "Bad Schandau"
+        # Night 2 → woke up at Konigstein (first photo day 3)
+        assert bases[1].location_name == "Konigstein"
+        # Last day → falls back to last photo (Pirna)
+        assert bases[2].location_name == "Pirna"
+
+    def test_base_camp_trip_same_hotel(self):
+        """Cyprus: 5 nights in same city → ONE base, not 5."""
+        from immich_memories.analysis.trip_detection import detect_overnight_stops
+
+        # 3 days all ending at the same hotel in Nicosia (~0.5km apart)
+        assets = [
+            _make_asset(
+                35.17, 33.36, "2024-08-27T10:00:00", local_dt="2024-08-27T10:00:00", city="Nicosia"
+            ),
+            _make_asset(
+                35.173,
+                33.358,
+                "2024-08-27T20:00:00",
+                local_dt="2024-08-27T20:00:00",
+                city="Nicosia",
+            ),
+            _make_asset(
+                35.16, 33.35, "2024-08-28T10:00:00", local_dt="2024-08-28T10:00:00", city="Nicosia"
+            ),
+            _make_asset(
+                35.173,
+                33.358,
+                "2024-08-28T21:00:00",
+                local_dt="2024-08-28T21:00:00",
+                city="Nicosia",
+            ),
+            _make_asset(
+                35.17, 33.36, "2024-08-29T09:00:00", local_dt="2024-08-29T09:00:00", city="Nicosia"
+            ),
+            _make_asset(
+                35.166,
+                33.364,
+                "2024-08-29T20:00:00",
+                local_dt="2024-08-29T20:00:00",
+                city="Nicosia",
+            ),
+        ]
+        bases = detect_overnight_stops(assets)
+        assert len(bases) == 1
+        assert bases[0].nights == 3
+        assert bases[0].location_name == "Nicosia"
+
+    def test_two_bases_with_transition(self):
+        """Cyprus pattern: Nicosia (3 nights) → Pafos (2 nights) → 2 bases."""
+        from immich_memories.analysis.trip_detection import detect_overnight_stops
+
+        assets = [
+            # Nicosia base (3 days, last photo always near same spot)
+            _make_asset(
+                35.17, 33.36, "2024-08-27T10:00:00", local_dt="2024-08-27T10:00:00", city="Nicosia"
+            ),
+            _make_asset(
+                35.173,
+                33.358,
+                "2024-08-27T20:00:00",
+                local_dt="2024-08-27T20:00:00",
+                city="Nicosia",
+            ),
+            _make_asset(
+                35.173,
+                33.358,
+                "2024-08-28T20:00:00",
+                local_dt="2024-08-28T20:00:00",
+                city="Nicosia",
+            ),
+            _make_asset(
+                35.173,
+                33.358,
+                "2024-08-29T20:00:00",
+                local_dt="2024-08-29T20:00:00",
+                city="Nicosia",
+            ),
+            # Transition day + Pafos base (2 days, last photo in Geroskipou)
+            _make_asset(
+                35.17, 33.36, "2024-08-30T09:00:00", local_dt="2024-08-30T09:00:00", city="Nicosia"
+            ),
+            _make_asset(
+                34.739,
+                32.434,
+                "2024-08-30T20:00:00",
+                local_dt="2024-08-30T20:00:00",
+                city="Geroskipou",
+            ),
+            _make_asset(
+                34.740,
+                32.434,
+                "2024-08-31T20:00:00",
+                local_dt="2024-08-31T20:00:00",
+                city="Geroskipou",
+            ),
+        ]
+        bases = detect_overnight_stops(assets)
+        assert len(bases) == 2
+        assert bases[0].nights >= 3
+        assert bases[1].nights >= 2
+
+    def test_empty_assets(self):
+        """No assets → no bases."""
+        from immich_memories.analysis.trip_detection import detect_overnight_stops
+
+        assert detect_overnight_stops([]) == []
+
+    def test_single_day_trip(self):
+        """Single day → 1 base with 1 night."""
+        from immich_memories.analysis.trip_detection import detect_overnight_stops
+
+        assets = [
+            _make_asset(
+                41.39, 2.17, "2024-06-12T10:00:00", local_dt="2024-06-12T10:00:00", city="Barcelona"
+            ),
+            _make_asset(
+                41.39, 2.17, "2024-06-12T18:00:00", local_dt="2024-06-12T18:00:00", city="Barcelona"
+            ),
+        ]
+        bases = detect_overnight_stops(assets)
+        assert len(bases) == 1
+
+    def test_day_trip_returns_to_base(self):
+        """Val d'Aoste: morning at trailhead, return to base each evening → 1 base.
+
+        The hard case: morning photos are NOT at the base (you drove to a
+        trailhead early). But you have photos at the base later in the day,
+        proving you returned. The algorithm must look at ALL photos, not just
+        first/last, to detect the recurring home base.
+        """
+        from immich_memories.analysis.trip_detection import detect_overnight_stops
+
+        base_lat, base_lon = 45.73, 7.35  # Ville Sur Sarre
+        trail_a = (45.62, 7.20)  # 15km south
+        trail_b = (45.80, 7.50)  # 15km north-east
+
+        assets = [
+            # Day 1: morning at trailhead A, afternoon back at base
+            _make_asset(
+                *trail_a, "2021-08-01T08:00:00", local_dt="2021-08-01T08:00:00", city="Trailhead A"
+            ),
+            _make_asset(
+                base_lat,
+                base_lon,
+                "2021-08-01T17:00:00",
+                local_dt="2021-08-01T17:00:00",
+                city="Ville Sur Sarre",
+            ),
+            # Day 2: morning at trailhead B, afternoon back at base
+            _make_asset(
+                *trail_b, "2021-08-02T08:00:00", local_dt="2021-08-02T08:00:00", city="Trailhead B"
+            ),
+            _make_asset(
+                base_lat,
+                base_lon,
+                "2021-08-02T17:00:00",
+                local_dt="2021-08-02T17:00:00",
+                city="Ville Sur Sarre",
+            ),
+            # Day 3: morning at trailhead A again, afternoon at base
+            _make_asset(
+                *trail_a, "2021-08-03T08:00:00", local_dt="2021-08-03T08:00:00", city="Trailhead A"
+            ),
+            _make_asset(
+                base_lat,
+                base_lon,
+                "2021-08-03T17:00:00",
+                local_dt="2021-08-03T17:00:00",
+                city="Ville Sur Sarre",
+            ),
+            # Day 4: last day at base
+            _make_asset(
+                base_lat,
+                base_lon,
+                "2021-08-04T10:00:00",
+                local_dt="2021-08-04T10:00:00",
+                city="Ville Sur Sarre",
+            ),
+        ]
+        bases = detect_overnight_stops(assets)
+        assert len(bases) == 1
+        assert bases[0].nights == 4
+        assert bases[0].location_name == "Ville Sur Sarre"
+
+    def test_base_excursion_new_base(self):
+        """Base A (3 nights) → Base B (2 nights) = 2 bases.
+
+        Uses "woke up here" heuristic: morning photos show where we slept.
+        With 5 days: mornings 2-4 at Nicosia (3 nights), morning 5 at Pafos,
+        last photo at Pafos (2 nights).
+        """
+        from immich_memories.analysis.trip_detection import detect_overnight_stops
+
+        assets = [
+            # Day 1: morning at Nicosia
+            _make_asset(
+                35.173,
+                33.358,
+                "2024-08-27T08:00:00",
+                local_dt="2024-08-27T08:00:00",
+                city="Nicosia",
+            ),
+            # Day 2: MORNING at Nicosia (slept night 1 here)
+            _make_asset(
+                35.173,
+                33.358,
+                "2024-08-28T08:00:00",
+                local_dt="2024-08-28T08:00:00",
+                city="Nicosia",
+            ),
+            # Day 3: MORNING at Nicosia (slept night 2 here)
+            _make_asset(
+                35.173,
+                33.358,
+                "2024-08-29T08:00:00",
+                local_dt="2024-08-29T08:00:00",
+                city="Nicosia",
+            ),
+            # Day 4: MORNING at Nicosia (slept night 3 here), travel to Pafos
+            _make_asset(
+                35.173,
+                33.358,
+                "2024-08-30T08:00:00",
+                local_dt="2024-08-30T08:00:00",
+                city="Nicosia",
+            ),
+            _make_asset(
+                34.739,
+                32.434,
+                "2024-08-30T18:00:00",
+                local_dt="2024-08-30T18:00:00",
+                city="Geroskipou",
+            ),
+            # Day 5: MORNING at Geroskipou (slept night 4 here)
+            _make_asset(
+                34.740,
+                32.434,
+                "2024-08-31T08:00:00",
+                local_dt="2024-08-31T08:00:00",
+                city="Geroskipou",
+            ),
+            _make_asset(
+                34.740,
+                32.434,
+                "2024-08-31T20:00:00",
+                local_dt="2024-08-31T20:00:00",
+                city="Geroskipou",
+            ),
+        ]
+        bases = detect_overnight_stops(assets)
+        assert len(bases) == 2
+        assert bases[0].nights >= 3  # Nicosia: nights 1-3
+        assert bases[1].nights >= 2  # Geroskipou: nights 4-5
+
+    def test_two_bases_with_excursion(self):
+        """Crete: 2 home bases + 1 overnight excursion = 3 stops.
+
+        Base A (west Crete, 4 days) → 1 night excursion at Samaria Gorge →
+        Base B (east Crete, 4 days). The excursion is a single night away
+        from any home base. Both bases are detected because photos cluster
+        there across multiple days.
+        """
+        from immich_memories.analysis.trip_detection import detect_overnight_stops
+
+        base_a = (35.50, 23.96)  # Chania area
+        base_b = (35.19, 26.10)  # Sitia area
+        gorge = (35.27, 23.94)  # Samaria Gorge (26km from Chania)
+
+        assets = []
+        # Base A: 4 days with photos at base
+        for day in range(4, 8):
+            ts = f"2019-07-0{day}T"
+            assets.append(
+                _make_asset(*base_a, f"{ts}08:00:00", local_dt=f"{ts}08:00:00", city="Chania")
+            )
+            assets.append(
+                _make_asset(*base_a, f"{ts}19:00:00", local_dt=f"{ts}19:00:00", city="Chania")
+            )
+
+        # Day 8: excursion to Samaria Gorge — leave base, don't come back
+        assets.append(
+            _make_asset(
+                *base_a, "2019-07-08T07:00:00", local_dt="2019-07-08T07:00:00", city="Chania"
+            )
+        )
+        assets.append(
+            _make_asset(
+                *gorge, "2019-07-08T18:00:00", local_dt="2019-07-08T18:00:00", city="Samaria"
+            )
+        )
+
+        # Day 9: travel from gorge to base B
+        assets.append(
+            _make_asset(
+                *gorge, "2019-07-09T08:00:00", local_dt="2019-07-09T08:00:00", city="Samaria"
+            )
+        )
+        assets.append(
+            _make_asset(
+                *base_b, "2019-07-09T18:00:00", local_dt="2019-07-09T18:00:00", city="Sitia"
+            )
+        )
+
+        # Base B: 4 days with photos at base
+        for day in range(10, 14):
+            ts = f"2019-07-{day}T"
+            assets.append(
+                _make_asset(*base_b, f"{ts}08:00:00", local_dt=f"{ts}08:00:00", city="Sitia")
+            )
+            assets.append(
+                _make_asset(*base_b, f"{ts}19:00:00", local_dt=f"{ts}19:00:00", city="Sitia")
+            )
+
+        bases = detect_overnight_stops(assets)
+        assert len(bases) == 3
+        assert bases[0].location_name == "Chania"
+        assert bases[0].nights >= 4
+        assert bases[1].nights == 1  # Samaria excursion
+        assert bases[2].location_name == "Sitia"
+        assert bases[2].nights >= 4
+
+    def test_excursion_then_return_to_base(self):
+        """Base A (5 days) → excursion B (1 night) → back to A (2 days) = 3 stops.
+
+        The key pattern: you sleep at the base for 5 days, go on a 1-night
+        excursion, then RETURN to the same base. The algorithm must detect
+        the return and assign those days back to base A.
+        """
+        from immich_memories.analysis.trip_detection import detect_overnight_stops
+
+        base = (45.73, 7.35)  # Ville Sur Sarre
+        excursion = (45.87, 7.17)  # Grand Saint-Bernard (20km away)
+
+        assets = []
+        # Days 1-5: at base
+        for day in range(1, 6):
+            ts = f"2021-08-0{day}T"
+            assets.append(
+                _make_asset(
+                    *base, f"{ts}08:00:00", local_dt=f"{ts}08:00:00", city="Ville Sur Sarre"
+                )
+            )
+            assets.append(
+                _make_asset(
+                    *base, f"{ts}19:00:00", local_dt=f"{ts}19:00:00", city="Ville Sur Sarre"
+                )
+            )
+
+        # Day 6: leave base, go to excursion, sleep there
+        assets.append(
+            _make_asset(
+                *base, "2021-08-06T08:00:00", local_dt="2021-08-06T08:00:00", city="Ville Sur Sarre"
+            )
+        )
+        assets.append(
+            _make_asset(
+                *excursion,
+                "2021-08-06T18:00:00",
+                local_dt="2021-08-06T18:00:00",
+                city="Grand St-Bernard",
+            )
+        )
+
+        # Day 7: return to base
+        assets.append(
+            _make_asset(
+                *excursion,
+                "2021-08-07T08:00:00",
+                local_dt="2021-08-07T08:00:00",
+                city="Grand St-Bernard",
+            )
+        )
+        assets.append(
+            _make_asset(
+                *base, "2021-08-07T17:00:00", local_dt="2021-08-07T17:00:00", city="Ville Sur Sarre"
+            )
+        )
+
+        # Days 8-9: back at base
+        for day in range(8, 10):
+            ts = f"2021-08-0{day}T"
+            assets.append(
+                _make_asset(
+                    *base, f"{ts}08:00:00", local_dt=f"{ts}08:00:00", city="Ville Sur Sarre"
+                )
+            )
+            assets.append(
+                _make_asset(
+                    *base, f"{ts}19:00:00", local_dt=f"{ts}19:00:00", city="Ville Sur Sarre"
+                )
+            )
+
+        bases = detect_overnight_stops(assets)
+        # Base A appears before AND after the excursion → merge into one base
+        # absorbing the excursion: [A(5n), X(1n), A(3n)] → [A(9n)]
+        assert len(bases) == 1
+        assert bases[0].location_name == "Ville Sur Sarre"
+        assert bases[0].nights >= 8
+
+    def test_base_with_excursions_between(self):
+        """Bretagne: base A (with excursions) → base B = 2 bases.
+
+        Pattern: base photos on days 1,4 + excursion photos on days 2,3
+        + different base on days 5-7. The repeated base A should be detected
+        even if it doesn't meet the day-count threshold, because it appears
+        at non-consecutive positions in the output.
+        """
+        from immich_memories.analysis.trip_detection import detect_overnight_stops
+
+        base_a = (48.295, -3.960)  # Brasparts
+        excursion1 = (48.276, -4.593)  # Camaret-sur-Mer (47km)
+        excursion2 = (48.362, -3.735)  # Huelgoat (18km)
+        base_b = (48.685, -2.337)  # Fréhel (127km)
+
+        assets = [
+            # Day 1: at Brasparts
+            _make_asset(
+                *base_a, "2023-09-23T10:00:00", local_dt="2023-09-23T10:00:00", city="Brasparts"
+            ),
+            _make_asset(
+                *base_a, "2023-09-23T19:00:00", local_dt="2023-09-23T19:00:00", city="Brasparts"
+            ),
+            # Day 2: excursion to Camaret, last photo far from base
+            _make_asset(
+                *excursion1,
+                "2023-09-24T10:00:00",
+                local_dt="2023-09-24T10:00:00",
+                city="Camaret-sur-Mer",
+            ),
+            _make_asset(
+                *excursion1,
+                "2023-09-24T18:00:00",
+                local_dt="2023-09-24T18:00:00",
+                city="Camaret-sur-Mer",
+            ),
+            # Day 3: excursion to Huelgoat
+            _make_asset(
+                *excursion2, "2023-09-25T10:00:00", local_dt="2023-09-25T10:00:00", city="Huelgoat"
+            ),
+            _make_asset(
+                *excursion2, "2023-09-25T18:00:00", local_dt="2023-09-25T18:00:00", city="Huelgoat"
+            ),
+            # Day 4: back at Brasparts (proves it's the base!)
+            _make_asset(
+                *base_a, "2023-09-26T10:00:00", local_dt="2023-09-26T10:00:00", city="Brasparts"
+            ),
+            _make_asset(
+                *base_a, "2023-09-26T19:00:00", local_dt="2023-09-26T19:00:00", city="Brasparts"
+            ),
+            # Days 5-7: moved to Fréhel (new base)
+            _make_asset(
+                *base_b, "2023-09-27T10:00:00", local_dt="2023-09-27T10:00:00", city="Frehel"
+            ),
+            _make_asset(
+                *base_b, "2023-09-27T19:00:00", local_dt="2023-09-27T19:00:00", city="Frehel"
+            ),
+            _make_asset(
+                *base_b, "2023-09-28T10:00:00", local_dt="2023-09-28T10:00:00", city="Frehel"
+            ),
+            _make_asset(
+                *base_b, "2023-09-28T19:00:00", local_dt="2023-09-28T19:00:00", city="Frehel"
+            ),
+            _make_asset(
+                *base_b, "2023-09-29T10:00:00", local_dt="2023-09-29T10:00:00", city="Frehel"
+            ),
+            _make_asset(
+                *base_b, "2023-09-29T19:00:00", local_dt="2023-09-29T19:00:00", city="Frehel"
+            ),
+        ]
+        bases = detect_overnight_stops(assets)
+        # Brasparts (days 1,2,3,4) → Fréhel (days 5,6,7)
+        assert len(bases) == 2
+        assert bases[0].location_name == "Brasparts"
+        assert bases[0].nights >= 4
+        assert bases[1].location_name == "Frehel"
+        assert bases[1].nights >= 3

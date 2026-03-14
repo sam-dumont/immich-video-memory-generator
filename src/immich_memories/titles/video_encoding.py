@@ -9,12 +9,12 @@ from __future__ import annotations
 import logging
 import queue
 import subprocess
-import sys
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .animations import get_animation_preset, reverse_preset
+from .encoding import _get_gpu_encoder_args
 from .styles import TitleStyle
 
 if TYPE_CHECKING:
@@ -30,17 +30,22 @@ except ImportError:
     HAS_PIL = False
 
 
-def _get_sdr_to_hlg_filter() -> str:
-    """Get video filter to convert sRGB title screen frames to HLG/BT.2020.
+def _get_sdr_to_hlg_filter(hdr: bool = True) -> str:
+    """Get video filter to convert sRGB frames to HLG/BT.2020.
 
-    Title screens are rendered in sRGB (8-bit RGB24) but need to match
-    the HLG colorspace of video clips for clean concatenation. Without
-    this conversion, title screens appear pinkish/washed out because
-    sRGB pixel values get misinterpreted as HLG.
+    PIL renders sRGB (8-bit RGB24) frames. When outputting HDR, we need
+    proper transfer function conversion so titles don't appear pinkish.
+    When outputting SDR, no conversion needed.
+
+    Args:
+        hdr: If True, return SDR→HLG conversion filter. If False, return "".
 
     Returns:
-        FFmpeg video filter string for SDR→HLG conversion.
+        FFmpeg video filter string, or "" for SDR output.
     """
+    if not hdr:
+        return ""
+
     # zscale handles proper transfer function conversion (sRGB → HLG)
     try:
         result = subprocess.run(
@@ -64,105 +69,21 @@ def _get_sdr_to_hlg_filter() -> str:
     return "format=p010le"
 
 
-def _get_best_encoder() -> tuple[list[str], str]:
-    """Get the best available video encoder for intermediate files.
+def _get_best_encoder(hdr: bool = True) -> tuple[list[str], str]:
+    """Get the best encoder args and optional SDR→HLG video filter.
 
-    Returns encoder flags optimized for:
-    - VERY HIGH quality (near-lossless for intermediate files that will be re-encoded)
-    - Fast encoding (GPU when available)
-    - 10-bit color depth (eliminates gradient banding)
-    - Compatible with .mp4 container
+    Delegates encoder selection to the shared _get_gpu_encoder_args(),
+    then adds the PIL-specific SDR→HLG conversion filter when needed.
+
+    Args:
+        hdr: If True, output HLG HDR. If False, output SDR.
 
     Returns:
         Tuple of (encoder args, video filter for SDR→HLG conversion).
     """
-    # HLG colorspace metadata — must match video clips for clean concat
-    color_args = [
-        "-color_primaries",
-        "bt2020",
-        "-color_trc",
-        "arib-std-b67",
-        "-colorspace",
-        "bt2020nc",
-    ]
-
-    sdr_to_hlg = _get_sdr_to_hlg_filter()
-
-    # macOS: Use VideoToolbox hardware encoder (GPU accelerated, 10-bit support)
-    if sys.platform == "darwin":
-        return [
-            "-c:v",
-            "hevc_videotoolbox",
-            "-q:v",
-            "50",  # High quality (lower = better, 0-100)
-            "-tag:v",
-            "hvc1",  # Better compatibility
-            *color_args,
-        ], sdr_to_hlg
-
-    # Other platforms: Check for available encoders
-    try:
-        result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"],
-            capture_output=True,
-            text=True,
-        )
-        encoders = result.stdout
-
-        # Try NVIDIA NVENC (GPU accelerated)
-        if "hevc_nvenc" in encoders:
-            return [
-                "-c:v",
-                "hevc_nvenc",
-                "-preset",
-                "p4",  # Quality preset
-                "-rc",
-                "constqp",
-                "-qp",
-                "18",
-                "-tag:v",
-                "hvc1",
-                *color_args,
-            ], sdr_to_hlg
-
-        # Fallback to libx265 (CPU, slower but high quality)
-        if "libx265" in encoders:
-            return [
-                "-c:v",
-                "libx265",
-                "-crf",
-                "18",
-                "-preset",
-                "fast",
-                "-tag:v",
-                "hvc1",
-                *color_args,
-            ], sdr_to_hlg
-
-        # Last fallback to libx264 (8-bit, no HDR)
-        return [
-            "-c:v",
-            "libx264",
-            "-crf",
-            "18",
-            "-preset",
-            "fast",
-            "-pix_fmt",
-            "yuv420p",
-        ], ""
-
-    except Exception:
-        # Default to libx264 if detection fails
-        return [
-            "-c:v",
-            "libx264",
-            "-crf",
-            "18",
-            "-preset",
-            "fast",
-            "-pix_fmt",
-            "yuv420p",
-        ], ""
+    encoder_args = _get_gpu_encoder_args(hdr=hdr)
+    video_filter = _get_sdr_to_hlg_filter(hdr=hdr)
+    return encoder_args, video_filter
 
 
 def create_title_video(
@@ -176,6 +97,7 @@ def create_title_video(
     fps: float = 60.0,  # 60fps for smooth animations (downsample later if needed)
     animated_background: bool = True,
     fade_from_white: bool = False,
+    hdr: bool = True,
 ) -> Path:
     """Create a complete title video with full animation support.
 
@@ -209,7 +131,7 @@ def create_title_video(
     renderer = TitleRenderer(style, settings)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    encoder_args, video_filter = _get_best_encoder()
+    encoder_args, video_filter = _get_best_encoder(hdr=hdr)
 
     # Build FFmpeg command to read raw video from pipe
     cmd = [

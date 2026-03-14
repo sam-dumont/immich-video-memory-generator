@@ -130,6 +130,8 @@ class AssemblySettings:
     debug_preserve_intermediates: bool = False
     # Aspect ratio handling mode: "blur", "smart_zoom", "black_bars", "exclude"
     scale_mode: str = "blur"
+    # Privacy/demo mode: blur video + mute speech for showcase videos
+    privacy_mode: bool = False
 
 
 @dataclass

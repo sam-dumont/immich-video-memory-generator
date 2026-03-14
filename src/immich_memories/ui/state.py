@@ -93,6 +93,9 @@ class AppState:
     upload_album_name: str = "Memories"
     upload_result: dict[str, Any] | None = None
 
+    # Demo/privacy mode: blur thumbnails + video, mute speech
+    demo_mode: bool = False
+
     # Duplicate tracking
     _duplicates_processed: bool = False
 

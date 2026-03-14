@@ -1,8 +1,4 @@
-"""Trip detection: GPS-based clustering of videos far from home.
-
-Detects trips by filtering assets beyond a distance threshold from the user's
-homebase, then grouping temporally contiguous assets into trip clusters.
-"""
+"""Trip detection: GPS clustering, overnight stops, home base identification."""
 
 from __future__ import annotations
 
@@ -17,6 +13,19 @@ from geopy.geocoders import Nominatim  # type: ignore[import-untyped]
 from immich_memories.api.models import Asset
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class OvernightBase:
+    """A base camp: consecutive days sleeping at the same location."""
+
+    start_date: date
+    end_date: date
+    nights: int
+    lat: float
+    lon: float
+    location_name: str
+    asset_ids: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -140,6 +149,217 @@ def detect_trips(
         )
 
     return trips
+
+
+def _cluster_photos(
+    gps_assets: list[Asset],
+    radius_km: float,
+) -> list[list[Asset]]:
+    """Greedy spatial clustering: assign each photo to nearest cluster or create new."""
+    clusters: list[tuple[float, float, list[Asset]]] = []  # centroid_lat, centroid_lon, assets
+    for a in gps_assets:
+        assert a.exif_info is not None  # pre-filtered
+        assert a.exif_info.latitude is not None
+        assert a.exif_info.longitude is not None
+        lat, lon = a.exif_info.latitude, a.exif_info.longitude
+        best_idx, best_dist = -1, radius_km + 1
+        for i, (clat, clon, _) in enumerate(clusters):
+            d = haversine_km(lat, lon, clat, clon)
+            if d < best_dist:
+                best_idx, best_dist = i, d
+        if best_idx >= 0 and best_dist <= radius_km:
+            clusters[best_idx][2].append(a)
+        else:
+            clusters.append((lat, lon, [a]))
+    return [c[2] for c in clusters]
+
+
+def _cluster_day_presence(
+    cluster: list[Asset],
+) -> set[date]:
+    """Return the set of distinct dates this cluster has photos on."""
+    dates: set[date] = set()
+    for a in cluster:
+        dt = a.local_date_time if a.local_date_time else a.file_created_at
+        dates.add(dt.date())
+    return dates
+
+
+def _cluster_centroid(cluster: list[Asset]) -> tuple[float, float]:
+    """Average lat/lon of a photo cluster."""
+    lats = [a.exif_info.latitude for a in cluster if a.exif_info and a.exif_info.latitude]
+    lons = [a.exif_info.longitude for a in cluster if a.exif_info and a.exif_info.longitude]
+    return sum(lats) / len(lats), sum(lons) / len(lons)  # type: ignore[arg-type]
+
+
+def _cluster_city(cluster: list[Asset]) -> str:
+    """Most common city name in a cluster."""
+    cities: Counter[str] = Counter()
+    for a in cluster:
+        if a.exif_info and a.exif_info.city:
+            cities[a.exif_info.city] += 1
+    if cities:
+        return cities.most_common(1)[0][0]
+    return "Unknown"
+
+
+def _has_return_gap(days: set[date], min_gap: int = 2) -> bool:
+    """True if you left this location and came back (gap of min_gap+ days).
+
+    A gap of 1 day could be consecutive travel. A gap of 2+ days means
+    you were away for at least one full day, proving a return pattern.
+    """
+    if len(days) < 2:
+        return False
+    sorted_days = sorted(days)
+    for i in range(1, len(sorted_days)):
+        if (sorted_days[i] - sorted_days[i - 1]).days > min_gap:
+            return True
+    return False
+
+
+_HomeBase = tuple[float, float, str, set[date]]  # lat, lon, city, days
+_DailyStop = tuple[date, float, float, str, list[str]]  # date, lat, lon, city, ids
+
+
+def _identify_home_bases(
+    gps_assets: list[Asset],
+    trip_days: int,
+    base_radius: float,
+) -> list[_HomeBase]:
+    """Phase 1: Cluster photos and identify recurring home bases."""
+    clusters = _cluster_photos(gps_assets, base_radius)
+    threshold = max(3, math.ceil(trip_days * 0.3))
+    home_bases: list[_HomeBase] = []
+    for cluster in clusters:
+        days = _cluster_day_presence(cluster)
+        if len(days) >= threshold or _has_return_gap(days):
+            clat, clon = _cluster_centroid(cluster)
+            home_bases.append((clat, clon, _cluster_city(cluster), days))
+    return home_bases
+
+
+def _assign_daily_stops(
+    sorted_dates: list[date],
+    by_date: dict[date, list[Asset]],
+    home_bases: list[_HomeBase],
+    base_radius: float,
+) -> list[_DailyStop]:
+    """Phase 2: Assign each day to a home base or excursion location."""
+    daily_stops: list[_DailyStop] = []
+    for i, d in enumerate(sorted_dates):
+        day_assets = sorted(by_date[d], key=lambda a: a.local_date_time or a.file_created_at)
+        ids = [a.id for a in day_assets]
+        last = day_assets[-1]
+        assert last.exif_info and last.exif_info.latitude and last.exif_info.longitude
+        last_lat, last_lon = last.exif_info.latitude, last.exif_info.longitude
+
+        # Check home bases (only if last photo is still near base)
+        assigned = False
+        for hb_lat, hb_lon, hb_city, hb_days in home_bases:
+            if d in hb_days and haversine_km(last_lat, last_lon, hb_lat, hb_lon) <= base_radius:
+                daily_stops.append((d, hb_lat, hb_lon, hb_city, ids))
+                assigned = True
+                break
+        if assigned:
+            continue
+
+        # Excursion: use next morning's first photo, or last photo of the day
+        if i + 1 < len(sorted_dates):
+            ref = sorted(
+                by_date[sorted_dates[i + 1]], key=lambda a: a.local_date_time or a.file_created_at
+            )[0]
+        else:
+            ref = day_assets[-1]
+        assert ref.exif_info and ref.exif_info.latitude and ref.exif_info.longitude
+        daily_stops.append(
+            (
+                d,
+                ref.exif_info.latitude,
+                ref.exif_info.longitude,
+                ref.exif_info.city or "Unknown",
+                ids,
+            )
+        )
+    return daily_stops
+
+
+def _merge_consecutive(
+    daily_stops: list[_DailyStop],
+    merge_radius_km: float,
+) -> list[OvernightBase]:
+    """Phase 3: Merge consecutive same-location nights into bases."""
+    bases: list[OvernightBase] = []
+    for stop_date, lat, lon, city, ids in daily_stops:
+        if bases and haversine_km(bases[-1].lat, bases[-1].lon, lat, lon) <= merge_radius_km:
+            bases[-1].end_date = stop_date
+            bases[-1].nights += 1
+            bases[-1].asset_ids.extend(ids)
+        else:
+            bases.append(
+                OvernightBase(
+                    start_date=stop_date,
+                    end_date=stop_date,
+                    nights=1,
+                    lat=lat,
+                    lon=lon,
+                    location_name=city,
+                    asset_ids=list(ids),
+                )
+            )
+    return bases
+
+
+def _merge_repeated_bases(
+    bases: list[OvernightBase],
+    merge_radius_km: float,
+) -> list[OvernightBase]:
+    """Phase 4: Merge bases that appear at non-consecutive positions (A→X→A → A)."""
+    changed = True
+    while changed:
+        changed = False
+        i = 0
+        while i < len(bases):
+            for j in range(i + 2, len(bases)):
+                if (
+                    haversine_km(bases[i].lat, bases[i].lon, bases[j].lat, bases[j].lon)
+                    <= merge_radius_km
+                ):
+                    for k in range(i + 1, j + 1):
+                        bases[i].end_date = bases[k].end_date
+                        bases[i].nights += bases[k].nights
+                        bases[i].asset_ids.extend(bases[k].asset_ids)
+                    del bases[i + 1 : j + 1]
+                    changed = True
+                    break
+            i += 1
+    return bases
+
+
+def detect_overnight_stops(
+    assets: list[Asset],
+    merge_radius_km: float = 5.0,
+) -> list[OvernightBase]:
+    """Detect overnight stops using home base detection + excursion fallback."""
+    gps_assets = [
+        a
+        for a in assets
+        if a.exif_info and a.exif_info.latitude is not None and a.exif_info.longitude is not None
+    ]
+    if not gps_assets:
+        return []
+
+    by_date: dict[date, list[Asset]] = {}
+    for a in gps_assets:
+        dt = a.local_date_time if a.local_date_time else a.file_created_at
+        by_date.setdefault(dt.date(), []).append(a)
+    sorted_dates = sorted(by_date)
+
+    base_cluster_radius = max(merge_radius_km, 15.0)
+    home_bases = _identify_home_bases(gps_assets, len(sorted_dates), base_cluster_radius)
+    daily_stops = _assign_daily_stops(sorted_dates, by_date, home_bases, base_cluster_radius)
+    bases = _merge_consecutive(daily_stops, merge_radius_km)
+    return _merge_repeated_bases(bases, merge_radius_km)
 
 
 def reverse_geocode(lat: float, lon: float, spread_km: float | None = None) -> str | None:

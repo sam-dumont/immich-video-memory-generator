@@ -14,79 +14,17 @@ from __future__ import annotations
 
 import logging
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from .encoding import _get_gpu_encoder_args
 
 logger = logging.getLogger(__name__)
 
 
-def _get_encoder_args() -> list[str]:
-    """Get GPU-accelerated encoder arguments with 10-bit HDR (HLG) support."""
-    # HLG colorspace metadata — must match video clips for clean concat
-    color_args = [
-        "-color_primaries",
-        "bt2020",
-        "-color_trc",
-        "arib-std-b67",
-        "-colorspace",
-        "bt2020nc",
-    ]
-
-    # macOS: VideoToolbox (GPU accelerated)
-    if sys.platform == "darwin":
-        return [
-            "-c:v",
-            "hevc_videotoolbox",
-            "-q:v",
-            "50",
-            "-pix_fmt",
-            "p010le",  # 10-bit
-            "-tag:v",
-            "hvc1",
-            *color_args,
-        ]
-
-    # Check for NVIDIA NVENC
-    try:
-        result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"],
-            capture_output=True,
-            text=True,
-        )
-        if "hevc_nvenc" in result.stdout:
-            return [
-                "-c:v",
-                "hevc_nvenc",
-                "-preset",
-                "p4",
-                "-rc",
-                "constqp",
-                "-qp",
-                "18",
-                "-pix_fmt",
-                "p010le",  # 10-bit
-                "-tag:v",
-                "hvc1",
-                *color_args,
-            ]
-    except Exception:
-        pass
-
-    # Fallback to CPU libx265 (slower)
-    return [
-        "-c:v",
-        "libx265",
-        "-crf",
-        "18",
-        "-preset",
-        "fast",
-        "-pix_fmt",
-        "yuv420p10le",
-        "-tag:v",
-        "hvc1",
-        *color_args,
-    ]
+def _get_encoder_args(hdr: bool = True) -> list[str]:
+    """Get encoder arguments — delegates to shared encoding._get_gpu_encoder_args."""
+    return _get_gpu_encoder_args(hdr=hdr)
 
 
 @dataclass

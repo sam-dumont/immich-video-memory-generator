@@ -1,7 +1,7 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
-.PHONY: help install dev run preflight test benchmark test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity security-lint dead-code ci ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli
+.PHONY: help install dev run preflight test benchmark test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity security-lint dead-code ci ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
 
 # Default target
 help:
@@ -321,3 +321,11 @@ docs-check:
 		exit 1; \
 	fi; \
 	echo "Docs build passed."
+
+# Record and assemble a product demo video from the live UI
+demo-video: docs-install
+	@echo "Recording UI demo (requires running UI on port 8099)..."
+	cd docs-site && npx tsx scripts/record-demo.ts
+	@echo "Assembling final video..."
+	cd docs-site && bash scripts/assemble-demo.sh
+	@echo "Demo video saved to docs-site/static/demo/demo.mp4"

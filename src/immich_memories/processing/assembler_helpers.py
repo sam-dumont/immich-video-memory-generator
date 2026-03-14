@@ -181,6 +181,10 @@ class AssemblerHelpersMixin:
             rotation_filter = _get_rotation_filter(clip.rotation_override) + ","
             logger.info(f"Applying {clip.rotation_override}° rotation to clip {i}")
 
+        # Privacy mode: heavy gaussian blur on content clips (not title screens)
+        if self.settings.privacy_mode and not clip.is_title_screen:
+            rotation_filter += "gblur=sigma=30,"
+
         # HDR conversion filter (uses actual source primaries for accurate conversion)
         hdr_conversion = ""
         if self.settings.preserve_hdr and ctx.clip_hdr_types[i] != ctx.hdr_type:
@@ -258,7 +262,8 @@ class AssemblerHelpersMixin:
         audio_labels: list[str] = []
 
         for i, clip in enumerate(clips):
-            if clip.is_title_screen:
+            if clip.is_title_screen or (self.settings.privacy_mode and clip.has_speech):
+                # Title screens always silent; privacy mode mutes speech clips
                 filter_parts.append(
                     f"anullsrc=r=48000:cl=stereo,atrim=0:{clip.duration},{audio_format}[a{i}prep]"
                 )

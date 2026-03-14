@@ -39,6 +39,24 @@ _EXTRA_NAV = [
 # ============================================================================
 
 
+def _render_demo_toggle(state) -> None:
+    """Render demo/privacy mode toggle in sidebar."""
+    # Re-apply body class on page load if demo mode was already active
+    if state.demo_mode:
+        ui.run_javascript("document.body.classList.add('demo-mode')")
+
+    def toggle_demo(e):
+        state.demo_mode = e.value
+        if e.value:
+            ui.run_javascript("document.body.classList.add('demo-mode')")
+        else:
+            ui.run_javascript("document.body.classList.remove('demo-mode')")
+
+    with ui.row().classes("items-center gap-2 mb-2"):
+        ui.switch(value=state.demo_mode, on_change=toggle_demo).props("dense")
+        ui.label("Demo mode").classes("text-xs").style("color: var(--im-text-secondary)")
+
+
 def render_step_indicator(current_step: int) -> None:  # noqa: ARG001
     """Step indicator — removed in favor of sidebar navigation.
 
@@ -101,12 +119,13 @@ def render_sidebar(current_step: int) -> None:
                     ui.icon(icon).classes("text-xl")
                     ui.label(name).classes("text-sm")
 
-        # Spacer + theme toggle at bottom
+        # Spacer + toggles at bottom
         ui.element("div").classes("flex-grow")
         with ui.column().classes("px-5 pb-4 mt-auto"):
             ui.element("div").classes("mb-3").style(
                 "height: 1px; background: var(--im-border-light)"
             )
+            _render_demo_toggle(state)
             render_theme_toggle()
 
 

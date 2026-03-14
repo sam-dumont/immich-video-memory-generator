@@ -13,6 +13,7 @@ from immich_memories.processing.assembly_config import (
     AssemblyClip,
     TransitionType,
 )
+from immich_memories.processing.hdr_utilities import has_any_hdr_clip
 from immich_memories.processing.scaling_utilities import (
     aggregate_mood_from_clips,
 )
@@ -58,14 +59,7 @@ class AssemblerTitleMixin(AssemblerTripMixin):
         self,
         clips: list[AssemblyClip],
     ) -> list[tuple[int, int, int]]:
-        """Detect where month changes occur in the clip list.
-
-        Args:
-            clips: List of clips with dates.
-
-        Returns:
-            List of (insert_index, month, year) for each month change.
-        """
+        """Detect month changes. Returns [(insert_index, month, year)]."""
         month_changes: list[tuple[int, int, int]] = []
         current_month: tuple[int, int] | None = None
         month_clip_counts: dict[tuple[int, int], int] = {}
@@ -393,7 +387,12 @@ class AssemblerTitleMixin(AssemblerTripMixin):
 
         orientation = self._get_orientation_from_clips(clips)
         resolution_tier = self._get_resolution_tier(clips)
-        logger.info(f"Generating title screens ({orientation}, {resolution_tier})")
+        # Detect if any source clip is HDR — title screens match source format
+        source_has_hdr = has_any_hdr_clip(clips) if self.settings.preserve_hdr else False
+        logger.info(
+            f"Generating title screens ({orientation}, {resolution_tier}, "
+            f"{'HDR' if source_has_hdr else 'SDR'})"
+        )
 
         title_config = TitleScreenConfig(
             enabled=True,
@@ -406,6 +405,7 @@ class AssemblerTitleMixin(AssemblerTripMixin):
             month_divider_threshold=title_settings.month_divider_threshold,
             orientation=orientation,
             resolution=resolution_tier,
+            hdr=source_has_hdr,
         )
 
         title_output_dir = output_path.parent / ".title_screens"
