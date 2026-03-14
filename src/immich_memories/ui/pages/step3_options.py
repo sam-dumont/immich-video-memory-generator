@@ -147,6 +147,19 @@ def render_step3() -> None:
     im_separator()
 
     # ========================================================================
+    # Title Settings
+    # ========================================================================
+    im_section_header("Title", icon="title")
+
+    with im_card() as title_card:
+        title_card.classes("p-5")
+        from immich_memories.ui.pages._step3_music_preview import render_title_section
+
+        render_title_section()
+
+    im_separator()
+
+    # ========================================================================
     # Music Settings
     # ========================================================================
     im_section_header("Music", icon="music_note")

@@ -343,6 +343,11 @@ def _build_assembly_settings(state, config, assembly_clips):
             home_lon=state.memory_preset_params.get("home_lon"),
         )
 
+        # Use LLM-generated title if available
+        if state.title_suggestion_title:
+            title_screen_settings.title_override = state.title_suggestion_title
+            title_screen_settings.subtitle_override = state.title_suggestion_subtitle
+
     settings = AssemblySettings(
         transition=transition_type,
         transition_duration=0.5,

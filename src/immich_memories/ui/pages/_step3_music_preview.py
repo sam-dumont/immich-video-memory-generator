@@ -149,6 +149,50 @@ def _render_player(state, container):
         ui.audio(str(version.full_mix)).classes("w-full mt-2")
 
 
+def render_title_section() -> None:
+    """Render the title editing section in Step 3.
+
+    Shows LLM-generated title and subtitle as editable fields, plus
+    read-only chips for trip_type and map_mode when set.
+    """
+    state = get_app_state()
+
+    with ui.column().classes("w-full gap-3"):
+        title_input = ui.input(
+            label="Title",
+            value=state.title_suggestion_title or "",
+            placeholder="e.g. Summer in Saxony",
+        ).classes("w-full")
+
+        def on_title_change(e):
+            state.title_suggestion_title = e.value or None
+
+        title_input.on_value_change(on_title_change)
+
+        subtitle_input = ui.input(
+            label="Subtitle",
+            value=state.title_suggestion_subtitle or "",
+            placeholder="e.g. June – August 2025",
+        ).classes("w-full")
+
+        def on_subtitle_change(e):
+            state.title_suggestion_subtitle = e.value or None
+
+        subtitle_input.on_value_change(on_subtitle_change)
+
+        # Read-only metadata chips
+        if state.title_suggestion_trip_type or state.title_suggestion_map_mode:
+            with ui.row().classes("gap-2 mt-1"):
+                if state.title_suggestion_trip_type:
+                    ui.badge(
+                        f"Trip: {state.title_suggestion_trip_type}",
+                    ).props("outline").classes("text-xs")
+                if state.title_suggestion_map_mode:
+                    ui.badge(
+                        f"Map: {state.title_suggestion_map_mode}",
+                    ).props("outline").classes("text-xs")
+
+
 def render_music_preview_section(options: dict) -> None:
     """Render the music preview section in Step 3.
 
