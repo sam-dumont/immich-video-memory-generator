@@ -112,11 +112,23 @@ jobs:
       - name: Vulture (dead code detection)
         run: make dead-code
 
-      - name: Xenon (complexity gate)
+      - name: Xenon (cyclomatic complexity gate)
         run: make complexity
+
+      - name: Complexipy (cognitive complexity gate)
+        run: make cognitive-complexity
 
       - name: File length gate (max 500 lines)
         run: make file-length
+
+      - name: Refurb (modernization lint)
+        run: make refurb
+
+      - name: Deptry (dependency hygiene)
+        run: make dep-check
+
+      - name: Interrogate (docstring coverage ≥80%)
+        run: make docstring-coverage
 
       # --- Dependency & supply chain ---
       - name: pip-audit (dependency vulnerabilities)

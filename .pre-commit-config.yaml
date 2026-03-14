@@ -1,4 +1,5 @@
 repos:
+  # ~0.1s — Formatting + linting (Rust, fast)
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.5
     hooks:
@@ -6,6 +7,7 @@ repos:
         args: [--fix]
       - id: ruff-format
 
+  # ~1s — Type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.19.1
     hooks:
@@ -18,16 +20,32 @@ repos:
         pass_filenames: false
         entry: mypy src/
 
+  # ~0.1s — Secrets detection
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.24.3
     hooks:
       - id: gitleaks
 
+  # ~0.1s — Conventional commits
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.13.9
     hooks:
       - id: commitizen
 
+  # ~0.3s — Cognitive complexity (Rust, fast)
+  - repo: https://github.com/rohaquinlop/complexipy-pre-commit
+    rev: v4.2.0
+    hooks:
+      - id: complexipy
+        args: [--max-complexity-allowed, "15"]
+
+  # ~0.3s — Modernization patterns
+  - repo: https://github.com/dosisod/refurb
+    rev: v2.0.0
+    hooks:
+      - id: refurb
+
+  # Local hooks using Makefile targets
   - repo: local
     hooks:
       - id: file-length
@@ -54,6 +72,20 @@ repos:
       - id: security-lint
         name: Security lint (Bandit)
         entry: make security-lint
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: dep-check
+        name: Dependency hygiene (deptry)
+        entry: make dep-check
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: docstring-coverage
+        name: Docstring coverage (interrogate ≥80%)
+        entry: make docstring-coverage
         language: system
         pass_filenames: false
         types: [python]

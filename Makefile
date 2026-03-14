@@ -1,7 +1,7 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
-.PHONY: help install dev run preflight test benchmark test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity security-lint dead-code ci ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
+.PHONY: help install dev run preflight test benchmark test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity cognitive-complexity security-lint dead-code duplication refurb dep-check docstring-coverage arch-check diff-cover ci ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
 
 # Default target
 help:
@@ -165,6 +165,39 @@ security-lint:
 commitlint:
 	uvx --from commitizen cz check --rev-range HEAD~1..HEAD
 
+# Cognitive complexity (complements cyclomatic complexity)
+cognitive-complexity:
+	uvx complexipy src/ --max-complexity-allowed 15
+
+# Code duplication detection
+duplication:
+	@if command -v jscpd > /dev/null 2>&1; then \
+		jscpd src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python --gitignore; \
+	else \
+		echo "jscpd not installed (npm install -g jscpd), skipping duplication check"; \
+	fi
+
+# Modernization lint
+refurb:
+	cd src && uv run refurb immich_memories/ --quiet
+
+# Dependency hygiene (hallucinated/unused/transitive deps)
+dep-check:
+	uvx deptry src/
+
+# Docstring coverage for public API
+docstring-coverage:
+	uvx interrogate src/immich_memories --quiet --fail-under 80
+
+# Architectural boundary enforcement
+arch-check:
+	uv run lint-imports
+
+# Diff coverage (for PRs: new code must be ≥95% covered)
+diff-cover:
+	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -q
+	uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=95
+
 # Dependency vulnerability audit
 pip-audit:
 	uvx pip-audit -r <(uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==') --strict
@@ -178,7 +211,7 @@ check: ensure-dev lint format-check typecheck file-length complexity test
 	@echo "All checks passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity dead-code security-lint test
+ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint refurb dep-check docstring-coverage test
 	@echo "Full CI pipeline passed!"
 
 # Pre-commit hooks

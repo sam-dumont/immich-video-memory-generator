@@ -50,6 +50,27 @@ make dead-code
 # Security lint (Bandit)
 make security-lint
 
+# Cognitive complexity gate (complexipy ≤15)
+make cognitive-complexity
+
+# Code duplication detection (jscpd, requires npm)
+make duplication
+
+# Modernization lint (refurb)
+make refurb
+
+# Dependency hygiene (deptry: hallucinated/unused/transitive deps)
+make dep-check
+
+# Docstring coverage (interrogate ≥80%)
+make docstring-coverage
+
+# Architectural boundary enforcement (import-linter)
+make arch-check
+
+# Diff coverage for PRs (≥95% on changed lines)
+make diff-cover
+
 # Commit message lint (conventional commits)
 make commitlint
 
@@ -59,7 +80,7 @@ make pip-audit
 # Run ALL checks (lint + format + typecheck + file-length + complexity + test)
 make check
 
-# Full CI pipeline (check + dead-code + security-lint)
+# Full CI pipeline (all checks + advanced quality gates)
 make ci
 
 # Pre-commit hooks (runs all local hooks: lint, format, mypy, gitleaks, commitizen, file-length, complexity, dead-code, security-lint)
@@ -74,9 +95,13 @@ make pre-commit
 - **Format**: ruff format must pass (`make format-check`)
 - **Type check**: mypy must pass (`make typecheck`)
 - **Max file length**: 500 lines per `.py` file (`make file-length`)
-- **Max complexity**: Xenon grade C — ≤20 cyclomatic complexity per function (`make complexity`)
+- **Cyclomatic complexity**: Xenon grade C — ≤20 per function (`make complexity`)
+- **Cognitive complexity**: complexipy ≤15 per function (`make cognitive-complexity`)
 - **Dead code**: Vulture must pass (`make dead-code`)
 - **Security**: Bandit must pass with no HIGH findings (`make security-lint`)
+- **Modernization**: refurb must pass (`make refurb`)
+- **Dependency hygiene**: deptry must pass (`make dep-check`)
+- **Docstring coverage**: interrogate ≥80% (`make docstring-coverage`)
 - **Tests**: all tests must pass (`make test`)
 - **Commit messages**: must follow [Conventional Commits](https://www.conventionalcommits.org/) (`make commitlint`)
   - Format: `type(scope): description` — e.g., `fix(api): handle timeout errors`

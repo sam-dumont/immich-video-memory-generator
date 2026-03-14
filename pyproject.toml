@@ -476,6 +476,92 @@ disable_error_code = ["attr-defined", "arg-type", "return-value"]
 module = ["pandas", "pandas.*"]
 ignore_missing_imports = true
 
+# Cognitive complexity (complements cyclomatic complexity from xenon)
+[tool.complexipy]
+paths = ["src"]
+max_complexity_allowed = 15
+exclude = [
+    "src/immich_memories/_version.py",
+    "src/immich_memories/cli/",              # Click decorators inflate complexity scores
+    "src/immich_memories/titles/taichi_*",    # GPU kernel compilation is inherently complex
+    "src/immich_memories/titles/sdf_*",       # SDF font rendering kernels
+]
+
+# Docstring coverage for public API
+[tool.interrogate]
+ignore-init-method = true
+ignore-magic = true
+ignore-module = true
+ignore-private = true
+ignore-semiprivate = true
+fail-under = 80
+exclude = ["tests", "docs", "scripts"]
+
+# Dependency hygiene
+[tool.deptry]
+exclude = ["tests", "docs", "scripts"]
+
+[tool.deptry.per_rule_ignores]
+DEP002 = [
+    "gunicorn", "uvicorn",                              # Runtime-only servers
+    "hatch-vcs", "hatchling",                           # Build-only
+    "semantic-release",                                 # CI-only
+    "opencv-python",                                    # imported as cv2
+    "pyyaml",                                           # imported as yaml
+    "pillow",                                           # imported as PIL
+    "imagehash",                                        # imported via videohash
+    "videohash",                                        # used via subprocess
+    "watchdog",                                         # runtime scheduler
+    "face-recognition",                                 # imported as face_recognition
+    "dlib",                                             # face-recognition backend
+    "pyobjc-core", "pyobjc-framework-Vision",           # macOS-only, runtime
+    "pyobjc-framework-Quartz", "pyobjc-framework-Metal", # macOS GPU
+    "torch",                                            # PANNs inference backend
+    "freetype-py",                                      # imported as freetype
+    "pytest", "pytest-cov", "pytest-asyncio",           # dev tools (CLI usage)
+    "pytest-benchmark", "mypy", "ruff",                 # dev tools
+    "pre-commit", "commitizen",                         # dev tools
+    "types-pyyaml",                                     # mypy stub
+    "refurb", "interrogate", "import-linter",           # quality tools
+    "diff-cover", "deptry",                             # quality tools
+    "python-semantic-release",                          # CI release tool
+    "types-PyYAML", "types-croniter",                   # mypy stubs
+]
+DEP001 = [
+    "cv2", "Quartz", "Vision", "Metal", "CoreImage",   # Platform/alt-name imports
+    "yaml", "acestep", "soundfile", "scipy",            # Optional deps imported conditionally
+    "PIL", "av", "freetype", "streamlit",               # Alt package names (Pillow→PIL, pyav→av)
+]
+DEP003 = ["PIL", "cv2", "yaml"]  # Known transitive imports
+
+# Architectural boundaries
+[tool.importlinter]
+root_packages = ["immich_memories"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+id = "no-ui-in-core"
+name = "Core analysis/processing must not import UI"
+type = "forbidden"
+source_modules = [
+    "immich_memories.analysis",
+    "immich_memories.processing",
+    "immich_memories.titles",
+]
+forbidden_modules = ["immich_memories.ui"]
+
+[[tool.importlinter.contracts]]
+id = "no-cli-in-core"
+name = "Core must not import CLI"
+type = "forbidden"
+source_modules = [
+    "immich_memories.analysis",
+    "immich_memories.processing",
+    "immich_memories.titles",
+    "immich_memories.audio",
+]
+forbidden_modules = ["immich_memories.cli"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
