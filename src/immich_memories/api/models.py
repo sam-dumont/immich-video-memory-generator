@@ -132,6 +132,12 @@ class AssetFace(BaseModel):
         )
 
 
+class SmartInfo(BaseModel):
+    """Immich object detection results."""
+
+    objects: list[str] | None = None
+
+
 class Asset(BaseModel):
     """An asset (photo or video) from Immich."""
 
@@ -157,6 +163,7 @@ class Asset(BaseModel):
     faces: list[AssetFace] = Field(default_factory=list)
     checksum: str | None = None
     live_photo_video_id: str | None = Field(default=None, alias="livePhotoVideoId")
+    smart_info: SmartInfo | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
