@@ -33,8 +33,12 @@ repos:
       - id: commitizen
 
 
-  # Modernization patterns (runs via Makefile to use project venv)
-  # refurb needs pydantic in venv so can't use the pre-commit repo
+  # ~0.3s — Modernization patterns (only checks changed files)
+  - repo: https://github.com/dosisod/refurb
+    rev: v2.0.0
+    hooks:
+      - id: refurb
+        additional_dependencies: [pydantic]
 
   # Local hooks using Makefile targets
   - repo: local
@@ -84,6 +88,13 @@ repos:
       - id: docstring-coverage
         name: Docstring coverage (interrogate ≥80%)
         entry: make docstring-coverage
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: arch-check
+        name: Architectural boundaries (import-linter)
+        entry: make arch-check
         language: system
         pass_filenames: false
         types: [python]

@@ -220,7 +220,7 @@ check: ensure-dev lint format-check typecheck file-length complexity test
 	@echo "All checks passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint dep-check docstring-coverage test
+ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint dep-check docstring-coverage arch-check test
 	@echo "Full CI pipeline passed!"
 
 # Pre-commit hooks
