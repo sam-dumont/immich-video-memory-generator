@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import contextlib
 import logging
@@ -357,6 +358,12 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
                 state.pipeline_running = False
             else:
                 state.pipeline_running = False
+                # Fire-and-forget: generate LLM title suggestion in background
+                from immich_memories.ui.pages.pipeline_title import (
+                    generate_title_after_pipeline,
+                )
+
+                asyncio.ensure_future(generate_title_after_pipeline(state))
                 ui.navigate.to("/step2")
 
     # Poll progress every second — keeps event loop free for WebSocket heartbeats
