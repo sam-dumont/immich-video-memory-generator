@@ -123,20 +123,19 @@ class PANNsAnalysisMixin:
             if category:
                 detected_categories.add(category)
 
-            if meets_threshold:
-                if current_event != class_name:
-                    if current_event is not None:
-                        events.append(
-                            AudioEvent(
-                                event_class=current_event,
-                                start_time=float(current_start),
-                                end_time=float(time_pos),
-                                confidence=float(top_score),
-                            )
+            if meets_threshold and current_event != class_name:
+                if current_event is not None:
+                    events.append(
+                        AudioEvent(
+                            event_class=current_event,
+                            start_time=float(current_start),
+                            end_time=float(time_pos),
+                            confidence=float(top_score),
                         )
-                    current_event = class_name
-                    current_start = time_pos
-            elif current_event is not None:
+                    )
+                current_event = class_name
+                current_start = time_pos
+            elif not meets_threshold and current_event is not None:
                 events.append(
                     AudioEvent(
                         event_class=current_event,

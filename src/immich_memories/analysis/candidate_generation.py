@@ -100,6 +100,16 @@ class CandidateGenerationMixin:
             logger.warning(f"Audio boundary detection failed: {e}")
             return []
 
+    def _merge_audio_time_into_points(
+        self, t: float, all_times: dict[float, CutPoint], CutPoint: type
+    ) -> None:
+        """Merge one audio timestamp into all_times, finding a nearby visual point or adding new."""
+        for existing_time, cp in list(all_times.items()):
+            if abs(t - existing_time) <= self.cut_point_merge_tolerance:
+                cp.is_audio = True
+                return
+        all_times[t] = CutPoint(time=t, is_visual=False, is_audio=True)
+
     def _merge_boundaries(
         self,
         visual: list[float],
@@ -121,47 +131,56 @@ class CandidateGenerationMixin:
         """
         from immich_memories.analysis.unified_analyzer import CutPoint
 
-        # Start with all unique timestamps
         all_times: dict[float, CutPoint] = {}
-
-        # Add visual boundaries
         for t in visual:
             all_times[t] = CutPoint(time=t, is_visual=True, is_audio=False)
 
-        # Add or update with audio boundaries
         for t in audio:
-            # Check if there's a nearby visual boundary
-            merged = False
-            for existing_time, cp in list(all_times.items()):
-                if abs(t - existing_time) <= self.cut_point_merge_tolerance:
-                    # Merge with existing point
-                    cp.is_audio = True
-                    merged = True
-                    break
+            self._merge_audio_time_into_points(t, all_times, CutPoint)
 
-            if not merged:
-                all_times[t] = CutPoint(time=t, is_visual=False, is_audio=True)
-
-        # Always include video start and end as cut points
         if 0.0 not in all_times:
             all_times[0.0] = CutPoint(time=0.0, is_visual=True, is_audio=True)
         if video_duration not in all_times:
             all_times[video_duration] = CutPoint(time=video_duration, is_visual=True, is_audio=True)
 
-        # Sort by time
         cut_points = sorted(all_times.values(), key=lambda cp: cp.time)
 
-        # Deduplicate very close points (within 0.3s)
         deduped: list[CutPoint] = []
         for cp in cut_points:
             if not deduped or cp.time - deduped[-1].time > 0.3:
                 deduped.append(cp)
             else:
-                # Merge priorities with existing point
                 deduped[-1].is_visual = deduped[-1].is_visual or cp.is_visual
                 deduped[-1].is_audio = deduped[-1].is_audio or cp.is_audio
 
         return deduped
+
+    def _collect_mixed_boundary_candidates(
+        self,
+        cut_points: list[CutPoint],
+        video_duration: float,
+    ) -> list[tuple[CutPoint, CutPoint]]:
+        """Return valid segments with at least one audio boundary, sorted by priority."""
+        candidates = []
+        for i, start_cp in enumerate(cut_points):
+            for end_cp in cut_points[i + 1 :]:
+                duration = end_cp.time - start_cp.time
+                if duration < self.min_segment_duration or duration > self.max_segment_duration:
+                    continue
+                if start_cp.is_audio or end_cp.is_audio:
+                    candidates.append((start_cp, end_cp))
+
+        if not candidates:
+            return []
+
+        dynamic_optimal = self._get_dynamic_optimal_duration(video_duration)
+        candidates.sort(
+            key=lambda pair: (
+                -(pair[0].is_audio + pair[1].is_audio),
+                abs((pair[1].time - pair[0].time) - dynamic_optimal),
+            ),
+        )
+        return candidates[:20]
 
     def _generate_candidate_segments(
         self,
@@ -183,47 +202,16 @@ class CandidateGenerationMixin:
         if len(cut_points) < 2:
             return []
 
-        # First try: segments with audio boundaries on both ends
         audio_points = [cp for cp in cut_points if cp.is_audio]
-
         if len(audio_points) >= 2:
             candidates = self._generate_segments_from_points(audio_points, video_duration)
             if candidates:
                 return candidates
 
-        # Second try: segments with audio boundary on at least one end
-        candidates = []
-        for i, start_cp in enumerate(cut_points):
-            for end_cp in cut_points[i + 1 :]:
-                duration = end_cp.time - start_cp.time
-
-                if duration < self.min_segment_duration:
-                    continue
-                if duration > self.max_segment_duration:
-                    continue
-
-                # Prefer segments with at least one audio boundary
-                if start_cp.is_audio or end_cp.is_audio:
-                    candidates.append((start_cp, end_cp))
-
+        candidates = self._collect_mixed_boundary_candidates(cut_points, video_duration)
         if candidates:
-            # Sort by combined priority:
-            # 1. Prefer both audio boundaries (primary)
-            # 2. Prefer durations closer to optimal (secondary)
-            dynamic_optimal = self._get_dynamic_optimal_duration(video_duration)
-            candidates.sort(
-                key=lambda pair: (
-                    -(
-                        pair[0].is_audio + pair[1].is_audio
-                    ),  # More audio = better (negative for desc)
-                    abs(
-                        (pair[1].time - pair[0].time) - dynamic_optimal
-                    ),  # Closer to optimal = better
-                ),
-            )
-            return candidates[:20]  # Limit to top 20 candidates
+            return candidates
 
-        # Third try: any valid segment (visual-only fallback)
         logger.warning("No audio boundaries found, using visual-only segments")
         return self._generate_segments_from_points(cut_points, video_duration)
 

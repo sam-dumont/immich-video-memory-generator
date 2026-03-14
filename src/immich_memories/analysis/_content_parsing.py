@@ -91,6 +91,34 @@ class ContentParsingMixin:
         return text.strip()
 
     @staticmethod
+    def _parse_json_array_text(text: str) -> dict:
+        """Parse JSON text that starts with '[', returning the first element."""
+        try:
+            arr = json.loads(text)
+            if isinstance(arr, list) and len(arr) > 0:
+                return arr[0]
+            raise ValueError("Empty array response")
+        except json.JSONDecodeError:
+            start = text.find("{")
+            end = text.find("}")
+            if start >= 0 and end > start:
+                return json.loads(text[start : end + 1])
+            raise
+
+    @staticmethod
+    def _parse_json_object_text(text: str) -> dict:
+        """Parse JSON text that starts with '{', fixing truncation if needed."""
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            fixed = text.rstrip().rstrip(",").rstrip()
+            if not fixed.endswith("}"):
+                fixed += "}"
+            data = json.loads(fixed)
+            logger.debug("Fixed truncated JSON by adding closing brace")
+            return data
+
+    @staticmethod
     def _parse_json_object(text: str) -> dict:
         """Parse a JSON object from text that may be malformed.
 
@@ -107,31 +135,9 @@ class ContentParsingMixin:
             ValueError: If text contains no JSON-like content.
         """
         if text.startswith("["):
-            try:
-                arr = json.loads(text)
-                if isinstance(arr, list) and len(arr) > 0:
-                    return arr[0]
-                raise ValueError("Empty array response")
-            except json.JSONDecodeError:
-                start = text.find("{")
-                end = text.find("}")
-                if start >= 0 and end > start:
-                    return json.loads(text[start : end + 1])
-                raise
-
+            return ContentParsingMixin._parse_json_array_text(text)
         if text.startswith("{"):
-            try:
-                return json.loads(text)
-            except json.JSONDecodeError:
-                fixed = text.rstrip().rstrip(",").rstrip()
-                if not fixed.endswith("}"):
-                    fixed += "}"
-                try:
-                    data = json.loads(fixed)
-                    logger.debug("Fixed truncated JSON by adding closing brace")
-                    return data
-                except json.JSONDecodeError:
-                    raise
+            return ContentParsingMixin._parse_json_object_text(text)
 
         # Try to find JSON object anywhere in text
         start = text.find("{")
@@ -217,64 +223,56 @@ class ContentParsingMixin:
             # Try to extract partial data using regex as fallback
             return self._extract_partial_data(response_text)
 
+    @staticmethod
+    def _extract_emotion_from_text(text: str) -> str:
+        """Extract emotion field from raw LLM text (string or numeric fallback)."""
+        m = re.search(r'"emotion"\s*:\s*"([^"]+)"', text)
+        if m:
+            return m.group(1)
+        m = re.search(r'"emotion"\s*:\s*([\d.]+)', text)
+        if m:
+            try:
+                return ContentParsingMixin._numeric_emotion_to_str(float(m.group(1)))
+            except ValueError:
+                pass
+        return ""
+
+    @staticmethod
+    def _extract_float_field(text: str, field: str) -> float | None:
+        """Extract a numeric float field from raw LLM text."""
+        m = re.search(rf'"{field}"\s*:\s*([\d.]+)', text)
+        if m:
+            try:
+                return float(m.group(1))
+            except ValueError:
+                pass
+        return None
+
     def _extract_partial_data(self, text: str) -> ContentAnalysis:
         """Extract partial data from malformed JSON using regex.
 
         This is a fallback when JSON parsing fails but the response
         contains useful information in a JSON-like format.
         """
-        result = ContentAnalysis(confidence=0.4)  # Lower confidence for partial extraction
+        result = ContentAnalysis(confidence=0.4)
 
-        # Try to extract description (handle escaped quotes and newlines)
         desc_match = re.search(r'"description"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', text)
         if desc_match:
             result.description = desc_match.group(1).replace('\\"', '"').replace("\\n", " ")
             logger.debug(f"Extracted description: {result.description[:80]}...")
 
-        # Try to extract emotion (can be string or number)
-        emotion_match = re.search(r'"emotion"\s*:\s*"([^"]+)"', text)
-        if emotion_match:
-            result.emotion = emotion_match.group(1)
+        result.emotion = self._extract_emotion_from_text(text)
+        if result.emotion:
             logger.debug(f"Extracted emotion: {result.emotion}")
-        else:
-            # Try numeric emotion
-            emotion_num_match = re.search(r'"emotion"\s*:\s*([\d.]+)', text)
-            if emotion_num_match:
-                try:
-                    emotion_val = float(emotion_num_match.group(1))
-                    if emotion_val >= 0.8:
-                        result.emotion = "joyful"
-                    elif emotion_val >= 0.6:
-                        result.emotion = "happy"
-                    elif emotion_val >= 0.4:
-                        result.emotion = "calm"
-                    elif emotion_val >= 0.2:
-                        result.emotion = "neutral"
-                    else:
-                        result.emotion = "subdued"
-                    logger.debug(f"Extracted numeric emotion {emotion_val} -> {result.emotion}")
-                except ValueError:
-                    pass
 
-        # Try to extract interestingness
-        interest_match = re.search(r'"interestingness"\s*:\s*([\d.]+)', text)
-        if interest_match:
-            try:
-                result.interestingness = float(interest_match.group(1))
-                logger.debug(f"Extracted interestingness: {result.interestingness}")
-            except ValueError:
-                pass
+        if (val := self._extract_float_field(text, "interestingness")) is not None:
+            result.interestingness = val
+            logger.debug(f"Extracted interestingness: {val}")
 
-        # Try to extract quality
-        quality_match = re.search(r'"quality"\s*:\s*([\d.]+)', text)
-        if quality_match:
-            try:
-                result.quality = float(quality_match.group(1))
-                logger.debug(f"Extracted quality: {result.quality}")
-            except ValueError:
-                pass
+        if (val := self._extract_float_field(text, "quality")) is not None:
+            result.quality = val
+            logger.debug(f"Extracted quality: {val}")
 
-        # Try to extract setting
         setting_match = re.search(r'"setting"\s*:\s*"([^"]+)"', text)
         if setting_match:
             result.setting = setting_match.group(1)
@@ -284,7 +282,7 @@ class ContentParsingMixin:
             logger.info(
                 f"Partial extraction successful: desc='{desc_preview}...', emotion={result.emotion}"
             )
-            result.confidence = 0.6  # Upgrade confidence if we got something useful
+            result.confidence = 0.6
         else:
             logger.warning(f"Partial extraction found nothing in: {text[:150]}...")
 

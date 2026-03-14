@@ -338,6 +338,40 @@ def _view_at(
     return lat, lon, max(float(_MIN_ZOOM_FLOOR), min(float(_CITY_ZOOM), zoom))
 
 
+def _get_frame_at(
+    i: int,
+    total: int,
+    hold_s: int,
+    hold_e: int,
+    anim: int,
+    cfg: _FlyConfig,
+    n_segs: int,
+    w: int,
+    cached: list[Image.Image | None],
+) -> tuple[Image.Image, float]:
+    """Return the rendered frame and zoom level for frame index i.
+
+    cached is a 2-element list: [first_frame, last_frame] (mutated in-place).
+    """
+    if i < hold_s:
+        if cached[0] is None:
+            lat, lon, z = _view_at(0.0, cfg.interps, n_segs, w)
+            frame = _render_frame(lat, lon, z, cfg)
+            cached[0] = frame
+            return frame, z
+        return cached[0], float(_CITY_ZOOM)
+    if i >= total - hold_e:
+        if cached[1] is None:
+            lat, lon, z = _view_at(1.0, cfg.interps, n_segs, w)
+            frame = _render_frame(lat, lon, z, cfg)
+            cached[1] = frame
+            return frame, z
+        return cached[1], float(_CITY_ZOOM)
+    t = (i - hold_s) / anim
+    lat, lon, z = _view_at(t, cfg.interps, n_segs, w)
+    return _render_frame(lat, lon, z, cfg), z
+
+
 def _pipe_frames(
     cfg: _FlyConfig,
     output_path: Path,
@@ -393,26 +427,12 @@ def _pipe_frames(
     )
     assert proc.stdin is not None  # noqa: S101
 
-    first_frame: Image.Image | None = None
-    last_frame: Image.Image | None = None
+    cached: list[Image.Image | None] = [None, None]
     z = float(_CITY_ZOOM)
 
     try:
         for i in range(total):
-            if i < hold_s:
-                if first_frame is None:
-                    lat, lon, z = _view_at(0.0, cfg.interps, n_segs, w)
-                    first_frame = _render_frame(lat, lon, z, cfg)
-                frame = first_frame
-            elif i >= total - hold_e:
-                if last_frame is None:
-                    lat, lon, z = _view_at(1.0, cfg.interps, n_segs, w)
-                    last_frame = _render_frame(lat, lon, z, cfg)
-                frame = last_frame
-            else:
-                t = (i - hold_s) / anim
-                lat, lon, z = _view_at(t, cfg.interps, n_segs, w)
-                frame = _render_frame(lat, lon, z, cfg)
+            frame, z = _get_frame_at(i, total, hold_s, hold_e, anim, cfg, n_segs, w, cached)
 
             if cfg.title_overlay is not None:
                 a = _title_alpha(i / max(1, total - 1))

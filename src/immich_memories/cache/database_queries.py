@@ -147,6 +147,16 @@ class DatabaseQueryMixin:
             audio_categories=(json.loads(audio_cats_raw) if audio_cats_raw else None),
         )
 
+    @staticmethod
+    def _row_is_stale(row: sqlite3.Row, asset: Asset) -> bool:
+        """Return True if the cached row is stale due to file modification."""
+        if asset.checksum and row["checksum"]:
+            return asset.checksum != row["checksum"]
+        if asset.file_modified_at and row["file_modified_at"]:
+            cached_modified = datetime.fromisoformat(row["file_modified_at"])
+            return asset.file_modified_at > cached_modified
+        return False
+
     def needs_reanalysis(
         self,
         asset: Asset,
@@ -164,8 +174,7 @@ class DatabaseQueryMixin:
         if max_age_days is None:
             from immich_memories.config import get_config
 
-            config = get_config()
-            max_age_days = config.cache.max_age_days
+            max_age_days = get_config().cache.max_age_days
 
         with self._get_connection() as conn:
             row = conn.execute(
@@ -179,25 +188,14 @@ class DatabaseQueryMixin:
             ).fetchone()
 
             if not row:
-                return True  # Not in cache
-
-            # Check if schema version changed
+                return True
             if row["analysis_version"] != SCHEMA_VERSION:
                 return True
+            if self._row_is_stale(row, asset):
+                return True
 
-            # Check if file was modified
-            if asset.checksum and row["checksum"]:
-                if asset.checksum != row["checksum"]:
-                    return True
-            elif asset.file_modified_at and row["file_modified_at"]:
-                cached_modified = datetime.fromisoformat(row["file_modified_at"])
-                if asset.file_modified_at > cached_modified:
-                    return True
-
-            # Check cache age
             analysis_time = datetime.fromisoformat(row["analysis_timestamp"])
-            age = datetime.now() - analysis_time
-            return age.days > max_age_days
+            return (datetime.now() - analysis_time).days > max_age_days
 
     def find_similar_videos(
         self,

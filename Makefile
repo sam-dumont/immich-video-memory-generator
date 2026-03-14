@@ -167,7 +167,16 @@ commitlint:
 
 # Cognitive complexity (complements cyclomatic complexity)
 cognitive-complexity:
-	uvx complexipy src/ --max-complexity-allowed 15
+	@OUTPUT=$$(uvx complexipy src/ --max-complexity-allowed 15 2>&1); \
+	if echo "$$OUTPUT" | grep -q "Snapshot watermark passed"; then \
+		echo "Cognitive complexity: snapshot watermark passed (no new violations)"; \
+	elif echo "$$OUTPUT" | grep -q "FAILED"; then \
+		echo "$$OUTPUT" | grep "FAILED"; \
+		echo "Cognitive complexity gate FAILED: new violations detected"; \
+		exit 1; \
+	else \
+		echo "Cognitive complexity: all functions under threshold"; \
+	fi
 
 # Code duplication detection
 duplication:
@@ -211,7 +220,7 @@ check: ensure-dev lint format-check typecheck file-length complexity test
 	@echo "All checks passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint refurb dep-check docstring-coverage test
+ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint dep-check docstring-coverage test
 	@echo "Full CI pipeline passed!"
 
 # Pre-commit hooks

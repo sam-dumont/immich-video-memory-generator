@@ -170,6 +170,57 @@ def _get_colorspace_filter(hdr_type: str) -> str:
         return ",setparams=colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67"
 
 
+def _check_zscale_available() -> bool:
+    """Return True if FFmpeg has the zscale filter available."""
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-filters"],
+            capture_output=True,
+            text=True,
+        )
+        return "zscale" in result.stdout
+    except Exception:
+        return False
+
+
+def _get_sdr_to_hdr_filter(
+    target_type: str,
+    source_primaries: str | None,
+    has_zscale: bool,
+) -> str:
+    """Return zscale filter string for SDR-to-HDR upscale, or empty string."""
+    if not has_zscale:
+        logger.warning("zscale not available - SDR to HDR conversion may look washed out")
+        return ""
+    src_pri = source_primaries or "bt709"
+    src_matrix = "bt709" if src_pri in ("bt709", "smpte432") else src_pri
+    if target_type == "hlg":
+        logger.debug(f"Converting SDR ({src_pri}) -> HLG")
+        return (
+            f",zscale=transfer=arib-std-b67:transferin=bt709"
+            f":primaries=bt2020:primariesin={src_pri}:matrix=bt2020nc:matrixin={src_matrix}"
+        )
+    if target_type == "pq":
+        logger.debug(f"Converting SDR ({src_pri}) -> PQ/HDR10")
+        return (
+            f",zscale=transfer=smpte2084:transferin=bt709"
+            f":primaries=bt2020:primariesin={src_pri}:matrix=bt2020nc:matrixin={src_matrix}"
+        )
+    return ""
+
+
+def _get_hdr_to_hdr_filter(source_type: str, target_type: str, has_zscale: bool) -> str:
+    """Return zscale filter string for HLG<->PQ conversion, or empty string."""
+    if not has_zscale:
+        logger.warning("zscale not available - HDR conversion may not be accurate")
+        return ""
+    if source_type == "hlg" and target_type == "pq":
+        return ",zscale=transfer=smpte2084:transferin=arib-std-b67:primaries=bt2020:primariesin=bt2020:matrix=bt2020nc:matrixin=bt2020nc"
+    if source_type == "pq" and target_type == "hlg":
+        return ",zscale=transfer=arib-std-b67:transferin=smpte2084:primaries=bt2020:primariesin=bt2020:matrix=bt2020nc:matrixin=bt2020nc"
+    return ""
+
+
 def _get_hdr_conversion_filter(
     source_type: str | None,
     target_type: str,
@@ -189,59 +240,15 @@ def _get_hdr_conversion_filter(
     Returns:
         FFmpeg filter string for conversion, or empty string if no conversion needed
     """
-    # No conversion needed if source matches target
     if source_type == target_type:
         return ""
 
-    # Check if zscale is available (required for proper conversion)
-    try:
-        result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-filters"],
-            capture_output=True,
-            text=True,
-        )
-        has_zscale = "zscale" in result.stdout
-    except Exception:
-        has_zscale = False
+    has_zscale = _check_zscale_available()
 
-    # SDR -> HDR conversion (upscale SDR to HDR colorspace)
     if source_type is None or source_type == "sdr":
-        # Use actual source primaries if known (e.g. smpte432 for Display P3)
-        src_pri = source_primaries or "bt709"
-        src_matrix = "bt709" if src_pri in ("bt709", "smpte432") else src_pri
-        if target_type == "hlg":
-            if has_zscale:
-                logger.debug(f"Converting SDR ({src_pri}) -> HLG")
-                return f",zscale=transfer=arib-std-b67:transferin=bt709:primaries=bt2020:primariesin={src_pri}:matrix=bt2020nc:matrixin={src_matrix}"
-            else:
-                logger.warning("zscale not available - SDR to HDR conversion may look washed out")
-                return ""
-        elif target_type == "pq":
-            if has_zscale:
-                logger.debug(f"Converting SDR ({src_pri}) -> PQ/HDR10")
-                return f",zscale=transfer=smpte2084:transferin=bt709:primaries=bt2020:primariesin={src_pri}:matrix=bt2020nc:matrixin={src_matrix}"
-            else:
-                logger.warning("zscale not available - SDR to HDR conversion may look washed out")
-                return ""
-        return ""
+        return _get_sdr_to_hdr_filter(target_type, source_primaries, has_zscale)
 
-    # HDR -> HDR conversion (HLG <-> PQ)
-    if source_type == "hlg" and target_type == "pq":
-        # HLG (iPhone) -> PQ (HDR10)
-        if has_zscale:
-            return ",zscale=transfer=smpte2084:transferin=arib-std-b67:primaries=bt2020:primariesin=bt2020:matrix=bt2020nc:matrixin=bt2020nc"
-        else:
-            logger.warning("zscale not available - HDR conversion may not be accurate")
-            return ""
-    elif source_type == "pq" and target_type == "hlg":
-        # PQ (HDR10) -> HLG (iPhone)
-        if has_zscale:
-            return ",zscale=transfer=arib-std-b67:transferin=smpte2084:primaries=bt2020:primariesin=bt2020:matrix=bt2020nc:matrixin=bt2020nc"
-        else:
-            logger.warning("zscale not available - HDR conversion may not be accurate")
-            return ""
-
-    return ""
+    return _get_hdr_to_hdr_filter(source_type, target_type, has_zscale)
 
 
 def _get_clip_hdr_types(clips: list) -> list[str | None]:
@@ -256,6 +263,69 @@ def _get_clip_hdr_types(clips: list) -> list[str | None]:
         hdr_type = _detect_hdr_type(path)
         hdr_types.append(hdr_type)
     return hdr_types
+
+
+def _hdr_color_args(color_trc: str) -> list[str]:
+    """Common HDR color metadata arguments for encoder commands."""
+    return ["-colorspace", "bt2020nc", "-color_primaries", "bt2020", "-color_trc", color_trc]
+
+
+def _encoder_args_macos(crf: int, preserve_hdr: bool, color_trc: str) -> list[str]:
+    """VideoToolbox encoder args for macOS."""
+    vt_quality = max(10, min(90, 100 - (crf * 3)))
+    base = ["-c:v", "hevc_videotoolbox", "-q:v", str(vt_quality), "-tag:v", "hvc1"]
+    if preserve_hdr:
+        return base + ["-pix_fmt", "p010le"] + _hdr_color_args(color_trc)
+    return base
+
+
+def _encoder_args_nvenc(crf: int, preserve_hdr: bool, color_trc: str) -> list[str] | None:
+    """NVENC encoder args, or None if unavailable."""
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True
+        )
+        if "hevc_nvenc" not in result.stdout:
+            return None
+    except Exception:
+        return None
+    base = [
+        "-c:v",
+        "hevc_nvenc",
+        "-preset",
+        "p4",
+        "-rc",
+        "constqp",
+        "-qp",
+        str(crf),
+        "-tag:v",
+        "hvc1",
+    ]
+    if preserve_hdr:
+        return base + ["-pix_fmt", "p010le"] + _hdr_color_args(color_trc)
+    return base
+
+
+def _encoder_args_cpu(crf: int, preserve_hdr: bool, color_trc: str, hdr_type: str) -> list[str]:
+    """CPU fallback encoder args (libx265 HDR or libx264 SDR)."""
+    if not preserve_hdr:
+        return ["-c:v", "libx264", "-preset", "medium", "-crf", str(crf)]
+    x265_transfer = "smpte2084" if hdr_type == "pq" else "arib-std-b67"
+    return [
+        "-c:v",
+        "libx265",
+        "-preset",
+        "medium",
+        "-crf",
+        str(crf),
+        "-pix_fmt",
+        "yuv420p10le",
+        "-tag:v",
+        "hvc1",
+        *_hdr_color_args(color_trc),
+        "-x265-params",
+        f"hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer={x265_transfer}:colormatrix=bt2020nc",
+    ]
 
 
 def _get_gpu_encoder_args(
@@ -276,120 +346,13 @@ def _get_gpu_encoder_args(
     Returns:
         List of FFmpeg encoder arguments.
     """
-    # Select correct transfer function based on HDR type
-    # HLG (iPhone): arib-std-b67
-    # HDR10/HDR10+ (Android/Samsung/Pixel): smpte2084 (PQ)
     color_trc = "smpte2084" if hdr_type == "pq" else "arib-std-b67"
 
-    # macOS: Use VideoToolbox (GPU accelerated)
     if sys.platform == "darwin":
-        # Map CRF to VideoToolbox quality (inverse relationship)
-        # CRF 18 = high quality, CRF 28 = lower quality
-        # VT quality: 0-100, higher = better
-        vt_quality = max(10, min(90, 100 - (crf * 3)))
+        return _encoder_args_macos(crf, preserve_hdr, color_trc)
 
-        if preserve_hdr:
-            return [
-                "-c:v",
-                "hevc_videotoolbox",
-                "-q:v",
-                str(vt_quality),
-                "-pix_fmt",
-                "p010le",  # 10-bit
-                "-tag:v",
-                "hvc1",
-                "-colorspace",
-                "bt2020nc",
-                "-color_primaries",
-                "bt2020",
-                "-color_trc",
-                color_trc,
-            ]
-        else:
-            return [
-                "-c:v",
-                "hevc_videotoolbox",
-                "-q:v",
-                str(vt_quality),
-                "-tag:v",
-                "hvc1",
-            ]
+    nvenc = _encoder_args_nvenc(crf, preserve_hdr, color_trc)
+    if nvenc is not None:
+        return nvenc
 
-    # Check for NVIDIA NVENC
-    try:
-        result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"],
-            capture_output=True,
-            text=True,
-        )
-        if "hevc_nvenc" in result.stdout:
-            if preserve_hdr:
-                return [
-                    "-c:v",
-                    "hevc_nvenc",
-                    "-preset",
-                    "p4",
-                    "-rc",
-                    "constqp",
-                    "-qp",
-                    str(crf),
-                    "-pix_fmt",
-                    "p010le",  # 10-bit
-                    "-tag:v",
-                    "hvc1",
-                    "-colorspace",
-                    "bt2020nc",
-                    "-color_primaries",
-                    "bt2020",
-                    "-color_trc",
-                    color_trc,
-                ]
-            else:
-                return [
-                    "-c:v",
-                    "hevc_nvenc",
-                    "-preset",
-                    "p4",
-                    "-rc",
-                    "constqp",
-                    "-qp",
-                    str(crf),
-                    "-tag:v",
-                    "hvc1",
-                ]
-    except Exception:
-        pass
-
-    # Fallback to CPU encoding
-    if preserve_hdr:
-        # x265 transfer parameter name
-        x265_transfer = "smpte2084" if hdr_type == "pq" else "arib-std-b67"
-        return [
-            "-c:v",
-            "libx265",
-            "-preset",
-            "medium",
-            "-crf",
-            str(crf),
-            "-pix_fmt",
-            "yuv420p10le",
-            "-tag:v",
-            "hvc1",
-            "-colorspace",
-            "bt2020nc",
-            "-color_primaries",
-            "bt2020",
-            "-color_trc",
-            color_trc,
-            "-x265-params",
-            f"hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer={x265_transfer}:colormatrix=bt2020nc",
-        ]
-    else:
-        return [
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            str(crf),
-        ]
+    return _encoder_args_cpu(crf, preserve_hdr, color_trc, hdr_type)

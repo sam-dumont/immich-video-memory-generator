@@ -17,6 +17,43 @@ from immich_memories.processing.hdr_utilities import (
 logger = logging.getLogger(__name__)
 
 
+def _build_clip_trim_filters(
+    idx: int,
+    clip_dur: float,
+    trim_start: float,
+    trim_dur: float,
+    needs_trim: bool,
+    has_audio: bool,
+    audio_format: str,
+) -> list[str]:
+    """Build video and audio filter strings for a single clip (with or without trim)."""
+    parts: list[str] = []
+    if needs_trim:
+        parts.append(
+            f"[{idx}:v]trim=start={trim_start}:duration={trim_dur},setpts=PTS-STARTPTS[v{idx}]"
+        )
+        if has_audio:
+            parts.append(
+                f"[{idx}:a]atrim=start={trim_start}:duration={trim_dur},"
+                f"{audio_format},asetpts=PTS-STARTPTS[a{idx}]"
+            )
+        else:
+            parts.append(
+                f"anullsrc=r=48000:cl=stereo,atrim=0:{trim_dur},{audio_format},"
+                f"asetpts=PTS-STARTPTS[a{idx}]"
+            )
+    else:
+        parts.append(f"[{idx}:v]setpts=PTS-STARTPTS[v{idx}]")
+        if has_audio:
+            parts.append(f"[{idx}:a]{audio_format},asetpts=PTS-STARTPTS[a{idx}]")
+        else:
+            parts.append(
+                f"anullsrc=r=48000:cl=stereo,atrim=0:{clip_dur},{audio_format},"
+                f"asetpts=PTS-STARTPTS[a{idx}]"
+            )
+    return parts
+
+
 class AssemblerConcatMixin:
     """Mixin providing concatenation methods for VideoAssembler."""
 
@@ -67,40 +104,17 @@ class AssemblerConcatMixin:
             trim_end = clip_dur - fade if next_is_fade else clip_dur
             trim_dur = trim_end - trim_start
 
-            # Add clip as input
             input_files.append(encoded_clip)
             idx = input_idx
             input_idx += 1
 
-            # Trim video and audio inline during decode
-            if trim_start > 0 or trim_end < clip_dur:
-                filter_parts.append(
-                    f"[{idx}:v]trim=start={trim_start}:duration={trim_dur},"
-                    f"setpts=PTS-STARTPTS[v{idx}]"
+            needs_trim = trim_start > 0 or trim_end < clip_dur
+            has_audio = self._has_audio_stream(encoded_clip)
+            filter_parts.extend(
+                _build_clip_trim_filters(
+                    idx, clip_dur, trim_start, trim_dur, needs_trim, has_audio, audio_format
                 )
-                has_audio = self._has_audio_stream(encoded_clip)
-                if has_audio:
-                    filter_parts.append(
-                        f"[{idx}:a]atrim=start={trim_start}:duration={trim_dur},"
-                        f"{audio_format},asetpts=PTS-STARTPTS[a{idx}]"
-                    )
-                else:
-                    filter_parts.append(
-                        f"anullsrc=r=48000:cl=stereo,"
-                        f"atrim=0:{trim_dur},{audio_format},"
-                        f"asetpts=PTS-STARTPTS[a{idx}]"
-                    )
-            else:
-                filter_parts.append(f"[{idx}:v]setpts=PTS-STARTPTS[v{idx}]")
-                has_audio = self._has_audio_stream(encoded_clip)
-                if has_audio:
-                    filter_parts.append(f"[{idx}:a]{audio_format},asetpts=PTS-STARTPTS[a{idx}]")
-                else:
-                    filter_parts.append(
-                        f"anullsrc=r=48000:cl=stereo,"
-                        f"atrim=0:{clip_dur},{audio_format},"
-                        f"asetpts=PTS-STARTPTS[a{idx}]"
-                    )
+            )
 
             concat_labels_v.append(f"[v{idx}]")
             concat_labels_a.append(f"[a{idx}]")

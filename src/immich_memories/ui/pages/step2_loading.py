@@ -15,12 +15,111 @@ from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
 
+MIN_CLIP_DURATION = 1.5
+
+
+def _fetch_assets(state) -> list:
+    """Blocking: fetch video assets from Immich API."""
+    date_range = state.date_range
+    with SyncImmichClient(
+        base_url=state.immich_url,
+        api_key=state.immich_api_key,
+    ) as client:
+        multi_ids = state.memory_preset_params.get("person_ids", [])
+        if len(multi_ids) >= 2:
+            return client.get_videos_for_all_persons(multi_ids, date_range)
+        if state.selected_person:
+            return client.get_videos_for_person_and_date_range(state.selected_person.id, date_range)
+        return client.get_videos_for_date_range(date_range)
+
+
+def _filter_near_home(assets: list, state) -> list:
+    """Filter out near-home videos for trip memories."""
+    home_lat = state.memory_preset_params.get("home_lat")
+    home_lon = state.memory_preset_params.get("home_lon")
+    min_dist = state.memory_preset_params.get("min_distance_km")
+    if not (home_lat and home_lon and min_dist):
+        return assets
+    from immich_memories.analysis.trip_detection import filter_near_home
+
+    before = len(assets)
+    assets = filter_near_home(assets, home_lat, home_lon, min_dist)
+    filtered = before - len(assets)
+    if filtered:
+        logger.info(f"Filtered {filtered} near-home videos from trip")
+    return assets
+
+
+def _build_clips(assets: list) -> tuple[list[VideoClipInfo], int]:
+    """Convert assets to VideoClipInfo, filtering short clips."""
+    clips = []
+    skipped = 0
+    for asset in assets:
+        duration = asset.duration_seconds or 0
+        if duration < MIN_CLIP_DURATION:
+            skipped += 1
+            continue
+        clips.append(VideoClipInfo(asset=asset, duration_seconds=duration))
+    if skipped:
+        logger.info(f"Skipped {skipped} clips shorter than {MIN_CLIP_DURATION}s")
+    return clips, skipped
+
+
+def _fetch_live_photos(state, date_range) -> tuple[list[VideoClipInfo], set[str]]:
+    """Fetch live photo clips (blocking)."""
+    lp_person_id = state.selected_person.id if state.selected_person else None
+    multi_ids = state.memory_preset_params.get("person_ids", [])
+
+    with SyncImmichClient(state.immich_url, state.immich_api_key) as lp_client:
+        return fetch_live_photo_clips(
+            lp_client,
+            date_range,
+            person_id=lp_person_id,
+            person_ids=multi_ids if len(multi_ids) >= 2 else None,
+        )
+
+
+def _merge_live_photos(
+    clips: list[VideoClipInfo], live_clips: list[VideoClipInfo], live_video_ids: set[str]
+) -> list[VideoClipInfo]:
+    """Merge live photo clips into main clip list, deduplicating video components."""
+    if live_video_ids:
+        before = len(clips)
+        clips = [c for c in clips if c.asset.id not in live_video_ids]
+        removed = before - len(clips)
+        if removed:
+            logger.info(f"Removed {removed} live photo video components")
+    if live_clips:
+        logger.info(f"Adding {len(live_clips)} Live Photo clips")
+        clips.extend(live_clips)
+    return clips
+
+
+def _set_initial_selection(clips: list[VideoClipInfo], state) -> None:
+    """Set initial selected_clip_ids, prioritizing real videos over live photos."""
+    has_live = state.include_live_photos and any(c.asset.is_live_photo for c in clips)
+    if not has_live:
+        state.selected_clip_ids = {c.asset.id for c in clips}
+        return
+
+    video_clips = [c for c in clips if not c.asset.is_live_photo]
+    video_duration = sum(c.duration_seconds or 0 for c in video_clips)
+    target_seconds = state.target_duration * 60
+
+    if video_duration >= target_seconds:
+        state.selected_clip_ids = {c.asset.id for c in video_clips}
+        logger.info(
+            f"Enough video ({video_duration:.0f}s >= {target_seconds}s target), "
+            f"live photos available but not pre-selected"
+        )
+    else:
+        state.selected_clip_ids = {c.asset.id for c in clips}
+
 
 def _load_clips() -> None:
     """Load clips from Immich API - triggers async loading."""
     state = get_app_state()
 
-    # Create dialog with progress bar
     with ui.dialog() as loading_dialog, ui.card().classes("p-6 min-w-[360px]"):
         ui.label("Loading videos...").classes("text-lg font-semibold").style(
             "color: var(--im-text)"
@@ -36,7 +135,6 @@ def _load_clips() -> None:
     loading_dialog.open()
 
     async def do_load():
-        """Async wrapper to load clips with run.io_bound."""
         try:
             status_label.set_text("Fetching videos from Immich...")
             progress_bar.value = 0.02
@@ -45,112 +143,25 @@ def _load_clips() -> None:
             if date_range is None:
                 raise ValueError("No date range configured")
 
-            def fetch_assets():
-                """Blocking: fetch assets from API."""
-                with SyncImmichClient(
-                    base_url=state.immich_url,
-                    api_key=state.immich_api_key,
-                ) as client:
-                    multi_ids = state.memory_preset_params.get("person_ids", [])
-                    if len(multi_ids) >= 2:
-                        assets = client.get_videos_for_all_persons(multi_ids, date_range)
-                    elif state.selected_person:
-                        assets = client.get_videos_for_person_and_date_range(
-                            state.selected_person.id,
-                            date_range,
-                        )
-                    else:
-                        assets = client.get_videos_for_date_range(date_range)
-                    return assets, client
-
-            assets, client = await run.io_bound(fetch_assets)
-
-            # For trip memory type, filter out videos near home
-            home_lat = state.memory_preset_params.get("home_lat")
-            home_lon = state.memory_preset_params.get("home_lon")
-            min_dist = state.memory_preset_params.get("min_distance_km")
-            if home_lat and home_lon and min_dist:
-                from immich_memories.analysis.trip_detection import filter_near_home
-
-                before = len(assets)
-                assets = filter_near_home(assets, home_lat, home_lon, min_dist)
-                filtered = before - len(assets)
-                if filtered:
-                    logger.info(f"Filtered {filtered} near-home videos from trip")
+            assets = await run.io_bound(_fetch_assets, state)
+            assets = _filter_near_home(assets, state)
 
             status_label.set_text(f"Found {len(assets)} assets. Filtering...")
             progress_bar.value = 0.05
 
-            # Convert to VideoClipInfo, filtering out very short clips
-            MIN_CLIP_DURATION = 1.5
-            clips = []
-            skipped_short = 0
-            for asset in assets:
-                duration = asset.duration_seconds or 0
-                if duration < MIN_CLIP_DURATION:
-                    skipped_short += 1
-                    continue
-                clips.append(VideoClipInfo(asset=asset, duration_seconds=duration))
+            clips, _ = _build_clips(assets)
 
-            if skipped_short > 0:
-                logger.info(f"Skipped {skipped_short} clips shorter than {MIN_CLIP_DURATION}s")
-
-            # Include Live Photos if enabled
             if state.include_live_photos:
                 status_label.set_text("Fetching Live Photos...")
-                # Live photo person filtering: Immich doesn't return
-                # livePhotoVideoId when filtering by IMAGE type + person.
-                # Instead we search by person with NO type filter and then
-                # filter client-side for is_live_photo.
-                lp_person_id = state.selected_person.id if state.selected_person else None
-                multi_ids = state.memory_preset_params.get("person_ids", [])
+                live_clips, live_video_ids = await run.io_bound(
+                    _fetch_live_photos, state, date_range
+                )
+                clips = _merge_live_photos(clips, live_clips, live_video_ids)
 
-                def fetch_live():
-                    with SyncImmichClient(state.immich_url, state.immich_api_key) as lp_client:
-                        return fetch_live_photo_clips(
-                            lp_client,
-                            date_range,
-                            person_id=lp_person_id,
-                            person_ids=multi_ids if len(multi_ids) >= 2 else None,
-                        )
-
-                live_clips, live_video_ids = await run.io_bound(fetch_live)
-                if live_video_ids:
-                    before = len(clips)
-                    clips = [c for c in clips if c.asset.id not in live_video_ids]
-                    removed = before - len(clips)
-                    if removed:
-                        logger.info(f"Removed {removed} live photo video components")
-                if live_clips:
-                    logger.info(f"Adding {len(live_clips)} Live Photo clips")
-                    clips.extend(live_clips)
-
-            # Sort all clips (videos + live photos) by date
             clips.sort(key=lambda c: c.asset.file_created_at)
-
             state.clips = clips
+            _set_initial_selection(clips, state)
 
-            # Prioritize real videos over live photos: if there's enough
-            # video footage to fill the target duration, only pre-select
-            # videos. Live photos stay visible but unchecked by default.
-            has_live = state.include_live_photos and any(c.asset.is_live_photo for c in clips)
-            if has_live:
-                video_clips = [c for c in clips if not c.asset.is_live_photo]
-                video_duration = sum(c.duration_seconds or 0 for c in video_clips)
-                target_seconds = state.target_duration * 60
-
-                if video_duration >= target_seconds:
-                    state.selected_clip_ids = {c.asset.id for c in video_clips}
-                    logger.info(
-                        f"Enough video ({video_duration:.0f}s >= {target_seconds}s target), "
-                        f"live photos available but not pre-selected"
-                    )
-                else:
-                    state.selected_clip_ids = {c.asset.id for c in clips}
-            else:
-                state.selected_clip_ids = {c.asset.id for c in clips}
-
-            # Load thumbnails and metadata with progress
             status_label.set_text(f"Found {len(clips)} videos. Loading thumbnails...")
             progress_bar.value = 0.1
             await _load_thumbnails_and_metadata_async(clips, status_label, progress_bar)
@@ -163,7 +174,6 @@ def _load_clips() -> None:
             ui.notify(f"Failed to load videos: {sanitize_error_message(str(e))}", type="negative")
             logger.exception("Failed to load clips")
 
-    # Schedule the async loading
     ui.timer(0.1, do_load, once=True)
 
 
@@ -181,17 +191,14 @@ async def _load_thumbnails_and_metadata_async(
 
     all_asset_ids = [c.asset.id for c in clips]
 
-    # Check cached data (fast local operations)
     cached_thumbnail_ids = set(thumbnail_cache.get_batch(all_asset_ids, "preview").keys())
     cached_metadata = analysis_cache.get_video_metadata_batch(all_asset_ids)
 
-    # Apply cached metadata
     for clip in clips:
         meta = cached_metadata.get(clip.asset.id)
         if meta:
             _apply_metadata(clip, meta)
 
-    # Find missing data
     need_thumbs = [c for c in clips if c.asset.id not in cached_thumbnail_ids]
     need_meta = [c for c in clips if c.asset.id not in cached_metadata]
     total_work = len(need_thumbs) + len(need_meta)
@@ -202,7 +209,36 @@ async def _load_thumbnails_and_metadata_async(
     done = 0
     batch_size = 10
 
-    # Phase 1: Thumbnails (batched for progress updates)
+    done = await _fetch_thumbnails_batched(
+        need_thumbs,
+        thumbnail_cache,
+        state,
+        status_label,
+        progress_bar,
+        done,
+        total_work,
+        batch_size,
+    )
+    await _fetch_metadata_batched(
+        need_meta, state, analysis_cache, status_label, progress_bar, done, total_work, batch_size
+    )
+
+    if progress_bar:
+        progress_bar.value = 1.0
+    status_label.set_text("Done")
+
+
+async def _fetch_thumbnails_batched(
+    need_thumbs: list[VideoClipInfo],
+    thumbnail_cache,
+    state,
+    status_label,
+    progress_bar,
+    done: int,
+    total_work: int,
+    batch_size: int,
+) -> int:
+    """Fetch thumbnails in batches. Returns updated done count."""
     for i in range(0, len(need_thumbs), batch_size):
         batch = need_thumbs[i : i + batch_size]
 
@@ -224,8 +260,20 @@ async def _load_thumbnails_and_metadata_async(
         )
         if progress_bar:
             progress_bar.value = 0.1 + frac * 0.85
+    return done
 
-    # Phase 2: Metadata probing (batched)
+
+async def _fetch_metadata_batched(
+    need_meta: list[VideoClipInfo],
+    state,
+    analysis_cache,
+    status_label,
+    progress_bar,
+    done: int,
+    total_work: int,
+    batch_size: int,
+) -> None:
+    """Fetch video metadata in batches."""
     for i in range(0, len(need_meta), batch_size):
         batch = need_meta[i : i + batch_size]
 
@@ -242,10 +290,6 @@ async def _load_thumbnails_and_metadata_async(
         )
         if progress_bar:
             progress_bar.value = 0.1 + frac * 0.85
-
-    if progress_bar:
-        progress_bar.value = 1.0
-    status_label.set_text("Done")
 
 
 def _apply_metadata(clip: VideoClipInfo, meta: dict) -> None:
@@ -266,7 +310,6 @@ def _apply_metadata(clip: VideoClipInfo, meta: dict) -> None:
 def _probe_and_cache_metadata(clip, client, state, analysis_cache) -> None:
     """Probe video metadata via ffprobe and save to cache."""
     try:
-        # For live photos, probe the video component (not the image asset)
         probe_id = clip.asset.live_photo_video_id or clip.asset.id
         video_url = client.get_video_original_url(probe_id)
         headers = {"x-api-key": state.immich_api_key}
@@ -298,7 +341,6 @@ def _render_cached_analysis_summary(clips: list[VideoClipInfo]) -> None:
     state = get_app_state()
     analysis_cache = state.analysis_cache
 
-    # Find clips with cached analysis
     analyzed_clips = {}
     for clip in clips:
         analysis = analysis_cache.get_analysis(clip.asset.id)

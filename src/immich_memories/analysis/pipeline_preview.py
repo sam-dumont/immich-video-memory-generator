@@ -74,6 +74,28 @@ class PreviewMixin:
 
         return None
 
+    def _download_clip_video(self, clip: VideoClipInfo) -> tuple[Path, Path | None]:
+        """Download clip video, returning (video_path, temp_file_or_None)."""
+        from immich_memories.cache.video_cache import VideoDownloadCache
+        from immich_memories.config import get_config
+
+        config = get_config()
+        if config.cache.video_cache_enabled:
+            video_cache = VideoDownloadCache(
+                cache_dir=config.cache.video_cache_path,
+                max_size_gb=config.cache.video_cache_max_size_gb,
+                max_age_days=config.cache.video_cache_max_age_days,
+            )
+            video_path = video_cache.download_or_get(self.client, clip.asset)
+            return video_path, None
+
+        safe_name = sanitize_filename(clip.asset.original_file_name or "video.mp4")
+        suffix = Path(safe_name).suffix or ".mp4"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            temp_file = Path(tmp.name)
+        self.client.download_asset(clip.asset.id, temp_file)
+        return temp_file, temp_file
+
     def _analyze_clip(
         self,
         clip: VideoClipInfo,
@@ -87,42 +109,19 @@ class PreviewMixin:
             Tuple of (start_time, end_time, score).
         """
         from immich_memories.analysis.scoring import SceneScorer
-        from immich_memories.cache.video_cache import VideoDownloadCache
-        from immich_memories.config import get_config
 
-        config = get_config()
-
-        # Check if we have cached analysis
         cached = self.analysis_cache.get_analysis(clip.asset.id)
         if cached and cached.segments:
-            # Use cached best segment
             best = max(cached.segments, key=lambda s: s.total_score or 0.0)
             return best.start_time, best.end_time, best.total_score or 0.0
 
-        # Download video
-        video_path: Path | None = None
         temp_file: Path | None = None
-
         try:
-            if config.cache.video_cache_enabled:
-                video_cache = VideoDownloadCache(
-                    cache_dir=config.cache.video_cache_path,
-                    max_size_gb=config.cache.video_cache_max_size_gb,
-                    max_age_days=config.cache.video_cache_max_age_days,
-                )
-                video_path = video_cache.download_or_get(self.client, clip.asset)
-            else:
-                safe_name = sanitize_filename(clip.asset.original_file_name or "video.mp4")
-                suffix = Path(safe_name).suffix or ".mp4"
-                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                    temp_file = Path(tmp.name)
-                self.client.download_asset(clip.asset.id, temp_file)
-                video_path = temp_file
+            video_path, temp_file = self._download_clip_video(clip)
 
             if not video_path or not video_path.exists():
                 raise ValueError("Failed to download video")
 
-            # Score segments
             scorer = SceneScorer()
             moments = scorer.sample_and_score_video(
                 video_path,
@@ -132,26 +131,16 @@ class PreviewMixin:
             )
 
             if not moments:
-                # Fall back to first N seconds
                 duration = clip.duration_seconds or 10
                 return 0.0, min(duration, self.config.avg_clip_duration), 0.0
 
-            # Find best moment
             best_moment = max(moments, key=lambda m: m.total_score)
-
-            # Clamp to target duration
-            segment_duration = min(best_moment.duration, self.config.avg_clip_duration)
             start = best_moment.start_time
-            end = start + segment_duration
+            end = start + min(best_moment.duration, self.config.avg_clip_duration)
 
-            # Save to cache for future use
             self.analysis_cache.save_analysis(
-                asset=clip.asset,
-                video_info=clip,
-                perceptual_hash=None,
-                segments=moments,
+                asset=clip.asset, video_info=clip, perceptual_hash=None, segments=moments
             )
-
             return start, end, best_moment.total_score
 
         finally:

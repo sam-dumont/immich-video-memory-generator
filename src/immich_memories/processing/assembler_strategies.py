@@ -22,6 +22,39 @@ from immich_memories.processing.hdr_utilities import (
 logger = logging.getLogger(__name__)
 
 
+def _pick_transition(
+    clip_before: AssemblyClip,
+    clip_after: AssemblyClip,
+    consecutive_fades: int,
+    consecutive_cuts: int,
+) -> tuple[str, int, int]:
+    """Pick a single transition type for one clip boundary.
+
+    Returns (transition, new_consecutive_fades, new_consecutive_cuts).
+    """
+    import random
+
+    if clip_before.is_title_screen or clip_after.is_title_screen:
+        return "fade", consecutive_fades + 1, 0
+
+    if clip_before.outgoing_transition is not None:
+        t = clip_before.outgoing_transition
+        if t == "fade":
+            return t, consecutive_fades + 1, 0
+        return t, 0, consecutive_cuts + 1
+
+    # Smart algorithm: 70% crossfade, 30% cut with consecutive limits
+    use_fade = random.random() < 0.7
+    if consecutive_fades >= 3:
+        use_fade = False
+    if consecutive_cuts >= 2:
+        use_fade = True
+
+    if use_fade:
+        return "fade", consecutive_fades + 1, 0
+    return "cut", 0, consecutive_cuts + 1
+
+
 class AssemblerStrategyMixin:
     """Mixin providing assembly strategy methods for VideoAssembler."""
 
@@ -69,18 +102,7 @@ class AssemblerStrategyMixin:
         # Scale each input (cuts uses simpler scale without aspect ratio handling)
         filter_parts = []
         for i, _clip in enumerate(clips):
-            hdr_conversion = ""
-            if self.settings.preserve_hdr and ctx.clip_hdr_types[i] != ctx.hdr_type:
-                source_pri = ctx.clip_primaries[i] if i < len(ctx.clip_primaries) else None
-                hdr_conversion = _get_hdr_conversion_filter(
-                    ctx.clip_hdr_types[i], ctx.hdr_type, source_primaries=source_pri
-                )
-                if hdr_conversion:
-                    logger.info(
-                        f"Converting clip {i} from {ctx.clip_hdr_types[i]} "
-                        f"(primaries={source_pri}) to {ctx.hdr_type}"
-                    )
-
+            hdr_conversion = self._get_clip_hdr_conversion(i, ctx)
             filter_parts.append(
                 f"[{i}:v]setpts=PTS-STARTPTS,"
                 f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease:flags=lanczos,"
@@ -188,6 +210,21 @@ class AssemblerStrategyMixin:
 
         return output_path
 
+    def _get_clip_hdr_conversion(self, i: int, ctx: object) -> str:
+        """Return HDR conversion filter string for clip i, or empty string."""
+        if not self.settings.preserve_hdr or ctx.clip_hdr_types[i] == ctx.hdr_type:
+            return ""
+        source_pri = ctx.clip_primaries[i] if i < len(ctx.clip_primaries) else None
+        hdr_conversion = _get_hdr_conversion_filter(
+            ctx.clip_hdr_types[i], ctx.hdr_type, source_primaries=source_pri
+        )
+        if hdr_conversion:
+            logger.info(
+                f"Converting clip {i} from {ctx.clip_hdr_types[i]} "
+                f"(primaries={source_pri}) to {ctx.hdr_type}"
+            )
+        return hdr_conversion
+
     def _decide_transitions(self, clips: list[AssemblyClip]) -> list[str]:
         """Decide which transition type to use between each pair of clips.
 
@@ -203,62 +240,21 @@ class AssemblerStrategyMixin:
         Returns:
             List of transition types ("fade" or "cut") for each transition.
         """
-        import random
-
-        num_clips = len(clips)
-        if num_clips < 2:
+        if len(clips) < 2:
             return []
 
-        num_transitions = num_clips - 1
         transitions = []
         consecutive_fades = 0
         consecutive_cuts = 0
         predecided_used = 0
 
-        for i in range(num_transitions):
-            # Get the two clips involved in this transition
-            clip_before = clips[i]
-            clip_after = clips[i + 1]
-
-            # ALWAYS use fade for title screen transitions (never cut)
-            if clip_before.is_title_screen or clip_after.is_title_screen:
-                transitions.append("fade")
-                consecutive_fades += 1
-                consecutive_cuts = 0
-                continue
-
-            # Use pre-decided transition if available (from clips.plan_transitions)
-            if clip_before.outgoing_transition is not None:
-                transition = clip_before.outgoing_transition
-                transitions.append(transition)
+        for i in range(len(clips) - 1):
+            t, consecutive_fades, consecutive_cuts = _pick_transition(
+                clips[i], clips[i + 1], consecutive_fades, consecutive_cuts
+            )
+            transitions.append(t)
+            if clips[i].outgoing_transition is not None and not clips[i].is_title_screen:
                 predecided_used += 1
-                if transition == "fade":
-                    consecutive_fades += 1
-                    consecutive_cuts = 0
-                else:
-                    consecutive_cuts += 1
-                    consecutive_fades = 0
-                continue
-
-            # Fall back to smart algorithm: 70% crossfade, 30% cut
-            use_fade = random.random() < 0.7
-
-            # Force cut if too many consecutive fades
-            if consecutive_fades >= 3:
-                use_fade = False
-
-            # Force fade if too many consecutive cuts
-            if consecutive_cuts >= 2:
-                use_fade = True
-
-            if use_fade:
-                transitions.append("fade")
-                consecutive_fades += 1
-                consecutive_cuts = 0
-            else:
-                transitions.append("cut")
-                consecutive_cuts += 1
-                consecutive_fades = 0
 
         logger.info(
             f"Smart transitions: {transitions.count('fade')} crossfades, "

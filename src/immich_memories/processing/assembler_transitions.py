@@ -22,6 +22,92 @@ logger = logging.getLogger(__name__)
 class AssemblerTransitionMixin:
     """Mixin providing transition rendering methods for VideoAssembler."""
 
+    def _load_transition_frames(
+        self,
+        seg_a: Path,
+        seg_b: Path,
+        fade_dur: float,
+        target_fps: int,
+        pix_fmt: str,
+    ):  # type: ignore[return]
+        """Load frames from both segments for blending.
+
+        Returns (frames_a, frames_b, width, height, total_frames) or None on failure.
+        """
+        try:
+            import av
+            import numpy as np
+
+            container_a = av.open(str(seg_a))
+            container_b = av.open(str(seg_b))
+            stream_a = container_a.streams.video[0]
+            width, height = stream_a.width, stream_a.height
+
+            total_frames = max(2, int(fade_dur * target_fps))
+            frames_a = [f.to_ndarray(format=pix_fmt) for f in container_a.decode(stream_a)]
+            frames_b = [
+                f.to_ndarray(format=pix_fmt)
+                for f in container_b.decode(container_b.streams.video[0])
+            ]
+            container_a.close()
+            container_b.close()
+
+            total_frames = min(len(frames_a), len(frames_b), total_frames)
+            if total_frames < 2:
+                return None
+
+            indices_a = np.linspace(0, len(frames_a) - 1, total_frames, dtype=int)
+            indices_b = np.linspace(0, len(frames_b) - 1, total_frames, dtype=int)
+            return frames_a, frames_b, indices_a, indices_b, width, height, total_frames
+        except Exception:
+            return None
+
+    def _blend_and_encode_frames(
+        self,
+        frames_a,
+        frames_b,
+        indices_a,
+        indices_b,
+        total_frames: int,
+        output_path: Path,
+        target_fps: int,
+        is_hdr: bool,
+        width: int,
+        height: int,
+        use_gpu: bool,
+        blend_frames_gpu_fn: Callable[..., Any] | None,
+        pix_fmt: str,
+    ) -> None:
+        """Blend frames and encode them to the output video."""
+        import av
+        import numpy as np
+
+        dtype = np.uint16 if is_hdr else np.uint8
+        output_container = av.open(str(output_path), mode="w")
+        output_stream = self._configure_pyav_output_stream(
+            output_container, target_fps, is_hdr, width, height, self.settings.output_crf
+        )
+
+        for i in range(total_frames):
+            alpha = i / (total_frames - 1) if total_frames > 1 else 0.5
+            frame_a, frame_b = frames_a[indices_a[i]], frames_b[indices_b[i]]
+
+            if use_gpu and blend_frames_gpu_fn is not None:
+                blended = blend_frames_gpu_fn(frame_a, frame_b, alpha)
+            else:
+                blended = (
+                    (1.0 - alpha) * frame_a.astype(np.float32) + alpha * frame_b.astype(np.float32)
+                ).astype(dtype)
+
+            av_frame = av.VideoFrame.from_ndarray(blended, format=pix_fmt)
+            av_frame.pts = i
+            for packet in output_stream.encode(av_frame):
+                output_container.mux(packet)
+
+        for packet in output_stream.encode():
+            output_container.mux(packet)
+        output_container.close()
+
     def _render_transition_framewise(
         self,
         seg_a: Path,
@@ -45,7 +131,7 @@ class AssemblerTransitionMixin:
             True if successful, False if PyAV/GPU not available (fallback needed).
         """
         try:
-            import av
+            import av  # noqa: F401 — just check availability
         except ImportError:
             logger.debug("PyAV not available, falling back to xfade")
             return False
@@ -65,67 +151,31 @@ class AssemblerTransitionMixin:
         except Exception as e:
             logger.debug(f"GPU blending not available: {e}")
 
-        import numpy as np
-
         is_hdr = _detect_hdr_type(seg_a) is not None
+        pix_fmt = "rgb48le" if is_hdr else "rgb24"
+
+        frame_data = self._load_transition_frames(seg_a, seg_b, fade_dur, target_fps, pix_fmt)
+        if frame_data is None:
+            return False
+
+        frames_a, frames_b, indices_a, indices_b, width, height, total_frames = frame_data
 
         try:
-            container_a = av.open(str(seg_a))
-            container_b = av.open(str(seg_b))
-            stream_a = container_a.streams.video[0]
-            width, height = stream_a.width, stream_a.height
-
-            total_frames = max(2, int(fade_dur * target_fps))
-            pix_fmt = "rgb48le" if is_hdr else "rgb24"
-            dtype = np.uint16 if is_hdr else np.uint8
-
-            frames_a = [f.to_ndarray(format=pix_fmt) for f in container_a.decode(stream_a)]
-            frames_b = [
-                f.to_ndarray(format=pix_fmt)
-                for f in container_b.decode(container_b.streams.video[0])
-            ]
-            container_a.close()
-            container_b.close()
-
-            # Adjust total_frames if not enough source frames
-            total_frames = min(len(frames_a), len(frames_b), total_frames)
-            if total_frames < 2:
-                return False
-
-            indices_a = np.linspace(0, len(frames_a) - 1, total_frames, dtype=int)
-            indices_b = np.linspace(0, len(frames_b) - 1, total_frames, dtype=int)
-
-            output_container = av.open(str(output_path), mode="w")
-            output_stream = self._configure_pyav_output_stream(
-                output_container,
+            self._blend_and_encode_frames(
+                frames_a,
+                frames_b,
+                indices_a,
+                indices_b,
+                total_frames,
+                output_path,
                 target_fps,
                 is_hdr,
                 width,
                 height,
-                self.settings.output_crf,
+                use_gpu,
+                blend_frames_gpu_fn,
+                pix_fmt,
             )
-
-            for i in range(total_frames):
-                alpha = i / (total_frames - 1) if total_frames > 1 else 0.5
-                frame_a, frame_b = frames_a[indices_a[i]], frames_b[indices_b[i]]
-
-                if use_gpu and blend_frames_gpu_fn is not None:
-                    blended = blend_frames_gpu_fn(frame_a, frame_b, alpha)
-                else:
-                    blended = (
-                        (1.0 - alpha) * frame_a.astype(np.float32)
-                        + alpha * frame_b.astype(np.float32)
-                    ).astype(dtype)
-
-                av_frame = av.VideoFrame.from_ndarray(blended, format=pix_fmt)
-                av_frame.pts = i
-                for packet in output_stream.encode(av_frame):
-                    output_container.mux(packet)
-
-            for packet in output_stream.encode():
-                output_container.mux(packet)
-            output_container.close()
-
             self._add_audio_crossfade(seg_a, seg_b, output_path, fade_dur)
             return True
 

@@ -130,6 +130,31 @@ class DuplicateGroup:
         }
 
 
+def _compute_video_hashes(
+    videos: list[VideoClipInfo], video_paths: dict[str, Path]
+) -> dict[str, str]:
+    """Compute perceptual hashes for videos that have local paths."""
+    hashes: dict[str, str] = {}
+    for video in videos:
+        path = video_paths.get(video.asset.id)
+        if path and path.exists():
+            hash_value = compute_video_hash(path)
+            if hash_value:
+                hashes[video.asset.id] = hash_value
+    return hashes
+
+
+def _find_similar_pairs(hashes: dict[str, str], threshold: int) -> list[tuple[str, str]]:
+    """Return all (id1, id2) pairs whose hashes are within the Hamming threshold."""
+    video_ids = list(hashes.keys())
+    return [
+        (id1, id2)
+        for i, id1 in enumerate(video_ids)
+        for id2 in video_ids[i + 1 :]
+        if hamming_distance(hashes[id1], hashes[id2]) <= threshold
+    ]
+
+
 def find_duplicate_groups(
     videos: list[VideoClipInfo],
     threshold: int | None = None,
@@ -155,44 +180,21 @@ def find_duplicate_groups(
     if not video_paths:
         return [DuplicateGroup(videos=[v]) for v in videos]
 
-    # Compute hashes for all videos
-    hashes: dict[str, str] = {}
-    for video in videos:
-        if video.asset.id in video_paths:
-            path = video_paths[video.asset.id]
-            if path.exists():
-                hash_value = compute_video_hash(path)
-                if hash_value:
-                    hashes[video.asset.id] = hash_value
+    hashes = _compute_video_hashes(videos, video_paths)
+    similar_pairs = _find_similar_pairs(hashes, threshold)
+    groups = _union_find_groups(list(hashes.keys()), similar_pairs)
 
-    # Build adjacency based on hash similarity
-    similar_pairs: list[tuple[str, str]] = []
-    video_ids = list(hashes.keys())
-
-    for i, id1 in enumerate(video_ids):
-        for id2 in video_ids[i + 1 :]:
-            distance = hamming_distance(hashes[id1], hashes[id2])
-            if distance <= threshold:
-                similar_pairs.append((id1, id2))
-
-    # Build groups using union-find
-    groups = _union_find_groups(video_ids, similar_pairs)
-
-    # Create video lookup
     video_lookup = {v.asset.id: v for v in videos}
+    result = [
+        DuplicateGroup(videos=[video_lookup[vid] for vid in group_ids if vid in video_lookup])
+        for group_ids in groups
+        if any(vid in video_lookup for vid in group_ids)
+    ]
 
-    # Convert to DuplicateGroup objects
-    result = []
-    for group_ids in groups:
-        group_videos = [video_lookup[vid] for vid in group_ids if vid in video_lookup]
-        if group_videos:
-            result.append(DuplicateGroup(videos=group_videos))
-
-    # Add ungrouped videos (those without hashes)
     grouped_ids = {vid for group in groups for vid in group}
-    for video in videos:
-        if video.asset.id not in grouped_ids:
-            result.append(DuplicateGroup(videos=[video]))
+    result.extend(
+        DuplicateGroup(videos=[video]) for video in videos if video.asset.id not in grouped_ids
+    )
 
     return result
 

@@ -244,6 +244,59 @@ class AssemblerScalableMixin:
 
         return transitions
 
+    def _make_batch_progress_cb(
+        self,
+        base: float,
+        range_: float,
+        idx: int,
+        total: int,
+        progress_callback: Callable[[float, str], None],
+    ) -> Callable[[float, str], None]:
+        """Create a scoped progress callback for a single batch."""
+
+        def batch_cb(pct: float, msg: str) -> None:
+            progress_callback(base + pct * range_, f"Batch {idx + 1}/{total}: {msg}")
+
+        return batch_cb
+
+    def _process_single_batch(
+        self,
+        batch: list[AssemblyClip],
+        batch_idx: int,
+        num_batches: int,
+        intermediates_dir: Path,
+        progress_callback: Callable[[float, str], None] | None,
+    ) -> AssemblyClip:
+        """Process one batch: encode or copy, return an AssemblyClip for the result."""
+        import shutil
+
+        intermediate_path = intermediates_dir / f"batch_{batch_idx:03d}.mp4"
+
+        if len(batch) == 1:
+            shutil.copy2(batch[0].path, intermediate_path)
+            batch_duration = batch[0].duration
+        else:
+            base = (batch_idx / num_batches) * 0.8
+            range_ = (1 / num_batches) * 0.8
+            cb = (
+                self._make_batch_progress_cb(
+                    base, range_, batch_idx, num_batches, progress_callback
+                )
+                if progress_callback
+                else None
+            )
+            self._assemble_batch_direct(batch, intermediate_path, cb)
+            batch_duration = sum(c.duration for c in batch)
+            batch_duration -= self.settings.transition_duration * (len(batch) - 1)
+
+        return AssemblyClip(
+            path=intermediate_path,
+            duration=batch_duration,
+            date=None,
+            asset_id=f"batch_{batch_idx}",
+            is_title_screen=batch[-1].is_title_screen if batch else False,
+        )
+
     def _assemble_chunked(
         self,
         clips: list[AssemblyClip],
@@ -283,67 +336,22 @@ class AssemblerScalableMixin:
         try:
             for batch_idx in range(num_batches):
                 start_idx = batch_idx * CHUNK_SIZE
-                end_idx = min(start_idx + CHUNK_SIZE, num_clips)
-                batch = clips[start_idx:end_idx]
+                batch = clips[start_idx : min(start_idx + CHUNK_SIZE, num_clips)]
 
                 if progress_callback:
-                    batch_progress = (batch_idx / num_batches) * 0.8
                     progress_callback(
-                        batch_progress,
+                        (batch_idx / num_batches) * 0.8,
                         f"Processing batch {batch_idx + 1}/{num_batches} ({len(batch)} clips)...",
                     )
 
-                intermediate_path = intermediates_dir / f"batch_{batch_idx:03d}.mp4"
-
-                if len(batch) == 1:
-                    shutil.copy2(batch[0].path, intermediate_path)
-                    batch_duration = batch[0].duration
-                else:
-                    batch_base_progress = (batch_idx / num_batches) * 0.8
-                    batch_progress_range = (1 / num_batches) * 0.8
-
-                    def make_batch_progress_cb(
-                        base: float,
-                        range_: float,
-                        idx: int,
-                        total: int,
-                    ) -> Callable[[float, str], None]:
-                        def batch_progress_cb(pct: float, msg: str) -> None:
-                            if progress_callback:
-                                overall_pct = base + (pct * range_)
-                                progress_callback(overall_pct, f"Batch {idx + 1}/{total}: {msg}")
-
-                        return batch_progress_cb
-
-                    cb = make_batch_progress_cb(
-                        batch_base_progress,
-                        batch_progress_range,
-                        batch_idx,
-                        num_batches,
-                    )
-                    self._assemble_batch_direct(
-                        batch,
-                        intermediate_path,
-                        cb if progress_callback else None,
-                    )
-
-                    batch_duration = sum(c.duration for c in batch)
-                    batch_duration -= self.settings.transition_duration * (len(batch) - 1)
-
-                is_title = batch[-1].is_title_screen if batch else False
-
                 intermediate_clips.append(
-                    AssemblyClip(
-                        path=intermediate_path,
-                        duration=batch_duration,
-                        date=None,
-                        asset_id=f"batch_{batch_idx}",
-                        is_title_screen=is_title,
+                    self._process_single_batch(
+                        batch, batch_idx, num_batches, intermediates_dir, progress_callback
                     )
                 )
 
                 logger.info(
-                    f"Batch {batch_idx + 1}/{num_batches} complete: {intermediate_path.name}"
+                    f"Batch {batch_idx + 1}/{num_batches} complete: {intermediate_clips[-1].path.name}"
                 )
                 self._check_cancelled()
 
@@ -351,11 +359,8 @@ class AssemblerScalableMixin:
                 progress_callback(0.85, f"Merging {num_batches} batches...")
 
             logger.info(f"Final merge: {len(intermediate_clips)} intermediate files")
-
             result = self._merge_intermediate_batches(
-                intermediate_clips,
-                output_path,
-                progress_callback,
+                intermediate_clips, output_path, progress_callback
             )
 
             if self.settings.debug_preserve_intermediates:

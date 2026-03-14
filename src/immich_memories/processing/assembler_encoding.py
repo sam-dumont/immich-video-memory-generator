@@ -30,6 +30,30 @@ logger = logging.getLogger(__name__)
 class AssemblerEncodingMixin:
     """Mixin providing encoding and trimming methods for VideoAssembler."""
 
+    def _resolve_encode_resolution(
+        self,
+        target_resolution: tuple[int, int] | None,
+    ) -> tuple[int, int]:
+        """Resolve target resolution for single clip encoding."""
+        if target_resolution:
+            return target_resolution
+        if self.settings.target_resolution:
+            return self.settings.target_resolution
+        config = get_config()
+        return config.output.resolution_tuple
+
+    def _resolve_encode_hdr(self, clip: AssemblyClip) -> tuple[str, str]:
+        """Resolve HDR type and colorspace filter for a clip."""
+        hdr_type = "hlg"
+        if self.settings.preserve_hdr:
+            clip_hdr = _detect_hdr_type(clip.path)
+            if clip_hdr:
+                hdr_type = clip_hdr
+            colorspace_filter = _get_colorspace_filter(hdr_type)
+        else:
+            colorspace_filter = ""
+        return hdr_type, colorspace_filter
+
     def _encode_single_clip(
         self,
         clip: AssemblyClip,
@@ -48,14 +72,7 @@ class AssemblerEncodingMixin:
         """
         validate_video_path(clip.path, must_exist=True)
 
-        # Determine target resolution
-        if target_resolution:
-            target_w, target_h = target_resolution
-        elif self.settings.target_resolution:
-            target_w, target_h = self.settings.target_resolution
-        else:
-            config = get_config()
-            target_w, target_h = config.output.resolution_tuple
+        target_w, target_h = self._resolve_encode_resolution(target_resolution)
 
         # Pixel format and HDR
         pix_fmt = (
@@ -65,14 +82,7 @@ class AssemblerEncodingMixin:
         )
         target_fps = 60
 
-        hdr_type = "hlg"
-        if self.settings.preserve_hdr:
-            clip_hdr = _detect_hdr_type(clip.path)
-            if clip_hdr:
-                hdr_type = clip_hdr
-            colorspace_filter = _get_colorspace_filter(hdr_type)
-        else:
-            colorspace_filter = ""
+        hdr_type, colorspace_filter = self._resolve_encode_hdr(clip)
 
         # Handle rotation
         rotation_filter = ""

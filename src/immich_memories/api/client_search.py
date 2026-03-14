@@ -277,34 +277,13 @@ class SearchMixin:
         result.sort(key=lambda a: a.file_created_at)
         return result
 
-    async def get_live_photos_for_date_range(
+    async def _get_live_photos_single_person(
         self,
         date_range: DateRange,
         progress_callback: Callable[[int, int], None] | None = None,
         person_id: str | None = None,
-        person_ids: list[str] | None = None,
     ) -> list[Asset]:
-        """Get Live Photo IMAGE assets, optionally filtered by person(s)."""
-        # Multi-person AND: query per person, intersect
-        if person_ids and len(person_ids) >= 2:
-            per_person: list[set[str]] = []
-            assets_by_id: dict[str, Asset] = {}
-            for pid in person_ids:
-                assets = await self.get_live_photos_for_date_range(
-                    date_range,
-                    progress_callback,
-                    person_id=pid,
-                )
-                per_person.append({a.id for a in assets})
-                assets_by_id.update({a.id: a for a in assets})
-            common = per_person[0]
-            for s in per_person[1:]:
-                common &= s
-            result_list = [assets_by_id[aid] for aid in common]
-            result_list.sort(key=lambda a: a.file_created_at)
-            return result_list
-
-        # Single person or no person filter
+        """Get Live Photo assets for a single person (or no person filter)."""
         query_person_ids = [person_id] if person_id else None
         all_assets: list[Asset] = []
         page = 1
@@ -318,21 +297,44 @@ class SearchMixin:
                 page=page,
                 size=100,
             )
-
             for asset in result.all_assets:
                 if asset.is_live_photo:
                     all_assets.append(asset)
-
             if progress_callback:
                 progress_callback(len(all_assets), None)
-
             if not result.next_page:
                 break
-
             page += 1
 
         all_assets.sort(key=lambda a: a.file_created_at)
         return all_assets
+
+    async def get_live_photos_for_date_range(
+        self,
+        date_range: DateRange,
+        progress_callback: Callable[[int, int], None] | None = None,
+        person_id: str | None = None,
+        person_ids: list[str] | None = None,
+    ) -> list[Asset]:
+        """Get Live Photo IMAGE assets, optionally filtered by person(s)."""
+        # Multi-person AND: query per person, intersect
+        if person_ids and len(person_ids) >= 2:
+            per_person: list[set[str]] = []
+            assets_by_id: dict[str, Asset] = {}
+            for pid in person_ids:
+                assets = await self._get_live_photos_single_person(
+                    date_range, progress_callback, pid
+                )
+                per_person.append({a.id for a in assets})
+                assets_by_id.update({a.id: a for a in assets})
+            common = per_person[0]
+            for s in per_person[1:]:
+                common &= s
+            result_list = [assets_by_id[aid] for aid in common]
+            result_list.sort(key=lambda a: a.file_created_at)
+            return result_list
+
+        return await self._get_live_photos_single_person(date_range, progress_callback, person_id)
 
     async def iter_videos_for_date_range(
         self,

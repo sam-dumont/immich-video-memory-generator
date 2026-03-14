@@ -101,6 +101,32 @@ class Config(BaseSettings):
 _config: Config | None = None
 
 
+def _apply_env_overrides(config: Config) -> None:
+    """Apply environment variable overrides to a Config instance."""
+    if url := os.environ.get("IMMICH_URL"):
+        config.immich.url = url
+    if api_key := os.environ.get("IMMICH_API_KEY"):
+        config.immich.api_key = api_key
+    if openai_key := os.environ.get("OPENAI_API_KEY"):
+        config.llm.api_key = openai_key
+
+    # MusicGen env var overrides (also supported via IMMICH_MEMORIES_MUSICGEN__*)
+    if musicgen_enabled := os.environ.get("MUSICGEN_ENABLED"):
+        config.musicgen.enabled = musicgen_enabled.lower() in ("true", "1", "yes")
+    if musicgen_url := os.environ.get("MUSICGEN_BASE_URL"):
+        config.musicgen.base_url = musicgen_url
+    if musicgen_key := os.environ.get("MUSICGEN_API_KEY"):
+        config.musicgen.api_key = musicgen_key
+
+    # ACE-Step env var overrides (also supported via IMMICH_MEMORIES_ACE_STEP__*)
+    if ace_step_enabled := os.environ.get("ACE_STEP_ENABLED"):
+        config.ace_step.enabled = ace_step_enabled.lower() in ("true", "1", "yes")
+    if (ace_step_mode := os.environ.get("ACE_STEP_MODE")) and ace_step_mode in ("lib", "api"):
+        config.ace_step.mode = ace_step_mode  # type: ignore[assignment]
+    if ace_step_url := os.environ.get("ACE_STEP_API_URL"):
+        config.ace_step.api_url = ace_step_url
+
+
 def get_config(reload: bool = False) -> Config:
     """Get the global configuration instance.
 
@@ -113,31 +139,8 @@ def get_config(reload: bool = False) -> Config:
     global _config
 
     if _config is None or reload:
-        config_path = Config.get_default_path()
-        _config = Config.from_yaml(config_path)
-
-        # Override with environment variables
-        if url := os.environ.get("IMMICH_URL"):
-            _config.immich.url = url
-        if api_key := os.environ.get("IMMICH_API_KEY"):
-            _config.immich.api_key = api_key
-        if openai_key := os.environ.get("OPENAI_API_KEY"):
-            _config.llm.api_key = openai_key
-        # MusicGen env var overrides (also supported via IMMICH_MEMORIES_MUSICGEN__*)
-        if musicgen_enabled := os.environ.get("MUSICGEN_ENABLED"):
-            _config.musicgen.enabled = musicgen_enabled.lower() in ("true", "1", "yes")
-        if musicgen_url := os.environ.get("MUSICGEN_BASE_URL"):
-            _config.musicgen.base_url = musicgen_url
-        if musicgen_key := os.environ.get("MUSICGEN_API_KEY"):
-            _config.musicgen.api_key = musicgen_key
-
-        # ACE-Step env var overrides (also supported via IMMICH_MEMORIES_ACE_STEP__*)
-        if ace_step_enabled := os.environ.get("ACE_STEP_ENABLED"):
-            _config.ace_step.enabled = ace_step_enabled.lower() in ("true", "1", "yes")
-        if (ace_step_mode := os.environ.get("ACE_STEP_MODE")) and ace_step_mode in ("lib", "api"):
-            _config.ace_step.mode = ace_step_mode  # type: ignore[assignment]
-        if ace_step_url := os.environ.get("ACE_STEP_API_URL"):
-            _config.ace_step.api_url = ace_step_url
+        _config = Config.from_yaml(Config.get_default_path())
+        _apply_env_overrides(_config)
 
     return _config
 

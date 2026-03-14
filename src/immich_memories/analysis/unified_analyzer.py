@@ -204,6 +204,38 @@ class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
                     "Segment boundaries will be adjusted."
                 )
 
+    def _fix_boundary_in_range(
+        self,
+        value: float,
+        label: str,
+        range_start: float,
+        range_end: float,
+        clamp_low: float,
+        clamp_high: float,
+        nudge: float = 0.05,
+    ) -> tuple[float, bool, bool]:
+        """Nudge a boundary value out of a protected range.
+
+        Returns (new_value, was_adjusted, was_unfixable).
+        """
+        if not (range_start <= value < range_end):
+            return value, False, False
+        if label == "START":
+            candidate = max(clamp_low, range_start - nudge)
+        else:
+            candidate = min(clamp_high, range_end + nudge)
+        if abs(candidate - value) > 0.01:
+            logger.warning(
+                f"  Fixed: Segment {label} {value:.2f}s was cutting through "
+                f"protected range {range_start:.2f}s-{range_end:.2f}s, moved to {candidate:.2f}s"
+            )
+            return candidate, True, False
+        logger.warning(
+            f"  Cannot fix: Segment {label} {value:.2f}s cuts through "
+            f"protected range {range_start:.2f}s-{range_end:.2f}s (at video boundary)"
+        )
+        return value, False, True
+
     def _fix_best_segment_boundaries(
         self,
         best: ScoredSegment,
@@ -222,38 +254,22 @@ class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
         adjusted = False
         unfixable = False
 
-        for start, end in audio_content_result.protected_ranges:
-            if start <= best.start_time < end:
-                new_start = max(0, start - 0.05)
-                if abs(new_start - best.start_time) > 0.01:
-                    logger.warning(
-                        f"  ⚠️ Fixed: Segment START {best.start_time:.2f}s was cutting through "
-                        f"protected range {start:.2f}s-{end:.2f}s, moved to {new_start:.2f}s"
-                    )
-                    best.start_time = new_start
-                    adjusted = True
-                else:
-                    logger.warning(
-                        f"  ⚠️ Cannot fix: Segment START {best.start_time:.2f}s cuts through "
-                        f"protected range {start:.2f}s-{end:.2f}s (at video boundary)"
-                    )
-                    unfixable = True
+        for range_start, range_end in audio_content_result.protected_ranges:
+            new_start, adj, unfix = self._fix_boundary_in_range(
+                best.start_time, "START", range_start, range_end, 0, video_duration
+            )
+            if adj:
+                best.start_time = new_start
+            adjusted = adjusted or adj
+            unfixable = unfixable or unfix
 
-            if start <= best.end_time < end:
-                new_end = min(video_duration, end + 0.05)
-                if abs(new_end - best.end_time) > 0.01:
-                    logger.warning(
-                        f"  ⚠️ Fixed: Segment END {best.end_time:.2f}s was cutting through "
-                        f"protected range {start:.2f}s-{end:.2f}s, moved to {new_end:.2f}s"
-                    )
-                    best.end_time = new_end
-                    adjusted = True
-                else:
-                    logger.warning(
-                        f"  ⚠️ Cannot fix: Segment END {best.end_time:.2f}s cuts through "
-                        f"protected range {start:.2f}s-{end:.2f}s (at video boundary)"
-                    )
-                    unfixable = True
+            new_end, adj, unfix = self._fix_boundary_in_range(
+                best.end_time, "END", range_start, range_end, 0, video_duration
+            )
+            if adj:
+                best.end_time = new_end
+            adjusted = adjusted or adj
+            unfixable = unfixable or unfix
 
         if adjusted:
             logger.info(f"  -> Adjusted best segment: {best.start_time:.1f}s-{best.end_time:.1f}s")
@@ -262,7 +278,6 @@ class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
                 "  -> Some cuts through speech could not be fixed (segment at video boundary)"
             )
 
-        # Re-enforce proportional max after speech adjustment
         proportional_max = self._get_max_segment_for_source(video_duration)
         final_duration = best.end_time - best.start_time
         if final_duration > proportional_max:
@@ -352,26 +367,7 @@ class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
         logger.info(f"  -> Generated {len(candidates)} candidate segments")
 
         # Step 3b: Adjust for audio
-        if audio_content_result and audio_content_result.protected_ranges:
-            logger.info("Step 3b: Adjusting boundaries to avoid cutting mid-laugh/speech")
-            original_count = len(candidates)
-            candidates = self._adjust_candidates_for_audio(
-                candidates, audio_content_result, video_duration
-            )
-            logger.info(
-                f"  -> Adjusted {original_count} candidates to {len(candidates)} candidates"
-            )
-            if candidates:
-                sample = candidates[0]
-                logger.info(f"     Example segment: {sample[0].time:.2f}s - {sample[1].time:.2f}s")
-        elif audio_content_result:
-            logger.info(
-                "Step 3b: SKIPPED - no protected ranges to avoid "
-                f"(detected {len(audio_content_result.events)} audio events, "
-                f"but none were speech/laughter above confidence threshold)"
-            )
-        else:
-            logger.debug("Step 3b: SKIPPED - audio content analysis not enabled/available")
+        candidates = self._step3b_adjust_for_audio(candidates, audio_content_result, video_duration)
 
         # Step 4: Score
         logger.info(
@@ -395,6 +391,35 @@ class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
                 self._fix_best_segment_boundaries(best, audio_content_result, video_duration)
 
         return scored_segments
+
+    def _step3b_adjust_for_audio(
+        self,
+        candidates: list,
+        audio_content_result: AudioAnalysisResult | None,
+        video_duration: float,
+    ) -> list:
+        """Run step 3b: adjust candidate boundaries to avoid protected audio ranges."""
+        if audio_content_result and audio_content_result.protected_ranges:
+            logger.info("Step 3b: Adjusting boundaries to avoid cutting mid-laugh/speech")
+            original_count = len(candidates)
+            candidates = self._adjust_candidates_for_audio(
+                candidates, audio_content_result, video_duration
+            )
+            logger.info(
+                f"  -> Adjusted {original_count} candidates to {len(candidates)} candidates"
+            )
+            if candidates:
+                sample = candidates[0]
+                logger.info(f"     Example segment: {sample[0].time:.2f}s - {sample[1].time:.2f}s")
+        elif audio_content_result:
+            logger.info(
+                "Step 3b: SKIPPED - no protected ranges to avoid "
+                f"(detected {len(audio_content_result.events)} audio events, "
+                f"but none were speech/laughter above confidence threshold)"
+            )
+        else:
+            logger.debug("Step 3b: SKIPPED - audio content analysis not enabled/available")
+        return candidates
 
     def _analyze_audio_content(
         self, video_path: Path, video_duration: float | None = None

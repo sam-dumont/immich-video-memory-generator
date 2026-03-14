@@ -22,6 +22,21 @@ logger = logging.getLogger(__name__)
 class AssemblerProbingMixin:
     """Mixin providing probing and detection methods for VideoAssembler."""
 
+    def _parse_resolution_from_stream(self, stream: dict) -> tuple[int, int] | None:
+        """Extract width/height from a stream dict, accounting for rotation."""
+        width = stream.get("width", 0)
+        height = stream.get("height", 0)
+        rotation = 0
+        for side_data in stream.get("side_data_list", []):
+            if "rotation" in side_data:
+                rotation = abs(int(side_data["rotation"]))
+                break
+        if rotation in (90, 270):
+            width, height = height, width
+        if width and height:
+            return width, height
+        return None
+
     def _get_video_resolution(self, video_path: Path) -> tuple[int, int] | None:
         """Get video resolution (width, height) accounting for rotation.
 
@@ -36,7 +51,6 @@ class AssemblerProbingMixin:
             Tuple of (width, height) after applying rotation, or None if detection fails.
         """
         try:
-            # Probe ALL video streams — iPhone Live Photos can have depth map as v:0
             cmd = [
                 "ffprobe",
                 "-v",
@@ -54,39 +68,53 @@ class AssemblerProbingMixin:
                 data = json.loads(result.stdout)
                 streams = data.get("streams", [])
                 if streams:
-                    # Pick highest-resolution stream (avoids depth maps)
-                    stream = max(
-                        streams,
-                        key=lambda s: s.get("width", 0) * s.get("height", 0),
-                    )
-                    width = stream.get("width", 0)
-                    height = stream.get("height", 0)
-
-                    # Check for rotation in side_data_list
-                    rotation = 0
-                    for side_data in stream.get("side_data_list", []):
-                        if "rotation" in side_data:
-                            rotation = abs(int(side_data["rotation"]))
-                            break
-
-                    # Swap dimensions for 90 or 270 degree rotation (portrait videos)
-                    if rotation in (90, 270):
-                        width, height = height, width
-
-                    if width and height:
-                        return width, height
+                    stream = max(streams, key=lambda s: s.get("width", 0) * s.get("height", 0))
+                    return self._parse_resolution_from_stream(stream)
         except Exception as e:
             logger.debug(f"Failed to detect resolution: {e}")
         return None
 
+    def _pick_resolution_tier(
+        self,
+        resolution_counts: dict[str, int],
+        total: int,
+        orientation_str: str,
+        res_4k: tuple[int, int],
+        res_1080p: tuple[int, int],
+        res_720p: tuple[int, int],
+    ) -> tuple[int, int]:
+        """Pick the best output resolution based on clip counts."""
+        if resolution_counts["4k"] > total / 2:
+            logger.info(
+                f"Auto resolution: 4K {orientation_str} ({resolution_counts['4k']}/{total} clips are 4K)"
+            )
+            return res_4k
+        if resolution_counts["1080p"] > total / 2:
+            logger.info(
+                f"Auto resolution: 1080p {orientation_str} ({resolution_counts['1080p']}/{total} clips are 1080p)"
+            )
+            return res_1080p
+        if resolution_counts["720p"] > total / 2:
+            logger.info(
+                f"Auto resolution: 720p {orientation_str} ({resolution_counts['720p']}/{total} clips are 720p)"
+            )
+            return res_720p
+        # No majority — use highest present
+        if resolution_counts["4k"] > 0:
+            logger.info(
+                f"Auto resolution: 4K {orientation_str} (highest available, {resolution_counts['4k']}/{total} clips)"
+            )
+            return res_4k
+        if resolution_counts["1080p"] > 0:
+            logger.info(
+                f"Auto resolution: 1080p {orientation_str} (highest available, {resolution_counts['1080p']}/{total} clips)"
+            )
+            return res_1080p
+        logger.info(f"Auto resolution: 720p {orientation_str} (default)")
+        return res_720p
+
     def _detect_best_resolution(self, clips: list[AssemblyClip]) -> tuple[int, int]:
         """Detect the best output resolution based on majority of clips.
-
-        Logic:
-        - Count clips at each resolution tier (4K, 1080p, 720p)
-        - Detect orientation (portrait vs landscape) from majority
-        - Use the resolution that >50% of clips have
-        - If no majority, use the highest resolution present
 
         Args:
             clips: List of clips to analyze.
@@ -94,39 +122,30 @@ class AssemblerProbingMixin:
         Returns:
             Tuple of (width, height) for output resolution.
         """
-        resolution_counts = {"4k": 0, "1080p": 0, "720p": 0, "other": 0}
-        orientation_counts = {"portrait": 0, "landscape": 0}
-        resolutions_found = []
+        resolution_counts: dict[str, int] = {"4k": 0, "1080p": 0, "720p": 0, "other": 0}
+        orientation_counts: dict[str, int] = {"portrait": 0, "landscape": 0}
 
         for clip in clips:
             res = self._get_video_resolution(clip.path)
-            if res:
-                w, h = res
-                # Use the larger dimension to handle portrait/landscape
-                max_dim = max(w, h)
-                resolutions_found.append(max_dim)
-
-                # Track orientation
-                if h > w:
-                    orientation_counts["portrait"] += 1
-                else:
-                    orientation_counts["landscape"] += 1
-
-                if max_dim >= 2160:
-                    resolution_counts["4k"] += 1
-                elif max_dim >= 1080:
-                    resolution_counts["1080p"] += 1
-                elif max_dim >= 720:
-                    resolution_counts["720p"] += 1
-                else:
-                    resolution_counts["other"] += 1
+            if not res:
+                continue
+            w, h = res
+            max_dim = max(w, h)
+            orientation_counts["portrait" if h > w else "landscape"] += 1
+            if max_dim >= 2160:
+                resolution_counts["4k"] += 1
+            elif max_dim >= 1080:
+                resolution_counts["1080p"] += 1
+            elif max_dim >= 720:
+                resolution_counts["720p"] += 1
+            else:
+                resolution_counts["other"] += 1
 
         total = len(clips)
         if total == 0:
             logger.info("No clips to analyze, defaulting to 1080p landscape")
             return (1920, 1080)
 
-        # Determine orientation from majority
         is_portrait = orientation_counts["portrait"] > orientation_counts["landscape"]
         orientation_str = "portrait" if is_portrait else "landscape"
         logger.info(
@@ -134,47 +153,14 @@ class AssemblerProbingMixin:
             f"({orientation_counts['portrait']} portrait, {orientation_counts['landscape']} landscape)"
         )
 
-        # Resolution tuples based on orientation
         if is_portrait:
-            res_4k = (2160, 3840)
-            res_1080p = (1080, 1920)
-            res_720p = (720, 1280)
+            res_4k, res_1080p, res_720p = (2160, 3840), (1080, 1920), (720, 1280)
         else:
-            res_4k = (3840, 2160)
-            res_1080p = (1920, 1080)
-            res_720p = (1280, 720)
+            res_4k, res_1080p, res_720p = (3840, 2160), (1920, 1080), (1280, 720)
 
-        # Check for majority (>50%)
-        if resolution_counts["4k"] > total / 2:
-            logger.info(
-                f"Auto resolution: 4K {orientation_str} ({resolution_counts['4k']}/{total} clips are 4K)"
-            )
-            return res_4k
-        elif resolution_counts["1080p"] > total / 2:
-            logger.info(
-                f"Auto resolution: 1080p {orientation_str} ({resolution_counts['1080p']}/{total} clips are 1080p)"
-            )
-            return res_1080p
-        elif resolution_counts["720p"] > total / 2:
-            logger.info(
-                f"Auto resolution: 720p {orientation_str} ({resolution_counts['720p']}/{total} clips are 720p)"
-            )
-            return res_720p
-        else:
-            # No majority - use the highest resolution present
-            if resolution_counts["4k"] > 0:
-                logger.info(
-                    f"Auto resolution: 4K {orientation_str} (highest available, {resolution_counts['4k']}/{total} clips)"
-                )
-                return res_4k
-            elif resolution_counts["1080p"] > 0:
-                logger.info(
-                    f"Auto resolution: 1080p {orientation_str} (highest available, {resolution_counts['1080p']}/{total} clips)"
-                )
-                return res_1080p
-            else:
-                logger.info(f"Auto resolution: 720p {orientation_str} (default)")
-                return res_720p
+        return self._pick_resolution_tier(
+            resolution_counts, total, orientation_str, res_4k, res_1080p, res_720p
+        )
 
     def _probe_duration(self, file_path: Path, stream_type: str = "audio") -> float:
         """Probe actual duration of a specific stream using ffprobe.
@@ -389,6 +375,17 @@ class AssemblerProbingMixin:
 
         return audio_durations, video_durations
 
+    @staticmethod
+    def _parse_fps_str(fps_str: str) -> float | None:
+        """Parse an FFmpeg frame rate fraction string like '60/1' or '60000/1001'."""
+        if "/" in fps_str:
+            num, den = fps_str.split("/")
+            if float(den) > 0:
+                return float(num) / float(den)
+        elif fps_str:
+            return float(fps_str)
+        return None
+
     def _detect_framerate(self, video_path: Path) -> float | None:
         """Detect frame rate of a video file.
 
@@ -399,7 +396,6 @@ class AssemblerProbingMixin:
             Frame rate in fps, or None if detection fails.
         """
         try:
-            # Probe all video streams, pick highest fps (avoids depth map at 1fps)
             cmd = [
                 "ffprobe",
                 "-v",
@@ -416,16 +412,9 @@ class AssemblerProbingMixin:
             if result.returncode == 0 and result.stdout.strip():
                 data = json.loads(result.stdout)
                 streams = data.get("streams", [])
-                # Pick highest-resolution stream's frame rate
                 if streams:
                     best = max(streams, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                    fps_str = best.get("r_frame_rate", "")
-                    if "/" in fps_str:
-                        num, den = fps_str.split("/")
-                        if float(den) > 0:
-                            return float(num) / float(den)
-                    elif fps_str:
-                        return float(fps_str)
+                    return self._parse_fps_str(best.get("r_frame_rate", ""))
         except Exception as e:
             logger.debug(f"Failed to detect frame rate: {e}")
         return None

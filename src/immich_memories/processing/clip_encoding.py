@@ -132,6 +132,37 @@ class ClipEncodingMixin:
         else:
             cmd.extend(["-crf", str(crf)])
 
+    def _parse_progress_line(
+        self,
+        line: str,
+        duration: float,
+        progress_callback: Callable[[float], None],
+    ) -> None:
+        """Parse an FFmpeg progress line and invoke callback if relevant."""
+        if not line.startswith("out_time_ms="):
+            return
+        try:
+            time_ms = int(line.split("=")[1])
+            progress = min(time_ms / (duration * 1_000_000), 1.0)
+            progress_callback(progress)
+        except (ValueError, IndexError):
+            pass
+
+    def _handle_encode_failure(
+        self,
+        stderr: str,
+        segment: ClipSegment,
+        output_path: Path,
+        progress_callback: Callable[[float], None],
+        hw_caps: HWAccelCapabilities | None,
+    ) -> None:
+        """Handle FFmpeg failure: fall back to software or raise."""
+        if hw_caps and hw_caps.has_encoding and "nvenc" in stderr.lower():
+            logger.warning("Hardware encoding failed, falling back to software")
+            self._extract_with_reencode(segment, output_path, progress_callback, use_hw_accel=False)
+            return
+        raise RuntimeError(f"Failed to extract clip: {stderr}")
+
     def _run_with_progress(
         self,
         cmd: list[str],
@@ -153,32 +184,19 @@ class ClipEncodingMixin:
         cmd.insert(2, "pipe:1")
 
         with subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         ) as process:
             while process.stdout is not None:
                 line = process.stdout.readline()
                 if not line and process.poll() is not None:
                     break
-
-                if line.startswith("out_time_ms="):
-                    try:
-                        time_ms = int(line.split("=")[1])
-                        progress = min(time_ms / (segment.duration * 1_000_000), 1.0)
-                        progress_callback(progress)
-                    except (ValueError, IndexError):
-                        pass
+                self._parse_progress_line(line, segment.duration, progress_callback)
 
             if process.returncode != 0:
                 stderr = process.stderr.read() if process.stderr else ""
-                if hw_caps and hw_caps.has_encoding and "nvenc" in stderr.lower():
-                    logger.warning("Hardware encoding failed, falling back to software")
-                    return self._extract_with_reencode(
-                        segment, output_path, progress_callback, use_hw_accel=False
-                    )
-                raise RuntimeError(f"Failed to extract clip: {stderr}")
+                self._handle_encode_failure(
+                    stderr, segment, output_path, progress_callback, hw_caps
+                )
 
     def _extract_with_reencode(
         self,

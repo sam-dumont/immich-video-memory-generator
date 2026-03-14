@@ -15,6 +15,23 @@ from immich_memories.audio.audio_models import AudioAnalysisResult, AudioEvent
 logger = logging.getLogger(__name__)
 
 
+def _classify_energy_event(
+    is_very_high: bool,
+    event_duration: float,
+    has_laughter: bool,
+    has_speech: bool,
+) -> tuple[str, bool, bool]:
+    """Classify an energy burst into Laughter, Speech, or Sound.
+
+    Returns (event_class, updated_has_laughter, updated_has_speech).
+    """
+    if is_very_high and event_duration < 3.0:
+        return "Laughter", True, has_speech
+    if event_duration > 1.0:
+        return "Speech", has_laughter, True
+    return "Sound", has_laughter, has_speech
+
+
 class EnergyAnalysisMixin:
     """Mixin providing energy-based audio analysis methods."""
 
@@ -78,48 +95,27 @@ class EnergyAnalysisMixin:
                     current_is_very_high = energy > very_high_threshold
                 elif energy > very_high_threshold:
                     current_is_very_high = True
-            else:
-                if current_event_start is not None:
-                    # End event
-                    event_duration = time_pos - current_event_start
-
-                    # Classify based on energy patterns
-                    # Short high-energy bursts are often laughter
-                    if current_is_very_high and event_duration < 3.0:
-                        event_class = "Laughter"
-                        has_laughter = True
-                    elif event_duration > 1.0:
-                        event_class = "Speech"
-                        has_speech = True
-                    else:
-                        event_class = "Sound"
-
-                    events.append(
-                        AudioEvent(
-                            event_class=event_class,
-                            start_time=current_event_start,
-                            end_time=time_pos,
-                            confidence=0.6 if current_is_very_high else 0.4,
-                        )
+            elif current_event_start is not None:
+                event_class, has_laughter, has_speech = _classify_energy_event(
+                    current_is_very_high, time_pos - current_event_start, has_laughter, has_speech
+                )
+                events.append(
+                    AudioEvent(
+                        event_class=event_class,
+                        start_time=current_event_start,
+                        end_time=time_pos,
+                        confidence=0.6 if current_is_very_high else 0.4,
                     )
-
-                    current_event_start = None
-                    current_is_very_high = False
+                )
+                current_event_start = None
+                current_is_very_high = False
 
         # End final event
         if current_event_start is not None:
             time_pos = len(energies) * self.window_size
-            event_duration = time_pos - current_event_start
-
-            if current_is_very_high and event_duration < 3.0:
-                event_class = "Laughter"
-                has_laughter = True
-            elif event_duration > 1.0:
-                event_class = "Speech"
-                has_speech = True
-            else:
-                event_class = "Sound"
-
+            event_class, has_laughter, has_speech = _classify_energy_event(
+                current_is_very_high, time_pos - current_event_start, has_laughter, has_speech
+            )
             events.append(
                 AudioEvent(
                     event_class=event_class,

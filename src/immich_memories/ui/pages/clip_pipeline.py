@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
-import contextlib
 import logging
 from typing import Any
 
@@ -12,7 +10,11 @@ from nicegui import run, ui
 
 from immich_memories.api.immich import SyncImmichClient
 from immich_memories.api.models import VideoClipInfo
-from immich_memories.ui.pages.step2_helpers import get_thumbnail
+from immich_memories.ui.pages.clip_pipeline_helpers import (
+    _poll_detail_cards,
+    _poll_phase,
+    _poll_stats,
+)
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
@@ -74,28 +76,148 @@ def render_pipeline_summary(result: dict) -> None:
                     ui.label(f"{clip_id}: {error_msg}").classes("text-orange-600")
 
 
-def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
-    """Render pipeline progress UI."""
-    from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
+def _handle_pipeline_completion(
+    progress_state: dict[str, Any],
+    progress_timer: ui.timer,
+    state: Any,
+) -> None:
+    """Handle pipeline done/error/cancel states."""
+    progress_timer.deactivate()
+    if progress_state.get("cancelled"):
+        ui.notify("Pipeline cancelled", type="warning")
+        state.pipeline_running = False
+        ui.navigate.to("/step2")
+    elif progress_state["error"]:
+        ui.notify(f"Pipeline failed: {progress_state['error']}", type="negative")
+        state.pipeline_running = False
+    else:
+        state.pipeline_running = False
+        from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
-    state = get_app_state()
+        asyncio.ensure_future(generate_title_after_pipeline(state))
+        ui.navigate.to("/step2")
 
-    ui.label("Generating Memories...").classes("text-2xl font-bold mb-4")
+
+_PROGRESS_STATUS_KEYS = [
+    "phase_number",
+    "total_phases",
+    "phase_label",
+    "progress_fraction",
+    "current_item",
+    "current_asset_id",
+    "current_index",
+    "total_items",
+    "elapsed",
+    "eta",
+    "avg_duration",
+    "speed_ratio",
+    "completed_count",
+    "error_count",
+    "last_completed_asset_id",
+    "last_completed_segment",
+    "last_completed_score",
+    "last_completed_video_path",
+    "last_completed_llm_description",
+    "last_completed_llm_emotion",
+    "last_completed_llm_interestingness",
+    "last_completed_llm_quality",
+    "last_completed_audio_categories",
+]
+_PROGRESS_DEFAULTS: dict[str, Any] = {
+    "phase_number": 1,
+    "total_phases": 4,
+    "phase_label": "Processing",
+    "progress_fraction": 0,
+    "current_item": "",
+    "current_index": 0,
+    "total_items": 0,
+    "elapsed": "0s",
+    "eta": "--",
+    "avg_duration": 0.0,
+    "speed_ratio": 0.0,
+    "completed_count": 0,
+    "error_count": 0,
+}
+
+
+def _make_progress_callback(progress_state: dict[str, Any]) -> Any:
+    """Return a progress callback that writes into the shared progress_state dict."""
+
+    def on_progress(status: dict) -> None:
+        if progress_state["cancelled"]:
+            raise PipelineCancelled("Cancelled by user")
+        for key in _PROGRESS_STATUS_KEYS:
+            progress_state[key] = status.get(key, _PROGRESS_DEFAULTS.get(key))
+
+    return on_progress
+
+
+def _run_pipeline_blocking(
+    state: Any, config: Any, clips: list[VideoClipInfo], progress_state: dict[str, Any]
+) -> None:
+    """Run the SmartPipeline in a background thread — no UI calls here."""
+    from immich_memories.analysis.smart_pipeline import SmartPipeline
+
+    tc = state.thumbnail_cache
+    if tc is None:
+        raise RuntimeError("Thumbnail cache not initialized")
+    try:
+        with SyncImmichClient(
+            base_url=state.immich_url,
+            api_key=state.immich_api_key,
+        ) as client:
+            pipeline = SmartPipeline(
+                client=client,
+                analysis_cache=state.analysis_cache,
+                thumbnail_cache=tc,
+                config=config,
+            )
+            result = pipeline.run(
+                clips=clips,
+                progress_callback=_make_progress_callback(progress_state),
+            )
+            state.pipeline_result = {
+                "selected_clips": result.selected_clips,
+                "clip_segments": result.clip_segments,
+                "errors": result.errors,
+                "stats": result.stats,
+            }
+            state.selected_clip_ids = {c.asset.id for c in result.selected_clips}
+            state.clip_segments = result.clip_segments
+            state.pipeline_running = False
+            progress_state["done"] = True
+    except PipelineCancelled:
+        logger.info("Pipeline cancelled by user")
+        state.pipeline_running = False
+        progress_state["done"] = True
+    except Exception as e:
+        logger.exception("Pipeline error")
+        state.pipeline_running = False
+        progress_state["error"] = str(e)
+        progress_state["done"] = True
+
+
+def _detect_overnight_bases(state: Any) -> list | None:
+    """Detect overnight stop bases for trip memories."""
+    if not (state.memory_type == "trip" and state.clips):
+        return None
+    try:
+        from immich_memories.analysis.trip_detection import detect_overnight_stops
+
+        trip_assets = [c.asset for c in state.clips]
+        return detect_overnight_stops(trip_assets) or None
+    except Exception:
+        logger.debug("Trip segment detection failed", exc_info=True)
+        return None
+
+
+def _build_pipeline_config(state: Any) -> Any:
+    """Build PipelineConfig from app state."""
+    from immich_memories.analysis.smart_pipeline import PipelineConfig
 
     config_dict = state.pipeline_config
-
-    # For trip memories, detect overnight stops for proportional clip distribution
-    overnight_bases = None
-    if state.memory_type == "trip" and state.clips:
-        try:
-            from immich_memories.analysis.trip_detection import detect_overnight_stops
-
-            trip_assets = [c.asset for c in state.clips]
-            overnight_bases = detect_overnight_stops(trip_assets) or None
-        except Exception:
-            logger.debug("Trip segment detection failed", exc_info=True)
-
-    config = PipelineConfig(
+    overnight_bases = _detect_overnight_bases(state)
+    return PipelineConfig(
         target_clips=config_dict.get("target_clips", 120),
         avg_clip_duration=config_dict.get("avg_clip_duration", 5.0),
         hdr_only=config_dict.get("hdr_only", False),
@@ -104,6 +226,61 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
         analyze_all=config_dict.get("analyze_all", False),
         overnight_bases=overnight_bases,
     )
+
+
+def _wire_progress_timer(
+    progress_state: dict[str, Any],
+    _rendered_state: dict[str, Any],
+    state: Any,
+    phase_container: ui.element,
+    progress_bar: Any,
+    status_label: Any,
+    detail_container: ui.element,
+    stats_clips_label: Any,
+    stats_elapsed_label: Any,
+    stats_speed_label: Any,
+    stats_avg_label: Any,
+    stats_eta_label: Any,
+    stats_errors_label: Any,
+    clips: list[VideoClipInfo],
+    config: Any,
+) -> None:
+    """Wire up the poll timer and background pipeline runner."""
+
+    def poll_progress() -> None:
+        _poll_phase(progress_state, _rendered_state, phase_container, render_phase_indicator)
+        progress_bar.value = progress_state["progress_fraction"]
+        _poll_stats(
+            progress_state,
+            stats_clips_label,
+            stats_elapsed_label,
+            stats_speed_label,
+            stats_avg_label,
+            stats_eta_label,
+            stats_errors_label,
+        )
+        if not progress_state["cancelled"]:
+            status_label.set_text(
+                f"{progress_state['phase_label']}: {progress_state['current_item'] or '...'}"
+            )
+        _poll_detail_cards(progress_state, _rendered_state, detail_container)
+        if progress_state["done"]:
+            _handle_pipeline_completion(progress_state, progress_timer, state)
+
+    progress_timer = ui.timer(1.0, poll_progress)
+
+    async def start_pipeline() -> None:
+        await run.io_bound(_run_pipeline_blocking, state, config, clips, progress_state)
+
+    ui.timer(0.1, start_pipeline, once=True)
+
+
+def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
+    """Render pipeline progress UI."""
+    state = get_app_state()
+    config = _build_pipeline_config(state)
+
+    ui.label("Generating Memories...").classes("text-2xl font-bold mb-4")
 
     # Progress UI elements
     phase_container = ui.column().classes("w-full mb-4")
@@ -140,7 +317,6 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
         "speed_ratio": 0.0,
         "completed_count": 0,
         "error_count": 0,
-        # Last completed clip details
         "last_completed_asset_id": None,
         "last_completed_segment": None,
         "last_completed_score": None,
@@ -155,325 +331,37 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
         "cancelled": False,
     }
 
-    # Cancel button
-    def cancel_pipeline() -> None:
-        progress_state["cancelled"] = True
-        status_label.set_text("Cancelling... (waiting for current clip to finish)")
-        cancel_btn.set_enabled(False)
-
-    cancel_btn = ui.button(
-        "Cancel Pipeline",
-        on_click=cancel_pipeline,
-        icon="stop",
-    ).props("color=red outline")
-
-    def _render_thumbnail_for(asset_id: str | None, container: ui.element) -> None:
-        """Render a thumbnail into a container (called from UI thread)."""
-        if not asset_id:
-            ui.element("div").classes(
-                "w-full h-32 bg-gray-200 rounded flex items-center justify-center"
-            )
-            return
-        thumb = get_thumbnail(asset_id)
-        if thumb:
-            b64 = base64.b64encode(thumb).decode()
-            ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-32 object-cover rounded")
-        else:
-            with ui.element("div").classes(
-                "w-full h-32 bg-gray-200 rounded flex items-center justify-center"
-            ):
-                ui.icon("videocam", color="gray").classes("text-3xl")
-
     # Track what's currently rendered so we only rebuild on actual changes
     _rendered_state: dict[str, Any] = {
         "current_asset_id": None,
         "last_completed_asset_id": None,
         "phase_number": -1,
-        "prev_media_url": None,  # Track previous media route for cleanup
+        "prev_media_url": None,
     }
 
-    def poll_progress() -> None:
-        """Periodic UI update from shared progress state (runs on event loop)."""
-        # Phase indicator — only rebuild when phase changes
-        if _rendered_state["phase_number"] != progress_state["phase_number"]:
-            _rendered_state["phase_number"] = progress_state["phase_number"]
-            phase_container.clear()
-            with phase_container:
-                render_phase_indicator(
-                    progress_state["phase_number"],
-                    progress_state["total_phases"],
-                )
+    cancel_btn = ui.button("Cancel Pipeline", icon="stop").props("color=red outline")
 
-        # Progress bar — lightweight update
-        progress_bar.value = progress_state["progress_fraction"]
+    def cancel_pipeline() -> None:
+        progress_state["cancelled"] = True
+        status_label.set_text("Cancelling... (waiting for current clip to finish)")
+        cancel_btn.set_enabled(False)
 
-        # Stats row — update existing labels in-place (no clear/rebuild churn)
-        idx = progress_state["current_index"]
-        total = progress_state["total_items"]
-        errors = progress_state["error_count"]
-        speed = progress_state["speed_ratio"]
-        avg = progress_state["avg_duration"]
+    cancel_btn.on("click", cancel_pipeline)
 
-        stats_clips_label.set_text(f"{idx}/{total} clips")
-        stats_elapsed_label.set_text(f"Elapsed: {progress_state['elapsed']}")
-        stats_speed_label.set_text(f"Speed: {speed:.1f}x realtime" if speed > 0 else "")
-        stats_avg_label.set_text(f"~{avg:.1f}s/clip" if avg > 0 else "")
-        stats_eta_label.set_text(f"ETA: {progress_state['eta']}")
-        stats_errors_label.set_text(f"{errors} errors" if errors > 0 else "")
-
-        # Status text
-        if not progress_state["cancelled"]:
-            status_label.set_text(
-                f"{progress_state['phase_label']}: {progress_state['current_item'] or '...'}"
-            )
-
-        # Detail cards — only rebuild when the displayed clip changes
-        current_changed = _rendered_state["current_asset_id"] != progress_state["current_asset_id"]
-        last_changed = (
-            _rendered_state["last_completed_asset_id"] != progress_state["last_completed_asset_id"]
-        )
-
-        if current_changed or last_changed:
-            _rendered_state["current_asset_id"] = progress_state["current_asset_id"]
-            _rendered_state["last_completed_asset_id"] = progress_state["last_completed_asset_id"]
-
-            detail_container.clear()
-            with detail_container:
-                # --- Currently analyzing ---
-                with ui.card().classes("flex-1 p-3"):
-                    ui.label("Currently Analyzing").classes(
-                        "text-sm font-semibold text-blue-600 mb-2"
-                    )
-                    current_item = progress_state["current_item"]
-                    current_asset = progress_state["current_asset_id"]
-                    if current_item:
-                        _render_thumbnail_for(current_asset, detail_container)
-                        ui.label(current_item).classes("font-medium mt-2 truncate")
-                        ui.spinner(size="sm").classes("mt-1")
-                    else:
-                        ui.label("Waiting...").classes("text-gray-400 italic")
-
-                # --- Last analyzed clip ---
-                last_asset = progress_state["last_completed_asset_id"]
-                if last_asset:
-                    with ui.card().classes("flex-1 p-3"):
-                        ui.label("Last Analyzed").classes(
-                            "text-sm font-semibold text-green-600 mb-2"
-                        )
-
-                        # Show video preview if available, otherwise thumbnail
-                        preview_path = progress_state["last_completed_video_path"]
-                        video_shown = False
-                        if preview_path:
-                            try:
-                                from nicegui import app as nicegui_app
-
-                                video_url = nicegui_app.add_media_file(
-                                    local_file=preview_path,
-                                )
-
-                                # Track URLs for cleanup but don't remove routes
-                                # while they may still be streaming — Starlette raises
-                                # RuntimeError if a route is removed mid-request.
-                                prev_url = _rendered_state.get("prev_media_url")
-                                urls_to_clean = _rendered_state.setdefault(
-                                    "media_urls_to_clean", []
-                                )
-                                if prev_url and prev_url != video_url:
-                                    urls_to_clean.append(prev_url)
-                                # Only clean up old URLs (2+ cycles stale)
-                                while len(urls_to_clean) > 3:
-                                    old_url = urls_to_clean.pop(0)
-                                    with contextlib.suppress(Exception):
-                                        nicegui_app.remove_route(old_url)
-                                _rendered_state["prev_media_url"] = video_url
-
-                                ui.video(video_url).classes("w-full rounded").props(
-                                    "muted autoplay loop"
-                                )
-                                video_shown = True
-                            except Exception:
-                                pass
-
-                        if not video_shown:
-                            _render_thumbnail_for(last_asset, detail_container)
-
-                        # Segment info
-                        segment = progress_state["last_completed_segment"]
-                        score = progress_state["last_completed_score"]
-                        if segment:
-                            start, end = segment
-                            seg_dur = end - start
-                            with ui.row().classes("gap-2 mt-2 items-center"):
-                                ui.icon("content_cut", color="blue").classes("text-sm")
-                                ui.label(f"{start:.1f}s - {end:.1f}s ({seg_dur:.1f}s)").classes(
-                                    "text-sm"
-                                )
-                        if score is not None:
-                            with ui.row().classes("gap-2 items-center"):
-                                ui.icon("star", color="amber").classes("text-sm")
-                                ui.label(f"Score: {score:.2f}").classes("text-sm")
-
-                        # LLM analysis
-                        llm_desc = progress_state["last_completed_llm_description"]
-                        llm_emotion = progress_state["last_completed_llm_emotion"]
-                        llm_interest = progress_state["last_completed_llm_interestingness"]
-                        llm_quality = progress_state["last_completed_llm_quality"]
-
-                        if llm_desc:
-                            with ui.row().classes("gap-2 mt-1 items-start"):
-                                ui.icon("smart_toy", color="purple").classes("text-sm mt-0.5")
-                                ui.label(llm_desc).classes("text-sm text-gray-600 italic")
-                        if llm_emotion or llm_interest is not None:
-                            badges: list[str] = []
-                            if llm_emotion:
-                                badges.append(llm_emotion)
-                            if llm_interest is not None:
-                                badges.append(f"interest: {llm_interest:.0%}")
-                            if llm_quality is not None:
-                                badges.append(f"quality: {llm_quality:.0%}")
-                            with ui.row().classes("gap-1 mt-1 flex-wrap"):
-                                for b in badges:
-                                    ui.badge(b, color="purple").props("outline").classes("text-xs")
-
-                        # Audio categories
-                        audio_cats = progress_state["last_completed_audio_categories"]
-                        if audio_cats:
-                            _cat_colors = {
-                                "laughter": "pink-4",
-                                "baby": "pink-3",
-                                "speech": "blue-grey-4",
-                                "singing": "purple-4",
-                                "music": "deep-purple-4",
-                                "engine": "orange-6",
-                                "nature": "green-5",
-                                "crowd": "amber-6",
-                                "animals": "brown-4",
-                            }
-                            with ui.row().classes("gap-1 mt-1 flex-wrap"):
-                                ui.icon("hearing", color="blue").classes("text-sm")
-                                for cat in audio_cats:
-                                    color = _cat_colors.get(cat, "grey-5")
-                                    ui.badge(cat, color=color).classes("text-xs")
-
-        # Handle completion
-        if progress_state["done"]:
-            progress_timer.deactivate()
-            if progress_state.get("cancelled"):
-                ui.notify("Pipeline cancelled", type="warning")
-                state.pipeline_running = False
-                ui.navigate.to("/step2")
-            elif progress_state["error"]:
-                ui.notify(
-                    f"Pipeline failed: {progress_state['error']}",
-                    type="negative",
-                )
-                state.pipeline_running = False
-            else:
-                state.pipeline_running = False
-                # Fire-and-forget: generate LLM title suggestion in background
-                from immich_memories.ui.pages.pipeline_title import (
-                    generate_title_after_pipeline,
-                )
-
-                asyncio.ensure_future(generate_title_after_pipeline(state))
-                ui.navigate.to("/step2")
-
-    # Poll progress every second — keeps event loop free for WebSocket heartbeats
-    progress_timer = ui.timer(1.0, poll_progress)
-
-    async def start_pipeline() -> None:
-        """Launch the blocking pipeline in a thread pool."""
-
-        def run_blocking() -> None:
-            """Runs entirely in a background thread — no UI calls here."""
-            tc = state.thumbnail_cache
-            if tc is None:
-                raise RuntimeError("Thumbnail cache not initialized")
-            try:
-                with SyncImmichClient(
-                    base_url=state.immich_url,
-                    api_key=state.immich_api_key,
-                ) as client:
-                    pipeline = SmartPipeline(
-                        client=client,
-                        analysis_cache=state.analysis_cache,
-                        thumbnail_cache=tc,
-                        config=config,
-                    )
-
-                    def on_progress(status: dict) -> None:
-                        # Check cancellation flag — raised here so it stops
-                        # at the next progress update (per-clip granularity)
-                        if progress_state["cancelled"]:
-                            raise PipelineCancelled("Cancelled by user")
-
-                        # Copy all status fields to shared dict — no UI calls
-                        progress_state["phase_number"] = status.get("phase_number", 1)
-                        progress_state["total_phases"] = status.get("total_phases", 4)
-                        progress_state["phase_label"] = status.get("phase_label", "Processing")
-                        progress_state["progress_fraction"] = status.get("progress_fraction", 0)
-                        progress_state["current_item"] = status.get("current_item", "")
-                        progress_state["current_asset_id"] = status.get("current_asset_id")
-                        progress_state["current_index"] = status.get("current_index", 0)
-                        progress_state["total_items"] = status.get("total_items", 0)
-                        progress_state["elapsed"] = status.get("elapsed", "0s")
-                        progress_state["eta"] = status.get("eta", "--")
-                        progress_state["avg_duration"] = status.get("avg_duration", 0.0)
-                        progress_state["speed_ratio"] = status.get("speed_ratio", 0.0)
-                        progress_state["completed_count"] = status.get("completed_count", 0)
-                        progress_state["error_count"] = status.get("error_count", 0)
-                        # Last completed clip details
-                        progress_state["last_completed_asset_id"] = status.get(
-                            "last_completed_asset_id"
-                        )
-                        progress_state["last_completed_segment"] = status.get(
-                            "last_completed_segment"
-                        )
-                        progress_state["last_completed_score"] = status.get("last_completed_score")
-                        progress_state["last_completed_video_path"] = status.get(
-                            "last_completed_video_path"
-                        )
-                        progress_state["last_completed_llm_description"] = status.get(
-                            "last_completed_llm_description"
-                        )
-                        progress_state["last_completed_llm_emotion"] = status.get(
-                            "last_completed_llm_emotion"
-                        )
-                        progress_state["last_completed_llm_interestingness"] = status.get(
-                            "last_completed_llm_interestingness"
-                        )
-                        progress_state["last_completed_llm_quality"] = status.get(
-                            "last_completed_llm_quality"
-                        )
-                        progress_state["last_completed_audio_categories"] = status.get(
-                            "last_completed_audio_categories"
-                        )
-
-                    result = pipeline.run(clips=clips, progress_callback=on_progress)
-
-                    state.pipeline_result = {
-                        "selected_clips": result.selected_clips,
-                        "clip_segments": result.clip_segments,
-                        "errors": result.errors,
-                        "stats": result.stats,
-                    }
-                    state.selected_clip_ids = {c.asset.id for c in result.selected_clips}
-                    state.clip_segments = result.clip_segments
-                    state.pipeline_running = False
-                    progress_state["done"] = True
-
-            except PipelineCancelled:
-                logger.info("Pipeline cancelled by user")
-                state.pipeline_running = False
-                progress_state["done"] = True
-            except Exception as e:
-                logger.exception("Pipeline error")
-                state.pipeline_running = False
-                progress_state["error"] = str(e)
-                progress_state["done"] = True
-
-        await run.io_bound(run_blocking)
-
-    # Kick off the pipeline without blocking the event loop
-    ui.timer(0.1, start_pipeline, once=True)
+    _wire_progress_timer(
+        progress_state,
+        _rendered_state,
+        state,
+        phase_container,
+        progress_bar,
+        status_label,
+        detail_container,
+        stats_clips_label,
+        stats_elapsed_label,
+        stats_speed_label,
+        stats_avg_label,
+        stats_eta_label,
+        stats_errors_label,
+        clips,
+        config,
+    )

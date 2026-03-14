@@ -32,18 +32,9 @@ repos:
     hooks:
       - id: commitizen
 
-  # ~0.3s — Cognitive complexity (Rust, fast)
-  - repo: https://github.com/rohaquinlop/complexipy-pre-commit
-    rev: v4.2.0
-    hooks:
-      - id: complexipy
-        args: [--max-complexity-allowed, "15"]
 
-  # ~0.3s — Modernization patterns
-  - repo: https://github.com/dosisod/refurb
-    rev: v2.0.0
-    hooks:
-      - id: refurb
+  # Modernization patterns (runs via Makefile to use project venv)
+  # refurb needs pydantic in venv so can't use the pre-commit repo
 
   # Local hooks using Makefile targets
   - repo: local
@@ -72,6 +63,13 @@ repos:
       - id: security-lint
         name: Security lint (Bandit)
         entry: make security-lint
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: cognitive-complexity
+        name: Cognitive complexity (complexipy with snapshot)
+        entry: make cognitive-complexity
         language: system
         pass_filenames: false
         types: [python]

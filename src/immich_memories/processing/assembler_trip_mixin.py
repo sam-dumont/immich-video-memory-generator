@@ -18,6 +18,25 @@ logger = logging.getLogger(__name__)
 class AssemblerTripMixin:
     """Mixin providing trip location divider insertion for VideoAssembler."""
 
+    def _make_location_card_clip(
+        self,
+        name: str,
+        cache: dict[str, Path],
+        generator: Any,
+        title_settings: Any,
+    ) -> AssemblyClip:
+        """Return an AssemblyClip for a location card, using cache to avoid duplicates."""
+        if name not in cache:
+            card = generator.generate_location_card_screen(name)
+            cache[name] = card.path
+        return AssemblyClip(
+            path=cache[name],
+            duration=title_settings.month_divider_duration,
+            date=None,
+            asset_id=f"location_{name}",
+            is_title_screen=True,
+        )
+
     def _build_clips_with_location_dividers(
         self,
         clips: list[AssemblyClip],
@@ -38,27 +57,18 @@ class AssemblerTripMixin:
         location_card_cache: dict[str, Path] = {}
         prev_lat: float | None = None
         prev_lon: float | None = None
-        location_change_threshold_km = 30.0
+        threshold_km = 30.0
 
         for clip in clips:
             if clip.latitude is not None and clip.longitude is not None:
                 if prev_lat is not None and prev_lon is not None:
                     dist = haversine_km(prev_lat, prev_lon, clip.latitude, clip.longitude)
-                    if dist > location_change_threshold_km and clip.location_name:
-                        name = clip.location_name
-                        if name not in location_card_cache:
-                            card = generator.generate_location_card_screen(name)
-                            location_card_cache[name] = card.path
-                        result.append(
-                            AssemblyClip(
-                                path=location_card_cache[name],
-                                duration=title_settings.month_divider_duration,
-                                date=None,
-                                asset_id=f"location_{name}",
-                                is_title_screen=True,
-                            )
+                    if dist > threshold_km and clip.location_name:
+                        card = self._make_location_card_clip(
+                            clip.location_name, location_card_cache, generator, title_settings
                         )
-                        logger.info(f"Location card: {name} (dist={dist:.0f}km)")
+                        result.append(card)
+                        logger.info(f"Location card: {clip.location_name} (dist={dist:.0f}km)")
                 prev_lat = clip.latitude
                 prev_lon = clip.longitude
             result.append(clip)

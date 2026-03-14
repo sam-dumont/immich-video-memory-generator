@@ -75,16 +75,10 @@ def filter_near_home(
     return result
 
 
-def detect_trips(
-    assets: list[Asset],
-    home_lat: float,
-    home_lon: float,
-    min_distance_km: float = 50,
-    min_duration_days: int = 2,
-    max_gap_days: int = 2,
-) -> list[DetectedTrip]:
-    """Detect trips: filter GPS assets far from home, group by temporal gaps, filter by duration."""
-    away: list[Asset] = []
+def _filter_away_assets(
+    assets: list[Asset], home_lat: float, home_lon: float, min_distance_km: float
+) -> list[Asset]:
+    away = []
     for asset in assets:
         if (
             asset.exif_info is None
@@ -95,9 +89,10 @@ def detect_trips(
         dist = haversine_km(home_lat, home_lon, asset.exif_info.latitude, asset.exif_info.longitude)
         if dist >= min_distance_km:
             away.append(asset)
-    if not away:
-        return []
-    away.sort(key=lambda a: a.file_created_at)
+    return away
+
+
+def _group_by_temporal_gaps(away: list[Asset], max_gap_days: int) -> list[list[Asset]]:
     groups: list[list[Asset]] = [[away[0]]]
     for asset in away[1:]:
         prev = groups[-1][-1]
@@ -106,31 +101,45 @@ def detect_trips(
             groups.append([asset])
         else:
             groups[-1].append(asset)
+    return groups
+
+
+def _build_trip_from_group(group: list[Asset]) -> DetectedTrip:
+    lats = [a.exif_info.latitude for a in group if a.exif_info and a.exif_info.latitude]
+    lons = [a.exif_info.longitude for a in group if a.exif_info and a.exif_info.longitude]
+    c_lat = sum(lats) / len(lats) if lats else 0.0
+    c_lon = sum(lons) / len(lons) if lons else 0.0
+    return DetectedTrip(
+        start_date=group[0].file_created_at.date(),
+        end_date=group[-1].file_created_at.date(),
+        location_name=_derive_location_name(group, centroid_lat=c_lat, centroid_lon=c_lon),
+        asset_count=len(group),
+        centroid_lat=c_lat,
+        centroid_lon=c_lon,
+        asset_ids=[a.id for a in group],
+    )
+
+
+def detect_trips(
+    assets: list[Asset],
+    home_lat: float,
+    home_lon: float,
+    min_distance_km: float = 50,
+    min_duration_days: int = 2,
+    max_gap_days: int = 2,
+) -> list[DetectedTrip]:
+    """Detect trips: filter GPS assets far from home, group by temporal gaps, filter by duration."""
+    away = _filter_away_assets(assets, home_lat, home_lon, min_distance_km)
+    if not away:
+        return []
+    away.sort(key=lambda a: a.file_created_at)
+    groups = _group_by_temporal_gaps(away, max_gap_days)
 
     trips: list[DetectedTrip] = []
     for group in groups:
-        first_date = group[0].file_created_at.date()
-        last_date = group[-1].file_created_at.date()
-        span_days = (last_date - first_date).days
-        if span_days < min_duration_days:
-            continue
-        lats = [a.exif_info.latitude for a in group if a.exif_info and a.exif_info.latitude]
-        lons = [a.exif_info.longitude for a in group if a.exif_info and a.exif_info.longitude]
-        c_lat = sum(lats) / len(lats) if lats else 0.0
-        c_lon = sum(lons) / len(lons) if lons else 0.0
-        location = _derive_location_name(group, centroid_lat=c_lat, centroid_lon=c_lon)
-        trips.append(
-            DetectedTrip(
-                start_date=first_date,
-                end_date=last_date,
-                location_name=location,
-                asset_count=len(group),
-                centroid_lat=c_lat,
-                centroid_lon=c_lon,
-                asset_ids=[a.id for a in group],
-            )
-        )
-
+        span_days = (group[-1].file_created_at.date() - group[0].file_created_at.date()).days
+        if span_days >= min_duration_days:
+            trips.append(_build_trip_from_group(group))
     return trips
 
 
@@ -444,10 +453,7 @@ def tag_clips_to_segments(
     clip_dates: dict[str, date],
     bases: list[OvernightBase],
 ) -> dict[str, int]:
-    """Map each clip ID to its overnight segment index by date.
-
-    Clips outside any segment are assigned to the nearest one.
-    """
+    """Map each clip ID to its overnight segment index; clips outside any segment go to nearest."""
     result: dict[str, int] = {}
     for clip_id, clip_date in clip_dates.items():
         for i, base in enumerate(bases):
@@ -467,15 +473,8 @@ def tag_clips_to_segments(
     return result
 
 
-def distribute_clip_budget(
-    total_clips: int,
-    segment_nights: list[int],
-) -> list[int]:
-    """Distribute clip budget proportionally across segments.
-
-    Each segment gets at least 1 clip. Remaining budget is distributed
-    proportionally by night count.
-    """
+def distribute_clip_budget(total_clips: int, segment_nights: list[int]) -> list[int]:
+    """Distribute clip budget proportionally by night count; each segment gets at least 1 clip."""
     n = len(segment_nights)
     if n == 0:
         return []
