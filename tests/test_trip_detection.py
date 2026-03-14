@@ -1388,3 +1388,96 @@ class TestDetectOvernightStops:
         assert bases[0].nights >= 4
         assert bases[1].location_name == "Frehel"
         assert bases[1].nights >= 3
+
+
+class TestTagClipsToSegments:
+    """Map clips to overnight segments by date."""
+
+    def test_assigns_clips_to_correct_segments(self):
+        from immich_memories.analysis.trip_detection import OvernightBase, tag_clips_to_segments
+
+        bases = [
+            OvernightBase(
+                start_date=date(2023, 9, 23),
+                end_date=date(2023, 9, 26),
+                nights=4,
+                lat=48.3,
+                lon=-4.0,
+                location_name="Brasparts",
+                asset_ids=[],
+            ),
+            OvernightBase(
+                start_date=date(2023, 9, 27),
+                end_date=date(2023, 9, 29),
+                nights=3,
+                lat=48.7,
+                lon=-2.3,
+                location_name="Frehel",
+                asset_ids=[],
+            ),
+        ]
+        clip_dates = {
+            "clip1": date(2023, 9, 23),
+            "clip2": date(2023, 9, 25),
+            "clip3": date(2023, 9, 27),
+            "clip4": date(2023, 9, 29),
+        }
+        result = tag_clips_to_segments(clip_dates, bases)
+        assert result["clip1"] == 0
+        assert result["clip2"] == 0
+        assert result["clip3"] == 1
+        assert result["clip4"] == 1
+
+    def test_assigns_orphan_clip_to_nearest_segment(self):
+        from immich_memories.analysis.trip_detection import OvernightBase, tag_clips_to_segments
+
+        bases = [
+            OvernightBase(
+                start_date=date(2023, 9, 23),
+                end_date=date(2023, 9, 25),
+                nights=3,
+                lat=48.3,
+                lon=-4.0,
+                location_name="Brasparts",
+                asset_ids=[],
+            ),
+        ]
+        # Clip date is outside the segment range
+        result = tag_clips_to_segments({"orphan": date(2023, 9, 30)}, bases)
+        assert result["orphan"] == 0  # nearest (and only) segment
+
+    def test_empty_bases_returns_empty(self):
+        from immich_memories.analysis.trip_detection import tag_clips_to_segments
+
+        result = tag_clips_to_segments({"clip1": date(2023, 9, 23)}, [])
+        assert result == {}
+
+
+class TestDistributeClipBudget:
+    """Proportional clip distribution across trip segments."""
+
+    def test_proportional_distribution(self):
+        from immich_memories.analysis.trip_detection import distribute_clip_budget
+
+        result = distribute_clip_budget(10, [4, 3, 1])
+        assert sum(result) == 10
+        assert all(r >= 1 for r in result)
+        assert result[0] > result[2]  # 4-night segment gets more than 1-night
+
+    def test_minimum_one_per_segment(self):
+        from immich_memories.analysis.trip_detection import distribute_clip_budget
+
+        result = distribute_clip_budget(3, [1, 1, 1])
+        assert result == [1, 1, 1]
+
+    def test_fewer_clips_than_segments(self):
+        from immich_memories.analysis.trip_detection import distribute_clip_budget
+
+        result = distribute_clip_budget(2, [3, 2, 1])
+        assert sum(result) == 2
+        assert len(result) == 2  # only 2 clips, can't cover all 3
+
+    def test_empty_segments(self):
+        from immich_memories.analysis.trip_detection import distribute_clip_budget
+
+        assert distribute_clip_budget(5, []) == []

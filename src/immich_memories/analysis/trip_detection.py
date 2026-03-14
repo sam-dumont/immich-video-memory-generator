@@ -59,11 +59,7 @@ def filter_near_home(
     home_lon: float,
     min_distance_km: float = 50,
 ) -> list[Asset]:
-    """Remove assets that are within min_distance_km of home.
-
-    Assets without GPS data are kept (they may be from the trip
-    but missing coordinates).
-    """
+    """Remove assets within min_distance_km of home. Assets without GPS are kept."""
     result: list[Asset] = []
     for asset in assets:
         if (
@@ -87,31 +83,21 @@ def detect_trips(
     min_duration_days: int = 2,
     max_gap_days: int = 2,
 ) -> list[DetectedTrip]:
-    """Detect trips from a list of assets based on GPS distance from home.
-
-    1. Filter to assets with GPS beyond min_distance_km from home
-    2. Sort by timestamp
-    3. Group into clusters separated by > max_gap_days
-    4. Keep clusters spanning >= min_duration_days
-    """
-    # Step 1: filter to far-from-home assets with GPS
+    """Detect trips: filter GPS assets far from home, group by temporal gaps, filter by duration."""
     away: list[Asset] = []
     for asset in assets:
-        if asset.exif_info is None:
-            continue
-        if asset.exif_info.latitude is None or asset.exif_info.longitude is None:
+        if (
+            asset.exif_info is None
+            or asset.exif_info.latitude is None
+            or asset.exif_info.longitude is None
+        ):
             continue
         dist = haversine_km(home_lat, home_lon, asset.exif_info.latitude, asset.exif_info.longitude)
         if dist >= min_distance_km:
             away.append(asset)
-
     if not away:
         return []
-
-    # Step 2: sort by timestamp
     away.sort(key=lambda a: a.file_created_at)
-
-    # Step 3: group by temporal gaps
     groups: list[list[Asset]] = [[away[0]]]
     for asset in away[1:]:
         prev = groups[-1][-1]
@@ -121,7 +107,6 @@ def detect_trips(
         else:
             groups[-1].append(asset)
 
-    # Step 4: filter by min duration and build DetectedTrip objects
     trips: list[DetectedTrip] = []
     for group in groups:
         first_date = group[0].file_created_at.date()
@@ -129,13 +114,11 @@ def detect_trips(
         span_days = (last_date - first_date).days
         if span_days < min_duration_days:
             continue
-
         lats = [a.exif_info.latitude for a in group if a.exif_info and a.exif_info.latitude]
         lons = [a.exif_info.longitude for a in group if a.exif_info and a.exif_info.longitude]
         c_lat = sum(lats) / len(lats) if lats else 0.0
         c_lon = sum(lons) / len(lons) if lons else 0.0
         location = _derive_location_name(group, centroid_lat=c_lat, centroid_lon=c_lon)
-
         trips.append(
             DetectedTrip(
                 start_date=first_date,
@@ -156,11 +139,11 @@ def _cluster_photos(
     radius_km: float,
 ) -> list[list[Asset]]:
     """Greedy spatial clustering: assign each photo to nearest cluster or create new."""
-    clusters: list[tuple[float, float, list[Asset]]] = []  # centroid_lat, centroid_lon, assets
+    clusters: list[tuple[float, float, list[Asset]]] = []
     for a in gps_assets:
-        assert a.exif_info is not None  # pre-filtered
-        assert a.exif_info.latitude is not None
-        assert a.exif_info.longitude is not None
+        assert (
+            a.exif_info and a.exif_info.latitude is not None and a.exif_info.longitude is not None
+        )
         lat, lon = a.exif_info.latitude, a.exif_info.longitude
         best_idx, best_dist = -1, radius_km + 1
         for i, (clat, clon, _) in enumerate(clusters):
@@ -194,21 +177,14 @@ def _cluster_centroid(cluster: list[Asset]) -> tuple[float, float]:
 
 def _cluster_city(cluster: list[Asset]) -> str:
     """Most common city name in a cluster."""
-    cities: Counter[str] = Counter()
-    for a in cluster:
-        if a.exif_info and a.exif_info.city:
-            cities[a.exif_info.city] += 1
-    if cities:
-        return cities.most_common(1)[0][0]
-    return "Unknown"
+    cities: Counter[str] = Counter(
+        a.exif_info.city for a in cluster if a.exif_info and a.exif_info.city
+    )
+    return cities.most_common(1)[0][0] if cities else "Unknown"
 
 
 def _has_return_gap(days: set[date], min_gap: int = 2) -> bool:
-    """True if you left this location and came back (gap of min_gap+ days).
-
-    A gap of 1 day could be consecutive travel. A gap of 2+ days means
-    you were away for at least one full day, proving a return pattern.
-    """
+    """True if there is a gap of min_gap+ days between consecutive dates (return pattern)."""
     if len(days) < 2:
         return False
     sorted_days = sorted(days)
@@ -218,8 +194,8 @@ def _has_return_gap(days: set[date], min_gap: int = 2) -> bool:
     return False
 
 
-_HomeBase = tuple[float, float, str, set[date]]  # lat, lon, city, days
-_DailyStop = tuple[date, float, float, str, list[str]]  # date, lat, lon, city, ids
+_HomeBase = tuple[float, float, str, set[date]]
+_DailyStop = tuple[date, float, float, str, list[str]]
 
 
 def _identify_home_bases(
@@ -253,8 +229,6 @@ def _assign_daily_stops(
         last = day_assets[-1]
         assert last.exif_info and last.exif_info.latitude and last.exif_info.longitude
         last_lat, last_lon = last.exif_info.latitude, last.exif_info.longitude
-
-        # Check home bases (only if last photo is still near base)
         assigned = False
         for hb_lat, hb_lon, hb_city, hb_days in home_bases:
             if d in hb_days and haversine_km(last_lat, last_lon, hb_lat, hb_lon) <= base_radius:
@@ -263,8 +237,6 @@ def _assign_daily_stops(
                 break
         if assigned:
             continue
-
-        # Excursion: use next morning's first photo, or last photo of the day
         if i + 1 < len(sorted_dates):
             ref = sorted(
                 by_date[sorted_dates[i + 1]], key=lambda a: a.local_date_time or a.file_created_at
@@ -348,13 +320,11 @@ def detect_overnight_stops(
     ]
     if not gps_assets:
         return []
-
     by_date: dict[date, list[Asset]] = {}
     for a in gps_assets:
         dt = a.local_date_time if a.local_date_time else a.file_created_at
         by_date.setdefault(dt.date(), []).append(a)
     sorted_dates = sorted(by_date)
-
     base_cluster_radius = max(merge_radius_km, 15.0)
     home_bases = _identify_home_bases(gps_assets, len(sorted_dates), base_cluster_radius)
     daily_stops = _assign_daily_stops(sorted_dates, by_date, home_bases, base_cluster_radius)
@@ -363,17 +333,7 @@ def detect_overnight_stops(
 
 
 def reverse_geocode(lat: float, lon: float, spread_km: float | None = None) -> str | None:
-    """Reverse geocode coordinates to the most specific location name.
-
-    Always queries at zoom=10 for full address hierarchy.
-    Returns the most specific name available: island > county > province > state.
-    The caller (_derive_location_name) handles multi-country and spread logic.
-
-    The spread_km parameter is accepted but no longer used for zoom selection —
-    kept for API compatibility.
-
-    Returns "Location, Country" or None on failure.
-    """
+    """Reverse geocode to most specific name. spread_km kept for API compat."""
     try:
         geolocator = Nominatim(user_agent="immich-memories")
         location = geolocator.reverse(f"{lat}, {lon}", zoom=10, language="en")
@@ -381,10 +341,6 @@ def reverse_geocode(lat: float, lon: float, spread_km: float | None = None) -> s
             return None
         addr = location.raw.get("address", {})
         country = addr.get("country")
-
-        # Return most specific: island > county > province > state_district > state
-        # Skip 'region' — it's too broad (e.g., "Metropolitan France") and
-        # the EXIF fallback in _derive_location_name gives better results.
         region = (
             addr.get("island")
             or addr.get("county")
@@ -392,13 +348,10 @@ def reverse_geocode(lat: float, lon: float, spread_km: float | None = None) -> s
             or addr.get("state_district")
             or addr.get("state")
         )
-
         if region and country:
-            # Avoid "Cyprus, Cyprus" — if region equals country, just return country
-            if region == country:
+            if region == country:  # Avoid "Cyprus, Cyprus"
                 return country
             return f"{region}, {country}"
-        # No useful region found — return None so EXIF fallback kicks in
         return None
     except Exception:
         logger.debug("Reverse geocoding failed for (%s, %s)", lat, lon)
@@ -408,28 +361,25 @@ def reverse_geocode(lat: float, lon: float, spread_km: float | None = None) -> s
 def _extract_unique_countries(assets: list[Asset]) -> list[str]:
     """Extract unique country names from EXIF, ordered by first appearance."""
     seen: set[str] = set()
-    countries: list[str] = []
+    result: list[str] = []
     for a in assets:
-        if a.exif_info and a.exif_info.country and a.exif_info.country not in seen:
-            seen.add(a.exif_info.country)
-            countries.append(a.exif_info.country)
-    return countries
+        c = a.exif_info.country if a.exif_info else None
+        if c and c not in seen:
+            seen.add(c)
+            result.append(c)
+    return result
 
 
 def _get_dominant_country(assets: list[Asset], threshold: float = 0.9) -> str | None:
     """Return the country name if it accounts for >= threshold of tagged assets."""
-    country_counts: Counter[str] = Counter()
-    total = 0
-    for a in assets:
-        if a.exif_info and a.exif_info.country:
-            country_counts[a.exif_info.country] += 1
-            total += 1
+    counts: Counter[str] = Counter(
+        a.exif_info.country for a in assets if a.exif_info and a.exif_info.country
+    )
+    total = sum(counts.values())
     if total == 0:
         return None
-    top_country, top_count = country_counts.most_common(1)[0]
-    if top_count / total >= threshold:
-        return top_country
-    return None
+    top, cnt = counts.most_common(1)[0]
+    return top if cnt / total >= threshold else None
 
 
 def _compute_spread_km(assets: list[Asset]) -> float:
@@ -456,12 +406,8 @@ def _derive_location_name(
     centroid_lon: float | None = None,
 ) -> str:
     """Derive a human-readable location name, preferring reverse geocoding."""
-    # Compute geographic spread to decide zoom level
     spread_km = _compute_spread_km(assets)
 
-    # Multi-country trips: if spread is very large and multiple countries
-    # are represented, check if one country dominates (90%+ of assets).
-    # Layovers with a few photos shouldn't change the trip name.
     if spread_km > 300:
         countries = _extract_unique_countries(assets)
         if len(countries) > 1:
@@ -470,17 +416,14 @@ def _derive_location_name(
                 return dominant
             return " → ".join(countries)
 
-    # Try reverse geocoding the centroid first
     if centroid_lat is not None and centroid_lon is not None:
         geocoded = reverse_geocode(centroid_lat, centroid_lon, spread_km=spread_km)
         if geocoded:
             return geocoded
 
-    # Fallback to EXIF city/country
-    pairs: list[tuple[str | None, str | None]] = []
-    for asset in assets:
-        if asset.exif_info:
-            pairs.append((asset.exif_info.city, asset.exif_info.country))
+    pairs: list[tuple[str | None, str | None]] = [
+        (a.exif_info.city, a.exif_info.country) for a in assets if a.exif_info
+    ]
 
     if not pairs:
         return "Unknown Location"
@@ -495,3 +438,63 @@ def _derive_location_name(
     if city:
         return city
     return "Unknown Location"
+
+
+def tag_clips_to_segments(
+    clip_dates: dict[str, date],
+    bases: list[OvernightBase],
+) -> dict[str, int]:
+    """Map each clip ID to its overnight segment index by date.
+
+    Clips outside any segment are assigned to the nearest one.
+    """
+    result: dict[str, int] = {}
+    for clip_id, clip_date in clip_dates.items():
+        for i, base in enumerate(bases):
+            if base.start_date <= clip_date <= base.end_date:
+                result[clip_id] = i
+                break
+        else:
+            if bases:
+                closest = min(
+                    range(len(bases)),
+                    key=lambda idx: min(
+                        abs((clip_date - bases[idx].start_date).days),
+                        abs((clip_date - bases[idx].end_date).days),
+                    ),
+                )
+                result[clip_id] = closest
+    return result
+
+
+def distribute_clip_budget(
+    total_clips: int,
+    segment_nights: list[int],
+) -> list[int]:
+    """Distribute clip budget proportionally across segments.
+
+    Each segment gets at least 1 clip. Remaining budget is distributed
+    proportionally by night count.
+    """
+    n = len(segment_nights)
+    if n == 0:
+        return []
+    if total_clips <= n:
+        return [1] * min(total_clips, n)
+
+    budget = [1] * n
+    remaining = total_clips - n
+    total_nights = sum(segment_nights)
+    if total_nights == 0:
+        total_nights = n
+
+    for i in range(n):
+        share = int(remaining * segment_nights[i] / total_nights)
+        budget[i] += share
+
+    leftover = total_clips - sum(budget)
+    sorted_indices = sorted(range(n), key=lambda i: segment_nights[i], reverse=True)
+    for i in range(leftover):
+        budget[sorted_indices[i % n]] += 1
+
+    return budget
