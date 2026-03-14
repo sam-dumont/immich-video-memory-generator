@@ -80,6 +80,10 @@ class TitleScreenSettings:
     show_ending_screen: bool = True
     use_first_name_only: bool = True  # Use only first name for titles
 
+    # LLM-generated title override (bypasses template generation)
+    title_override: str | None = None
+    subtitle_override: str | None = None
+
     # Trip map settings (used when memory_type == "trip")
     memory_type: str | None = None  # "trip" enables map intro + location cards
     trip_locations: list[tuple[float, float]] | None = None  # (lat, lon) pairs for map pins

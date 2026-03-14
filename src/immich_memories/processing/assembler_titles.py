@@ -406,6 +406,8 @@ class AssemblerTitleMixin(AssemblerTripMixin):
             orientation=orientation,
             resolution=resolution_tier,
             hdr=source_has_hdr,
+            title_override=title_settings.title_override,
+            subtitle_override=title_settings.subtitle_override,
         )
 
         title_output_dir = output_path.parent / ".title_screens"

@@ -30,6 +30,7 @@ from .rendering_mixin import RenderingMixin
 from .styles import TitleStyle, get_random_style, get_style_for_mood
 from .text_builder import (
     SelectionType,
+    TitleInfo,
     generate_month_divider_text,
     generate_title,
     infer_selection_type,
@@ -71,6 +72,10 @@ class TitleScreenConfig:
 
     # Font override
     custom_font_path: str | None = None
+
+    # LLM-generated title override (bypasses template generation)
+    title_override: str | None = None
+    subtitle_override: str | None = None
 
     # Month dividers
     show_month_dividers: bool = True
@@ -198,7 +203,26 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
                 birthday_age=birthday_age,
             )
 
-        self._log_title_inputs(
+        # Use LLM-generated title if available
+        if self.config.title_override:
+            title_info = TitleInfo(
+                main_title=self.config.title_override,
+                subtitle=self.config.subtitle_override or "",
+                selection_type=selection_type or SelectionType.CALENDAR_YEAR,
+            )
+        else:
+            title_info = generate_title(
+                selection_type,
+                year=year,
+                month=month,
+                start_date=start_date,
+                end_date=end_date,
+                person_name=person_name,
+                birthday_age=birthday_age,
+                locale=self.config.locale,
+            )
+
+        self._log_title_generation(
             selection_type,
             year,
             month,
@@ -206,20 +230,8 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
             end_date,
             person_name,
             birthday_age,
+            title_info,
         )
-
-        title_info = generate_title(
-            selection_type,
-            year=year,
-            month=month,
-            start_date=start_date,
-            end_date=end_date,
-            person_name=person_name,
-            birthday_age=birthday_age,
-            locale=self.config.locale,
-        )
-
-        self._log_title_output(title_info)
 
         width, height = self.config.output_resolution
         output_path = self.output_dir / "title_screen.mp4"
@@ -246,7 +258,7 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
             screen_type="title",
         )
 
-    def _log_title_inputs(
+    def _log_title_generation(
         self,
         selection_type,
         year,
@@ -255,8 +267,9 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         end_date,
         person_name,
         birthday_age,
+        title_info,
     ) -> None:
-        """Log title screen generation input parameters."""
+        """Log title screen inputs, generated text, and rendering config."""
         logger.info("=" * 60)
         logger.info("TITLE SCREEN GENERATION")
         logger.info("=" * 60)
@@ -273,16 +286,12 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
             logger.info(f"  Person name: {person_name}")
         if birthday_age:
             logger.info(f"  Birthday age: {birthday_age}")
-
-    def _log_title_output(self, title_info) -> None:
-        """Log generated title text and style info."""
         logger.info("-" * 40)
         logger.info(f'  Main title: "{title_info.main_title}"')
         if title_info.subtitle:
             logger.info(f'  Subtitle: "{title_info.subtitle}"')
         else:
             logger.info("  Subtitle: (none)")
-
         logger.info("-" * 40)
         logger.info(f"  Style: {self.style.name}")
         logger.info(f"  Font: {self.style.font_family} ({self.style.font_weight})")
@@ -290,7 +299,6 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         logger.info(f"  Background: {self.style.background_type}")
         if self._mood:
             logger.info(f"  Mood: {self._mood}")
-
         width, height = self.config.output_resolution
         logger.info("-" * 40)
         logger.info(f"  Resolution: {width}x{height}")
@@ -461,21 +469,7 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         video_clips: list[Path] | None = None,
         months_in_video: list[int] | None = None,
     ) -> dict[str, GeneratedScreen]:
-        """Generate all screens needed for a video.
-
-        Args:
-            year: Year for title.
-            month: Month for title.
-            start_date: Start date for range.
-            end_date: End date for range.
-            person_name: Person's name.
-            birthday_age: Age for birthday titles.
-            video_clips: List of video clips for color extraction.
-            months_in_video: List of months present in video (for month dividers).
-
-        Returns:
-            Dict mapping screen type to GeneratedScreen.
-        """
+        """Generate all screens (title, month dividers, ending) for a video."""
         screens: dict[str, GeneratedScreen] = {}
 
         screens["title"] = self.generate_title_screen(
