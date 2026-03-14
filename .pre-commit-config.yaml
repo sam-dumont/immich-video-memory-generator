@@ -98,3 +98,10 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
+
+      - id: duplication
+        name: Code duplication (jscpd ≤5%)
+        entry: make duplication
+        language: system
+        pass_filenames: false
+        types: [python]

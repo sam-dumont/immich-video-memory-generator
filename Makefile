@@ -180,11 +180,7 @@ cognitive-complexity:
 
 # Code duplication detection
 duplication:
-	@if command -v jscpd > /dev/null 2>&1; then \
-		jscpd src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python --gitignore; \
-	else \
-		echo "jscpd not installed (npm install -g jscpd), skipping duplication check"; \
-	fi
+	npx jscpd src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python --gitignore
 
 # Modernization lint
 refurb:
@@ -220,7 +216,7 @@ check: ensure-dev lint format-check typecheck file-length complexity test
 	@echo "All checks passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint dep-check docstring-coverage arch-check test
+ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint dep-check docstring-coverage arch-check duplication test
 	@echo "Full CI pipeline passed!"
 
 # Pre-commit hooks

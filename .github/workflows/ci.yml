@@ -131,7 +131,7 @@ jobs:
         run: make arch-check
 
       - name: Code duplication (jscpd ≤5%)
-        run: npx jscpd src/ --threshold 5 --format python --gitignore || true
+        run: npx jscpd src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python --gitignore
 
       # --- Dependency & supply chain ---
       - name: pip-audit (dependency vulnerabilities)
