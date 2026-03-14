@@ -64,8 +64,14 @@ async def _query_openai(
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
+    # Retry up to 3x — some models (Qwen/mlx-vlm) return null content
     async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
-        resp = await client.post(f"{base_url}/chat/completions", json=payload)
-        resp.raise_for_status()
-        choices = resp.json()["choices"]
-        return choices[0]["message"]["content"]  # type: ignore[no-any-return]
+        for attempt in range(3):
+            resp = await client.post(f"{base_url}/chat/completions", json=payload)
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
+            if content is not None:
+                return content  # type: ignore[no-any-return]
+            logger.debug("LLM null content (attempt %d/3)", attempt + 1)
+    msg = "LLM returned null content after 3 retries"
+    raise ValueError(msg)
