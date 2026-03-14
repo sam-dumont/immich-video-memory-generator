@@ -359,6 +359,46 @@ class RefinementMixin:
 
         return selected
 
+    def _select_clips_by_trip_segments(
+        self,
+        analyzed: list[ClipWithSegment],
+        target: int,
+    ) -> list[ClipWithSegment]:
+        """Select clips proportionally across overnight stop segments."""
+        from immich_memories.analysis.trip_detection import (
+            distribute_clip_budget,
+            tag_clips_to_segments,
+        )
+
+        bases = self.config.overnight_bases
+        clip_dates = {}
+        for c in analyzed:
+            dt = c.clip.asset.file_created_at or datetime.min
+            clip_dates[c.clip.asset.id] = dt.date()
+
+        tags = tag_clips_to_segments(clip_dates, bases)
+        budget = distribute_clip_budget(target, [b.nights for b in bases])
+
+        # Group clips by segment, sort by score within each
+        by_seg: dict[int, list[ClipWithSegment]] = defaultdict(list)
+        for c in analyzed:
+            seg_idx = tags.get(c.clip.asset.id, 0)
+            by_seg[seg_idx].append(c)
+        for clips in by_seg.values():
+            clips.sort(key=lambda c: c.score, reverse=True)
+
+        # Take top N from each segment per budget
+        selected: list[ClipWithSegment] = []
+        for seg_idx in range(len(budget)):
+            n = budget[seg_idx]
+            selected.extend(by_seg.get(seg_idx, [])[:n])
+
+        logger.info(
+            "Trip segment distribution: %s",
+            ", ".join(f"seg{i}={budget[i]}" for i in range(len(budget))),
+        )
+        return selected
+
     def _phase_refine(self, analyzed: list[ClipWithSegment]) -> object:
         """Phase 4: Refine final selection.
 
@@ -374,14 +414,15 @@ class RefinementMixin:
         self.tracker.start_phase(PipelinePhase.REFINING, 1)
         self.tracker.start_item("Refining selection")
 
-        # Use date-aware selection to distribute clips across the full date range
-        # instead of just picking top N by score (which can cluster in certain months)
         # Add 20% buffer so user has room to deselect clips they don't want
         target_with_buffer = int(self.config.target_clips * 1.2)
-        logger.info(
-            f"Selecting with buffer: target={self.config.target_clips}, with_buffer={target_with_buffer}"
-        )
-        selected = self._select_clips_distributed_by_date(analyzed, target_with_buffer)
+
+        # Trip mode: distribute clips proportionally across overnight segments
+        # Non-trip mode: distribute clips evenly across the full date range
+        if self.config.overnight_bases:
+            selected = self._select_clips_by_trip_segments(analyzed, target_with_buffer)
+        else:
+            selected = self._select_clips_distributed_by_date(analyzed, target_with_buffer)
 
         # Scale down to target duration (removes clips to fit target)
         # Calculate target from config: target_clips * avg_clip_duration

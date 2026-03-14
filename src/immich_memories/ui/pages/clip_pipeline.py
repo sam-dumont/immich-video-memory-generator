@@ -83,6 +83,18 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
     ui.label("Generating Memories...").classes("text-2xl font-bold mb-4")
 
     config_dict = state.pipeline_config
+
+    # For trip memories, detect overnight stops for proportional clip distribution
+    overnight_bases = None
+    if state.memory_type == "trip" and state.clips:
+        try:
+            from immich_memories.analysis.trip_detection import detect_overnight_stops
+
+            trip_assets = [c.asset for c in state.clips]
+            overnight_bases = detect_overnight_stops(trip_assets) or None
+        except Exception:
+            logger.debug("Trip segment detection failed", exc_info=True)
+
     config = PipelineConfig(
         target_clips=config_dict.get("target_clips", 120),
         avg_clip_duration=config_dict.get("avg_clip_duration", 5.0),
@@ -90,6 +102,7 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
         prioritize_favorites=config_dict.get("prioritize_favorites", True),
         max_non_favorite_ratio=config_dict.get("max_non_favorite_ratio", 0.25),
         analyze_all=config_dict.get("analyze_all", False),
+        overnight_bases=overnight_bases,
     )
 
     # Progress UI elements

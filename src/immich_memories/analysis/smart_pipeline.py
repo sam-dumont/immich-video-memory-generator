@@ -71,6 +71,10 @@ class PipelineConfig:
     # Used to ensure birthday week is well represented
     birthday_month: int | None = None  # 1-12 for month, None to disable
 
+    # Trip segment distribution - if set, clips are distributed proportionally
+    # across overnight stop segments instead of purely by date
+    overnight_bases: list | None = None  # list[OvernightBase] from trip detection
+
 
 @dataclass
 class PipelineResult:
