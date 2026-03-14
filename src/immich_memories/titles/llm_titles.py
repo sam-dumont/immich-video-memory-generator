@@ -153,18 +153,28 @@ def build_title_prompt(
         [
             "",
             "RULES:",
-            f"- Write title and subtitle in {lang}",
-            "- Never use 'weekend' for trips longer than 4 days",
-            "- Use the actual region/area name, not a generic country name",
-            "- For trips: analyze the daily locations to determine the pattern:",
-            "  * base_camp: same location every night, day trips around",
-            "  * multi_base: 2-3 bases with travel between them",
-            "  * road_trip: different location each day, progressing geographically",
-            "  * hiking_trail: similar to road_trip but shorter daily distances",
-            "- map_mode: title_only (single base), excursions (base+trips), overnight_stops (moving)",
+            f"- Write title and subtitle in {lang}. Be creative and evocative.",
+            "- Never use 'weekend' for trips longer than 4 days. Use 'séjour', 'semaine', 'vacances'...",
+            "- Use the actual region/area name (Vallée d'Aoste, Île d'Oléron, Saxe), NOT the country",
+            "- Analyze the daily location clusters to classify the trip type:",
             "",
-            "Return ONLY valid JSON (no explanation, no markdown):",
-            '{"title": "...", "subtitle": "..." or null, "trip_type": "..." or null, "map_mode": "..." or null, "map_mode_reason": "..." or null}',
+            "PATTERN GUIDE (look at which locations REPEAT across days):",
+            "  base_camp: ONE location appears on most days (you return there each night)",
+            "    → e.g. Ville Sur Sarre on days 1,2,3,4,5,7,8 with excursions to Cogne, Aosta",
+            "    → map_mode: excursions (show base + day trip destinations)",
+            "  multi_base: 2-3 locations each appear on MULTIPLE consecutive days",
+            "    → e.g. Nicosia on days 1-5, then Geroskipou on days 6-10",
+            "    → map_mode: overnight_stops (show the bases and transition)",
+            "  road_trip: different location EACH day, covering large distances",
+            "    → e.g. Castiglione day1, Bagnoregio day2, Ancona day3 (45-125km/day)",
+            "    → map_mode: overnight_stops (show the daily route)",
+            "  hiking_trail: like road_trip but short distances (<30km/day), progressive",
+            "    → e.g. Hohnstein day1, Bad Schandau day2, Sebnitz day3 (5-15km/day)",
+            "    → map_mode: overnight_stops (show the trail progression)",
+            "",
+            "Return ONLY valid JSON (no explanation, no markdown, no thinking):",
+            '{"title": "...", "subtitle": "..." or null, "trip_type": "..." or null, '
+            '"map_mode": "..." or null, "map_mode_reason": "..." or null}',
         ]
     )
 
@@ -204,7 +214,13 @@ async def generate_title_with_llm(
     )
 
     try:
-        raw = await query_llm(prompt, llm_config, temperature=temperature, max_tokens=2000)
+        raw = await query_llm(
+            prompt,
+            llm_config,
+            temperature=temperature,
+            max_tokens=4000,
+            timeout_seconds=180,
+        )
         return parse_title_response(raw)
     except Exception:
         logger.warning("LLM title generation failed", exc_info=True)
