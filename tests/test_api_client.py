@@ -237,11 +237,12 @@ class TestSearchPagination:
         mock_result = MetadataSearchResult(
             assets={"total": 1, "items": [], "nextPage": None},
         )
-        client.search_metadata = AsyncMock(return_value=mock_result)
+        # WHY: mock at service level — get_all_videos_for_year delegates to search service
+        client.search.search_metadata = AsyncMock(return_value=mock_result)
 
         result = await client.get_all_videos_for_year(2024)
         assert result == []
-        client.search_metadata.assert_called_once()
+        client.search.search_metadata.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_multi_page_accumulation(self, _mock_config):
@@ -258,11 +259,12 @@ class TestSearchPagination:
         page2 = MetadataSearchResult(
             assets={"total": 2, "items": [a2.model_dump(by_alias=True)], "nextPage": None},
         )
-        client.search_metadata = AsyncMock(side_effect=[page1, page2])
+        # WHY: mock at service level — get_all_videos_for_year delegates to search service
+        client.search.search_metadata = AsyncMock(side_effect=[page1, page2])
 
         result = await client.get_all_videos_for_year(2024)
         assert len(result) == 2
-        assert client.search_metadata.call_count == 2
+        assert client.search.search_metadata.call_count == 2
 
     @pytest.mark.asyncio
     async def test_progress_callback_invoked(self, _mock_config):
@@ -271,7 +273,8 @@ class TestSearchPagination:
         mock_result = MetadataSearchResult(
             assets={"total": 0, "items": [], "nextPage": None},
         )
-        client.search_metadata = AsyncMock(return_value=mock_result)
+        # WHY: mock at service level — delegates to search service
+        client.search.search_metadata = AsyncMock(return_value=mock_result)
 
         callback = MagicMock()
         await client.get_all_videos_for_year(2024, progress_callback=callback)
@@ -284,7 +287,8 @@ class TestSearchPagination:
         mock_result = MetadataSearchResult(
             assets={"total": 0, "items": [], "nextPage": None},
         )
-        client.search_metadata = AsyncMock(return_value=mock_result)
+        # WHY: mock at service level — delegates to search service
+        client.search.search_metadata = AsyncMock(return_value=mock_result)
 
         result = await client.get_all_videos_for_year(1999)
         assert result == []
@@ -443,7 +447,8 @@ class TestGetVideosForAnyPerson:
         a2 = make_asset("a2", file_created_at=datetime(2024, 6, 1, tzinfo=UTC))
         date_range = DateRange(start=datetime(2024, 1, 1), end=datetime(2024, 12, 31, 23, 59, 59))
 
-        client.get_videos_for_person_and_date_range = AsyncMock(return_value=[a1, a2])
+        # WHY: mock at service level — get_videos_for_any_person delegates to search service
+        client.search.get_videos_for_person_and_date_range = AsyncMock(return_value=[a1, a2])
 
         result = await client.get_videos_for_any_person(["person-1"], date_range)
         assert len(result) == 2
@@ -469,7 +474,8 @@ class TestGetVideosForAnyPerson:
                 return [only_a, shared]
             return [shared, only_b]
 
-        client.get_videos_for_person_and_date_range = AsyncMock(side_effect=mock_query)
+        # WHY: mock at service level — delegates to search service
+        client.search.get_videos_for_person_and_date_range = AsyncMock(side_effect=mock_query)
 
         result = await client.get_videos_for_any_person(["person-a", "person-b"], date_range)
         assert len(result) == 3
@@ -485,8 +491,9 @@ class TestGetVideosForAnyPerson:
 
         client = ImmichClient()
         date_range = DateRange(start=datetime(2024, 1, 1), end=datetime(2024, 12, 31, 23, 59, 59))
-        client.get_videos_for_person_and_date_range = AsyncMock()
+        # WHY: mock at service level — delegates to search service
+        client.search.get_videos_for_person_and_date_range = AsyncMock()
 
         result = await client.get_videos_for_any_person([], date_range)
         assert result == []
-        client.get_videos_for_person_and_date_range.assert_not_called()
+        client.search.get_videos_for_person_and_date_range.assert_not_called()

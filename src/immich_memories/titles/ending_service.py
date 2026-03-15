@@ -1,7 +1,6 @@
-"""Ending screen generation mixin for TitleScreenGenerator.
+"""Ending screen generation service.
 
-Extracts the ending video creation logic (fade-to-white with FFmpeg streaming)
-into a mixin class to keep the main generator file under 500 lines.
+Creates fade-to-white ending videos by streaming frames to FFmpeg.
 """
 
 from __future__ import annotations
@@ -10,18 +9,18 @@ import logging
 from pathlib import Path
 
 from .encoding import _get_gpu_encoder_args
+from .styles import TitleStyle
 
 logger = logging.getLogger(__name__)
 
 
-class EndingScreenMixin:
-    """Mixin providing ending video generation for TitleScreenGenerator.
+class EndingService:
+    """Generates ending videos with fade-to-color effect."""
 
-    Requires the host class to have:
-        - self.style: TitleStyle instance
-    """
+    def __init__(self, style: TitleStyle) -> None:
+        self.style = style
 
-    def _create_ending_video(
+    def create_ending_video(
         self,
         output_path: Path,
         fade_to_color: tuple[int, int, int],
@@ -34,16 +33,7 @@ class EndingScreenMixin:
         """Create ending video with fade to specified color.
 
         Memory-optimized: streams frames directly to FFmpeg instead of
-        saving to disk. This reduces memory usage from ~2-3GB to ~100MB
-        for 4K video.
-
-        Args:
-            output_path: Output video path.
-            fade_to_color: Color to fade to (typically white).
-            width: Video width.
-            height: Video height.
-            duration: Video duration.
-            fps: Frames per second.
+        saving to disk (~100MB vs ~2-3GB for 4K video).
         """
         import subprocess
 
@@ -60,9 +50,8 @@ class EndingScreenMixin:
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Build FFmpeg command — same pattern as taichi_video.py (intro)
-        # to ensure identical HLG HDR output. No zscale filter needed;
-        # just tag the output as HLG like the intro does.
+        # Build FFmpeg command -- same pattern as taichi_video.py (intro)
+        # to ensure identical HLG HDR output.
         encoder_args = _get_gpu_encoder_args(hdr=hdr)
         cmd = [
             "ffmpeg",

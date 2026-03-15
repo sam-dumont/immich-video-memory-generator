@@ -1,5 +1,116 @@
 [
   {
+    "path": "src/immich_memories/analysis/clip_analyzer.py",
+    "file_name": "clip_analyzer.py",
+    "functions": [
+      {
+        "name": "ClipAnalyzer::_analyze_clip_with_preview",
+        "complexity": 16,
+        "line_start": 396,
+        "line_end": 453,
+        "line_complexities": [
+          {
+            "line": 403,
+            "complexity": 0
+          },
+          {
+            "line": 404,
+            "complexity": 1
+          },
+          {
+            "line": 405,
+            "complexity": 0
+          },
+          {
+            "line": 407,
+            "complexity": 0
+          },
+          {
+            "line": 408,
+            "complexity": 0
+          },
+          {
+            "line": 409,
+            "complexity": 0
+          },
+          {
+            "line": 410,
+            "complexity": 0
+          },
+          {
+            "line": 413,
+            "complexity": 0
+          },
+          {
+            "line": 415,
+            "complexity": 1
+          },
+          {
+            "line": 416,
+            "complexity": 0
+          },
+          {
+            "line": 417,
+            "complexity": 0
+          },
+          {
+            "line": 419,
+            "complexity": 2
+          },
+          {
+            "line": 421,
+            "complexity": 0
+          },
+          {
+            "line": 424,
+            "complexity": 1
+          },
+          {
+            "line": 427,
+            "complexity": 2
+          },
+          {
+            "line": 428,
+            "complexity": 0
+          },
+          {
+            "line": 436,
+            "complexity": 4
+          },
+          {
+            "line": 437,
+            "complexity": 0
+          },
+          {
+            "line": 439,
+            "complexity": 0
+          },
+          {
+            "line": 443,
+            "complexity": 0
+          },
+          {
+            "line": 446,
+            "complexity": 2
+          },
+          {
+            "line": 447,
+            "complexity": 0
+          },
+          {
+            "line": 449,
+            "complexity": 3
+          },
+          {
+            "line": 450,
+            "complexity": 0
+          }
+        ]
+      }
+    ],
+    "complexity": 73
+  },
+  {
     "path": "src/immich_memories/analysis/clip_refinement.py",
     "file_name": "clip_refinement.py",
     "functions": [
@@ -101,6 +212,109 @@
       }
     ],
     "complexity": 60
+  },
+  {
+    "path": "src/immich_memories/analysis/clip_refiner.py",
+    "file_name": "clip_refiner.py",
+    "functions": [
+      {
+        "name": "ClipRefiner::_fill_empty_weeks",
+        "complexity": 20,
+        "line_start": 168,
+        "line_end": 211,
+        "line_complexities": [
+          {
+            "line": 178,
+            "complexity": 0
+          },
+          {
+            "line": 179,
+            "complexity": 1
+          },
+          {
+            "line": 180,
+            "complexity": 0
+          },
+          {
+            "line": 183,
+            "complexity": 0
+          },
+          {
+            "line": 184,
+            "complexity": 1
+          },
+          {
+            "line": 185,
+            "complexity": 0
+          },
+          {
+            "line": 188,
+            "complexity": 0
+          },
+          {
+            "line": 189,
+            "complexity": 0
+          },
+          {
+            "line": 191,
+            "complexity": 0
+          },
+          {
+            "line": 192,
+            "complexity": 0
+          },
+          {
+            "line": 193,
+            "complexity": 1
+          },
+          {
+            "line": 194,
+            "complexity": 0
+          },
+          {
+            "line": 195,
+            "complexity": 2
+          },
+          {
+            "line": 197,
+            "complexity": 0
+          },
+          {
+            "line": 199,
+            "complexity": 0
+          },
+          {
+            "line": 200,
+            "complexity": 1
+          },
+          {
+            "line": 201,
+            "complexity": 2
+          },
+          {
+            "line": 202,
+            "complexity": 0
+          },
+          {
+            "line": 203,
+            "complexity": 3
+          },
+          {
+            "line": 205,
+            "complexity": 4
+          },
+          {
+            "line": 206,
+            "complexity": 5
+          },
+          {
+            "line": 211,
+            "complexity": 0
+          }
+        ]
+      }
+    ],
+    "complexity": 73
   },
   {
     "path": "src/immich_memories/analysis/clip_scaling.py",
@@ -236,220 +450,6 @@
       }
     ],
     "complexity": 29
-  },
-  {
-    "path": "src/immich_memories/analysis/pipeline_analysis.py",
-    "file_name": "pipeline_analysis.py",
-    "functions": [
-      {
-        "name": "AnalysisMixin::_analyze_clip_with_preview",
-        "complexity": 16,
-        "line_start": 428,
-        "line_end": 492,
-        "line_complexities": [
-          {
-            "line": 444,
-            "complexity": 0
-          },
-          {
-            "line": 445,
-            "complexity": 1
-          },
-          {
-            "line": 446,
-            "complexity": 0
-          },
-          {
-            "line": 448,
-            "complexity": 0
-          },
-          {
-            "line": 449,
-            "complexity": 0
-          },
-          {
-            "line": 450,
-            "complexity": 0
-          },
-          {
-            "line": 451,
-            "complexity": 0
-          },
-          {
-            "line": 454,
-            "complexity": 0
-          },
-          {
-            "line": 456,
-            "complexity": 1
-          },
-          {
-            "line": 457,
-            "complexity": 0
-          },
-          {
-            "line": 458,
-            "complexity": 0
-          },
-          {
-            "line": 461,
-            "complexity": 2
-          },
-          {
-            "line": 463,
-            "complexity": 0
-          },
-          {
-            "line": 466,
-            "complexity": 1
-          },
-          {
-            "line": 470,
-            "complexity": 2
-          },
-          {
-            "line": 471,
-            "complexity": 0
-          },
-          {
-            "line": 474,
-            "complexity": 4
-          },
-          {
-            "line": 475,
-            "complexity": 0
-          },
-          {
-            "line": 478,
-            "complexity": 0
-          },
-          {
-            "line": 482,
-            "complexity": 0
-          },
-          {
-            "line": 485,
-            "complexity": 2
-          },
-          {
-            "line": 486,
-            "complexity": 0
-          },
-          {
-            "line": 488,
-            "complexity": 3
-          },
-          {
-            "line": 489,
-            "complexity": 0
-          }
-        ]
-      }
-    ],
-    "complexity": 77
-  },
-  {
-    "path": "src/immich_memories/analysis/pipeline_refinement.py",
-    "file_name": "pipeline_refinement.py",
-    "functions": [
-      {
-        "name": "RefinementMixin::_fill_empty_weeks",
-        "complexity": 20,
-        "line_start": 198,
-        "line_end": 251,
-        "line_complexities": [
-          {
-            "line": 218,
-            "complexity": 0
-          },
-          {
-            "line": 219,
-            "complexity": 1
-          },
-          {
-            "line": 220,
-            "complexity": 0
-          },
-          {
-            "line": 223,
-            "complexity": 0
-          },
-          {
-            "line": 224,
-            "complexity": 1
-          },
-          {
-            "line": 225,
-            "complexity": 0
-          },
-          {
-            "line": 228,
-            "complexity": 0
-          },
-          {
-            "line": 229,
-            "complexity": 0
-          },
-          {
-            "line": 231,
-            "complexity": 0
-          },
-          {
-            "line": 232,
-            "complexity": 0
-          },
-          {
-            "line": 233,
-            "complexity": 1
-          },
-          {
-            "line": 234,
-            "complexity": 0
-          },
-          {
-            "line": 235,
-            "complexity": 2
-          },
-          {
-            "line": 237,
-            "complexity": 0
-          },
-          {
-            "line": 239,
-            "complexity": 0
-          },
-          {
-            "line": 240,
-            "complexity": 1
-          },
-          {
-            "line": 241,
-            "complexity": 2
-          },
-          {
-            "line": 242,
-            "complexity": 0
-          },
-          {
-            "line": 243,
-            "complexity": 3
-          },
-          {
-            "line": 245,
-            "complexity": 4
-          },
-          {
-            "line": 246,
-            "complexity": 5
-          },
-          {
-            "line": 251,
-            "complexity": 0
-          }
-        ]
-      }
-    ],
-    "complexity": 73
   },
   {
     "path": "src/immich_memories/analysis/segment_scoring.py",

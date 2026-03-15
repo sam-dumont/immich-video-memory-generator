@@ -1,18 +1,22 @@
-"""Rendering mixin for TitleScreenGenerator.
+"""Rendering service for title screen video creation.
 
 Provides renderer selection logic (GPU Taichi vs CPU PIL) and
-GPU-accelerated title video creation.
+video creation methods for titles and map backgrounds.
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .renderer_pil import create_title_video
 from .styles import TitleStyle
+
+if TYPE_CHECKING:
+    from .generator import TitleScreenConfig
 
 # Try to import GPU-accelerated renderer
 try:
@@ -32,18 +36,13 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class RenderingMixin:
-    """Mixin providing renderer selection and GPU title creation.
+class RenderingService:
+    """Selects GPU or CPU renderer and creates title/map videos."""
 
-    Requires the host class to have:
-        - self._use_gpu: bool
-        - self.config: TitleScreenConfig with use_gpu_rendering
-    """
-
-    def _init_gpu_renderer(self) -> None:
-        """Initialize GPU renderer if requested and available."""
+    def __init__(self, config: TitleScreenConfig) -> None:
+        self.config = config
         self._use_gpu = False
-        if self.config.use_gpu_rendering and TAICHI_AVAILABLE:
+        if config.use_gpu_rendering and TAICHI_AVAILABLE:
             backend = init_taichi()
             if backend:
                 self._use_gpu = True
@@ -51,7 +50,11 @@ class RenderingMixin:
             else:
                 logger.info("GPU rendering unavailable, falling back to PIL")
 
-    def _create_title_video(
+    @property
+    def use_gpu(self) -> bool:
+        return self._use_gpu
+
+    def create_title_video(
         self,
         title: str,
         subtitle: str | None,
@@ -67,12 +70,7 @@ class RenderingMixin:
     ) -> Path:
         """Create title video using GPU or PIL renderer.
 
-        Automatically selects the appropriate renderer based on availability.
         HDR flag is read from self.config.hdr.
-
-        Args:
-            fade_from_white: If True, fade from white at start (for intro title only).
-            is_birthday: If True, enable festive birthday particle effects.
         """
         hdr = self.config.hdr
         if self._use_gpu and create_title_video_taichi is not None:
@@ -156,7 +154,7 @@ class RenderingMixin:
             title, subtitle, output_path, config, fade_from_white, hdr=hdr
         )
 
-    def _create_map_video(
+    def create_map_video(
         self,
         title: str,
         subtitle: str | None,
@@ -171,7 +169,7 @@ class RenderingMixin:
 
         Uses Taichi GPU for text animation/encoding if available,
         falls back to PIL rendering with the map as static background.
-        No bokeh/particles — clean map aesthetic.
+        No bokeh/particles -- clean map aesthetic.
         """
         hdr = self.config.hdr
         if self._use_gpu and create_title_video_taichi is not None:
@@ -195,7 +193,7 @@ class RenderingMixin:
                 enable_shadow=True,
                 shadow_opacity=0.5,
                 shadow_offset_ratio=0.004,
-                # No blur — map must stay sharp
+                # No blur -- map must stay sharp
                 blur_radius=0,
                 # No particles/bokeh for maps
                 enable_bokeh=False,

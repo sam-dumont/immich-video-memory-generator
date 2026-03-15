@@ -1,93 +1,61 @@
-"""Asset-related API methods mixin."""
+"""Asset-related API service."""
 
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
+
+import httpx
 
 from immich_memories.api.models import Asset
 
+RequestFn = Callable[..., Any]
 
-class AssetMixin:
-    """Mixin providing asset-related API methods for ImmichClient."""
+
+class AssetService:
+    """Asset retrieval and download operations against the Immich API."""
+
+    def __init__(
+        self,
+        request_fn: RequestFn,
+        base_url: str,
+        get_client: Callable[[], httpx.AsyncClient],
+    ) -> None:
+        self._request = request_fn
+        self._base_url = base_url
+        self._get_client = get_client
 
     async def get_asset(self, asset_id: str) -> Asset:
-        """Get a specific asset by ID.
-
-        Args:
-            asset_id: The asset's ID.
-
-        Returns:
-            Asset object.
-        """
+        """Get a specific asset by ID."""
         data = await self._request("GET", f"/assets/{asset_id}")
         return Asset(**data)
 
-    async def get_asset_thumbnail(
-        self,
-        asset_id: str,
-        size: str = "preview",
-    ) -> bytes:
-        """Get asset thumbnail.
-
-        Args:
-            asset_id: The asset's ID.
-            size: Thumbnail size ("thumbnail" or "preview").
-
-        Returns:
-            Thumbnail image bytes.
-        """
+    async def get_asset_thumbnail(self, asset_id: str, size: str = "preview") -> bytes:
+        """Get asset thumbnail."""
         params = {"size": size}
         return await self._request("GET", f"/assets/{asset_id}/thumbnail", params=params)
 
     def get_video_playback_url(self, asset_id: str) -> str:
-        """Get the video playback URL for streaming/preview.
-
-        Args:
-            asset_id: The asset's ID.
-
-        Returns:
-            Full URL for video playback (transcoded preview).
-        """
-        return f"{self.base_url}/api/assets/{asset_id}/video/playback"
+        """Get the video playback URL for streaming/preview."""
+        return f"{self._base_url}/api/assets/{asset_id}/video/playback"
 
     def get_video_original_url(self, asset_id: str) -> str:
-        """Get the URL for the original video file.
-
-        Args:
-            asset_id: The asset's ID.
-
-        Returns:
-            Full URL for original video (preserves HDR metadata).
-        """
-        return f"{self.base_url}/api/assets/{asset_id}/original"
+        """Get the URL for the original video file."""
+        return f"{self._base_url}/api/assets/{asset_id}/original"
 
     async def get_video_playback(self, asset_id: str) -> bytes:
-        """Get video playback data (transcoded preview).
-
-        Args:
-            asset_id: The asset's ID.
-
-        Returns:
-            Video bytes (transcoded/preview quality).
-        """
+        """Get video playback data (transcoded preview)."""
         return await self._request("GET", f"/assets/{asset_id}/video/playback")
 
     async def download_asset(
         self,
         asset_id: str,
         output_path: Path,
-        max_size_bytes: int = 25 * 1024**3,  # 25 GB default limit (4K HDR ~2.3 GB/min)
+        max_size_bytes: int = 25 * 1024**3,
     ) -> Path:
         """Download an asset's original file.
-
-        Args:
-            asset_id: The asset's ID.
-            output_path: Path to save the file.
-            max_size_bytes: Maximum allowed download size in bytes.
-
-        Returns:
-            Path to the downloaded file.
 
         Raises:
             ValueError: If download exceeds size limit.
@@ -95,13 +63,12 @@ class AssetMixin:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         bytes_downloaded = 0
 
-        async with self.client.stream(
+        async with self._get_client().stream(
             "GET",
             f"/api/assets/{asset_id}/original",
         ) as response:
             response.raise_for_status()
 
-            # Fast-fail on Content-Length if available
             content_length = response.headers.get("content-length")
             if content_length:
                 with contextlib.suppress(ValueError, OverflowError):

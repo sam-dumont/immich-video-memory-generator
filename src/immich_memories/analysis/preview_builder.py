@@ -1,7 +1,4 @@
-"""Preview extraction and legacy analysis mixin for the smart pipeline.
-
-Contains methods for extracting preview segments and the legacy single-clip analysis.
-"""
+"""Preview extraction and legacy analysis service for the smart pipeline."""
 
 from __future__ import annotations
 
@@ -11,39 +8,43 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from immich_memories.analysis.clip_selection import (
-    _get_fast_encoder_args,
-)
+from immich_memories.analysis.clip_selection import _get_fast_encoder_args
 from immich_memories.security import sanitize_filename
 
 if TYPE_CHECKING:
+    from immich_memories.analysis.smart_pipeline import PipelineConfig
+    from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import VideoClipInfo
+    from immich_memories.cache.database import VideoAnalysisCache
 
 logger = logging.getLogger(__name__)
 
 
-class PreviewMixin:
-    """Mixin providing preview extraction and legacy analysis methods for SmartPipeline."""
+class PreviewBuilder:
+    """Extracts preview segments and runs legacy analysis."""
 
-    def _find_cached_preview(self, asset_id: str, start: float, end: float) -> str | None:
+    def __init__(
+        self,
+        client: SyncImmichClient,
+    ):
+        self.client = client
+
+    def find_cached_preview(self, asset_id: str, start: float, end: float) -> str | None:
         """Find or build a preview for a cached clip from the video cache."""
         from immich_memories.config import get_config
 
         config = get_config()
 
-        # Check the stable preview-cache first (asset-ID-based, from step2)
         preview_cache_dir = config.cache.cache_path / "preview-cache"
         stable_preview = preview_cache_dir / f"{asset_id}.mp4"
         if stable_preview.exists():
             return str(stable_preview)
 
-        # Check the pipeline preview dir for any existing preview
         pipeline_preview_dir = Path.home() / ".cache" / "immich-memories" / "previews"
         for p in pipeline_preview_dir.glob(f"*{asset_id[:8]}*"):
             if p.exists():
                 return str(p)
 
-        # Try to build a preview from the video cache
         video_cache_dir = config.cache.video_cache_path
         if not video_cache_dir.exists():
             return None
@@ -53,7 +54,6 @@ class PreviewMixin:
         if not sub_path.exists():
             return None
 
-        # Find source video (prefer _480p downscale)
         source = None
         for pattern in (f"{asset_id}_480p.*", f"{asset_id}.*"):
             matches = list(sub_path.glob(pattern))
@@ -64,9 +64,8 @@ class PreviewMixin:
         if source is None:
             return None
 
-        # Extract preview from cached video
         try:
-            preview_path = self._extract_preview_segment(source, start, end, asset_id=asset_id)
+            preview_path = self.extract_preview_segment(source, start, end, asset_id=asset_id)
             if preview_path and Path(preview_path).exists():
                 logger.debug(f"Built preview for cached clip {asset_id}")
                 return preview_path
@@ -75,7 +74,7 @@ class PreviewMixin:
 
         return None
 
-    def _download_clip_video(self, clip: VideoClipInfo) -> tuple[Path, Path | None]:
+    def download_clip_video(self, clip: VideoClipInfo) -> tuple[Path, Path | None]:
         """Download clip video, returning (video_path, temp_file_or_None)."""
         from immich_memories.cache.video_cache import VideoDownloadCache
         from immich_memories.config import get_config
@@ -97,96 +96,36 @@ class PreviewMixin:
         self.client.download_asset(clip.asset.id, temp_file)
         return temp_file, temp_file
 
-    def _analyze_clip(
-        self,
-        clip: VideoClipInfo,
-    ) -> tuple[float, float, float]:
-        """Analyze a single clip for best segment.
-
-        Args:
-            clip: Clip to analyze.
-
-        Returns:
-            Tuple of (start_time, end_time, score).
-        """
-        from immich_memories.analysis.scoring import SceneScorer
-
-        cached = self.analysis_cache.get_analysis(clip.asset.id)
-        if cached and cached.segments:
-            best = max(cached.segments, key=lambda s: s.total_score or 0.0)
-            return best.start_time, best.end_time, best.total_score or 0.0
-
-        temp_file: Path | None = None
-        try:
-            video_path, temp_file = self._download_clip_video(clip)
-
-            if not video_path or not video_path.exists():
-                raise ValueError("Failed to download video")
-
-            scorer = SceneScorer()
-            moments = scorer.sample_and_score_video(
-                video_path,
-                segment_duration=self.config.segment_duration,
-                overlap=0.5,
-                sample_frames=5,
-            )
-
-            if not moments:
-                duration = clip.duration_seconds or 10
-                return 0.0, min(duration, self.config.avg_clip_duration), 0.0
-
-            best_moment = max(moments, key=lambda m: m.total_score)
-            start = best_moment.start_time
-            end = start + min(best_moment.duration, self.config.avg_clip_duration)
-
-            self.analysis_cache.save_analysis(
-                asset=clip.asset, video_info=clip, perceptual_hash=None, segments=moments
-            )
-            return start, end, best_moment.total_score
-
-        finally:
-            if temp_file:
-                with contextlib.suppress(Exception):
-                    temp_file.unlink(missing_ok=True)
-
-    def _run_legacy_analysis(
+    def run_legacy_analysis(
         self,
         clip: VideoClipInfo,
         analysis_video: Path,
         original_video: Path | None,
         video_duration: float,
+        config: PipelineConfig,
+        analysis_cache: VideoAnalysisCache,
     ) -> tuple[float, float, float]:
-        """Run legacy visual scoring with silence adjustment.
-
-        Args:
-            clip: Clip being analyzed.
-            analysis_video: Video to analyze.
-            original_video: Original video for audio analysis.
-            video_duration: Duration of the video.
-
-        Returns:
-            Tuple of (start, end, score).
-        """
+        """Run legacy visual scoring with silence adjustment."""
         import gc
 
         from immich_memories.analysis.scoring import SceneScorer
         from immich_memories.config import get_config
 
-        config = get_config()
-        min_segment = config.analysis.min_segment_duration
-        max_segment = config.analysis.max_segment_duration
+        app_config = get_config()
+        min_segment = app_config.analysis.min_segment_duration
+        max_segment = app_config.analysis.max_segment_duration
 
         scorer = SceneScorer()
         moments = scorer.sample_and_score_video(
             analysis_video,
-            segment_duration=self.config.segment_duration,
+            segment_duration=config.segment_duration,
             overlap=0.5,
             sample_frames=5,
         )
 
         if not moments:
             duration = clip.duration_seconds or 10
-            return 0.0, min(duration, self.config.avg_clip_duration), 0.0
+            return 0.0, min(duration, config.avg_clip_duration), 0.0
 
         best_moment = max(moments, key=lambda m: m.total_score)
         segment_duration = max(min_segment, min(best_moment.duration, max_segment))
@@ -199,7 +138,6 @@ class PreviewMixin:
             end = video_duration
             start = max(0, end - segment_duration)
 
-        # Try to adjust boundaries to silence gaps
         try:
             from immich_memories.analysis.silence_detection import (
                 adjust_segment_to_silence,
@@ -215,7 +153,7 @@ class PreviewMixin:
         except Exception as e:
             logger.debug(f"Silence detection skipped: {e}")
 
-        self.analysis_cache.save_analysis(
+        analysis_cache.save_analysis(
             asset=clip.asset, video_info=clip, perceptual_hash=None, segments=moments
         )
 
@@ -226,7 +164,7 @@ class PreviewMixin:
 
         return start, end, score
 
-    def _extract_and_log_preview(
+    def extract_and_log_preview(
         self,
         clip: VideoClipInfo,
         original_video: Path | None,
@@ -234,22 +172,11 @@ class PreviewMixin:
         start: float,
         end: float,
     ) -> str | None:
-        """Extract preview segment for UI display.
-
-        Args:
-            clip: Clip being analyzed.
-            original_video: Original video path (preferred for quality).
-            analysis_video: Fallback video path.
-            start: Segment start time.
-            end: Segment end time.
-
-        Returns:
-            Path to preview file, or None.
-        """
+        """Extract preview segment for UI display."""
         try:
             preview_source = original_video or analysis_video
             logger.info(f"Extracting preview for {clip.asset.id}: {start:.1f}s - {end:.1f}s")
-            preview_path = self._extract_preview_segment(
+            preview_path = self.extract_preview_segment(
                 preview_source, start, end, asset_id=clip.asset.id
             )
             if preview_path and Path(preview_path).exists():
@@ -262,7 +189,7 @@ class PreviewMixin:
             logger.warning(f"Failed to extract preview for {clip.asset.id}: {e}")
             return None
 
-    def _extract_preview_segment(
+    def extract_preview_segment(
         self,
         video_path: Path,
         start: float,
@@ -271,48 +198,23 @@ class PreviewMixin:
         max_duration: float = 15.0,
         asset_id: str | None = None,
     ) -> str:
-        """Extract a preview segment from a video.
-
-        Uses ffmpeg directly for better compatibility with iPhone videos
-        that have spatial audio (apac codec) which moviepy can't handle.
-
-        Previews are stored in a persistent cache directory to survive
-        temp file cleanup and allow preview display.
-
-        Args:
-            video_path: Path to source video.
-            start: Start time in seconds.
-            end: End time in seconds.
-            min_duration: Minimum preview duration (default 2s).
-            max_duration: Maximum preview duration (default 15s).
-            asset_id: Optional asset ID for persistent storage.
-
-        Returns:
-            Path to extracted preview file.
-        """
+        """Extract a preview segment from a video using ffmpeg."""
         import subprocess
         import time
 
-        # Use persistent preview directory instead of temp files
-        # Keep recent previews (Streamlit caches file references internally)
         preview_dir = Path.home() / ".cache" / "immich-memories" / "previews"
         preview_dir.mkdir(parents=True, exist_ok=True)
 
-        # Only delete old previews if we have too many (keep last 20)
-        # This prevents Streamlit's internal media cache from breaking
         MAX_PREVIEWS = 20
         existing_previews = sorted(preview_dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime)
         if len(existing_previews) > MAX_PREVIEWS:
-            # Delete oldest previews, keeping the most recent ones
             for old_preview in existing_previews[:-MAX_PREVIEWS]:
                 with contextlib.suppress(Exception):
                     old_preview.unlink()
 
-        # Use timestamp-based filename to bust browser cache
         timestamp = int(time.time() * 1000)
         preview_path = str(preview_dir / f"preview_{timestamp}.mp4")
 
-        # Get video duration using ffprobe
         try:
             result = subprocess.run(
                 [
@@ -331,24 +233,20 @@ class PreviewMixin:
             )
             video_duration = float(result.stdout.strip())
         except Exception:
-            video_duration = 60.0  # Default fallback
+            video_duration = 60.0
 
-        # Calculate segment duration and enforce min/max
         segment_duration = end - start
 
         if segment_duration < min_duration:
-            # Extend to minimum duration, centered on original segment
             extension = (min_duration - segment_duration) / 2
             start = start - extension
             end = end + extension
             segment_duration = min_duration
 
         if segment_duration > max_duration:
-            # Trim to maximum duration, keeping start
             end = start + max_duration
             segment_duration = max_duration
 
-        # Clamp to video bounds
         if start < 0:
             end = end - start
             start = 0
@@ -356,7 +254,6 @@ class PreviewMixin:
             start = max(0, start - (end - video_duration))
             end = video_duration
 
-        # Final safety check
         start = max(0, start)
         end = min(video_duration, end)
         duration = end - start
@@ -369,15 +266,7 @@ class PreviewMixin:
             f"(duration: {duration:.1f}s, video: {video_duration:.1f}s)"
         )
 
-        # Use ffmpeg directly - more reliable for iPhone videos with spatial audio
-        # -map 0:v:0 selects only the first video stream
-        # -map 0:a:0 selects only the first audio stream (AAC), ignoring spatial audio
-        # Use GPU-accelerated encoding when available
         encoder_args = _get_fast_encoder_args()
-
-        # Note: no explicit HDR→SDR tonemapping here. macOS browsers (Safari, Chrome)
-        # handle HLG/PQ natively via the system display pipeline, so keeping the HDR
-        # metadata intact produces better results than software tonemapping.
 
         cmd = [
             "ffmpeg",
@@ -389,16 +278,16 @@ class PreviewMixin:
             "-t",
             str(duration),
             "-map",
-            "0:v:0",  # First video stream
+            "0:v:0",
             "-map",
-            "0:a:0?",  # First audio stream (optional - '?' means don't fail if missing)
+            "0:a:0?",
             *encoder_args,
             "-c:a",
-            "aac",  # Re-encode audio to AAC for compatibility
+            "aac",
             "-b:a",
             "128k",
             "-threads",
-            "2",  # For CPU fallback
+            "2",
             "-loglevel",
             "error",
             preview_path,

@@ -1,7 +1,6 @@
-"""Refinement phase mixin for the smart pipeline.
+"""Refinement service for the smart pipeline.
 
-Contains methods for Phase 4: selecting, distributing, and refining
-the final clip selection.
+Handles Phase 4: selecting, distributing, and refining the final clip selection.
 """
 
 from __future__ import annotations
@@ -12,14 +11,19 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from immich_memories.analysis.smart_pipeline import ClipWithSegment
+    from immich_memories.analysis.clip_scaler import ClipScaler
+    from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineConfig
     from immich_memories.api.models import VideoClipInfo
 
 logger = logging.getLogger(__name__)
 
 
-class RefinementMixin:
-    """Mixin providing refinement phase methods for SmartPipeline."""
+class ClipRefiner:
+    """Selects, distributes, and refines the final clip selection."""
+
+    def __init__(self, config: PipelineConfig, scaler: ClipScaler):
+        self.config = config
+        self.scaler = scaler
 
     def _detect_density_hotspots(
         self,
@@ -28,14 +32,6 @@ class RefinementMixin:
         """Detect weeks with unusually high favorites density.
 
         Returns boost multiplier for each week based on relative favorites concentration.
-        This automatically detects important periods (holidays, birthdays, events)
-        without hardcoding any dates.
-
-        Args:
-            favorites_by_week: Count of favorites per week.
-
-        Returns:
-            Dict of week -> boost multiplier.
         """
         if not favorites_by_week:
             return {}
@@ -46,32 +42,25 @@ class RefinementMixin:
         if 0 in (total_favorites, num_weeks):
             return {}
 
-        # Average favorites per week
         avg_favorites = total_favorites / num_weeks
 
-        # Calculate boost based on how much above average each week is
         boosts = {}
         for week, fav_count in favorites_by_week.items():
             if fav_count == 0:
                 boosts[week] = 1.0
                 continue
 
-            # How many times above average?
             ratio = fav_count / max(avg_favorites, 0.5)
 
             if ratio >= 4.0:
-                # 4x+ above average = major event
                 boosts[week] = 3.0
             elif ratio >= 2.5:
-                # 2.5x+ above average = significant period
                 boosts[week] = 2.0
             elif ratio >= 1.5:
-                # 1.5x+ above average = notable week
                 boosts[week] = 1.5
             else:
                 boosts[week] = 1.0
 
-        # Log detected hotspots
         hotspots = [(w, b) for w, b in boosts.items() if b > 1.0]
         if hotspots:
             logger.info(f"Detected {len(hotspots)} density hotspots: {hotspots[:5]}...")
@@ -82,14 +71,7 @@ class RefinementMixin:
         self,
         favorites: list[ClipWithSegment],
     ) -> tuple[dict[str, list[ClipWithSegment]], set[str]]:
-        """Classify favorites by week and identify protected weeks.
-
-        Args:
-            favorites: Favorite clips sorted by date.
-
-        Returns:
-            Tuple of (favorites_by_week, protected_weeks).
-        """
+        """Classify favorites by week and identify protected weeks."""
         favorites_by_week: dict[str, list[ClipWithSegment]] = defaultdict(list)
         for fav in favorites:
             week_key = fav.clip.asset.file_created_at.strftime("%Y-W%W")
@@ -100,22 +82,21 @@ class RefinementMixin:
         avg_per_week = len(favorites) / max(num_weeks, 1)
 
         logger.info(
-            f"Density: {len(favorites)} favorites across {num_weeks} weeks (avg {avg_per_week:.1f}/week)"
+            f"Density: {len(favorites)} favorites across {num_weeks} weeks "
+            f"(avg {avg_per_week:.1f}/week)"
         )
 
-        # Identify high density weeks (events/holidays)
         high_density_weeks: set[str] = set()
         for week, week_favs in favorites_by_week.items():
             if len(week_favs) >= avg_per_week * 1.5:
                 high_density_weeks.add(week)
 
-        # Special weeks: first, last, birthday
         special_weeks: set[str] = set()
         if sorted_weeks:
             special_weeks.add(sorted_weeks[0])
             special_weeks.add(sorted_weeks[-1])
 
-        if hasattr(self.config, "birthday_month") and self.config.birthday_month:
+        if self.config.birthday_month:
             for fav in favorites:
                 fav_date = fav.clip.asset.file_created_at
                 if fav_date.month == self.config.birthday_month and abs(fav_date.day - 7) <= 10:
@@ -137,19 +118,7 @@ class RefinementMixin:
         protected_weeks: set[str],
         max_duration: float,
     ) -> list[ClipWithSegment]:
-        """Scale down favorites to fit within duration budget.
-
-        Removes lowest-scored favorites from non-protected weeks.
-
-        Args:
-            selected_favorites: All selected favorites.
-            selected_ids: Mutable set of selected asset IDs (will be modified).
-            protected_weeks: Weeks that should not lose clips.
-            max_duration: Maximum total duration allowed.
-
-        Returns:
-            Scaled down list of favorites.
-        """
+        """Scale down favorites to fit within duration budget."""
         total_duration = sum(c.end_time - c.start_time for c in selected_favorites)
         if total_duration <= max_duration:
             return selected_favorites
@@ -191,7 +160,8 @@ class RefinementMixin:
             removed_count += 1
 
         logger.info(
-            f"Scaled down: removed {removed_count} favorites, kept {len(protected) + len(removable)}"
+            f"Scaled down: removed {removed_count} favorites, "
+            f"kept {len(protected) + len(removable)}"
         )
         return protected + removable
 
@@ -202,17 +172,7 @@ class RefinementMixin:
         favorites: list[ClipWithSegment],
         selected_ids: set[str],
     ) -> list[ClipWithSegment]:
-        """Fill weeks with no selected clips using non-favorites.
-
-        Args:
-            selected_favorites: Currently selected favorites.
-            non_favorites: Available non-favorites.
-            favorites: All favorites (for date range).
-            selected_ids: Mutable set of selected asset IDs.
-
-        Returns:
-            List of gap-filler clips added.
-        """
+        """Fill weeks with no selected clips using non-favorites."""
         from datetime import timedelta
 
         non_favs_by_week: dict[str, list[ClipWithSegment]] = defaultdict(list)
@@ -257,14 +217,7 @@ class RefinementMixin:
         target_count: int,
         selected_ids: set[str],
     ) -> None:
-        """Fill remaining slots with distribution-aware non-favorites.
-
-        Args:
-            selected: Current selection (will be modified in place).
-            non_favorites: Available non-favorites.
-            target_count: Target number of clips.
-            selected_ids: Mutable set of selected asset IDs.
-        """
+        """Fill remaining slots with distribution-aware non-favorites."""
         remaining_slots = target_count - len(selected)
         if remaining_slots <= 0:
             return
@@ -291,20 +244,12 @@ class RefinementMixin:
             f"Added {min(remaining_slots, len(remaining_non_favs))} additional non-favorites"
         )
 
-    def _select_clips_distributed_by_date(
+    def select_clips_distributed_by_date(
         self,
         clips: list[ClipWithSegment],
         target_count: int,
     ) -> list[ClipWithSegment]:
-        """Select clips using density-aware favorites-first approach.
-
-        Args:
-            clips: Analyzed clips with scores.
-            target_count: Target number of clips to select.
-
-        Returns:
-            Selected clips distributed by density.
-        """
+        """Select clips using density-aware favorites-first approach."""
         if not clips:
             return []
 
@@ -322,31 +267,25 @@ class RefinementMixin:
             non_favorites.sort(key=lambda c: c.score, reverse=True)
             return non_favorites[:target_count]
 
-        # Step 1: Classify by week, identify protected weeks
         _favorites_by_week, protected_weeks = self._classify_favorites_by_week(favorites)
 
-        # Step 2: Start with ALL favorites
         selected_favorites = favorites.copy()
         selected_ids: set[str] = {c.clip.asset.id for c in favorites}
         logger.info(f"Starting with ALL {len(selected_favorites)} favorites")
 
-        # Step 3: Scale down if over budget
         target_duration = target_count * 5.0
         max_duration = target_duration * 1.25
         selected_favorites = self._scale_down_favorites(
             selected_favorites, selected_ids, protected_weeks, max_duration
         )
 
-        # Step 4: Fill gaps with non-favorites
         gap_fillers = self._fill_empty_weeks(
             selected_favorites, non_favorites, favorites, selected_ids
         )
 
-        # Step 5: Fill remaining slots
         selected = selected_favorites + gap_fillers
         self._fill_remaining_slots(selected, non_favorites, target_count, selected_ids)
 
-        # Final stats
         final_favorites = sum(1 for c in selected if c.clip.asset.is_favorite)
         final_non_favorites = len(selected) - final_favorites
         months_covered = {c.clip.asset.file_created_at.strftime("%Y-%m") for c in selected}
@@ -359,7 +298,7 @@ class RefinementMixin:
 
         return selected
 
-    def _select_clips_by_trip_segments(
+    def select_clips_by_trip_segments(
         self,
         analyzed: list[ClipWithSegment],
         target: int,
@@ -371,6 +310,9 @@ class RefinementMixin:
         )
 
         bases = self.config.overnight_bases
+        if not bases:
+            return analyzed[:target]
+
         clip_dates = {}
         for c in analyzed:
             dt = c.clip.asset.file_created_at or datetime.min
@@ -379,7 +321,6 @@ class RefinementMixin:
         tags = tag_clips_to_segments(clip_dates, bases)
         budget = distribute_clip_budget(target, [b.nights for b in bases])
 
-        # Group clips by segment, sort by score within each
         by_seg: dict[int, list[ClipWithSegment]] = defaultdict(list)
         for c in analyzed:
             seg_idx = tags.get(c.clip.asset.id, 0)
@@ -387,7 +328,6 @@ class RefinementMixin:
         for clips in by_seg.values():
             clips.sort(key=lambda c: c.score, reverse=True)
 
-        # Take top N from each segment per budget
         selected: list[ClipWithSegment] = []
         for seg_idx in range(len(budget)):
             n = budget[seg_idx]
@@ -399,57 +339,42 @@ class RefinementMixin:
         )
         return selected
 
-    def _phase_refine(self, analyzed: list[ClipWithSegment]) -> object:
-        """Phase 4: Refine final selection.
-
-        Args:
-            analyzed: Analyzed clips with segments.
-
-        Returns:
-            Final pipeline result.
-        """
+    def phase_refine(
+        self,
+        analyzed: list[ClipWithSegment],
+        tracker: object,
+    ) -> object:
+        """Phase 4: Refine final selection."""
         from immich_memories.analysis.progress import PipelinePhase
         from immich_memories.analysis.smart_pipeline import PipelineResult
 
-        self.tracker.start_phase(PipelinePhase.REFINING, 1)
-        self.tracker.start_item("Refining selection")
+        tracker.start_phase(PipelinePhase.REFINING, 1)
+        tracker.start_item("Refining selection")
 
-        # Add 20% buffer so user has room to deselect clips they don't want
         target_with_buffer = int(self.config.target_clips * 1.2)
 
-        # Trip mode: distribute clips proportionally across overnight segments
-        # Non-trip mode: distribute clips evenly across the full date range
         if self.config.overnight_bases:
-            selected = self._select_clips_by_trip_segments(analyzed, target_with_buffer)
+            selected = self.select_clips_by_trip_segments(analyzed, target_with_buffer)
         else:
-            selected = self._select_clips_distributed_by_date(analyzed, target_with_buffer)
+            selected = self.select_clips_distributed_by_date(analyzed, target_with_buffer)
 
-        # Scale down to target duration (removes clips to fit target)
-        # Calculate target from config: target_clips * avg_clip_duration
         target_duration = self.config.target_clips * self.config.avg_clip_duration
-        selected = self._scale_to_target_duration(selected, target_duration)
+        selected = self.scaler.scale_to_target_duration(selected, target_duration)
 
-        # Temporal deduplication: when multiple favorites are from same moment,
-        # keep only the best-scored one (configurable window, 0 to disable)
         if self.config.temporal_dedup_window_minutes > 0:
-            selected = self._deduplicate_temporal_clusters(
+            selected = self.scaler.deduplicate_temporal_clusters(
                 selected, time_window_minutes=self.config.temporal_dedup_window_minutes
             )
 
-        # Apply max_non_favorite_ratio (limiting non-favorites in final selection)
-        # But never drop below target_clips — fill with best non-favorites if needed
         if self.config.max_non_favorite_ratio < 1.0 and self.config.prioritize_favorites:
             favorites = [c for c in selected if c.clip.asset.is_favorite]
             non_favorites = [c for c in selected if not c.clip.asset.is_favorite]
 
             max_non_favorites = int(len(selected) * self.config.max_non_favorite_ratio)
-
-            # Ensure we don't go below target clip count
             min_non_favorites = max(0, self.config.target_clips - len(favorites))
             max_non_favorites = max(max_non_favorites, min_non_favorites)
 
             if len(non_favorites) > max_non_favorites:
-                # Sort non-favorites by score and keep only the best
                 non_favorites.sort(key=lambda c: c.score, reverse=True)
                 non_favorites = non_favorites[:max_non_favorites]
 
@@ -460,10 +385,8 @@ class RefinementMixin:
 
                 selected = favorites + non_favorites
 
-        # Sort selected by date for chronological order
         selected.sort(key=lambda c: c.clip.asset.file_created_at or datetime.min)
 
-        # Build result
         clip_segments: dict[str, tuple[float, float]] = {}
         selected_clips: list[VideoClipInfo] = []
 
@@ -471,11 +394,10 @@ class RefinementMixin:
             selected_clips.append(item.clip)
             clip_segments[item.clip.asset.id] = (item.start_time, item.end_time)
 
-        # Collect errors from tracker
-        errors = [{"clip_id": e.item_id, "error": e.error} for e in self.tracker.progress.errors]
+        errors = [{"clip_id": e.item_id, "error": e.error} for e in tracker.progress.errors]
 
-        self.tracker.complete_item("selection")
-        self.tracker.complete_phase()
+        tracker.complete_item("selection")
+        tracker.complete_phase()
 
         logger.info(f"Phase 4: Final selection of {len(selected_clips)} clips")
 
@@ -487,6 +409,6 @@ class RefinementMixin:
                 "total_analyzed": len(analyzed),
                 "selected_count": len(selected_clips),
                 "error_count": len(errors),
-                "elapsed_seconds": self.tracker.progress.elapsed_seconds,
+                "elapsed_seconds": tracker.progress.elapsed_seconds,
             },
         )

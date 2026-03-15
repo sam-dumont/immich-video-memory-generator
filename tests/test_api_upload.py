@@ -162,18 +162,19 @@ class TestUploadMemory:
         video.write_bytes(b"video data")
 
         client = ImmichClient()
-        client.upload_asset = AsyncMock(return_value="asset-999")
-        client.find_album_by_name = AsyncMock(return_value=None)
-        client.create_album = AsyncMock(return_value="album-new")
-        client.add_assets_to_album = AsyncMock()
+        # WHY: mock at service level — upload_memory lives on AlbumService
+        client.albums.upload_asset = AsyncMock(return_value="asset-999")
+        client.albums.find_album_by_name = AsyncMock(return_value=None)
+        client.albums.create_album = AsyncMock(return_value="album-new")
+        client.albums.add_assets_to_album = AsyncMock()
 
         result = await client.upload_memory(video, album_name="2024 Memories")
 
         assert result["asset_id"] == "asset-999"
         assert result["album_id"] == "album-new"
-        client.upload_asset.assert_awaited_once_with(video)
-        client.create_album.assert_awaited_once_with("2024 Memories")
-        client.add_assets_to_album.assert_awaited_once_with("album-new", ["asset-999"])
+        client.albums.upload_asset.assert_awaited_once_with(video)
+        client.albums.create_album.assert_awaited_once_with("2024 Memories")
+        client.albums.add_assets_to_album.assert_awaited_once_with("album-new", ["asset-999"])
 
     @pytest.mark.asyncio
     async def test_upload_to_existing_album(self, _mock_config, tmp_path):
@@ -182,15 +183,16 @@ class TestUploadMemory:
         video.write_bytes(b"video data")
 
         client = ImmichClient()
-        client.upload_asset = AsyncMock(return_value="asset-999")
-        client.find_album_by_name = AsyncMock(return_value="album-existing")
-        client.create_album = AsyncMock()
-        client.add_assets_to_album = AsyncMock()
+        # WHY: mock at service level — upload_memory lives on AlbumService
+        client.albums.upload_asset = AsyncMock(return_value="asset-999")
+        client.albums.find_album_by_name = AsyncMock(return_value="album-existing")
+        client.albums.create_album = AsyncMock()
+        client.albums.add_assets_to_album = AsyncMock()
 
         result = await client.upload_memory(video, album_name="2024 Memories")
 
         assert result["album_id"] == "album-existing"
-        client.create_album.assert_not_awaited()
+        client.albums.create_album.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_upload_without_album(self, _mock_config, tmp_path):
@@ -199,7 +201,8 @@ class TestUploadMemory:
         video.write_bytes(b"video data")
 
         client = ImmichClient()
-        client.upload_asset = AsyncMock(return_value="asset-999")
+        # WHY: mock at service level — upload_memory lives on AlbumService
+        client.albums.upload_asset = AsyncMock(return_value="asset-999")
 
         result = await client.upload_memory(video)
 
@@ -213,10 +216,11 @@ class TestSyncUploadWrappers:
         video.write_bytes(b"video data")
 
         client = SyncImmichClient()
-        client._async_client.upload_asset = AsyncMock(return_value="asset-123")
-        client._async_client.find_album_by_name = AsyncMock(return_value=None)
-        client._async_client.create_album = AsyncMock(return_value="album-1")
-        client._async_client.add_assets_to_album = AsyncMock()
+        # WHY: mock at service level — upload_memory delegates to albums service
+        client._async_client.albums.upload_asset = AsyncMock(return_value="asset-123")
+        client._async_client.albums.find_album_by_name = AsyncMock(return_value=None)
+        client._async_client.albums.create_album = AsyncMock(return_value="album-1")
+        client._async_client.albums.add_assets_to_album = AsyncMock()
 
         result = client.upload_memory(video, album_name="Test Album")
 
@@ -229,14 +233,14 @@ class TestUploadConfig:
         from immich_memories.config_models_extra import UploadConfig
 
         cfg = UploadConfig()
-        assert cfg.enabled is False
+        assert not cfg.enabled
         assert cfg.album_name is None
 
     def test_config_in_main_config(self):
         from immich_memories.config_loader import Config
 
         cfg = Config()
-        assert cfg.upload.enabled is False
+        assert not cfg.upload.enabled
 
 
 class TestCLIUploadFlags:
@@ -246,7 +250,6 @@ class TestCLIUploadFlags:
 
         from immich_memories.cli import main
 
-        runner = CliRunner()
-        result = runner.invoke(main, ["generate", "--help"])
+        result = CliRunner().invoke(main, ["generate", "--help"])
         assert "--upload-to-immich" in result.output
         assert "--album" in result.output

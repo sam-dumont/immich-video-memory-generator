@@ -392,12 +392,12 @@ module = [
 ]
 disable_error_code = ["attr-defined", "truthy-function", "assignment", "has-type"]
 
-# PIL renderer with optional font types (split into mixins)
+# PIL renderer with optional font types
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.titles.renderer_pil",
     "immich_memories.titles.text_rendering",
-    "immich_memories.titles.ending_mixin",
+    "immich_memories.titles.ending_service",
 ]
 disable_error_code = ["attr-defined", "arg-type", "union-attr", "has-type"]
 
@@ -406,15 +406,10 @@ disable_error_code = ["attr-defined", "arg-type", "union-attr", "has-type"]
 module = ["immich_memories.titles.video_encoding"]
 disable_error_code = ["union-attr", "arg-type"]
 
-# Title rendering mixin with optional Taichi imports
+# Title rendering service with optional Taichi imports
 [[tool.mypy.overrides]]
-module = ["immich_memories.titles.rendering_mixin"]
+module = ["immich_memories.titles.rendering_service"]
 disable_error_code = ["assignment", "misc", "attr-defined", "arg-type"]
-
-# Trip map/location mixin (access parent class attributes via mixin pattern)
-[[tool.mypy.overrides]]
-module = ["immich_memories.titles.trip_mixin"]
-disable_error_code = ["attr-defined"]
 
 # Unified analyzer with complex audio analysis
 [[tool.mypy.overrides]]
@@ -463,17 +458,25 @@ module = [
 ]
 disable_error_code = ["attr-defined"]
 
-# Analysis pipeline mixins (access parent class attributes via mixin pattern)
+# Analysis pipeline services (composed services with callback injection)
 [[tool.mypy.overrides]]
 module = [
-    "immich_memories.analysis.pipeline_analysis",
-    "immich_memories.analysis.pipeline_refinement",
-    "immich_memories.analysis.pipeline_preview",
+    "immich_memories.analysis.clip_analyzer",
+    "immich_memories.analysis.clip_refiner",
+    "immich_memories.analysis.preview_builder",
     "immich_memories.analysis.candidate_generation",
     "immich_memories.analysis.analyzer_factory",
     "immich_memories.analysis.smart_pipeline",
 ]
-disable_error_code = ["attr-defined", "arg-type", "return-value"]
+disable_error_code = ["attr-defined", "arg-type", "return-value", "operator"]
+
+# API services (callback-based request delegation)
+[[tool.mypy.overrides]]
+module = [
+    "immich_memories.api.search_service",
+    "immich_memories.api.sync_client",
+]
+disable_error_code = ["arg-type"]
 
 # Pandas is optional for UI
 [[tool.mypy.overrides]]
@@ -570,6 +573,10 @@ forbidden_modules = ["immich_memories.cli"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: requires FFmpeg (deselect with '-m not integration')",
+]
+addopts = "-m 'not integration'"
 
 [tool.coverage.run]
 source = ["src/immich_memories"]

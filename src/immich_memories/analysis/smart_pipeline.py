@@ -15,10 +15,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from immich_memories.analysis.pipeline_analysis import AnalysisMixin
-from immich_memories.analysis.pipeline_preview import PreviewMixin
-from immich_memories.analysis.pipeline_refinement import RefinementMixin
-from immich_memories.analysis.pipeline_scaling import ScalingMixin
+from immich_memories.analysis.clip_analyzer import ClipAnalyzer
+from immich_memories.analysis.clip_refiner import ClipRefiner
+from immich_memories.analysis.clip_scaler import ClipScaler
+from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
 from immich_memories.tracking.run_database import RunDatabase
 
@@ -50,7 +50,7 @@ class PipelineConfig:
 
     # Resolution filtering - exclude small videos that would look bad upscaled
     # Set to 0 to disable, or specify minimum resolution
-    # If output_resolution is set, min_resolution defaults to output/2 (4K→1080, 1080→720)
+    # If output_resolution is set, min_resolution defaults to output/2 (4K->1080, 1080->720)
     min_resolution: int = 0  # 0 = auto based on output, or explicit minimum
     output_resolution: int = 2160  # Output resolution (2160=4K, 1080=HD) for auto min calc
 
@@ -96,8 +96,14 @@ class ClipWithSegment:
     score: float
 
 
-class SmartPipeline(AnalysisMixin, PreviewMixin, RefinementMixin, ScalingMixin):
+class SmartPipeline:
     """Smart pipeline for one-click memory generation.
+
+    Composes 4 services via constructor injection:
+    - ClipAnalyzer: downloads, analyzes, and scores clips
+    - PreviewBuilder: extracts preview segments
+    - ClipRefiner: selects and distributes final clips
+    - ClipScaler: scales to target duration and deduplicates
 
     Runs 4 phases:
     1. Cluster thumbnails to detect duplicates
@@ -114,15 +120,6 @@ class SmartPipeline(AnalysisMixin, PreviewMixin, RefinementMixin, ScalingMixin):
         config: PipelineConfig | None = None,
         run_id: str | None = None,
     ):
-        """Initialize the pipeline.
-
-        Args:
-            client: Immich API client.
-            analysis_cache: Cache for video analysis results.
-            thumbnail_cache: Cache for thumbnails.
-            config: Pipeline configuration.
-            run_id: Optional run ID for job tracking and cancellation support.
-        """
         self.client = client
         self.analysis_cache = analysis_cache
         self.thumbnail_cache = thumbnail_cache
@@ -130,6 +127,12 @@ class SmartPipeline(AnalysisMixin, PreviewMixin, RefinementMixin, ScalingMixin):
         self.tracker = ProgressTracker(total_phases=4)
         self.run_id = run_id
         self._run_db: RunDatabase | None = None
+
+        # Wire composed services
+        self.previewer = PreviewBuilder(client)
+        self.analyzer = ClipAnalyzer(self.config, client, analysis_cache, self.previewer)
+        self.scaler = ClipScaler()
+        self.refiner = ClipRefiner(self.config, self.scaler)
 
     def _check_cancelled(self) -> None:
         """Check if job cancellation was requested and raise if so."""
@@ -146,15 +149,7 @@ class SmartPipeline(AnalysisMixin, PreviewMixin, RefinementMixin, ScalingMixin):
         clips: list[VideoClipInfo],
         progress_callback: Callable[[dict], None] | None = None,
     ) -> PipelineResult:
-        """Run the full pipeline.
-
-        Args:
-            clips: All available clips.
-            progress_callback: Callback receiving status dict updates.
-
-        Returns:
-            Pipeline result with selected clips and segments.
-        """
+        """Run the full pipeline."""
         if progress_callback:
             self.tracker.add_callback(
                 lambda _: progress_callback(self.tracker.get_status_summary())
@@ -163,27 +158,26 @@ class SmartPipeline(AnalysisMixin, PreviewMixin, RefinementMixin, ScalingMixin):
         self.tracker.start()
 
         try:
-            # Check for cancellation before starting
             self._check_cancelled()
 
             # Phase 1: Cluster by thumbnail
             deduplicated = self._phase_cluster(clips)
-            gc.collect()  # Memory optimization: cleanup after phase
+            gc.collect()
             self._check_cancelled()
 
             # Phase 2: Filter and pre-select
             candidates = self._phase_filter(deduplicated)
-            gc.collect()  # Memory optimization: cleanup after phase
+            gc.collect()
             self._check_cancelled()
 
             # Phase 3: Analyze selected clips
-            analyzed = self._phase_analyze(candidates)
-            gc.collect()  # Memory optimization: cleanup after phase
+            analyzed = self.analyzer.phase_analyze(candidates, self.tracker, self._check_cancelled)
+            gc.collect()
             self._check_cancelled()
 
             # Phase 4: Refine final selection
-            result = self._phase_refine(analyzed)
-            gc.collect()  # Memory optimization: final cleanup
+            result = self.refiner.phase_refine(analyzed, self.tracker)
+            gc.collect()
 
             self.tracker.finish()
             return result
@@ -198,14 +192,7 @@ class SmartPipeline(AnalysisMixin, PreviewMixin, RefinementMixin, ScalingMixin):
             raise
 
     def _phase_cluster(self, clips: list[VideoClipInfo]) -> list[VideoClipInfo]:
-        """Phase 1: Cluster clips by thumbnail similarity.
-
-        Args:
-            clips: All clips.
-
-        Returns:
-            Deduplicated clips (one per cluster).
-        """
+        """Phase 1: Cluster clips by thumbnail similarity."""
         from immich_memories.analysis.duplicates import deduplicate_by_thumbnails
 
         self.tracker.start_phase(PipelinePhase.CLUSTERING, len(clips))
@@ -241,13 +228,6 @@ class SmartPipeline(AnalysisMixin, PreviewMixin, RefinementMixin, ScalingMixin):
         """Apply quality filters to non-favorites only.
 
         Applies HDR, compilation, and resolution filters sequentially.
-
-        Args:
-            non_favorites: Non-favorite clips to filter.
-            all_favorites: Favorites (for compilation warning only).
-
-        Returns:
-            Filtered non-favorites.
         """
         filtered = non_favorites
 
@@ -295,15 +275,7 @@ class SmartPipeline(AnalysisMixin, PreviewMixin, RefinementMixin, ScalingMixin):
         all_favorites: list[VideoClipInfo],
         filtered_non_favorites: list[VideoClipInfo],
     ) -> list[VideoClipInfo]:
-        """Select non-favorites from weeks that have no favorites.
-
-        Args:
-            all_favorites: All favorite clips.
-            filtered_non_favorites: Non-favorites after quality filtering.
-
-        Returns:
-            Best non-favorites from gap weeks (up to 3 per week).
-        """
+        """Select non-favorites from weeks that have no favorites."""
         from collections import defaultdict
 
         weeks_with_favorites: set[str] = set()
@@ -322,7 +294,10 @@ class SmartPipeline(AnalysisMixin, PreviewMixin, RefinementMixin, ScalingMixin):
         for week in sorted(weeks_needing_fill):
             week_clips = non_favorites_by_week[week]
             week_clips.sort(
-                key=lambda c: (c.width * c.height if c.width and c.height else 0, c.bitrate or 0),
+                key=lambda c: (
+                    c.width * c.height if c.width and c.height else 0,
+                    c.bitrate or 0,
+                ),
                 reverse=True,
             )
             gap_fillers.extend(week_clips[:3])
@@ -334,12 +309,6 @@ class SmartPipeline(AnalysisMixin, PreviewMixin, RefinementMixin, ScalingMixin):
 
         Favorites-first pipeline: ALL favorites get analyzed, filters only
         apply to non-favorites, non-favorites kept for gap-filling.
-
-        Args:
-            clips: Deduplicated clips.
-
-        Returns:
-            Clips to analyze (ALL favorites + some non-favorites for gaps).
         """
         self.tracker.start_phase(PipelinePhase.FILTERING, 1)
         self.tracker.start_item("Preparing analysis candidates")

@@ -1,23 +1,28 @@
-"""Upload and album management API methods."""
+"""Upload and album management API service."""
 
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+RequestFn = Callable[..., Any]
 
-class AlbumMixin:
-    # Provided by ImmichClient via multiple inheritance
-    async def _request(self, method: str, endpoint: str, **kwargs: Any) -> Any: ...  # type: ignore[empty-body]
+
+class AlbumService:
+    """Upload and album management operations against the Immich API."""
+
+    def __init__(self, request_fn: RequestFn) -> None:
+        self._request = request_fn
+
     async def upload_asset(self, file_path: Path) -> str:
         """Upload a file to Immich. Returns the asset ID."""
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
         stat = file_path.stat()
-        # Deterministic device asset ID for dedup
         file_hash = hashlib.sha256(file_path.name.encode() + str(stat.st_size).encode())
         device_asset_id = f"immich-memories-{file_hash.hexdigest()[:16]}"
         mtime = datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat()

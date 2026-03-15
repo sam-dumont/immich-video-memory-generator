@@ -1,10 +1,10 @@
-"""Search, video query, and time bucket API methods mixin."""
+"""Search, video query, and time bucket API service."""
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from immich_memories.api.models import (
     Asset,
@@ -16,9 +16,14 @@ from immich_memories.api.models import (
 if TYPE_CHECKING:
     from immich_memories.timeperiod import DateRange
 
+RequestFn = Callable[..., Any]
 
-class SearchMixin:
-    """Mixin providing search, video query, and time bucket methods for ImmichClient."""
+
+class SearchService:
+    """Search, video query, and time bucket operations against the Immich API."""
+
+    def __init__(self, request_fn: RequestFn) -> None:
+        self._request = request_fn
 
     async def search_metadata(
         self,
@@ -29,19 +34,7 @@ class SearchMixin:
         page: int = 1,
         size: int = 100,
     ) -> MetadataSearchResult:
-        """Search assets by metadata.
-
-        Args:
-            person_ids: Filter by person IDs.
-            asset_type: Filter by asset type.
-            taken_after: Filter by date (inclusive).
-            taken_before: Filter by date (inclusive).
-            page: Page number (1-indexed).
-            size: Page size.
-
-        Returns:
-            Search result with assets.
-        """
+        """Search assets by metadata."""
         payload: dict = {
             "page": page,
             "size": size,
@@ -67,16 +60,7 @@ class SearchMixin:
         year: int,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[Asset]:
-        """Get all videos for a specific person in a given year.
-
-        Args:
-            person_id: The person's ID.
-            year: The year to filter by.
-            progress_callback: Optional callback for progress updates.
-
-        Returns:
-            List of video assets.
-        """
+        """Get all videos for a specific person in a given year."""
         taken_after = datetime(year, 1, 1, 0, 0, 0)
         taken_before = datetime(year, 12, 31, 23, 59, 59)
 
@@ -105,7 +89,6 @@ class SearchMixin:
 
             page += 1
 
-        # Sort by date
         all_assets.sort(key=lambda a: a.file_created_at)
         return all_assets
 
@@ -114,15 +97,7 @@ class SearchMixin:
         year: int,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[Asset]:
-        """Get all videos for a given year.
-
-        Args:
-            year: The year to filter by.
-            progress_callback: Optional callback for progress updates.
-
-        Returns:
-            List of video assets.
-        """
+        """Get all videos for a given year."""
         taken_after = datetime(year, 1, 1, 0, 0, 0)
         taken_before = datetime(year, 12, 31, 23, 59, 59)
 
@@ -157,15 +132,7 @@ class SearchMixin:
         date_range: DateRange,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[Asset]:
-        """Get all videos within a date range.
-
-        Args:
-            date_range: The date range to filter by.
-            progress_callback: Optional callback for progress updates.
-
-        Returns:
-            List of video assets sorted by date.
-        """
+        """Get all videos within a date range."""
         all_assets: list[Asset] = []
         page = 1
 
@@ -317,7 +284,6 @@ class SearchMixin:
         person_ids: list[str] | None = None,
     ) -> list[Asset]:
         """Get Live Photo IMAGE assets, optionally filtered by person(s)."""
-        # Multi-person AND: query per person, intersect
         if person_ids and len(person_ids) >= 2:
             per_person: list[set[str]] = []
             assets_by_id: dict[str, Asset] = {}
@@ -342,16 +308,7 @@ class SearchMixin:
         person_id: str | None = None,
         batch_size: int = 20,
     ) -> AsyncIterator[Asset]:
-        """Iterate over videos within a date range.
-
-        Args:
-            date_range: The date range to filter by.
-            person_id: Optional person ID to filter by.
-            batch_size: Number of videos per batch.
-
-        Yields:
-            Asset objects.
-        """
+        """Iterate over videos within a date range."""
         page = 1
         person_ids = [person_id] if person_id else None
 
@@ -373,24 +330,13 @@ class SearchMixin:
 
             page += 1
 
-    # Time bucket endpoints
-
     async def get_time_buckets(
         self,
         size: str = "MONTH",
         asset_type: AssetType | None = None,
         person_id: str | None = None,
     ) -> list[TimeBucket]:
-        """Get time buckets for timeline view.
-
-        Args:
-            size: Bucket size ("DAY", "MONTH").
-            asset_type: Filter by asset type.
-            person_id: Filter by person ID.
-
-        Returns:
-            List of time buckets.
-        """
+        """Get time buckets for timeline view."""
         params: dict = {"size": size}
         if asset_type:
             params["type"] = asset_type.value
@@ -407,17 +353,7 @@ class SearchMixin:
         asset_type: AssetType | None = None,
         person_id: str | None = None,
     ) -> list[Asset]:
-        """Get assets for a specific time bucket.
-
-        Args:
-            bucket: Time bucket string (e.g., "2024-01-01T00:00:00.000Z").
-            size: Bucket size ("DAY", "MONTH").
-            asset_type: Filter by asset type.
-            person_id: Filter by person ID.
-
-        Returns:
-            List of assets in the bucket.
-        """
+        """Get assets for a specific time bucket."""
         params: dict = {
             "size": size,
             "timeBucket": bucket,
@@ -430,20 +366,11 @@ class SearchMixin:
         data = await self._request("GET", "/timeline/bucket", params=params)
         return [Asset(**a) for a in data]
 
-    # Utility methods
-
     async def get_available_years(
         self,
         person_id: str | None = None,
     ) -> list[int]:
-        """Get list of years that have video content.
-
-        Args:
-            person_id: Optional person ID to filter by.
-
-        Returns:
-            Sorted list of years with videos.
-        """
+        """Get list of years that have video content."""
         buckets = await self.get_time_buckets(
             size="MONTH",
             asset_type=AssetType.VIDEO,
@@ -452,7 +379,6 @@ class SearchMixin:
 
         years = set()
         for bucket in buckets:
-            # Parse year from bucket time string
             try:
                 dt = datetime.fromisoformat(bucket.time_bucket)
                 years.add(dt.year)
@@ -467,16 +393,7 @@ class SearchMixin:
         year: int,
         batch_size: int = 20,
     ) -> AsyncIterator[Asset]:
-        """Iterate over videos for a person and year.
-
-        Args:
-            person_id: The person's ID.
-            year: The year to filter by.
-            batch_size: Number of videos per batch.
-
-        Yields:
-            Asset objects.
-        """
+        """Iterate over videos for a person and year."""
         taken_after = datetime(year, 1, 1, 0, 0, 0)
         taken_before = datetime(year, 12, 31, 23, 59, 59)
         page = 1

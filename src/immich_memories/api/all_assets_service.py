@@ -1,55 +1,39 @@
-"""Asset-type-agnostic query methods mixin.
+"""Asset-type-agnostic query service.
 
-These methods fetch ALL asset types (photos, videos, live photos) without
-filtering by type. Used for trip detection where GPS data from any asset
-type is valuable — especially for pre-2018 trips that only have photos.
+Fetches ALL asset types (photos, videos, live photos) without filtering
+by type. Used for trip detection where GPS data from any asset type is
+valuable -- especially for pre-2018 trips that only have photos.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
 from typing import TYPE_CHECKING
 
-from immich_memories.api.models import Asset, AssetType, MetadataSearchResult
+from immich_memories.api.models import Asset
+from immich_memories.api.search_service import SearchService
 
 if TYPE_CHECKING:
     from immich_memories.timeperiod import DateRange
 
 
-class AllAssetsMixin:
-    """Mixin providing asset-type-agnostic query methods for ImmichClient."""
+class AllAssetsService:
+    """Asset-type-agnostic queries, delegating search to SearchService."""
 
-    # Provided by SearchMixin via multiple inheritance
-    async def search_metadata(  # type: ignore[empty-body]
-        self,
-        person_ids: list[str] | None = None,
-        asset_type: AssetType | None = None,
-        taken_after: datetime | None = None,
-        taken_before: datetime | None = None,
-        page: int = 1,
-        size: int = 100,
-    ) -> MetadataSearchResult: ...
+    def __init__(self, search: SearchService) -> None:
+        self._search = search
 
     async def get_assets_for_date_range(
         self,
         date_range: DateRange,
         progress_callback: Callable[[int, int | None], None] | None = None,
     ) -> list[Asset]:
-        """Get ALL assets (photos, videos, live photos) within a date range.
-
-        Args:
-            date_range: The date range to filter by.
-            progress_callback: Optional callback for progress updates.
-
-        Returns:
-            List of all assets sorted by date.
-        """
+        """Get ALL assets (photos, videos, live photos) within a date range."""
         all_assets: list[Asset] = []
         page = 1
 
         while True:
-            result = await self.search_metadata(
+            result = await self._search.search_metadata(
                 asset_type=None,
                 taken_after=date_range.start,
                 taken_before=date_range.end,
@@ -82,7 +66,7 @@ class AllAssetsMixin:
         page = 1
 
         while True:
-            result = await self.search_metadata(
+            result = await self._search.search_metadata(
                 person_ids=[person_id],
                 asset_type=None,
                 taken_after=date_range.start,

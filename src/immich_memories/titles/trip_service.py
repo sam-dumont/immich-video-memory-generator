@@ -1,7 +1,7 @@
-"""Trip map and location card generation mixin for TitleScreenGenerator.
+"""Trip map and location card generation service.
 
 Provides methods for generating trip-specific title screens:
-- Animated satellite map fly-over (city zoom → pan → city zoom)
+- Animated satellite map fly-over (city zoom -> pan -> city zoom)
 - Fallback: static satellite map with pins (when no home coords)
 - Location interstitial cards between clips
 """
@@ -9,21 +9,30 @@ Provides methods for generating trip-specific title screens:
 from __future__ import annotations
 
 import logging
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from .generator import GeneratedScreen, TitleScreenConfig
+    from .rendering_service import RenderingService
 
 logger = logging.getLogger(__name__)
 
 
-class TripScreenMixin:
-    """Mixin providing trip map and location card generation.
+class TripService:
+    """Generates trip map screens and location cards."""
 
-    Requires the host class to have:
-        - self.config: TitleScreenConfig with output_resolution, title_duration, etc.
-        - self._use_gpu: bool
-        - self._create_map_video(): from RenderingMixin
-        - self.output_dir: Path
-    """
+    def __init__(
+        self,
+        config: TitleScreenConfig,
+        rendering: RenderingService,
+        output_dir: Path,
+    ) -> None:
+        self.config = config
+        self._rendering = rendering
+        self.output_dir = output_dir
 
     def generate_trip_map_screen(
         self,
@@ -33,23 +42,11 @@ class TripScreenMixin:
         home_lat: float | None = None,
         home_lon: float | None = None,
         location_names: list[str] | None = None,
-    ):  # -> GeneratedScreen
+    ) -> GeneratedScreen:
         """Generate a trip map overview screen.
 
         When home coordinates are provided, renders an animated satellite
-        map fly-over: city-level at departure → zoom out → pan → zoom in
-        at destination. Falls back to static map otherwise.
-
-        Args:
-            locations: List of (lat, lon) for destination pins.
-            title_text: Title overlay text.
-            subtitle_text: Optional subtitle (static map only).
-            home_lat: Departure latitude (degrees).
-            home_lon: Departure longitude (degrees).
-            location_names: City names for each destination.
-
-        Returns:
-            GeneratedScreen with path to map video.
+        map fly-over. Falls back to static map otherwise.
         """
         if home_lat is not None and home_lon is not None:
             return self._generate_map_fly(locations, title_text, home_lat, home_lon, location_names)
@@ -62,7 +59,7 @@ class TripScreenMixin:
         home_lat: float,
         home_lon: float,
         location_names: list[str] | None = None,
-    ):  # -> GeneratedScreen
+    ) -> GeneratedScreen:
         """Animated satellite map fly-over from home to destinations."""
         from .generator import GeneratedScreen
         from .map_animation import create_map_fly_video
@@ -99,7 +96,7 @@ class TripScreenMixin:
         title_text: str,
         subtitle_text: str | None,
         location_names: list[str] | None = None,
-    ):  # -> GeneratedScreen
+    ) -> GeneratedScreen:
         """Static satellite map with pins (fallback when no home coords)."""
         from .generator import GeneratedScreen
         from .map_renderer import render_trip_map_array
@@ -108,7 +105,7 @@ class TripScreenMixin:
         map_array = render_trip_map_array(locations, width, height, location_names=location_names)
 
         output_path = self.output_dir / "trip_map_intro.mp4"
-        self._create_map_video(
+        self._rendering.create_map_video(
             title=title_text,
             subtitle=subtitle_text,
             background_array=map_array,
@@ -119,7 +116,7 @@ class TripScreenMixin:
             fps=self.config.fps,
         )
 
-        renderer_type = "GPU (Taichi)" if self._use_gpu else "CPU (PIL)"
+        renderer_type = "GPU (Taichi)" if self._rendering.use_gpu else "CPU (PIL)"
         logger.info(f"Trip map screen generated [{renderer_type}]: {output_path}")
 
         return GeneratedScreen(
@@ -131,15 +128,8 @@ class TripScreenMixin:
     def generate_location_card_screen(
         self,
         location_name: str,
-    ):  # -> GeneratedScreen
-        """Generate a location interstitial card.
-
-        Args:
-            location_name: Location name to display.
-
-        Returns:
-            GeneratedScreen with path to card video.
-        """
+    ) -> GeneratedScreen:
+        """Generate a location interstitial card."""
         from .generator import GeneratedScreen
         from .map_renderer import render_location_card
 
@@ -150,7 +140,7 @@ class TripScreenMixin:
         safe_name = location_name.replace(" ", "_").replace(",", "")[:30]
         output_path = self.output_dir / f"location_{safe_name}.mp4"
 
-        self._create_map_video(
+        self._rendering.create_map_video(
             title=location_name,
             subtitle=None,
             background_array=card_array,

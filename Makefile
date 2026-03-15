@@ -98,6 +98,9 @@ test:
 benchmark:
 	uv run pytest tests/benchmarks/ -v --benchmark-only
 
+test-integration:  ## Run integration tests (requires FFmpeg)
+	uv run pytest tests/integration/ -v -m integration
+
 test-cov:
 	uv run pytest --cov=src/immich_memories --cov-report=html --cov-report=term-missing
 	@echo "Coverage report: htmlcov/index.html"
