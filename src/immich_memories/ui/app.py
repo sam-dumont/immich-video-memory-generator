@@ -26,7 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 def _get_storage_secret() -> str:
-    """Get or create a persistent storage secret for NiceGUI sessions."""
+    """Get storage secret from env var, file, or generate one.
+
+    Priority: IMMICH_MEMORIES_STORAGE_SECRET env var > file > auto-generate.
+    Docker/K8s users can mount a secret via the env var.
+    """
+    env_secret = os.environ.get("IMMICH_MEMORIES_STORAGE_SECRET")
+    if env_secret:
+        return env_secret
+
     secret_path = Path.home() / ".immich-memories" / ".storage_secret"
     if secret_path.exists():
         return secret_path.read_text().strip()
