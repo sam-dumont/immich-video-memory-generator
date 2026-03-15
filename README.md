@@ -1,9 +1,10 @@
 # Immich Memories
 
 [![CI](https://github.com/sam-dumont/immich-video-memory-generator/actions/workflows/ci.yml/badge.svg)](https://github.com/sam-dumont/immich-video-memory-generator/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sam-dumont/immich-video-memory-generator/badge)](https://scorecard.dev/viewer/?uri=github.com/sam-dumont/immich-video-memory-generator)
 [![Release](https://github.com/sam-dumont/immich-video-memory-generator/actions/workflows/release.yml/badge.svg)](https://github.com/sam-dumont/immich-video-memory-generator/actions/workflows/release.yml)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/pypi/pyversions/immich-video-memory-generator)](https://pypi.org/project/immich-video-memory-generator/)
+[![License](https://img.shields.io/github/license/sam-dumont/immich-video-memory-generator)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-Docusaurus-blue)](https://sam-dumont.github.io/immich-video-memory-generator/)
 
 **Create beautiful yearly video compilations from your [Immich](https://immich.app/) photo library.**
@@ -82,7 +83,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## Built with AI
 
 > This entire codebase was written with AI (Claude) as an experiment in building complex
-> software cleanly with AI assistance. 870+ tests, strict quality gates, the works.
+> software cleanly with AI assistance. 1,100+ tests, strict quality gates, the works.
 > See [DISCLAIMER.md](DISCLAIMER.md) for the full story.
 
 ## License

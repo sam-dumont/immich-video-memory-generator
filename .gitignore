@@ -136,3 +136,5 @@ error_log.log
 .continue/
 .junie/
 .kiro/
+mutants/
+.mutmut-cache/

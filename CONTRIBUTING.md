@@ -6,7 +6,7 @@ Thank you for your interest in contributing to Immich Memories! This document pr
 
 > This project is written almost entirely with AI (Claude by Anthropic) as an experiment in
 > pushing AI-assisted development on a real, complex codebase. The quality gates are strict
-> (970+ tests, type checking, complexity limits, security scanning), so don't be shy about
+> (1,100+ tests, type checking, complexity limits, security scanning), so don't be shy about
 > holding contributions to the same bar. If you spot something the AI got wrong, fix it.
 
 ## Code of Conduct
@@ -196,18 +196,18 @@ uv run pytest tests/test_specific.py::test_function_name -v
 
 ## Project Structure
 
-The codebase enforces a 500-line limit per `.py` file. Large classes use mixins to split logic while keeping a single public API. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full module listing with 23+ files per package.
+The codebase enforces a 500-line limit per `.py` file. Large classes compose smaller service objects via constructor injection instead of inheritance. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full module listing.
 
 ```
 immich-memories/
 ├── src/immich_memories/
 │   ├── cli/                # CLI commands (Click)
 │   ├── config.py           # Configuration (re-exports from config_loader, config_models)
-│   ├── api/                # Immich API client (SyncImmichClient + 3 mixins)
-│   ├── analysis/           # Video analysis & clip selection (SmartPipeline + 4 mixins)
-│   ├── processing/         # Video processing (VideoAssembler + 11 mixins)
+│   ├── api/                # Immich API client (ImmichClient + 5 services)
+│   ├── analysis/           # Video analysis & clip selection (SmartPipeline + 4 services)
+│   ├── processing/         # Video processing (VideoAssembler + 7 services)
 │   ├── audio/              # Audio processing, music generation, mood analysis
-│   ├── titles/             # Title screen generation (PIL, Taichi, FFmpeg renderers)
+│   ├── titles/             # Title screen generation (TitleScreenGenerator + 3 services)
 │   ├── tracking/           # Run history & telemetry (SQLite)
 │   ├── ui/                 # NiceGUI web interface
 │   │   ├── app.py

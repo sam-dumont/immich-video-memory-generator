@@ -10,16 +10,22 @@ The question I'm trying to answer: can you build something genuinely complex wit
 
 The AI writes code. I make sure it's good. Every line goes through:
 
-- 870+ tests (unit, integration, benchmarks)
+- 1,100+ tests (unit, integration, benchmarks)
 - Ruff linting and formatting on every PR
 - mypy static type checking
-- Cyclomatic complexity gates (Xenon grade C max)
+- Cyclomatic complexity gates (Xenon grade C max, cognitive complexity checks)
 - 500-line file length limits
 - Dead code detection (Vulture)
+- Code duplication detection
+- Refurb modernization checks
 - Security scanning: Bandit, Semgrep, Gitleaks
 - Dependency vulnerability auditing (pip-audit)
 - Dockerfile linting (Hadolint)
+- Docstring coverage enforcement
+- Architecture layer enforcement
 - Conventional commit enforcement
+- OpenSSF Scorecard monitoring
+- 17 CI quality gates (tiered: cheap gates first, tests and Docker after)
 - Pre-commit hooks running all of the above locally
 
 If a human wrote this code, nobody would bat an eye at the quality. The AI part is the interesting experiment, not a caveat.
