@@ -160,7 +160,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: make dev
+        run: make dev-ci
 
       - name: Run mypy
         run: make typecheck
