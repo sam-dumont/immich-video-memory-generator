@@ -23,10 +23,8 @@ on:
           - major
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
-env:
   PYTHON_VERSION: "3.13"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # Determine if a release is needed based on commits AND branch names
