@@ -296,9 +296,8 @@ class TestTripCLI:
 
         from immich_memories.cli import main
 
-        runner = CliRunner()
         # Use --dry-run so it doesn't actually try to connect to Immich
-        result = runner.invoke(main, ["generate", "--memory-type", "trip", "--year", "2024"])
+        result = CliRunner().invoke(main, ["generate", "--memory-type", "trip", "--year", "2024"])
         # Should NOT fail with "Invalid value for '--memory-type'"
         assert "Invalid value" not in (result.output or "")
 
@@ -308,8 +307,7 @@ class TestTripCLI:
 
         from immich_memories.cli import main
 
-        runner = CliRunner()
-        result = runner.invoke(main, ["generate", "--help"])
+        result = CliRunner().invoke(main, ["generate", "--help"])
         assert "--trip-index" in result.output
 
     def test_all_trips_option_exists(self):
@@ -318,8 +316,7 @@ class TestTripCLI:
 
         from immich_memories.cli import main
 
-        runner = CliRunner()
-        result = runner.invoke(main, ["generate", "--help"])
+        result = CliRunner().invoke(main, ["generate", "--help"])
         assert "--all-trips" in result.output
 
     def test_trip_requires_year(self):
@@ -328,8 +325,7 @@ class TestTripCLI:
 
         from immich_memories.cli import main
 
-        runner = CliRunner()
-        result = runner.invoke(main, ["generate", "--memory-type", "trip"])
+        result = CliRunner().invoke(main, ["generate", "--memory-type", "trip"])
         assert result.exit_code != 0
         # In CI (no Immich config), "not configured" fires before year validation.
         # In dev, the year check triggers. Either way, the command must fail.
@@ -1184,45 +1180,45 @@ class TestDetectOvernightStops:
         # Base A: 4 days with photos at base
         for day in range(4, 8):
             ts = f"2019-07-0{day}T"
-            assets.append(
-                _make_asset(*base_a, f"{ts}08:00:00", local_dt=f"{ts}08:00:00", city="Chania")
-            )
-            assets.append(
-                _make_asset(*base_a, f"{ts}19:00:00", local_dt=f"{ts}19:00:00", city="Chania")
+            assets.extend(
+                (
+                    _make_asset(*base_a, f"{ts}08:00:00", local_dt=f"{ts}08:00:00", city="Chania"),
+                    _make_asset(*base_a, f"{ts}19:00:00", local_dt=f"{ts}19:00:00", city="Chania"),
+                )
             )
 
         # Day 8: excursion to Samaria Gorge — leave base, don't come back
-        assets.append(
-            _make_asset(
-                *base_a, "2019-07-08T07:00:00", local_dt="2019-07-08T07:00:00", city="Chania"
-            )
-        )
-        assets.append(
-            _make_asset(
-                *gorge, "2019-07-08T18:00:00", local_dt="2019-07-08T18:00:00", city="Samaria"
+        assets.extend(
+            (
+                _make_asset(
+                    *base_a, "2019-07-08T07:00:00", local_dt="2019-07-08T07:00:00", city="Chania"
+                ),
+                _make_asset(
+                    *gorge, "2019-07-08T18:00:00", local_dt="2019-07-08T18:00:00", city="Samaria"
+                ),
             )
         )
 
         # Day 9: travel from gorge to base B
-        assets.append(
-            _make_asset(
-                *gorge, "2019-07-09T08:00:00", local_dt="2019-07-09T08:00:00", city="Samaria"
-            )
-        )
-        assets.append(
-            _make_asset(
-                *base_b, "2019-07-09T18:00:00", local_dt="2019-07-09T18:00:00", city="Sitia"
+        assets.extend(
+            (
+                _make_asset(
+                    *gorge, "2019-07-09T08:00:00", local_dt="2019-07-09T08:00:00", city="Samaria"
+                ),
+                _make_asset(
+                    *base_b, "2019-07-09T18:00:00", local_dt="2019-07-09T18:00:00", city="Sitia"
+                ),
             )
         )
 
         # Base B: 4 days with photos at base
         for day in range(10, 14):
             ts = f"2019-07-{day}T"
-            assets.append(
-                _make_asset(*base_b, f"{ts}08:00:00", local_dt=f"{ts}08:00:00", city="Sitia")
-            )
-            assets.append(
-                _make_asset(*base_b, f"{ts}19:00:00", local_dt=f"{ts}19:00:00", city="Sitia")
+            assets.extend(
+                (
+                    _make_asset(*base_b, f"{ts}08:00:00", local_dt=f"{ts}08:00:00", city="Sitia"),
+                    _make_asset(*base_b, f"{ts}19:00:00", local_dt=f"{ts}19:00:00", city="Sitia"),
+                )
             )
 
         bases = detect_overnight_stops(assets)
@@ -1249,58 +1245,64 @@ class TestDetectOvernightStops:
         # Days 1-5: at base
         for day in range(1, 6):
             ts = f"2021-08-0{day}T"
-            assets.append(
-                _make_asset(
-                    *base, f"{ts}08:00:00", local_dt=f"{ts}08:00:00", city="Ville Sur Sarre"
-                )
-            )
-            assets.append(
-                _make_asset(
-                    *base, f"{ts}19:00:00", local_dt=f"{ts}19:00:00", city="Ville Sur Sarre"
+            assets.extend(
+                (
+                    _make_asset(
+                        *base, f"{ts}08:00:00", local_dt=f"{ts}08:00:00", city="Ville Sur Sarre"
+                    ),
+                    _make_asset(
+                        *base, f"{ts}19:00:00", local_dt=f"{ts}19:00:00", city="Ville Sur Sarre"
+                    ),
                 )
             )
 
         # Day 6: leave base, go to excursion, sleep there
-        assets.append(
-            _make_asset(
-                *base, "2021-08-06T08:00:00", local_dt="2021-08-06T08:00:00", city="Ville Sur Sarre"
-            )
-        )
-        assets.append(
-            _make_asset(
-                *excursion,
-                "2021-08-06T18:00:00",
-                local_dt="2021-08-06T18:00:00",
-                city="Grand St-Bernard",
+        assets.extend(
+            (
+                _make_asset(
+                    *base,
+                    "2021-08-06T08:00:00",
+                    local_dt="2021-08-06T08:00:00",
+                    city="Ville Sur Sarre",
+                ),
+                _make_asset(
+                    *excursion,
+                    "2021-08-06T18:00:00",
+                    local_dt="2021-08-06T18:00:00",
+                    city="Grand St-Bernard",
+                ),
             )
         )
 
         # Day 7: return to base
-        assets.append(
-            _make_asset(
-                *excursion,
-                "2021-08-07T08:00:00",
-                local_dt="2021-08-07T08:00:00",
-                city="Grand St-Bernard",
-            )
-        )
-        assets.append(
-            _make_asset(
-                *base, "2021-08-07T17:00:00", local_dt="2021-08-07T17:00:00", city="Ville Sur Sarre"
+        assets.extend(
+            (
+                _make_asset(
+                    *excursion,
+                    "2021-08-07T08:00:00",
+                    local_dt="2021-08-07T08:00:00",
+                    city="Grand St-Bernard",
+                ),
+                _make_asset(
+                    *base,
+                    "2021-08-07T17:00:00",
+                    local_dt="2021-08-07T17:00:00",
+                    city="Ville Sur Sarre",
+                ),
             )
         )
 
         # Days 8-9: back at base
         for day in range(8, 10):
             ts = f"2021-08-0{day}T"
-            assets.append(
-                _make_asset(
-                    *base, f"{ts}08:00:00", local_dt=f"{ts}08:00:00", city="Ville Sur Sarre"
-                )
-            )
-            assets.append(
-                _make_asset(
-                    *base, f"{ts}19:00:00", local_dt=f"{ts}19:00:00", city="Ville Sur Sarre"
+            assets.extend(
+                (
+                    _make_asset(
+                        *base, f"{ts}08:00:00", local_dt=f"{ts}08:00:00", city="Ville Sur Sarre"
+                    ),
+                    _make_asset(
+                        *base, f"{ts}19:00:00", local_dt=f"{ts}19:00:00", city="Ville Sur Sarre"
+                    ),
                 )
             )
 

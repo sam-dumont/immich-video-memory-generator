@@ -321,8 +321,9 @@ class TestLocationDividerInsertion:
         mock_settings = MagicMock()
         mock_settings.month_divider_duration = 2.0
 
-        mixin = AssemblerTripMixin()
-        result = mixin._build_clips_with_location_dividers(clips, mock_gen, mock_settings, None)
+        result = AssemblerTripMixin()._build_clips_with_location_dividers(
+            clips, mock_gen, mock_settings, None
+        )
 
         # 3 content clips + 1 location divider = 4
         assert len(result) == 4
@@ -338,8 +339,9 @@ class TestLocationDividerInsertion:
             self._make_clip("clip2.mp4", lat=41.40, lon=2.18, name="Barcelona"),
         ]
 
-        mixin = AssemblerTripMixin()
-        result = mixin._build_clips_with_location_dividers(clips, MagicMock(), MagicMock(), None)
+        result = AssemblerTripMixin()._build_clips_with_location_dividers(
+            clips, MagicMock(), MagicMock(), None
+        )
 
         assert len(result) == 2  # No dividers
 
@@ -362,8 +364,9 @@ class TestLocationDividerInsertion:
         mock_settings = MagicMock()
         mock_settings.month_divider_duration = 2.0
 
-        mixin = AssemblerTripMixin()
-        result = mixin._build_clips_with_location_dividers(clips, mock_gen, mock_settings, None)
+        result = AssemblerTripMixin()._build_clips_with_location_dividers(
+            clips, mock_gen, mock_settings, None
+        )
 
         # clip1, clip2 (no GPS), divider, clip3 = 4
         assert len(result) == 4

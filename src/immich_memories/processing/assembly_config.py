@@ -174,9 +174,8 @@ def _get_rotation_filter(rotation: int) -> str:
     Returns:
         FFmpeg filter string (e.g., "transpose=1" for 90° clockwise).
     """
-    rotation_filters = {
+    return {
         90: "transpose=1",  # 90° clockwise
         180: "hflip,vflip",  # 180° rotation
         270: "transpose=2",  # 90° counter-clockwise (270° clockwise)
-    }
-    return rotation_filters.get(rotation, "")
+    }.get(rotation, "")
