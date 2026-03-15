@@ -55,6 +55,31 @@ class DefaultsConfig(BaseModel):
     )
 
 
+_CLIP_STYLE_PRESETS: dict[str, dict[str, float]] = {
+    "fast-cuts": {
+        "optimal_clip_duration": 3.0,
+        "max_optimal_duration": 6.0,
+        "target_extraction_ratio": 0.3,
+        "max_segment_duration": 8.0,
+        "min_segment_duration": 1.5,
+    },
+    "balanced": {
+        "optimal_clip_duration": 5.0,
+        "max_optimal_duration": 10.0,
+        "target_extraction_ratio": 0.4,
+        "max_segment_duration": 15.0,
+        "min_segment_duration": 2.0,
+    },
+    "long-cuts": {
+        "optimal_clip_duration": 8.0,
+        "max_optimal_duration": 15.0,
+        "target_extraction_ratio": 0.5,
+        "max_segment_duration": 25.0,
+        "min_segment_duration": 3.0,
+    },
+}
+
+
 class AnalysisConfig(BaseModel):
     """Settings for video analysis."""
 
@@ -62,6 +87,14 @@ class AnalysisConfig(BaseModel):
     min_scene_duration: float = Field(default=1.0, ge=0.5, le=10.0)
     duplicate_hash_threshold: int = Field(default=8, ge=0, le=64)
     keyframe_interval: float = Field(default=1.0, ge=0.5, le=5.0)
+
+    # Clip style preset — sets the 5 duration params below.
+    # Explicit overrides win over the preset.
+    clip_style: Literal["fast-cuts", "balanced", "long-cuts"] | None = Field(
+        default=None,
+        description="Clip pacing preset (fast-cuts | balanced | long-cuts). "
+        "Sets duration params below; explicit overrides win.",
+    )
 
     # Scene detection settings
     use_scene_detection: bool = Field(
@@ -98,6 +131,25 @@ class AnalysisConfig(BaseModel):
         le=0.5,
         description="Target ratio of clip to source duration (0.25 = 25% of source)",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def apply_clip_style(cls, data: dict) -> dict:
+        """Expand clip_style preset into duration params (explicit overrides win)."""
+        if not isinstance(data, dict):
+            return data
+        style = data.get("clip_style")
+        if style is None:
+            return data
+        if style not in _CLIP_STYLE_PRESETS:
+            raise ValueError(
+                f"Invalid clip_style '{style}'. Choose from: {', '.join(_CLIP_STYLE_PRESETS)}"
+            )
+        preset = _CLIP_STYLE_PRESETS[style]
+        for key, value in preset.items():
+            if key not in data:
+                data[key] = value
+        return data
 
     # Live Photo settings
     include_live_photos: bool = Field(
