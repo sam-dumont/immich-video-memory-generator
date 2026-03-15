@@ -243,7 +243,7 @@ def transform_smart_crop(
         return transform_fill(input_path, output_path, target_resolution)
 
     src_w, src_h = get_video_dimensions(input_path)
-    if src_w == 0 or src_h == 0:
+    if 0 in (src_w, src_h):
         return transform_fill(input_path, output_path, target_resolution)
 
     crop_region = calculate_smart_crop(src_w, src_h, target_resolution, face_positions)

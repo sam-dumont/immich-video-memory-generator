@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -244,10 +245,8 @@ class VideoAnalyzer:
             return None
         finally:
             if temp_file:
-                try:
+                with contextlib.suppress(Exception):
                     temp_file.unlink(missing_ok=True)
-                except Exception:
-                    pass
 
     def get_analysis_status(
         self,
@@ -293,9 +292,7 @@ class ClusterManager:
         best_id = max(
             group_ids,
             key=lambda aid: (
-                (clip_lookup[aid].width or 0) * (clip_lookup[aid].height or 0)
-                if aid in clip_lookup
-                else 0
+                (clip_lookup[aid].width) * (clip_lookup[aid].height) if aid in clip_lookup else 0
             ),
         )
         best_hash = hashes.get(best_id, "")
@@ -360,7 +357,7 @@ class ClusterManager:
             int1 = int(hash1, 16)
             int2 = int(hash2, 16)
             xor = int1 ^ int2
-            return bin(xor).count("1")
+            return xor.bit_count()
         except (ValueError, TypeError):
             return 64  # Maximum distance if hashes are invalid
 

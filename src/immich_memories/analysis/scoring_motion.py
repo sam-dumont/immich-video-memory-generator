@@ -57,7 +57,7 @@ def compute_motion_metrics(
     # High std indicates camera shake or erratic motion
     stability_score = max(0, 1 - (motion_std / 20))
 
-    return float(motion_score), float(stability_score)
+    return motion_score, float(stability_score)
 
 
 def compute_duration_score(

@@ -151,7 +151,7 @@ class LocalMusicSource(MusicSource):
         parent_name = path.parent.name.lower()
         return [
             mood
-            for mood in ["happy", "sad", "calm", "energetic", "romantic"]
+            for mood in ("happy", "sad", "calm", "energetic", "romantic")
             if mood in parent_name or mood in title.lower()
         ]
 

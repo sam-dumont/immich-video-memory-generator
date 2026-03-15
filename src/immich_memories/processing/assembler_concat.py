@@ -125,8 +125,12 @@ class AssemblerConcatMixin:
                 t_idx = input_idx
                 input_idx += 1
 
-                filter_parts.append(f"[{t_idx}:v]setpts=PTS-STARTPTS[v{t_idx}]")
-                filter_parts.append(f"[{t_idx}:a]{audio_format},asetpts=PTS-STARTPTS[a{t_idx}]")
+                filter_parts.extend(
+                    (
+                        f"[{t_idx}:v]setpts=PTS-STARTPTS[v{t_idx}]",
+                        f"[{t_idx}:a]{audio_format},asetpts=PTS-STARTPTS[a{t_idx}]",
+                    )
+                )
 
                 concat_labels_v.append(f"[v{t_idx}]")
                 concat_labels_a.append(f"[a{t_idx}]")
@@ -215,10 +219,9 @@ class AssemblerConcatMixin:
             inputs.extend(["-i", str(seg)])
 
         # Build concat filter: [0:v][0:a][1:v][1:a]...concat=n=N:v=1:a=1
-        filter_parts = []
+        filter_parts: list[str] = []
         for i in range(n):
-            filter_parts.append(f"[{i}:v]")
-            filter_parts.append(f"[{i}:a]")
+            filter_parts.extend((f"[{i}:v]", f"[{i}:a]"))
         filter_parts.append(f"concat=n={n}:v=1:a=1[vout][aout]")
         filter_complex = "".join(filter_parts)
 
@@ -324,12 +327,12 @@ class AssemblerConcatMixin:
                 v_out = f"[vx{i}]"
                 a_out = f"[ax{i}]"
 
-                filter_parts.append(
-                    f"{current_video}{next_video}xfade=transition=fade:"
-                    f"duration={fade}:offset={offset}{v_out}"
-                )
-                filter_parts.append(
-                    f"{current_audio}{next_audio}acrossfade=d={fade}:c1=tri:c2=tri{a_out}"
+                filter_parts.extend(
+                    (
+                        f"{current_video}{next_video}xfade=transition=fade:"
+                        f"duration={fade}:offset={offset}{v_out}",
+                        f"{current_audio}{next_audio}acrossfade=d={fade}:c1=tri:c2=tri{a_out}",
+                    )
                 )
 
                 current_video = v_out
@@ -341,8 +344,12 @@ class AssemblerConcatMixin:
                 v_out = f"[vc{i}]"
                 a_out = f"[ac{i}]"
 
-                filter_parts.append(f"{current_video}{next_video}concat=n=2:v=1:a=0{v_out}")
-                filter_parts.append(f"{current_audio}{next_audio}concat=n=2:v=0:a=1{a_out}")
+                filter_parts.extend(
+                    (
+                        f"{current_video}{next_video}concat=n=2:v=1:a=0{v_out}",
+                        f"{current_audio}{next_audio}concat=n=2:v=0:a=1{a_out}",
+                    )
+                )
 
                 current_video = v_out
                 current_audio = a_out

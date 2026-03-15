@@ -28,7 +28,7 @@ def resolve_schedule_params(entry: ScheduleEntry, fire_time: datetime) -> dict[s
     auto: dict[str, Any] = {"memory_type": entry.memory_type}
 
     if entry.person_names:
-        auto["person_names"] = list(entry.person_names)
+        auto["person_names"] = entry.person_names.copy()
 
     if entry.duration_minutes:
         auto["duration_minutes"] = entry.duration_minutes

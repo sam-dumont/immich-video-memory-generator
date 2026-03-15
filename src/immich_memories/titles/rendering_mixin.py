@@ -90,20 +90,19 @@ class RenderingMixin:
                 is_birthday,
                 hdr=hdr,
             )
-        else:
-            return create_title_video(
-                title=title,
-                subtitle=subtitle,
-                style=style,
-                output_path=output_path,
-                width=width,
-                height=height,
-                duration=duration,
-                fps=fps,
-                animated_background=animated_background,
-                fade_from_white=fade_from_white,
-                hdr=hdr,
-            )
+        return create_title_video(
+            title=title,
+            subtitle=subtitle,
+            style=style,
+            output_path=output_path,
+            width=width,
+            height=height,
+            duration=duration,
+            fps=fps,
+            animated_background=animated_background,
+            fade_from_white=fade_from_white,
+            hdr=hdr,
+        )
 
     def _create_gpu_title(
         self,
@@ -210,23 +209,22 @@ class RenderingMixin:
             return create_title_video_taichi(
                 title, subtitle, output_path, config, fade_from_white=True, hdr=hdr
             )
-        else:
-            # PIL fallback
-            return create_title_video(
-                title=title,
-                subtitle=subtitle,
-                style=TitleStyle(
-                    name="map",
-                    text_color="#FFFFFF",
-                    background_type="solid",
-                    background_colors=["#2D3748"],
-                ),
-                output_path=output_path,
-                width=width,
-                height=height,
-                duration=duration,
-                fps=fps,
-                animated_background=False,
-                fade_from_white=True,
-                hdr=hdr,
-            )
+        # PIL fallback
+        return create_title_video(
+            title=title,
+            subtitle=subtitle,
+            style=TitleStyle(
+                name="map",
+                text_color="#FFFFFF",
+                background_type="solid",
+                background_colors=["#2D3748"],
+            ),
+            output_path=output_path,
+            width=width,
+            height=height,
+            duration=duration,
+            fps=fps,
+            animated_background=False,
+            fade_from_white=True,
+            hdr=hdr,
+        )

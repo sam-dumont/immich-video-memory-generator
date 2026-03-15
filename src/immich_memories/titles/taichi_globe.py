@@ -7,6 +7,7 @@ Note: No 'from __future__ import annotations' — Taichi needs real types.
 """
 
 import logging
+import math
 
 import numpy as np
 
@@ -39,7 +40,7 @@ def _compile_globe_kernel():
             fov: ti.f32,
         ):
             """Project equirectangular texture onto sphere for each pixel."""
-            pi = 3.14159265358979
+            pi = math.pi
 
             for py, px in ti.ndrange(out_h, out_w):
                 # Normalized screen coords

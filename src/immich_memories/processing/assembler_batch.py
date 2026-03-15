@@ -60,11 +60,10 @@ class AssemblerBatchMixin:
         for batch in batches:
             inputs.extend(["-i", str(batch.path)])
 
-        filter_parts: list[str] = []
-        for i, batch in enumerate(batches):
-            filter_parts.append(
-                self._build_clip_video_filter(i, batch, ctx, use_aspect_ratio_handling=False)
-            )
+        filter_parts: list[str] = [
+            self._build_clip_video_filter(i, batch, ctx, use_aspect_ratio_handling=False)
+            for i, batch in enumerate(batches)
+        ]
 
         audio_filter_parts, audio_labels = self._build_probed_audio_filters(
             batches,
@@ -134,9 +133,9 @@ class AssemblerBatchMixin:
         for clip in clips:
             inputs.extend(["-i", str(clip.path)])
 
-        filter_parts: list[str] = []
-        for i, clip in enumerate(clips):
-            filter_parts.append(self._build_clip_video_filter(i, clip, ctx))
+        filter_parts: list[str] = [
+            self._build_clip_video_filter(i, clip, ctx) for i, clip in enumerate(clips)
+        ]
 
         audio_filter_parts, audio_labels = self._build_audio_prep_filters(clips)
         filter_parts.extend(audio_filter_parts)

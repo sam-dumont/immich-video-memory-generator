@@ -372,20 +372,20 @@ class AssemblerHelpersMixin:
 
             if transition == "fade":
                 offset = cumulative_duration + clip.duration - ctx.fade_duration
-                filter_parts.append(
-                    f"{current_video}[v{next_idx}scaled]xfade=transition=fade:"
-                    f"duration={ctx.fade_duration}:offset={offset},settb=1/{ctx.target_fps}{video_label}"
-                )
-                filter_parts.append(
-                    f"{current_audio}[a{next_idx}prep]acrossfade=d={ctx.fade_duration},asetpts=PTS-STARTPTS{audio_label}"
+                filter_parts.extend(
+                    (
+                        f"{current_video}[v{next_idx}scaled]xfade=transition=fade:"
+                        f"duration={ctx.fade_duration}:offset={offset},settb=1/{ctx.target_fps}{video_label}",
+                        f"{current_audio}[a{next_idx}prep]acrossfade=d={ctx.fade_duration},asetpts=PTS-STARTPTS{audio_label}",
+                    )
                 )
                 cumulative_duration = offset
             else:
-                filter_parts.append(
-                    f"{current_video}[v{next_idx}scaled]concat=n=2:v=1:a=0,settb=1/{ctx.target_fps}{video_label}"
-                )
-                filter_parts.append(
-                    f"{current_audio}[a{next_idx}prep]concat=n=2:v=0:a=1,asetpts=PTS-STARTPTS{audio_label}"
+                filter_parts.extend(
+                    (
+                        f"{current_video}[v{next_idx}scaled]concat=n=2:v=1:a=0,settb=1/{ctx.target_fps}{video_label}",
+                        f"{current_audio}[a{next_idx}prep]concat=n=2:v=0:a=1,asetpts=PTS-STARTPTS{audio_label}",
+                    )
                 )
                 cumulative_duration += clip.duration
 

@@ -165,9 +165,8 @@ def _get_colorspace_filter(hdr_type: str) -> str:
     if hdr_type == "pq":
         # HDR10/HDR10+ (Samsung, Pixel, etc.) - uses PQ/SMPTE2084 transfer
         return ",setparams=colorspace=bt2020nc:color_primaries=bt2020:color_trc=smpte2084"
-    else:
-        # HLG (iPhone Dolby Vision 8.4) - uses ARIB STD-B67 transfer
-        return ",setparams=colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67"
+    # HLG (iPhone Dolby Vision 8.4) - uses ARIB STD-B67 transfer
+    return ",setparams=colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67"
 
 
 def _check_zscale_available() -> bool:

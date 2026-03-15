@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -139,10 +140,8 @@ class ProgressTracker:
     def _notify_callbacks(self) -> None:
         """Notify all registered callbacks of progress update."""
         for callback in self._callbacks:
-            try:
+            with contextlib.suppress(Exception):
                 callback(self.progress)
-            except Exception:
-                pass  # Don't let callback errors break the pipeline
 
     def start(self) -> None:
         """Start the pipeline."""

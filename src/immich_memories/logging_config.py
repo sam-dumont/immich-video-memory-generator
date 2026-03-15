@@ -65,7 +65,7 @@ def configure_logging(
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
     # Remove existing handlers to avoid duplicates
-    for handler in root.handlers[:]:
+    for handler in root.handlers.copy():
         root.removeHandler(handler)
 
     handler = logging.StreamHandler(sys.stdout)

@@ -156,7 +156,7 @@ class OllamaContentAnalyzer(ContentAnalyzer):
         try:
             images = []
             for path in frames[:max_images]:
-                with open(path, "rb") as f:
+                with path.open("rb") as f:
                     images.append(base64.b64encode(f.read()).decode("utf-8"))
 
             payload = {
@@ -250,7 +250,7 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
             content: list[dict] = [{"type": "text", "text": CONTENT_ANALYSIS_PROMPT}]
 
             for path in frames[:4]:
-                with open(path, "rb") as f:
+                with path.open("rb") as f:
                     b64 = base64.b64encode(f.read()).decode("utf-8")
                 content.append(
                     {

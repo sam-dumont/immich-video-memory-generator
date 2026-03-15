@@ -33,7 +33,7 @@ def build_output_filename(
     who = _build_who_part(memory_type, preset_params, person_name)
     when = _build_when_part(memory_type, preset_params, date_start, date_end)
 
-    parts = [p for p in [who, when] if p]
+    parts = [p for p in (who, when) if p]
     slug = "_".join(parts) if parts else "memories"
 
     return f"{slug}_memories.mp4"
@@ -246,8 +246,7 @@ def _date_range_slug(start: date, end: date) -> str:
     """Build a readable slug from a date range."""
     # Full calendar year
     if (
-        start.month == 1
-        and start.day == 1
+        start.month == start.day == 1
         and end.month == 12
         and end.day == 31
         and start.year == end.year

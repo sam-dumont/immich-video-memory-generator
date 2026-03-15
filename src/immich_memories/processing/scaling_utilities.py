@@ -218,7 +218,7 @@ def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None
         duration = 10.0  # Default fallback
 
     # Sample 3 frames at 20%, 50%, 80% through video
-    sample_times = [duration * p for p in [0.2, 0.5, 0.8]]
+    sample_times = [duration * p for p in (0.2, 0.5, 0.8)]
     all_face_positions: list[tuple[float, float]] = []
 
     for sample_time in sample_times:

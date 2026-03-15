@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 import subprocess
@@ -114,12 +115,10 @@ class ClipExtractor(ClipEncodingMixin):
         removed = 0
         for path in self.output_dir.iterdir():
             if path.is_file() and path.suffix == ".mp4":
-                try:
+                with contextlib.suppress(OSError):
                     if path.stat().st_mtime < cutoff:
                         path.unlink()
                         removed += 1
-                except OSError:
-                    pass
         if removed:
             logger.info(f"Cleaned up {removed} old clip(s) from {self.output_dir}")
         return removed

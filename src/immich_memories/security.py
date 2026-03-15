@@ -46,11 +46,11 @@ def validate_path(
 
     # Check for null bytes (command injection via null byte truncation)
     if "\x00" in path_str:
-        raise PathValidationError(f"Path contains null byte: {repr(path_str)}")
+        raise PathValidationError(f"Path contains null byte: {path_str!r}")
 
     # Check for other control characters
     if DANGEROUS_CHARS.search(path_str):
-        raise PathValidationError(f"Path contains control characters: {repr(path_str)}")
+        raise PathValidationError(f"Path contains control characters: {path_str!r}")
 
     # Resolve to absolute path (handles .., symlinks, etc.)
     try:
@@ -225,7 +225,7 @@ def validate_magic_bytes(path: Path) -> bool:
     try:
         # Read enough bytes to check the longest signature
         max_sig_len = max(len(sig) for sig in expected_signatures)
-        with open(path, "rb") as f:
+        with path.open("rb") as f:
             header = f.read(max_sig_len)
 
         if not header:
@@ -246,14 +246,8 @@ def sanitize_filename(filename: str, max_length: int = 255) -> str:
     Returns:
         Sanitized filename
     """
-    # Remove null bytes and control characters
-    sanitized = DANGEROUS_CHARS.sub("", filename)
-
-    # Replace path separators
-    sanitized = sanitized.replace("/", "_").replace("\\", "_")
-
-    # Remove leading/trailing whitespace and dots
-    sanitized = sanitized.strip(" .")
+    # Remove null bytes, control characters, path separators, whitespace and dots
+    sanitized = DANGEROUS_CHARS.sub("", filename).replace("/", "_").replace("\\", "_").strip(" .")
 
     # Truncate if too long (preserve extension if possible)
     if len(sanitized) > max_length:

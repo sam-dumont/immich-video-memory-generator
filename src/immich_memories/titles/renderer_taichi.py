@@ -238,7 +238,7 @@ class TaichiTitleRenderer(TaichiParticlesMixin, TaichiTextMixin):
 
         # 6. Apply noise/grain texture
         if cfg.enable_noise and cfg.noise_intensity > 0:
-            noise_seed = int(frame_number * 12345) % 1000000
+            noise_seed = frame_number * 12345 % 1000000
             taichi_kernels._apply_noise_grain(
                 self.frame_buffer, cfg.noise_intensity, noise_seed, cfg.width, cfg.height
             )

@@ -131,7 +131,7 @@ def render_step4() -> None:
     total_duration = sum(
         end - start
         for clip in selected_clips
-        for start, end in [state.clip_segments.get(clip.asset.id, (0, clip.duration_seconds or 5))]
+        for start, end in (state.clip_segments.get(clip.asset.id, (0, clip.duration_seconds or 5)),)
     )
 
     options = state.generation_options

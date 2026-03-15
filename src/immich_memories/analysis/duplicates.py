@@ -9,7 +9,9 @@ for backwards compatibility.
 from __future__ import annotations
 
 import logging
+import operator
 from dataclasses import dataclass, field
+from itertools import chain
 from pathlib import Path
 
 import cv2
@@ -76,7 +78,7 @@ class DuplicateGroup:
             scored.append((video.asset.id, score))
 
         # Sort by score (descending)
-        scored.sort(key=lambda x: x[1], reverse=True)
+        scored.sort(key=operator.itemgetter(1), reverse=True)
         return scored[0][0]
 
     def _compute_quality_score(self, video: VideoClipInfo) -> float:
@@ -191,7 +193,7 @@ def find_duplicate_groups(
         if any(vid in video_lookup for vid in group_ids)
     ]
 
-    grouped_ids = {vid for group in groups for vid in group}
+    grouped_ids = set(chain.from_iterable(groups))
     result.extend(
         DuplicateGroup(videos=[video]) for video in videos if video.asset.id not in grouped_ids
     )
@@ -305,7 +307,7 @@ def rank_videos_by_quality(videos: list[VideoClipInfo]) -> list[VideoClipInfo]:
     def quality_key(video: VideoClipInfo) -> tuple:
         """Generate sort key for quality ranking."""
         resolution = video.width * video.height if video.width and video.height else 0
-        bitrate = video.bitrate or 0
+        bitrate = video.bitrate
         duration = video.duration_seconds or 0
 
         return (resolution, bitrate, duration)

@@ -172,7 +172,7 @@ def _cluster_day_presence(
     """Return the set of distinct dates this cluster has photos on."""
     dates: set[date] = set()
     for a in cluster:
-        dt = a.local_date_time if a.local_date_time else a.file_created_at
+        dt = a.local_date_time or a.file_created_at
         dates.add(dt.date())
     return dates
 
@@ -247,9 +247,9 @@ def _assign_daily_stops(
         if assigned:
             continue
         if i + 1 < len(sorted_dates):
-            ref = sorted(
+            ref = min(
                 by_date[sorted_dates[i + 1]], key=lambda a: a.local_date_time or a.file_created_at
-            )[0]
+            )
         else:
             ref = day_assets[-1]
         assert ref.exif_info and ref.exif_info.latitude and ref.exif_info.longitude
@@ -285,7 +285,7 @@ def _merge_consecutive(
                     lat=lat,
                     lon=lon,
                     location_name=city,
-                    asset_ids=list(ids),
+                    asset_ids=ids.copy(),
                 )
             )
     return bases
@@ -331,7 +331,7 @@ def detect_overnight_stops(
         return []
     by_date: dict[date, list[Asset]] = {}
     for a in gps_assets:
-        dt = a.local_date_time if a.local_date_time else a.file_created_at
+        dt = a.local_date_time or a.file_created_at
         by_date.setdefault(dt.date(), []).append(a)
     sorted_dates = sorted(by_date)
     base_cluster_radius = max(merge_radius_km, 15.0)

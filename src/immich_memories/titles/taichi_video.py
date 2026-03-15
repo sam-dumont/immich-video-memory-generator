@@ -5,6 +5,7 @@ Pipes rendered frames into FFmpeg to produce the final title video file.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import subprocess
 from pathlib import Path
@@ -75,7 +76,7 @@ def create_title_video_taichi(
         np.full((cfg.height, cfg.width, 3), 255, dtype=np.uint8) if fade_from_white else None
     )
 
-    try:
+    with contextlib.suppress(BrokenPipeError):  # FFmpeg closed pipe early — check returncode below
         for frame_num in range(renderer.total_frames):
             frame = renderer.render_frame(frame_num, title, subtitle)
 
@@ -88,9 +89,6 @@ def create_title_video_taichi(
             process.stdin.write(frame.tobytes())
 
         process.stdin.close()
-
-    except BrokenPipeError:
-        pass  # FFmpeg closed pipe early — check returncode below
 
     process.wait()
     stderr = process.stderr.read() if process.stderr else b""

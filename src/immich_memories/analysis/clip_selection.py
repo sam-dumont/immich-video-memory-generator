@@ -6,6 +6,7 @@ by quality, date distribution, and favorites status.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -45,7 +46,7 @@ def _get_fast_encoder_args() -> list[str]:
         ]
 
     # Other platforms: Check for available encoders
-    try:
+    with contextlib.suppress(Exception):
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-encoders"],
             capture_output=True,
@@ -84,8 +85,6 @@ def _get_fast_encoder_args() -> list[str]:
                 "-preset",
                 "veryfast",
             ]
-    except Exception:
-        pass
 
     # Fallback to CPU libx264
     return [
@@ -101,7 +100,7 @@ def _get_fast_encoder_args() -> list[str]:
 def _clip_quality_key(c: VideoClipInfo) -> tuple:
     """Sort key for clip quality (resolution, bitrate, duration)."""
     res = c.width * c.height if c.width and c.height else 0
-    return (res, c.bitrate or 0, c.duration_seconds or 0)
+    return (res, c.bitrate, c.duration_seconds or 0)
 
 
 def _allocate_day_slots(
@@ -285,8 +284,7 @@ def analyze_clip_for_highlight(
     """
     from immich_memories.analysis.scoring import SceneScorer
 
-    scorer = SceneScorer()
-    moments = scorer.sample_and_score_video(
+    moments = SceneScorer().sample_and_score_video(
         video_path,
         segment_duration=3.0,
         overlap=0.5,

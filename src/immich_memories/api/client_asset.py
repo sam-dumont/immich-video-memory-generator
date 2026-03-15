@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 from immich_memories.api.models import Asset
@@ -103,16 +104,14 @@ class AssetMixin:
             # Fast-fail on Content-Length if available
             content_length = response.headers.get("content-length")
             if content_length:
-                try:
+                with contextlib.suppress(ValueError, OverflowError):
                     if int(content_length) > max_size_bytes:
                         raise ValueError(
                             f"Asset {asset_id} size ({int(content_length)} bytes) "
                             f"exceeds limit ({max_size_bytes} bytes)"
                         )
-                except (ValueError, OverflowError):
-                    pass  # Invalid header, fall through to streaming check
 
-            with open(output_path, "wb") as f:
+            with output_path.open("wb") as f:
                 async for chunk in response.aiter_bytes(chunk_size=8192):
                     bytes_downloaded += len(chunk)
                     if bytes_downloaded > max_size_bytes:

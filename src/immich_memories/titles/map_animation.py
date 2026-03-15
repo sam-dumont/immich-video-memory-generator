@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from itertools import starmap
 from pathlib import Path
 
 import numpy as np
@@ -256,7 +258,7 @@ def _destination_overview(
     height: int,
 ) -> tuple[float, float, float]:
     """Compute (wx, wy, w) that shows all destinations with 2x padding."""
-    worlds = [_to_world(lat, lon) for lat, lon in destinations]
+    worlds = list(starmap(_to_world, destinations))
     wxs, wys = [v[0] for v in worlds], [v[1] for v in worlds]
     cx, cy = sum(wxs) / len(wxs), sum(wys) / len(wys)
     span_x = (max(wxs) - min(wxs)) if len(wxs) > 1 else 0.0
@@ -430,7 +432,7 @@ def _pipe_frames(
     cached: list[Image.Image | None] = [None, None]
     z = float(_CITY_ZOOM)
 
-    try:
+    with contextlib.suppress(BrokenPipeError):
         for i in range(total):
             frame, z = _get_frame_at(i, total, hold_s, hold_e, anim, cfg, n_segs, w, cached)
 
@@ -443,9 +445,6 @@ def _pipe_frames(
 
             if i % 30 == 0:
                 logger.info("Map fly %d/%d (z=%.1f, %d tiles)", i, total, z, len(_tile_cache))
-
-    except BrokenPipeError:
-        pass
 
     proc.stdin.close()
     proc.wait()

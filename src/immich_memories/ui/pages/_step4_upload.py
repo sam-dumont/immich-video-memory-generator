@@ -5,6 +5,7 @@ Provides toggle + album name input, and the async upload function.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def init_upload_state(state) -> None:
     """Initialize upload state from config defaults."""
-    try:
+    with contextlib.suppress(Exception):
         from immich_memories.config import get_config
 
         upload_config = get_config().upload
@@ -26,8 +27,6 @@ def init_upload_state(state) -> None:
             state.upload_enabled = True
         if upload_config.album_name and state.upload_album_name == "Memories":
             state.upload_album_name = upload_config.album_name
-    except Exception:
-        pass
 
 
 def render_upload_controls(state) -> None:

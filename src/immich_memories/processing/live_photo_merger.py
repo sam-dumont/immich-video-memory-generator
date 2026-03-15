@@ -240,8 +240,12 @@ def build_merge_command(
     for i, (start, end) in enumerate(trim_points):
         v_label = f"v{i}"
         a_label = f"a{i}"
-        parts.append(f"[{i}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[{v_label}]")
-        parts.append(f"[{i}:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[{a_label}]")
+        parts.extend(
+            (
+                f"[{i}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[{v_label}]",
+                f"[{i}:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[{a_label}]",
+            )
+        )
         v_labels.append(f"[{v_label}]")
         a_labels.append(f"[{a_label}]")
 

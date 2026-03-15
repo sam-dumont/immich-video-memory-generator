@@ -37,7 +37,7 @@ def _render_glyph(face, char: str) -> tuple[str, np.ndarray, GlyphMetrics] | Non
         face.glyph.render(freetype.FT_RENDER_MODE_SDF)
 
         bitmap = face.glyph.bitmap
-        if bitmap.width == 0 or bitmap.rows == 0:
+        if 0 in (bitmap.width, bitmap.rows):
             return (
                 char,
                 np.zeros((1, 1), dtype=np.uint8),

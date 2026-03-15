@@ -325,7 +325,7 @@ class MusicStems:
 
     def cleanup(self):
         """Remove stem files."""
-        for path in [self.vocals, self.accompaniment, self.drums, self.bass, self.other]:
+        for path in (self.vocals, self.accompaniment, self.drums, self.bass, self.other):
             if path and path.exists():
                 path.unlink()
 

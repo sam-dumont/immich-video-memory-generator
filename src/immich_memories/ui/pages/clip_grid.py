@@ -19,10 +19,10 @@ CLIPS_PER_PAGE = 20
 
 def clip_quality_score(c: VideoClipInfo) -> tuple[int, int, int, int]:
     """Score a clip for quality comparison. Higher is better."""
-    res_score = (c.width or 0) * (c.height or 0)
+    res_score = c.width * c.height
     hdr_score = 1 if c.is_hdr else 0
     depth_score = c.bit_depth or 8
-    bitrate_score = c.bitrate or 0
+    bitrate_score = c.bitrate
     return (res_score, hdr_score, depth_score, bitrate_score)
 
 
@@ -41,7 +41,7 @@ def _detect_duplicates(
 
     # Strategy 1: exact datetime+duration match
     clips_by_datetime = _group_clips_by_datetime(clips)
-    for _key, group in clips_by_datetime.items():
+    for group in clips_by_datetime.values():
         if len(group) > 1:
             _mark_lower_quality(group, duplicate_ids, lower_quality_ids)
 

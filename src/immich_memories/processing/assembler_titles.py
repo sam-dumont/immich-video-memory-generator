@@ -38,13 +38,13 @@ class AssemblerTitleMixin(AssemblerTripMixin):
 
         try:
             # Try common date formats (ISO first, then human-readable)
-            for fmt in [
+            for fmt in (
                 "%Y-%m-%d",  # ISO format (preferred)
                 "%Y-%m-%dT%H:%M:%S",  # ISO with time
                 "%Y-%m-%d %H:%M:%S",  # ISO with time (space)
                 "%B %d, %Y",  # Human-readable (e.g., "October 15, 2025")
                 "%b %d, %Y",  # Short month (e.g., "Oct 15, 2025")
-            ]:
+            ):
                 try:
                     return datetime.strptime(clip.date, fmt).date()
                 except ValueError:
@@ -354,7 +354,7 @@ class AssemblerTitleMixin(AssemblerTripMixin):
             )
             return self._build_clips_with_dividers(clips, month_divider_paths, title_settings)
 
-        return list(clips)
+        return clips.copy()
 
     def assemble_with_titles(
         self,

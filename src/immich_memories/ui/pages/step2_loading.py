@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from nicegui import run, ui
@@ -245,12 +246,10 @@ async def _fetch_thumbnails_batched(
         def fetch_thumb_batch(clips_batch=batch):
             with SyncImmichClient(state.immich_url, state.immich_api_key) as client:
                 for clip in clips_batch:
-                    try:
+                    with contextlib.suppress(Exception):
                         thumb = client.get_asset_thumbnail(clip.asset.id, size="preview")
                         if thumb:
                             thumbnail_cache.put(clip.asset.id, "preview", thumb)
-                    except Exception:
-                        pass
 
         await run.io_bound(fetch_thumb_batch)
         done += len(batch)

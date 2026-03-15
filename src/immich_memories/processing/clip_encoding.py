@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import subprocess
 from collections.abc import Callable
@@ -141,12 +142,10 @@ class ClipEncodingMixin:
         """Parse an FFmpeg progress line and invoke callback if relevant."""
         if not line.startswith("out_time_ms="):
             return
-        try:
+        with contextlib.suppress(ValueError, IndexError):
             time_ms = int(line.split("=")[1])
             progress = min(time_ms / (duration * 1_000_000), 1.0)
             progress_callback(progress)
-        except (ValueError, IndexError):
-            pass
 
     def _handle_encode_failure(
         self,

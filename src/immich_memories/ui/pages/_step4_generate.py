@@ -5,6 +5,7 @@ Extracted from step4_export.py to keep file length under 500 lines.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -232,11 +233,9 @@ async def run_generation(
 def _cleanup_temp_clips(assembly_clips) -> None:
     """Remove temporary intermediate clip files."""
     for clip in assembly_clips:
-        try:
+        with contextlib.suppress(Exception):
             if clip.path.exists() and "tmp" in str(clip.path).lower():
                 clip.path.unlink()
-        except Exception:
-            pass
 
 
 def _show_output(output_container, result_path: Path) -> None:
@@ -277,13 +276,12 @@ def _build_assembly_settings(state, config, assembly_clips):
     person = state.selected_person
     date_range = state.date_range
 
-    transition_map = {
+    transition_type = {
         "Smart (mix of fades & cuts)": TransitionType.SMART,
         "Crossfade": TransitionType.CROSSFADE,
         "Cut": TransitionType.CUT,
         "None": TransitionType.NONE,
-    }
-    transition_type = transition_map.get(
+    }.get(
         gen_options.get("transition", "Smart (mix of fades & cuts)"),
         TransitionType.SMART,
     )

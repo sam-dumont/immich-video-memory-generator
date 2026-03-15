@@ -60,7 +60,7 @@ def compute_video_hash(
     combined_bits = []
     for h in frame_hashes:
         # Convert hex to binary
-        bin_str = bin(int(h, 16))[2:].zfill(hash_size * hash_size)
+        bin_str = f"{int(h, 16):b}".zfill(hash_size * hash_size)
         combined_bits.extend([int(b) for b in bin_str])
 
     # Create final hash by taking majority vote across frames
@@ -71,7 +71,7 @@ def compute_video_hash(
         final_bits.append(1 if sum(votes) > len(votes) / 2 else 0)
 
     # Convert to hex
-    final_hash = hex(int("".join(map(str, final_bits)), 2))[2:].zfill(hash_size * hash_size // 4)
+    final_hash = f"{int(''.join(map(str, final_bits)), 2):x}".zfill(hash_size * hash_size // 4)
     return final_hash
 
 
@@ -144,8 +144,7 @@ def hamming_distance(hash1: str, hash2: str) -> int:
         return 64
 
     # XOR and count bits
-    xor = int1 ^ int2
-    return bin(xor).count("1")
+    return (int1 ^ int2).bit_count()
 
 
 def compute_thumbnail_hash(thumbnail_bytes: bytes, hash_size: int = 8) -> str:

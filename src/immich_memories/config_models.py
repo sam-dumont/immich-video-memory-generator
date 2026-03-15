@@ -380,7 +380,7 @@ class TripsConfig(BaseModel):
 
     def validate_homebase(self) -> None:
         """Raise if homebase is still at Null Island (0,0)."""
-        if self.homebase_latitude == 0.0 and self.homebase_longitude == 0.0:
+        if self.homebase_latitude == self.homebase_longitude == 0.0:
             msg = (
                 "Set your home coordinates in config "
                 "(trips.homebase_latitude / trips.homebase_longitude)"

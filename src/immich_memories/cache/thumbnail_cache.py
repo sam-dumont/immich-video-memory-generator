@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -58,10 +59,8 @@ class ThumbnailCache:
             # Clean empty subdirectories
             for d in sorted(self.cache_dir.rglob("*"), reverse=True):
                 if d.is_dir():
-                    try:
+                    with contextlib.suppress(OSError):
                         d.rmdir()
-                    except OSError:
-                        pass
         return count
 
     def get_stats(self) -> dict:

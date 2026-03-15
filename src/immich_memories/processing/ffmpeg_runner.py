@@ -7,6 +7,7 @@ FFmpeg commands with real-time progress reporting.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 import subprocess
@@ -209,14 +210,12 @@ def _drain_stderr_pipe(
 
 def _add_streamlit_ctx(thread: Thread) -> None:
     """Attach Streamlit script context to thread if available."""
-    try:
+    with contextlib.suppress(ImportError):
         from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 
         ctx = get_script_run_ctx()
         if ctx is not None:
             add_script_run_ctx(thread, ctx)
-    except ImportError:
-        pass
 
 
 def _run_ffmpeg_with_progress(

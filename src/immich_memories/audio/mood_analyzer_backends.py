@@ -89,7 +89,7 @@ class OllamaMoodAnalyzer(MoodAnalyzer):
         # Encode images to base64
         images = []
         for path in frame_paths[:4]:  # Limit to 4 images
-            with open(path, "rb") as f:
+            with path.open("rb") as f:
                 images.append(base64.b64encode(f.read()).decode("utf-8"))
 
         payload = {
@@ -189,7 +189,7 @@ class OpenAICompatibleMoodAnalyzer(MoodAnalyzer):
         content = [{"type": "text", "text": MOOD_ANALYSIS_PROMPT}]
 
         for path in frame_paths[:4]:  # Limit to 4 images
-            with open(path, "rb") as f:
+            with path.open("rb") as f:
                 image_data = base64.b64encode(f.read()).decode("utf-8")
                 content.append(
                     {

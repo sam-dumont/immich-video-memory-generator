@@ -43,7 +43,7 @@ class RefinementMixin:
         total_favorites = sum(favorites_by_week.values())
         num_weeks = len(favorites_by_week)
 
-        if total_favorites == 0 or num_weeks == 0:
+        if 0 in (total_favorites, num_weeks):
             return {}
 
         # Average favorites per week
@@ -326,7 +326,7 @@ class RefinementMixin:
         _favorites_by_week, protected_weeks = self._classify_favorites_by_week(favorites)
 
         # Step 2: Start with ALL favorites
-        selected_favorites = list(favorites)
+        selected_favorites = favorites.copy()
         selected_ids: set[str] = {c.clip.asset.id for c in favorites}
         logger.info(f"Starting with ALL {len(selected_favorites)} favorites")
 

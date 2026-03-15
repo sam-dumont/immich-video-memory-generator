@@ -341,31 +341,22 @@ def create_background_for_style(
         color = hex_to_rgb(colors[0]) if colors else (255, 255, 255)
         return Image.new("RGB", (width, height), color)
 
-    if (
-        background_type == "solid_gradient"
-        or background_type == BackgroundType.SOLID_GRADIENT.value
-    ):
+    if background_type in ("solid_gradient", BackgroundType.SOLID_GRADIENT.value):
         return create_gradient_background(width, height, colors, angle)
 
-    elif (
-        background_type == "soft_gradient" or background_type == BackgroundType.SOFT_GRADIENT.value
-    ):
+    elif background_type in ("soft_gradient", BackgroundType.SOFT_GRADIENT.value):
         return create_soft_gradient(width, height, colors, blur_radius=30)
 
-    elif (
-        background_type == "radial_gradient"
-        or background_type == BackgroundType.RADIAL_GRADIENT.value
-    ):
+    elif background_type in ("radial_gradient", BackgroundType.RADIAL_GRADIENT.value):
         return create_radial_gradient(width, height, colors[0], colors[1])
 
-    elif background_type == "vignette" or background_type == BackgroundType.VIGNETTE.value:
+    elif background_type in ("vignette", BackgroundType.VIGNETTE.value):
         # Vignette should fade to WHITE at edges (not dark) for a bright, clean look
         # Use the center color as the main background, fade edges to white
         return create_vignette_background(width, height, colors[0], "#FFFFFF", strength=0.3)
 
-    else:
-        # Default to soft gradient
-        return create_soft_gradient(width, height, colors)
+    # Default to soft gradient
+    return create_soft_gradient(width, height, colors)
 
 
 def create_background_array(

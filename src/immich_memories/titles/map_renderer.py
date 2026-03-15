@@ -6,6 +6,7 @@ or numpy arrays ready for the Taichi GPU pipeline.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
 
@@ -429,10 +430,8 @@ def _get_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFo
     cache_dir = Path.home() / ".immich-memories" / "fonts" / "Montserrat"
     montserrat = cache_dir / ("Montserrat-Bold.ttf" if bold else "Montserrat-Regular.ttf")
     if montserrat.exists():
-        try:
+        with contextlib.suppress(OSError):
             return ImageFont.truetype(str(montserrat), size)
-        except OSError:
-            pass
 
     # System fallbacks
     fallbacks = [

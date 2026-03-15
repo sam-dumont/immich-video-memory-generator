@@ -441,8 +441,7 @@ class AssemblerProbingMixin:
             return 50
         elif max_fps >= 25:
             return 30
-        else:
-            return 24
+        return 24
 
     def estimate_duration(self, clips: list[AssemblyClip]) -> float:
         """Estimate final video duration.

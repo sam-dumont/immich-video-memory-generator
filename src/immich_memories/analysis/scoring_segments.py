@@ -98,12 +98,11 @@ def generate_scene_aware_segments(
     from immich_memories.analysis.scenes import SceneDetector
 
     # Detect natural scene boundaries
-    detector = SceneDetector(
+    scenes = SceneDetector(
         threshold=scene_threshold,
         min_scene_duration=min_scene_duration,
         adaptive_threshold=True,
-    )
-    scenes = detector.detect(
+    ).detect(
         video_path,
         extract_keyframes=False,  # Skip for performance
     )

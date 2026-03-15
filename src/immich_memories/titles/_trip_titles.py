@@ -39,7 +39,7 @@ def _get_duration_label(days: int) -> str:
         return "A WEEKEND"
     if days == 7:
         return "A WEEK"
-    if days == 14 or days == 15:
+    if days in (14, 15):
         return "TWO WEEKS"
     if days == 21:
         return "THREE WEEKS"

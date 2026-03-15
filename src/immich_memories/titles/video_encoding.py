@@ -6,6 +6,7 @@ Split from renderer_pil.py to keep files under 500 lines.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import queue
 import subprocess
@@ -47,7 +48,7 @@ def _get_sdr_to_hlg_filter(hdr: bool = True) -> str:
         return ""
 
     # zscale handles proper transfer function conversion (sRGB → HLG)
-    try:
+    with contextlib.suppress(Exception):
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-filters"],
             capture_output=True,
@@ -61,8 +62,6 @@ def _get_sdr_to_hlg_filter(hdr: bool = True) -> str:
                 ":min=bt709:m=bt2020nc,"
                 "format=p010le"
             )
-    except Exception:
-        pass
 
     # Fallback: just do format conversion (colors slightly off but not pink)
     logger.warning("zscale not available — title screen colors may be slightly inaccurate")

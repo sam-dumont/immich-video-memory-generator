@@ -262,9 +262,11 @@ def _render_review_clip_row(
         title_parts.append("\u2605")
     if clip.is_hdr:
         title_parts.append(f"[{clip.hdr_format}]")
-    title_parts.append(date_str)
-    title_parts.append(
-        f"\u2022 Using {format_duration(segment_duration)} of {format_duration(duration)}"
+    title_parts.extend(
+        (
+            date_str,
+            f"\u2022 Using {format_duration(segment_duration)} of {format_duration(duration)}",
+        )
     )
 
     with ui.expansion(" ".join(title_parts), value=idx < 5).classes("w-full"):  # noqa: SIM117

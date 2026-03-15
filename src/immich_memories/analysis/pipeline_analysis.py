@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import gc
 import logging
 from pathlib import Path
@@ -315,7 +316,7 @@ class AnalysisMixin:
         Note: content_analyzer is NOT cleaned here — it's cached at
         pipeline level and cleaned in _cleanup_pipeline_resources().
         """
-        try:
+        with contextlib.suppress(Exception):
             if unified_analyzer is not None:
                 unified_analyzer.clear_cache()
                 unified_analyzer.scorer.release_capture()
@@ -324,12 +325,10 @@ class AnalysisMixin:
                     unified_analyzer._audio_analyzer = None
                 del unified_analyzer
             gc.collect()
-        except Exception:
-            pass
 
     def _cleanup_pipeline_resources(self) -> None:
         """Clean up long-lived pipeline resources after analysis phase."""
-        try:
+        with contextlib.suppress(Exception):
             if hasattr(self, "_cached_content_analyzer") and self._cached_content_analyzer:
                 if hasattr(self._cached_content_analyzer, "close"):
                     self._cached_content_analyzer.close()
@@ -342,8 +341,6 @@ class AnalysisMixin:
                 self._cached_audio_analyzer = None
             gc.collect()
             logger.debug("Pipeline resources cleaned up")
-        except Exception:
-            pass
 
     def _run_unified_analysis(
         self,
@@ -486,14 +483,10 @@ class AnalysisMixin:
 
         finally:
             if temp_file:
-                try:
+                with contextlib.suppress(Exception):
                     temp_file.unlink(missing_ok=True)
-                except Exception:
-                    pass
             if analysis_video and original_video and analysis_video != original_video:
-                try:
+                with contextlib.suppress(Exception):
                     cleanup_downscaled(original_video)
                     logger.debug(f"Cleaned up downscaled video for: {original_video.name}")
-                except Exception:
-                    pass
             gc.collect()

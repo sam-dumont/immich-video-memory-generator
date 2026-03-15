@@ -22,7 +22,7 @@ class AlbumMixin:
         device_asset_id = f"immich-memories-{file_hash.hexdigest()[:16]}"
         mtime = datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat()
 
-        with open(file_path, "rb") as f:
+        with file_path.open("rb") as f:
             data = await self._request(
                 "POST",
                 "/assets",

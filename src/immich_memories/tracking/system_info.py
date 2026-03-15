@@ -170,8 +170,7 @@ def _get_gpu_name_macos() -> str | None:
     )
     if result.returncode != 0:
         return None
-    data = json.loads(result.stdout)
-    displays = data.get("SPDisplaysDataType", [])
+    displays = json.loads(result.stdout).get("SPDisplaysDataType", [])
     return displays[0].get("sppci_model", None) if displays else None
 
 

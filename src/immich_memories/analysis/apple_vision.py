@@ -353,8 +353,9 @@ def detect_faces_vision(
     height, width = image.shape[:2]
     min_area = (min_size[0] * min_size[1]) / (width * height)
 
-    detector = VisionFaceDetector(detect_landmarks=detect_landmarks)
-    faces = detector.detect_faces(image, min_confidence=0.3)
+    faces = VisionFaceDetector(detect_landmarks=detect_landmarks).detect_faces(
+        image, min_confidence=0.3
+    )
 
     # Filter by minimum size
     return [f for f in faces if f.area >= min_area]

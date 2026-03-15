@@ -473,12 +473,12 @@ class AssemblerEncodingMixin:
 
             offset = video_offset + video_durations[i] - fade_duration
 
-            filter_parts.append(
-                f"{current_video}[v{next_idx}scaled]xfade=transition=fade:"
-                f"duration={fade_duration}:offset={offset},settb=1/{target_fps}{video_label}"
-            )
-            filter_parts.append(
-                f"{current_audio}{audio_labels[next_idx]}acrossfade=d={fade_duration}:c1=tri:c2=tri{audio_label}"
+            filter_parts.extend(
+                (
+                    f"{current_video}[v{next_idx}scaled]xfade=transition=fade:"
+                    f"duration={fade_duration}:offset={offset},settb=1/{target_fps}{video_label}",
+                    f"{current_audio}{audio_labels[next_idx]}acrossfade=d={fade_duration}:c1=tri:c2=tri{audio_label}",
+                )
             )
 
             current_video = video_label

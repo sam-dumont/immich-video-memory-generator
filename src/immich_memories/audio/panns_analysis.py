@@ -128,9 +128,9 @@ class PANNsAnalysisMixin:
                     events.append(
                         AudioEvent(
                             event_class=current_event,
-                            start_time=float(current_start),
-                            end_time=float(time_pos),
-                            confidence=float(top_score),
+                            start_time=current_start,
+                            end_time=time_pos,
+                            confidence=top_score,
                         )
                     )
                 current_event = class_name
@@ -139,9 +139,9 @@ class PANNsAnalysisMixin:
                 events.append(
                     AudioEvent(
                         event_class=current_event,
-                        start_time=float(current_start),
-                        end_time=float(time_pos),
-                        confidence=float(top_score),
+                        start_time=current_start,
+                        end_time=time_pos,
+                        confidence=top_score,
                     )
                 )
                 current_event = None
@@ -152,8 +152,8 @@ class PANNsAnalysisMixin:
             events.append(
                 AudioEvent(
                     event_class=current_event,
-                    start_time=float(current_start),
-                    end_time=float(audio_length_samples / 32000),
+                    start_time=current_start,
+                    end_time=audio_length_samples / 32000,
                     confidence=float(last_scores[int(np.argmax(last_scores))]),
                 )
             )

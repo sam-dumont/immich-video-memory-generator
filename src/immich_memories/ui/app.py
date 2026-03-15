@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import signal
@@ -273,20 +274,16 @@ def _kill_port_holders(port: int) -> bool:
             f"Killing {len(pids_to_kill)} zombie process(es) on port {port}: {pids_to_kill}"
         )
         for pid in pids_to_kill:
-            try:
+            with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.kill(int(pid), signal.SIGTERM)
-            except (ProcessLookupError, PermissionError):
-                pass
 
         # Give them a moment, then force-kill survivors
         import time
 
         time.sleep(0.5)
         for pid in pids_to_kill:
-            try:
+            with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.kill(int(pid), signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
 
         time.sleep(0.3)
         return True

@@ -139,7 +139,7 @@ def _render_immich_config_section(state) -> None:
 
         # Auto-connect on page load if credentials are prefilled but not yet connected
         if state.immich_url and state.immich_api_key and not state.connected_user:
-            ui.timer(0.1, lambda: test_connection(), once=True)
+            ui.timer(0.1, test_connection, once=True)
 
 
 def _render_preset_section(state) -> None:
@@ -253,8 +253,9 @@ def _render_time_period_tabs(state) -> None:
 
     tabs.on_value_change(on_tab_change)
 
-    _tab_map = {"year": year_tab, "period": duration_tab, "custom": custom_tab}
-    _initial_tab = _tab_map.get(state.time_period_mode, year_tab)
+    _initial_tab = {"year": year_tab, "period": duration_tab, "custom": custom_tab}.get(
+        state.time_period_mode, year_tab
+    )
 
     with ui.tab_panels(tabs, value=_initial_tab).classes("w-full"):
         _render_year_tab(state, year_tab, lambda: _updater[0]())

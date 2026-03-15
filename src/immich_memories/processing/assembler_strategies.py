@@ -74,7 +74,7 @@ class AssemblerStrategyMixin:
         Returns:
             Path to output video.
         """
-        if len(clips) == 0:
+        if not clips:
             raise ValueError("No clips to assemble")
 
         if len(clips) == 1:
@@ -101,7 +101,7 @@ class AssemblerStrategyMixin:
 
         # Scale each input (cuts uses simpler scale without aspect ratio handling)
         filter_parts = []
-        for i, _clip in enumerate(clips):
+        for i in range(len(clips)):
             hdr_conversion = self._get_clip_hdr_conversion(i, ctx)
             filter_parts.append(
                 f"[{i}:v]setpts=PTS-STARTPTS,"
@@ -113,8 +113,12 @@ class AssemblerStrategyMixin:
         # Build concat filter
         video_inputs = "".join(f"[v{i}]" for i in range(len(clips)))
         audio_inputs = "".join(f"[{i}:a]" for i in range(len(clips)))
-        filter_parts.append(f"{video_inputs}concat=n={len(clips)}:v=1:a=0[vout]")
-        filter_parts.append(f"{audio_inputs}concat=n={len(clips)}:v=0:a=1[aout]")
+        filter_parts.extend(
+            (
+                f"{video_inputs}concat=n={len(clips)}:v=1:a=0[vout]",
+                f"{audio_inputs}concat=n={len(clips)}:v=0:a=1[aout]",
+            )
+        )
 
         filter_complex = ";".join(filter_parts)
 
@@ -171,9 +175,7 @@ class AssemblerStrategyMixin:
             inputs.extend(["-i", str(clip.path)])
 
         # Build per-clip video filters
-        filter_parts = []
-        for i, clip in enumerate(clips):
-            filter_parts.append(self._build_clip_video_filter(i, clip, ctx))
+        filter_parts = [self._build_clip_video_filter(i, clip, ctx) for i, clip in enumerate(clips)]
 
         # Build audio prep filters
         audio_filter_parts, audio_labels = self._build_audio_prep_filters(clips)
@@ -302,11 +304,10 @@ class AssemblerStrategyMixin:
             inputs.extend(["-i", str(clip.path)])
 
         # Build per-clip video filters (no aspect ratio handling for smart - uses pad)
-        filter_parts = []
-        for i, clip in enumerate(clips):
-            filter_parts.append(
-                self._build_clip_video_filter(i, clip, ctx, use_aspect_ratio_handling=False)
-            )
+        filter_parts = [
+            self._build_clip_video_filter(i, clip, ctx, use_aspect_ratio_handling=False)
+            for i, clip in enumerate(clips)
+        ]
 
         # Build audio prep filters (smart uses aresample mode)
         audio_filter_parts, audio_labels = self._build_audio_prep_filters(

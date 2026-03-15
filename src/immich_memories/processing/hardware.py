@@ -239,8 +239,7 @@ def get_ffmpeg_scale_filter(
         return f"scale_vaapi={width}:{height}"
     elif capabilities.backend == HWAccelBackend.QSV and capabilities.supports_scaling:
         return f"scale_qsv={width}:{height}"
-    else:
-        return f"scale={width}:{height}"
+    return f"scale={width}:{height}"
 
 
 def get_opencv_backend(capabilities: HWAccelCapabilities) -> str:
@@ -268,13 +267,21 @@ def _format_gpu_info(capabilities: HWAccelCapabilities) -> list[str]:
     lines = [f"  GPU Scaling: {_yn[capabilities.supports_scaling]}"]
 
     if capabilities.backend == HWAccelBackend.NVIDIA:
-        lines.append(f"  OpenCV CUDA: {_yn[capabilities.opencv_cuda]}")
-        lines.append(f"  CUDA Available: {_yn[capabilities.cuda_available]}")
+        lines.extend(
+            (
+                f"  OpenCV CUDA: {_yn[capabilities.opencv_cuda]}",
+                f"  CUDA Available: {_yn[capabilities.cuda_available]}",
+            )
+        )
 
     if capabilities.backend == HWAccelBackend.APPLE:
-        lines.append(f"  Metal Available: {_yn[capabilities.metal_available]}")
-        lines.append(f"  Vision Framework: {_yn[capabilities.vision_available]}")
-        lines.append(f"  Neural Engine: {_yn[capabilities.neural_engine]}")
+        lines.extend(
+            (
+                f"  Metal Available: {_yn[capabilities.metal_available]}",
+                f"  Vision Framework: {_yn[capabilities.vision_available]}",
+                f"  Neural Engine: {_yn[capabilities.neural_engine]}",
+            )
+        )
 
     return lines
 

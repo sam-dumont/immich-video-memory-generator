@@ -256,11 +256,11 @@ class SceneScorer:
             total_score=float(total),
             face_score=float(avg_face),
             motion_score=float(avg_motion),
-            audio_score=float(audio_score),
+            audio_score=audio_score,
             stability_score=float(avg_stability),
-            content_score=float(content_score),
-            duration_score=float(dur_score),
-            face_positions=face_positions if face_positions else None,
+            content_score=content_score,
+            duration_score=dur_score,
+            face_positions=face_positions or None,
         )
 
     def _run_content_analysis(self, video_path: Path, scene: Scene) -> float:
@@ -399,8 +399,7 @@ class SceneScorer:
             else config.analysis.use_scene_detection
         )
 
-        info = get_video_info(video_path)
-        video_duration = info.get("duration", 0)
+        video_duration = get_video_info(video_path).get("duration", 0)
 
         if video_duration <= 0:
             return []

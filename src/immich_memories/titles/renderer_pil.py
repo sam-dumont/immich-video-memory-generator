@@ -104,13 +104,12 @@ class TitleRenderer(TextRenderingMixin):
             PIL font object.
         """
         # First try the persistent font cache
-        weight_map = {
+        weight = {
             "light": "Light",
             "regular": "Regular",
             "medium": "Medium",
             "semibold": "SemiBold",
-        }
-        weight = weight_map.get(self.style.font_weight, "Regular")
+        }.get(self.style.font_weight, "Regular")
 
         cached_font = get_cached_font_path(self.style.font_family, weight)
         if cached_font and cached_font.exists():
@@ -152,9 +151,7 @@ class TitleRenderer(TextRenderingMixin):
         """
         # Create temporary image for measuring
         img = Image.new("RGB", (1, 1))
-        draw = ImageDraw.Draw(img)
-
-        bbox = draw.textbbox((0, 0), text, font=font)
+        bbox = ImageDraw.Draw(img).textbbox((0, 0), text, font=font)
         width = bbox[2] - bbox[0]
         height = bbox[3] - bbox[1]
 

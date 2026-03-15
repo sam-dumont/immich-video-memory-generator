@@ -135,9 +135,9 @@ class TextRenderingMixin:
             text_layer = text_layer.filter(ImageFilter.GaussianBlur(radius=blur))
 
         # Composite onto frame using auto-detected blend mode
-        frame = frame.convert("RGBA")
-        frame = self._blend_layers(frame, text_layer, optimal_blend_mode)
-        frame = frame.convert("RGB")
+        frame = self._blend_layers(frame.convert("RGBA"), text_layer, optimal_blend_mode).convert(
+            "RGB"
+        )
 
         return frame
 
@@ -243,8 +243,7 @@ class TextRenderingMixin:
 
         if is_title:
             return center_y - text_height - spacing // 2
-        else:
-            return center_y + spacing // 2
+        return center_y + spacing // 2
 
     def _render_decorative_line(
         self,
@@ -314,9 +313,7 @@ class TextRenderingMixin:
             )
 
         # Composite
-        frame = frame.convert("RGBA")
-        frame = Image.alpha_composite(frame, line_layer)
-        return frame.convert("RGB")
+        return Image.alpha_composite(frame.convert("RGBA"), line_layer).convert("RGB")
 
     def _parse_color(self, hex_color: str) -> tuple[int, int, int]:
         """Parse hex color to RGB tuple.

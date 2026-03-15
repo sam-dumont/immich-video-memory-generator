@@ -127,7 +127,7 @@ def register_analyze_export_commands(main: click.Group) -> None:
 
             # Write to file
             output_path = Path(output)
-            with open(output_path, "w") as f:
+            with output_path.open("w") as f:
                 json.dump(project, f, indent=2)
 
             print_success(f"Project exported to {output_path}")

@@ -160,7 +160,7 @@ def _compute_face_score_opencv(
         minSize=(30, 30),
     )
 
-    if len(faces) == 0:
+    if not faces:
         return 0.0, []
 
     total_face_area = 0

@@ -98,11 +98,11 @@ def mix_audio_with_stem_ducking(
         f"makeup={_db_to_linear(duck_vocals_db):.2f}"
         f"[ducked_vocals]"
     )
-    filter_parts.append(sidechain_filter)
-
-    # Mix: video audio + accompaniment (full) + ducked vocals
-    filter_parts.append(
-        "[video_audio][accompaniment][ducked_vocals]amix=inputs=3:duration=first:dropout_transition=2[mixed]"
+    filter_parts.extend(
+        (
+            sidechain_filter,
+            "[video_audio][accompaniment][ducked_vocals]amix=inputs=3:duration=first:dropout_transition=2[mixed]",
+        )
     )
 
     filter_complex = ";".join(filter_parts)
@@ -198,7 +198,7 @@ def mix_audio_with_4stem_ducking(
     ducking = config.ducking
     video_duration = get_video_duration(video_path)
 
-    filter_parts = []
+    filter_parts: list[str] = []
 
     # Input mapping: 0=video, 1=drums, 2=bass, 3=vocals, 4=other
 
@@ -214,10 +214,14 @@ def mix_audio_with_4stem_ducking(
         stem_filter += f"[{name}_prepared]"
         return stem_filter
 
-    filter_parts.append(prepare_stem(1, "drums"))
-    filter_parts.append(prepare_stem(2, "bass"))
-    filter_parts.append(prepare_stem(3, "vocals"))
-    filter_parts.append(prepare_stem(4, "other"))
+    filter_parts.extend(
+        (
+            prepare_stem(1, "drums"),
+            prepare_stem(2, "bass"),
+            prepare_stem(3, "vocals"),
+            prepare_stem(4, "other"),
+        )
+    )
 
     # Prepare video audio
     if config.normalize_audio:
@@ -227,36 +231,32 @@ def mix_audio_with_4stem_ducking(
 
     # Apply sidechain compression to stems that should duck during speech.
     # Drums: NO ducking — constant level keeps rhythmic energy.
-    filter_parts.append("[drums_prepared]acopy[final_drums]")
-
     # Bass: duck moderately
-    filter_parts.append(
-        f"[bass_prepared][video_audio]sidechaincompress="
-        f"threshold={ducking.threshold}:ratio={ducking.ratio * 0.7}:"
-        f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
-        f"makeup=1.0[ducked_bass]"
+    filter_parts.extend(
+        (
+            "[drums_prepared]acopy[final_drums]",
+            f"[bass_prepared][video_audio]sidechaincompress="
+            f"threshold={ducking.threshold}:ratio={ducking.ratio * 0.7}:"
+            f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
+            f"makeup=1.0[ducked_bass]",
+        )
     )
 
-    # Vocals/melody: duck most
-    filter_parts.append(
-        f"[vocals_prepared][video_audio]sidechaincompress="
-        f"threshold={ducking.threshold}:ratio={ducking.ratio}:"
-        f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
-        f"makeup=1.0[ducked_vocals]"
-    )
-
-    # Other instruments: duck moderately
-    filter_parts.append(
-        f"[other_prepared][video_audio]sidechaincompress="
-        f"threshold={ducking.threshold}:ratio={ducking.ratio * 0.8}:"
-        f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
-        f"makeup=1.0[ducked_other]"
-    )
-
+    # Vocals/melody: duck most; Other instruments: duck moderately
     # Mix all 5 audio streams: video + 4 stems (drums constant, others ducked)
-    filter_parts.append(
-        "[video_audio][final_drums][ducked_bass][ducked_vocals][ducked_other]"
-        "amix=inputs=5:duration=first:dropout_transition=2[mixed]"
+    filter_parts.extend(
+        (
+            f"[vocals_prepared][video_audio]sidechaincompress="
+            f"threshold={ducking.threshold}:ratio={ducking.ratio}:"
+            f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
+            f"makeup=1.0[ducked_vocals]",
+            f"[other_prepared][video_audio]sidechaincompress="
+            f"threshold={ducking.threshold}:ratio={ducking.ratio * 0.8}:"
+            f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
+            f"makeup=1.0[ducked_other]",
+            "[video_audio][final_drums][ducked_bass][ducked_vocals][ducked_other]"
+            "amix=inputs=5:duration=first:dropout_transition=2[mixed]",
+        )
     )
 
     filter_complex = ";".join(filter_parts)

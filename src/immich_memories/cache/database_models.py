@@ -153,6 +153,6 @@ def _hamming_distance(hash1: str, hash2: str) -> int:
         int1 = int(hash1, 16)
         int2 = int(hash2, 16)
         xor = int1 ^ int2
-        return bin(xor).count("1")
+        return xor.bit_count()
     except (ValueError, TypeError):
         return 64  # Maximum distance if hashes are invalid

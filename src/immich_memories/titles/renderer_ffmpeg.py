@@ -71,17 +71,18 @@ def _get_system_font() -> str:
 
 def _escape_ffmpeg_text(text: str) -> str:
     """Escape special characters for FFmpeg drawtext filter."""
-    # Strip control characters (except space) to prevent filter injection
-    text = "".join(c for c in text if c == " " or (ord(c) >= 32 and ord(c) != 127))
-    # FFmpeg drawtext special characters (backslash must be first)
-    text = text.replace("\\", "\\\\")
-    text = text.replace(":", "\\:")
-    text = text.replace("'", "\\'")
-    text = text.replace("%", "\\%")
-    text = text.replace("[", "\\[")
-    text = text.replace("]", "\\]")
-    text = text.replace(";", "\\;")
-    return text
+    # Strip control characters (except space), then escape FFmpeg drawtext special characters
+    # (backslash must be first in the replacement chain)
+    return (
+        "".join(c for c in text if c == " " or (ord(c) >= 32 and ord(c) != 127))
+        .replace("\\", "\\\\")
+        .replace(":", "\\:")
+        .replace("'", "\\'")
+        .replace("%", "\\%")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+        .replace(";", "\\;")
+    )
 
 
 def create_title_ffmpeg(
@@ -282,27 +283,25 @@ def create_title_with_effects(
         f"min(t/{fade_in}\\,1)*if(lt(t\\,{fade_out_start})\\,1\\,({dur}-t)/{cfg.fade_out_duration})"
     )
 
-    # Shadow for title
+    # Shadow + main title
     shadow = max(2, title_size // 40)
-    filters.append(
-        f"[bg]drawtext=text='{title_escaped}':"
-        f"fontfile='{font_path}':"
-        f"fontsize={title_size}:"
-        f"fontcolor=black@0.2:"
-        f"x=(w-text_w)/2+{shadow}:"
-        f"y={title_y}+{shadow}:"
-        f"alpha={alpha}[t1]"
-    )
-
-    # Main title
-    filters.append(
-        f"[t1]drawtext=text='{title_escaped}':"
-        f"fontfile='{font_path}':"
-        f"fontsize={title_size}:"
-        f"fontcolor={cfg.text_color}:"
-        f"x=(w-text_w)/2:"
-        f"y={title_y}:"
-        f"alpha={alpha}[t2]"
+    filters.extend(
+        (
+            f"[bg]drawtext=text='{title_escaped}':"
+            f"fontfile='{font_path}':"
+            f"fontsize={title_size}:"
+            f"fontcolor=black@0.2:"
+            f"x=(w-text_w)/2+{shadow}:"
+            f"y={title_y}+{shadow}:"
+            f"alpha={alpha}[t1]",
+            f"[t1]drawtext=text='{title_escaped}':"
+            f"fontfile='{font_path}':"
+            f"fontsize={title_size}:"
+            f"fontcolor={cfg.text_color}:"
+            f"x=(w-text_w)/2:"
+            f"y={title_y}:"
+            f"alpha={alpha}[t2]",
+        )
     )
 
     last_label = "t2"

@@ -81,7 +81,7 @@ def _render_step2_header(state) -> bool:
         return True
 
     # Show current date range
-    ui.label(f"{state.date_range.description}").classes("text-sm mb-4").style(
+    ui.label(str(state.date_range.description)).classes("text-sm mb-4").style(
         "color: var(--im-text-secondary)"
     )
 

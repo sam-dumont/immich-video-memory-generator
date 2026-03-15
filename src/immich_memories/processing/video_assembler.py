@@ -266,8 +266,7 @@ def assemble_montage(
         music_accompaniment_path=music_accompaniment_path,
     )
 
-    assembler = VideoAssembler(settings)
-    return assembler.assemble(assembly_clips, output_path)
+    return VideoAssembler(settings).assemble(assembly_clips, output_path)
 
 
 def create_preview(
@@ -321,5 +320,4 @@ def create_preview(
         output_crf=28,  # Lower quality for speed
     )
 
-    assembler = VideoAssembler(settings)
-    return assembler.assemble(preview_clips, output_path)
+    return VideoAssembler(settings).assemble(preview_clips, output_path)

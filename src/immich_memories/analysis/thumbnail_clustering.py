@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from itertools import chain
 from typing import TYPE_CHECKING
 
 from immich_memories.api.models import VideoClipInfo
@@ -130,7 +131,7 @@ def _groups_to_clusters(
             )
 
     # Add ungrouped clips (those without hashes)
-    grouped_ids = {cid for group in groups for cid in group}
+    grouped_ids = set(chain.from_iterable(groups))
     for clip in clips:
         if clip.asset.id not in grouped_ids:
             result.append(
@@ -164,7 +165,7 @@ def _select_cluster_representative(clips: list[VideoClipInfo]) -> VideoClipInfo:
         """Score a clip for ranking."""
         is_favorite = 1 if clip.asset.is_favorite else 0
         resolution = clip.width * clip.height if clip.width and clip.height else 0
-        bitrate = clip.bitrate or 0
+        bitrate = clip.bitrate
         duration = clip.duration_seconds or 0
 
         return (is_favorite, resolution, bitrate, duration)
@@ -247,9 +248,8 @@ def deduplicate_by_thumbnails(
     clip_lookup = {c.asset.id: c for c in clips}
 
     # Return representatives from each cluster
-    result = []
-    for cluster in clusters:
-        if cluster.representative_id in clip_lookup:
-            result.append(clip_lookup[cluster.representative_id])
-
-    return result
+    return [
+        clip_lookup[cluster.representative_id]
+        for cluster in clusters
+        if cluster.representative_id in clip_lookup
+    ]

@@ -124,14 +124,14 @@ def _render_params(key: str) -> None:
 def _year_options_with_all() -> list:
     """Return year options including 'All Time'."""
     state = get_app_state()
-    years = state.years if state.years else list(range(2024, 2019, -1))
+    years = state.years or list(range(2024, 2019, -1))
     return [("all", "All Time")] + [(y, str(y)) for y in years]
 
 
 def _render_year_picker() -> None:
     """Year picker shared by multiple presets."""
     state = get_app_state()
-    year_options = state.years if state.years else list(range(2024, 2019, -1))
+    year_options = state.years or list(range(2024, 2019, -1))
     current = state.memory_preset_params.get("year", year_options[0] if year_options else 2024)
 
     def on_change(e):
@@ -150,7 +150,7 @@ def _render_season_params() -> None:
     state = get_app_state()
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
-        year_options = state.years if state.years else list(range(2024, 2019, -1))
+        year_options = state.years or list(range(2024, 2019, -1))
         current_year = state.memory_preset_params.get(
             "year", year_options[0] if year_options else 2024
         )
@@ -196,7 +196,7 @@ def _render_person_spotlight_params() -> None:
     name_to_person = {p.name: p for p in named_people}
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
-        year_options = state.years if state.years else list(range(2024, 2019, -1))
+        year_options = state.years or list(range(2024, 2019, -1))
         year_list = ["All Time"] + [str(y) for y in year_options]
         default_year = year_options[0] if year_options else 2024
         saved_year = state.memory_preset_params.get("year", default_year)
@@ -256,7 +256,7 @@ def _render_multi_person_params() -> None:
     name_to_person = {p.name: p for p in named_people}
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
-        year_options = state.years if state.years else list(range(2024, 2019, -1))
+        year_options = state.years or list(range(2024, 2019, -1))
         year_list = ["All Time"] + [str(y) for y in year_options]
         saved_year = state.memory_preset_params.get("year", 0)
         current_label = "All Time" if saved_year == 0 else str(saved_year)
@@ -298,7 +298,7 @@ def _render_monthly_params() -> None:
     state = get_app_state()
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
-        year_options = state.years if state.years else list(range(2024, 2019, -1))
+        year_options = state.years or list(range(2024, 2019, -1))
         current_year = state.memory_preset_params.get(
             "year", year_options[0] if year_options else 2024
         )
@@ -334,7 +334,7 @@ def _render_trip_params() -> None:
 
     state = get_app_state()
 
-    year_options = state.years if state.years else list(range(2024, 2019, -1))
+    year_options = state.years or list(range(2024, 2019, -1))
     current_year = state.memory_preset_params.get("year", year_options[0] if year_options else 2024)
 
     # Trip detection results container

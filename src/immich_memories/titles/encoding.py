@@ -8,6 +8,7 @@ This module provides:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
         ]
 
     # Check for NVIDIA NVENC
-    try:
+    with contextlib.suppress(Exception):
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-encoders"],
             capture_output=True,
@@ -81,8 +82,6 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
                 "hvc1",
                 *color_args,
             ]
-    except Exception:
-        pass
 
     # Fallback to CPU libx265 (slower)
     return [

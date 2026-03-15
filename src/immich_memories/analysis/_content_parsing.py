@@ -7,6 +7,7 @@ base class that concrete providers inherit from.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
@@ -231,10 +232,8 @@ class ContentParsingMixin:
             return m.group(1)
         m = re.search(r'"emotion"\s*:\s*([\d.]+)', text)
         if m:
-            try:
+            with contextlib.suppress(ValueError):
                 return ContentParsingMixin._numeric_emotion_to_str(float(m.group(1)))
-            except ValueError:
-                pass
         return ""
 
     @staticmethod
@@ -242,10 +241,8 @@ class ContentParsingMixin:
         """Extract a numeric float field from raw LLM text."""
         m = re.search(rf'"{field}"\s*:\s*([\d.]+)', text)
         if m:
-            try:
+            with contextlib.suppress(ValueError):
                 return float(m.group(1))
-            except ValueError:
-                pass
         return None
 
     def _extract_partial_data(self, text: str) -> ContentAnalysis:

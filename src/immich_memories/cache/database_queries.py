@@ -227,7 +227,7 @@ class DatabaseQueryMixin:
                 WHERE (hash_chunk_0 = ? OR hash_chunk_1 = ?
                        OR hash_chunk_2 = ? OR hash_chunk_3 = ?)
             """
-            params: list = list(chunks)
+            params: list = chunks.copy()
 
             if exclude_asset_id:
                 query += " AND asset_id != ?"
@@ -280,15 +280,16 @@ class DatabaseQueryMixin:
             cached = {row["asset_id"]: row["checksum"] for row in rows}
 
             # Find uncached or stale
-            uncached = []
-            for asset_id in asset_ids:
+            uncached = [
+                asset_id
+                for asset_id in asset_ids
                 if (
                     asset_id not in cached
                     or checksums
                     and asset_id in checksums
                     and cached[asset_id] != checksums[asset_id]
-                ):
-                    uncached.append(asset_id)
+                )
+            ]
 
             return uncached
 

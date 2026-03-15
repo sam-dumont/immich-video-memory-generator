@@ -243,6 +243,4 @@ def get_audio_content_score(video_path: Path) -> float:
     # Import here to avoid circular dependency
     from immich_memories.audio.content_analyzer import AudioContentAnalyzer
 
-    analyzer = AudioContentAnalyzer(use_panns=True)
-    result = analyzer.analyze(video_path)
-    return result.audio_score
+    return AudioContentAnalyzer(use_panns=True).analyze(video_path).audio_score

@@ -145,9 +145,8 @@ def find_font(family: str, weight: str = "regular") -> Path | None:
     }
 
     for suffix in weight_suffixes.get(weight, ["Regular"]):
-        for ext in [".ttf", ".otf", ".ttc"]:
-            candidates.append(f"{family}-{suffix}{ext}")
-            candidates.append(f"{family}{suffix}{ext}")
+        for ext in (".ttf", ".otf", ".ttc"):
+            candidates.extend((f"{family}-{suffix}{ext}", f"{family}{suffix}{ext}"))
 
     # Search for font files
     for search_path in FONT_SEARCH_PATHS:
@@ -168,7 +167,7 @@ def find_font(family: str, weight: str = "regular") -> Path | None:
                         return font_path
 
     # System fallback
-    for fallback in ["Helvetica", "Arial", "SF Pro"]:
+    for fallback in ("Helvetica", "Arial", "SF Pro"):
         if fallback != family:
             result = find_font(fallback, weight)
             if result:

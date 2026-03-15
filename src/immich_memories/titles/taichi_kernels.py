@@ -4,6 +4,7 @@ Note: This module does NOT use 'from __future__ import annotations'
 because Taichi kernels require actual type objects, not string annotations.
 """
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -95,13 +96,7 @@ _render_sdf_text = None
 
 def _compile_kernels():
     """Compile all Taichi kernels. Must be called AFTER ti.init()."""
-    global _kernels_compiled
-    global _generate_linear_gradient, _generate_radial_gradient
-    global _gaussian_blur_h, _gaussian_blur_v
-    global _apply_vignette, _render_bokeh_particles
-    global _apply_noise_grain, _generate_aurora_gradient
-    global _composite_rgba_over, _composite_text_with_offset
-    global _apply_color_pulse, _render_sdf_text
+    global _kernels_compiled, _generate_linear_gradient, _generate_radial_gradient, _gaussian_blur_h, _gaussian_blur_v, _apply_vignette, _render_bokeh_particles, _apply_noise_grain, _generate_aurora_gradient, _composite_rgba_over, _composite_text_with_offset, _apply_color_pulse, _render_sdf_text  # noqa: PLW0603, E501
 
     if _kernels_compiled or not TAICHI_AVAILABLE:
         return
@@ -483,14 +478,12 @@ def _get_system_font(font_family: str = "Helvetica") -> str:
     family_clean = font_family.replace(" ", "")
     family_dir = cache_dir / family_clean
     if not family_dir.exists() and family_clean in _OFL_FONTS:
-        try:
+        with contextlib.suppress(Exception):
             from immich_memories.titles.fonts import download_font
 
             download_font(family_clean)
-        except Exception:
-            pass
     if family_dir.exists():
-        for w in ["Bold", "SemiBold", "Medium", "Regular"]:
+        for w in ("Bold", "SemiBold", "Medium", "Regular"):
             candidate = family_dir / f"{family_clean}-{w}.ttf"
             if candidate.exists():
                 return str(candidate)

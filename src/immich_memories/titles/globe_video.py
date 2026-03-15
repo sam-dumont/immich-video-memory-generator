@@ -6,6 +6,7 @@ piped to FFmpeg as HLG HDR video. Used for trip map intro screens.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import subprocess
 from pathlib import Path
@@ -67,7 +68,7 @@ def create_globe_animation_video(
     animate_start = hold_start / duration
     animate_end = 1.0 - (hold_end / duration)
 
-    try:
+    with contextlib.suppress(BrokenPipeError):
         for frame_num in range(total_frames):
             progress = frame_num / max(1, total_frames - 1)
 
@@ -88,9 +89,6 @@ def create_globe_animation_video(
             process.stdin.write(rgb8.tobytes())
 
         process.stdin.close()
-
-    except BrokenPipeError:
-        pass  # FFmpeg closed pipe early — check returncode below
 
     process.wait()
     stderr = process.stderr.read() if process.stderr else b""

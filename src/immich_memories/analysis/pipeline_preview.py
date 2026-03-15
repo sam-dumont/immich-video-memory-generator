@@ -5,6 +5,7 @@ Contains methods for extracting preview segments and the legacy single-clip anal
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import tempfile
 from pathlib import Path
@@ -54,7 +55,7 @@ class PreviewMixin:
 
         # Find source video (prefer _480p downscale)
         source = None
-        for pattern in [f"{asset_id}_480p.*", f"{asset_id}.*"]:
+        for pattern in (f"{asset_id}_480p.*", f"{asset_id}.*"):
             matches = list(sub_path.glob(pattern))
             if matches:
                 source = matches[0]
@@ -145,10 +146,8 @@ class PreviewMixin:
 
         finally:
             if temp_file:
-                try:
+                with contextlib.suppress(Exception):
                     temp_file.unlink(missing_ok=True)
-                except Exception:
-                    pass
 
     def _run_legacy_analysis(
         self,
@@ -306,10 +305,8 @@ class PreviewMixin:
         if len(existing_previews) > MAX_PREVIEWS:
             # Delete oldest previews, keeping the most recent ones
             for old_preview in existing_previews[:-MAX_PREVIEWS]:
-                try:
+                with contextlib.suppress(Exception):
                     old_preview.unlink()
-                except Exception:
-                    pass
 
         # Use timestamp-based filename to bust browser cache
         timestamp = int(time.time() * 1000)

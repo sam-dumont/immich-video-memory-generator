@@ -32,7 +32,7 @@ def expand_to_neighbors(
     tagged_ids = {a.id for a in tagged}
     tagged_times = [a.file_created_at for a in tagged]
 
-    result_ids = set(tagged_ids)
+    result_ids = tagged_ids.copy()
     for asset in all_live:
         if asset.id in result_ids:
             continue

@@ -7,6 +7,7 @@ Re-exported from config.py for backwards compatibility.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import stat
@@ -75,7 +76,7 @@ class Config(BaseSettings):
         if not path.exists():
             return cls()
 
-        with open(path) as f:
+        with path.open() as f:
             data = yaml.safe_load(f) or {}
 
         return cls(**data)
@@ -83,13 +84,11 @@ class Config(BaseSettings):
     def save_yaml(self, path: Path) -> None:
         """Save configuration to a YAML file."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
+        with path.open("w") as f:
             yaml.dump(self.model_dump(), f, default_flow_style=False, sort_keys=False)
         # Restrict config file permissions (contains API keys)
-        try:
+        with contextlib.suppress(OSError):
             path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0o600 - owner read/write only
-        except OSError:
-            pass  # Best-effort on non-POSIX systems
 
     @classmethod
     def get_default_path(cls) -> Path:
@@ -169,7 +168,7 @@ def init_config_dir() -> Path:
 
     # Enforce restrictive permissions on config directory (owner-only access)
     # This protects API keys and cached data on multi-user systems.
-    try:
+    with contextlib.suppress(OSError):
         for d in (config_dir, cache_dir, projects_dir):
             d.chmod(0o700)
 
@@ -183,7 +182,5 @@ def init_config_dir() -> Path:
                     config_file,
                     config_file,
                 )
-    except OSError:
-        pass  # Skip on platforms where chmod is not supported (e.g., some Windows setups)
 
     return config_dir

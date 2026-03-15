@@ -309,8 +309,9 @@ class SmartPipeline(AnalysisMixin, PreviewMixin, RefinementMixin, ScalingMixin):
         weeks_with_favorites: set[str] = set()
         non_favorites_by_week: dict[str, list] = defaultdict(list)
 
-        for clip in all_favorites:
-            weeks_with_favorites.add(clip.asset.file_created_at.strftime("%Y-W%W"))
+        weeks_with_favorites.update(
+            clip.asset.file_created_at.strftime("%Y-W%W") for clip in all_favorites
+        )
 
         for clip in filtered_non_favorites:
             non_favorites_by_week[clip.asset.file_created_at.strftime("%Y-W%W")].append(clip)

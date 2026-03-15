@@ -454,7 +454,7 @@ class SearchMixin:
         for bucket in buckets:
             # Parse year from bucket time string
             try:
-                dt = datetime.fromisoformat(bucket.time_bucket.replace("Z", "+00:00"))
+                dt = datetime.fromisoformat(bucket.time_bucket)
                 years.add(dt.year)
             except (ValueError, AttributeError):
                 continue

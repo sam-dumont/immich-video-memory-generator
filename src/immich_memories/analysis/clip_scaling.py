@@ -159,7 +159,7 @@ def deduplicate_temporal_clusters(
         favorites_in_cluster = [c for c in cluster_clips if c.clip.asset.is_favorite]
         non_favorites_in_cluster = [c for c in cluster_clips if not c.clip.asset.is_favorite]
 
-        if len(favorites_in_cluster) >= 1:
+        if favorites_in_cluster:
             # At least one favorite in cluster - keep only the best favorite
             # Remove ALL other clips (extra favorites AND non-favorites from same moment)
             favorites_in_cluster.sort(key=lambda c: c.score, reverse=True)

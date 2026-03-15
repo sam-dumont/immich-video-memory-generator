@@ -182,9 +182,8 @@ def get_ordinal(n: int, locale: str = "en") -> str:
         if n == 1:
             return "1ère"
         return f"{n}ème"
-    else:
-        # Fallback to just the number
-        return str(n)
+    # Fallback to just the number
+    return str(n)
 
 
 def _title_calendar_year(**kwargs) -> TitleInfo:
@@ -363,8 +362,7 @@ def _generate_date_range_title(
 
     # Check if it's a full calendar year
     if (
-        start_date.month == 1
-        and start_date.day == 1
+        start_date.month == start_date.day == 1
         and end_date.month == 12
         and end_date.day == 31
         and start_date.year == end_date.year

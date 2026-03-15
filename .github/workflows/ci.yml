@@ -121,6 +121,9 @@ jobs:
       - name: File length gate (max 500 lines)
         run: make file-length
 
+      - name: Refurb (modernization lint)
+        run: make refurb
+
       - name: Deptry (dependency hygiene)
         run: make dep-check
 

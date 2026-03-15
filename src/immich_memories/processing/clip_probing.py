@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import subprocess
+from itertools import starmap
 from pathlib import Path
 
 from immich_memories.security import validate_video_path
@@ -68,7 +70,7 @@ def get_main_video_stream_map(video_path: Path) -> str:
         "json",
         str(validated),
     ]
-    try:
+    with contextlib.suppress(Exception):
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         if result.returncode == 0:
             data = json.loads(result.stdout)
@@ -83,8 +85,6 @@ def get_main_video_stream_map(video_path: Path) -> str:
                     best.get("height", 0),
                 )
                 return f"0:{idx}"
-    except Exception:
-        pass
     return "0:v:0"
 
 
@@ -167,7 +167,7 @@ def _validate_url(url: str) -> str:
     suspicious_chars = [";", "|", "&", "$", "`", "\n", "\r"]
     for char in suspicious_chars:
         if char in url:
-            raise ValueError(f"URL contains suspicious character: {repr(char)}")
+            raise ValueError(f"URL contains suspicious character: {char!r}")
 
     return url
 
@@ -302,10 +302,8 @@ def _parse_rotation(stream: dict) -> int:
     """
     for side_data in stream.get("side_data_list", []):
         if "rotation" in side_data:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 return abs(int(side_data["rotation"]))
-            except (ValueError, TypeError):
-                pass
             break
     return 0
 
@@ -347,7 +345,7 @@ def probe_video_url(url: str, headers: dict[str, str] | None = None) -> dict:
     # Add headers if provided (with validation)
     if headers:
         try:
-            validated_headers = [_validate_header(k, v) for k, v in headers.items()]
+            validated_headers = list(starmap(_validate_header, headers.items()))
             header_str = "\r\n".join(f"{k}: {v}" for k, v in validated_headers)
             cmd.extend(["-headers", header_str])
         except ValueError as e:

@@ -66,7 +66,7 @@ def _get_preview_path(asset_id: str) -> Path | None:
     # Filter to video extensions only — cache may contain .heic from live photo images
     video_exts = {".mov", ".mp4", ".mkv", ".avi", ".webm", ".m4v", ".3gp", ".ts", ".mpg", ".mpeg"}
     source = None
-    for pattern in [f"{asset_id}_480p.*", f"{asset_id}.*"]:
+    for pattern in (f"{asset_id}_480p.*", f"{asset_id}.*"):
         matches = [f for f in sub_path.glob(pattern) if f.suffix.lower() in video_exts]
         if matches:
             source = matches[0]

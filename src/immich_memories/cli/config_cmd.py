@@ -105,7 +105,7 @@ def register_config_commands(main: click.Group) -> None:
             table.add_column("Name", style="cyan")
             table.add_column("ID", style="dim")
 
-            for person in sorted(people_list, key=lambda p: p.name or ""):
+            for person in sorted(people_list, key=lambda p: p.name):
                 if person.name:
                     table.add_row(person.name, person.id[:8] + "...")
 

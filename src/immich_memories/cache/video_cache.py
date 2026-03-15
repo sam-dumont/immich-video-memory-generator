@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
 from dataclasses import dataclass
@@ -203,10 +204,8 @@ class VideoDownloadCache:
         # Clean empty subdirectories
         for d in sorted(self.cache_dir.rglob("*"), reverse=True):
             if d.is_dir():
-                try:
+                with contextlib.suppress(OSError):
                     d.rmdir()
-                except OSError:
-                    pass
 
         return count
 

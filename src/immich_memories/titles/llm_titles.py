@@ -156,9 +156,9 @@ def build_title_prompt(
     if smart_objects:
         context_lines.append(f"Objects: {', '.join(smart_objects[:20])}")
 
-    template = _load_prompt_template()
     return (
-        template.replace("{lang}", lang)
+        _load_prompt_template()
+        .replace("{lang}", lang)
         .replace("{memory_type}", memory_type)
         .replace("{start_date}", start_date)
         .replace("{end_date}", end_date)

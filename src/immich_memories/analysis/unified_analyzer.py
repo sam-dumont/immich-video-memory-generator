@@ -8,6 +8,7 @@ scene detection with audio analysis to find natural cut points.
 from __future__ import annotations
 
 import logging
+import operator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -197,7 +198,7 @@ class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
 
         last_range_end = max(end for _, end in result.protected_ranges)
         if abs(last_range_end - video_duration) < 0.1:
-            last_range = max(result.protected_ranges, key=lambda r: r[1])
+            last_range = max(result.protected_ranges, key=operator.itemgetter(1))
             if last_range[1] - last_range[0] > 1.0:
                 logger.info(
                     f"  ℹ️ Speech detected at video end ({last_range[0]:.1f}s-{last_range_end:.1f}s). "

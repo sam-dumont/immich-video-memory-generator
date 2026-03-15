@@ -34,8 +34,7 @@ def score_scene(
     """
     from immich_memories.analysis.scoring import SceneScorer
 
-    scorer = SceneScorer()
-    return scorer.score_scene(video_path, scene, sample_frames)
+    return SceneScorer().score_scene(video_path, scene, sample_frames)
 
 
 def select_top_moments(
@@ -57,8 +56,7 @@ def select_top_moments(
     """
     from immich_memories.analysis.scoring import SceneScorer
 
-    scorer = SceneScorer()
-    moments = scorer.find_best_moments(video_path, scenes, target_duration)
+    moments = SceneScorer().find_best_moments(video_path, scenes, target_duration)
     return moments[:target_count]
 
 
@@ -174,8 +172,7 @@ def sample_video(
     Returns:
         List of MomentScore objects sorted by score (best first).
     """
-    scorer = create_scorer_from_config()
-    return scorer.sample_and_score_video(
+    return create_scorer_from_config().sample_and_score_video(
         video_path,
         segment_duration=segment_duration,
         overlap=overlap,
