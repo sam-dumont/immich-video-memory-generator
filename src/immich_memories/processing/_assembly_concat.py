@@ -12,13 +12,25 @@ import shutil
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from immich_memories.processing.assembly_config import (
     AssemblyClip,
+    AssemblySettings,
 )
+from immich_memories.processing.assembly_context_builder import (
+    create_assembly_context,
+    resolve_target_resolution,
+)
+from immich_memories.processing.clip_encoder import log_ffmpeg_error
 from immich_memories.processing.hdr_utilities import (
     _get_gpu_encoder_args,
 )
+
+if TYPE_CHECKING:
+    from immich_memories.processing.clip_encoder import ClipEncoder
+    from immich_memories.processing.ffmpeg_prober import VideoProber
+    from immich_memories.processing.filter_builder import FilterBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +72,20 @@ def _build_clip_trim_filters(
     return parts
 
 
-class AssemblyConcatMixin:
-    """Concat/xfade/batch methods mixed into AssemblyEngine."""
+class ConcatService:
+    """Concat, xfade chain, and batch merge operations for video assembly."""
+
+    def __init__(
+        self,
+        settings: AssemblySettings,
+        prober: VideoProber,
+        encoder: ClipEncoder,
+        filter_builder: FilterBuilder,
+    ) -> None:
+        self.settings = settings
+        self.prober = prober
+        self.encoder = encoder
+        self.filter_builder = filter_builder
 
     def concat_with_inline_trim(
         self,
@@ -356,8 +380,8 @@ class AssemblyConcatMixin:
             f"video: {[f'{d:.2f}s' for d in video_durations]}"
         )
 
-        target_w, target_h = self.encoder.resolve_target_resolution(batches)
-        ctx = self.encoder.create_assembly_context(batches, target_w, target_h)
+        target_w, target_h = resolve_target_resolution(self.settings, self.prober, batches)
+        ctx = create_assembly_context(self.settings, self.prober, batches, target_w, target_h)
 
         inputs: list[str] = []
         for batch in batches:
@@ -399,7 +423,7 @@ class AssemblyConcatMixin:
         )
 
         if result.returncode != 0:
-            error_msg = self.encoder.log_ffmpeg_error(result)
+            error_msg = log_ffmpeg_error(result)
             raise RuntimeError(f"FFmpeg batch merge failed (code {result.returncode}): {error_msg}")
 
         return output_path
@@ -417,8 +441,8 @@ class AssemblyConcatMixin:
                 return output_path
             raise ValueError("No clips to assemble")
 
-        target_w, target_h = self.encoder.resolve_target_resolution(clips)
-        ctx = self.encoder.create_assembly_context(clips, target_w, target_h)
+        target_w, target_h = resolve_target_resolution(self.settings, self.prober, clips)
+        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
 
         inputs: list[str] = []
         for clip in clips:
@@ -453,7 +477,7 @@ class AssemblyConcatMixin:
         )
 
         if result.returncode != 0:
-            error_msg = self.encoder.log_ffmpeg_error(result)
+            error_msg = log_ffmpeg_error(result)
             raise RuntimeError(
                 f"FFmpeg batch assembly failed (code {result.returncode}): {error_msg}"
             )

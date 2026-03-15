@@ -12,7 +12,7 @@ import shutil
 from collections.abc import Callable
 from pathlib import Path
 
-from immich_memories.processing._assembly_concat import AssemblyConcatMixin
+from immich_memories.processing._assembly_concat import ConcatService
 from immich_memories.processing.assembly_config import (
     CHUNK_SIZE,
     CHUNKED_ASSEMBLY_THRESHOLD,
@@ -20,6 +20,13 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     TransitionType,
 )
+from immich_memories.processing.assembly_context_builder import (
+    create_assembly_context,
+    resolve_target_resolution,
+)
+from immich_memories.processing.clip_encoder import ClipEncoder
+from immich_memories.processing.ffmpeg_prober import VideoProber
+from immich_memories.processing.filter_builder import FilterBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +57,15 @@ def _pick_transition(
     return "cut", 0, consecutive_cuts + 1
 
 
-class AssemblyEngine(AssemblyConcatMixin):
+class AssemblyEngine:
     """Orchestrates multi-clip video assembly with transitions."""
 
     def __init__(
         self,
         settings: AssemblySettings,
-        prober: object,
-        encoder: object,
-        filter_builder: object,
+        prober: VideoProber,
+        encoder: ClipEncoder,
+        filter_builder: FilterBuilder,
         check_cancelled_fn: Callable[[], None],
     ) -> None:
         self.settings = settings
@@ -66,6 +73,7 @@ class AssemblyEngine(AssemblyConcatMixin):
         self.encoder = encoder
         self.filter_builder = filter_builder
         self.check_cancelled_fn = check_cancelled_fn
+        self.concat = ConcatService(settings, prober, encoder, filter_builder)
 
     def assemble_scalable(
         self,
@@ -83,7 +91,7 @@ class AssemblyEngine(AssemblyConcatMixin):
         fade = self.settings.transition_duration
         temp_dir = output_path.parent / ".assembly_temps"
         temp_dir.mkdir(parents=True, exist_ok=True)
-        target_resolution = self.encoder.resolve_target_resolution(clips)
+        target_resolution = resolve_target_resolution(self.settings, self.prober, clips)
         logger.info(
             f"Scalable assembly: {len(clips)} clips at "
             f"{target_resolution[0]}x{target_resolution[1]}"
@@ -127,8 +135,8 @@ class AssemblyEngine(AssemblyConcatMixin):
         """Assemble clips with hard cuts."""
         if not clips:
             raise ValueError("No clips to assemble")
-        target_w, target_h = self.encoder.resolve_target_resolution(clips)
-        ctx = self.encoder.create_assembly_context(clips, target_w, target_h)
+        target_w, target_h = resolve_target_resolution(self.settings, self.prober, clips)
+        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
         if self.settings.target_framerate:
             out_fps = self.settings.target_framerate
         elif self.settings.preserve_framerate:
@@ -185,8 +193,8 @@ class AssemblyEngine(AssemblyConcatMixin):
             raise ValueError("Need at least 2 clips for crossfade")
         if len(clips) > CHUNKED_ASSEMBLY_THRESHOLD:
             return self.assemble_chunked(clips, output_path, progress_callback)
-        target_w, target_h = self.encoder.resolve_target_resolution(clips)
-        ctx = self.encoder.create_assembly_context(clips, target_w, target_h)
+        target_w, target_h = resolve_target_resolution(self.settings, self.prober, clips)
+        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
         inputs: list[str] = []
         for clip in clips:
             inputs.extend(["-i", str(clip.path)])
@@ -230,8 +238,8 @@ class AssemblyEngine(AssemblyConcatMixin):
         if len(clips) > CHUNKED_ASSEMBLY_THRESHOLD:
             return self.assemble_chunked(clips, output_path, progress_callback)
         transitions = self.decide_transitions(clips)
-        target_w, target_h = self.encoder.resolve_target_resolution(clips)
-        ctx = self.encoder.create_assembly_context(clips, target_w, target_h)
+        target_w, target_h = resolve_target_resolution(self.settings, self.prober, clips)
+        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
         inputs: list[str] = []
         for clip in clips:
             inputs.extend(["-i", str(clip.path)])
@@ -354,7 +362,9 @@ class AssemblyEngine(AssemblyConcatMixin):
         if len(encoded_clips) <= chunk_size:
             if progress_callback:
                 progress_callback(0.7, "Building final assembly...")
-            self.assemble_xfade_chain(encoded_clips, clip_durations, transitions, fade, output_path)
+            self.concat.assemble_xfade_chain(
+                encoded_clips, clip_durations, transitions, fade, output_path
+            )
             return
         chunks: list[tuple[list[Path], list[float], list[str]]] = []
         i = 0
@@ -375,14 +385,14 @@ class AssemblyEngine(AssemblyConcatMixin):
                 chunk_outputs.append(c_clips[0])
             else:
                 chunk_path = temp_dir / f"chunk_{ci:02d}.mp4"
-                self.assemble_xfade_chain(c_clips, c_durs, c_trans, fade, chunk_path)
+                self.concat.assemble_xfade_chain(c_clips, c_durs, c_trans, fade, chunk_path)
                 chunk_outputs.append(chunk_path)
         if progress_callback:
             progress_callback(0.95, "Joining chunks...")
         if len(chunk_outputs) == 1:
             shutil.copy2(chunk_outputs[0], output_path)
         else:
-            self.concat_with_copy(chunk_outputs, output_path)
+            self.concat.concat_with_copy(chunk_outputs, output_path)
 
     def _make_batch_progress_cb(
         self,
@@ -420,7 +430,7 @@ class AssemblyEngine(AssemblyConcatMixin):
                 if progress_callback
                 else None
             )
-            self.assemble_batch_direct(batch, intermediate_path, cb)
+            self.concat.assemble_batch_direct(batch, intermediate_path, cb)
             batch_duration = sum(c.duration for c in batch)
             batch_duration -= self.settings.transition_duration * (len(batch) - 1)
         return AssemblyClip(
@@ -461,7 +471,7 @@ class AssemblyEngine(AssemblyConcatMixin):
                 self.check_cancelled_fn()
             if progress_callback:
                 progress_callback(0.85, f"Merging {num_batches} batches...")
-            result = self.merge_intermediate_batches(
+            result = self.concat.merge_intermediate_batches(
                 intermediate_clips, output_path, progress_callback
             )
             if not self.settings.debug_preserve_intermediates:

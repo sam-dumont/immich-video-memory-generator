@@ -319,9 +319,6 @@ disable_error_code = ["attr-defined", "call-overload", "union-attr", "assignment
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.api.immich",
-    "immich_memories.api.client_search",
-    "immich_memories.api.client_person",
-    "immich_memories.api.client_asset",
 ]
 disable_error_code = ["attr-defined", "arg-type", "return-value"]
 
@@ -421,21 +418,7 @@ disable_error_code = ["var-annotated", "assignment", "attr-defined"]
 module = ["immich_memories.titles.generator"]
 disable_error_code = ["assignment", "misc"]
 
-# Video assembler composed services (access sibling service attributes)
-[[tool.mypy.overrides]]
-module = [
-    "immich_memories.processing.assembly",
-    "immich_memories.processing.filter_builder",
-    "immich_memories.processing.clip_encoder",
-    "immich_memories.processing.assembly_engine",
-    "immich_memories.processing._assembly_concat",
-    "immich_memories.processing.audio_mixer_service",
-    "immich_memories.processing.ffmpeg_prober",
-    "immich_memories.processing.transition_blender",
-    "immich_memories.processing.transition_renderer",
-    "immich_memories.processing.title_inserter",
-]
-disable_error_code = ["attr-defined"]
+# Video assembler composed services — properly typed with Protocol contracts
 
 # Clip encoding with dynamic hardware detection
 [[tool.mypy.overrides]]

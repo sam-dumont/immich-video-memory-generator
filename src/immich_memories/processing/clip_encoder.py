@@ -1,4 +1,4 @@
-"""Single-clip encoding, segment trimming, and FFmpeg command execution."""
+"""Single-clip encoding and FFmpeg command execution."""
 
 from __future__ import annotations
 
@@ -15,16 +15,15 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     _get_rotation_filter,
 )
+from immich_memories.processing.ffmpeg_prober import VideoProber
 from immich_memories.processing.ffmpeg_runner import (
     AssemblyContext,
     _run_ffmpeg_with_progress,
 )
+from immich_memories.processing.filter_builder import FilterBuilder
 from immich_memories.processing.hdr_utilities import (
-    _detect_color_primaries,
     _detect_hdr_type,
-    _get_clip_hdr_types,
     _get_colorspace_filter,
-    _get_dominant_hdr_type,
     _get_gpu_encoder_args,
 )
 from immich_memories.processing.scaling_utilities import _get_smart_crop_filter
@@ -33,14 +32,59 @@ from immich_memories.security import validate_video_path
 logger = logging.getLogger(__name__)
 
 
+def configure_pyav_output_stream(
+    output_container: Any,
+    target_fps: int,
+    is_hdr: bool,
+    width: int,
+    height: int,
+    crf: int,
+) -> Any:
+    """Configure a PyAV output stream. macOS uses VideoToolbox, Linux uses libx265."""
+    if sys.platform == "darwin":
+        output_stream = output_container.add_stream("hevc_videotoolbox", rate=target_fps)
+        if is_hdr:
+            output_stream.pix_fmt = "p010le"
+            output_stream.options = {
+                "tag": "hvc1",
+                "colorspace": "bt2020nc",
+                "color_primaries": "bt2020",
+                "color_trc": "arib-std-b67",
+            }
+        else:
+            output_stream.pix_fmt = "yuv420p"
+            output_stream.options = {"tag": "hvc1"}
+    else:
+        output_stream = output_container.add_stream("libx265", rate=target_fps)
+        output_stream.pix_fmt = "yuv420p10le" if is_hdr else "yuv420p"
+        output_stream.options = {"crf": str(crf), "preset": "fast"}
+
+    output_stream.width = width
+    output_stream.height = height
+    return output_stream
+
+
+def log_ffmpeg_error(result: subprocess.CompletedProcess) -> str:
+    """Extract useful error lines from FFmpeg stderr."""
+    stderr_lines = result.stderr.split("\n")
+    error_lines = [
+        line
+        for line in stderr_lines
+        if "error" in line.lower() or "Error" in line or "invalid" in line.lower()
+    ]
+    if error_lines:
+        return "\n".join(error_lines[-10:])
+    return result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr
+
+
 class ClipEncoder:
     """Encodes individual clips and runs FFmpeg assembly commands."""
 
     def __init__(
         self,
         settings: AssemblySettings,
-        prober: object,
-        filter_builder: object,
+        prober: VideoProber,
+        filter_builder: FilterBuilder,
         face_center_fn: Callable[[Path], tuple[float, float] | None],
     ) -> None:
         self.settings = settings
@@ -67,81 +111,6 @@ class ClipEncoder:
                 hdr_type = clip_hdr
             return hdr_type, _get_colorspace_filter(hdr_type)
         return hdr_type, ""
-
-    def resolve_target_resolution(self, clips: list[AssemblyClip]) -> tuple[int, int]:
-        """Resolve target resolution from settings, auto-detection, or config default."""
-        if self.settings.target_resolution:
-            target_w, target_h = self.settings.target_resolution
-            logger.info(f"Using specified resolution {target_w}x{target_h}")
-            target_w, target_h = self._swap_if_portrait(clips, target_w, target_h)
-        elif self.settings.auto_resolution:
-            target_w, target_h = self.prober.detect_best_resolution(clips)
-        else:
-            config = get_config()
-            target_w, target_h = config.output.resolution_tuple
-            logger.info(f"Using config resolution {target_w}x{target_h}")
-            target_w, target_h = self._swap_if_portrait(clips, target_w, target_h)
-        return target_w, target_h
-
-    def _swap_if_portrait(
-        self, clips: list[AssemblyClip], target_w: int, target_h: int
-    ) -> tuple[int, int]:
-        """Swap width/height if majority of clips are portrait."""
-        portrait = sum(
-            bool((r := self.prober.get_video_resolution(c.path)) and r[1] > r[0]) for c in clips
-        )
-        if portrait > len(clips) // 2 and target_w > target_h:
-            target_w, target_h = target_h, target_w
-            logger.info(f"Detected portrait orientation, swapping to {target_w}x{target_h}")
-        return target_w, target_h
-
-    def create_assembly_context(
-        self,
-        clips: list[AssemblyClip],
-        target_w: int | None = None,
-        target_h: int | None = None,
-    ) -> AssemblyContext:
-        """Create an AssemblyContext with resolved HDR, pixel format, and colorspace."""
-        if target_w is None or target_h is None:
-            target_w, target_h = self.resolve_target_resolution(clips)
-
-        pix_fmt = (
-            ("p010le" if sys.platform == "darwin" else "yuv420p10le")
-            if self.settings.preserve_hdr
-            else "yuv420p"
-        )
-        target_fps = 60
-        hdr_type = _get_dominant_hdr_type(clips) if self.settings.preserve_hdr else "hlg"
-
-        clip_hdr_types = (
-            _get_clip_hdr_types(clips) if self.settings.preserve_hdr else [None] * len(clips)
-        )
-        clip_primaries: list[str | None] = []
-        if self.settings.preserve_hdr:
-            for clip in clips:
-                clip_primaries.append(_detect_color_primaries(clip.path))
-        else:
-            clip_primaries = [None] * len(clips)
-
-        unique_types = {t for t in clip_hdr_types if t is not None}
-        if len(unique_types) > 1:
-            logger.warning(
-                f"Mixed HDR content detected: {unique_types} - converting all to {hdr_type.upper()}"
-            )
-
-        colorspace_filter = _get_colorspace_filter(hdr_type) if self.settings.preserve_hdr else ""
-
-        return AssemblyContext(
-            target_w=target_w,
-            target_h=target_h,
-            pix_fmt=pix_fmt,
-            hdr_type=hdr_type,
-            clip_hdr_types=clip_hdr_types,
-            clip_primaries=clip_primaries,
-            colorspace_filter=colorspace_filter,
-            target_fps=target_fps,
-            fade_duration=self.settings.transition_duration,
-        )
 
     def encode_single_clip(
         self,
@@ -397,38 +366,6 @@ class ClipEncoder:
             if result.returncode != 0:
                 raise RuntimeError(f"Failed to trim segment (reencode): {result.stderr[-500:]}")
 
-    @staticmethod
-    def configure_pyav_output_stream(
-        output_container: Any,
-        target_fps: int,
-        is_hdr: bool,
-        width: int,
-        height: int,
-        crf: int,
-    ) -> Any:
-        """Configure a PyAV output stream based on platform and HDR settings."""
-        if sys.platform == "darwin":
-            output_stream = output_container.add_stream("hevc_videotoolbox", rate=target_fps)
-            if is_hdr:
-                output_stream.pix_fmt = "p010le"
-                output_stream.options = {
-                    "tag": "hvc1",
-                    "colorspace": "bt2020nc",
-                    "color_primaries": "bt2020",
-                    "color_trc": "arib-std-b67",
-                }
-            else:
-                output_stream.pix_fmt = "yuv420p"
-                output_stream.options = {"tag": "hvc1"}
-        else:
-            output_stream = output_container.add_stream("libx265", rate=target_fps)
-            output_stream.pix_fmt = "yuv420p10le" if is_hdr else "yuv420p"
-            output_stream.options = {"crf": str(crf), "preset": "fast"}
-
-        output_stream.width = width
-        output_stream.height = height
-        return output_stream
-
     def run_ffmpeg_assembly(
         self,
         inputs: list[str],
@@ -484,16 +421,3 @@ class ClipEncoder:
         total_duration = self.prober.estimate_duration(clips)
         logger.debug(f"Running assembly: {' '.join(cmd)}")
         return _run_ffmpeg_with_progress(cmd, total_duration, progress_callback)
-
-    @staticmethod
-    def log_ffmpeg_error(result: subprocess.CompletedProcess) -> str:
-        """Extract and return a useful error message from FFmpeg stderr."""
-        stderr_lines = result.stderr.split("\n")
-        error_lines = [
-            line
-            for line in stderr_lines
-            if "error" in line.lower() or "Error" in line or "invalid" in line.lower()
-        ]
-        if error_lines:
-            return "\n".join(error_lines[-10:])
-        return result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr
