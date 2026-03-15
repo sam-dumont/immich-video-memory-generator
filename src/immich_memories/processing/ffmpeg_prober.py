@@ -1,8 +1,4 @@
-"""Probing, resolution detection, and framerate utilities for VideoAssembler.
-
-This mixin provides ffprobe-based utilities for detecting video properties
-including resolution, frame rate, duration, and stream presence.
-"""
+"""FFmpeg-based video probing service."""
 
 from __future__ import annotations
 
@@ -10,19 +6,42 @@ import json
 import logging
 import subprocess
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 
 from immich_memories.processing.assembly_config import (
     AssemblyClip,
+    AssemblySettings,
     TransitionType,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class AssemblerProbingMixin:
-    """Mixin providing probing and detection methods for VideoAssembler."""
+@runtime_checkable
+class VideoProber(Protocol):
+    """What consumers need from a video prober."""
 
-    def _parse_resolution_from_stream(self, stream: dict) -> tuple[int, int] | None:
+    def get_video_resolution(self, video_path: Path) -> tuple[int, int] | None: ...
+    def detect_best_resolution(self, clips: list[AssemblyClip]) -> tuple[int, int]: ...
+    def probe_duration(self, file_path: Path, stream_type: str = "audio") -> float: ...
+    def probe_framerate(self, path: Path) -> float: ...
+    def has_audio_stream(self, path: Path) -> bool: ...
+    def has_video_stream(self, path: Path) -> bool: ...
+    def detect_max_framerate(self, clips: list[AssemblyClip]) -> int: ...
+    def estimate_duration(self, clips: list[AssemblyClip]) -> float: ...
+
+
+class FFmpegProber:
+    """FFmpeg-based implementation of video probing.
+
+    All methods are stateless probes that shell out to ffprobe, except
+    ``estimate_duration`` which uses ``self.settings`` for transition config.
+    """
+
+    def __init__(self, settings: AssemblySettings) -> None:
+        self.settings = settings
+
+    def parse_resolution_from_stream(self, stream: dict) -> tuple[int, int] | None:
         """Extract width/height from a stream dict, accounting for rotation."""
         width = stream.get("width", 0)
         height = stream.get("height", 0)
@@ -37,19 +56,8 @@ class AssemblerProbingMixin:
             return width, height
         return None
 
-    def _get_video_resolution(self, video_path: Path) -> tuple[int, int] | None:
-        """Get video resolution (width, height) accounting for rotation.
-
-        iPhone videos are often stored as landscape but have rotation metadata
-        that makes them portrait when displayed. This function detects rotation
-        and swaps dimensions accordingly.
-
-        Args:
-            video_path: Path to video file.
-
-        Returns:
-            Tuple of (width, height) after applying rotation, or None if detection fails.
-        """
+    def get_video_resolution(self, video_path: Path) -> tuple[int, int] | None:
+        """Get resolution accounting for rotation (iPhones store portrait as rotated landscape)."""
         try:
             cmd = [
                 "ffprobe",
@@ -69,12 +77,12 @@ class AssemblerProbingMixin:
                 streams = data.get("streams", [])
                 if streams:
                     stream = max(streams, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                    return self._parse_resolution_from_stream(stream)
+                    return self.parse_resolution_from_stream(stream)
         except Exception as e:
             logger.debug(f"Failed to detect resolution: {e}")
         return None
 
-    def _pick_resolution_tier(
+    def pick_resolution_tier(
         self,
         resolution_counts: dict[str, int],
         total: int,
@@ -113,20 +121,13 @@ class AssemblerProbingMixin:
         logger.info(f"Auto resolution: 720p {orientation_str} (default)")
         return res_720p
 
-    def _detect_best_resolution(self, clips: list[AssemblyClip]) -> tuple[int, int]:
-        """Detect the best output resolution based on majority of clips.
-
-        Args:
-            clips: List of clips to analyze.
-
-        Returns:
-            Tuple of (width, height) for output resolution.
-        """
+    def detect_best_resolution(self, clips: list[AssemblyClip]) -> tuple[int, int]:
+        """Pick output resolution based on majority of clips (4K/1080p/720p)."""
         resolution_counts: dict[str, int] = {"4k": 0, "1080p": 0, "720p": 0, "other": 0}
         orientation_counts: dict[str, int] = {"portrait": 0, "landscape": 0}
 
         for clip in clips:
-            res = self._get_video_resolution(clip.path)
+            res = self.get_video_resolution(clip.path)
             if not res:
                 continue
             w, h = res
@@ -158,20 +159,12 @@ class AssemblerProbingMixin:
         else:
             res_4k, res_1080p, res_720p = (3840, 2160), (1920, 1080), (1280, 720)
 
-        return self._pick_resolution_tier(
+        return self.pick_resolution_tier(
             resolution_counts, total, orientation_str, res_4k, res_1080p, res_720p
         )
 
-    def _probe_duration(self, file_path: Path, stream_type: str = "audio") -> float:
-        """Probe actual duration of a specific stream using ffprobe.
-
-        Args:
-            file_path: Path to the media file.
-            stream_type: Stream type to probe ("audio" or "video"). Default "audio".
-
-        Returns:
-            Duration in seconds, or 0.0 if probing fails.
-        """
+    def probe_duration(self, file_path: Path, stream_type: str = "audio") -> float:
+        """Probe stream duration via ffprobe. Returns 0.0 on failure."""
         try:
             # Probe the specific stream's duration, not format duration
             # This is important because audio and video durations can differ
@@ -218,16 +211,8 @@ class AssemblerProbingMixin:
             logger.warning(f"Failed to probe {stream_type} duration of {file_path}: {e}")
             return 0.0
 
-    def _probe_framerate(self, path: Path) -> float:
-        """Probe the frame rate of a video file.
-
-        Args:
-            path: Path to the video file.
-
-        Returns:
-            Frame rate as a float (e.g., 30.0, 59.94, 60.0).
-            Returns 60.0 as fallback if probing fails.
-        """
+    def probe_framerate(self, path: Path) -> float:
+        """Probe frame rate. Returns 60.0 as fallback."""
         try:
             result = subprocess.run(
                 [
@@ -257,15 +242,8 @@ class AssemblerProbingMixin:
             logger.warning(f"Failed to probe framerate of {path}: {e}")
         return 60.0  # Default fallback
 
-    def _has_audio_stream(self, path: Path) -> bool:
-        """Check if video file has an audio stream.
-
-        Args:
-            path: Path to the video file.
-
-        Returns:
-            True if the file has at least one audio stream.
-        """
+    def has_audio_stream(self, path: Path) -> bool:
+        """Check if file has at least one audio stream."""
         try:
             cmd = [
                 "ffprobe",
@@ -304,15 +282,8 @@ class AssemblerProbingMixin:
             logger.warning(f"Error checking audio stream for {path.name}: {e}")
             return False
 
-    def _has_video_stream(self, path: Path) -> bool:
-        """Check if file has a video stream.
-
-        Args:
-            path: Path to the file.
-
-        Returns:
-            True if the file has at least one video stream.
-        """
+    def has_video_stream(self, path: Path) -> bool:
+        """Check if file has at least one video stream."""
         try:
             cmd = [
                 "ffprobe",
@@ -332,23 +303,16 @@ class AssemblerProbingMixin:
             logger.warning(f"Error checking video stream for {path.name}: {e}")
             return False
 
-    def _probe_batch_durations(
+    def probe_batch_durations(
         self,
         batches: list[AssemblyClip],
     ) -> tuple[list[float], list[float]]:
-        """Probe actual audio and video durations for batch files.
-
-        Args:
-            batches: List of batch clips to probe.
-
-        Returns:
-            Tuple of (audio_durations, video_durations).
-        """
+        """Probe actual audio and video durations for a list of batch files."""
         audio_durations: list[float] = []
         video_durations: list[float] = []
         for batch in batches:
-            audio_dur = self._probe_duration(batch.path, stream_type="audio")
-            video_dur = self._probe_duration(batch.path, stream_type="video")
+            audio_dur = self.probe_duration(batch.path, stream_type="audio")
+            video_dur = self.probe_duration(batch.path, stream_type="video")
 
             if audio_dur <= 0:
                 logger.warning(
@@ -376,7 +340,7 @@ class AssemblerProbingMixin:
         return audio_durations, video_durations
 
     @staticmethod
-    def _parse_fps_str(fps_str: str) -> float | None:
+    def parse_fps_str(fps_str: str) -> float | None:
         """Parse an FFmpeg frame rate fraction string like '60/1' or '60000/1001'."""
         if "/" in fps_str:
             num, den = fps_str.split("/")
@@ -386,15 +350,8 @@ class AssemblerProbingMixin:
             return float(fps_str)
         return None
 
-    def _detect_framerate(self, video_path: Path) -> float | None:
-        """Detect frame rate of a video file.
-
-        Args:
-            video_path: Path to video file.
-
-        Returns:
-            Frame rate in fps, or None if detection fails.
-        """
+    def detect_framerate(self, video_path: Path) -> float | None:
+        """Detect frame rate from video stream metadata. Returns None on failure."""
         try:
             cmd = [
                 "ffprobe",
@@ -414,23 +371,16 @@ class AssemblerProbingMixin:
                 streams = data.get("streams", [])
                 if streams:
                     best = max(streams, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                    return self._parse_fps_str(best.get("r_frame_rate", ""))
+                    return self.parse_fps_str(best.get("r_frame_rate", ""))
         except Exception as e:
             logger.debug(f"Failed to detect frame rate: {e}")
         return None
 
-    def _detect_max_framerate(self, clips: list[AssemblyClip]) -> int:
-        """Detect the maximum frame rate from a list of clips.
-
-        Args:
-            clips: List of clips to analyze.
-
-        Returns:
-            Maximum frame rate (rounded to nearest common value), default 30.
-        """
+    def detect_max_framerate(self, clips: list[AssemblyClip]) -> int:
+        """Max frame rate across clips, rounded to nearest common value (24/30/50/60)."""
         max_fps = 30.0
         for clip in clips[:20]:  # Sample first 20 clips for speed
-            fps = self._detect_framerate(clip.path)
+            fps = self.detect_framerate(clip.path)
             if fps and fps > max_fps:
                 max_fps = fps
 
@@ -444,14 +394,7 @@ class AssemblerProbingMixin:
         return 24
 
     def estimate_duration(self, clips: list[AssemblyClip]) -> float:
-        """Estimate final video duration.
-
-        Args:
-            clips: List of clips.
-
-        Returns:
-            Estimated duration in seconds.
-        """
+        """Estimate final duration, accounting for transition overlaps."""
         if not clips:
             return 0.0
 

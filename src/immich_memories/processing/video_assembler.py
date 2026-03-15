@@ -53,7 +53,6 @@ from immich_memories.processing.assembler_batch import AssemblerBatchMixin
 from immich_memories.processing.assembler_concat import AssemblerConcatMixin
 from immich_memories.processing.assembler_encoding import AssemblerEncodingMixin
 from immich_memories.processing.assembler_helpers import AssemblerHelpersMixin
-from immich_memories.processing.assembler_probing import AssemblerProbingMixin
 from immich_memories.processing.assembler_scalable import AssemblerScalableMixin
 from immich_memories.processing.assembler_strategies import AssemblerStrategyMixin
 from immich_memories.processing.assembler_titles import AssemblerTitleMixin
@@ -65,6 +64,7 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     TransitionType,
 )
+from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.scaling_utilities import (
     _detect_face_center_in_video,
 )
@@ -81,7 +81,6 @@ logger = logging.getLogger(__name__)
 
 class VideoAssembler(
     AssemblerHelpersMixin,
-    AssemblerProbingMixin,
     AssemblerEncodingMixin,
     AssemblerTransitionMixin,
     AssemblerTransitionRenderMixin,
@@ -121,6 +120,7 @@ class VideoAssembler(
         self.settings = settings or AssemblySettings()
         self.run_id = run_id
         self._run_db: RunDatabase | None = None
+        self.prober = FFmpegProber(self.settings)
 
         # Face detection cache: path -> (center_x, center_y) or None
         # Using OrderedDict with size limit to prevent unbounded memory growth
@@ -165,6 +165,50 @@ class VideoAssembler(
         result = _detect_face_center_in_video(video_path)
         self._face_cache[video_path] = result
         return result
+
+    # ------------------------------------------------------------------
+    # Compatibility shims — will be removed as other mixins are refactored
+    # ------------------------------------------------------------------
+
+    def _parse_resolution_from_stream(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.prober.parse_resolution_from_stream(*args, **kwargs)
+
+    def _get_video_resolution(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.prober.get_video_resolution(*args, **kwargs)
+
+    def _pick_resolution_tier(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.prober.pick_resolution_tier(*args, **kwargs)
+
+    def _detect_best_resolution(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.prober.detect_best_resolution(*args, **kwargs)
+
+    def _probe_duration(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.prober.probe_duration(*args, **kwargs)
+
+    def _probe_framerate(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.prober.probe_framerate(*args, **kwargs)
+
+    def _has_audio_stream(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.prober.has_audio_stream(*args, **kwargs)
+
+    def _has_video_stream(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.prober.has_video_stream(*args, **kwargs)
+
+    def _probe_batch_durations(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.prober.probe_batch_durations(*args, **kwargs)
+
+    @staticmethod
+    def _parse_fps_str(fps_str: str) -> float | None:
+        return FFmpegProber.parse_fps_str(fps_str)
+
+    def _detect_framerate(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.prober.detect_framerate(*args, **kwargs)
+
+    def _detect_max_framerate(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.prober.detect_max_framerate(*args, **kwargs)
+
+    def estimate_duration(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.prober.estimate_duration(*args, **kwargs)
 
     def assemble(
         self,

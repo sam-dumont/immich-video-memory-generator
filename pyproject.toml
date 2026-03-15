@@ -437,7 +437,7 @@ module = [
     "immich_memories.processing.assembler_batch",
     "immich_memories.processing.assembler_concat",
     "immich_memories.processing.assembler_audio",
-    "immich_memories.processing.assembler_probing",
+    "immich_memories.processing.ffmpeg_prober",
     "immich_memories.processing.assembler_transitions",
     "immich_memories.processing.assembler_transition_render",
     "immich_memories.processing.assembler_titles",
