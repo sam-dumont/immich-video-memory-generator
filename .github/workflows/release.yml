@@ -23,6 +23,9 @@ on:
           - major
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+env:
   PYTHON_VERSION: "3.13"
 
 jobs:
