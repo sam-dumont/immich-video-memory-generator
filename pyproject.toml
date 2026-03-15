@@ -530,6 +530,7 @@ DEP002 = [
     "pre-commit", "commitizen",                         # dev tools
     "types-pyyaml",                                     # mypy stub
     "refurb", "interrogate", "import-linter",           # quality tools
+    "grimp",                                            # import-linter backend
     "diff-cover", "deptry",                             # quality tools
     "python-semantic-release",                          # CI release tool
     "types-PyYAML", "types-croniter",                   # mypy stubs

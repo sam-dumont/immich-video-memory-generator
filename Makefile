@@ -68,9 +68,9 @@ install:
 dev:
 	uv sync --all-extras
 
-# Install dev tools only (no GPU/CUDA deps — for CI quality gates)
+# Install dev tools only (no GPU/CUDA/audio-ml/face deps — for CI quality gates)
 dev-ci:
-	uv sync --extra dev --extra audio --extra face
+	uv sync --extra dev
 
 # Install with macOS-specific extras (Apple Vision, Metal GPU, etc.)
 dev-mac:
