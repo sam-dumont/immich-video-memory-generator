@@ -24,6 +24,12 @@ From that raw data, it figures out the travel pattern (base camp? road trip? hik
 
 You see everything in Step 3 of the UI and can edit before rendering.
 
+![LLM title in Step 3](../screenshots/llm-title-step3.png)
+
+Hit the regenerate button to try again with the same GPS data — useful if the first result isn't quite right.
+
+![Regenerate button](../screenshots/llm-title-regenerate.png)
+
 ## Configuration
 
 The title LLM can be different from the vision model (and probably should be):
