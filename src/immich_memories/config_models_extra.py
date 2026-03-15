@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from immich_memories.config_models import expand_env_vars
 
@@ -300,8 +300,6 @@ class TitleScreenConfig(BaseModel):
 class AudioContentConfig(BaseModel):
     """Settings for audio content analysis (laughter/speech detection)."""
 
-    model_config = ConfigDict(populate_by_name=True)
-
     enabled: bool = Field(
         default=False,
         description="Enable audio content analysis for laughter/speech detection",
@@ -317,7 +315,6 @@ class AudioContentConfig(BaseModel):
     use_panns: bool = Field(
         default=True,
         description="Use PANNs ML model for audio classification (requires torch)",
-        alias="use_yamnet",
     )
     min_confidence: float = Field(
         default=0.3,
