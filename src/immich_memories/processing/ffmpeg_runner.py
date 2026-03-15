@@ -1,9 +1,4 @@
-"""FFmpeg progress parsing and process runner.
-
-This module provides the FFmpegProgress and AssemblyContext dataclasses,
-along with functions for parsing FFmpeg progress output and running
-FFmpeg commands with real-time progress reporting.
-"""
+"""FFmpeg progress parsing and process runner."""
 
 from __future__ import annotations
 
@@ -64,7 +59,6 @@ class AssemblyContext:
 
 
 def _parse_ffmpeg_time(time_str: str) -> float:
-    """Parse FFmpeg time string (HH:MM:SS.ms) to seconds."""
     try:
         # Handle negative times
         if time_str.startswith("-"):
@@ -127,7 +121,6 @@ def _parse_ffmpeg_progress(line: str, total_duration: float) -> FFmpegProgress |
 
 
 def _find_buffer_split_pos(buffer: str) -> int:
-    """Find the earliest line break position in buffer."""
     cr_pos = buffer.find("\r")
     lf_pos = buffer.find("\n")
     if cr_pos == -1:
@@ -138,7 +131,6 @@ def _find_buffer_split_pos(buffer: str) -> int:
 
 
 def _build_progress_status(progress: FFmpegProgress) -> str:
-    """Build status string from FFmpeg progress."""
     time_str = f"{int(progress.time_seconds // 60)}:{int(progress.time_seconds % 60):02d}"
     status = f"Encoding ({time_str})"
     if progress.speed > 0:
@@ -152,7 +144,6 @@ def _try_report_line(
     progress_callback: Callable[[float, str], None],
     last_progress_time: list[float],
 ) -> None:
-    """Report progress for a single line if throttle interval has elapsed."""
     now = time.time()
     if now - last_progress_time[0] < 0.5:
         return
@@ -174,7 +165,6 @@ def _process_buffer(
     progress_callback: Callable[[float, str], None] | None,
     last_progress_time: list[float],
 ) -> str:
-    """Extract complete lines from buffer, collect them and report progress."""
     while "\r" in buffer or "\n" in buffer:
         split_pos = _find_buffer_split_pos(buffer)
         line = buffer[:split_pos].strip()
@@ -193,7 +183,6 @@ def _drain_stderr_pipe(
     total_duration: float,
     progress_callback: Callable[[float, str], None] | None,
 ) -> None:
-    """Read FFmpeg stderr pipe, appending lines and calling progress callback."""
     last_progress_time = [time.time()]  # Mutable container for nonlocal update
     buffer = ""
     while True:
@@ -209,7 +198,7 @@ def _drain_stderr_pipe(
 
 
 def _add_streamlit_ctx(thread: Thread) -> None:
-    """Attach Streamlit script context to thread if available."""
+    """Attach Streamlit script context so progress callbacks work in Streamlit threads."""
     with contextlib.suppress(ImportError):
         from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 

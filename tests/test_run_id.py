@@ -85,7 +85,7 @@ class TestIsValidRunId:
     )
     def test_valid_ids(self, run_id: str):
         """Well-formed IDs are accepted."""
-        assert is_valid_run_id(run_id) is True
+        assert is_valid_run_id(run_id)
 
     @pytest.mark.parametrize(
         "run_id,reason",
@@ -102,4 +102,4 @@ class TestIsValidRunId:
     )
     def test_invalid_ids(self, run_id: str, reason: str):
         """Malformed IDs are rejected."""
-        assert is_valid_run_id(run_id) is False
+        assert not is_valid_run_id(run_id)

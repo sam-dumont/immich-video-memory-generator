@@ -19,7 +19,6 @@ class DatabaseMigrationsMixin:
     """
 
     def _run_migrations(self) -> None:
-        """Run database migrations."""
         with self._get_connection() as conn:
             # Check current version
             conn.execute("""
@@ -37,7 +36,6 @@ class DatabaseMigrationsMixin:
                 self._apply_migrations(conn, current_version)
 
     def _apply_migrations(self, conn: sqlite3.Connection, from_version: int) -> None:
-        """Apply migrations from current version to latest."""
         migrations = {
             1: self._migration_v1_initial,
             2: self._migration_v2_thumbnails,
@@ -58,7 +56,6 @@ class DatabaseMigrationsMixin:
                 conn.commit()
 
     def _migration_v1_initial(self, conn: sqlite3.Connection) -> None:
-        """Initial schema creation."""
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS video_analysis (
                 asset_id TEXT PRIMARY KEY,
@@ -143,7 +140,6 @@ class DatabaseMigrationsMixin:
         """)
 
     def _migration_v2_thumbnails(self, conn: sqlite3.Connection) -> None:
-        """Add thumbnails table for caching thumbnails in DB."""
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS thumbnails (
                 asset_id TEXT NOT NULL,
@@ -188,7 +184,6 @@ class DatabaseMigrationsMixin:
         logger.info("Dropped thumbnails table - thumbnails now stored in file cache")
 
     def _migration_v4_run_tracking(self, conn: sqlite3.Connection) -> None:
-        """Add run tracking tables for pipeline versioning and statistics."""
         conn.executescript("""
             -- Pipeline runs table
             CREATE TABLE IF NOT EXISTS pipeline_runs (

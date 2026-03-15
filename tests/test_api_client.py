@@ -241,7 +241,7 @@ class TestSearchPagination:
         client.search.search_metadata = AsyncMock(return_value=mock_result)
 
         result = await client.get_all_videos_for_year(2024)
-        assert result == []
+        assert not result
         client.search.search_metadata.assert_called_once()
 
     @pytest.mark.asyncio
@@ -291,7 +291,7 @@ class TestSearchPagination:
         client.search.search_metadata = AsyncMock(return_value=mock_result)
 
         result = await client.get_all_videos_for_year(1999)
-        assert result == []
+        assert not result
 
 
 class TestPersonMethods:
@@ -428,7 +428,7 @@ class TestAvailableYears:
         client._client.request = AsyncMock(return_value=mock_response)
 
         years = await client.get_available_years()
-        assert years == []
+        assert not years
 
 
 class TestGetVideosForAnyPerson:
@@ -495,5 +495,5 @@ class TestGetVideosForAnyPerson:
         client.search.get_videos_for_person_and_date_range = AsyncMock()
 
         result = await client.get_videos_for_any_person([], date_range)
-        assert result == []
+        assert not result
         client.search.get_videos_for_person_and_date_range.assert_not_called()

@@ -43,11 +43,9 @@ class CachedSegment:
 
     @property
     def duration(self) -> float:
-        """Get segment duration."""
         return self.end_time - self.start_time
 
     def to_moment_score(self) -> MomentScore:
-        """Convert to MomentScore for compatibility."""
         from immich_memories.analysis.scoring import MomentScore
 
         return MomentScore(
@@ -62,7 +60,6 @@ class CachedSegment:
         )
 
     def to_scene(self) -> Scene:
-        """Convert to Scene for compatibility."""
         from immich_memories.analysis.scenes import Scene
 
         return Scene(
@@ -119,7 +116,6 @@ class CachedVideoAnalysis:
     segments: list[CachedSegment] = field(default_factory=list)
 
     def get_best_segment(self) -> CachedSegment | None:
-        """Get the highest-scoring segment."""
         if not self.segments:
             return None
 
@@ -148,7 +144,6 @@ class SimilarVideo:
 
 
 def _hamming_distance(hash1: str, hash2: str) -> int:
-    """Compute Hamming distance between two hex hash strings."""
     try:
         int1 = int(hash1, 16)
         int2 = int(hash2, 16)

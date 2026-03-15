@@ -18,11 +18,11 @@ class TestPrivacyModeConfig:
 
     def test_default_is_false(self):
         settings = AssemblySettings()
-        assert settings.privacy_mode is False
+        assert not settings.privacy_mode
 
     def test_can_be_enabled(self):
         settings = AssemblySettings(privacy_mode=True)
-        assert settings.privacy_mode is True
+        assert settings.privacy_mode
 
 
 class TestPrivacyVideoBlur:
@@ -31,8 +31,10 @@ class TestPrivacyVideoBlur:
     def _make_filter_builder(self, privacy_mode: bool = False):
         """Create a FilterBuilder with mocked dependencies."""
         settings = AssemblySettings(privacy_mode=privacy_mode)
+        # WHY: mock prober — FilterBuilder calls ffprobe for resolution; unit tests skip I/O
         prober = MagicMock()
         prober.get_video_resolution = MagicMock(return_value=None)
+        # WHY: mock face_center_fn — face detection requires real video frames
         face_center_fn = MagicMock(return_value=None)
         fb = FilterBuilder(settings, prober, face_center_fn)
 
@@ -74,6 +76,7 @@ class TestPrivacyAudioMute:
 
     def _make_filter_builder(self, privacy_mode: bool = False):
         settings = AssemblySettings(privacy_mode=privacy_mode)
+        # WHY: mock prober + face_center_fn — audio filter tests don't touch video I/O
         prober = MagicMock()
         face_center_fn = MagicMock(return_value=None)
         return FilterBuilder(settings, prober, face_center_fn)

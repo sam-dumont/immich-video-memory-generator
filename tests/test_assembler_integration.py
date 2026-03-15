@@ -32,6 +32,7 @@ def _make_assembler(settings: AssemblySettings | None = None):
     """Create a VideoAssembler with mocked get_config."""
     from immich_memories.processing.video_assembler import VideoAssembler
 
+    # WHY: mock get_config — assembler reads global config at init, tests shouldn't need a config file
     with patch("immich_memories.processing.video_assembler.get_config", return_value=MagicMock()):
         return VideoAssembler(settings or AssemblySettings())
 
@@ -76,8 +77,8 @@ class TestVideoAssemblerIntegration:
         clip = _make_assembly_clip(tmp_path, "input.mp4")
         output = tmp_path / "output.mp4"
 
-        # Mock subprocess.run so the test is deterministic regardless of
-        # whether FFmpeg is installed in the test environment.
+        # WHY: mock subprocess.run — test verifies graceful fallback when FFmpeg fails,
+        # without requiring FFmpeg to be installed in the test environment
         mock_result = MagicMock(returncode=1, stderr="mock ffmpeg failure")
         with patch(
             "immich_memories.processing.audio_mixer_service.subprocess.run",
@@ -99,6 +100,7 @@ class TestVideoAssemblerIntegration:
 
     def test_default_settings_from_config(self):
         """Assembler picks up defaults from global config."""
+        # WHY: mock get_config — verify assembler reads specific config values at init
         mock_config = MagicMock()
         mock_config.output.crf = 23
         mock_config.defaults.transition_duration = 0.8

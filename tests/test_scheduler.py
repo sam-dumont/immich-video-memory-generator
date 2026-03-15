@@ -15,10 +15,10 @@ class TestScheduleEntryConfig:
         assert entry.name == "yearly"
         assert entry.memory_type == "year_in_review"
         assert entry.cron == "0 9 15 1 *"
-        assert entry.enabled is True
-        assert entry.upload_to_immich is False
+        assert entry.enabled
+        assert not entry.upload_to_immich
         assert entry.album_name is None
-        assert entry.person_names == []
+        assert not entry.person_names
         assert entry.duration_minutes is None
 
     def test_schedule_entry_full_config(self):
@@ -43,9 +43,9 @@ class TestScheduleEntryConfig:
         from immich_memories.scheduling.models import SchedulerConfig
 
         config = SchedulerConfig()
-        assert config.enabled is False
+        assert not config.enabled
         assert config.timezone == "UTC"
-        assert config.schedules == []
+        assert not config.schedules
 
     def test_scheduler_config_with_schedules(self):
         from immich_memories.scheduling.models import ScheduleEntry, SchedulerConfig
@@ -58,7 +58,7 @@ class TestScheduleEntryConfig:
                 ScheduleEntry(name="daily", memory_type="on_this_day", cron="0 9 * * *"),
             ],
         )
-        assert config.enabled is True
+        assert config.enabled
         assert len(config.schedules) == 2
 
     def test_scheduler_config_in_main_config(self):
@@ -67,8 +67,8 @@ class TestScheduleEntryConfig:
 
         config = Config()
         assert hasattr(config, "scheduler")
-        assert config.scheduler.enabled is False
-        assert config.scheduler.schedules == []
+        assert not config.scheduler.enabled
+        assert not config.scheduler.schedules
 
 
 class TestSchedulerEngine:

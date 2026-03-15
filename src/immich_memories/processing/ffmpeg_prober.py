@@ -45,7 +45,7 @@ class FFmpegProber:
         self.settings = settings
 
     def parse_resolution_from_stream(self, stream: dict) -> tuple[int, int] | None:
-        """Extract width/height from a stream dict, accounting for rotation."""
+        """Swaps width/height when rotation is 90 or 270 degrees."""
         width = stream.get("width", 0)
         height = stream.get("height", 0)
         rotation = 0
@@ -94,7 +94,6 @@ class FFmpegProber:
         res_1080p: tuple[int, int],
         res_720p: tuple[int, int],
     ) -> tuple[int, int]:
-        """Pick the best output resolution based on clip counts."""
         if resolution_counts["4k"] > total / 2:
             logger.info(
                 f"Auto resolution: 4K {orientation_str} ({resolution_counts['4k']}/{total} clips are 4K)"
@@ -125,7 +124,6 @@ class FFmpegProber:
         return res_720p
 
     def detect_best_resolution(self, clips: list[AssemblyClip]) -> tuple[int, int]:
-        """Pick output resolution based on majority of clips (4K/1080p/720p)."""
         resolution_counts: dict[str, int] = {"4k": 0, "1080p": 0, "720p": 0, "other": 0}
         orientation_counts: dict[str, int] = {"portrait": 0, "landscape": 0}
 
@@ -167,7 +165,7 @@ class FFmpegProber:
         )
 
     def probe_duration(self, file_path: Path, stream_type: str = "audio") -> float:
-        """Probe stream duration via ffprobe. Returns 0.0 on failure."""
+        """Falls back to format duration if stream duration unavailable."""
         try:
             # Probe the specific stream's duration, not format duration
             # This is important because audio and video durations can differ
@@ -215,7 +213,6 @@ class FFmpegProber:
             return 0.0
 
     def probe_framerate(self, path: Path) -> float:
-        """Probe frame rate. Returns 60.0 as fallback."""
         try:
             result = subprocess.run(
                 [
@@ -246,7 +243,6 @@ class FFmpegProber:
         return 60.0  # Default fallback
 
     def has_audio_stream(self, path: Path) -> bool:
-        """Check if file has at least one audio stream."""
         try:
             cmd = [
                 "ffprobe",
@@ -286,7 +282,6 @@ class FFmpegProber:
             return False
 
     def has_video_stream(self, path: Path) -> bool:
-        """Check if file has at least one video stream."""
         try:
             cmd = [
                 "ffprobe",
@@ -310,7 +305,6 @@ class FFmpegProber:
         self,
         batches: list[AssemblyClip],
     ) -> tuple[list[float], list[float]]:
-        """Probe actual audio and video durations for a list of batch files."""
         audio_durations: list[float] = []
         video_durations: list[float] = []
         for batch in batches:
@@ -354,7 +348,6 @@ class FFmpegProber:
         return None
 
     def detect_framerate(self, video_path: Path) -> float | None:
-        """Detect frame rate from video stream metadata. Returns None on failure."""
         try:
             cmd = [
                 "ffprobe",

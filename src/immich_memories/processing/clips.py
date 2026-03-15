@@ -70,11 +70,9 @@ class ClipSegment:
 
     @property
     def duration(self) -> float:
-        """Get segment duration."""
         return self.end_time - self.start_time
 
     def to_dict(self) -> dict:
-        """Convert to dictionary."""
         return {
             "source_path": str(self.source_path),
             "start_time": self.start_time,
@@ -89,25 +87,12 @@ class ClipExtractor(ClipEncodingMixin):
     """Extract and process video clips."""
 
     def __init__(self, output_dir: Path | None = None):
-        """Initialize the clip extractor.
-
-        Args:
-            output_dir: Directory for extracted clips.
-        """
         if output_dir is None:
             output_dir = Path(tempfile.gettempdir()) / "immich_memories" / "clips"
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def cleanup_old_clips(self, max_age_hours: int = 24) -> int:
-        """Remove clip files older than max_age_hours.
-
-        Args:
-            max_age_hours: Maximum age in hours for cached clips.
-
-        Returns:
-            Number of files removed.
-        """
         if not self.output_dir.exists():
             return 0
 
@@ -225,7 +210,6 @@ class ClipExtractor(ClipEncodingMixin):
         return buffered_segment, output_filename
 
     def _extract_copy(self, segment: ClipSegment, output_path: Path) -> None:
-        """Extract clip using stream copy (fast, no quality loss)."""
         validate_video_path(segment.source_path, must_exist=True)
         cmd = [
             "ffmpeg",
@@ -376,7 +360,6 @@ def _resolve_buffer_times(
     buffer_end: bool,
     buffer_seconds: float,
 ) -> tuple[float, float]:
-    """Calculate actual start/end times with buffer applied."""
     actual_start = start_time
     actual_end = end_time
 
@@ -402,7 +385,6 @@ def _build_clip_output_path(
     buffer_end: bool,
     reencode: bool,
 ) -> Path:
-    """Build the output path for a standalone clip extraction."""
     output_dir = Path(tempfile.gettempdir()) / "immich_memories" / "clips"
     output_dir.mkdir(parents=True, exist_ok=True)
     source_hash = hashlib.md5(str(source_path).encode(), usedforsecurity=False).hexdigest()[:8]  # noqa: S324

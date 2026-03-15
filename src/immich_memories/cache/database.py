@@ -35,11 +35,7 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
     """SQLite-based cache for video analysis results."""
 
     def __init__(self, db_path: Path | None = None):
-        """Initialize the cache.
-
-        Args:
-            db_path: Path to SQLite database. Uses config default if not specified.
-        """
+        """Uses config default if db_path not specified."""
         if db_path is None:
             from immich_memories.config import get_config
 
@@ -51,12 +47,10 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
         self._run_migrations()
 
     def _ensure_db_exists(self) -> None:
-        """Ensure database directory exists."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
     @contextmanager
     def _get_connection(self) -> Iterator[sqlite3.Connection]:
-        """Get a database connection with proper settings."""
         conn = sqlite3.connect(
             self.db_path,
             detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
@@ -87,14 +81,6 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
         bit_depth: int | None = None,
         rotation: int | None = None,
     ) -> None:
-        """Save quick video metadata (from probing).
-
-        Args:
-            asset_id: The asset ID.
-            checksum: Asset checksum for cache invalidation.
-            rotation: Video rotation in degrees (0, 90, 180, 270) from metadata.
-            Other args: Video metadata fields.
-        """
         with self._get_connection() as conn:
             conn.execute(
                 """
@@ -123,14 +109,6 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
             conn.commit()
 
     def get_video_metadata(self, asset_id: str) -> dict | None:
-        """Get cached video metadata.
-
-        Args:
-            asset_id: The asset ID.
-
-        Returns:
-            Dict with metadata or None if not cached.
-        """
         with self._get_connection() as conn:
             row = conn.execute(
                 "SELECT * FROM video_metadata WHERE asset_id = ?", (asset_id,)
@@ -152,14 +130,6 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
             }
 
     def get_video_metadata_batch(self, asset_ids: list[str]) -> dict[str, dict]:
-        """Get metadata for multiple videos at once.
-
-        Args:
-            asset_ids: List of asset IDs.
-
-        Returns:
-            Dict mapping asset_id to metadata dict.
-        """
         if not asset_ids:
             return {}
 
@@ -200,18 +170,6 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
         motion_summary: dict | None = None,
         audio_levels: dict | None = None,
     ) -> None:
-        """Save video analysis results to cache.
-
-        Args:
-            asset: The Immich asset.
-            video_info: Optional video clip info with metadata.
-            perceptual_hash: Perceptual hash for duplicate detection.
-            thumbnail_hash: Thumbnail hash.
-            segments: List of scored moments/segments.
-            scenes: List of detected scenes (alternative to segments).
-            motion_summary: Motion analysis summary dict.
-            audio_levels: Audio analysis dict.
-        """
         now = datetime.now().isoformat()
 
         # Compute best scores from segments
@@ -277,7 +235,6 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
             conn.commit()
 
     def _compute_best_scores(self, segments: list | None) -> dict:
-        """Compute best scores across all segments."""
         if not segments:
             return {}
 
@@ -296,7 +253,6 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
         asset_id: str,
         segments: list,
     ) -> None:
-        """Save segment objects as DB rows (MomentScore or SegmentAnalysis)."""
         for i, segment in enumerate(segments):
             # Serialize list fields to JSON
             activities = getattr(segment, "llm_activities", None)
@@ -343,7 +299,6 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
         asset_id: str,
         scenes: list[Scene],
     ) -> None:
-        """Save Scene objects as segments."""
         for i, scene in enumerate(scenes):
             conn.execute(
                 """
@@ -369,7 +324,6 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
         asset_id: str,
         hash_value: str,
     ) -> None:
-        """Update hash index for similarity search."""
         # Pad hash to 16 chars if needed
         padded = hash_value.ljust(16, "0")[:16]
 
@@ -391,25 +345,12 @@ class VideoAnalysisCache(DatabaseMigrationsMixin, DatabaseQueryMixin):
         )
 
     def delete_analysis(self, asset_id: str) -> bool:
-        """Delete cached analysis for an asset.
-
-        Args:
-            asset_id: The asset ID.
-
-        Returns:
-            True if deleted, False if not found.
-        """
         with self._get_connection() as conn:
             cursor = conn.execute("DELETE FROM video_analysis WHERE asset_id = ?", (asset_id,))
             conn.commit()
             return cursor.rowcount > 0
 
     def clear_all(self) -> int:
-        """Clear all cached data.
-
-        Returns:
-            Number of records deleted.
-        """
         with self._get_connection() as conn:
             cursor = conn.execute("DELETE FROM video_analysis")
             count = cursor.rowcount

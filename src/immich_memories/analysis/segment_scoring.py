@@ -186,6 +186,60 @@ class SegmentScoringMixin:
             logger.debug(f"Content analysis failed: {e}")
             return 0.5
 
+    @staticmethod
+    def _find_overlapping_events(
+        start_time: float,
+        end_time: float,
+        audio_result: AudioAnalysisResult,
+    ) -> list[tuple]:
+        """Find audio events that overlap with the given time range."""
+        segment_events = []
+        for event in audio_result.events:
+            if event.end_time > start_time and event.start_time < end_time:
+                overlap_start = max(event.start_time, start_time)
+                overlap_end = min(event.end_time, end_time)
+                overlap_duration = overlap_end - overlap_start
+                if overlap_duration > 0:
+                    segment_events.append((event, overlap_duration))
+        return segment_events
+
+    @staticmethod
+    def _classify_segment_events(
+        segment_events: list[tuple],
+    ) -> tuple[float, float, bool, bool, bool, set[str]]:
+        """Classify and weight overlapping audio events.
+
+        Returns:
+            Tuple of (total_weighted, total_duration, has_laughter, has_speech,
+            has_music, categories).
+        """
+        from immich_memories.audio.audio_models import classify_audio_event
+
+        total_weighted = 0.0
+        total_duration = 0.0
+        has_laughter = False
+        has_speech = False
+        has_music = False
+        categories: set[str] = set()
+
+        for event, duration in segment_events:
+            total_weighted += event.weight * event.confidence * duration
+            total_duration += duration
+
+            cat = classify_audio_event(event.event_class)
+            if cat:
+                categories.add(cat)
+
+            event_lower = event.event_class.lower()
+            if "laugh" in event_lower or "giggle" in event_lower:
+                has_laughter = True
+            if "speech" in event_lower or "talk" in event_lower:
+                has_speech = True
+            if "music" in event_lower:
+                has_music = True
+
+        return total_weighted, total_duration, has_laughter, has_speech, has_music, categories
+
     def _score_segment_audio(
         self,
         start_time: float,
@@ -202,60 +256,23 @@ class SegmentScoringMixin:
         Returns:
             Dict with score, has_laughter, has_speech, has_music, audio_categories.
         """
-        from immich_memories.audio.audio_models import classify_audio_event
-
-        # Find events that overlap with this segment
-        segment_events = []
-        for event in audio_result.events:
-            # Check if event overlaps with segment
-            if event.end_time > start_time and event.start_time < end_time:
-                # Calculate overlap
-                overlap_start = max(event.start_time, start_time)
-                overlap_end = min(event.end_time, end_time)
-                overlap_duration = overlap_end - overlap_start
-
-                if overlap_duration > 0:
-                    segment_events.append((event, overlap_duration))
+        segment_events = self._find_overlapping_events(start_time, end_time, audio_result)
 
         if not segment_events:
             return {
-                "score": 0.5,  # Neutral score
+                "score": 0.5,
                 "has_laughter": False,
                 "has_speech": False,
                 "has_music": False,
                 "audio_categories": set(),
             }
 
-        # Calculate weighted score based on overlapping events
-        total_weighted = 0.0
-        total_duration = 0.0
-        has_laughter = False
-        has_speech = False
-        has_music = False
-        categories: set[str] = set()
-
-        for event, duration in segment_events:
-            weight = event.weight * event.confidence
-            total_weighted += weight * duration
-            total_duration += duration
-
-            # Classify into high-level category
-            cat = classify_audio_event(event.event_class)
-            if cat:
-                categories.add(cat)
-
-            # Legacy boolean flags
-            event_lower = event.event_class.lower()
-            if "laugh" in event_lower or "giggle" in event_lower:
-                has_laughter = True
-            if "speech" in event_lower or "talk" in event_lower:
-                has_speech = True
-            if "music" in event_lower:
-                has_music = True
+        total_weighted, total_duration, has_laughter, has_speech, has_music, categories = (
+            self._classify_segment_events(segment_events)
+        )
 
         segment_duration = end_time - start_time
         if segment_duration > 0 and total_duration > 0:
-            # Score based on event coverage and quality
             coverage = total_duration / segment_duration
             quality = total_weighted / total_duration
             score = quality * min(1.0, coverage)

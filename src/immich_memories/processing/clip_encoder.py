@@ -65,7 +65,6 @@ def configure_pyav_output_stream(
 
 
 def log_ffmpeg_error(result: subprocess.CompletedProcess) -> str:
-    """Extract useful error lines from FFmpeg stderr."""
     stderr_lines = result.stderr.split("\n")
     error_lines = [
         line
@@ -95,7 +94,6 @@ class ClipEncoder:
     def resolve_encode_resolution(
         self, target_resolution: tuple[int, int] | None
     ) -> tuple[int, int]:
-        """Resolve target resolution for single clip encoding."""
         if target_resolution:
             return target_resolution
         if self.settings.target_resolution:
@@ -103,7 +101,6 @@ class ClipEncoder:
         return get_config().output.resolution_tuple
 
     def resolve_encode_hdr(self, clip: AssemblyClip) -> tuple[str, str]:
-        """Resolve HDR type and colorspace filter for a clip."""
         hdr_type = "hlg"
         if self.settings.preserve_hdr:
             clip_hdr = _detect_hdr_type(clip.path)
@@ -118,7 +115,7 @@ class ClipEncoder:
         output_path: Path,
         target_resolution: tuple[int, int] | None = None,
     ) -> None:
-        """Encode a single clip to target format with A/V sync guarantee."""
+        """Encode with normalized resolution, frame rate, and A/V sync guarantee."""
         validate_video_path(clip.path, must_exist=True)
         target_w, target_h = self.resolve_encode_resolution(target_resolution)
 
@@ -208,7 +205,6 @@ class ClipEncoder:
         common_suffix: str,
         audio_filter: str,
     ) -> str:
-        """Build filter_complex for encoding a single clip with scale mode handling."""
         use_blur = self.settings.scale_mode == "blur" and not clip.is_title_screen
         use_smart_zoom = self.settings.scale_mode == "smart_zoom" and not clip.is_title_screen
 
@@ -261,7 +257,6 @@ class ClipEncoder:
         start: float,
         duration: float,
     ) -> None:
-        """Trim a video segment using stream copy (no re-encoding)."""
         validate_video_path(input_path, must_exist=True)
         cmd = [
             "ffmpeg",
@@ -289,7 +284,7 @@ class ClipEncoder:
         start: float,
         duration: float,
     ) -> None:
-        """Trim a video segment with re-encoding for frame-accurate boundaries."""
+        """Re-encodes for frame-accurate trim boundaries (stream copy can't do this)."""
         validate_video_path(input_path, must_exist=True)
 
         video_codec_args = _get_gpu_encoder_args(
@@ -377,7 +372,6 @@ class ClipEncoder:
         ctx: AssemblyContext,
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> subprocess.CompletedProcess:
-        """Build and run the FFmpeg assembly command."""
         video_codec_args = _get_gpu_encoder_args(
             crf=self.settings.output_crf,
             preserve_hdr=self.settings.preserve_hdr,

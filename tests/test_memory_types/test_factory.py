@@ -114,7 +114,7 @@ class TestCreatePresetMultiPerson:
 
     def test_co_occurrence_default(self) -> None:
         preset = create_preset(MemoryType.MULTI_PERSON, year=2024, person_names=["Alice", "Bob"])
-        assert preset.person_filter.require_co_occurrence is True
+        assert preset.person_filter.require_co_occurrence
         assert preset.person_filter.mode == "all_of"
 
     def test_requires_multiple_people(self) -> None:

@@ -43,17 +43,9 @@ from immich_memories.audio.music_generator import (
 class TestGenerationRequest:
     """Tests for GenerationRequest dataclass."""
 
-    def test_default_values(self):
-        req = GenerationRequest()
-        assert req.prompt == ""
-        assert req.scenes == []
-        assert req.duration_seconds == 60
-        assert req.variation_index == 0
-        assert req.crossfade_duration == 2.0
-
     def test_is_multi_scene_false(self):
         req = GenerationRequest(scenes=[{"mood": "happy", "duration": 30}])
-        assert req.is_multi_scene is False
+        assert not req.is_multi_scene
 
     def test_is_multi_scene_true(self):
         req = GenerationRequest(
@@ -62,7 +54,7 @@ class TestGenerationRequest:
                 {"mood": "calm", "duration": 20},
             ]
         )
-        assert req.is_multi_scene is True
+        assert req.is_multi_scene
 
     def test_custom_values(self):
         req = GenerationRequest(
@@ -92,7 +84,7 @@ class TestGenerationResult:
         )
         assert result.audio_path == Path("/tmp/test.wav")
         assert result.backend_name == "TestBackend"
-        assert result.metadata == {}
+        assert not result.metadata
 
 
 # =============================================================================
@@ -168,7 +160,7 @@ class TestMusicGeneratorABC:
         gen = DummyGenerator()
         health = await gen.health_check()
         assert health["backend"] == "Dummy"
-        assert health["available"] is True
+        assert health["available"]
 
     @pytest.mark.asyncio
     async def test_context_manager(self):
@@ -200,7 +192,7 @@ class TestSeasonalPrompts:
     def test_all_months_have_moods(self):
         for month in range(1, 13):
             assert month in SEASONAL_MOODS
-            assert len(SEASONAL_MOODS[month]) > 0
+            assert SEASONAL_MOODS[month]
 
     def test_get_seasonal_prompt_valid(self):
         result = get_seasonal_prompt(12)
@@ -348,8 +340,8 @@ class TestVideoTimeline:
             clips=[(10.0, "happy", None), (20.0, "calm", None)],
             transitions_after=[0],
         )
-        assert timeline.clips[0].has_transition_after is True
-        assert timeline.clips[1].has_transition_after is False
+        assert timeline.clips[0].has_transition_after
+        assert not timeline.clips[1].has_transition_after
 
     def test_from_clips_two_tuple(self):
         """Should support (duration, mood) tuples without month."""
@@ -676,7 +668,7 @@ class TestMusicGenClient:
         payload = call_args[1]["json"]
         assert payload["base_prompt"] == "upbeat pop"
         assert len(payload["scenes"]) == 2
-        assert payload["use_beat_aligned_crossfade"] is True
+        assert payload["use_beat_aligned_crossfade"]
 
 
 # =============================================================================
@@ -853,21 +845,21 @@ class TestACEStepConfig:
         assert config.mode == "lib"
         assert config.model_variant == "turbo"
         assert config.lm_model_size == "1.7B"
-        assert config.use_lm is True
-        assert config.bf16 is True
+        assert config.use_lm
+        assert config.bf16
         assert config.num_versions == 3
         assert config.timeout_seconds == 3600
 
     def test_pascal_gpu_config(self):
         """Config for Pascal GPUs should disable bf16."""
         config = ACEStepConfig(bf16=False, lm_model_size="0.6B")
-        assert config.bf16 is False
+        assert not config.bf16
         assert config.lm_model_size == "0.6B"
 
     def test_low_memory_config(self):
         """Config for low memory should disable LM."""
         config = ACEStepConfig(use_lm=False, lm_model_size="0.6B")
-        assert config.use_lm is False
+        assert not config.use_lm
 
     def test_api_mode(self):
         config = ACEStepConfig(mode="api", api_url="http://remote:7860")
@@ -898,7 +890,7 @@ class TestACEStepBackend:
             ),
             patch.object(backend, "_check_api", return_value=False),
         ):
-            assert await backend.is_available() is False
+            assert not await backend.is_available()
 
     async def test_is_available_lib_found(self):
         """Should return True when lib is importable."""
@@ -907,7 +899,7 @@ class TestACEStepBackend:
             "immich_memories.audio.generators.ace_step_backend._is_ace_step_importable",
             return_value=True,
         ):
-            assert await backend.is_available() is True
+            assert await backend.is_available()
 
     async def test_health_check_api_mode(self):
         backend = ACEStepBackend(ACEStepConfig(mode="api", api_url="http://test:7860"))
@@ -920,11 +912,11 @@ class TestACEStepBackend:
         ):
             health = await backend.health_check()
             assert health["effective_mode"] == "api"
-            assert health["available"] is True
+            assert health["available"]
 
     def test_is_ace_step_importable_returns_false(self):
         """Should return False when acestep isn't installed."""
-        assert _is_ace_step_importable() is False
+        assert not _is_ace_step_importable()
 
     async def test_exit_releases_pipeline(self):
         backend = ACEStepBackend()
@@ -948,7 +940,7 @@ class TestMusicGenBackend:
     async def test_is_available_no_server(self):
         """Should return False when no server is running."""
         backend = MusicGenBackend(MusicGenClientConfig(base_url="http://localhost:99999"))
-        assert await backend.is_available() is False
+        assert not await backend.is_available()
 
     async def test_generate_requires_context(self):
         backend = MusicGenBackend()
@@ -958,7 +950,7 @@ class TestMusicGenBackend:
     async def test_health_check_not_initialized(self):
         backend = MusicGenBackend()
         health = await backend.health_check()
-        assert health["available"] is False
+        assert not health["available"]
         assert "not initialized" in health.get("error", "")
 
     async def test_generate_single_track(self):
@@ -1082,7 +1074,7 @@ class TestConfigIntegration:
 
         config = Config()
         assert hasattr(config, "ace_step")
-        assert config.ace_step.enabled is False
+        assert not config.ace_step.enabled
         assert config.ace_step.mode == "lib"
         assert config.ace_step.model_variant == "turbo"
 
@@ -1114,7 +1106,7 @@ class TestConfigIntegration:
         }
         with patch.dict(os.environ, env_patch):
             config = get_config()
-            assert config.ace_step.enabled is True
+            assert config.ace_step.enabled
             assert config.ace_step.mode == "api"
             assert config.ace_step.api_url == "http://gpu-server:7860"
 

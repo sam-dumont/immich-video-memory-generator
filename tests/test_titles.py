@@ -68,13 +68,13 @@ class TestTitleStyle:
 
     def test_color_palettes_exist(self):
         """Test that color palettes are defined."""
-        assert len(COLOR_PALETTES) > 0
+        assert COLOR_PALETTES
         for name, palette in COLOR_PALETTES.items():
             assert len(palette) >= 2, f"Palette {name} should have at least 2 colors"
 
     def test_font_stack_exists(self):
         """Test that font stack is defined."""
-        assert len(FONT_STACK) > 0
+        assert FONT_STACK
         assert "Outfit" in FONT_STACK
 
 
@@ -260,7 +260,7 @@ class TestTitleScreenConfig:
     def test_default_config(self):
         """Test default configuration values."""
         config = TitleScreenConfig()
-        assert config.enabled is True
+        assert config.enabled
         assert config.title_duration == 3.5
         assert config.month_divider_duration == 2.0
         assert config.ending_duration == 7.0
@@ -279,13 +279,13 @@ class TestAnimations:
 
     def test_text_animations_defined(self):
         """Test that text animations are defined."""
-        assert len(TEXT_ANIMATIONS) > 0
+        assert TEXT_ANIMATIONS
         assert "fade_up" in TEXT_ANIMATIONS
         assert "slow_fade" in TEXT_ANIMATIONS
 
     def test_easing_functions_defined(self):
         """Test that easing functions are defined."""
-        assert len(EASING_FUNCTIONS) > 0
+        assert EASING_FUNCTIONS
         assert "linear" in EASING_FUNCTIONS
         assert "ease_out_quad" in EASING_FUNCTIONS
 
@@ -418,8 +418,8 @@ class TestAssemblyIntegration:
         )
         assert settings.year == 2024
         assert settings.locale == "en"
-        assert settings.show_month_dividers is True
-        assert settings.enabled is True
+        assert settings.show_month_dividers
+        assert settings.enabled
 
     def test_assembly_settings_with_titles(self):
         """Test AssemblySettings with title screens."""

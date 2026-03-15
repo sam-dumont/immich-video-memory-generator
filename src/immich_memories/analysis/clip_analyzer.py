@@ -393,6 +393,38 @@ class ClipAnalyzer:
         finally:
             self._cleanup_analyzer(unified_analyzer, content_analyzer)
 
+    def _run_analysis_with_fallback(
+        self,
+        clip: VideoClipInfo,
+        analysis_video: Path,
+        original_video: Path,
+        video_duration: float,
+        use_unified: bool,
+    ) -> tuple[float, float, float, dict[str, object] | None]:
+        """Run unified analysis with legacy fallback, returning (start, end, score, llm)."""
+        start, end, score = 0.0, 0.0, 0.0
+        llm_analysis: dict[str, object] | None = None
+
+        if use_unified:
+            try:
+                start, end, score, llm_analysis = self._run_unified_analysis(
+                    clip, analysis_video, original_video, video_duration
+                )
+            except Exception as e:
+                logger.warning(f"Unified analysis failed: {e}, using legacy approach")
+
+        if score == 0.0:
+            start, end, score = self.preview_builder.run_legacy_analysis(
+                clip,
+                analysis_video,
+                original_video,
+                video_duration,
+                self.config,
+                self.analysis_cache,
+            )
+
+        return start, end, score, llm_analysis
+
     def _analyze_clip_with_preview(
         self,
         clip: VideoClipInfo,
@@ -411,35 +443,22 @@ class ClipAnalyzer:
 
         try:
             analysis_video, original_video, temp_file = self._download_analysis_video(clip)
-
             video_duration = clip.duration_seconds or 30
-            start, end, score = 0.0, 0.0, 0.0
-            llm_analysis: dict[str, object] | None = None
 
-            if config.analysis.use_unified_analysis:
-                try:
-                    start, end, score, llm_analysis = self._run_unified_analysis(
-                        clip, analysis_video, original_video, video_duration
-                    )
-                except Exception as e:
-                    logger.warning(f"Unified analysis failed: {e}, using legacy approach")
+            start, end, score, llm_analysis = self._run_analysis_with_fallback(
+                clip,
+                analysis_video,
+                original_video,
+                video_duration,
+                use_unified=config.analysis.use_unified_analysis,
+            )
 
-            if score == 0.0:
-                start, end, score = self.preview_builder.run_legacy_analysis(
-                    clip,
-                    analysis_video,
-                    original_video,
-                    video_duration,
-                    self.config,
-                    self.analysis_cache,
-                )
-                if start == 0.0 and end > 0.0 and score == 0.0:
-                    return start, end, score, None, None
+            if start == 0.0 and end > 0.0 and score == 0.0:
+                return start, end, score, None, None
 
             preview_path = self.preview_builder.extract_and_log_preview(
                 clip, original_video, analysis_video, start, end
             )
-
             return start, end, score, preview_path, llm_analysis
 
         finally:

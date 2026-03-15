@@ -32,15 +32,6 @@ class DatabaseQueryMixin:
         asset_id: str,
         include_segments: bool = True,
     ) -> CachedVideoAnalysis | None:
-        """Get cached analysis for an asset.
-
-        Args:
-            asset_id: The asset ID.
-            include_segments: Whether to load segment data.
-
-        Returns:
-            Cached analysis or None if not found.
-        """
         with self._get_connection() as conn:
             row = conn.execute(
                 "SELECT * FROM video_analysis WHERE asset_id = ?", (asset_id,)
@@ -57,7 +48,6 @@ class DatabaseQueryMixin:
             return analysis
 
     def _row_to_analysis(self, row: sqlite3.Row) -> CachedVideoAnalysis:
-        """Convert database row to CachedVideoAnalysis."""
         return CachedVideoAnalysis(
             asset_id=row["asset_id"],
             checksum=row["checksum"],
@@ -90,7 +80,6 @@ class DatabaseQueryMixin:
         )
 
     def _load_segments(self, conn: sqlite3.Connection, asset_id: str) -> list[CachedSegment]:
-        """Load segments for an asset."""
         rows = conn.execute(
             """
             SELECT * FROM video_segments
@@ -162,15 +151,6 @@ class DatabaseQueryMixin:
         asset: Asset,
         max_age_days: int | None = None,
     ) -> bool:
-        """Check if a video needs re-analysis.
-
-        Args:
-            asset: The asset to check.
-            max_age_days: Override for cache max age.
-
-        Returns:
-            True if video needs re-analysis.
-        """
         if max_age_days is None:
             from immich_memories.config import get_config
 
@@ -257,15 +237,6 @@ class DatabaseQueryMixin:
         asset_ids: list[str],
         checksums: dict[str, str | None] | None = None,
     ) -> list[str]:
-        """Get asset IDs that need analysis (not cached or stale).
-
-        Args:
-            asset_ids: List of asset IDs to check.
-            checksums: Optional dict of asset_id -> checksum for staleness.
-
-        Returns:
-            List of asset IDs needing analysis.
-        """
         if not asset_ids:
             return []
 
@@ -294,21 +265,11 @@ class DatabaseQueryMixin:
             return uncached
 
     def get_all_hashes(self) -> dict[str, str]:
-        """Get all perceptual hashes for clustering.
-
-        Returns:
-            Dict of asset_id -> hash_value.
-        """
         with self._get_connection() as conn:
             rows = conn.execute("SELECT asset_id, full_hash FROM hash_index").fetchall()
             return {row["asset_id"]: row["full_hash"] for row in rows}
 
     def get_stats(self) -> dict:
-        """Get cache statistics.
-
-        Returns:
-            Dictionary with cache stats.
-        """
         with self._get_connection() as conn:
             total = conn.execute("SELECT COUNT(*) FROM video_analysis").fetchone()[0]
 

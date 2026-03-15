@@ -113,7 +113,7 @@ class TestDetectTrips:
             _make_asset(51.2194, 4.4025, "2024-06-14T10:00:00", city="Antwerp", country="Belgium"),
         ]
         trips = detect_trips(assets, self.HOME_LAT, self.HOME_LON)
-        assert len(trips) == 0
+        assert not trips
 
     def test_detects_single_trip(self):
         """Videos in Barcelona (>1000km from Brussels) over 3 days = one trip."""
@@ -158,7 +158,7 @@ class TestDetectTrips:
             _make_asset(48.86, 2.35, "2024-06-12T18:00:00", city="Paris", country="France"),
         ]
         trips = detect_trips(assets, self.HOME_LAT, self.HOME_LON)
-        assert len(trips) == 0
+        assert not trips
 
     def test_skips_assets_without_gps(self):
         """Assets with no EXIF GPS should be silently ignored."""
@@ -451,7 +451,7 @@ class TestFormatTripsTable:
             ),
         ]
         selected = select_trips(trips)
-        assert selected == []
+        assert not selected
 
 
 class TestReverseGeocode:
@@ -1013,7 +1013,7 @@ class TestDetectOvernightStops:
         """No assets → no bases."""
         from immich_memories.analysis.trip_detection import detect_overnight_stops
 
-        assert detect_overnight_stops([]) == []
+        assert not detect_overnight_stops([])
 
     def test_single_day_trip(self):
         """Single day → 1 base with 1 night."""
@@ -1452,7 +1452,7 @@ class TestTagClipsToSegments:
         from immich_memories.analysis.trip_detection import tag_clips_to_segments
 
         result = tag_clips_to_segments({"clip1": date(2023, 9, 23)}, [])
-        assert result == {}
+        assert not result
 
 
 class TestDistributeClipBudget:
@@ -1482,4 +1482,4 @@ class TestDistributeClipBudget:
     def test_empty_segments(self):
         from immich_memories.analysis.trip_detection import distribute_clip_budget
 
-        assert distribute_clip_budget(5, []) == []
+        assert not distribute_clip_budget(5, [])

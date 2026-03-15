@@ -87,4 +87,4 @@ class TestBuildAceStepLyrics:
             for line in lyrics.split("\n")
             if line.strip() and not line.strip().startswith("[")
         ]
-        assert len(lines) == 0, f"Unexpected non-tag lines: {lines}"
+        assert not lines, f"Unexpected non-tag lines: {lines}"

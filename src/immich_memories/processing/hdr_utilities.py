@@ -1,9 +1,4 @@
-"""HDR detection and conversion utilities.
-
-This module provides functions for detecting HDR types (HLG, PQ/HDR10),
-converting between HDR formats, and selecting appropriate GPU encoder
-arguments for HDR-aware encoding.
-"""
+"""HDR detection and conversion utilities."""
 
 from __future__ import annotations
 

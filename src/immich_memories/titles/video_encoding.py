@@ -85,6 +85,83 @@ def _get_best_encoder(hdr: bool = True) -> tuple[list[str], str]:
     return encoder_args, video_filter
 
 
+def _build_ffmpeg_cmd(
+    width: int,
+    height: int,
+    fps: float,
+    duration: float,
+    encoder_args: list[str],
+    video_filter: str,
+    output_path: Path,
+) -> list[str]:
+    """Build the FFmpeg command for piped raw-video input."""
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-s",
+        f"{width}x{height}",
+        "-r",
+        str(fps),
+        "-i",
+        "pipe:0",
+        "-f",
+        "lavfi",
+        "-i",
+        "anullsrc=r=48000:cl=stereo",
+    ]
+    if video_filter:
+        cmd.extend(["-vf", video_filter])
+    cmd.extend(
+        [
+            *encoder_args,
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-t",
+            str(duration),
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ]
+    )
+    return cmd
+
+
+def _render_frame_with_animation(
+    renderer,
+    title: str,
+    subtitle: str | None,
+    frame_idx: int,
+    *,
+    preset,
+    reversed_preset,
+    fade_out_start_frame: int,
+    fade_out_frames: int,
+    animation_frames: int,
+    fade_from_white: bool,
+    fade_in_frames: int,
+    white_frame,
+):
+    """Render a single frame applying fade-in/fade-out animation logic."""
+    if frame_idx >= fade_out_start_frame:
+        fade_out_progress = (frame_idx - fade_out_start_frame) / fade_out_frames
+        fade_out_frame = int(fade_out_progress * animation_frames)
+        return renderer.render_frame(title, subtitle, fade_out_frame, reversed_preset)
+
+    if fade_from_white and frame_idx < fade_in_frames:
+        frame = renderer.render_frame(title, subtitle, frame_idx, preset)
+        fade_in_progress = frame_idx / fade_in_frames
+        blend_alpha = 1.0 - (1.0 - fade_in_progress) ** 2
+        return Image.blend(white_frame, frame, blend_alpha)
+
+    return renderer.render_frame(title, subtitle, frame_idx, preset)
+
+
 def create_title_video(
     title: str,
     subtitle: str | None,
@@ -131,52 +208,10 @@ def create_title_video(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     encoder_args, video_filter = _get_best_encoder(hdr=hdr)
-
-    # Build FFmpeg command to read raw video from pipe
-    cmd = [
-        "ffmpeg",
-        "-y",
-        # Input: raw RGB frames from stdin
-        "-f",
-        "rawvideo",
-        "-pix_fmt",
-        "rgb24",
-        "-s",
-        f"{width}x{height}",
-        "-r",
-        str(fps),
-        "-i",
-        "pipe:0",
-        # Add silent audio track (required for crossfades in assembly)
-        "-f",
-        "lavfi",
-        "-i",
-        "anullsrc=r=48000:cl=stereo",
-    ]
-
-    # SDR→HLG color conversion (fixes pinkish title screens)
-    if video_filter:
-        cmd.extend(["-vf", video_filter])
-
-    cmd.extend(
-        [
-            *encoder_args,
-            # Audio codec for the silent track
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            # Duration to match video
-            "-t",
-            str(duration),
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ]
-    )
+    cmd = _build_ffmpeg_cmd(width, height, fps, duration, encoder_args, video_filter, output_path)
 
     # Use a queue to pass frames between threads
-    frame_queue: queue.Queue = queue.Queue(maxsize=10)  # Buffer up to 10 frames
+    frame_queue: queue.Queue = queue.Queue(maxsize=10)
     write_error: list = []
 
     def write_frames_to_ffmpeg(process: subprocess.Popen) -> None:
@@ -184,72 +219,54 @@ def create_title_video(
         try:
             while True:
                 frame_bytes = frame_queue.get()
-                if frame_bytes is None:  # Sentinel to stop
+                if frame_bytes is None:
                     break
                 process.stdin.write(frame_bytes)
             process.stdin.close()
         except Exception as e:
             write_error.append(e)
 
-    # Start FFmpeg process
     process = subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
-
-    # Start writer thread
     writer_thread = threading.Thread(target=write_frames_to_ffmpeg, args=(process,))
     writer_thread.start()
 
-    # Render frames and add to queue
+    # Animation parameters
     total_frames = int(duration * fps)
     preset = get_animation_preset(style.animation_preset)
     reversed_preset = reverse_preset(preset)
-
-    # Text fade-out animation
-    fade_out_duration = 1.0
-    fade_out_frames = int(fade_out_duration * fps)
+    fade_out_frames = int(1.0 * fps)
     fade_out_start_frame = total_frames - fade_out_frames
     animation_frames = int(preset.duration_ms / 1000 * fps)
-
-    # Fade FROM white at the start (only for intro title, not month dividers)
     fade_in_frames = int(0.8 * fps) if fade_from_white else 0
     white_frame = Image.new("RGB", (width, height), (255, 255, 255)) if fade_from_white else None
 
     for i in range(total_frames):
-        if i >= fade_out_start_frame:
-            # Text fade-out (background stays visible for assembly crossfade)
-            fade_out_progress = (i - fade_out_start_frame) / fade_out_frames
-            fade_out_frame = int(fade_out_progress * animation_frames)
-            frame = renderer.render_frame(title, subtitle, fade_out_frame, reversed_preset)
-        elif fade_from_white and i < fade_in_frames:
-            # Fade-in phase: blend FROM white to frame (intro title only)
-            frame = renderer.render_frame(title, subtitle, i, preset)
-            fade_in_progress = i / fade_in_frames
-            blend_alpha = 1.0 - (1.0 - fade_in_progress) ** 2  # Ease out curve
-            frame = Image.blend(white_frame, frame, blend_alpha)
-        else:
-            # Normal rendering
-            frame = renderer.render_frame(title, subtitle, i, preset)
+        frame = _render_frame_with_animation(
+            renderer,
+            title,
+            subtitle,
+            i,
+            preset=preset,
+            reversed_preset=reversed_preset,
+            fade_out_start_frame=fade_out_start_frame,
+            fade_out_frames=fade_out_frames,
+            animation_frames=animation_frames,
+            fade_from_white=fade_from_white,
+            fade_in_frames=fade_in_frames,
+            white_frame=white_frame,
+        )
+        frame_queue.put(frame.tobytes())
 
-        # Convert PIL Image to raw RGB bytes and add to queue
-        frame_bytes = frame.tobytes()
-        frame_queue.put(frame_bytes)
-
-    # Signal end of frames
     frame_queue.put(None)
     writer_thread.join()
 
-    # Wait for FFmpeg to finish (stdin already closed by writer thread)
-    # Read stderr directly instead of using communicate()
     stderr = process.stderr.read() if process.stderr else b""
     process.wait()
 
     if write_error:
         raise RuntimeError(f"Write error: {write_error[0]}")
-
     if process.returncode != 0:
         raise RuntimeError(f"FFmpeg failed: {stderr.decode()}")
 

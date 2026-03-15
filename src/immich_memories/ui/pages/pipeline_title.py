@@ -49,6 +49,54 @@ def _gather_person_names(state: AppState) -> list[str]:
     return []
 
 
+def _group_clips_by_date(
+    clips: list,
+) -> dict[str, list[tuple[str, float, float]]]:
+    """Group clip GPS coordinates by date string."""
+    from collections import defaultdict
+
+    by_date: defaultdict[str, list[tuple[str, float, float]]] = defaultdict(list)
+    for clip in clips:
+        a = clip.asset
+        if not a.exif_info or not a.exif_info.latitude:
+            continue
+        dt = a.local_date_time or a.file_created_at
+        city = a.exif_info.city or "Unknown"
+        by_date[str(dt.date())].append((city, a.exif_info.latitude, a.exif_info.longitude or 0))
+    return dict(by_date)
+
+
+def _cluster_day_entries(
+    entries: list[tuple[str, float, float]],
+) -> list[tuple[str, float, float, int]]:
+    """Cluster GPS entries within 5km and return (city, lat, lon, count)."""
+    from immich_memories.analysis.trip_detection import haversine_km
+
+    clusters: list[tuple[str, float, float, int]] = []
+    for city, lat, lon in entries:
+        merged = False
+        for i, (cc, cl, co, cn) in enumerate(clusters):
+            if haversine_km(lat, lon, cl, co) < 5:
+                clusters[i] = (cc, cl, co, cn + 1)
+                merged = True
+                break
+        if not merged:
+            clusters.append((city, lat, lon, 1))
+    return clusters
+
+
+def _build_daily_summaries(
+    by_date: dict[str, list[tuple[str, float, float]]],
+) -> list[str]:
+    """Build per-day cluster summary strings from grouped GPS data."""
+    daily: list[str] = []
+    for d in sorted(by_date):
+        clusters = _cluster_day_entries(by_date[d])
+        parts = [f"{c}({n})" for c, _, _, n in sorted(clusters, key=lambda x: -x[3])]
+        daily.append(f"{d}: {', '.join(parts)}")
+    return daily
+
+
 def _gather_trip_context(state: AppState) -> _TripContext:
     """Gather trip context: raw daily GPS clusters for the LLM to analyze.
 
@@ -57,40 +105,12 @@ def _gather_trip_context(state: AppState) -> _TripContext:
     - Road trip: different cluster each day, large distances
     - Hiking trail: progressive short-distance moves
     """
-    from collections import defaultdict
-
-    from immich_memories.analysis.trip_detection import haversine_km
-
     ctx = _TripContext()
     if state.memory_type != "trip" or not state.clips:
         return ctx
     try:
-        by_date: defaultdict[str, list[tuple[str, float, float]]] = defaultdict(list)
-        for clip in state.clips:
-            a = clip.asset
-            if not a.exif_info or not a.exif_info.latitude:
-                continue
-            dt = a.local_date_time or a.file_created_at
-            city = a.exif_info.city or "Unknown"
-            by_date[str(dt.date())].append((city, a.exif_info.latitude, a.exif_info.longitude or 0))
-
-        # Build per-day cluster summaries
-        daily: list[str] = []
-        for d in sorted(by_date):
-            entries = by_date[d]
-            # Cluster photos within 5km
-            clusters: list[tuple[str, float, float, int]] = []  # city, lat, lon, count
-            for city, lat, lon in entries:
-                merged = False
-                for i, (cc, cl, co, cn) in enumerate(clusters):
-                    if haversine_km(lat, lon, cl, co) < 5:
-                        clusters[i] = (cc, cl, co, cn + 1)
-                        merged = True
-                        break
-                if not merged:
-                    clusters.append((city, lat, lon, 1))
-            parts = [f"{c}({n})" for c, _, _, n in sorted(clusters, key=lambda x: -x[3])]
-            daily.append(f"{d}: {', '.join(parts)}")
+        by_date = _group_clips_by_date(state.clips)
+        daily = _build_daily_summaries(by_date)
         ctx.daily_locations = daily or None
         ctx.country = _extract_single_country(state)
     except Exception:

@@ -40,8 +40,8 @@ class TestAssetLivePhotoField:
     def test_is_live_photo_property(self):
         with_lp = Asset(**_make_asset(livePhotoVideoId="vid-1"))
         without_lp = Asset(**_make_asset())
-        assert with_lp.is_live_photo is True
-        assert without_lp.is_live_photo is False
+        assert with_lp.is_live_photo
+        assert not without_lp.is_live_photo
 
 
 class TestGetLivePhotosForDateRange:
@@ -417,8 +417,8 @@ class TestTemporalClustering:
 
         clusters = cluster_live_photos(burst + single, merge_window_seconds=10)
 
-        assert clusters[0].is_burst is True
-        assert clusters[1].is_burst is False
+        assert clusters[0].is_burst
+        assert not clusters[1].is_burst
 
     def test_cluster_is_favorite_if_any_photo_favorite(self):
         """Cluster should be favorite if ANY photo in it is favorited."""
@@ -451,7 +451,7 @@ class TestTemporalClustering:
             ),
         ]
         cluster = LivePhotoCluster(assets=assets)
-        assert cluster.is_favorite is True
+        assert cluster.is_favorite
 
     def test_cluster_not_favorite_if_none_favorite(self):
         """Cluster should not be favorite if no photos are favorited."""
@@ -468,7 +468,7 @@ class TestTemporalClustering:
             ),
         ]
         cluster = LivePhotoCluster(assets=assets)
-        assert cluster.is_favorite is False
+        assert not cluster.is_favorite
 
 
 class TestBurstMergerCommand:

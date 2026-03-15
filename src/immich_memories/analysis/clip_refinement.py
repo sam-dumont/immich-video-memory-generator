@@ -212,6 +212,53 @@ def scale_down_favorites(
     return protected + removable
 
 
+def _enumerate_weeks_in_range(
+    first_date: datetime,
+    last_date: datetime,
+) -> list[str]:
+    """Return unique week keys spanning [first_date, last_date].
+
+    Args:
+        first_date: Start of date range.
+        last_date: End of date range.
+
+    Returns:
+        Ordered list of week keys (e.g. "2024-W03").
+    """
+    weeks: list[str] = []
+    current = first_date
+    while current <= last_date:
+        week_key = current.strftime("%Y-W%W")
+        if week_key not in weeks:
+            weeks.append(week_key)
+        current += timedelta(days=7)
+    return weeks
+
+
+def _pick_gap_fillers_for_week(
+    week_non_favs: list[ClipWithSegment],
+    selected_ids: set[str],
+    max_per_week: int = 2,
+) -> list[ClipWithSegment]:
+    """Pick top-scored non-favorites for an empty week.
+
+    Args:
+        week_non_favs: Non-favorite clips available for this week.
+        selected_ids: Mutable set of already-selected asset IDs.
+        max_per_week: Maximum clips to pick per week.
+
+    Returns:
+        Clips picked as gap fillers (also adds them to selected_ids).
+    """
+    week_non_favs.sort(key=lambda c: c.score, reverse=True)
+    picked: list[ClipWithSegment] = []
+    for clip in week_non_favs[:max_per_week]:
+        if clip.clip.asset.id not in selected_ids:
+            picked.append(clip)
+            selected_ids.add(clip.clip.asset.id)
+    return picked
+
+
 def fill_empty_weeks(
     selected_favorites: list[ClipWithSegment],
     non_favorites: list[ClipWithSegment],
@@ -241,25 +288,14 @@ def fill_empty_weeks(
 
     first_date = favorites[0].clip.asset.file_created_at
     last_date = favorites[-1].clip.asset.file_created_at
-
-    all_weeks_in_range: list[str] = []
-    current = first_date
-    while current <= last_date:
-        week_key = current.strftime("%Y-W%W")
-        if week_key not in all_weeks_in_range:
-            all_weeks_in_range.append(week_key)
-        current += timedelta(days=7)
+    all_weeks_in_range = _enumerate_weeks_in_range(first_date, last_date)
 
     gap_fillers: list[ClipWithSegment] = []
     for week in all_weeks_in_range:
         if len(selected_by_week.get(week, [])) == 0:
             week_non_favs = non_favs_by_week.get(week, [])
             if week_non_favs:
-                week_non_favs.sort(key=lambda c: c.score, reverse=True)
-                for clip in week_non_favs[:2]:
-                    if clip.clip.asset.id not in selected_ids:
-                        gap_fillers.append(clip)
-                        selected_ids.add(clip.clip.asset.id)
+                gap_fillers.extend(_pick_gap_fillers_for_week(week_non_favs, selected_ids))
 
     logger.info(f"Added {len(gap_fillers)} gap-fillers from non-favorites")
     return gap_fillers

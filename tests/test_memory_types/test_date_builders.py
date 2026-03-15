@@ -166,11 +166,11 @@ class TestBuildOnThisDay:
 
     def test_years_back_zero_returns_empty(self) -> None:
         result = build_on_this_day(date(2024, 3, 12), years_back=0)
-        assert result == []
+        assert not result
 
     def test_negative_years_back_returns_empty(self) -> None:
         result = build_on_this_day(date(2024, 3, 12), years_back=-1)
-        assert result == []
+        assert not result
 
     def test_default_years_back_is_five(self) -> None:
         result = build_on_this_day(date(2024, 3, 12))

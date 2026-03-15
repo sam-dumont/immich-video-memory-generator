@@ -130,6 +130,7 @@ class TestUnifiedSegmentAnalyzer:
     @pytest.fixture
     def analyzer(self):
         """Create an UnifiedSegmentAnalyzer instance with mocked scorer."""
+        # WHY: mock scorer — visual scoring requires real video frames + OpenCV processing
         mock_scorer = MagicMock()
         return UnifiedSegmentAnalyzer(
             scorer=mock_scorer,
@@ -154,8 +155,8 @@ class TestUnifiedSegmentAnalyzer:
         assert len(result) >= 4
         # Find the 5.0 point
         point_5 = next(cp for cp in result if abs(cp.time - 5.0) < 0.5)
-        assert point_5.is_visual is True
-        assert point_5.is_audio is False
+        assert point_5.is_visual
+        assert not point_5.is_audio
 
     def test_merge_boundaries_audio_only(self, analyzer):
         """Audio-only boundaries should be marked correctly."""
@@ -165,8 +166,8 @@ class TestUnifiedSegmentAnalyzer:
         assert len(result) >= 4
         # Find the 5.0 point
         point_5 = next(cp for cp in result if abs(cp.time - 5.0) < 0.5)
-        assert point_5.is_visual is False
-        assert point_5.is_audio is True
+        assert not point_5.is_visual
+        assert point_5.is_audio
 
     def test_merge_boundaries_merged(self, analyzer):
         """Nearby visual and audio boundaries should be merged."""
@@ -187,10 +188,10 @@ class TestUnifiedSegmentAnalyzer:
         point_5 = next(cp for cp in result if abs(cp.time - 5.0) < 0.3)
         point_10 = next(cp for cp in result if abs(cp.time - 10.0) < 0.3)
 
-        assert point_5.is_visual is True
-        assert point_5.is_audio is False
-        assert point_10.is_visual is False
-        assert point_10.is_audio is True
+        assert point_5.is_visual
+        assert not point_5.is_audio
+        assert not point_10.is_visual
+        assert point_10.is_audio
 
     def test_generate_candidate_segments_respects_duration(self, analyzer):
         """Segments should respect min/max duration."""
@@ -222,7 +223,7 @@ class TestUnifiedSegmentAnalyzer:
         result = analyzer._generate_candidate_segments(cut_points, video_duration=30.0)
 
         # Should include segments starting/ending on audio boundaries
-        assert len(result) > 0
+        assert result
 
         # First candidates should have audio boundaries
         if result:
@@ -320,6 +321,8 @@ class TestUnifiedAnalyzerIntegration:
     @pytest.fixture
     def analyzer(self):
         """Create analyzer with mocked dependencies."""
+        # WHY: mock scorer — integration tests verify boundary detection + segment selection,
+        # not the visual scoring pipeline which needs real video frames
         mock_scorer = MagicMock()
         mock_scorer.score_scene.return_value = MomentScore(
             start_time=0.0,
@@ -338,10 +341,12 @@ class TestUnifiedAnalyzerIntegration:
     def test_analyze_file_not_found(self, analyzer):
         """Should return empty list for missing file."""
         result = analyzer.analyze(Path("/nonexistent/video.mp4"))
-        assert result == []
+        assert not result
 
     def test_analyze_with_mocked_detectors(self, analyzer):
         """Should analyze video with mocked boundary detectors."""
+        # WHY: mock boundary detectors + get_video_info — they require real video files with
+        # audio/video streams; we're testing the analyze() orchestration logic
         with (
             patch.object(analyzer, "_detect_visual_boundaries") as mock_visual,
             patch.object(analyzer, "_detect_audio_boundaries") as mock_audio,
@@ -417,6 +422,7 @@ class TestCreateUnifiedAnalyzerFromConfig:
 
     def test_creates_analyzer_with_defaults(self):
         """Should create analyzer from config."""
+        # WHY: mock get_config — factory function reads global config; tests run without config file
         with patch("immich_memories.config.get_config") as mock_cfg:
             mock_cfg.return_value.analysis.min_segment_duration = 2.0
             mock_cfg.return_value.analysis.max_segment_duration = 15.0
@@ -441,6 +447,8 @@ class TestCreateUnifiedAnalyzerFromConfig:
 
     def test_creates_analyzer_with_content_analysis(self):
         """Should create analyzer with content analysis when enabled."""
+        # WHY: mock get_config + get_content_analyzer — factory reads config and creates LLM
+        # client; tests verify wiring without needing a running LLM server
         with (
             patch("immich_memories.config.get_config") as mock_cfg,
             patch(

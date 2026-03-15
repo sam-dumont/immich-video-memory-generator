@@ -116,6 +116,48 @@ def scale_to_target_duration(
     return result
 
 
+def _resolve_cluster(
+    time_key: str,
+    cluster_clips: list[ClipWithSegment],
+) -> tuple[ClipWithSegment, int]:
+    """Pick the best representative from a multi-clip temporal cluster.
+
+    Prefers the highest-scored favorite; falls back to highest-scored non-favorite.
+
+    Args:
+        time_key: Cluster identifier (for logging).
+        cluster_clips: All clips in this temporal cluster (len >= 2).
+
+    Returns:
+        Tuple of (best clip to keep, number of clips removed).
+    """
+    favorites = [c for c in cluster_clips if c.clip.asset.is_favorite]
+    non_favorites = [c for c in cluster_clips if not c.clip.asset.is_favorite]
+
+    if favorites:
+        favorites.sort(key=lambda c: c.score, reverse=True)
+        best = favorites[0]
+        removed = len(favorites) - 1 + len(non_favorites)
+        if removed > 0:
+            logger.debug(
+                f"Temporal cluster {time_key}: keeping favorite {best.clip.asset.original_file_name} "
+                f"(score={best.score:.2f}), removing {len(favorites) - 1} favorites + "
+                f"{len(non_favorites)} non-favorites"
+            )
+        return best, removed
+
+    # No favorites — keep best non-favorite
+    non_favorites.sort(key=lambda c: c.score, reverse=True)
+    best = non_favorites[0]
+    removed = len(non_favorites) - 1
+    if removed > 0:
+        logger.debug(
+            f"Temporal cluster {time_key}: keeping non-favorite {best.clip.asset.original_file_name} "
+            f"(score={best.score:.2f}), removing {removed} duplicates"
+        )
+    return best, removed
+
+
 def deduplicate_temporal_clusters(
     clips: list[ClipWithSegment],
     time_window_minutes: float = 10.0,
@@ -141,7 +183,6 @@ def deduplicate_temporal_clusters(
 
     for clip in clips:
         timestamp = clip.clip.asset.file_created_at
-        # Create time bucket key (round to nearest time_window)
         bucket_minutes = int(timestamp.timestamp() / 60 / time_window_minutes)
         time_key = f"{timestamp.date()}_{bucket_minutes}"
         time_clusters[time_key].append(clip)
@@ -155,48 +196,11 @@ def deduplicate_temporal_clusters(
             result.append(cluster_clips[0])
             continue
 
-        # Multiple clips in same time window
-        favorites_in_cluster = [c for c in cluster_clips if c.clip.asset.is_favorite]
-        non_favorites_in_cluster = [c for c in cluster_clips if not c.clip.asset.is_favorite]
-
-        if favorites_in_cluster:
-            # At least one favorite in cluster - keep only the best favorite
-            # Remove ALL other clips (extra favorites AND non-favorites from same moment)
-            favorites_in_cluster.sort(key=lambda c: c.score, reverse=True)
-            best = favorites_in_cluster[0]
-
-            result.append(best)
-
-            # Count what we're removing
-            removed_favorites = len(favorites_in_cluster) - 1
-            removed_non_favorites = len(non_favorites_in_cluster)
-            total_removed = removed_favorites + removed_non_favorites
-
-            if total_removed > 0:
-                removed_count += total_removed
-                clusters_with_duplicates += 1
-
-                logger.debug(
-                    f"Temporal cluster {time_key}: keeping favorite {best.clip.asset.original_file_name} "
-                    f"(score={best.score:.2f}), removing {removed_favorites} favorites + "
-                    f"{removed_non_favorites} non-favorites"
-                )
-        else:
-            # No favorites in cluster - keep only the best non-favorite
-            if len(non_favorites_in_cluster) > 1:
-                non_favorites_in_cluster.sort(key=lambda c: c.score, reverse=True)
-                best = non_favorites_in_cluster[0]
-                result.append(best)
-                removed_count += len(non_favorites_in_cluster) - 1
-                clusters_with_duplicates += 1
-
-                logger.debug(
-                    f"Temporal cluster {time_key}: keeping non-favorite {best.clip.asset.original_file_name} "
-                    f"(score={best.score:.2f}), removing {len(non_favorites_in_cluster) - 1} duplicates"
-                )
-            else:
-                # Only 1 non-favorite, keep it
-                result.extend(non_favorites_in_cluster)
+        best, removed = _resolve_cluster(time_key, cluster_clips)
+        result.append(best)
+        if removed > 0:
+            removed_count += removed
+            clusters_with_duplicates += 1
 
     if removed_count > 0:
         logger.info(

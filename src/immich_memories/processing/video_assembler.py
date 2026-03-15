@@ -1,31 +1,4 @@
-"""Video assembler class and convenience functions.
-
-This module provides the VideoAssembler class for combining video clips into a
-final memory video with title screens, transitions, and audio.
-
-Assembly Pipeline:
-    1. Generate title screen (GPU-accelerated if available)
-    2. Process video clips (normalize resolution, framerate)
-    3. Apply transitions (smart, crossfade, or cuts)
-    4. Generate ending screen with dominant color fade
-    5. Encode final video (HEVC with HDR preservation)
-
-Example:
-    ```python
-    from immich_memories.processing import (
-        VideoAssembler,
-        AssemblySettings,
-    )
-
-    settings = AssemblySettings(
-        transition=TransitionType.CROSSFADE,
-        preserve_hdr=True,
-    )
-
-    assembler = VideoAssembler(settings)
-    output = assembler.assemble(clips, Path("output.mp4"))
-    ```
-"""
+"""Video assembler class and convenience functions."""
 
 from __future__ import annotations
 
@@ -117,7 +90,6 @@ class VideoAssembler:
             raise JobCancelledException(f"Job {self.run_id} cancelled")
 
     def _get_face_center(self, video_path: Path) -> tuple[float, float] | None:
-        """Get face center for a video with caching."""
         if video_path in self._face_cache:
             self._face_cache.move_to_end(video_path)
             return self._face_cache[video_path]
@@ -135,7 +107,6 @@ class VideoAssembler:
         output_path: Path,
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> Path:
-        """Assemble clips with title screens, dividers, and ending screen."""
         return self.title_inserter.assemble_with_titles(
             clips, output_path, self.assemble, progress_callback
         )
@@ -170,7 +141,6 @@ class VideoAssembler:
         return result
 
     def _process_single_clip(self, clip: AssemblyClip, output_path: Path) -> Path:
-        """Process a single clip (add music if needed)."""
         if self.settings.music_path and self.settings.music_path.exists():
             return self.audio_mixer.add_music_to_clip(clip.path, output_path)
         else:
@@ -190,7 +160,6 @@ def assemble_montage(
     music_vocals_path: Path | None = None,
     music_accompaniment_path: Path | None = None,
 ) -> Path:
-    """Convenience function to assemble a video montage."""
     from immich_memories.processing.clips import get_video_duration
 
     assembly_clips = []
@@ -220,7 +189,6 @@ def create_preview(
     output_path: Path,
     preview_duration: float = 30.0,
 ) -> Path:
-    """Create a quick preview of the assembly."""
     preview_clips = []
     remaining_duration = preview_duration
 

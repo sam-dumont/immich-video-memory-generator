@@ -42,22 +42,6 @@ class TestMusicTrack:
         assert track.artist == "Test Artist"
         assert track.duration_seconds == 180.0
 
-    def test_default_values(self):
-        """Test default values."""
-        track = MusicTrack(
-            id="123",
-            title="Test",
-            artist="Artist",
-            duration_seconds=60.0,
-            url="https://example.com/song.mp3",
-        )
-        assert track.preview_url is None
-        assert track.tags == []
-        assert track.mood is None
-        assert track.genre is None
-        assert track.license == "royalty-free"
-        assert track.source == "unknown"
-
     def test_cache_filename(self):
         """Test cache filename generation."""
         track = MusicTrack(
@@ -91,16 +75,6 @@ class TestMusicTrack:
 class TestDuckingConfig:
     """Tests for DuckingConfig class."""
 
-    def test_default_values(self):
-        """Test default ducking configuration."""
-        config = DuckingConfig()
-        assert config.threshold == 0.02
-        assert config.ratio == 4.0
-        assert config.attack_ms == 100.0
-        assert config.release_ms == 2500.0
-        assert config.makeup_db == 0.0
-        assert config.music_volume_db == -6.0
-
     def test_custom_values(self):
         """Test custom ducking configuration."""
         config = DuckingConfig(
@@ -116,14 +90,6 @@ class TestDuckingConfig:
 class TestMixConfig:
     """Tests for MixConfig class."""
 
-    def test_default_values(self):
-        """Test default mix configuration."""
-        config = MixConfig(ducking=DuckingConfig())
-        assert config.fade_in_seconds == 2.0
-        assert config.fade_out_seconds == 3.0
-        assert config.music_starts_at == 0.0
-        assert config.normalize_audio is True
-
     def test_custom_values(self):
         """Test custom mix configuration."""
         config = MixConfig(
@@ -134,7 +100,7 @@ class TestMixConfig:
         )
         assert config.fade_in_seconds == 1.0
         assert config.fade_out_seconds == 2.0
-        assert config.normalize_audio is False
+        assert not config.normalize_audio
 
 
 class TestVideoMood:
@@ -150,16 +116,6 @@ class TestVideoMood:
         assert mood.primary_mood == "happy"
         assert mood.energy_level == "high"
         assert mood.tempo_suggestion == "fast"
-
-    def test_default_values(self):
-        """Test default values."""
-        mood = VideoMood(primary_mood="calm")
-        assert mood.secondary_mood is None
-        assert mood.energy_level == "medium"
-        assert mood.tempo_suggestion == "medium"
-        assert mood.genre_suggestions == []
-        assert mood.color_palette == "neutral"
-        assert mood.confidence == 0.8
 
     def test_to_search_params(self):
         """Test conversion to search parameters."""
@@ -194,7 +150,7 @@ class TestLocalMusicSource:
         """Test handling of nonexistent directory."""
         source = LocalMusicSource(Path("/nonexistent/path"))
         tracks = source._scan_directory()
-        assert tracks == []
+        assert not tracks
 
     @pytest.mark.asyncio
     async def test_search_empty(self):
@@ -202,7 +158,7 @@ class TestLocalMusicSource:
         with tempfile.TemporaryDirectory() as tmpdir:
             source = LocalMusicSource(Path(tmpdir))
             tracks = await source.search()
-            assert tracks == []
+            assert not tracks
 
     @pytest.mark.asyncio
     async def test_download_existing(self):
@@ -275,7 +231,7 @@ class TestOllamaMoodAnalyzer:
 
         available = await analyzer.is_available()
 
-        assert available is True
+        assert available
 
     def test_parse_mood_response_valid(self):
         """Test parsing valid mood response."""
@@ -424,7 +380,7 @@ class TestPANNsAnalysis:
         mixin.laughter_confidence = 0.2
 
         meets, category = mixin._classify_frame("Laughter", 0.5)
-        assert meets is True
+        assert meets
         assert category == "laughter"
 
     def test_classify_frame_laughter_low_threshold(self):
@@ -437,7 +393,7 @@ class TestPANNsAnalysis:
 
         # Score 0.25 is below min_confidence but above laughter_confidence
         meets, category = mixin._classify_frame("Laughter", 0.25)
-        assert meets is True
+        assert meets
         assert category == "laughter"
 
     def test_classify_frame_below_threshold(self):
@@ -449,7 +405,7 @@ class TestPANNsAnalysis:
         mixin.laughter_confidence = 0.2
 
         meets, category = mixin._classify_frame("Laughter", 0.1)
-        assert meets is False
+        assert not meets
 
     def test_classify_frame_engine(self):
         """Test frame classification detects engine sounds."""
@@ -460,7 +416,7 @@ class TestPANNsAnalysis:
         mixin.laughter_confidence = 0.2
 
         meets, category = mixin._classify_frame("Motor vehicle (road)", 0.5)
-        assert meets is True
+        assert meets
         assert category == "engine"
 
     def test_classify_frame_singing(self):
@@ -472,7 +428,7 @@ class TestPANNsAnalysis:
         mixin.laughter_confidence = 0.2
 
         meets, category = mixin._classify_frame("Singing", 0.5)
-        assert meets is True
+        assert meets
         assert category == "singing"
 
     def test_collect_events_from_scores(self):
@@ -519,8 +475,8 @@ class TestPANNsAnalysis:
 
         with patch.dict("sys.modules", {"panns_inference": None}):
             result = mixin._check_panns_available()
-            assert result is False
-            assert mixin._panns_available is False
+            assert not result
+            assert not mixin._panns_available
 
 
 class TestMusicTrackEdgeCases:

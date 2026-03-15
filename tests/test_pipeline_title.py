@@ -27,7 +27,7 @@ class TestCollectClipDescriptions:
 
         state = AppState()
         state.analysis_cache = None
-        assert _collect_clip_descriptions(state) == []
+        assert not _collect_clip_descriptions(state)
 
     def test_returns_empty_when_no_selected_clips(self):
         from immich_memories.ui.pages.pipeline_title import _collect_clip_descriptions
@@ -35,7 +35,7 @@ class TestCollectClipDescriptions:
         state = AppState()
         state.analysis_cache = MagicMock()
         state.selected_clip_ids = set()
-        assert _collect_clip_descriptions(state) == []
+        assert not _collect_clip_descriptions(state)
 
     def test_returns_descriptions_from_best_segment(self):
         from immich_memories.ui.pages.pipeline_title import _collect_clip_descriptions
@@ -69,7 +69,7 @@ class TestCollectClipDescriptions:
         state.analysis_cache.get_analysis.return_value = None
 
         result = _collect_clip_descriptions(state)
-        assert result == []
+        assert not result
 
 
 class TestGenerateTitleAfterPipeline:

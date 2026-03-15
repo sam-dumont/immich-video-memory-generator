@@ -107,7 +107,7 @@ class TestSmartPipelineIntegration:
         result = pipeline.run(clips)
 
         assert isinstance(result, PipelineResult)
-        assert len(result.selected_clips) > 0
+        assert result.selected_clips
         assert len(result.clip_segments) == len(result.selected_clips)
         assert isinstance(result.stats, dict)
         assert "selected_count" in result.stats
@@ -129,9 +129,9 @@ class TestSmartPipelineIntegration:
         result = pipeline.run([])
 
         assert isinstance(result, PipelineResult)
-        assert result.selected_clips == []
-        assert result.clip_segments == {}
-        assert result.errors == []
+        assert not result.selected_clips
+        assert not result.clip_segments
+        assert not result.errors
 
     def test_hdr_only_filters_sdr_clips(
         self,

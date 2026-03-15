@@ -553,6 +553,11 @@ source_modules = [
 ]
 forbidden_modules = ["immich_memories.cli"]
 
+[tool.refurb]
+# FURB184 (chained assignments) is a style preference — config + result = func(config)
+# is more readable than result = func(MockConfig()) in tests
+ignore = ["FURB184"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

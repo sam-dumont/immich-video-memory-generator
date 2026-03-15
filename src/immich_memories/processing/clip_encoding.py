@@ -28,7 +28,6 @@ _hw_caps: HWAccelCapabilities | None = None
 
 
 def _get_hw_caps() -> HWAccelCapabilities:
-    """Get cached hardware capabilities."""
     global _hw_caps
     if _hw_caps is None:
         _hw_caps = detect_hardware_acceleration()
@@ -44,16 +43,6 @@ class ClipEncodingMixin:
         output_path: Path,
         hw_caps: HWAccelCapabilities | None,
     ) -> list[str]:
-        """Build the FFmpeg command for re-encoding a clip.
-
-        Args:
-            segment: Clip segment to extract.
-            output_path: Path for output file.
-            hw_caps: Hardware acceleration capabilities, or None for software-only.
-
-        Returns:
-            List of command arguments for FFmpeg.
-        """
         validate_video_path(segment.source_path, must_exist=True)
 
         config = get_config()
@@ -90,14 +79,7 @@ class ClipEncodingMixin:
         codec: str,
         config: object,
     ) -> None:
-        """Append video encoder arguments to the FFmpeg command.
-
-        Args:
-            cmd: Command list to append to (mutated in place).
-            hw_caps: Hardware acceleration capabilities, or None for software-only.
-            codec: Target codec name.
-            config: Application configuration.
-        """
+        """Mutates cmd in place."""
         if hw_caps and hw_caps.has_encoding:
             encoder, encoder_args = get_ffmpeg_encoder(
                 hw_caps,
@@ -116,13 +98,7 @@ class ClipEncodingMixin:
 
     @staticmethod
     def _append_quality_args(cmd: list[str], encoder: str, crf: int) -> None:
-        """Append quality-based rate control args for the given encoder.
-
-        Args:
-            cmd: Command list to append to (mutated in place).
-            encoder: Encoder name (e.g. 'h264_nvenc').
-            crf: Quality value.
-        """
+        """Rate control varies by encoder (nvenc uses -cq, vaapi uses -global_quality, etc.)."""
         if "nvenc" in encoder:
             cmd.extend(["-cq", str(crf)])
         elif "videotoolbox" in encoder:
@@ -139,7 +115,6 @@ class ClipEncodingMixin:
         duration: float,
         progress_callback: Callable[[float], None],
     ) -> None:
-        """Parse an FFmpeg progress line and invoke callback if relevant."""
         if not line.startswith("out_time_ms="):
             return
         with contextlib.suppress(ValueError, IndexError):
@@ -155,7 +130,6 @@ class ClipEncodingMixin:
         progress_callback: Callable[[float], None],
         hw_caps: HWAccelCapabilities | None,
     ) -> None:
-        """Handle FFmpeg failure: fall back to software or raise."""
         if hw_caps and hw_caps.has_encoding and "nvenc" in stderr.lower():
             logger.warning("Hardware encoding failed, falling back to software")
             self._extract_with_reencode(segment, output_path, progress_callback, use_hw_accel=False)

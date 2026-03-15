@@ -48,12 +48,10 @@ class HWAccelCapabilities:
 
     @property
     def has_encoding(self) -> bool:
-        """Check if hardware encoding is available."""
         return self.supports_h264_encode or self.supports_h265_encode
 
     @property
     def has_decoding(self) -> bool:
-        """Check if hardware decoding is available."""
         return self.supports_h264_decode or self.supports_h265_decode
 
     def __str__(self) -> str:
@@ -77,7 +75,6 @@ class HWAccelCapabilities:
 
 
 def _run_ffmpeg_check(args: list[str]) -> tuple[bool, str]:
-    """Run an FFmpeg command and return success status and output."""
     try:
         result = subprocess.run(
             ["ffmpeg"] + args,
@@ -91,19 +88,16 @@ def _run_ffmpeg_check(args: list[str]) -> tuple[bool, str]:
 
 
 def _check_ffmpeg_encoder(encoder: str) -> bool:
-    """Check if a specific FFmpeg encoder is available."""
     success, output = _run_ffmpeg_check(["-hide_banner", "-encoders"])
     return success and encoder in output
 
 
 def _check_ffmpeg_decoder(decoder: str) -> bool:
-    """Check if a specific FFmpeg decoder is available."""
     success, output = _run_ffmpeg_check(["-hide_banner", "-decoders"])
     return success and decoder in output
 
 
 def _check_ffmpeg_hwaccel(hwaccel: str) -> bool:
-    """Check if a specific FFmpeg hwaccel is available."""
     success, output = _run_ffmpeg_check(["-hide_banner", "-hwaccels"])
     return success and hwaccel in output
 
@@ -262,7 +256,6 @@ def get_opencv_backend(capabilities: HWAccelCapabilities) -> str:
 
 
 def _format_gpu_info(capabilities: HWAccelCapabilities) -> list[str]:
-    """Format GPU processing info lines based on backend capabilities."""
     _yn = {True: "Yes", False: "No"}
     lines = [f"  GPU Scaling: {_yn[capabilities.supports_scaling]}"]
 
@@ -287,7 +280,6 @@ def _format_gpu_info(capabilities: HWAccelCapabilities) -> list[str]:
 
 
 def print_hardware_info(capabilities: HWAccelCapabilities) -> None:
-    """Print hardware acceleration information."""
     _yn = {True: "Yes", False: "No"}
 
     print("\n=== Hardware Acceleration Info ===")

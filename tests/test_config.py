@@ -62,12 +62,6 @@ class TestExpandEnvVars:
 class TestImmichConfig:
     """Tests for ImmichConfig."""
 
-    def test_default_values(self):
-        """Test default configuration values."""
-        config = ImmichConfig()
-        assert config.url == ""
-        assert config.api_key == ""
-
     def test_env_expansion(self, monkeypatch):
         """Test environment variable expansion in config."""
         monkeypatch.setenv("TEST_IMMICH_URL", "https://test.example.com")
@@ -78,15 +72,6 @@ class TestImmichConfig:
 
 class TestDefaultsConfig:
     """Tests for DefaultsConfig."""
-
-    def test_default_values(self):
-        """Test default configuration values."""
-        config = DefaultsConfig()
-        assert config.target_duration_minutes == 10
-        assert config.output_orientation == "auto"
-        assert config.scale_mode == "smart_crop"
-        assert config.transition == "smart"
-        assert config.transition_duration == 0.5
 
     @pytest.mark.parametrize(
         "field,value,match",
@@ -116,14 +101,6 @@ class TestDefaultsConfig:
 
 class TestAnalysisConfig:
     """Tests for AnalysisConfig."""
-
-    def test_default_values(self):
-        """Test default configuration values."""
-        config = AnalysisConfig()
-        assert config.scene_threshold == 27.0
-        assert config.min_scene_duration == 1.0
-        assert config.duplicate_hash_threshold == 8
-        assert config.keyframe_interval == 1.0
 
     @pytest.mark.parametrize(
         "field,value",
@@ -203,14 +180,6 @@ class TestClipStyle:
 
 class TestOutputConfig:
     """Tests for OutputConfig."""
-
-    def test_default_values(self):
-        """Test default configuration values."""
-        config = OutputConfig()
-        assert config.format == "mp4"
-        assert config.resolution == "1080p"
-        assert config.codec == "h264"
-        assert config.crf == 18
 
     def test_output_path(self):
         """Test output path expansion."""

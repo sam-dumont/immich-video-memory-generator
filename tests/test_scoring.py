@@ -101,7 +101,7 @@ class TestSceneScorer:
 
             segments = scorer._generate_segments(Path("test.mp4"), 3.0, 0.5)
 
-            assert len(segments) == 0
+            assert not segments
 
     def test_compute_sort_key_prefers_higher_score(self, scorer):
         """Higher score should sort first."""
@@ -262,7 +262,7 @@ class TestSampleAndScoreVideo:
                 path = Path(f.name)
                 results = scorer.sample_and_score_video(path)
 
-            assert results == []
+            assert not results
 
     def test_sample_video_sorted_by_score(self, scorer):
         """Results should be sorted by score (best first)."""
@@ -345,7 +345,7 @@ class TestSceneAwareSegmentation:
         segments = scorer._subdivide_scene(scene, target_duration=5.0, overlap=0.5, fps=30)
 
         # Scene is too short to meet 50% threshold
-        assert len(segments) == 0
+        assert not segments
 
     def test_subdivide_scene_exact_fit(self, scorer):
         """Scene exactly matching target returns overlapping segments due to step size."""
@@ -390,7 +390,7 @@ class TestSceneAwareSegmentation:
 
         # First segment should start at scene start
         assert segments[0].start_time == 10
-        assert segments[0].start_frame == int(10 * 30)
+        assert segments[0].start_frame == 10 * 30
 
     def test_generate_scene_aware_segments_filters_short_scenes(self, scorer):
         """Should filter out scenes shorter than min_segment_duration."""
@@ -549,4 +549,4 @@ class TestSampleVideoConvenienceFunction:
 
             mock_method.assert_called_once()
             call_args = mock_method.call_args
-            assert call_args.kwargs["use_scene_detection"] is False
+            assert not call_args.kwargs["use_scene_detection"]
