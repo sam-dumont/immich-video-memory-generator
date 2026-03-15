@@ -138,3 +138,4 @@ error_log.log
 .kiro/
 mutants/
 .mutmut-cache/
+docs/superpowers/
