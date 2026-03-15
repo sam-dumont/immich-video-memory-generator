@@ -25,7 +25,7 @@ def _render_volume_slider(options: dict, width: str = "w-64") -> None:
     with ui.row().classes("items-center gap-4 mt-4"):
         ui.label("Music volume:").classes("text-sm")
         volume_slider = ui.slider(
-            min=0.0, max=1.0, step=0.05, value=options.get("music_volume", 0.5)
+            min=0.0, max=1.0, step=0.05, value=options.get("music_volume", 0.65)
         ).classes(width)
 
         def on_volume_change(e):
