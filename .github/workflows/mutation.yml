@@ -27,9 +27,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Run mutmut
-        run: |
-          # Uses config from pyproject.toml [tool.mutmut]
-          uv run mutmut run --max-children 4 2>&1 | tee mutmut-output.txt || true
+        run: make mutation 2>&1 | tee mutmut-output.txt || true
 
       - name: Generate mutation report
         run: |

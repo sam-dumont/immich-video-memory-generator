@@ -101,8 +101,8 @@ benchmark:
 test-integration:  ## Run integration tests (requires FFmpeg)
 	uv run pytest tests/integration/ -v -m integration
 
-mutation:  ## Run mutation testing (slow — use for weekly CI or local deep validation)
-	uv run mutmut run --paths-to-mutate=src/immich_memories --no-progress
+mutation:  ## Run mutation testing (slow — weekly CI or local deep validation)
+	uv run mutmut run --max-children 4
 	uv run mutmut results
 
 test-cov:
