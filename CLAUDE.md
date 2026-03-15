@@ -189,6 +189,24 @@ locally, CI will pass too. Use conventional commit message format (see above).
 - `CLAUDE.md` references `make` targets — not raw commands
 - When adding a new check, add it to the Makefile first, then reference it
 
+### Self-Critique Protocol
+
+After completing any major feature or refactor (>5 files changed), audit your own work:
+
+1. `make ci` passes (baseline)
+2. Skeptic review:
+   - Would a senior engineer reject any of these patterns?
+   - Are there docstrings that add no information?
+   - Are there abstractions that serve no consumer?
+   - Are tests testing behavior or testing mocks?
+   - Are file splits following cohesion or line count?
+3. AI hallmark check:
+   - Unnecessary type annotations on obvious code?
+   - Over-structured solutions (registry pattern for 3 items)?
+   - Verbose module-level docstrings with ASCII art?
+   - Helper functions called from exactly one place?
+4. `make critique` — automated checks for common smells
+
 ## Key Entry Points
 
 - CLI: `src/immich_memories/cli/__init__.py` → `main()`
