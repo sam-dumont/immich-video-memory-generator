@@ -139,6 +139,35 @@ locally, CI will pass too. Use conventional commit message format (see above).
 - When splitting, search for all imports of the moved symbols and update them
 - After any structural changes, update `ARCHITECTURE.md` to reflect new layout
 
+### Anti-Patterns (DO NOT)
+
+**Docstrings:**
+- Do NOT write docstrings that restate the function signature
+- Do NOT docstring private/internal functions unless behavior is non-obvious
+- Public API functions MUST have docstrings explaining behavior, not just restating the signature
+
+**Abstractions:**
+- Do NOT create re-export shims for a single consumer — import from the source
+- Do NOT split files purely for line count — splits must follow cohesion boundaries
+- Do NOT use mixins — use composition with Protocol contracts
+- If you need state from another module, inject it via constructor
+
+**Tests:**
+- Do NOT test dataclass field access, property getters, or Python arithmetic
+- Do NOT mock more than 3 boundaries in a single test — if you need more, the code under test has too many dependencies
+- Every mock MUST have a `# WHY:` comment explaining what external boundary it replaces
+- Integration tests (`make test-integration`) must exist for any FFmpeg pipeline change
+
+**Comments:**
+- Do NOT write comments that describe what the next line does
+- DO write comments that explain WHY something non-obvious is done
+- Do NOT leave "extracted from X to stay within 500-line limit" comments
+
+**Config:**
+- New config options MUST have a sane default
+- User-facing options go in Tier 1 (~20 options). Everything else is Tier 2 (advanced)
+- Do NOT add migration/compat shims for renamed fields — deprecate, document, remove
+
 ### Documentation Freshness
 
 - When modifying user-facing features (CLI flags, UI steps, config options, API behavior),
