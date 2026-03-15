@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+import operator
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date
@@ -76,28 +77,22 @@ def filter_near_home(
 
 
 def _filter_away_assets(
-    assets: list[Asset], home_lat: float, home_lon: float, min_distance_km: float
+    assets: list[Asset], home_lat: float, home_lon: float, min_km: float
 ) -> list[Asset]:
     away = []
-    for asset in assets:
-        if (
-            asset.exif_info is None
-            or asset.exif_info.latitude is None
-            or asset.exif_info.longitude is None
-        ):
+    for a in assets:
+        if a.exif_info is None or a.exif_info.latitude is None or a.exif_info.longitude is None:
             continue
-        dist = haversine_km(home_lat, home_lon, asset.exif_info.latitude, asset.exif_info.longitude)
-        if dist >= min_distance_km:
-            away.append(asset)
+        if haversine_km(home_lat, home_lon, a.exif_info.latitude, a.exif_info.longitude) >= min_km:
+            away.append(a)
     return away
 
 
 def _group_by_temporal_gaps(away: list[Asset], max_gap_days: int) -> list[list[Asset]]:
     groups: list[list[Asset]] = [[away[0]]]
     for asset in away[1:]:
-        prev = groups[-1][-1]
-        gap_days = (asset.file_created_at - prev.file_created_at).total_seconds() / 86400
-        if gap_days > max_gap_days:
+        gap = (asset.file_created_at - groups[-1][-1].file_created_at).total_seconds() / 86400
+        if gap > max_gap_days:
             groups.append([asset])
         else:
             groups[-1].append(asset)
@@ -392,7 +387,7 @@ def _get_dominant_country(assets: list[Asset], threshold: float = 0.9) -> str | 
 
 
 def _compute_spread_km(assets: list[Asset]) -> float:
-    """Compute max distance between any two GPS-tagged assets in km."""
+    """Approximate max GPS spread via bounding-box extremes (O(n) vs O(n²))."""
     coords = [
         (a.exif_info.latitude, a.exif_info.longitude)
         for a in assets
@@ -400,9 +395,15 @@ def _compute_spread_km(assets: list[Asset]) -> float:
     ]
     if len(coords) < 2:
         return 0.0
+    extremes = [
+        min(coords, key=operator.itemgetter(0)),
+        max(coords, key=operator.itemgetter(0)),
+        min(coords, key=operator.itemgetter(1)),
+        max(coords, key=operator.itemgetter(1)),
+    ]
     max_dist = 0.0
-    for i, (lat1, lon1) in enumerate(coords):
-        for lat2, lon2 in coords[i + 1 :]:
+    for i, (lat1, lon1) in enumerate(extremes):
+        for lat2, lon2 in extremes[i + 1 :]:
             d = haversine_km(lat1, lon1, lat2, lon2)
             if d > max_dist:
                 max_dist = d

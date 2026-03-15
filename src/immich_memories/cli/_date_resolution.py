@@ -1,7 +1,4 @@
-"""Date range resolution for CLI commands.
-
-Extracted from generate.py to stay under the 500-line file limit.
-"""
+"""Date range resolution for CLI commands."""
 
 from __future__ import annotations
 

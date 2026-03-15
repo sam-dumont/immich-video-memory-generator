@@ -26,7 +26,7 @@ async def _extract_clips(
     selected_clips, state, client, video_cache, output_dir, progress_bar, status_label
 ):
     """Phase 1: Download and extract clip segments."""
-    from immich_memories.processing.assembly import AssemblyClip
+    from immich_memories.processing.assembly_config import AssemblyClip
     from immich_memories.processing.clips import extract_clip
     from immich_memories.ui.pages.step4_export import _download_and_merge_burst
 
@@ -262,11 +262,11 @@ def _show_output(output_container, result_path: Path) -> None:
 
 def _build_assembly_settings(state, config, assembly_clips):
     """Build AssemblySettings and VideoAssembler from state and config."""
-    from immich_memories.processing.assembly import (
+    from immich_memories.processing.assembly_config import (
         AssemblySettings,
         TransitionType,
-        VideoAssembler,
     )
+    from immich_memories.processing.video_assembler import VideoAssembler
     from immich_memories.ui.filename_builder import (
         build_title_person_name,
         get_divider_mode,
@@ -293,7 +293,7 @@ def _build_assembly_settings(state, config, assembly_clips):
 
     title_screen_settings = None
     if config.title_screens.enabled:
-        from immich_memories.processing.assembly import TitleScreenSettings
+        from immich_memories.processing.assembly_config import TitleScreenSettings
 
         title_start_date = date_range.start if date_range else None
         title_end_date = date_range.end if date_range else None

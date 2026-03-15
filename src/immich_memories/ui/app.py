@@ -5,9 +5,11 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import secrets
 import signal
 import socket
 import sys
+from pathlib import Path
 
 # Configure logging before importing our modules
 from immich_memories.logging_config import configure_logging
@@ -21,6 +23,19 @@ from immich_memories.ui.state import get_app_state
 from immich_memories.ui.theme import apply_theme, render_theme_toggle
 
 logger = logging.getLogger(__name__)
+
+
+def _get_storage_secret() -> str:
+    """Get or create a persistent storage secret for NiceGUI sessions."""
+    secret_path = Path.home() / ".immich-memories" / ".storage_secret"
+    if secret_path.exists():
+        return secret_path.read_text().strip()
+    secret_path.parent.mkdir(parents=True, exist_ok=True)
+    secret = secrets.token_hex(32)
+    secret_path.write_text(secret)
+    secret_path.chmod(0o600)
+    return secret
+
 
 _STEPS = [
     ("Configuration", "settings", "/"),
@@ -309,15 +324,24 @@ def main(port: int = 8080, host: str = "0.0.0.0", reload: bool = False) -> None:
     """Run the NiceGUI application."""
     # Kill zombie processes from previous runs before binding
     if not _is_port_free(host, port):
-        logger.warning(f"Port {port} is in use — attempting to clean up zombie processes")
-        if _kill_port_holders(port):
-            if not _is_port_free(host, port):
-                logger.error(
-                    f"Port {port} still in use after cleanup. Use: lsof -ti :{port} | xargs kill -9"
-                )
+        if os.environ.get("IMMICH_MEMORIES_KILL_PORT") == "1":
+            logger.warning(f"Port {port} is in use — attempting to clean up zombie processes")
+            if _kill_port_holders(port):
+                if not _is_port_free(host, port):
+                    logger.error(
+                        f"Port {port} still in use after cleanup. "
+                        f"Use: lsof -ti :{port} | xargs kill -9"
+                    )
+                    sys.exit(1)
+            else:
+                logger.error(f"Port {port} is in use. Use: lsof -ti :{port} | xargs kill -9")
                 sys.exit(1)
         else:
-            logger.error(f"Port {port} is in use. Use: lsof -ti :{port} | xargs kill -9")
+            logger.error(
+                f"Port {port} is in use. Kill the process manually with: "
+                f"lsof -ti :{port} | xargs kill -9\n"
+                f"Or set IMMICH_MEMORIES_KILL_PORT=1 to auto-kill port holders."
+            )
             sys.exit(1)
 
     kwargs: dict = {
@@ -326,7 +350,7 @@ def main(port: int = 8080, host: str = "0.0.0.0", reload: bool = False) -> None:
         "port": port,
         "host": host,
         "reload": reload,
-        "storage_secret": "immich-memories-ui",
+        "storage_secret": _get_storage_secret(),
     }
     if reload:
         kwargs["uvicorn_reload_includes"] = "*.py"

@@ -409,7 +409,7 @@ class TestAssemblyIntegration:
 
     def test_title_screen_settings_dataclass(self):
         """Test TitleScreenSettings dataclass."""
-        from immich_memories.processing.assembly import TitleScreenSettings
+        from immich_memories.processing.assembly_config import TitleScreenSettings
 
         settings = TitleScreenSettings(
             year=2024,
@@ -423,7 +423,7 @@ class TestAssemblyIntegration:
 
     def test_assembly_settings_with_titles(self):
         """Test AssemblySettings with title screens."""
-        from immich_memories.processing.assembly import (
+        from immich_memories.processing.assembly_config import (
             AssemblySettings,
             TitleScreenSettings,
             TransitionType,
@@ -441,11 +441,11 @@ class TestAssemblyIntegration:
         """Test date parsing from AssemblyClip."""
         from datetime import date
 
-        from immich_memories.processing.assembly import (
+        from immich_memories.processing.assembly_config import (
             AssemblyClip,
             AssemblySettings,
-            VideoAssembler,
         )
+        from immich_memories.processing.video_assembler import VideoAssembler
 
         assembler = VideoAssembler(AssemblySettings())
 
@@ -468,11 +468,11 @@ class TestAssemblyIntegration:
 
     def test_video_assembler_detect_month_changes(self):
         """Test month change detection."""
-        from immich_memories.processing.assembly import (
+        from immich_memories.processing.assembly_config import (
             AssemblyClip,
             AssemblySettings,
-            VideoAssembler,
         )
+        from immich_memories.processing.video_assembler import VideoAssembler
 
         assembler = VideoAssembler(AssemblySettings())
 
