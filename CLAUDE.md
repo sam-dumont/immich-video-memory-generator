@@ -85,6 +85,9 @@ make ci
 
 # Pre-commit hooks (runs all local hooks: lint, format, mypy, gitleaks, commitizen, file-length, complexity, dead-code, security-lint)
 make pre-commit
+
+# Self-critique check for AI code smells
+make critique
 ```
 
 ## Rules

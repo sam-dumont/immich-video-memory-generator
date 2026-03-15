@@ -1,7 +1,7 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
-.PHONY: help install dev dev-ci run preflight test benchmark test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity cognitive-complexity security-lint dead-code duplication refurb dep-check docstring-coverage arch-check diff-cover ci ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
+.PHONY: help install dev dev-ci run preflight test benchmark test-cov test-integration lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity cognitive-complexity security-lint dead-code duplication refurb dep-check docstring-coverage arch-check diff-cover ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
 
 # Default target
 help:
@@ -222,6 +222,17 @@ check: ensure-dev lint format-check typecheck file-length complexity test
 # Full CI-equivalent pipeline (locally)
 ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint refurb dep-check docstring-coverage arch-check duplication test
 	@echo "Full CI pipeline passed!"
+
+# Self-critique for AI code smells
+critique:  ## Run self-critique checks for AI code smells
+	@echo "=== AI Smell Audit ==="
+	@echo "Checking for mechanical split comments..."
+	@! grep -rn "to stay within" src/ || (echo "FAIL: Fix these splits" && exit 1)
+	@echo "Checking for single-test files..."
+	@grep -rc "def test_" tests/ | awk -F: '$$2<=1 {found=1; print "LOW-VALUE: " $$1}' || true
+	@echo "Checking for wildcard re-exports (outside __init__)..."
+	@! grep -rn "from .* import \*" src/ --include="*.py" | grep -v __init__ || (echo "WARN: Wildcard re-exports found" && exit 1)
+	@echo "Self-critique complete."
 
 # Pre-commit hooks
 pre-commit:
