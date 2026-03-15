@@ -16,8 +16,13 @@ env:
   PYTHON_VERSION: "3.13"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# =============================================================================
+# Job ordering: cheap → expensive. All quality gates run in parallel.
+# Tests and Docker only run after quality gates pass.
+# =============================================================================
+
 jobs:
-  # Prime the uv cache once — all subsequent jobs reuse it
+  # ── Tier 0: Cache setup (shared by all jobs) ──────────────────────────────
   setup:
     name: Setup Cache
     runs-on: ubuntu-latest
@@ -29,84 +34,183 @@ jobs:
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
 
-  # Validate commit messages follow conventional commits
+  # ── Tier 1: Cheap quality gates (all parallel, ~10s each) ─────────────────
   commitlint:
-    name: Lint Commits
+    name: Commit Messages
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: Validate commit messages
-        run: |
-          # Check all commits in the PR
-          uvx --from commitizen cz check --rev-range origin/${{ github.base_ref }}..HEAD
+        with: { fetch-depth: 0 }
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: uvx --from commitizen cz check --rev-range origin/${{ github.base_ref }}..HEAD
 
   lint:
+    name: Lint + Format
     needs: [setup]
-    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "latest"
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: make dev-ci
-
-      - name: Run ruff check
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+      - name: Ruff check
         run: make lint
-
-      - name: Run ruff format check
+      - name: Ruff format check
         run: make format-check
 
-  security:
+  typecheck:
+    name: Type Check (mypy)
     needs: [setup]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+      - run: make typecheck
+
+  dead-code:
+    name: Dead Code (Vulture)
+    needs: [setup]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+      - run: make dead-code
+
+  complexity:
+    name: Cyclomatic Complexity (Xenon)
+    needs: [setup]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+      - run: make complexity
+
+  cognitive-complexity:
+    name: Cognitive Complexity
+    needs: [setup]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+      - run: make cognitive-complexity
+
+  file-length:
+    name: File Length (≤500 lines)
+    needs: [setup]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+      - run: make file-length
+
+  refurb:
+    name: Modernization (refurb)
+    needs: [setup]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+      - run: make refurb
+
+  dep-check:
+    name: Dependency Hygiene (deptry)
+    needs: [setup]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+      - run: make dep-check
+
+  docstring-coverage:
+    name: Docstring Coverage (≥80%)
+    needs: [setup]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+      - run: make docstring-coverage
+
+  arch-check:
+    name: Architecture (import-linter)
+    needs: [setup]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+      - run: make arch-check
+
+  duplication:
+    name: Code Duplication (≤5%)
+    needs: [setup]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: npx jscpd src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python --gitignore
+
+  critique:
+    name: AI Smell Audit
+    needs: [setup]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+      - run: make critique
+
+  # ── Tier 1: Security (parallel with quality gates) ────────────────────────
+  security:
     name: Security Scan
+    needs: [setup]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0  # Full history for secret scanning
+        with: { fetch-depth: 0 }
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "latest"
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: make dev-ci
-
-      # --- SAST ---
-      - name: Bandit (Python security linter)
+      - name: Bandit (Python SAST)
         run: |
           uvx bandit -r src/ --severity-level medium -f json -o bandit-report.json || true
-          # Fail on HIGH severity — no exceptions
           HIGH=$(python3 -c "import json; r=json.load(open('bandit-report.json')); high=[i for i in r['results'] if i['issue_severity']=='HIGH']; [print(f\"  {i['filename']}:{i['line_number']} [{i['test_id']}] {i['issue_text']}\") for i in high]; exit(len(high))")
           if [ "$?" -ne 0 ]; then
-            echo "::error::Bandit found HIGH severity findings — these MUST be fixed"
+            echo "::error::Bandit found HIGH severity findings"
             exit 1
           fi
 
@@ -114,33 +218,26 @@ jobs:
         if: env.SEMGREP_APP_TOKEN != ''
         uses: semgrep/semgrep-action@v1
         with:
-          config: >-
-            p/python
-            p/owasp-top-ten
-            p/security-audit
+          config: "p/python p/owasp-top-ten p/security-audit"
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-        # No continue-on-error — if it runs, it gates
 
-      - name: Semgrep (local fallback, no token)
+      - name: Semgrep (local, no token)
         if: env.SEMGREP_APP_TOKEN == ''
         run: uvx semgrep scan --config auto --config p/python --error --severity ERROR src/
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
-      # --- Dependency & supply chain ---
-      - name: pip-audit (dependency vulnerabilities)
+      - name: pip-audit (dependency CVEs)
         run: uvx pip-audit -r <(uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==') --strict
         shell: bash
 
-      # --- Secret detection ---
       - name: Gitleaks (secret detection)
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- Container security ---
-      - name: Hadolint (Dockerfile linting)
+      - name: Hadolint (Dockerfile)
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: docker/Dockerfile
@@ -153,83 +250,23 @@ jobs:
           name: bandit-report
           path: bandit-report.json
 
-  code-quality:
-    needs: [setup]
-    name: Code Quality
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - name: Dead code (Vulture)
-        run: make dead-code
-      - name: Cyclomatic complexity (Xenon)
-        run: make complexity
-      - name: Cognitive complexity
-        run: make cognitive-complexity
-      - name: File length gate
-        run: make file-length
-      - name: Docstring coverage
-        run: make docstring-coverage
-      - name: Modernization (refurb)
-        run: make refurb
-      - name: Dependency hygiene (deptry)
-        run: make dep-check
-      - name: Architecture boundaries
-        run: make arch-check
-      - name: Code duplication (jscpd)
-        run: make duplication
-      - name: AI smell audit
-        run: make critique
-
-  typecheck:
-    needs: [setup]
-    name: Type Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "latest"
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: make dev-ci
-
-      - name: Run mypy
-        run: make typecheck
-
+  # ── Tier 2: Tests (after all quality gates pass) ──────────────────────────
   test:
-    name: Test (Python ${{ matrix.python-version }} on ${{ matrix.os }})
-    needs: [setup, lint, typecheck, security, code-quality]
+    name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python-version: ["3.11", "3.12", "3.13"]
-
     steps:
       - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ matrix.python-version }}
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "latest"
-          enable-cache: true
-
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-
-      - name: Install FFmpeg (Ubuntu)
+      - name: Install FFmpeg (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
@@ -237,8 +274,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ffmpeg
 
-      - name: Install dependencies
-        run: make dev
+      - run: make dev
 
       - name: Run tests with coverage
         run: uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -v
@@ -254,10 +290,9 @@ jobs:
           files: coverage.xml
           fail_ci_if_error: false
 
-  # Test optional extras install and run on Python 3.13
   test-extras:
     name: Test Extras (${{ matrix.os }})
-    needs: [setup, lint, typecheck, security, code-quality]
+    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -267,20 +302,13 @@ jobs:
             extras: "dev,face,audio,audio-ml,gpu"
           - os: macos-latest
             extras: "dev,mac,audio,audio-ml,face,gpu"
-
     steps:
       - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install "3.13"
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "latest"
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install "3.13"
-
-      - name: Install FFmpeg (Ubuntu)
+      - name: Install FFmpeg (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
@@ -288,7 +316,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ffmpeg
 
-      - name: Install dependencies with extras
+      - name: Install with extras
         run: |
           IFS=',' read -ra EXTRAS <<< "${{ matrix.extras }}"
           ARGS=""
@@ -297,50 +325,31 @@ jobs:
           done
           uv sync $ARGS
 
-      - name: Run tests
-        run: make test
+      - run: make test
 
+  # ── Tier 3: Build + Docker (most expensive, after tests) ─────────────────
   build:
     name: Build Package
+    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0  # Full history for version detection
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: Build package
-        run: make build
-
-      - name: Show version
-        run: |
-          echo "Built version:"
-          ls -la dist/
-          # Show the version from the built package
-          unzip -p dist/*.whl '*/METADATA' | grep '^Version:'
-
+        with: { fetch-depth: 0 }
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make build
       - name: Check package
         run: uvx twine check dist/*
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v5
         with:
           name: dist-ci
           path: dist/
 
-  # Build Docker image (no push) to validate Dockerfile on PRs
   docker:
-    needs: [lint, typecheck, security, cognitive-complexity, refurb, dependency-hygiene, docstring-coverage, architecture, code-duplication]
-    name: Build Docker Image (${{ matrix.platform }})
+    name: Docker (${{ matrix.platform }})
+    needs: [test]
     runs-on: ${{ matrix.runner }}
     if: github.event_name == 'pull_request'
-    permissions:
-      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -351,12 +360,8 @@ jobs:
             platform: linux/arm64
     steps:
       - uses: actions/checkout@v5
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build (no push)
-        uses: docker/build-push-action@v7
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: ./docker/Dockerfile
@@ -365,98 +370,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Validate docs build (catches broken links, missing images, syntax errors)
   docs:
     name: Docs Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: docs-site/package-lock.json
+      - run: cd docs-site && npm ci
+      - run: make docs-check
 
-      - name: Install docs dependencies
-        run: cd docs-site && npm ci
-
-      - name: Build docs
-        run: make docs-check
-
-  # Advanced quality gates (each as its own visible check)
-  cognitive-complexity:
-    name: Cognitive Complexity
-    needs: [setup, lint]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make cognitive-complexity
-
-  refurb:
-    name: Modernization (refurb)
-    needs: [setup, lint]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make refurb
-
-  dependency-hygiene:
-    name: Dependency Hygiene (deptry)
-    needs: [setup, lint]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make dep-check
-
-  docstring-coverage:
-    name: Docstring Coverage (≥80%)
-    needs: [setup, lint]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make docstring-coverage
-
-  architecture:
-    name: Architecture (import-linter)
-    needs: [setup, lint]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make arch-check
-
-  code-duplication:
-    name: Code Duplication (≤5%)
-    needs: [setup, lint]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - run: npx jscpd src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python --gitignore
-
-  # Summary job that other jobs can depend on
+  # ── Summary gate ──────────────────────────────────────────────────────────
   ci-success:
     name: CI Success
-    needs: [lint, security, typecheck, test, test-extras, build, docs, cognitive-complexity, refurb, dependency-hygiene, docstring-coverage, architecture, code-duplication]
+    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, docstring-coverage, arch-check, duplication, critique, test, test-extras, build, docs]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -464,18 +394,22 @@ jobs:
         run: |
           results=(
             "${{ needs.lint.result }}"
-            "${{ needs.security.result }}"
             "${{ needs.typecheck.result }}"
+            "${{ needs.security.result }}"
+            "${{ needs.dead-code.result }}"
+            "${{ needs.complexity.result }}"
+            "${{ needs.cognitive-complexity.result }}"
+            "${{ needs.file-length.result }}"
+            "${{ needs.refurb.result }}"
+            "${{ needs.dep-check.result }}"
+            "${{ needs.docstring-coverage.result }}"
+            "${{ needs.arch-check.result }}"
+            "${{ needs.duplication.result }}"
+            "${{ needs.critique.result }}"
             "${{ needs.test.result }}"
             "${{ needs.test-extras.result }}"
             "${{ needs.build.result }}"
             "${{ needs.docs.result }}"
-            "${{ needs.cognitive-complexity.result }}"
-            "${{ needs.refurb.result }}"
-            "${{ needs.dependency-hygiene.result }}"
-            "${{ needs.docstring-coverage.result }}"
-            "${{ needs.architecture.result }}"
-            "${{ needs.code-duplication.result }}"
           )
           for r in "${results[@]}"; do
             [[ "$r" != "success" ]] && echo "A job failed: $r" && exit 1
