@@ -1,7 +1,7 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
-.PHONY: help install dev run preflight test benchmark test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity cognitive-complexity security-lint dead-code duplication refurb dep-check docstring-coverage arch-check diff-cover ci ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
+.PHONY: help install dev dev-ci run preflight test benchmark test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity cognitive-complexity security-lint dead-code duplication refurb dep-check docstring-coverage arch-check diff-cover ci ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
 
 # Default target
 help:
@@ -67,6 +67,10 @@ install:
 
 dev:
 	uv sync --all-extras
+
+# Install dev tools only (no GPU/CUDA deps — for CI quality gates)
+dev-ci:
+	uv sync --extra dev --extra audio --extra face
 
 # Install with macOS-specific extras (Apple Vision, Metal GPU, etc.)
 dev-mac:
@@ -184,7 +188,7 @@ duplication:
 
 # Modernization lint
 refurb:
-	cd src && uvx --with pydantic refurb immich_memories/ --quiet
+	cd src && uv run refurb immich_memories/ --quiet
 
 # Dependency hygiene (hallucinated/unused/transitive deps)
 dep-check:

@@ -104,6 +104,13 @@ dev = [
     "python-semantic-release>=9.0",
     "types-PyYAML>=6.0",
     "types-croniter>=6.0",
+    # Advanced quality gates
+    "refurb>=2.0",
+    "import-linter>=2.0",
+    "grimp>=3.0",
+    "interrogate>=1.7",
+    "deptry>=0.20",
+    "diff-cover>=9.0",
 ]
 
 [project.scripts]

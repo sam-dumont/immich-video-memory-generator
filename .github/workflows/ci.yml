@@ -54,7 +54,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: make dev-ci
 
       - name: Run ruff check
         run: make lint
@@ -83,7 +83,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: make dev-ci
 
       # --- SAST ---
       - name: Bandit (Python security linter)
@@ -352,7 +352,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with: { enable-cache: true }
       - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: uv sync --extra dev
+      - run: make dev-ci
       - run: make cognitive-complexity
 
   refurb:
@@ -364,7 +364,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with: { enable-cache: true }
       - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: uv sync --extra dev
+      - run: make dev-ci
       - run: make refurb
 
   dependency-hygiene:
@@ -376,7 +376,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with: { enable-cache: true }
       - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: uv sync --extra dev
+      - run: make dev-ci
       - run: make dep-check
 
   docstring-coverage:
@@ -388,7 +388,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with: { enable-cache: true }
       - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: uv sync --extra dev
+      - run: make dev-ci
       - run: make docstring-coverage
 
   architecture:
@@ -400,8 +400,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with: { enable-cache: true }
       - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: uv sync --extra dev
-      - run: uv pip install import-linter grimp
+      - run: make dev-ci
       - run: make arch-check
 
   code-duplication:
