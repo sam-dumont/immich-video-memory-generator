@@ -223,7 +223,7 @@ check: ensure-dev lint format-check typecheck file-length complexity test
 	@echo "All checks passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint refurb dep-check docstring-coverage arch-check duplication test
+ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint refurb dep-check docstring-coverage arch-check duplication critique test
 	@echo "Full CI pipeline passed!"
 
 # Self-critique for AI code smells

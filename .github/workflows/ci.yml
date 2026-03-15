@@ -111,6 +111,7 @@ jobs:
           fi
 
       - name: Semgrep (cross-file SAST)
+        if: env.SEMGREP_APP_TOKEN != ''
         uses: semgrep/semgrep-action@v1
         with:
           config: >-
@@ -119,17 +120,13 @@ jobs:
             p/security-audit
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-        continue-on-error: true  # Don't fail CI if Semgrep token not configured
+        # No continue-on-error — if it runs, it gates
 
-      # --- Dead code & complexity (kept here, not extracted to own jobs) ---
-      - name: Vulture (dead code detection)
-        run: make dead-code
-
-      - name: Xenon (cyclomatic complexity gate)
-        run: make complexity
-
-      - name: File length gate (max 500 lines)
-        run: make file-length
+      - name: Semgrep (local fallback, no token)
+        if: env.SEMGREP_APP_TOKEN == ''
+        run: uvx semgrep scan --config auto --config p/python --error --severity ERROR src/
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
       # --- Dependency & supply chain ---
       - name: pip-audit (dependency vulnerabilities)
@@ -156,6 +153,38 @@ jobs:
           name: bandit-report
           path: bandit-report.json
 
+  code-quality:
+    needs: [setup]
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+      - name: Dead code (Vulture)
+        run: make dead-code
+      - name: Cyclomatic complexity (Xenon)
+        run: make complexity
+      - name: Cognitive complexity
+        run: make cognitive-complexity
+      - name: File length gate
+        run: make file-length
+      - name: Docstring coverage
+        run: make docstring-coverage
+      - name: Modernization (refurb)
+        run: make refurb
+      - name: Dependency hygiene (deptry)
+        run: make dep-check
+      - name: Architecture boundaries
+        run: make arch-check
+      - name: Code duplication (jscpd)
+        run: make duplication
+      - name: AI smell audit
+        run: make critique
+
   typecheck:
     needs: [setup]
     name: Type Check
@@ -180,7 +209,7 @@ jobs:
 
   test:
     name: Test (Python ${{ matrix.python-version }} on ${{ matrix.os }})
-    needs: [setup, lint, typecheck, security]
+    needs: [setup, lint, typecheck, security, code-quality]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -228,7 +257,7 @@ jobs:
   # Test optional extras install and run on Python 3.13
   test-extras:
     name: Test Extras (${{ matrix.os }})
-    needs: [setup, lint, typecheck, security]
+    needs: [setup, lint, typecheck, security, code-quality]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
