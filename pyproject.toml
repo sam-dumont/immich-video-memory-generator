@@ -110,6 +110,7 @@ dev = [
     "grimp>=3.0",
     "interrogate>=1.7",
     "deptry>=0.20",
+    "mutmut>=2.0",
     "diff-cover>=9.0",
 ]
 
@@ -557,6 +558,11 @@ forbidden_modules = ["immich_memories.cli"]
 # FURB184 (chained assignments) is a style preference — config + result = func(config)
 # is more readable than result = func(MockConfig()) in tests
 ignore = ["FURB184"]
+
+[tool.mutmut]
+paths_to_mutate = ["src/immich_memories"]
+tests_dir = "tests"
+runner = "python -m pytest -x -q --tb=no"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

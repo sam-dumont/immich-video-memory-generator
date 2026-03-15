@@ -1,0 +1,71 @@
+name: Mutation Testing
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'  # Weekly Sunday 3am UTC
+  workflow_dispatch:  # Manual trigger
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  mutation-testing:
+    name: Mutation Testing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Run mutmut
+        run: |
+          uv run mutmut run --paths-to-mutate=src/immich_memories \
+            --no-progress 2>&1 | tee mutmut-output.txt || true
+
+      - name: Generate mutation report
+        run: |
+          uv run mutmut results | tee mutmut-results.txt
+          # Extract mutation score
+          KILLED=$(grep -oP 'Killed: \K\d+' mutmut-results.txt || echo 0)
+          SURVIVED=$(grep -oP 'Survived: \K\d+' mutmut-results.txt || echo 0)
+          TOTAL=$((KILLED + SURVIVED))
+          if [ "$TOTAL" -gt 0 ]; then
+            SCORE=$((KILLED * 100 / TOTAL))
+            echo "MUTATION_SCORE=$SCORE" >> "$GITHUB_ENV"
+            echo "## Mutation Testing Results" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Killed: $KILLED" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Survived: $SURVIVED" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Score: ${SCORE}%**" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload mutation report
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: mutation-report
+          path: |
+            mutmut-output.txt
+            mutmut-results.txt
+
+      # Update badge via gist (requires GIST_TOKEN secret)
+      - name: Update mutation badge
+        if: env.MUTATION_SCORE != ''
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: ${{ vars.MUTATION_BADGE_GIST_ID }}
+          filename: mutation-badge.json
+          label: mutation score
+          message: "${{ env.MUTATION_SCORE }}%"
+          valColorRange: ${{ env.MUTATION_SCORE }}
+          minColorRange: 50
+          maxColorRange: 90
