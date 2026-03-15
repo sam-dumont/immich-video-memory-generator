@@ -263,8 +263,10 @@ def _destination_overview(
     cx, cy = sum(wxs) / len(wxs), sum(wys) / len(wys)
     span_x = (max(wxs) - min(wxs)) if len(wxs) > 1 else 0.0
     span_y = (max(wys) - min(wys)) if len(wys) > 1 else 0.0
-    w_overview = max(span_x * 2.0, span_y * (width / height) * 2.0)
-    w_overview = max(width / (2.0**12), min(width / (2.0**_MIN_ZOOM_FLOOR), w_overview))
+    # 1.5x padding around pins (not 2x — keeps destinations more visible)
+    w_overview = max(span_x * 1.5, span_y * (width / height) * 1.5)
+    # Clamp: min zoom _CITY_ZOOM (close), max zoom _MIN_ZOOM_FLOOR (world)
+    w_overview = max(width / (2.0**_CITY_ZOOM), min(width / (2.0**_MIN_ZOOM_FLOOR), w_overview))
     return cx, cy, w_overview
 
 
