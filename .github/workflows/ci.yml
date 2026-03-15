@@ -184,6 +184,7 @@ jobs:
 
   test:
     name: Test (Python ${{ matrix.python-version }} on ${{ matrix.os }})
+    needs: [lint, typecheck, security]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -231,6 +232,7 @@ jobs:
   # Test optional extras install and run on Python 3.13
   test-extras:
     name: Test Extras (${{ matrix.os }})
+    needs: [lint, typecheck, security]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -356,23 +358,92 @@ jobs:
       - name: Build docs
         run: make docs-check
 
+  # Advanced quality gates (each as its own visible check)
+  cognitive-complexity:
+    name: Cognitive Complexity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev
+      - run: make cognitive-complexity
+
+  refurb:
+    name: Modernization (refurb)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev
+      - run: make refurb
+
+  dependency-hygiene:
+    name: Dependency Hygiene (deptry)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev
+      - run: make dep-check
+
+  docstring-coverage:
+    name: Docstring Coverage (≥80%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev
+      - run: make docstring-coverage
+
+  architecture:
+    name: Architecture (import-linter)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev
+      - run: make arch-check
+
+  code-duplication:
+    name: Code Duplication (≤5%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npx jscpd src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python --gitignore
+
   # Summary job that other jobs can depend on
   ci-success:
     name: CI Success
-    needs: [lint, security, typecheck, test, test-extras, build, docs]
+    needs: [lint, security, typecheck, test, test-extras, build, docs, cognitive-complexity, refurb, dependency-hygiene, docstring-coverage, architecture, code-duplication]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
-          if [[ "${{ needs.lint.result }}" != "success" ]] || \
-             [[ "${{ needs.security.result }}" != "success" ]] || \
-             [[ "${{ needs.typecheck.result }}" != "success" ]] || \
-             [[ "${{ needs.test.result }}" != "success" ]] || \
-             [[ "${{ needs.test-extras.result }}" != "success" ]] || \
-             [[ "${{ needs.build.result }}" != "success" ]] || \
-             [[ "${{ needs.docs.result }}" != "success" ]]; then
-            echo "One or more jobs failed"
-            exit 1
-          fi
+          results=(
+            "${{ needs.lint.result }}"
+            "${{ needs.security.result }}"
+            "${{ needs.typecheck.result }}"
+            "${{ needs.test.result }}"
+            "${{ needs.test-extras.result }}"
+            "${{ needs.build.result }}"
+            "${{ needs.docs.result }}"
+            "${{ needs.cognitive-complexity.result }}"
+            "${{ needs.refurb.result }}"
+            "${{ needs.dependency-hygiene.result }}"
+            "${{ needs.docstring-coverage.result }}"
+            "${{ needs.architecture.result }}"
+            "${{ needs.code-duplication.result }}"
+          )
+          for r in "${results[@]}"; do
+            [[ "$r" != "success" ]] && echo "A job failed: $r" && exit 1
+          done
           echo "All jobs passed!"
