@@ -1,0 +1,292 @@
+{
+  "functions": [
+    {
+      "complexity": 10,
+      "file_name": "clip_pipeline.py",
+      "function_name": "render_phase_indicator",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "clip_pipeline.py",
+      "function_name": "render_pipeline_summary",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 141,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_render_pipeline_progress_ui",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 24,
+      "file_name": "clip_review.py",
+      "function_name": "_render_review_selected_clips",
+      "path": "clip_review.py"
+    },
+    {
+      "complexity": 74,
+      "file_name": "clip_review.py",
+      "function_name": "_render_review_clip_row",
+      "path": "clip_review.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "step2_loading.py",
+      "function_name": "_apply_metadata",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "step2_loading.py",
+      "function_name": "_probe_and_cache_metadata",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "step2_loading.py",
+      "function_name": "_render_cached_analysis_summary",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 24,
+      "file_name": "step2_loading.py",
+      "function_name": "_load_thumbnails_and_metadata_async",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 59,
+      "file_name": "step2_loading.py",
+      "function_name": "_load_clips",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "step2_review.py",
+      "function_name": "clip_quality_score",
+      "path": "step2_review.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "step2_review.py",
+      "function_name": "render_step2",
+      "path": "step2_review.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "step2_review.py",
+      "function_name": "_render_step2_header",
+      "path": "step2_review.py"
+    },
+    {
+      "complexity": 17,
+      "file_name": "step2_review.py",
+      "function_name": "_render_step2_controls",
+      "path": "step2_review.py"
+    },
+    {
+      "complexity": 24,
+      "file_name": "step2_review.py",
+      "function_name": "_render_step2_content",
+      "path": "step2_review.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "step1_config.py",
+      "function_name": "_render_options_section",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "step1_config.py",
+      "function_name": "_render_preset_section",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "step1_config.py",
+      "function_name": "_render_navigation",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "step1_config.py",
+      "function_name": "render_step1",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "step1_config.py",
+      "function_name": "_render_duration_tab",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 12,
+      "file_name": "step1_config.py",
+      "function_name": "_render_immich_config_section",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 18,
+      "file_name": "step1_config.py",
+      "function_name": "_render_custom_tab",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 38,
+      "file_name": "step1_config.py",
+      "function_name": "_render_year_tab",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 42,
+      "file_name": "step1_config.py",
+      "function_name": "_render_time_period_tabs",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 18,
+      "file_name": "step3_options.py",
+      "function_name": "render_step3",
+      "path": "step3_options.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "step4_export.py",
+      "function_name": "format_duration",
+      "path": "step4_export.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "step4_export.py",
+      "function_name": "render_step4",
+      "path": "step4_export.py"
+    },
+    {
+      "complexity": 30,
+      "file_name": "step4_export.py",
+      "function_name": "_download_and_merge_burst",
+      "path": "step4_export.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "step1_presets.py",
+      "function_name": "_year_options_with_all",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_year_picker",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_monthly_params",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_season_params",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "step1_presets.py",
+      "function_name": "_apply_preset_to_state",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_multi_person_params",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_params",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 14,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_person_spotlight_params",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 15,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_trip_params",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 17,
+      "file_name": "step1_presets.py",
+      "function_name": "render_preset_selector",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "_step3_music_preview.py",
+      "function_name": "_generate_music",
+      "path": "_step3_music_preview.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "_step3_music_preview.py",
+      "function_name": "_render_player",
+      "path": "_step3_music_preview.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "_step3_music_preview.py",
+      "function_name": "render_music_preview_section",
+      "path": "_step3_music_preview.py"
+    },
+    {
+      "complexity": 18,
+      "file_name": "_step3_music_preview.py",
+      "function_name": "render_title_section",
+      "path": "_step3_music_preview.py"
+    },
+    {
+      "complexity": 21,
+      "file_name": "_step3_music_preview.py",
+      "function_name": "_build_timeline",
+      "path": "_step3_music_preview.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "_step2_live_photos.py",
+      "function_name": "expand_to_neighbors",
+      "path": "_step2_live_photos.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "_step2_live_photos.py",
+      "function_name": "fetch_live_photo_clips",
+      "path": "_step2_live_photos.py"
+    },
+    {
+      "complexity": 21,
+      "file_name": "_step2_live_photos.py",
+      "function_name": "search_live_photos",
+      "path": "_step2_live_photos.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/_step2_live_photos.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/_step3_music_preview.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/clip_pipeline.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/clip_review.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/step1_config.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/step1_presets.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/step2_loading.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/step2_review.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/step3_options.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/step4_export.py"
+  ]
+}

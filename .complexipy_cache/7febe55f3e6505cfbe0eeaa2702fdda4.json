@@ -1,0 +1,85 @@
+{
+  "functions": [
+    {
+      "complexity": 0,
+      "file_name": "duplicates.py",
+      "function_name": "DuplicateGroup::other_videos",
+      "path": "duplicates.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "duplicates.py",
+      "function_name": "DuplicateGroup::to_dict",
+      "path": "duplicates.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "duplicates.py",
+      "function_name": "_find_similar_pairs",
+      "path": "duplicates.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "duplicates.py",
+      "function_name": "VideoHash::hamming_distance",
+      "path": "duplicates.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "duplicates.py",
+      "function_name": "DuplicateGroup::__post_init__",
+      "path": "duplicates.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "duplicates.py",
+      "function_name": "DuplicateGroup::_select_best",
+      "path": "duplicates.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "duplicates.py",
+      "function_name": "find_duplicate_groups",
+      "path": "duplicates.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "duplicates.py",
+      "function_name": "DuplicateGroup::_compute_quality_score",
+      "path": "duplicates.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "duplicates.py",
+      "function_name": "rank_videos_by_quality",
+      "path": "duplicates.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "duplicates.py",
+      "function_name": "DuplicateGroup::best_video",
+      "path": "duplicates.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "duplicates.py",
+      "function_name": "_compute_video_hashes",
+      "path": "duplicates.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "duplicates.py",
+      "function_name": "_union_find_groups",
+      "path": "duplicates.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "duplicates.py",
+      "function_name": "compute_stability_score",
+      "path": "duplicates.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/analysis/duplicates.py"
+  ]
+}

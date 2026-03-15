@@ -1,0 +1,61 @@
+{
+  "functions": [
+    {
+      "complexity": 2,
+      "file_name": "pipeline_refinement.py",
+      "function_name": "RefinementMixin::_select_clips_distributed_by_date",
+      "path": "pipeline_refinement.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "pipeline_refinement.py",
+      "function_name": "RefinementMixin::_fill_gap_for_week",
+      "path": "pipeline_refinement.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "pipeline_refinement.py",
+      "function_name": "RefinementMixin::_fill_remaining_slots",
+      "path": "pipeline_refinement.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "pipeline_refinement.py",
+      "function_name": "RefinementMixin::_select_clips_by_trip_segments",
+      "path": "pipeline_refinement.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "pipeline_refinement.py",
+      "function_name": "RefinementMixin::_phase_refine",
+      "path": "pipeline_refinement.py"
+    },
+    {
+      "complexity": 9,
+      "file_name": "pipeline_refinement.py",
+      "function_name": "RefinementMixin::_scale_down_favorites",
+      "path": "pipeline_refinement.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "pipeline_refinement.py",
+      "function_name": "RefinementMixin::_fill_empty_weeks",
+      "path": "pipeline_refinement.py"
+    },
+    {
+      "complexity": 12,
+      "file_name": "pipeline_refinement.py",
+      "function_name": "RefinementMixin::_detect_density_hotspots",
+      "path": "pipeline_refinement.py"
+    },
+    {
+      "complexity": 13,
+      "file_name": "pipeline_refinement.py",
+      "function_name": "RefinementMixin::_classify_favorites_by_week",
+      "path": "pipeline_refinement.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/analysis/pipeline_refinement.py"
+  ]
+}

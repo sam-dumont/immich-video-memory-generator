@@ -1,0 +1,19 @@
+{
+  "functions": [
+    {
+      "complexity": 1,
+      "file_name": "content_analyzer.py",
+      "function_name": "get_content_analyzer_from_config",
+      "path": "content_analyzer.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "content_analyzer.py",
+      "function_name": "get_content_analyzer",
+      "path": "content_analyzer.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/analysis/content_analyzer.py"
+  ]
+}

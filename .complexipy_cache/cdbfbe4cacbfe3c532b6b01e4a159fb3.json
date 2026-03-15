@@ -1,0 +1,31 @@
+{
+  "functions": [
+    {
+      "complexity": 0,
+      "file_name": "step3_options.py",
+      "function_name": "_render_ai_music_options",
+      "path": "step3_options.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "step3_options.py",
+      "function_name": "_render_volume_slider",
+      "path": "step3_options.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "step3_options.py",
+      "function_name": "_render_upload_music_options",
+      "path": "step3_options.py"
+    },
+    {
+      "complexity": 14,
+      "file_name": "step3_options.py",
+      "function_name": "render_step3",
+      "path": "step3_options.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/step3_options.py"
+  ]
+}

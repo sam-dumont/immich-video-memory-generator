@@ -305,7 +305,7 @@ class TestLocationDividerInsertion:
         """Clips with locations >30km apart get a divider between them."""
         from pathlib import Path
 
-        from immich_memories.processing.assembler_trip_mixin import AssemblerTripMixin
+        from immich_memories.processing.title_inserter import TitleInserter
 
         clips = [
             self._make_clip("clip1.mp4", lat=41.39, lon=2.17, name="Barcelona"),
@@ -321,9 +321,8 @@ class TestLocationDividerInsertion:
         mock_settings = MagicMock()
         mock_settings.month_divider_duration = 2.0
 
-        result = AssemblerTripMixin()._build_clips_with_location_dividers(
-            clips, mock_gen, mock_settings, None
-        )
+        inserter = TitleInserter(settings=MagicMock(), prober=MagicMock())
+        result = inserter.build_clips_with_location_dividers(clips, mock_gen, mock_settings, None)
 
         # 3 content clips + 1 location divider = 4
         assert len(result) == 4
@@ -332,16 +331,15 @@ class TestLocationDividerInsertion:
 
     def test_no_divider_for_same_location(self):
         """Clips at the same location should not get dividers."""
-        from immich_memories.processing.assembler_trip_mixin import AssemblerTripMixin
+        from immich_memories.processing.title_inserter import TitleInserter
 
         clips = [
             self._make_clip("clip1.mp4", lat=41.39, lon=2.17, name="Barcelona"),
             self._make_clip("clip2.mp4", lat=41.40, lon=2.18, name="Barcelona"),
         ]
 
-        result = AssemblerTripMixin()._build_clips_with_location_dividers(
-            clips, MagicMock(), MagicMock(), None
-        )
+        inserter = TitleInserter(settings=MagicMock(), prober=MagicMock())
+        result = inserter.build_clips_with_location_dividers(clips, MagicMock(), MagicMock(), None)
 
         assert len(result) == 2  # No dividers
 
@@ -349,7 +347,7 @@ class TestLocationDividerInsertion:
         """Clips without GPS should pass through without dividers."""
         from pathlib import Path
 
-        from immich_memories.processing.assembler_trip_mixin import AssemblerTripMixin
+        from immich_memories.processing.title_inserter import TitleInserter
 
         clips = [
             self._make_clip("clip1.mp4", lat=41.39, lon=2.17, name="Barcelona"),
@@ -364,9 +362,8 @@ class TestLocationDividerInsertion:
         mock_settings = MagicMock()
         mock_settings.month_divider_duration = 2.0
 
-        result = AssemblerTripMixin()._build_clips_with_location_dividers(
-            clips, mock_gen, mock_settings, None
-        )
+        inserter = TitleInserter(settings=MagicMock(), prober=MagicMock())
+        result = inserter.build_clips_with_location_dividers(clips, mock_gen, mock_settings, None)
 
         # clip1, clip2 (no GPS), divider, clip3 = 4
         assert len(result) == 4

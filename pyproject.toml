@@ -436,12 +436,11 @@ module = [
     "immich_memories.processing.assembler_scalable",
     "immich_memories.processing.assembler_batch",
     "immich_memories.processing.assembler_concat",
-    "immich_memories.processing.assembler_audio",
+    "immich_memories.processing.audio_mixer_service",
     "immich_memories.processing.ffmpeg_prober",
-    "immich_memories.processing.assembler_transitions",
-    "immich_memories.processing.assembler_transition_render",
-    "immich_memories.processing.assembler_titles",
-    "immich_memories.processing.assembler_trip_mixin",
+    "immich_memories.processing.transition_blender",
+    "immich_memories.processing.transition_renderer",
+    "immich_memories.processing.title_inserter",
 ]
 disable_error_code = ["attr-defined"]
 

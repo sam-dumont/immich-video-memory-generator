@@ -1,0 +1,937 @@
+{
+  "functions": [
+    {
+      "complexity": 0,
+      "file_name": "system_info.py",
+      "function_name": "capture_system_info",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "system_info.py",
+      "function_name": "_check_taichi",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "system_info.py",
+      "function_name": "_get_cpu_brand_macos",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "system_info.py",
+      "function_name": "_get_gpu_name_linux",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "system_info.py",
+      "function_name": "_get_gpu_name_linux_nvidia",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "system_info.py",
+      "function_name": "_get_opencv_version",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "system_info.py",
+      "function_name": "_get_ram_gb_macos",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "system_info.py",
+      "function_name": "_get_cpu_brand_windows",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "system_info.py",
+      "function_name": "_get_gpu_name_macos",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "system_info.py",
+      "function_name": "_get_ram_gb_windows",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "system_info.py",
+      "function_name": "_get_cpu_brand",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "system_info.py",
+      "function_name": "_get_gpu_name",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "system_info.py",
+      "function_name": "_get_ram_gb",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "system_info.py",
+      "function_name": "_get_hw_accel_backend",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "system_info.py",
+      "function_name": "_get_cpu_brand_linux",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "system_info.py",
+      "function_name": "_get_ram_gb_linux",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "system_info.py",
+      "function_name": "_get_ffmpeg_version",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "system_info.py",
+      "function_name": "_get_vram_mb",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "system_info.py",
+      "function_name": "_get_gpu_name_linux_lspci",
+      "path": "system_info.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "mood_analyzer.py",
+      "function_name": "MoodAnalyzer::analyze_frames",
+      "path": "mood_analyzer.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "mood_analyzer.py",
+      "function_name": "MoodAnalyzer::analyze_video",
+      "path": "mood_analyzer.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "mood_analyzer.py",
+      "function_name": "MoodAnalyzer::_sanitize_confidence",
+      "path": "mood_analyzer.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "mood_analyzer.py",
+      "function_name": "VideoMood::to_search_params",
+      "path": "mood_analyzer.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "mood_analyzer.py",
+      "function_name": "MoodAnalyzer::_extract_json_from_text",
+      "path": "mood_analyzer.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "mood_analyzer.py",
+      "function_name": "MoodAnalyzer::_validate_genres",
+      "path": "mood_analyzer.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "mood_analyzer.py",
+      "function_name": "MoodAnalyzer::_validate_secondary_mood",
+      "path": "mood_analyzer.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "mood_analyzer.py",
+      "function_name": "__getattr__",
+      "path": "mood_analyzer.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "mood_analyzer.py",
+      "function_name": "MoodAnalyzer::extract_keyframes",
+      "path": "mood_analyzer.py"
+    },
+    {
+      "complexity": 9,
+      "file_name": "mood_analyzer.py",
+      "function_name": "MoodAnalyzer::_parse_mood_response",
+      "path": "mood_analyzer.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "music_sources.py",
+      "function_name": "LocalMusicSource::__init__",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "music_sources.py",
+      "function_name": "LocalMusicSource::_extract_tags_from_path",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "music_sources.py",
+      "function_name": "LocalMusicSource::_track_matches_term",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "music_sources.py",
+      "function_name": "MusicSource::download",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "music_sources.py",
+      "function_name": "MusicSource::search",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "music_sources.py",
+      "function_name": "MusicTrack::cache_filename",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "music_sources.py",
+      "function_name": "LocalMusicSource::_load_track_metadata",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "music_sources.py",
+      "function_name": "LocalMusicSource::_track_matches_duration",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "music_sources.py",
+      "function_name": "LocalMusicSource::tracks",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "music_sources.py",
+      "function_name": "MusicSource::get_random_track",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "music_sources.py",
+      "function_name": "LocalMusicSource::download",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "music_sources.py",
+      "function_name": "LocalMusicSource::_read_mutagen_metadata",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "music_sources.py",
+      "function_name": "LocalMusicSource::_scan_directory",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "music_sources.py",
+      "function_name": "get_music_source",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "music_sources.py",
+      "function_name": "LocalMusicSource::search",
+      "path": "music_sources.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "energy_analysis.py",
+      "function_name": "_classify_energy_event",
+      "path": "energy_analysis.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "energy_analysis.py",
+      "function_name": "EnergyAnalysisMixin::_analyze_with_energy",
+      "path": "energy_analysis.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "panns_analysis.py",
+      "function_name": "PANNsAnalysisMixin::cleanup",
+      "path": "panns_analysis.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "panns_analysis.py",
+      "function_name": "PANNsAnalysisMixin::_check_panns_available",
+      "path": "panns_analysis.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "panns_analysis.py",
+      "function_name": "PANNsAnalysisMixin::_classify_frame",
+      "path": "panns_analysis.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "panns_analysis.py",
+      "function_name": "PANNsAnalysisMixin::_analyze_with_panns",
+      "path": "panns_analysis.py"
+    },
+    {
+      "complexity": 14,
+      "file_name": "panns_analysis.py",
+      "function_name": "PANNsAnalysisMixin::_collect_events",
+      "path": "panns_analysis.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "content_analyzer.py",
+      "function_name": "AudioContentAnalyzer::__init__",
+      "path": "content_analyzer.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "content_analyzer.py",
+      "function_name": "AudioContentAnalyzer::_extract_audio",
+      "path": "content_analyzer.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "content_analyzer.py",
+      "function_name": "AudioContentAnalyzer::_calculate_audio_score",
+      "path": "content_analyzer.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "content_analyzer.py",
+      "function_name": "AudioContentAnalyzer::analyze",
+      "path": "content_analyzer.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_geo_to_screen",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_linear_pan",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_render_frame",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_to_latlon",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_to_world",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "map_animation.py",
+      "function_name": "_view_at",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_CachedStaticMap::get",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_destination_overview",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_pick_interpolator",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_render_satellite",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_title_alpha",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "map_animation.py",
+      "function_name": "_render_title_overlay",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "map_animation.py",
+      "function_name": "_van_wijk",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "map_animation.py",
+      "function_name": "_get_frame_at",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "map_animation.py",
+      "function_name": "create_map_fly_video",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "map_animation.py",
+      "function_name": "_draw_pins",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 15,
+      "file_name": "map_animation.py",
+      "function_name": "_pipe_frames",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "config_loader.py",
+      "function_name": "Config::get_default_path",
+      "path": "config_loader.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "config_loader.py",
+      "function_name": "set_config",
+      "path": "config_loader.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "config_loader.py",
+      "function_name": "Config::save_yaml",
+      "path": "config_loader.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "config_loader.py",
+      "function_name": "Config::from_yaml",
+      "path": "config_loader.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "config_loader.py",
+      "function_name": "get_config",
+      "path": "config_loader.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "config_loader.py",
+      "function_name": "init_config_dir",
+      "path": "config_loader.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "config_loader.py",
+      "function_name": "_apply_env_overrides",
+      "path": "config_loader.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::get_available_years",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::get_bucket_assets",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::get_time_buckets",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::get_videos_for_all_persons",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::search_metadata",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::get_all_videos_for_year",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::get_videos_for_date_range",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::get_videos_for_person_and_date_range",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::get_videos_for_person_and_year",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::iter_person_videos",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::get_live_photos_for_date_range",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::iter_videos_for_date_range",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::get_videos_for_any_person",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "client_search.py",
+      "function_name": "SearchMixin::_get_live_photos_single_person",
+      "path": "client_search.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "trip_detection.py",
+      "function_name": "_cluster_centroid",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "trip_detection.py",
+      "function_name": "haversine_km",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "trip_detection.py",
+      "function_name": "_cluster_city",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "trip_detection.py",
+      "function_name": "_build_trip_from_group",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "trip_detection.py",
+      "function_name": "_get_dominant_country",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "trip_detection.py",
+      "function_name": "_cluster_day_presence",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "trip_detection.py",
+      "function_name": "_group_by_temporal_gaps",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "trip_detection.py",
+      "function_name": "_has_return_gap",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "trip_detection.py",
+      "function_name": "_identify_home_bases",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "trip_detection.py",
+      "function_name": "detect_overnight_stops",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "trip_detection.py",
+      "function_name": "detect_trips",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "trip_detection.py",
+      "function_name": "_merge_consecutive",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "trip_detection.py",
+      "function_name": "distribute_clip_budget",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "trip_detection.py",
+      "function_name": "_extract_unique_countries",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "trip_detection.py",
+      "function_name": "_filter_away_assets",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "trip_detection.py",
+      "function_name": "filter_near_home",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "trip_detection.py",
+      "function_name": "_compute_spread_km",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 9,
+      "file_name": "trip_detection.py",
+      "function_name": "tag_clips_to_segments",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "trip_detection.py",
+      "function_name": "reverse_geocode",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "trip_detection.py",
+      "function_name": "_cluster_photos",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 14,
+      "file_name": "trip_detection.py",
+      "function_name": "_assign_daily_stops",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 15,
+      "file_name": "trip_detection.py",
+      "function_name": "_derive_location_name",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 15,
+      "file_name": "trip_detection.py",
+      "function_name": "_merge_repeated_bases",
+      "path": "trip_detection.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentAnalysis::content_score",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentAnalyzer::analyze_segment",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentAnalyzer::reset_session_stats",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentParsingMixin::_build_content_analysis",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentAnalyzer::_log_analysis_result",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentAnalyzer::log_session_summary",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentParsingMixin::_strip_thinking_blocks",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentParsingMixin::_extract_float_field",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentParsingMixin::_extract_json_text",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentParsingMixin::_extract_emotion_from_text",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentParsingMixin::_parse_json_object_text",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentParsingMixin::_numeric_emotion_to_str",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentParsingMixin::_parse_json_object",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentParsingMixin::_parse_content_response",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentParsingMixin::_parse_json_array_text",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 9,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentAnalyzer::extract_frames",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "_content_parsing.py",
+      "function_name": "ContentParsingMixin::_extract_partial_data",
+      "path": "_content_parsing.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "_content_providers.py",
+      "function_name": "OpenAICompatibleContentAnalyzer::__init__",
+      "path": "_content_providers.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "_content_providers.py",
+      "function_name": "OpenAICompatibleContentAnalyzer::is_available",
+      "path": "_content_providers.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "_content_providers.py",
+      "function_name": "OllamaContentAnalyzer::__init__",
+      "path": "_content_providers.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "_content_providers.py",
+      "function_name": "OllamaContentAnalyzer::close",
+      "path": "_content_providers.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "_content_providers.py",
+      "function_name": "OllamaContentAnalyzer::is_available",
+      "path": "_content_providers.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "_content_providers.py",
+      "function_name": "OpenAICompatibleContentAnalyzer::close",
+      "path": "_content_providers.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "_content_providers.py",
+      "function_name": "OllamaContentAnalyzer::client",
+      "path": "_content_providers.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "_content_providers.py",
+      "function_name": "OpenAICompatibleContentAnalyzer::client",
+      "path": "_content_providers.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "_content_providers.py",
+      "function_name": "OpenAICompatibleContentAnalyzer::analyze_segment",
+      "path": "_content_providers.py"
+    },
+    {
+      "complexity": 18,
+      "file_name": "_content_providers.py",
+      "function_name": "OllamaContentAnalyzer::analyze_segment",
+      "path": "_content_providers.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "database_queries.py",
+      "function_name": "DatabaseQueryMixin::_load_segments",
+      "path": "database_queries.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "database_queries.py",
+      "function_name": "DatabaseQueryMixin::_row_to_analysis",
+      "path": "database_queries.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "database_queries.py",
+      "function_name": "DatabaseQueryMixin::get_all_hashes",
+      "path": "database_queries.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "database_queries.py",
+      "function_name": "DatabaseQueryMixin::get_stats",
+      "path": "database_queries.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "database_queries.py",
+      "function_name": "DatabaseQueryMixin::_row_is_stale",
+      "path": "database_queries.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "database_queries.py",
+      "function_name": "DatabaseQueryMixin::get_analysis",
+      "path": "database_queries.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "database_queries.py",
+      "function_name": "DatabaseQueryMixin::needs_reanalysis",
+      "path": "database_queries.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "database_queries.py",
+      "function_name": "DatabaseQueryMixin::_row_to_segment",
+      "path": "database_queries.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "database_queries.py",
+      "function_name": "DatabaseQueryMixin::find_similar_videos",
+      "path": "database_queries.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "database_queries.py",
+      "function_name": "DatabaseQueryMixin::get_uncached_asset_ids",
+      "path": "database_queries.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/analysis/_content_parsing.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/analysis/_content_providers.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/analysis/trip_detection.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/api/client_search.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/audio/content_analyzer.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/audio/energy_analysis.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/audio/mood_analyzer.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/audio/music_sources.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/audio/panns_analysis.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/cache/database_queries.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/config_loader.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/titles/map_animation.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/tracking/system_info.py"
+  ]
+}

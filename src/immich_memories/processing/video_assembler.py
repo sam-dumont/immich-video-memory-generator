@@ -48,26 +48,25 @@ from collections.abc import Callable
 from pathlib import Path
 
 from immich_memories.config import get_config
-from immich_memories.processing.assembler_audio import AssemblerAudioMixin
 from immich_memories.processing.assembler_batch import AssemblerBatchMixin
 from immich_memories.processing.assembler_concat import AssemblerConcatMixin
 from immich_memories.processing.assembler_encoding import AssemblerEncodingMixin
 from immich_memories.processing.assembler_helpers import AssemblerHelpersMixin
 from immich_memories.processing.assembler_scalable import AssemblerScalableMixin
 from immich_memories.processing.assembler_strategies import AssemblerStrategyMixin
-from immich_memories.processing.assembler_titles import AssemblerTitleMixin
-from immich_memories.processing.assembler_transition_render import AssemblerTransitionRenderMixin
-from immich_memories.processing.assembler_transitions import AssemblerTransitionMixin
 from immich_memories.processing.assembly_config import (
     MAX_FACE_CACHE_SIZE,
     AssemblyClip,
     AssemblySettings,
     TransitionType,
 )
+from immich_memories.processing.audio_mixer_service import AudioMixerService
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.scaling_utilities import (
     _detect_face_center_in_video,
 )
+from immich_memories.processing.title_inserter import TitleInserter
+from immich_memories.processing.transition_renderer import TransitionRenderer
 from immich_memories.tracking.run_database import RunDatabase
 
 __all__ = [
@@ -82,14 +81,10 @@ logger = logging.getLogger(__name__)
 class VideoAssembler(
     AssemblerHelpersMixin,
     AssemblerEncodingMixin,
-    AssemblerTransitionMixin,
-    AssemblerTransitionRenderMixin,
-    AssemblerAudioMixin,
     AssemblerConcatMixin,
     AssemblerStrategyMixin,
     AssemblerScalableMixin,
     AssemblerBatchMixin,
-    AssemblerTitleMixin,
 ):
     """Assemble multiple clips into a final video.
 
@@ -121,6 +116,9 @@ class VideoAssembler(
         self.run_id = run_id
         self._run_db: RunDatabase | None = None
         self.prober = FFmpegProber(self.settings)
+        self.transitions = TransitionRenderer(self.settings, self.prober)
+        self.audio_mixer = AudioMixerService(self.settings)
+        self.title_inserter = TitleInserter(self.settings, self.prober)
 
         # Face detection cache: path -> (center_x, center_y) or None
         # Using OrderedDict with size limit to prevent unbounded memory growth
@@ -210,6 +208,42 @@ class VideoAssembler(
     def estimate_duration(self, *args, **kwargs):  # type: ignore[no-untyped-def]
         return self.prober.estimate_duration(*args, **kwargs)
 
+    def _render_transition_framewise(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.transitions.blender.render_transition_framewise(*args, **kwargs)
+
+    def _render_transition_segment(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.transitions.render_transition_segment(*args, **kwargs)
+
+    def _extract_segment_for_transition(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.transitions.extract_segment_for_transition(*args, **kwargs)
+
+    def _add_audio_crossfade(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return self.transitions.blender.add_audio_crossfade(*args, **kwargs)
+
+    def _add_music(self, video_path: Path, output_path: Path) -> Path:  # type: ignore[no-untyped-def]
+        return self.audio_mixer.add_music(video_path, output_path)
+
+    def _add_music_to_clip(self, clip_path: Path, output_path: Path) -> Path:  # type: ignore[no-untyped-def]
+        return self.audio_mixer.add_music_to_clip(clip_path, output_path)
+
+    def assemble_with_titles(
+        self,
+        clips: list[AssemblyClip],
+        output_path: Path,
+        progress_callback: Callable[[float, str], None] | None = None,
+    ) -> Path:
+        """Assemble clips with title screens, dividers, and ending screen."""
+        return self.title_inserter.assemble_with_titles(
+            clips, output_path, self.assemble, progress_callback
+        )
+
+    # Compatibility shims for title inserter methods used by tests
+    def _parse_clip_date(self, clip: AssemblyClip):  # type: ignore[no-untyped-def]
+        return self.title_inserter.parse_clip_date(clip)
+
+    def _detect_month_changes(self, clips: list[AssemblyClip]):  # type: ignore[no-untyped-def]
+        return self.title_inserter.detect_month_changes(clips)
+
     def assemble(
         self,
         clips: list[AssemblyClip],
@@ -239,7 +273,7 @@ class VideoAssembler(
 
         # Add music if specified
         if self.settings.music_path and self.settings.music_path.exists():
-            result = self._add_music(result, output_path)
+            result = self.audio_mixer.add_music(result, output_path)
 
         return result
 
@@ -254,7 +288,7 @@ class VideoAssembler(
             Path to output video.
         """
         if self.settings.music_path and self.settings.music_path.exists():
-            return self._add_music_to_clip(clip.path, output_path)
+            return self.audio_mixer.add_music_to_clip(clip.path, output_path)
         else:
             # Just copy
             import shutil

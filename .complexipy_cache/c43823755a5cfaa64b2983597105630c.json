@@ -1,0 +1,49 @@
+{
+  "functions": [
+    {
+      "complexity": 0,
+      "file_name": "assembler_scalable.py",
+      "function_name": "AssemblerScalableMixin::_make_batch_progress_cb",
+      "path": "assembler_scalable.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "assembler_scalable.py",
+      "function_name": "AssemblerScalableMixin::_process_single_batch",
+      "path": "assembler_scalable.py"
+    },
+    {
+      "complexity": 9,
+      "file_name": "assembler_scalable.py",
+      "function_name": "AssemblerScalableMixin::_get_transition_types",
+      "path": "assembler_scalable.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "assembler_scalable.py",
+      "function_name": "AssemblerScalableMixin::_validate_fade_transitions",
+      "path": "assembler_scalable.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "assembler_scalable.py",
+      "function_name": "AssemblerScalableMixin::_assemble_chunked",
+      "path": "assembler_scalable.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "assembler_scalable.py",
+      "function_name": "AssemblerScalableMixin::_assemble_scalable",
+      "path": "assembler_scalable.py"
+    },
+    {
+      "complexity": 15,
+      "file_name": "assembler_scalable.py",
+      "function_name": "AssemblerScalableMixin::_assemble_scalable_chunks",
+      "path": "assembler_scalable.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/processing/assembler_scalable.py"
+  ]
+}

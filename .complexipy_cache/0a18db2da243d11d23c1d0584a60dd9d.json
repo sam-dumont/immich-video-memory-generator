@@ -1,0 +1,73 @@
+{
+  "functions": [
+    {
+      "complexity": 1,
+      "file_name": "step1_presets.py",
+      "function_name": "_year_options_with_all",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_year_picker",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_monthly_params",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_season_params",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "step1_presets.py",
+      "function_name": "render_preset_selector",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "step1_presets.py",
+      "function_name": "_build_preset_grid",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "step1_presets.py",
+      "function_name": "_apply_preset_to_state",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_multi_person_params",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_params",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 14,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_person_spotlight_params",
+      "path": "step1_presets.py"
+    },
+    {
+      "complexity": 15,
+      "file_name": "step1_presets.py",
+      "function_name": "_render_trip_params",
+      "path": "step1_presets.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/step1_presets.py"
+  ]
+}

@@ -1,8 +1,4 @@
-"""Transition rendering methods for VideoAssembler.
-
-This mixin provides frame-by-frame transition rendering with GPU
-acceleration and audio crossfade application.
-"""
+"""Frame-level transition blending with optional GPU acceleration."""
 
 from __future__ import annotations
 
@@ -12,17 +8,19 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from immich_memories.processing.hdr_utilities import (
-    _detect_hdr_type,
-)
+from immich_memories.processing.assembly_config import AssemblySettings
+from immich_memories.processing.hdr_utilities import _detect_hdr_type
 
 logger = logging.getLogger(__name__)
 
 
-class AssemblerTransitionMixin:
-    """Mixin providing transition rendering methods for VideoAssembler."""
+class TransitionBlender:
+    """Renders crossfade transitions frame-by-frame using PyAV and optional Taichi GPU."""
 
-    def _load_transition_frames(
+    def __init__(self, settings: AssemblySettings) -> None:
+        self.settings = settings
+
+    def load_transition_frames(
         self,
         seg_a: Path,
         seg_b: Path,
@@ -30,10 +28,7 @@ class AssemblerTransitionMixin:
         target_fps: int,
         pix_fmt: str,
     ):  # type: ignore[return]
-        """Load frames from both segments for blending.
-
-        Returns (frames_a, frames_b, width, height, total_frames) or None on failure.
-        """
+        """Load frames from both segments for blending. Returns None on failure."""
         try:
             import av
             import numpy as np
@@ -62,7 +57,7 @@ class AssemblerTransitionMixin:
         except Exception:
             return None
 
-    def _blend_and_encode_frames(
+    def blend_and_encode_frames(
         self,
         frames_a,
         frames_b,
@@ -78,7 +73,7 @@ class AssemblerTransitionMixin:
         blend_frames_gpu_fn: Callable[..., Any] | None,
         pix_fmt: str,
     ) -> None:
-        """Blend frames and encode them to the output video."""
+        """Blend frames and encode to output video via PyAV."""
         import av
         import numpy as np
 
@@ -108,7 +103,7 @@ class AssemblerTransitionMixin:
             output_container.mux(packet)
         output_container.close()
 
-    def _render_transition_framewise(
+    def render_transition_framewise(
         self,
         seg_a: Path,
         seg_b: Path,
@@ -116,22 +111,9 @@ class AssemblerTransitionMixin:
         fade_dur: float,
         target_fps: int = 60,
     ) -> bool:
-        """Render crossfade transition frame-by-frame with GPU acceleration.
-
-        Uses PyAV for precise frame timing and Taichi for GPU-accelerated blending.
-
-        Args:
-            seg_a: First segment video path (end of clip A).
-            seg_b: Second segment video path (start of clip B).
-            output_path: Output path for transition segment.
-            fade_dur: Duration of the crossfade in seconds.
-            target_fps: Target frame rate (default 60fps for smooth transitions).
-
-        Returns:
-            True if successful, False if PyAV/GPU not available (fallback needed).
-        """
+        """Render crossfade frame-by-frame. Returns True on success, False if fallback needed."""
         try:
-            import av  # noqa: F401 — just check availability
+            import av  # noqa: F401
         except ImportError:
             logger.debug("PyAV not available, falling back to xfade")
             return False
@@ -154,14 +136,14 @@ class AssemblerTransitionMixin:
         is_hdr = _detect_hdr_type(seg_a) is not None
         pix_fmt = "rgb48le" if is_hdr else "rgb24"
 
-        frame_data = self._load_transition_frames(seg_a, seg_b, fade_dur, target_fps, pix_fmt)
+        frame_data = self.load_transition_frames(seg_a, seg_b, fade_dur, target_fps, pix_fmt)
         if frame_data is None:
             return False
 
         frames_a, frames_b, indices_a, indices_b, width, height, total_frames = frame_data
 
         try:
-            self._blend_and_encode_frames(
+            self.blend_and_encode_frames(
                 frames_a,
                 frames_b,
                 indices_a,
@@ -176,54 +158,41 @@ class AssemblerTransitionMixin:
                 blend_frames_gpu_fn,
                 pix_fmt,
             )
-            self._add_audio_crossfade(seg_a, seg_b, output_path, fade_dur)
+            self.add_audio_crossfade(seg_a, seg_b, output_path, fade_dur)
             return True
-
         except Exception as e:
             logger.warning(f"Frame-by-frame transition failed: {e}")
             if output_path.exists():
                 output_path.unlink()
             return False
 
-    def _add_audio_crossfade(
+    def add_audio_crossfade(
         self,
         seg_a: Path,
         seg_b: Path,
         video_path: Path,
         fade_dur: float,
     ) -> None:
-        """Add crossfaded audio to the video using FFmpeg.
-
-        Takes the video file (with no audio or placeholder audio) and muxes in
-        crossfaded audio from the two source segments.
-
-        Args:
-            seg_a: First segment (audio source A).
-            seg_b: Second segment (audio source B).
-            video_path: Video file to add audio to (modified in place).
-            fade_dur: Duration of the audio crossfade.
-        """
+        """Add crossfaded audio from two segments. Three-tier fallback: acrossfade → amix → silence."""
         temp_output = video_path.with_suffix(".tmp.mp4")
-
         audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
 
-        # Try acrossfade first (cleanest result)
+        # Try acrossfade first
         filter_complex = (
             f"[1:a]{audio_format}[a1];"
             f"[2:a]{audio_format}[a2];"
             f"[a1][a2]acrossfade=d={fade_dur}:c1=tri:c2=tri,"
             f"atrim=0:{fade_dur},asetpts=PTS-STARTPTS[aout]"
         )
-
         cmd = [
             "ffmpeg",
             "-y",
             "-i",
-            str(video_path),  # Video (may have no audio)
+            str(video_path),
             "-i",
-            str(seg_a),  # Audio source A
+            str(seg_a),
             "-i",
-            str(seg_b),  # Audio source B
+            str(seg_b),
             "-filter_complex",
             filter_complex,
             "-map",
@@ -241,20 +210,16 @@ class AssemblerTransitionMixin:
             "-shortest",
             str(temp_output),
         ]
-
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
 
         if result.returncode != 0:
-            # Fallback: use amix with fades
             logger.debug(f"acrossfade failed, trying amix: {result.stderr[-200:]}")
-
             filter_complex_fallback = (
                 f"[1:a]{audio_format},afade=t=out:st=0:d={fade_dur}[afade_a];"
                 f"[2:a]{audio_format},afade=t=in:st=0:d={fade_dur}[afade_b];"
                 f"[afade_a][afade_b]amix=inputs=2:duration=first,"
                 f"atrim=0:{fade_dur},asetpts=PTS-STARTPTS[aout]"
             )
-
             cmd_fallback = [
                 "ffmpeg",
                 "-y",
@@ -281,13 +246,10 @@ class AssemblerTransitionMixin:
                 "-shortest",
                 str(temp_output),
             ]
-
             result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=1800)
 
             if result.returncode != 0:
-                # Last resort: generate silent audio
                 logger.warning(f"Audio crossfade failed, using silence: {result.stderr[-200:]}")
-
                 cmd_silent = [
                     "ffmpeg",
                     "-y",
@@ -312,12 +274,28 @@ class AssemblerTransitionMixin:
                     "-shortest",
                     str(temp_output),
                 ]
-
                 result = subprocess.run(cmd_silent, capture_output=True, text=True, timeout=1800)
                 if result.returncode != 0:
                     logger.error(f"Failed to add any audio: {result.stderr[-200:]}")
-                    return  # Keep video without audio rather than failing
+                    return
 
-        # Replace original with temp
         if temp_output.exists():
             temp_output.replace(video_path)
+
+    @staticmethod
+    def _configure_pyav_output_stream(container, fps, is_hdr, width, height, crf):
+        """Configure PyAV output stream for encoding blended frames."""
+
+        codec_name = "libx265" if is_hdr else "libx264"
+        stream = container.add_stream(codec_name, rate=fps)
+        stream.width = width
+        stream.height = height
+        stream.pix_fmt = "yuv420p10le" if is_hdr else "yuv420p"
+        stream.options = {"crf": str(crf), "preset": "fast"}
+        if is_hdr:
+            stream.options.update(
+                {
+                    "x265-params": "colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
+                }
+            )
+        return stream

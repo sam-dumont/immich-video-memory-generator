@@ -80,7 +80,8 @@ class TestVideoAssemblerIntegration:
         # whether FFmpeg is installed in the test environment.
         mock_result = MagicMock(returncode=1, stderr="mock ffmpeg failure")
         with patch(
-            "immich_memories.processing.assembler_audio.subprocess.run", return_value=mock_result
+            "immich_memories.processing.audio_mixer_service.subprocess.run",
+            return_value=mock_result,
         ):
             result = assembler.assemble([clip], output)
 

@@ -1,4 +1,4 @@
-"""Title screen integration: generation, dividers, and assemble_with_titles."""
+"""Title screen insertion: generation, dividers, and assemble_with_titles."""
 
 from __future__ import annotations
 
@@ -8,153 +8,124 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from immich_memories.processing.assembler_trip_mixin import AssemblerTripMixin
 from immich_memories.processing.assembly_config import (
     AssemblyClip,
+    AssemblySettings,
     TransitionType,
 )
+from immich_memories.processing.ffmpeg_prober import VideoProber
 from immich_memories.processing.hdr_utilities import has_any_hdr_clip
-from immich_memories.processing.scaling_utilities import (
-    aggregate_mood_from_clips,
-)
+from immich_memories.processing.scaling_utilities import aggregate_mood_from_clips
 
 logger = logging.getLogger(__name__)
 
+# Type alias for the assemble callback
+AssembleFn = Callable[
+    [list[AssemblyClip], Path, Callable[[float, str], None] | None],
+    Path,
+]
 
-class AssemblerTitleMixin(AssemblerTripMixin):
-    """Mixin providing title screen integration methods for VideoAssembler."""
 
-    def _parse_clip_date(self, clip: AssemblyClip) -> date | None:
-        """Parse the date from an AssemblyClip.
+class TitleInserter:
+    """Inserts title screens, month/year dividers, and location cards into clip lists."""
 
-        Args:
-            clip: The clip to extract date from.
+    def __init__(self, settings: AssemblySettings, prober: VideoProber) -> None:
+        self.settings = settings
+        self.prober = prober
 
-        Returns:
-            Date object or None if not available.
-        """
+    # ------------------------------------------------------------------
+    # Date parsing
+    # ------------------------------------------------------------------
+
+    def parse_clip_date(self, clip: AssemblyClip) -> date | None:
+        """Parse the date from an AssemblyClip."""
         if not clip.date:
             return None
-
         try:
-            # Try common date formats (ISO first, then human-readable)
             for fmt in (
-                "%Y-%m-%d",  # ISO format (preferred)
-                "%Y-%m-%dT%H:%M:%S",  # ISO with time
-                "%Y-%m-%d %H:%M:%S",  # ISO with time (space)
-                "%B %d, %Y",  # Human-readable (e.g., "October 15, 2025")
-                "%b %d, %Y",  # Short month (e.g., "Oct 15, 2025")
+                "%Y-%m-%d",
+                "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%d %H:%M:%S",
+                "%B %d, %Y",
+                "%b %d, %Y",
             ):
                 try:
                     return datetime.strptime(clip.date, fmt).date()
                 except ValueError:
                     continue
-            # Fallback: try parsing just the first 10 chars as date
             return datetime.strptime(clip.date[:10], "%Y-%m-%d").date()
         except (ValueError, TypeError):
             logger.debug(f"Could not parse date: {clip.date}")
             return None
 
-    def _detect_month_changes(
-        self,
-        clips: list[AssemblyClip],
-    ) -> list[tuple[int, int, int]]:
-        """Detect month changes. Returns [(insert_index, month, year)]."""
-        month_changes: list[tuple[int, int, int]] = []
-        current_month: tuple[int, int] | None = None
-        month_clip_counts: dict[tuple[int, int], int] = {}
+    # ------------------------------------------------------------------
+    # Orientation / resolution detection
+    # ------------------------------------------------------------------
 
-        # Count clips per month and detect changes (including first month)
-        clips_with_dates = 0
-        for i, clip in enumerate(clips):
-            clip_date = self._parse_clip_date(clip)
-            if clip_date is None:
-                continue
-
-            clips_with_dates += 1
-            month_key = (clip_date.year, clip_date.month)
-
-            # Count clips in this month
-            month_clip_counts[month_key] = month_clip_counts.get(month_key, 0) + 1
-
-            if current_month is None or month_key != current_month:
-                month_changes.append((i, clip_date.month, clip_date.year))
-                logger.debug(f"Month change at clip {i}: {current_month} -> {month_key}")
-            current_month = month_key
-
-        logger.info(f"Month detection: {len(month_changes)} changes in {clips_with_dates} clips")
-
-        return month_changes
-
-    def _get_orientation_from_clips(self, clips: list[AssemblyClip]) -> str:
-        """Detect video orientation from clips.
-
-        Args:
-            clips: List of clips.
-
-        Returns:
-            Orientation string: "landscape", "portrait", or "square".
-        """
+    def get_orientation_from_clips(self, clips: list[AssemblyClip]) -> str:
+        """Detect dominant video orientation from first 10 clips."""
         portrait_count = 0
         landscape_count = 0
-
-        for clip in clips[:10]:  # Sample first 10 clips
-            res = self._get_video_resolution(clip.path)
+        for clip in clips[:10]:
+            res = self.prober.get_video_resolution(clip.path)
             if res:
                 w, h = res
                 if h > w:
                     portrait_count += 1
                 elif w > h:
                     landscape_count += 1
-
         if portrait_count > landscape_count:
             return "portrait"
-        elif landscape_count > portrait_count:
-            return "landscape"
-        return "landscape"  # Default
+        return "landscape"
 
-    def _get_resolution_tier(self, clips: list[AssemblyClip]) -> str:
-        """Detect resolution tier from clips.
-
-        Args:
-            clips: List of clips.
-
-        Returns:
-            Resolution tier: "720p", "1080p", or "4k".
-        """
+    def get_resolution_tier(self, clips: list[AssemblyClip]) -> str:
+        """Detect resolution tier from first 10 clips."""
         max_height = 0
-
-        for clip in clips[:10]:  # Sample first 10 clips
-            res = self._get_video_resolution(clip.path)
+        for clip in clips[:10]:
+            res = self.prober.get_video_resolution(clip.path)
             if res:
                 max_height = max(max_height, max(res))
-
         if max_height >= 2160:
             return "4k"
         elif max_height >= 1080:
             return "1080p"
         return "720p"
 
-    def _detect_year_changes(
-        self,
-        clips: list[AssemblyClip],
-    ) -> list[tuple[int, int]]:
-        """Detect where year changes occur in the clip list.
+    # ------------------------------------------------------------------
+    # Month / year change detection
+    # ------------------------------------------------------------------
 
-        Args:
-            clips: List of clips with dates.
+    def detect_month_changes(self, clips: list[AssemblyClip]) -> list[tuple[int, int, int]]:
+        """Detect month changes. Returns [(insert_index, month, year)]."""
+        month_changes: list[tuple[int, int, int]] = []
+        current_month: tuple[int, int] | None = None
+        month_clip_counts: dict[tuple[int, int], int] = {}
+        clips_with_dates = 0
 
-        Returns:
-            List of (insert_index, year) for each year change.
-        """
+        for i, clip in enumerate(clips):
+            clip_date = self.parse_clip_date(clip)
+            if clip_date is None:
+                continue
+            clips_with_dates += 1
+            month_key = (clip_date.year, clip_date.month)
+            month_clip_counts[month_key] = month_clip_counts.get(month_key, 0) + 1
+            if current_month is None or month_key != current_month:
+                month_changes.append((i, clip_date.month, clip_date.year))
+                logger.debug(f"Month change at clip {i}: {current_month} -> {month_key}")
+            current_month = month_key
+
+        logger.info(f"Month detection: {len(month_changes)} changes in {clips_with_dates} clips")
+        return month_changes
+
+    def detect_year_changes(self, clips: list[AssemblyClip]) -> list[tuple[int, int]]:
+        """Detect year changes. Returns [(insert_index, year)]."""
         year_changes: list[tuple[int, int]] = []
         current_year: int | None = None
 
         for i, clip in enumerate(clips):
-            clip_date = self._parse_clip_date(clip)
+            clip_date = self.parse_clip_date(clip)
             if clip_date is None:
                 continue
-
             if current_year is None or clip_date.year != current_year:
                 year_changes.append((i, clip_date.year))
                 if current_year is not None:
@@ -166,27 +137,20 @@ class AssemblerTitleMixin(AssemblerTripMixin):
         logger.info(f"Year detection: {len(year_changes)} year changes found")
         return year_changes
 
-    def _generate_year_dividers(
+    # ------------------------------------------------------------------
+    # Divider generation
+    # ------------------------------------------------------------------
+
+    def generate_year_dividers(
         self,
         clips: list[AssemblyClip],
         generator: Any,
         title_settings: Any,
         progress_callback: Callable[[float, str], None] | None,
     ) -> dict[int, Path]:
-        """Generate year divider screens for year transitions.
-
-        Args:
-            clips: Content clips.
-            generator: TitleScreenGenerator instance.
-            title_settings: Title screen settings.
-            progress_callback: Progress callback.
-
-        Returns:
-            Dict of year -> divider video path.
-        """
-        year_changes = self._detect_year_changes(clips)
+        """Generate year divider screens. Returns {year: path}."""
+        year_changes = self.detect_year_changes(clips)
         year_divider_paths: dict[int, Path] = {}
-
         if not year_changes:
             return year_divider_paths
 
@@ -198,30 +162,19 @@ class AssemblerTitleMixin(AssemblerTripMixin):
                 divider = generator.generate_year_divider(year)
                 year_divider_paths[year] = divider.path
                 logger.info(f"Generated year divider: {year}")
-
         return year_divider_paths
 
-    def _build_clips_with_year_dividers(
+    def build_clips_with_year_dividers(
         self,
         clips: list[AssemblyClip],
         year_divider_paths: dict[int, Path],
         title_settings: Any,
     ) -> list[AssemblyClip]:
-        """Interleave clips with year divider screens.
-
-        Args:
-            clips: Content clips.
-            year_divider_paths: Generated year divider paths.
-            title_settings: Title screen settings.
-
-        Returns:
-            List of clips with year dividers inserted at year boundaries.
-        """
+        """Interleave clips with year divider screens."""
         result: list[AssemblyClip] = []
         current_year: int | None = None
-
         for clip in clips:
-            clip_date = self._parse_clip_date(clip)
+            clip_date = self.parse_clip_date(clip)
             if clip_date:
                 if (
                     current_year is None or clip_date.year != current_year
@@ -237,28 +190,17 @@ class AssemblerTitleMixin(AssemblerTripMixin):
                     )
                 current_year = clip_date.year
             result.append(clip)
-
         return result
 
-    def _generate_month_dividers(
+    def generate_month_dividers(
         self,
         clips: list[AssemblyClip],
         generator: Any,
         title_settings: Any,
         progress_callback: Callable[[float, str], None] | None,
     ) -> dict[tuple[int, int], Path]:
-        """Generate month divider screens for month transitions.
-
-        Args:
-            clips: Content clips.
-            generator: TitleScreenGenerator instance.
-            title_settings: Title screen settings.
-            progress_callback: Progress callback.
-
-        Returns:
-            Dict of (year, month) -> divider video path.
-        """
-        month_changes = self._detect_month_changes(clips)
+        """Generate month divider screens. Returns {(year, month): path}."""
+        month_changes = self.detect_month_changes(clips)
         month_divider_paths: dict[tuple[int, int], Path] = {}
 
         if not (title_settings.show_month_dividers and month_changes):
@@ -282,30 +224,20 @@ class AssemblerTitleMixin(AssemblerTripMixin):
                     f"Generated month divider: {month}/{year}"
                     + (" (birthday!)" if is_birthday else "")
                 )
-
         return month_divider_paths
 
-    def _build_clips_with_dividers(
+    def build_clips_with_dividers(
         self,
         clips: list[AssemblyClip],
         month_divider_paths: dict[tuple[int, int], Path],
         title_settings: Any,
     ) -> list[AssemblyClip]:
-        """Interleave clips with month divider screens.
-
-        Args:
-            clips: Content clips.
-            month_divider_paths: Generated month divider paths.
-            title_settings: Title screen settings.
-
-        Returns:
-            List of clips with dividers inserted at month boundaries.
-        """
+        """Interleave clips with month divider screens."""
         result: list[AssemblyClip] = []
         current_month: tuple[int, int] | None = None
 
         for clip in clips:
-            clip_date = self._parse_clip_date(clip)
+            clip_date = self.parse_clip_date(clip)
             if clip_date:
                 month_key = (clip_date.year, clip_date.month)
                 if (
@@ -324,10 +256,70 @@ class AssemblerTitleMixin(AssemblerTripMixin):
                     )
                 current_month = month_key
             result.append(clip)
-
         return result
 
-    def _select_divider_strategy(
+    # ------------------------------------------------------------------
+    # Location dividers (trip memories)
+    # ------------------------------------------------------------------
+
+    def make_location_card_clip(
+        self,
+        name: str,
+        cache: dict[str, Path],
+        generator: Any,
+        title_settings: Any,
+    ) -> AssemblyClip:
+        """Return an AssemblyClip for a location card, using cache to avoid duplicates."""
+        if name not in cache:
+            card = generator.generate_location_card_screen(name)
+            cache[name] = card.path
+        return AssemblyClip(
+            path=cache[name],
+            duration=title_settings.month_divider_duration,
+            date=None,
+            asset_id=f"location_{name}",
+            is_title_screen=True,
+        )
+
+    def build_clips_with_location_dividers(
+        self,
+        clips: list[AssemblyClip],
+        generator: Any,
+        title_settings: Any,
+        progress_callback: Callable[[float, str], None] | None,
+    ) -> list[AssemblyClip]:
+        """Insert location cards between clips when location changes (>30km)."""
+        from immich_memories.analysis.trip_detection import haversine_km
+
+        if progress_callback:
+            progress_callback(0.05, "Generating location cards...")
+
+        result: list[AssemblyClip] = []
+        location_card_cache: dict[str, Path] = {}
+        prev_lat: float | None = None
+        prev_lon: float | None = None
+        threshold_km = 30.0
+
+        for clip in clips:
+            if clip.latitude is not None and clip.longitude is not None:
+                if prev_lat is not None and prev_lon is not None:
+                    dist = haversine_km(prev_lat, prev_lon, clip.latitude, clip.longitude)
+                    if dist > threshold_km and clip.location_name:
+                        card = self.make_location_card_clip(
+                            clip.location_name, location_card_cache, generator, title_settings
+                        )
+                        result.append(card)
+                        logger.info(f"Location card: {clip.location_name} (dist={dist:.0f}km)")
+                prev_lat = clip.latitude
+                prev_lon = clip.longitude
+            result.append(clip)
+        return result
+
+    # ------------------------------------------------------------------
+    # Divider strategy selection
+    # ------------------------------------------------------------------
+
+    def select_divider_strategy(
         self,
         clips: list[AssemblyClip],
         generator: Any,
@@ -337,36 +329,42 @@ class AssemblerTitleMixin(AssemblerTripMixin):
     ) -> list[AssemblyClip]:
         """Select and apply the appropriate divider strategy for clips."""
         if is_trip and getattr(title_settings, "show_location_cards", True):
-            return self._build_clips_with_location_dividers(
+            return self.build_clips_with_location_dividers(
                 clips, generator, title_settings, progress_callback
             )
 
         divider_mode = getattr(title_settings, "divider_mode", "month")
         if divider_mode == "year":
-            year_divider_paths = self._generate_year_dividers(
+            year_divider_paths = self.generate_year_dividers(
                 clips, generator, title_settings, progress_callback
             )
-            return self._build_clips_with_year_dividers(clips, year_divider_paths, title_settings)
+            return self.build_clips_with_year_dividers(clips, year_divider_paths, title_settings)
 
         if divider_mode == "month" and title_settings.show_month_dividers:
-            month_divider_paths = self._generate_month_dividers(
+            month_divider_paths = self.generate_month_dividers(
                 clips, generator, title_settings, progress_callback
             )
-            return self._build_clips_with_dividers(clips, month_divider_paths, title_settings)
+            return self.build_clips_with_dividers(clips, month_divider_paths, title_settings)
 
         return clips.copy()
+
+    # ------------------------------------------------------------------
+    # Main entry point
+    # ------------------------------------------------------------------
 
     def assemble_with_titles(
         self,
         clips: list[AssemblyClip],
         output_path: Path,
+        assemble_fn: AssembleFn,
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> Path:
-        """Assemble clips with title screens, month dividers, and ending screen.
+        """Assemble clips with title screens, dividers, and ending screen.
 
         Args:
-            clips: List of clips to assemble.
+            clips: List of content clips.
             output_path: Path for output video.
+            assemble_fn: Callback to the assembler's assemble() method.
             progress_callback: Progress callback (0.0 to 1.0).
 
         Returns:
@@ -377,17 +375,16 @@ class AssemblerTitleMixin(AssemblerTripMixin):
 
         title_settings = self.settings.title_screens
         if title_settings is None or not title_settings.enabled:
-            return self.assemble(clips, output_path, progress_callback)
+            return assemble_fn(clips, output_path, progress_callback)
 
         try:
             from immich_memories.titles import TitleScreenConfig, TitleScreenGenerator
         except ImportError as e:
             logger.warning(f"Title screens not available: {e}")
-            return self.assemble(clips, output_path, progress_callback)
+            return assemble_fn(clips, output_path, progress_callback)
 
-        orientation = self._get_orientation_from_clips(clips)
-        resolution_tier = self._get_resolution_tier(clips)
-        # Detect if any source clip is HDR — title screens match source format
+        orientation = self.get_orientation_from_clips(clips)
+        resolution_tier = self.get_resolution_tier(clips)
         source_has_hdr = has_any_hdr_clip(clips) if self.settings.preserve_hdr else False
         logger.info(
             f"Generating title screens ({orientation}, {resolution_tier}, "
@@ -461,7 +458,7 @@ class AssemblerTitleMixin(AssemblerTripMixin):
         ]
 
         # 2-3. Clips with dividers
-        content_clips = self._select_divider_strategy(
+        content_clips = self.select_divider_strategy(
             clips, generator, title_settings, progress_callback, is_trip
         )
         final_clips.extend(content_clips)
@@ -494,6 +491,6 @@ class AssemblerTitleMixin(AssemblerTripMixin):
             self.settings.transition = TransitionType.SMART
 
         try:
-            return self.assemble(final_clips, output_path, progress_callback)
+            return assemble_fn(final_clips, output_path, progress_callback)
         finally:
             self.settings.transition = original_transition

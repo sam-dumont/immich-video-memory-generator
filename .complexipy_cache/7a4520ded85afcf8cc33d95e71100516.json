@@ -1,0 +1,317 @@
+{
+  "functions": [
+    {
+      "complexity": 1,
+      "file_name": "panns_analysis.py",
+      "function_name": "PANNsAnalysisMixin::cleanup",
+      "path": "panns_analysis.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "panns_analysis.py",
+      "function_name": "PANNsAnalysisMixin::_check_panns_available",
+      "path": "panns_analysis.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "panns_analysis.py",
+      "function_name": "PANNsAnalysisMixin::_classify_frame",
+      "path": "panns_analysis.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "panns_analysis.py",
+      "function_name": "PANNsAnalysisMixin::_analyze_with_panns",
+      "path": "panns_analysis.py"
+    },
+    {
+      "complexity": 16,
+      "file_name": "panns_analysis.py",
+      "function_name": "PANNsAnalysisMixin::_collect_events",
+      "path": "panns_analysis.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "content_analyzer.py",
+      "function_name": "AudioContentAnalyzer::__init__",
+      "path": "content_analyzer.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "content_analyzer.py",
+      "function_name": "AudioContentAnalyzer::_extract_audio",
+      "path": "content_analyzer.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "content_analyzer.py",
+      "function_name": "AudioContentAnalyzer::_calculate_audio_score",
+      "path": "content_analyzer.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "content_analyzer.py",
+      "function_name": "AudioContentAnalyzer::analyze",
+      "path": "content_analyzer.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "generator.py",
+      "function_name": "TitleScreenConfig::output_resolution",
+      "path": "generator.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "generator.py",
+      "function_name": "TitleScreenGenerator::generate_ending_screen",
+      "path": "generator.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "generator.py",
+      "function_name": "TitleScreenGenerator::generate_year_divider",
+      "path": "generator.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "generator.py",
+      "function_name": "TitleScreenGenerator::generate_month_divider",
+      "path": "generator.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "generator.py",
+      "function_name": "TitleScreenGenerator::__init__",
+      "path": "generator.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "generator.py",
+      "function_name": "TitleScreenGenerator::generate_all_screens",
+      "path": "generator.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "generator.py",
+      "function_name": "TitleScreenGenerator::generate_title_screen",
+      "path": "generator.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "generator.py",
+      "function_name": "TitleScreenGenerator::_init_style",
+      "path": "generator.py"
+    },
+    {
+      "complexity": 9,
+      "file_name": "generator.py",
+      "function_name": "TitleScreenGenerator::_log_title_generation",
+      "path": "generator.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "text_builder.py",
+      "function_name": "_title_multi_person",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "text_builder.py",
+      "function_name": "_title_on_this_day",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "text_builder.py",
+      "function_name": "_title_person_spotlight",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "text_builder.py",
+      "function_name": "_title_season",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "text_builder.py",
+      "function_name": "_title_birthday_year",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "text_builder.py",
+      "function_name": "_title_calendar_year",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "text_builder.py",
+      "function_name": "calculate_birthday_age",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "text_builder.py",
+      "function_name": "generate_month_divider_text",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "text_builder.py",
+      "function_name": "generate_title",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "text_builder.py",
+      "function_name": "get_season_name",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "text_builder.py",
+      "function_name": "_title_date_range",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "text_builder.py",
+      "function_name": "_title_single_month",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "text_builder.py",
+      "function_name": "get_month_name",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "text_builder.py",
+      "function_name": "_generate_date_range_title",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "text_builder.py",
+      "function_name": "infer_selection_type",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "text_builder.py",
+      "function_name": "get_ordinal",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "text_builder.py",
+      "function_name": "_title_month_range",
+      "path": "text_builder.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_geo_to_screen",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_linear_pan",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_render_frame",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_to_latlon",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_to_world",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "map_animation.py",
+      "function_name": "_view_at",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_CachedStaticMap::get",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_destination_overview",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_pick_interpolator",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_render_satellite",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_title_alpha",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "map_animation.py",
+      "function_name": "_render_title_overlay",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "map_animation.py",
+      "function_name": "_van_wijk",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "map_animation.py",
+      "function_name": "create_map_fly_video",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "map_animation.py",
+      "function_name": "_draw_pins",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 28,
+      "file_name": "map_animation.py",
+      "function_name": "_pipe_frames",
+      "path": "map_animation.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/audio/content_analyzer.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/audio/panns_analysis.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/titles/generator.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/titles/map_animation.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/titles/text_builder.py"
+  ]
+}

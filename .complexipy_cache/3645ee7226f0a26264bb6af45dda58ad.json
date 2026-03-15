@@ -1,0 +1,110 @@
+{
+  "functions": [
+    {
+      "complexity": 0,
+      "file_name": "step1_config.py",
+      "function_name": "_render_options_section",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "step1_config.py",
+      "function_name": "_render_preset_section",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "step1_config.py",
+      "function_name": "_render_navigation",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "step1_config.py",
+      "function_name": "_render_time_period_tabs",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "step1_config.py",
+      "function_name": "render_step1",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "step1_config.py",
+      "function_name": "_make_date_range_updater",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "step1_config.py",
+      "function_name": "_render_person_filter",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 12,
+      "file_name": "step1_config.py",
+      "function_name": "_compute_date_range",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 12,
+      "file_name": "step1_config.py",
+      "function_name": "_render_immich_config_section",
+      "path": "step1_config.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "step1_tabs.py",
+      "function_name": "_render_year_tab",
+      "path": "step1_tabs.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "step1_tabs.py",
+      "function_name": "_render_custom_tab",
+      "path": "step1_tabs.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "step1_tabs.py",
+      "function_name": "_render_year_type_buttons",
+      "path": "step1_tabs.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "step1_tabs.py",
+      "function_name": "_render_custom_end_picker",
+      "path": "step1_tabs.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "step1_tabs.py",
+      "function_name": "_render_custom_start_picker",
+      "path": "step1_tabs.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "step1_tabs.py",
+      "function_name": "_render_birthday_picker",
+      "path": "step1_tabs.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "step1_tabs.py",
+      "function_name": "_render_duration_tab",
+      "path": "step1_tabs.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "step1_tabs.py",
+      "function_name": "_render_year_selector_row",
+      "path": "step1_tabs.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/step1_config.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/step1_tabs.py"
+  ]
+}

@@ -1,0 +1,197 @@
+{
+  "functions": [
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_geo_to_screen",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_linear_pan",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_render_frame",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_to_latlon",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "map_animation.py",
+      "function_name": "_to_world",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "map_animation.py",
+      "function_name": "_view_at",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_CachedStaticMap::get",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_destination_overview",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_pick_interpolator",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_render_satellite",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "map_animation.py",
+      "function_name": "_title_alpha",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "map_animation.py",
+      "function_name": "_render_title_overlay",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "map_animation.py",
+      "function_name": "_van_wijk",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "map_animation.py",
+      "function_name": "create_map_fly_video",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "map_animation.py",
+      "function_name": "_draw_pins",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 28,
+      "file_name": "map_animation.py",
+      "function_name": "_pipe_frames",
+      "path": "map_animation.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "rendering_mixin.py",
+      "function_name": "RenderingMixin::_create_gpu_title",
+      "path": "rendering_mixin.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "rendering_mixin.py",
+      "function_name": "RenderingMixin::_create_map_video",
+      "path": "rendering_mixin.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "rendering_mixin.py",
+      "function_name": "RenderingMixin::_create_title_video",
+      "path": "rendering_mixin.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "rendering_mixin.py",
+      "function_name": "RenderingMixin::_init_gpu_renderer",
+      "path": "rendering_mixin.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "encoding.py",
+      "function_name": "get_resolution_for_orientation",
+      "path": "encoding.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "encoding.py",
+      "function_name": "_get_gpu_encoder_args",
+      "path": "encoding.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "convenience.py",
+      "function_name": "generate_ending_screen",
+      "path": "convenience.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "convenience.py",
+      "function_name": "generate_month_divider",
+      "path": "convenience.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "convenience.py",
+      "function_name": "generate_title_screen",
+      "path": "convenience.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "config_loader.py",
+      "function_name": "Config::get_default_path",
+      "path": "config_loader.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "config_loader.py",
+      "function_name": "set_config",
+      "path": "config_loader.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "config_loader.py",
+      "function_name": "Config::save_yaml",
+      "path": "config_loader.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "config_loader.py",
+      "function_name": "Config::from_yaml",
+      "path": "config_loader.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "config_loader.py",
+      "function_name": "init_config_dir",
+      "path": "config_loader.py"
+    },
+    {
+      "complexity": 21,
+      "file_name": "config_loader.py",
+      "function_name": "get_config",
+      "path": "config_loader.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/config_loader.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/titles/convenience.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/titles/encoding.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/titles/map_animation.py",
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/titles/rendering_mixin.py"
+  ]
+}

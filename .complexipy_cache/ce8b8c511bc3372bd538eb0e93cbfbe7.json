@@ -1,0 +1,121 @@
+{
+  "functions": [
+    {
+      "complexity": 0,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_build_pipeline_config",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_poll_stats",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_render_pipeline_progress_ui",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_poll_phase",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_poll_detail_cards",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_render_segment_and_score",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_handle_pipeline_completion",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_render_audio_categories",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_render_currently_analyzing_card",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_render_thumbnail_for",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_run_pipeline_blocking",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_detect_overnight_bases",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_make_progress_callback",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_wire_progress_timer",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_render_last_analyzed_card",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_render_llm_badges",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "clip_pipeline.py",
+      "function_name": "_try_render_video_preview",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "clip_pipeline.py",
+      "function_name": "render_phase_indicator",
+      "path": "clip_pipeline.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "clip_pipeline.py",
+      "function_name": "render_pipeline_summary",
+      "path": "clip_pipeline.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/clip_pipeline.py"
+  ]
+}

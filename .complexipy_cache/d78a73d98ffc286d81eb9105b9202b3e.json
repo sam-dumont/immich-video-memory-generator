@@ -1,0 +1,19 @@
+{
+  "functions": [
+    {
+      "complexity": 1,
+      "file_name": "assembler_trip_mixin.py",
+      "function_name": "AssemblerTripMixin::_make_location_card_clip",
+      "path": "assembler_trip_mixin.py"
+    },
+    {
+      "complexity": 14,
+      "file_name": "assembler_trip_mixin.py",
+      "function_name": "AssemblerTripMixin::_build_clips_with_location_dividers",
+      "path": "assembler_trip_mixin.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/processing/assembler_trip_mixin.py"
+  ]
+}

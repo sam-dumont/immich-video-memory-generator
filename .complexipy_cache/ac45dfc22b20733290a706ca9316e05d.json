@@ -1,0 +1,85 @@
+{
+  "functions": [
+    {
+      "complexity": 1,
+      "file_name": "step2_loading.py",
+      "function_name": "_fetch_live_photos",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "step2_loading.py",
+      "function_name": "_filter_near_home",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "step2_loading.py",
+      "function_name": "_fetch_assets",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "step2_loading.py",
+      "function_name": "_merge_live_photos",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "step2_loading.py",
+      "function_name": "_set_initial_selection",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "step2_loading.py",
+      "function_name": "_build_clips",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "step2_loading.py",
+      "function_name": "_apply_metadata",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "step2_loading.py",
+      "function_name": "_fetch_metadata_batched",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "step2_loading.py",
+      "function_name": "_load_thumbnails_and_metadata_async",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "step2_loading.py",
+      "function_name": "_load_clips",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "step2_loading.py",
+      "function_name": "_probe_and_cache_metadata",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "step2_loading.py",
+      "function_name": "_render_cached_analysis_summary",
+      "path": "step2_loading.py"
+    },
+    {
+      "complexity": 12,
+      "file_name": "step2_loading.py",
+      "function_name": "_fetch_thumbnails_batched",
+      "path": "step2_loading.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/ui/pages/step2_loading.py"
+  ]
+}

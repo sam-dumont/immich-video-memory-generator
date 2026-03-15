@@ -1,0 +1,43 @@
+{
+  "functions": [
+    {
+      "complexity": 3,
+      "file_name": "pipeline_preview.py",
+      "function_name": "PreviewMixin::_download_clip_video",
+      "path": "pipeline_preview.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "pipeline_preview.py",
+      "function_name": "PreviewMixin::_extract_and_log_preview",
+      "path": "pipeline_preview.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "pipeline_preview.py",
+      "function_name": "PreviewMixin::_run_legacy_analysis",
+      "path": "pipeline_preview.py"
+    },
+    {
+      "complexity": 12,
+      "file_name": "pipeline_preview.py",
+      "function_name": "PreviewMixin::_analyze_clip",
+      "path": "pipeline_preview.py"
+    },
+    {
+      "complexity": 12,
+      "file_name": "pipeline_preview.py",
+      "function_name": "PreviewMixin::_extract_preview_segment",
+      "path": "pipeline_preview.py"
+    },
+    {
+      "complexity": 15,
+      "file_name": "pipeline_preview.py",
+      "function_name": "PreviewMixin::_find_cached_preview",
+      "path": "pipeline_preview.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/analysis/pipeline_preview.py"
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "functions": [
+    {
+      "complexity": 1,
+      "file_name": "clip_encoding.py",
+      "function_name": "_get_hw_caps",
+      "path": "clip_encoding.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "clip_encoding.py",
+      "function_name": "ClipEncodingMixin::_handle_encode_failure",
+      "path": "clip_encoding.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "clip_encoding.py",
+      "function_name": "ClipEncodingMixin::_parse_progress_line",
+      "path": "clip_encoding.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "clip_encoding.py",
+      "function_name": "ClipEncodingMixin::_append_encoder_args",
+      "path": "clip_encoding.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "clip_encoding.py",
+      "function_name": "ClipEncodingMixin::_build_reencode_command",
+      "path": "clip_encoding.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "clip_encoding.py",
+      "function_name": "ClipEncodingMixin::_append_quality_args",
+      "path": "clip_encoding.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "clip_encoding.py",
+      "function_name": "ClipEncodingMixin::_extract_with_reencode",
+      "path": "clip_encoding.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "clip_encoding.py",
+      "function_name": "ClipEncodingMixin::_run_with_progress",
+      "path": "clip_encoding.py"
+    }
+  ],
+  "targets": [
+    "/Users/sam/Code/perso/immich-video-memory-generator/src/immich_memories/processing/clip_encoding.py"
+  ]
+}
