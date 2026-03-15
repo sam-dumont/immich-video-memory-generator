@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import os
 import secrets
-import signal
 import socket
 import sys
 from pathlib import Path
@@ -273,49 +271,8 @@ app.on_shutdown(_shutdown_app)
 # ============================================================================
 
 
-def _kill_port_holders(port: int) -> bool:
-    """Find and kill processes holding the given port. Returns True if any were killed."""
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            ["lsof", "-ti", f":{port}"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        pids = [p.strip() for p in result.stdout.strip().split("\n") if p.strip()]
-        if not pids:
-            return False
-
-        my_pid = str(os.getpid())
-        pids_to_kill = [p for p in pids if p != my_pid]
-        if not pids_to_kill:
-            return False
-
-        logger.warning(
-            f"Killing {len(pids_to_kill)} zombie process(es) on port {port}: {pids_to_kill}"
-        )
-        for pid in pids_to_kill:
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.kill(int(pid), signal.SIGTERM)
-
-        # Give them a moment, then force-kill survivors
-        import time
-
-        time.sleep(0.5)
-        for pid in pids_to_kill:
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.kill(int(pid), signal.SIGKILL)
-
-        time.sleep(0.3)
-        return True
-    except Exception:
-        return False
-
-
 def _is_port_free(host: str, port: int) -> bool:
-    """Check if a port is available for binding (IPv4 and IPv6)."""
+    """Check if a port is available for binding."""
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
     sock = socket.socket(family, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -330,27 +287,12 @@ def _is_port_free(host: str, port: int) -> bool:
 
 def main(port: int = 8080, host: str = "0.0.0.0", reload: bool = False) -> None:  # noqa: S104
     """Run the NiceGUI application."""
-    # Kill zombie processes from previous runs before binding
     if not _is_port_free(host, port):
-        if os.environ.get("IMMICH_MEMORIES_KILL_PORT") == "1":
-            logger.warning(f"Port {port} is in use — attempting to clean up zombie processes")
-            if _kill_port_holders(port):
-                if not _is_port_free(host, port):
-                    logger.error(
-                        f"Port {port} still in use after cleanup. "
-                        f"Use: lsof -ti :{port} | xargs kill -9"
-                    )
-                    sys.exit(1)
-            else:
-                logger.error(f"Port {port} is in use. Use: lsof -ti :{port} | xargs kill -9")
-                sys.exit(1)
-        else:
-            logger.error(
-                f"Port {port} is in use. Kill the process manually with: "
-                f"lsof -ti :{port} | xargs kill -9\n"
-                f"Or set IMMICH_MEMORIES_KILL_PORT=1 to auto-kill port holders."
-            )
-            sys.exit(1)
+        logger.error(
+            f"Port {port} is already in use. "
+            f"Stop the existing process: lsof -ti :{port} | xargs kill"
+        )
+        sys.exit(1)
 
     kwargs: dict = {
         "title": "Immich Memories",

@@ -26,11 +26,8 @@ services:
       - IMMICH_URL=${IMMICH_URL:-}
       - IMMICH_API_KEY=${IMMICH_API_KEY:-}
 
-      # Session secret (auto-generated if not set, but set this for multi-replica)
+      # Session secret (auto-generated if not set, but set this for multi-replica/K8s)
       - IMMICH_MEMORIES_STORAGE_SECRET=${IMMICH_MEMORIES_STORAGE_SECRET:-}
-
-      # Allow killing existing processes on port (safe in containers)
-      - IMMICH_MEMORIES_KILL_PORT=1
 
     # Security hardening
     security_opt:
