@@ -129,17 +129,14 @@ locally, CI will pass too. Use conventional commit message format (see above).
 ### Splitting Large Files
 
 - Do not add new files over 500 lines — split proactively
-- **Extract Method** to reduce complexity — no behavioral changes
-- **Mixins** for splitting large classes (VideoAssembler, SmartPipeline, etc.)
-- **Re-export shims** for backwards compatibility (e.g., `assembly.py`)
+- Split along **cohesion boundaries**, not arbitrary line counts
+- Extract a service class with a Protocol contract for its dependencies
+- The new module should be independently testable and importable
+- Do NOT create mixins — use composition with constructor injection
+- Do NOT create re-export shims for a single consumer — update import sites directly
+- If you can't find a natural split, the file may genuinely be one cohesive unit.
+  In that case, look for helper utilities to extract, not arbitrary method groups.
 - When splitting, search for all imports of the moved symbols and update them
-- Keep public API in the original file via re-exports when needed
-
-### Architecture Conventions
-
-- **Mixins** inherit from a base mixin and are composed into the main class
-- **Helper modules** contain standalone functions extracted from large files
-- **Re-export shims** preserve backward compatibility when moving code
 - After any structural changes, update `ARCHITECTURE.md` to reflect new layout
 
 ### Documentation Freshness
