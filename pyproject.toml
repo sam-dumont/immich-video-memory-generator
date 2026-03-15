@@ -426,16 +426,14 @@ disable_error_code = ["var-annotated", "assignment", "attr-defined"]
 module = ["immich_memories.titles.generator"]
 disable_error_code = ["assignment", "misc"]
 
-# Video assembler mixins (access parent class attributes via mixin pattern)
+# Video assembler composed services (access sibling service attributes)
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.processing.assembly",
-    "immich_memories.processing.assembler_helpers",
-    "immich_memories.processing.assembler_encoding",
-    "immich_memories.processing.assembler_strategies",
-    "immich_memories.processing.assembler_scalable",
-    "immich_memories.processing.assembler_batch",
-    "immich_memories.processing.assembler_concat",
+    "immich_memories.processing.filter_builder",
+    "immich_memories.processing.clip_encoder",
+    "immich_memories.processing.assembly_engine",
+    "immich_memories.processing._assembly_concat",
     "immich_memories.processing.audio_mixer_service",
     "immich_memories.processing.ffmpeg_prober",
     "immich_memories.processing.transition_blender",
