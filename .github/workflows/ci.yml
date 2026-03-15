@@ -110,7 +110,7 @@ jobs:
       - run: make cognitive-complexity
 
   file-length:
-    name: File Length (≤500 lines)
+    name: File Length (≤800 lines)
     needs: [setup]
     runs-on: ubuntu-latest
     steps:

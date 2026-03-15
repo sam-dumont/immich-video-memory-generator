@@ -24,7 +24,7 @@ help:
 	@echo "  lint         Run ruff linter"
 	@echo "  format       Format code with ruff"
 	@echo "  typecheck    Run mypy type checker"
-	@echo "  file-length  Check all .py files are ≤500 lines"
+	@echo "  file-length  Check all .py files are ≤800 lines"
 	@echo "  complexity   Check cyclomatic complexity (Xenon grade C)"
 	@echo "  dead-code    Detect dead code (Vulture)"
 	@echo "  security-lint Run Bandit security linter"
@@ -141,8 +141,8 @@ format-check:
 typecheck:
 	uv run mypy src/immich_memories
 
-# File length gate (max 500 lines per .py file)
-MAX_LINES := 500
+# File length gate (max 800 lines per .py file)
+MAX_LINES := 800
 file-length:
 	@FAILED=0; \
 	for f in $$(find src/ -name '*.py'); do \

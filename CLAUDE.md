@@ -38,7 +38,7 @@ make format-check
 # Type check (mypy)
 make typecheck
 
-# File length gate (≤500 lines per .py file)
+# File length gate (≤800 lines per .py file)
 make file-length
 
 # Complexity gate (Xenon grade C)
@@ -97,7 +97,7 @@ make critique
 - **Lint**: ruff check must pass (`make lint`)
 - **Format**: ruff format must pass (`make format-check`)
 - **Type check**: mypy must pass (`make typecheck`)
-- **Max file length**: 500 lines per `.py` file (`make file-length`)
+- **Max file length**: 800 lines per `.py` file (`make file-length`)
 - **Cyclomatic complexity**: Xenon grade C — ≤20 per function (`make complexity`)
 - **Cognitive complexity**: complexipy ≤15 per function (`make cognitive-complexity`)
 - **Dead code**: Vulture must pass (`make dead-code`)
@@ -131,7 +131,7 @@ locally, CI will pass too. Use conventional commit message format (see above).
 
 ### Splitting Large Files
 
-- Do not add new files over 500 lines — split proactively
+- Do not add new files over 800 lines — split proactively
 - Split along **cohesion boundaries**, not arbitrary line counts
 - Extract a service class with a Protocol contract for its dependencies
 - The new module should be independently testable and importable

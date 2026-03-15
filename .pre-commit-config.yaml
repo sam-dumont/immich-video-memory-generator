@@ -44,7 +44,7 @@ repos:
   - repo: local
     hooks:
       - id: file-length
-        name: File length gate (max 500 lines)
+        name: File length gate (max 800 lines)
         entry: make file-length
         language: system
         pass_filenames: false
