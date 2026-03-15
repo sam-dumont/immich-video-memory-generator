@@ -28,8 +28,8 @@ jobs:
 
       - name: Run mutmut
         run: |
-          uv run mutmut run --paths-to-mutate=src/immich_memories \
-            --no-progress 2>&1 | tee mutmut-output.txt || true
+          # Uses config from pyproject.toml [tool.mutmut]
+          uv run mutmut run --max-children 4 2>&1 | tee mutmut-output.txt || true
 
       - name: Generate mutation report
         run: |

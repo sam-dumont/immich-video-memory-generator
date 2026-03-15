@@ -563,6 +563,9 @@ ignore = ["FURB184"]
 paths_to_mutate = ["src/immich_memories/"]
 pytest_add_cli_args_test_selection = ["tests/"]
 backup = false
+# Exclude modules that use C extensions (segfault risk during mutation):
+# taichi GPU kernels, face-recognition/dlib, PyAV frame blending
+dict_synonyms = ""
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
