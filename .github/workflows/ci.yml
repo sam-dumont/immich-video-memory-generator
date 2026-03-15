@@ -101,15 +101,13 @@ jobs:
 
       # --- SAST ---
       - name: Bandit (Python security linter)
-        run: uvx bandit -r src/ --severity-level medium -f json -o bandit-report.json || true
-
-      - name: Check Bandit results
         run: |
-          HIGH=$(python3 -c "import json; r=json.load(open('bandit-report.json')); print(sum(1 for i in r['results'] if i['issue_severity']=='HIGH'))")
-          echo "Bandit HIGH severity findings: $HIGH"
-          if [ "$HIGH" -gt 0 ]; then
-            python3 -c "import json; r=json.load(open('bandit-report.json')); [print(f\"  {i['filename']}:{i['line_number']} [{i['test_id']}] {i['issue_text']}\") for i in r['results'] if i['issue_severity']=='HIGH']"
-            echo "::warning::Bandit found $HIGH HIGH severity findings - review bandit-report.json"
+          uvx bandit -r src/ --severity-level medium -f json -o bandit-report.json || true
+          # Fail on HIGH severity — no exceptions
+          HIGH=$(python3 -c "import json; r=json.load(open('bandit-report.json')); high=[i for i in r['results'] if i['issue_severity']=='HIGH']; [print(f\"  {i['filename']}:{i['line_number']} [{i['test_id']}] {i['issue_text']}\") for i in high]; exit(len(high))")
+          if [ "$?" -ne 0 ]; then
+            echo "::error::Bandit found HIGH severity findings — these MUST be fixed"
+            exit 1
           fi
 
       - name: Semgrep (cross-file SAST)
