@@ -122,3 +122,17 @@ error_log.log
 *.enc.yaml
 *.enc.json
 .worktrees/
+
+# IDE/AI tool directories
+.agent/
+.complexipy_cache/
+.continue/
+.junie/
+.kiro/
+
+# IDE/AI tool directories
+.agent/
+.complexipy_cache/
+.continue/
+.junie/
+.kiro/
