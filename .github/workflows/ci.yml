@@ -310,6 +310,7 @@ jobs:
 
   # Build Docker image (no push) to validate Dockerfile on PRs
   docker:
+    needs: [lint, typecheck, security, cognitive-complexity, refurb, dependency-hygiene, docstring-coverage, architecture, code-duplication]
     name: Build Docker Image (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     if: github.event_name == 'pull_request'
@@ -346,7 +347,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -361,62 +362,70 @@ jobs:
   # Advanced quality gates (each as its own visible check)
   cognitive-complexity:
     name: Cognitive Complexity
+    needs: [lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev
       - run: make cognitive-complexity
 
   refurb:
     name: Modernization (refurb)
+    needs: [lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev
       - run: make refurb
 
   dependency-hygiene:
     name: Dependency Hygiene (deptry)
+    needs: [lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev
       - run: make dep-check
 
   docstring-coverage:
     name: Docstring Coverage (≥80%)
+    needs: [lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev
       - run: make docstring-coverage
 
   architecture:
     name: Architecture (import-linter)
+    needs: [lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev
       - run: make arch-check
 
   code-duplication:
     name: Code Duplication (≤5%)
+    needs: [lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
       - run: npx jscpd src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python --gitignore
 
   # Summary job that other jobs can depend on
