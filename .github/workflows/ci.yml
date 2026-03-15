@@ -17,6 +17,18 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # Prime the uv cache once — all subsequent jobs reuse it
+  setup:
+    name: Setup Cache
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev-ci
+
   # Validate commit messages follow conventional commits
   commitlint:
     name: Lint Commits
@@ -39,6 +51,7 @@ jobs:
           uvx --from commitizen cz check --rev-range origin/${{ github.base_ref }}..HEAD
 
   lint:
+    needs: [setup]
     name: Lint
     runs-on: ubuntu-latest
     steps:
@@ -63,6 +76,7 @@ jobs:
         run: make format-check
 
   security:
+    needs: [setup]
     name: Security Scan
     runs-on: ubuntu-latest
     permissions:
@@ -145,6 +159,7 @@ jobs:
           path: bandit-report.json
 
   typecheck:
+    needs: [setup]
     name: Type Check
     runs-on: ubuntu-latest
     steps:
@@ -167,7 +182,7 @@ jobs:
 
   test:
     name: Test (Python ${{ matrix.python-version }} on ${{ matrix.os }})
-    needs: [lint, typecheck, security]
+    needs: [setup, lint, typecheck, security]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -215,7 +230,7 @@ jobs:
   # Test optional extras install and run on Python 3.13
   test-extras:
     name: Test Extras (${{ matrix.os }})
-    needs: [lint, typecheck, security]
+    needs: [setup, lint, typecheck, security]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -345,7 +360,7 @@ jobs:
   # Advanced quality gates (each as its own visible check)
   cognitive-complexity:
     name: Cognitive Complexity
-    needs: [lint]
+    needs: [setup, lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -357,7 +372,7 @@ jobs:
 
   refurb:
     name: Modernization (refurb)
-    needs: [lint]
+    needs: [setup, lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -369,7 +384,7 @@ jobs:
 
   dependency-hygiene:
     name: Dependency Hygiene (deptry)
-    needs: [lint]
+    needs: [setup, lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -381,7 +396,7 @@ jobs:
 
   docstring-coverage:
     name: Docstring Coverage (≥80%)
-    needs: [lint]
+    needs: [setup, lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -393,7 +408,7 @@ jobs:
 
   architecture:
     name: Architecture (import-linter)
-    needs: [lint]
+    needs: [setup, lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -405,7 +420,7 @@ jobs:
 
   code-duplication:
     name: Code Duplication (≤5%)
-    needs: [lint]
+    needs: [setup, lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
