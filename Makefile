@@ -184,7 +184,7 @@ duplication:
 
 # Modernization lint
 refurb:
-	cd src && uv run refurb immich_memories/ --quiet
+	cd src && uvx --with pydantic refurb immich_memories/ --quiet
 
 # Dependency hygiene (hallucinated/unused/transitive deps)
 dep-check:
