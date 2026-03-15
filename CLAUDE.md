@@ -210,6 +210,37 @@ After completing any major feature or refactor (>5 files changed), audit your ow
    - Helper functions called from exactly one place?
 4. `make critique` — automated checks for common smells
 
+### Post-Release Development Workflow
+
+After initial release, the project follows **trunk-based development** with small, frequent PRs:
+
+**Branch workflow:**
+- `main` is always deployable — no direct pushes after release
+- Feature branches: `feat/`, `fix/`, `docs/`, `refactor/` prefixes
+- Short-lived branches — merge within 1-2 days, not weeks
+- Each feature/fix gets its own PR with clear scope
+
+**PR discipline:**
+- Max ~300 lines per PR (excluding generated files, lock files)
+- One concern per PR — don't mix refactoring with features
+- PR title follows conventional commits format
+- Every PR must have a linked GitHub Issue (create one if it doesn't exist)
+- CI must pass before merge — no "fix in next PR" exceptions
+
+**Issue-first development:**
+1. Create a GitHub Issue describing what and why
+2. Create branch from `main`
+3. Implement with TDD (RED → GREEN → REFACTOR)
+4. Open PR, link to issue
+5. CI passes → review → merge → delete branch
+
+**AI-assisted development rules:**
+- AI can implement, but humans review every PR before merge
+- No mega-commits — if the AI generates 2000 lines, split into multiple PRs
+- Every AI session should produce at most 1-2 PRs, not a 40-commit branch
+- Run `make critique` before opening any PR
+- The `CLAUDE.md` anti-patterns section applies to all AI-generated code
+
 ## Key Entry Points
 
 - CLI: `src/immich_memories/cli/__init__.py` → `main()`
