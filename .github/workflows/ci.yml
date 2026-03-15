@@ -109,33 +109,15 @@ jobs:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
         continue-on-error: true  # Don't fail CI if Semgrep token not configured
 
-      # --- Dead code & complexity ---
+      # --- Dead code & complexity (kept here, not extracted to own jobs) ---
       - name: Vulture (dead code detection)
         run: make dead-code
 
       - name: Xenon (cyclomatic complexity gate)
         run: make complexity
 
-      - name: Complexipy (cognitive complexity gate)
-        run: make cognitive-complexity
-
       - name: File length gate (max 500 lines)
         run: make file-length
-
-      - name: Refurb (modernization lint)
-        run: make refurb
-
-      - name: Deptry (dependency hygiene)
-        run: make dep-check
-
-      - name: Interrogate (docstring coverage ≥80%)
-        run: make docstring-coverage
-
-      - name: Import-linter (architectural boundaries)
-        run: make arch-check
-
-      - name: Code duplication (jscpd ≤5%)
-        run: npx jscpd src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python --gitignore
 
       # --- Dependency & supply chain ---
       - name: pip-audit (dependency vulnerabilities)
@@ -419,6 +401,7 @@ jobs:
         with: { enable-cache: true }
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: uv sync --extra dev
+      - run: uv pip install import-linter grimp
       - run: make arch-check
 
   code-duplication:

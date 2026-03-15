@@ -253,7 +253,7 @@ class SceneScorer:
         return MomentScore(
             start_time=scene.start_time,
             end_time=scene.end_time,
-            total_score=float(total),
+            total_score=total,
             face_score=float(avg_face),
             motion_score=float(avg_motion),
             audio_score=audio_score,
