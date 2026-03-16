@@ -251,10 +251,9 @@ def _detect_faces_opencv(frame_path: Path) -> list[tuple[float, float]]:
     if img is None:
         return []
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    face_cascade = cv2.CascadeClassifier(
+    faces_cv = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    )
-    faces_cv = face_cascade.detectMultiScale(gray, 1.1, 4)
+    ).detectMultiScale(gray, 1.1, 4)
     h, w = img.shape[:2]
     return [((x + fw / 2) / w, (y + fh / 2) / h) for x, y, fw, fh in faces_cv]
 
