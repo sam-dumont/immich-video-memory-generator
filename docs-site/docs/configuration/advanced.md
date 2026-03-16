@@ -7,6 +7,20 @@ title: Advanced Configuration
 
 These options have sane defaults and most users don't need to change them. Add any of these to your `~/.immich-memories/config.yaml` to override.
 
+:::tip Config tiers
+These advanced sections can be placed under an `advanced:` key in your config file for organization:
+
+```yaml
+advanced:
+  analysis:
+    scene_threshold: 25.0
+  hardware:
+    backend: "videotoolbox"
+```
+
+Or kept at the top level (both formats work).
+:::
+
 ## Video analysis
 
 ```yaml

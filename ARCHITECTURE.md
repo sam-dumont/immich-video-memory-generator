@@ -82,7 +82,6 @@ src/immich_memories/
 │   ├── clip_analyzer.py        # ClipAnalyzer: download + analyze + score
 │   ├── clip_refiner.py         # ClipRefiner: final selection + distribution
 │   ├── clip_scaler.py          # ClipScaler: duration scaling + dedup
-│   ├── clip_refinement.py      # Standalone refinement functions
 │   ├── clip_scaling.py         # Duration scaling helpers
 │   ├── clip_selection.py       # Standalone clip selection functions
 │   ├── preview_builder.py      # PreviewBuilder: preview segment extraction
@@ -111,7 +110,7 @@ src/immich_memories/
 │   └── llm_query.py            # LLM query helpers
 │
 ├── processing/                 # Video processing & assembly
-│   ├── video_assembler.py      # VideoAssembler (composes 7 services)
+│   ├── video_assembler.py      # VideoAssembler (composes 6 services)
 │   ├── assembly_engine.py      # AssemblyEngine (composes ConcatService)
 │   ├── ffmpeg_filter_graph.py  # ConcatService: concat/xfade/batch ops
 │   ├── assembly_config.py      # Dataclasses: AssemblySettings, AssemblyClip, etc.
@@ -142,7 +141,7 @@ src/immich_memories/
 │   ├── panns_analysis.py       # PANNs (PyTorch AudioSet) helpers
 │   ├── energy_analysis.py      # Audio energy analysis
 │   ├── audio_models.py         # Audio data models
-│   ├── mixer.py                # Audio mixing & ducking (re-exports)
+│   ├── mixer.py                # Audio mixing & ducking
 │   ├── mixer_class.py          # AudioMixer class
 │   ├── mixer_helpers.py        # Mixing helper functions
 │   ├── mood_analyzer.py        # Mood detection for music matching
@@ -183,7 +182,7 @@ src/immich_memories/
 │   ├── globe_video.py          # Globe video creation
 │   ├── map_animation.py        # Map animation
 │   ├── map_renderer.py         # Map tile rendering (staticmap + PIL overlay)
-│   ├── backgrounds.py          # Background generation (re-exports)
+│   ├── backgrounds.py          # Background generation
 │   ├── backgrounds_animated.py # Animated gradient backgrounds
 │   ├── animations.py           # Text animations
 │   ├── styles.py               # Visual style presets
@@ -310,7 +309,7 @@ VideoAssembler.assemble_with_titles()
 
 ## Configuration
 
-- `Config` (config.py): loaded from `~/.immich-memories/config.yaml`
+- `Config` (config_loader.py): loaded from `~/.immich-memories/config.yaml`, tiered YAML (see above)
 - `AssemblySettings` (assembly_config.py): video assembly parameters
 - `PipelineConfig` (smart_pipeline.py): analysis pipeline parameters
 
@@ -322,13 +321,27 @@ Immich API → Asset models → ClipExtractor → VideoClipInfo
   → VideoAssembler → final .mp4
 ```
 
+## Configuration Tiers
+
+Config is organized in 3 tiers (see `config_loader.py`):
+
+- **Tier 1** (top-level YAML): `immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`, `trips`
+- **Tier 2** (under `advanced:` in YAML): `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`, `audio_content`, `server`
+- **Tier 3** (internal): `scheduler`, `title_llm`
+
+At runtime, all sections are flat fields on `Config` (e.g. `config.analysis`).
+Both flat and nested YAML formats are accepted.
+
 ## Conventions
 
-- **Max file length**: 500 lines (enforced in CI via `make file-length`)
+- **Max file length**: 800 lines soft / 1000 hard (enforced in CI via `make file-length`)
 - **Max complexity**: Xenon grade C (<=20 cyclomatic complexity, `make complexity`)
+- **Cognitive complexity**: complexipy ≤15 per function (`make cognitive-complexity`)
 - **Makefile**: Single source of truth for all commands (CI, pre-commit, CLAUDE.md)
 - **Composition**: Top-level orchestrators compose service objects via constructor injection
-- **Re-export shims**: `mixer.py`, `config.py` etc. re-export from sub-modules for backwards compat
+- **Re-export shims**: Only in `__init__.py` — never in regular modules
+- **No `_`-prefixed overflow files**: All files have descriptive names
 - **Private helpers**: Prefixed with `_`, same package
 - **Tests**: `tests/` directory, run with `make test`
-- **Pre-commit**: Run `make check` before committing
+- **Integration tests**: Run locally via pre-commit hook on processing/titles changes (`make test-integration`)
+- **Pre-commit**: Run `make ci` before committing

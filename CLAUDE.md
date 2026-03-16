@@ -4,7 +4,7 @@
 
 1. **Install dev dependencies first**: `make dev`
 2. Read `ARCHITECTURE.md` — it maps the full codebase structure, key classes,
-   data flow, and mixin architecture. This avoids needing to explore the repo.
+   data flow, and composition architecture. This avoids needing to explore the repo.
 
 > **Important**: Always run `make dev` before running any other make target.
 > This installs all dev tools (pytest, ruff, mypy, etc.) into the project venv.
@@ -148,6 +148,8 @@ locally, CI will pass too. Use conventional commit message format (see above).
 
 **Abstractions:**
 - Do NOT create re-export shims for a single consumer — import from the source
+- Re-export shims belong only in `__init__.py` — never in regular modules
+- No `_`-prefixed overflow files — give every file a descriptive name
 - Do NOT split files purely for line count — splits must follow cohesion boundaries
 - Do NOT use mixins — use composition with Protocol contracts
 - If you need state from another module, inject it via constructor
@@ -157,6 +159,7 @@ locally, CI will pass too. Use conventional commit message format (see above).
 - Do NOT mock more than 3 boundaries in a single test — if you need more, the code under test has too many dependencies
 - Every mock MUST have a `# WHY:` comment explaining what external boundary it replaces
 - Integration tests (`make test-integration`) must exist for any FFmpeg pipeline change
+- Integration tests run locally via pre-commit hook (not in CI) when processing/titles code changes
 
 **Comments:**
 - Do NOT write comments that describe what the next line does
@@ -165,7 +168,9 @@ locally, CI will pass too. Use conventional commit message format (see above).
 
 **Config:**
 - New config options MUST have a sane default
-- User-facing options go in Tier 1 (~20 options). Everything else is Tier 2 (advanced)
+- User-facing options go in Tier 1 (top-level YAML). Everything else in Tier 2 (`advanced:`)
+- Tier 2 sections: analysis, hardware, llm, musicgen, ace_step, content_analysis, audio_content, server
+- At runtime, all sections are flat on Config (`config.analysis`, not `config.advanced.analysis`)
 - Do NOT add migration/compat shims for renamed fields — deprecate, document, remove
 
 ### Documentation Freshness
