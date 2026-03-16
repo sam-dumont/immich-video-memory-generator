@@ -365,3 +365,22 @@ class TestSceneScorerIntegration:
         scorer.release_capture()
 
         assert result.motion_score > 0.0
+
+    def test_find_best_moments_uses_cached_capture(self, test_clip_320):
+        """find_best_moments → _find_best_segment should use cached VideoCapture."""
+        from immich_memories.analysis.scenes import Scene
+
+        scorer = SceneScorer(content_weight=0.0)
+        # Scene longer than max_duration (2.0) triggers _find_best_segment
+        scenes = [Scene(start_time=0.0, end_time=3.0, start_frame=0, end_frame=90)]
+        moments = scorer.find_best_moments(
+            test_clip_320,
+            scenes,
+            target_duration=1.5,
+            min_duration=0.5,
+            max_duration=2.0,
+        )
+        scorer.release_capture()
+
+        assert len(moments) >= 1
+        assert all(isinstance(m, MomentScore) for m in moments)

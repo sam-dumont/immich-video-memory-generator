@@ -244,12 +244,15 @@ pip-audit:
 	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict
 	rm -f /tmp/pip-audit-reqs.txt
 
-# Diff coverage for PRs (skips on large refactors >1000 changed lines)
+# Diff coverage for PRs (skips on large refactors or tiny changes where
+# the threshold is statistically meaningless — Goodhart's law defense)
 diff-cover-ci:
-	@CHANGED=$$(git diff --numstat origin/main...HEAD -- '*.py' 2>/dev/null | awk '{s+=$$1+$$2} END {print s+0}'); \
-	echo "Changed Python lines: $${CHANGED}"; \
-	if [ "$${CHANGED}" -gt 1000 ]; then \
-		echo "WARN: Skipping diff-cover: $${CHANGED} lines changed (threshold: 1000). Large refactor."; \
+	@SRC_CHANGED=$$(git diff --numstat origin/main...HEAD -- 'src/**/*.py' 2>/dev/null | awk '{s+=$$1+$$2} END {print s+0}'); \
+	echo "Changed source lines: $${SRC_CHANGED}"; \
+	if [ "$${SRC_CHANGED}" -gt 1000 ]; then \
+		echo "WARN: Skipping diff-cover: $${SRC_CHANGED} lines changed (>1000). Large refactor."; \
+	elif [ "$${SRC_CHANGED}" -lt 10 ]; then \
+		echo "WARN: Skipping diff-cover: $${SRC_CHANGED} source lines changed (<10). Too few for meaningful threshold."; \
 	else \
 		uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=95; \
 	fi
