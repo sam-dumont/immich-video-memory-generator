@@ -178,6 +178,7 @@ class TestOpenAICompatibleMoodAnalyzer:
 
 
 class TestPreflightLLMCheck:
+    # WHY: httpx.Client makes real HTTP requests — mock to avoid hitting external LLM server
     @patch("immich_memories.preflight.httpx.Client")
     def test_openai_compatible_sends_test_completion(self, mock_client_cls):
         """Preflight for openai-compatible should send a minimal chat completion."""
@@ -208,6 +209,7 @@ class TestPreflightLLMCheck:
         call_url = mock_client.post.call_args[0][0]
         assert "chat/completions" in call_url
 
+    # WHY: httpx.Client makes real HTTP requests — mock to avoid hitting Ollama server
     @patch("immich_memories.preflight.httpx.Client")
     def test_ollama_checks_api_tags(self, mock_client_cls):
         """Preflight for ollama should check /api/tags."""
@@ -238,6 +240,7 @@ class TestPreflightLLMCheck:
         call_url = mock_client.get.call_args[0][0]
         assert "/api/tags" in call_url
 
+    # WHY: httpx.Client makes real HTTP requests — simulate connection failure
     @patch("immich_memories.preflight.httpx.Client")
     def test_openai_compatible_connection_error(self, mock_client_cls):
         """Should return WARNING when server is unreachable."""
