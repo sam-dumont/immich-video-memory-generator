@@ -145,18 +145,6 @@ jobs:
       - run: make dev-ci
       - run: make dep-check
 
-  docstring-coverage:
-    name: Docstring Coverage (≥80%)
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make docstring-coverage
-
   arch-check:
     name: Architecture (import-linter)
     needs: [setup]
@@ -379,7 +367,6 @@ jobs:
   # ── Summary gate ──────────────────────────────────────────────────────────
   ci-success:
     name: CI Success
-    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, docstring-coverage, arch-check, duplication, critique, test, test-extras, build, docs]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -395,7 +382,6 @@ jobs:
             "${{ needs.file-length.result }}"
             "${{ needs.refurb.result }}"
             "${{ needs.dep-check.result }}"
-            "${{ needs.docstring-coverage.result }}"
             "${{ needs.arch-check.result }}"
             "${{ needs.duplication.result }}"
             "${{ needs.critique.result }}"

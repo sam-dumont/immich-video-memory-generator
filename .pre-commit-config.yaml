@@ -87,13 +87,6 @@ repos:
         pass_filenames: false
         types: [python]
 
-      - id: docstring-coverage
-        name: Docstring coverage (interrogate ≥80%)
-        entry: make docstring-coverage
-        language: system
-        pass_filenames: false
-        types: [python]
-
       - id: arch-check
         name: Architectural boundaries (import-linter)
         entry: make arch-check

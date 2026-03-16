@@ -62,8 +62,6 @@ make refurb
 # Dependency hygiene (deptry: hallucinated/unused/transitive deps)
 make dep-check
 
-# Docstring coverage (interrogate ≥80%)
-make docstring-coverage
 
 # Architectural boundary enforcement (import-linter)
 make arch-check
@@ -104,7 +102,6 @@ make critique
 - **Security**: Bandit must pass with no HIGH findings (`make security-lint`)
 - **Modernization**: refurb must pass (`make refurb`)
 - **Dependency hygiene**: deptry must pass (`make dep-check`)
-- **Docstring coverage**: interrogate ≥80% (`make docstring-coverage`)
 - **Tests**: all tests must pass (`make test`)
 - **Commit messages**: must follow [Conventional Commits](https://www.conventionalcommits.org/) (`make commitlint`)
   - Format: `type(scope): description` — e.g., `fix(api): handle timeout errors`

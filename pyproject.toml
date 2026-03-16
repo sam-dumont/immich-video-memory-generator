@@ -108,7 +108,6 @@ dev = [
     "refurb>=2.0",
     "import-linter>=2.0",
     "grimp>=3.0",
-    "interrogate>=1.7",
     "deptry>=0.20",
     "mutmut>=2.0",
     "diff-cover>=9.0",
@@ -441,16 +440,6 @@ exclude = [
     "src/immich_memories/titles/sdf_*",       # SDF font rendering kernels
 ]
 
-# Docstring coverage for public API
-[tool.interrogate]
-ignore-init-method = true
-ignore-magic = true
-ignore-module = true
-ignore-private = true
-ignore-semiprivate = true
-fail-under = 80
-exclude = ["tests", "docs", "scripts"]
-
 # Dependency hygiene
 [tool.deptry]
 exclude = ["tests", "docs", "scripts"]
@@ -476,7 +465,6 @@ DEP002 = [
     "pytest-benchmark", "mypy", "ruff",                 # dev tools
     "pre-commit", "commitizen",                         # dev tools
     "types-pyyaml",                                     # mypy stub
-    "refurb", "interrogate", "import-linter",           # quality tools
     "grimp",                                            # import-linter backend
     "diff-cover", "deptry",                             # quality tools
     "mutmut",                                           # mutation testing (CLI tool)

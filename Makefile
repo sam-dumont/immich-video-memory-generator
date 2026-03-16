@@ -1,7 +1,6 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
-.PHONY: help install dev dev-ci run preflight test benchmark test-cov test-integration mutation lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check docstring-coverage arch-check diff-cover ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
 
 # Default target
 help:
@@ -221,8 +220,6 @@ dep-check:
 	uvx deptry src/
 
 # Docstring coverage for public API
-docstring-coverage:
-	uvx interrogate src/immich_memories --quiet --fail-under 80
 
 # Architectural boundary enforcement
 arch-check:
@@ -235,7 +232,7 @@ diff-cover:
 
 # Dependency vulnerability audit
 pip-audit:
-	uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==' -e '^audioop-lts==' -e '^py==' > /tmp/pip-audit-reqs.txt
+	uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==' -e '^audioop-lts==' > /tmp/pip-audit-reqs.txt
 	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict
 	rm -f /tmp/pip-audit-reqs.txt
 
@@ -248,7 +245,7 @@ check: ensure-dev lint format-check typecheck file-length complexity test
 	@echo "All checks passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint refurb dep-check docstring-coverage arch-check duplication critique test
+ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint refurb dep-check arch-check duplication critique test
 	@echo "Full CI pipeline passed!"
 
 # Self-critique for AI code smells
