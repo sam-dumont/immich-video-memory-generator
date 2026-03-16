@@ -466,6 +466,7 @@ DEP002 = [
     "pre-commit", "commitizen",                         # dev tools
     "types-pyyaml",                                     # mypy stub
     "grimp",                                            # import-linter backend
+    "refurb", "import-linter",                          # quality CLI tools
     "diff-cover", "deptry",                             # quality tools
     "mutmut",                                           # mutation testing (CLI tool)
     "python-semantic-release",                          # CI release tool
