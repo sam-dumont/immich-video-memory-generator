@@ -49,6 +49,23 @@ class TestSingleClipAssembly:
         assert get_duration(probe) > 0
 
 
+class TestDefaultSettings:
+    def test_none_defaults_use_config_fallback(self, test_clip_720p, tmp_path):
+        """AssemblySettings with None CRF/transition uses config defaults."""
+        from immich_memories.processing.assembly_config import AssemblyClip, AssemblySettings
+        from immich_memories.processing.video_assembler import VideoAssembler
+
+        # None triggers the `or 0.5` / config fallback paths
+        settings = AssemblySettings(output_crf=None, transition_duration=None)
+        assembler = VideoAssembler(settings)
+        output = tmp_path / "defaults.mp4"
+        clip = AssemblyClip(path=test_clip_720p, duration=3.0)
+        result = assembler.assemble([clip], output)
+
+        assert result.exists()
+        assert get_duration(ffprobe_json(result)) > 0
+
+
 class TestCrossfadeTransition:
     def test_two_clips_with_crossfade(self, assembler, test_clip_720p, test_clip_720p_b, tmp_path):
         """Two clips with crossfade should produce output shorter than sum of inputs."""
