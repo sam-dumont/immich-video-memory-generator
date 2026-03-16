@@ -1,8 +1,8 @@
 """Aspect ratio and scaling transforms.
 
 Public API surface — delegates heavy lifting to helper modules:
-  - _transforms_ffmpeg.py   (fit / fill / crop FFmpeg pipelines, CropRegion)
-  - _transforms_smart_crop.py (face detection, smart crop calculation)
+  - transforms_ffmpeg.py   (fit / fill / crop FFmpeg pipelines, CropRegion)
+  - transforms_smart_crop.py (face detection, smart crop calculation)
 """
 
 from __future__ import annotations
@@ -14,17 +14,17 @@ from pathlib import Path
 from typing import Literal
 
 from immich_memories.config import get_config
-from immich_memories.processing._transforms_ffmpeg import (
+from immich_memories.processing.transforms_ffmpeg import (
     CropRegion,
     apply_crop_transform,
     get_video_dimensions,
     transform_fill,
     transform_fit,
 )
-from immich_memories.processing._transforms_ffmpeg import (
+from immich_memories.processing.transforms_ffmpeg import (
     add_date_overlay as _add_date_overlay,
 )
-from immich_memories.processing._transforms_smart_crop import (
+from immich_memories.processing.transforms_smart_crop import (
     calculate_smart_crop,
     detect_faces_in_video,
     init_face_detectors,

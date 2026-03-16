@@ -4,7 +4,7 @@ Uses Ollama or any OpenAI-compatible server (mlx-vlm, vLLM, Groq, etc.)
 to analyze video frames and describe what's happening, rate interestingness,
 and detect activities.
 
-Base class and parsing live in ``_content_parsing``; provider
+Base class and parsing live in ``llm_response_parser``; provider
 implementations live in ``_content_providers``.  This module provides
 factory functions and re-exports.
 """
@@ -13,14 +13,14 @@ from __future__ import annotations
 
 import logging
 
-from immich_memories.analysis._content_parsing import (  # noqa: F401
-    CONTENT_ANALYSIS_PROMPT,
-    ContentAnalysis,
-    ContentAnalyzer,
-)
 from immich_memories.analysis._content_providers import (  # noqa: F401
     OllamaContentAnalyzer,
     OpenAICompatibleContentAnalyzer,
+)
+from immich_memories.analysis.llm_response_parser import (  # noqa: F401
+    CONTENT_ANALYSIS_PROMPT,
+    ContentAnalysis,
+    ContentAnalyzer,
 )
 
 logger = logging.getLogger(__name__)

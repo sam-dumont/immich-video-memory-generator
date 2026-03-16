@@ -308,7 +308,7 @@ module = [
     "immich_memories.analysis.scoring",
     "immich_memories.analysis.apple_vision",
     "immich_memories.processing.transforms",
-    "immich_memories.processing._transforms_smart_crop",
+    "immich_memories.processing.transforms_smart_crop",
     "immich_memories.processing.scaling_utilities",
 ]
 disable_error_code = ["attr-defined", "call-overload", "union-attr", "assignment", "misc", "has-type"]
