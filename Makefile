@@ -235,7 +235,7 @@ diff-cover:
 
 # Dependency vulnerability audit
 pip-audit:
-	uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==' -e '^audioop-lts==' > /tmp/pip-audit-reqs.txt
+	uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==' -e '^audioop-lts==' -e '^py==' > /tmp/pip-audit-reqs.txt
 	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict
 	rm -f /tmp/pip-audit-reqs.txt
 
