@@ -293,3 +293,72 @@ class TestConfig:
         config_path.write_text("")
         loaded = Config.from_yaml(config_path)
         assert loaded.defaults.target_duration_minutes == 10
+
+    def test_tiered_yaml_loads_advanced_sections(self, tmp_path):
+        """Tier 2 sections under advanced: are flattened to top-level fields."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "immich:\n  url: https://example.com\n"
+            "advanced:\n"
+            "  analysis:\n    scene_threshold: 20.0\n"
+            "  server:\n    port: 9090\n"
+        )
+        loaded = Config.from_yaml(config_path)
+        assert loaded.immich.url == "https://example.com"
+        assert loaded.analysis.scene_threshold == 20.0
+        assert loaded.server.port == 9090
+
+    def test_flat_yaml_still_works(self, tmp_path):
+        """Legacy flat format (no advanced: namespace) still loads."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "immich:\n  url: https://flat.com\n"
+            "analysis:\n  scene_threshold: 25.0\n"
+            "server:\n  port: 8080\n"
+        )
+        loaded = Config.from_yaml(config_path)
+        assert loaded.immich.url == "https://flat.com"
+        assert loaded.analysis.scene_threshold == 25.0
+        assert loaded.server.port == 8080
+
+    def test_save_yaml_groups_tier2_under_advanced(self, tmp_path):
+        """save_yaml outputs tier 2 sections under advanced: namespace."""
+        config_path = tmp_path / "config.yaml"
+        config = Config(
+            immich=ImmichConfig(url="https://save.com"),
+            analysis=AnalysisConfig(scene_threshold=30.0),
+        )
+        config.save_yaml(config_path)
+
+        import yaml
+
+        with config_path.open() as f:
+            raw = yaml.safe_load(f)
+        # Tier 1 at top level
+        assert raw["immich"]["url"] == "https://save.com"
+        # Tier 2 under advanced:
+        assert "analysis" not in raw
+        assert raw["advanced"]["analysis"]["scene_threshold"] == 30.0
+
+    def test_tiered_roundtrip(self, tmp_path):
+        """Config survives save (tiered) → load cycle."""
+        config_path = tmp_path / "config.yaml"
+        original = Config(
+            immich=ImmichConfig(url="https://rt.com", api_key="key"),
+            analysis=AnalysisConfig(scene_threshold=22.0),
+            server=ServerConfig(port=7070),
+        )
+        original.save_yaml(config_path)
+        loaded = Config.from_yaml(config_path)
+        assert loaded.immich.url == "https://rt.com"
+        assert loaded.analysis.scene_threshold == 22.0
+        assert loaded.server.port == 7070
+
+    def test_top_level_overrides_advanced(self, tmp_path):
+        """If a section appears both at top level and under advanced:, top level wins."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "analysis:\n  scene_threshold: 99.0\nadvanced:\n  analysis:\n    scene_threshold: 1.0\n"
+        )
+        loaded = Config.from_yaml(config_path)
+        assert loaded.analysis.scene_threshold == 99.0
