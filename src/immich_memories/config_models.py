@@ -718,6 +718,14 @@ class AudioContentConfig(BaseModel):
     )
 
 
+class ScoringPriorityConfig(BaseModel):
+    """User-facing scoring knobs (Tier 1)."""
+
+    people: Literal["low", "medium", "high"] = "high"
+    quality: Literal["low", "medium", "high"] = "medium"
+    moment: Literal["low", "medium", "high"] = "medium"
+
+
 class UploadConfig(BaseModel):
     """Upload generated videos back to Immich."""
 

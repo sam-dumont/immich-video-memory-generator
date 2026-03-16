@@ -42,6 +42,12 @@ audio:
 ace_step:
   enabled: false
   api_url: "http://localhost:8000"
+
+# ── Clip scoring priorities ────────────────────
+scoring_priority:
+  people: high       # low, medium, high — prioritize clips with faces
+  quality: medium    # low, medium, high — prioritize stable, well-shot clips
+  moment: medium     # low, medium, high — prioritize clips with audio events
 ```
 
 That's it. Everything else has sane defaults.
