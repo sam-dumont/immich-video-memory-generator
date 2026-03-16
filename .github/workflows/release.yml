@@ -175,6 +175,7 @@ jobs:
     needs: [analyze]
     if: needs.analyze.outputs.should_release == 'true'
     uses: ./.github/workflows/ci.yml
+    secrets: inherit
     permissions:
       contents: read
       pull-requests: read
