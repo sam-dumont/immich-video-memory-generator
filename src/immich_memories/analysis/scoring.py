@@ -9,7 +9,6 @@ from __future__ import annotations
 import gc
 import logging
 import platform
-import random
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -745,7 +744,6 @@ class SceneScorer:
                     scene,
                     target_duration,
                     min_duration,
-                    max_duration,
                 )
                 if best_segment:
                     moments.append(best_segment)
@@ -772,10 +770,9 @@ class SceneScorer:
         scene: Scene,
         target_duration: float,
         min_duration: float,
-        max_duration: float,  # noqa: ARG002 - reserved for future use
     ) -> MomentScore | None:
         """Find the best segment within a long scene using sliding window."""
-        cap = cv2.VideoCapture(str(video_path))
+        cap = self._get_capture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS) or 30
 
         step = target_duration / 2
@@ -797,7 +794,6 @@ class SceneScorer:
                 best_segment = score
             current_start += step
 
-        cap.release()
         return best_segment
 
     def _compute_sort_key(
@@ -811,7 +807,8 @@ class SceneScorer:
         variance = -float(np.var(scores))
         video_midpoint = video_duration / 2
         midpoint_distance = abs(moment.midpoint - video_midpoint) / max(video_midpoint, 0.001)
-        random_factor = random.random() * 0.001
+        # Deterministic tiebreaker based on moment position
+        random_factor = (hash((moment.start_time, moment.end_time)) % 1000) * 0.000001
         return (primary, variance, midpoint_distance, random_factor)
 
     def sample_and_score_video(

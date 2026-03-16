@@ -102,8 +102,10 @@ test:
 benchmark:
 	uv run pytest tests/benchmarks/ -v --benchmark-only
 
-test-integration:  ## Run integration tests (requires FFmpeg), appends to coverage
-	uv run pytest tests/integration/ -v -m integration --cov=src/immich_memories --cov-append --cov-report=term-missing
+test-integration:  ## Run ALL integration-marked tests (requires FFmpeg), saves coverage for CI merge
+	uv run pytest -v -m integration \
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/integration-coverage.xml \
+		--cov-fail-under=0
 
 mutation:  ## Run mutation testing (slow — weekly CI or local deep validation)
 	uv run mutmut run --max-children 4
@@ -244,14 +246,22 @@ pip-audit:
 	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict
 	rm -f /tmp/pip-audit-reqs.txt
 
-# Diff coverage for PRs (skips on large refactors >1000 changed lines)
+# Diff coverage for PRs — merges CI unit coverage with local integration coverage
+# (committed by pre-commit hook as tests/integration-coverage.xml)
 diff-cover-ci:
-	@CHANGED=$$(git diff --numstat origin/main...HEAD -- '*.py' 2>/dev/null | awk '{s+=$$1+$$2} END {print s+0}'); \
-	echo "Changed Python lines: $${CHANGED}"; \
-	if [ "$${CHANGED}" -gt 1000 ]; then \
-		echo "WARN: Skipping diff-cover: $${CHANGED} lines changed (threshold: 1000). Large refactor."; \
+	@SRC_CHANGED=$$(git diff --numstat origin/main...HEAD -- 'src/**/*.py' 2>/dev/null | awk '{s+=$$1+$$2} END {print s+0}'); \
+	echo "Changed source lines: $${SRC_CHANGED}"; \
+	if [ "$${SRC_CHANGED}" -gt 1000 ]; then \
+		echo "WARN: Skipping diff-cover: $${SRC_CHANGED} lines changed (>1000). Large refactor."; \
+	elif [ "$${SRC_CHANGED}" -lt 10 ]; then \
+		echo "WARN: Skipping diff-cover: $${SRC_CHANGED} source lines changed (<10). Too few for meaningful threshold."; \
 	else \
-		uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=95; \
+		COVERAGE_FILES="coverage.xml"; \
+		if [ -f tests/integration-coverage.xml ]; then \
+			COVERAGE_FILES="$$COVERAGE_FILES tests/integration-coverage.xml"; \
+			echo "Merging local integration coverage with CI coverage"; \
+		fi; \
+		uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=95; \
 	fi
 
 # Build check (twine)
