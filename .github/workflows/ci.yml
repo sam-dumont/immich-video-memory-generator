@@ -296,11 +296,11 @@ jobs:
           git fetch origin main --depth=1
           make diff-cover-ci
 
-      - name: Upload coverage
+      - name: Upload coverage (unit + local integration)
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
         with:
-          files: coverage.xml
+          files: coverage.xml,tests/integration-coverage.xml
           fail_ci_if_error: false
 
   test-extras:
