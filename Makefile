@@ -102,8 +102,8 @@ test:
 benchmark:
 	uv run pytest tests/benchmarks/ -v --benchmark-only
 
-test-integration:  ## Run integration tests (requires FFmpeg)
-	uv run pytest tests/integration/ -v -m integration
+test-integration:  ## Run integration tests (requires FFmpeg), appends to coverage
+	uv run pytest tests/integration/ -v -m integration --cov=src/immich_memories --cov-append --cov-report=term-missing
 
 mutation:  ## Run mutation testing (slow — weekly CI or local deep validation)
 	uv run mutmut run --max-children 4

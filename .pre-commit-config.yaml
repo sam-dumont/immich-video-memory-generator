@@ -100,3 +100,10 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
+
+      - id: integration-tests
+        name: Integration tests (FFmpeg, only on processing/titles changes)
+        entry: make test-integration
+        language: system
+        pass_filenames: false
+        files: ^(src/immich_memories/(processing|titles)/|tests/integration/)
