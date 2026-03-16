@@ -243,6 +243,8 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Full history for diff-cover
       - uses: astral-sh/setup-uv@v7
         with: { enable-cache: true }
       - run: uv python install ${{ matrix.python-version }}
@@ -262,7 +264,9 @@ jobs:
 
       - name: Diff coverage (≥95% on changed lines)
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
-        run: uvx diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref }} --fail-under=95
+        run: |
+          git fetch origin main --depth=1
+          uvx diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref }} --fail-under=95
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
