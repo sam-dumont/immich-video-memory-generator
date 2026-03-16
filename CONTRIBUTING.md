@@ -22,7 +22,7 @@ When contributing with AI tools:
 
 ## Code of Conduct
 
-Be respectful and inclusive. This is a hobby project, not a corporation.
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold this standard.
 
 ## How I Prefer to Work
 
