@@ -79,6 +79,11 @@ class TestDaemonLoop:
             ],
         )
 
-        with patch("immich_memories.scheduling.daemon.time.sleep", side_effect=KeyboardInterrupt):
+        mock_db = MagicMock()
+        with (
+            patch("immich_memories.scheduling.daemon.time.sleep", side_effect=KeyboardInterrupt),
+            # WHY: avoid real DB init during test — RunDatabase needs config + SQLite
+            patch("immich_memories.tracking.run_database.RunDatabase", return_value=mock_db),
+        ):
             # Should not raise — graceful shutdown
             run_daemon_loop(config)

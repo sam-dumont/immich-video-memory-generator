@@ -41,6 +41,12 @@ def run_daemon_loop(config: SchedulerConfig) -> None:
 
     signal.signal(signal.SIGTERM, _handle_signal)
 
+    # Clean up any runs left in 'running' state from a previous crash
+    from immich_memories.tracking.run_database import RunDatabase
+
+    db = RunDatabase()
+    db.mark_stale_runs_as_interrupted()
+
     scheduler = Scheduler(config)
     logger.info(f"Scheduler daemon started ({len(config.schedules)} schedules)")
 
@@ -101,7 +107,11 @@ def execute_job(job: PendingJob) -> None:
         cmd.extend(["--person", name])
 
     logger.info(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    except subprocess.TimeoutExpired:
+        logger.error(f"Job '{job.schedule.name}' timed out after 30 minutes")
+        return
 
     if result.returncode == 0:
         logger.info(f"Job '{job.schedule.name}' completed successfully")

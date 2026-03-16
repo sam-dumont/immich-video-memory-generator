@@ -213,7 +213,7 @@ class ClipExtractor:
         ]
 
         logger.debug(f"Running: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
         if result.returncode != 0:
             logger.error(f"FFmpeg error: {result.stderr}")
