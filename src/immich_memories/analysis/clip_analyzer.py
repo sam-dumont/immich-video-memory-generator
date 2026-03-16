@@ -12,7 +12,7 @@ from immich_memories.processing.downscaler import cleanup_downscaled
 from immich_memories.security import sanitize_filename
 
 if TYPE_CHECKING:
-    from immich_memories.analysis._content_parsing import ContentAnalyzer
+    from immich_memories.analysis.llm_response_parser import ContentAnalyzer
     from immich_memories.analysis.preview_builder import PreviewBuilder
     from immich_memories.analysis.progress import ProgressTracker
     from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineConfig

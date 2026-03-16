@@ -13,7 +13,7 @@ from pathlib import Path
 
 import httpx
 
-from immich_memories.analysis._content_parsing import (
+from immich_memories.analysis.llm_response_parser import (
     CONTENT_ANALYSIS_PROMPT,
     ContentAnalysis,
     ContentAnalyzer,

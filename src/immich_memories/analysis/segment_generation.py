@@ -1,8 +1,7 @@
 """Standalone functions for generating candidate video segments.
 
 These functions handle boundary detection, merging, candidate segment
-generation, and audio-related scoring helpers. They were extracted from
-UnifiedSegmentAnalyzer to keep file sizes manageable.
+generation, and audio-related scoring helpers.
 """
 
 from __future__ import annotations

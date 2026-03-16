@@ -13,7 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from immich_memories.processing._transforms_ffmpeg import (
+from immich_memories.processing.transforms_ffmpeg import (
     CropRegion,
     apply_crop_transform,
     get_video_dimensions,

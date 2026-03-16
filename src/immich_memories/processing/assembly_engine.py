@@ -2,7 +2,7 @@
 
 Orchestrates scalable, strategy-based, and chunked assembly pipelines.
 Includes assembly context building (resolution, HDR, colorspace resolution).
-Concat/xfade/batch operations are in _assembly_concat.py.
+Concat/xfade/batch operations are in ffmpeg_filter_graph.py.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 from immich_memories.config import get_config
-from immich_memories.processing._assembly_concat import ConcatService
 from immich_memories.processing.assembly_config import (
     CHUNK_SIZE,
     CHUNKED_ASSEMBLY_THRESHOLD,
@@ -24,6 +23,7 @@ from immich_memories.processing.assembly_config import (
     TransitionType,
 )
 from immich_memories.processing.clip_encoder import ClipEncoder
+from immich_memories.processing.ffmpeg_filter_graph import ConcatService
 from immich_memories.processing.ffmpeg_prober import VideoProber
 from immich_memories.processing.ffmpeg_runner import AssemblyContext
 from immich_memories.processing.filter_builder import FilterBuilder

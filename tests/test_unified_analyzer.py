@@ -13,14 +13,14 @@ try:
 except ImportError:
     pytest.skip("cv2 not available", allow_module_level=True)
 
-from immich_memories.analysis._segment_generation import (
+from immich_memories.analysis.scoring import MomentScore
+from immich_memories.analysis.segment_generation import (
     find_nearest_cut_point,
     generate_candidate_segments,
     generate_fallback_segments,
     generate_segments_from_points,
     merge_boundaries,
 )
-from immich_memories.analysis.scoring import MomentScore
 from immich_memories.analysis.unified_analyzer import (
     CutPoint,
     ScoredSegment,

@@ -28,7 +28,7 @@ The four core orchestrators and their composed services:
 - `FilterBuilder` (filter_builder.py): FFmpeg filter graph construction
 - `ClipEncoder` (clip_encoder.py): per-clip trimming and re-encoding
 - `AssemblyEngine` (assembly_engine.py): strategy-based multi-clip assembly
-  - internally composes `ConcatService` (_assembly_concat.py)
+  - internally composes `ConcatService` (ffmpeg_filter_graph.py)
 - `AudioMixerService` (audio_mixer_service.py): background music mixing
 - `TitleInserter` (title_inserter.py): title screen concatenation
 
@@ -90,8 +90,9 @@ src/immich_memories/
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
 │   ├── trip_scoring.py         # Location diversity scoring for trip clips
 │   ├── unified_analyzer.py     # UnifiedSegmentAnalyzer (all methods merged, no mixins)
+│   ├── segment_generation.py   # Boundary detection, candidate segment generation
 │   ├── content_analyzer.py     # LLM-based content analysis
-│   ├── _content_parsing.py     # Content analysis response parsing
+│   ├── llm_response_parser.py  # Content analysis response parsing
 │   ├── _content_providers.py   # Content analysis provider helpers
 │   ├── analyzer_factory.py     # Analyzer factory
 │   ├── analyzer_models.py      # Analyzer data models
@@ -112,7 +113,7 @@ src/immich_memories/
 ├── processing/                 # Video processing & assembly
 │   ├── video_assembler.py      # VideoAssembler (composes 7 services)
 │   ├── assembly_engine.py      # AssemblyEngine (composes ConcatService)
-│   ├── _assembly_concat.py     # ConcatService: concat/xfade/batch ops
+│   ├── ffmpeg_filter_graph.py  # ConcatService: concat/xfade/batch ops
 │   ├── assembly_config.py      # Dataclasses: AssemblySettings, AssemblyClip, etc.
 │   ├── assembly_context_builder.py # Standalone: resolve_target_resolution(), create_assembly_context()
 │   ├── ffmpeg_prober.py        # FFmpegProber: ffprobe-based duration/resolution
@@ -132,8 +133,8 @@ src/immich_memories/
 │   ├── hardware_detection.py   # Hardware detection backends
 │   ├── _hardware_backends.py   # GPU backend detection
 │   ├── transforms.py           # Video transforms (rotate, scale)
-│   ├── _transforms_ffmpeg.py   # FFmpeg transform filters
-│   ├── _transforms_smart_crop.py # Smart crop transforms
+│   ├── transforms_ffmpeg.py    # FFmpeg transform filters
+│   ├── transforms_smart_crop.py # Smart crop transforms
 │   └── live_photo_merger.py    # Live Photo merging
 │
 ├── audio/                      # Audio processing

@@ -15,7 +15,13 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from immich_memories.analysis._segment_generation import (
+from immich_memories.analysis.analyzer_factory import (  # noqa: F401
+    create_unified_analyzer_from_config,
+)
+from immich_memories.analysis.analyzer_models import CutPoint, ScoredSegment  # noqa: F401
+from immich_memories.analysis.scenes import Scene, SceneDetector, get_video_info
+from immich_memories.analysis.scoring import SceneScorer
+from immich_memories.analysis.segment_generation import (
     adjust_candidates_for_audio,
     detect_audio_boundaries,
     detect_visual_boundaries,
@@ -24,12 +30,6 @@ from immich_memories.analysis._segment_generation import (
     merge_boundaries,
     score_segment_audio,
 )
-from immich_memories.analysis.analyzer_factory import (  # noqa: F401
-    create_unified_analyzer_from_config,
-)
-from immich_memories.analysis.analyzer_models import CutPoint, ScoredSegment  # noqa: F401
-from immich_memories.analysis.scenes import Scene, SceneDetector, get_video_info
-from immich_memories.analysis.scoring import SceneScorer
 
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
