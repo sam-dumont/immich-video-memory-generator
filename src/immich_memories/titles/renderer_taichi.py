@@ -2,8 +2,7 @@
 
 Cross-platform GPU acceleration (Metal/CUDA/Vulkan/CPU fallback) for title
 rendering with gradients, blur, vignette, bokeh particles, and SDF text.
-~15-60x faster than PIL renderer. See taichi_kernels.py for GPU kernels,
-taichi_particles.py for particle systems, taichi_text.py for text rendering.
+~15-60x faster than PIL renderer. See taichi_kernels.py for GPU kernels.
 
 Note: This module does NOT use 'from __future__ import annotations'
 because Taichi kernels require actual type objects, not string annotations.
@@ -15,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 if TYPE_CHECKING:
     from .sdf_font import SDFFontAtlas
@@ -27,8 +27,12 @@ from . import taichi_kernels
 from .taichi_kernels import (
     SDF_AVAILABLE,
     _create_gaussian_kernel,
+    _get_system_font,
     _hex_to_rgb,
+    find_font,
+    get_cached_atlas,
     is_taichi_available,
+    layout_text,
 )
 from .taichi_kernels import (
     TAICHI_AVAILABLE as TAICHI_AVAILABLE,
@@ -39,8 +43,6 @@ from .taichi_kernels import (
 from .taichi_kernels import (
     init_taichi as init_taichi,
 )
-from .taichi_particles import TaichiParticlesMixin
-from .taichi_text import TaichiTextMixin
 
 logger = logging.getLogger(__name__)
 
@@ -114,11 +116,81 @@ class TaichiTitleConfig:
     stagger_delay: float = 0.12
 
     # Custom background image (numpy float32 array, overrides gradient)
-    # Used for map frames — the map is rendered once, then used as static background
+    # Used for map frames -- the map is rendered once, then used as static background
     background_image: np.ndarray | None = None
 
     _bokeh_particles: np.ndarray = field(default_factory=lambda: np.array([]))
     _bokeh_seed: int = 42
+
+
+def _split_text_for_rendering(draw, text: str, font, max_width: float) -> list[str]:
+    """Split text into lines using pixel widths, preferring comma boundaries."""
+
+    def _measure(t: str) -> int:
+        bbox = draw.textbbox((0, 0), t, font=font)
+        return bbox[2] - bbox[0]
+
+    if _measure(text) <= max_width:
+        return [text]
+
+    # Try comma split first
+    if "," in text:
+        parts = [p.strip() for p in text.split(",", 1)]
+        parts[0] += ","
+        if all(_measure(p) <= max_width for p in parts):
+            return parts
+
+    # Word-wrap fallback
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        test = f"{current} {word}".strip()
+        if _measure(test) > max_width and current:
+            lines.append(current)
+            current = word
+        else:
+            current = test
+    if current:
+        lines.append(current)
+    return lines or [text]
+
+
+def split_title_lines(text: str, max_chars: int) -> list[str]:
+    """Split title text into lines, preferring comma boundaries.
+
+    Args:
+        text: Title text to split.
+        max_chars: Approximate max characters per line.
+
+    Returns:
+        List of lines.
+    """
+    if len(text) <= max_chars:
+        return [text]
+
+    # Prefer splitting at comma
+    if "," in text:
+        parts = [p.strip() for p in text.split(",", 1)]
+        # Keep comma on first part for visual continuity
+        parts[0] += ","
+        if all(len(p) <= max_chars for p in parts):
+            return parts
+
+    # Word-wrap fallback
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        test = f"{current} {word}".strip()
+        if len(test) > max_chars and current:
+            lines.append(current)
+            current = word
+        else:
+            current = test
+    if current:
+        lines.append(current)
+    return lines or [text]
 
 
 # =============================================================================
@@ -126,7 +198,7 @@ class TaichiTitleConfig:
 # =============================================================================
 
 
-class TaichiTitleRenderer(TaichiParticlesMixin, TaichiTextMixin):
+class TaichiTitleRenderer:
     """GPU-accelerated title renderer using Taichi.
 
     Pre-allocates GPU buffers and compiles kernels on first use.
@@ -420,6 +492,369 @@ class TaichiTitleRenderer(TaichiParticlesMixin, TaichiTextMixin):
                 subtitle_anim["x_offset"],
             )
             np.copyto(self.frame_buffer, self.temp_buffer)
+
+    # =========================================================================
+    # Particle Methods (from TaichiParticlesMixin)
+    # =========================================================================
+
+    def _init_bokeh_particles(self):
+        """Initialize bokeh particle positions, properties, and colors."""
+        rng = np.random.RandomState(self.config._bokeh_seed)
+        cfg = self.config
+        min_dim = min(cfg.width, cfg.height)
+
+        # Birthday mode: create fireworks burst particles
+        if cfg.is_birthday:
+            self._init_fireworks_particles(rng)
+            return
+
+        # Regular bokeh mode
+        n = cfg.bokeh_count
+
+        # Particle array: x, y, size, opacity, angle, r, g, b
+        particles = np.zeros((n, 8), dtype=np.float32)
+        for i in range(n):
+            particles[i, 0] = rng.uniform(0, cfg.width)
+            particles[i, 1] = rng.uniform(0, cfg.height)
+            size_frac = rng.uniform(*cfg.bokeh_size_range)
+            particles[i, 2] = size_frac * min_dim
+            particles[i, 3] = rng.uniform(*cfg.bokeh_opacity_range)
+            particles[i, 4] = rng.uniform(0, 2 * np.pi)
+
+            # Warm bokeh color
+            color = cfg.bokeh_color
+            particles[i, 5] = color[0]  # R
+            particles[i, 6] = color[1]  # G
+            particles[i, 7] = color[2]  # B
+
+        self._bokeh_particles = particles
+        self._bokeh_particles_base = particles.copy()
+
+    def _init_fireworks_particles(self, rng: np.random.RandomState):
+        """Initialize fireworks burst particles for birthday mode."""
+        cfg = self.config
+
+        firework_colors = cfg.birthday_colors or [
+            (1.0, 0.85, 0.2),
+            (1.0, 0.3, 0.5),
+            (0.3, 0.8, 1.0),
+            (1.0, 0.5, 0.2),
+            (0.6, 0.3, 1.0),
+            (0.2, 1.0, 0.5),
+            (1.0, 1.0, 0.4),
+        ]
+
+        num_bursts = cfg.fireworks_burst_count
+        particles_per_burst = cfg.fireworks_particles_per_burst
+        total_particles = num_bursts * particles_per_burst
+
+        # Particle array: x, y, vx, vy, size, opacity, r, g, b, birth_time
+        particles = np.zeros((total_particles, 10), dtype=np.float32)
+
+        burst_centers = []
+        burst_times = []
+        for b in range(num_bursts):
+            cols, rows = 4, 3
+            col = b % cols
+            row = b // cols
+            base_x = cfg.width * (0.15 + col * 0.7 / (cols - 1))
+            base_y = cfg.height * (0.15 + row * 0.5 / max(1, rows - 1))
+            cx = base_x + rng.uniform(-cfg.width * 0.08, cfg.width * 0.08)
+            cy = base_y + rng.uniform(-cfg.height * 0.08, cfg.height * 0.08)
+            burst_centers.append((cx, cy))
+            burst_time = b * (0.5 / max(1, num_bursts - 1))
+            burst_times.append(burst_time)
+
+        for b in range(num_bursts):
+            cx, cy = burst_centers[b]
+            birth_time = burst_times[b]
+            base_color = firework_colors[b % len(firework_colors)]
+
+            for p in range(particles_per_burst):
+                idx = b * particles_per_burst + p
+                particles[idx, 0] = cx
+                particles[idx, 1] = cy
+                angle = rng.uniform(0, 2 * np.pi)
+                speed = abs(rng.normal(0, 1)) * min(cfg.width, cfg.height) * 0.25
+                particles[idx, 2] = np.cos(angle) * speed
+                particles[idx, 3] = np.sin(angle) * speed
+                min_dim = min(cfg.width, cfg.height)
+                particles[idx, 4] = rng.uniform(4, 16) * (min_dim / 1080)
+                particles[idx, 5] = rng.uniform(0.7, 1.0)
+                r = min(1.0, base_color[0] + rng.uniform(-0.1, 0.1))
+                g = min(1.0, base_color[1] + rng.uniform(-0.1, 0.1))
+                b_col = min(1.0, base_color[2] + rng.uniform(-0.1, 0.1))
+                particles[idx, 6] = max(0, r)
+                particles[idx, 7] = max(0, g)
+                particles[idx, 8] = max(0, b_col)
+                particles[idx, 9] = birth_time
+
+        self._fireworks_particles = particles
+        self._fireworks_base = particles.copy()
+        self._bokeh_particles = np.zeros((total_particles, 8), dtype=np.float32)
+        self._bokeh_particles_base = self._bokeh_particles.copy()
+
+    def _init_aurora_blobs(self):
+        """Initialize aurora gradient color blobs."""
+        cfg = self.config
+        rng = np.random.RandomState(42)
+
+        if cfg.aurora_colors:
+            colors = [_hex_to_rgb(c) for c in cfg.aurora_colors]
+        else:
+            c1 = self.color1
+            c2 = self.color2
+            colors = [
+                c1,
+                c2,
+                ((c1[0] + c2[0]) / 2, (c1[1] + c2[1]) / 2, (c1[2] + c2[2]) / 2),
+                (min(1, c1[0] * 1.1), c1[1] * 0.9, c1[2] * 0.95),
+                (c2[0] * 0.95, min(1, c2[1] * 1.05), c2[2] * 0.9),
+            ]
+
+        num_blobs = len(colors)
+        blobs = np.zeros((num_blobs, 6), dtype=np.float32)
+
+        for i, color in enumerate(colors):
+            blobs[i, 0] = rng.uniform(cfg.width * 0.1, cfg.width * 0.9)
+            blobs[i, 1] = rng.uniform(cfg.height * 0.1, cfg.height * 0.9)
+            blobs[i, 2] = rng.uniform(cfg.width * 0.4, cfg.width * 0.8)
+            blobs[i, 3] = color[0]
+            blobs[i, 4] = color[1]
+            blobs[i, 5] = color[2]
+
+        self._aurora_blobs = blobs
+
+    def _update_bokeh_particles(self, progress: float):
+        """Update bokeh particle positions for current frame."""
+        if not self.config.enable_bokeh:
+            return
+
+        cfg = self.config
+
+        if cfg.is_birthday:
+            self._update_fireworks_particles(progress)
+            return
+
+        min_dim = min(cfg.width, cfg.height)
+        drift_speed = cfg.bokeh_drift_speed
+        n = cfg.bokeh_count
+        drift = progress * min_dim * drift_speed
+
+        for i in range(n):
+            angle = self._bokeh_particles_base[i, 4]
+            base_x = self._bokeh_particles_base[i, 0]
+            base_y = self._bokeh_particles_base[i, 1]
+
+            new_x = (base_x + np.cos(angle) * drift) % cfg.width
+            new_y = (base_y + np.sin(angle) * drift) % cfg.height
+
+            self._bokeh_particles[i, 0] = new_x
+            self._bokeh_particles[i, 1] = new_y
+
+            base_opacity = self._bokeh_particles_base[i, 3]
+            pulse = np.sin(progress * 2 * np.pi + i * 0.5) * 0.3 + 0.7
+            self._bokeh_particles[i, 3] = base_opacity * pulse
+
+    def _update_fireworks_particles(self, progress: float):
+        """Update fireworks particles with physics simulation."""
+        cfg = self.config
+        n = len(self._fireworks_particles)
+        gravity = cfg.fireworks_gravity
+        friction = cfg.fireworks_friction
+
+        progress * cfg.duration
+
+        for i in range(n):
+            base = self._fireworks_base[i]
+            birth_time = base[9]
+
+            if progress < birth_time:
+                self._bokeh_particles[i, 3] = 0.0
+                continue
+
+            particle_age = (progress - birth_time) / (1.0 - birth_time + 0.001)
+            age_seconds = (progress - birth_time) * cfg.duration
+
+            vx0 = base[2]
+            vy0 = base[3]
+
+            friction_factor = friction ** (age_seconds * 30)
+
+            vx0 * friction_factor
+            vy0 * friction_factor + gravity * age_seconds * 60
+
+            x = base[0] + vx0 * age_seconds * (1 + friction_factor) / 2
+            y = (
+                base[1]
+                + vy0 * age_seconds * (1 + friction_factor) / 2
+                + 0.5 * gravity * (age_seconds * 60) ** 2
+            )
+
+            base_opacity = base[5]
+            fade = max(0.0, 1.0 - particle_age * 1.5)
+            opacity = base_opacity * fade
+
+            self._bokeh_particles[i, 0] = x
+            self._bokeh_particles[i, 1] = y
+            self._bokeh_particles[i, 2] = base[4] * (1.0 + particle_age * 0.5)
+            self._bokeh_particles[i, 3] = opacity
+            self._bokeh_particles[i, 4] = 0
+            self._bokeh_particles[i, 5] = base[6]
+            self._bokeh_particles[i, 6] = base[7]
+            self._bokeh_particles[i, 7] = base[8]
+
+    # =========================================================================
+    # Text Methods (from TaichiTextMixin)
+    # =========================================================================
+
+    def _init_sdf_atlas(self):
+        """Initialize SDF font atlas for GPU text rendering."""
+        if not SDF_AVAILABLE or not find_font:
+            logger.warning("SDF font support not available")
+            self._use_sdf = False
+            return
+
+        font_path = find_font(self.config.font_family)
+        if not font_path:
+            logger.warning(f"Font '{self.config.font_family}' not found, using fallback")
+            font_path = find_font("Helvetica")
+
+        if not font_path:
+            logger.warning("No fonts found, falling back to PIL")
+            self._use_sdf = False
+            return
+
+        atlas_size = 128
+        self._sdf_atlas = get_cached_atlas(font_path, atlas_size)
+        self._sdf_atlas_float = self._sdf_atlas.texture.astype(np.float32) / 255.0
+        logger.info(f"SDF atlas loaded: {self._sdf_atlas.texture.shape}")
+
+    def _render_sdf_text_direct(
+        self,
+        text: str,
+        font_size: int,
+        color: tuple[float, float, float],
+        opacity: float,
+        y_offset: float = 0.0,
+        x_offset: float = 0.0,
+        is_shadow: bool = False,
+    ):
+        """Render text directly onto frame buffer using SDF GPU kernel."""
+        if not self._use_sdf or self._sdf_atlas is None or taichi_kernels._render_sdf_text is None:
+            return
+
+        scale = font_size / self._sdf_atlas.font_size
+        glyph_data, text_width, text_height = layout_text(text, self._sdf_atlas, 0, 0, scale)
+
+        safe_width = self.config.width * 0.8
+        if text_width > safe_width:
+            width_scale = safe_width / text_width
+            scale = scale * width_scale
+            glyph_data, text_width, text_height = layout_text(text, self._sdf_atlas, 0, 0, scale)
+
+        center_x = (self.config.width - text_width) / 2
+        center_y = (self.config.height - text_height) / 2 + self._sdf_atlas.ascender * scale / 2
+
+        shadow_offset = 0.0
+        if is_shadow:
+            shadow_offset = max(2, int(self.config.height * self.config.shadow_offset_ratio))
+
+        smoothing = max(0.05, min(0.2, 0.15 / scale))
+
+        taichi_kernels._render_sdf_text(
+            self.frame_buffer,
+            self._sdf_atlas_float,
+            glyph_data,
+            len(glyph_data),
+            color[0],
+            color[1],
+            color[2],
+            opacity,
+            scale,
+            center_x + x_offset + shadow_offset,
+            center_y + y_offset + shadow_offset,
+            smoothing,
+        )
+
+    def _render_text_layer(
+        self,
+        text: str,
+        font_size: int,
+        color: tuple[int, int, int, int],
+    ) -> np.ndarray:
+        """Render text to RGBA numpy array using PIL."""
+        w, h = self.config.width, self.config.height
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        font_path = _get_system_font(self.config.font_family)
+
+        try:
+            font = ImageFont.truetype(font_path, font_size)
+        except Exception:
+            font = ImageFont.load_default()
+
+        safe_width = w * 0.88
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+
+        if text_width > safe_width:
+            self._draw_multiline_centered(draw, text, font, font_size, safe_width, w, h, color)
+        else:
+            bbox = draw.textbbox((0, 0), text, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            x = (w - tw) // 2
+            y = (h - th) // 2
+            draw.text((x, y), text, font=font, fill=color)
+
+        return np.array(img, dtype=np.float32) / 255.0
+
+    @staticmethod
+    def _draw_multiline_centered(
+        draw,
+        text: str,
+        font,
+        font_size: int,
+        max_width: float,
+        width: int,
+        height: int,
+        color: tuple[int, int, int, int],
+    ) -> None:
+        """Word-wrap text with comma-aware splitting and draw centered."""
+        lines = _split_text_for_rendering(draw, text, font, max_width)
+        line_height = int(font_size * 1.2)
+        total_h = line_height * len(lines)
+        start_y = (height - total_h) // 2
+        for i, line in enumerate(lines):
+            bbox = draw.textbbox((0, 0), line, font=font)
+            lw = bbox[2] - bbox[0]
+            x = (width - lw) // 2
+            y = start_y + i * line_height
+            draw.text((x, y), line, font=font, fill=color)
+
+    def _render_text_layers(self, title: str, subtitle: str | None):
+        """Pre-render text layers (cached)."""
+        if self._cached_text == (title, subtitle):
+            return
+
+        title_size = int(self.config.height * self.config.title_size_ratio)
+        subtitle_size = int(self.config.height * self.config.subtitle_size_ratio)
+
+        tr, tg, tb = self.text_rgb
+        text_rgba = (int(tr * 255), int(tg * 255), int(tb * 255), 255)
+        shadow_rgba = (0, 0, 0, int(self.config.shadow_opacity * 255))
+
+        self._title_layer = self._render_text_layer(title, title_size, text_rgba)
+
+        if self.config.enable_shadow:
+            self._shadow_layer = self._render_text_layer(title, title_size, shadow_rgba)
+
+        if subtitle:
+            self._subtitle_layer = self._render_text_layer(subtitle, subtitle_size, text_rgba)
+        else:
+            self._subtitle_layer = None
+
+        self._cached_text = (title, subtitle)
 
 
 # Re-export video creation function for backwards compatibility

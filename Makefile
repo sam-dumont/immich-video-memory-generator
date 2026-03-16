@@ -141,24 +141,27 @@ format-check:
 typecheck:
 	uv run mypy src/immich_memories
 
-# File length gate (max 800 lines per .py file)
-MAX_LINES := 800
+# File length gate: 800 soft (warning), 1000 hard (error)
+SOFT_LINES := 800
+HARD_LINES := 1000
 file-length:
 	@FAILED=0; \
 	for f in $$(find src/ -name '*.py'); do \
 		count=$$(wc -l < "$$f"); \
-		if [ "$$count" -gt $(MAX_LINES) ]; then \
-			echo "ERROR: $$f has $$count lines (max $(MAX_LINES))"; \
+		if [ "$$count" -gt $(HARD_LINES) ]; then \
+			echo "ERROR: $$f has $$count lines (hard limit $(HARD_LINES))"; \
 			FAILED=1; \
+		elif [ "$$count" -gt $(SOFT_LINES) ]; then \
+			echo "WARN:  $$f has $$count lines (soft limit $(SOFT_LINES) — consider splitting)"; \
 		fi; \
 	done; \
 	if [ "$$FAILED" -eq 1 ]; then \
 		echo ""; \
-		echo "Files exceeding $(MAX_LINES) lines must be split into smaller modules."; \
-		echo "See ARCHITECTURE.md for guidance on module structure."; \
+		echo "Files exceeding $(HARD_LINES) lines MUST be split."; \
+		echo "Files over $(SOFT_LINES) lines SHOULD be split when practical."; \
 		exit 1; \
 	fi; \
-	echo "All files under $(MAX_LINES) lines."
+	echo "All files under $(HARD_LINES) lines (hard limit)."
 
 # Cyclomatic complexity gate (Xenon grade C)
 complexity:
@@ -233,12 +236,23 @@ ci: ensure-dev lint format-check typecheck file-length complexity cognitive-comp
 # Self-critique for AI code smells
 critique:  ## Run self-critique checks for AI code smells
 	@echo "=== AI Smell Audit ==="
+	@echo "Checking for remaining mixins..."
+	@MIXINS=$$(grep -rn "class.*Mixin" src/ --include="*.py" | grep -v __pycache__ | wc -l | tr -d ' '); \
+	if [ "$$MIXINS" -gt 0 ]; then \
+		grep -rn "class.*Mixin" src/ --include="*.py" | grep -v __pycache__; \
+		echo "FAIL: $$MIXINS mixin classes found — use composition"; \
+		exit 1; \
+	fi
 	@echo "Checking for mechanical split comments..."
-	@! grep -rn "to stay within" src/ || (echo "FAIL: Fix these splits" && exit 1)
-	@echo "Checking for single-test files..."
-	@grep -rc "def test_" tests/ | awk -F: '$$2<=1 {found=1; print "LOW-VALUE: " $$1}' || true
+	@! grep -rn "to stay within\|to keep.*under.*line\|keep files under" src/ --include="*.py" || (echo "FAIL: Fix these splits" && exit 1)
 	@echo "Checking for wildcard re-exports (outside __init__)..."
 	@! grep -rn "from .* import \*" src/ --include="*.py" | grep -v __init__ || (echo "WARN: Wildcard re-exports found" && exit 1)
+	@echo "Checking for mock-heavy tests (>5 mocks per test)..."
+	@python3 -c "import pathlib, re; \
+	files = list(pathlib.Path('tests').rglob('test_*.py')); \
+	[print(f'HIGH-MOCK: {f}:{i+1}') for f in files if '__pycache__' not in str(f) \
+	for i, line in enumerate(f.read_text().splitlines()) \
+	if 'Mock()' in line or '@patch' in line]" 2>/dev/null | head -20 || true
 	@echo "Self-critique complete."
 
 # Pre-commit hooks

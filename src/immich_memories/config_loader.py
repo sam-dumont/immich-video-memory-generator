@@ -18,23 +18,21 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from immich_memories.config_models import (
+    ACEStepConfig,
     AnalysisConfig,
+    AudioConfig,
+    AudioContentConfig,
     CacheConfig,
+    ContentAnalysisConfig,
     DefaultsConfig,
     HardwareAccelConfig,
     ImmichConfig,
     LLMConfig,
+    MusicGenConfig,
     OutputConfig,
     ServerConfig,
-    TripsConfig,
-)
-from immich_memories.config_models_extra import (
-    ACEStepConfig,
-    AudioConfig,
-    AudioContentConfig,
-    ContentAnalysisConfig,
-    MusicGenConfig,
     TitleScreenConfig,
+    TripsConfig,
     UploadConfig,
 )
 from immich_memories.scheduling.models import SchedulerConfig

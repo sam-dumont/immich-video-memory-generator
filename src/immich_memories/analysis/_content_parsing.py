@@ -1,7 +1,6 @@
 """Base classes and parsing for content analysis.
 
-Contains the ``ContentAnalysis`` dataclass, the ``ContentParsingMixin``
-(JSON / regex extraction from LLM output), and the ``ContentAnalyzer``
+Contains the ``ContentAnalysis`` dataclass and the ``ContentAnalyzer``
 base class that concrete providers inherit from.
 """
 
@@ -52,246 +51,12 @@ class ContentAnalysis:
         return (self.interestingness * 0.7 + self.quality * 0.3) * self.confidence
 
 
-class ContentParsingMixin:
-    """Mixin providing LLM response parsing for content analyzers."""
-
-    @staticmethod
-    def _numeric_emotion_to_str(value: float) -> str:
-        """Convert a numeric emotion value to a descriptive word.
-
-        Args:
-            value: Emotion value between 0.0 and 1.0.
-
-        Returns:
-            Descriptive emotion string.
-        """
-        if value >= 0.8:
-            return "joyful"
-        if value >= 0.6:
-            return "happy"
-        if value >= 0.4:
-            return "calm"
-        if value >= 0.2:
-            return "neutral"
-        return "subdued"
-
-    @staticmethod
-    def _extract_json_text(text: str) -> str:
-        """Strip markdown code fences and whitespace from LLM output.
-
-        Args:
-            text: Raw LLM response text.
-
-        Returns:
-            Cleaned text ready for JSON parsing.
-        """
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0]
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0]
-        return text.strip()
-
-    @staticmethod
-    def _parse_json_array_text(text: str) -> dict:
-        """Parse JSON text that starts with '[', returning the first element."""
-        try:
-            arr = json.loads(text)
-            if isinstance(arr, list) and len(arr) > 0:
-                return arr[0]
-            raise ValueError("Empty array response")
-        except json.JSONDecodeError:
-            start = text.find("{")
-            end = text.find("}")
-            if start >= 0 and end > start:
-                return json.loads(text[start : end + 1])
-            raise
-
-    @staticmethod
-    def _parse_json_object_text(text: str) -> dict:
-        """Parse JSON text that starts with '{', fixing truncation if needed."""
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            fixed = text.rstrip().rstrip(",").rstrip()
-            if not fixed.endswith("}"):
-                fixed += "}"
-            data = json.loads(fixed)
-            logger.debug("Fixed truncated JSON by adding closing brace")
-            return data
-
-    @staticmethod
-    def _parse_json_object(text: str) -> dict:
-        """Parse a JSON object from text that may be malformed.
-
-        Handles arrays, truncated JSON, and JSON embedded in prose.
-
-        Args:
-            text: Cleaned text potentially containing JSON.
-
-        Returns:
-            Parsed dictionary.
-
-        Raises:
-            json.JSONDecodeError: If no valid JSON can be extracted.
-            ValueError: If text contains no JSON-like content.
-        """
-        if text.startswith("["):
-            return ContentParsingMixin._parse_json_array_text(text)
-        if text.startswith("{"):
-            return ContentParsingMixin._parse_json_object_text(text)
-
-        # Try to find JSON object anywhere in text
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            return json.loads(text[start:end])
-
-        raise ValueError(f"No JSON found in response: {text[:100]}")
-
-    @staticmethod
-    def _build_content_analysis(data: dict, emotion: str) -> ContentAnalysis:
-        """Build a ContentAnalysis from a parsed JSON dict and resolved emotion.
-
-        Validates and truncates fields to prevent injection and bound resource usage.
-
-        Args:
-            data: Parsed JSON dictionary.
-            emotion: Already-resolved emotion string.
-
-        Returns:
-            ContentAnalysis instance.
-        """
-        MAX_STR = 500
-        MAX_LIST = 10
-        description = str(data.get("description", ""))[:MAX_STR]
-        activities = [str(a)[:MAX_STR] for a in data.get("activities", [])[:MAX_LIST]]
-        subjects = [str(s)[:MAX_STR] for s in data.get("subjects", [])[:MAX_LIST]]
-        setting = str(data.get("setting", ""))[:MAX_STR]
-        emotion = emotion[:MAX_STR]
-
-        raw_interest = float(data.get("interestingness", 0.5))
-        raw_quality = float(data.get("quality", 0.5))
-        interestingness = max(0.0, min(1.0, raw_interest))
-        quality = max(0.0, min(1.0, raw_quality))
-
-        return ContentAnalysis(
-            description=description,
-            activities=activities,
-            subjects=subjects,
-            setting=setting,
-            emotion=emotion,
-            interestingness=interestingness,
-            quality=quality,
-            confidence=0.8,
-        )
-
-    @staticmethod
-    def _strip_thinking_blocks(text: str) -> str:
-        """Strip chain-of-thought blocks from models like Qwen3.5.
-
-        Removes ``<think>...</think>`` tags and common preamble patterns
-        like "The user wants..." that appear before the actual JSON output.
-        """
-        # Remove <think>...</think> blocks (Qwen3.5, DeepSeek, etc.)
-        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-        # Remove common preamble before JSON (e.g., "The user wants...\n{")
-        json_start = text.find("{")
-        if json_start > 0:
-            text = text[json_start:]
-        return text.strip()
-
-    def _parse_content_response(self, response_text: str) -> ContentAnalysis:
-        """Parse LLM response into ContentAnalysis."""
-        try:
-            text = response_text.strip()
-            logger.debug(f"Raw LLM response: {text[:500]}...")
-
-            text = self._strip_thinking_blocks(text)
-            text = self._extract_json_text(text)
-            data = self._parse_json_object(text)
-
-            # Handle emotion field - LLM sometimes returns number instead of string
-            emotion_raw = data.get("emotion", "")
-            if isinstance(emotion_raw, (int, float)):
-                emotion = self._numeric_emotion_to_str(emotion_raw)
-            else:
-                emotion = str(emotion_raw) if emotion_raw else ""
-
-            return self._build_content_analysis(data, emotion)
-
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            logger.warning(f"Failed to parse LLM response: {e}")
-            # Try to extract partial data using regex as fallback
-            return self._extract_partial_data(response_text)
-
-    @staticmethod
-    def _extract_emotion_from_text(text: str) -> str:
-        """Extract emotion field from raw LLM text (string or numeric fallback)."""
-        m = re.search(r'"emotion"\s*:\s*"([^"]+)"', text)
-        if m:
-            return m.group(1)
-        m = re.search(r'"emotion"\s*:\s*([\d.]+)', text)
-        if m:
-            with contextlib.suppress(ValueError):
-                return ContentParsingMixin._numeric_emotion_to_str(float(m.group(1)))
-        return ""
-
-    @staticmethod
-    def _extract_float_field(text: str, field: str) -> float | None:
-        """Extract a numeric float field from raw LLM text."""
-        m = re.search(rf'"{field}"\s*:\s*([\d.]+)', text)
-        if m:
-            with contextlib.suppress(ValueError):
-                return float(m.group(1))
-        return None
-
-    def _extract_partial_data(self, text: str) -> ContentAnalysis:
-        """Extract partial data from malformed JSON using regex.
-
-        This is a fallback when JSON parsing fails but the response
-        contains useful information in a JSON-like format.
-        """
-        result = ContentAnalysis(confidence=0.4)
-
-        desc_match = re.search(r'"description"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', text)
-        if desc_match:
-            result.description = desc_match.group(1).replace('\\"', '"').replace("\\n", " ")
-            logger.debug(f"Extracted description: {result.description[:80]}...")
-
-        result.emotion = self._extract_emotion_from_text(text)
-        if result.emotion:
-            logger.debug(f"Extracted emotion: {result.emotion}")
-
-        if (val := self._extract_float_field(text, "interestingness")) is not None:
-            result.interestingness = val
-            logger.debug(f"Extracted interestingness: {val}")
-
-        if (val := self._extract_float_field(text, "quality")) is not None:
-            result.quality = val
-            logger.debug(f"Extracted quality: {val}")
-
-        setting_match = re.search(r'"setting"\s*:\s*"([^"]+)"', text)
-        if setting_match:
-            result.setting = setting_match.group(1)
-
-        if result.description or result.emotion:
-            desc_preview = result.description[:50] if result.description else "(none)"
-            logger.info(
-                f"Partial extraction successful: desc='{desc_preview}...', emotion={result.emotion}"
-            )
-            result.confidence = 0.6
-        else:
-            logger.warning(f"Partial extraction found nothing in: {text[:150]}...")
-
-        return result
-
-
 # ---------------------------------------------------------------------------
-# Base class
+# Base class with integrated parsing
 # ---------------------------------------------------------------------------
 
 
-class ContentAnalyzer(ContentParsingMixin):
+class ContentAnalyzer:
     """Base class for content analysis."""
 
     # Class-level counters for session token tracking
@@ -420,3 +185,237 @@ class ContentAnalyzer(ContentParsingMixin):
             ContentAnalysis with description, scores, etc.
         """
         raise NotImplementedError("Subclasses must implement analyze_segment")
+
+    # =========================================================================
+    # LLM response parsing (from ContentParsingMixin)
+    # =========================================================================
+
+    @staticmethod
+    def _numeric_emotion_to_str(value: float) -> str:
+        """Convert a numeric emotion value to a descriptive word.
+
+        Args:
+            value: Emotion value between 0.0 and 1.0.
+
+        Returns:
+            Descriptive emotion string.
+        """
+        if value >= 0.8:
+            return "joyful"
+        if value >= 0.6:
+            return "happy"
+        if value >= 0.4:
+            return "calm"
+        if value >= 0.2:
+            return "neutral"
+        return "subdued"
+
+    @staticmethod
+    def _extract_json_text(text: str) -> str:
+        """Strip markdown code fences and whitespace from LLM output.
+
+        Args:
+            text: Raw LLM response text.
+
+        Returns:
+            Cleaned text ready for JSON parsing.
+        """
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0]
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0]
+        return text.strip()
+
+    @staticmethod
+    def _parse_json_array_text(text: str) -> dict:
+        """Parse JSON text that starts with '[', returning the first element."""
+        try:
+            arr = json.loads(text)
+            if isinstance(arr, list) and len(arr) > 0:
+                return arr[0]
+            raise ValueError("Empty array response")
+        except json.JSONDecodeError:
+            start = text.find("{")
+            end = text.find("}")
+            if start >= 0 and end > start:
+                return json.loads(text[start : end + 1])
+            raise
+
+    @staticmethod
+    def _parse_json_object_text(text: str) -> dict:
+        """Parse JSON text that starts with '{', fixing truncation if needed."""
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            fixed = text.rstrip().rstrip(",").rstrip()
+            if not fixed.endswith("}"):
+                fixed += "}"
+            data = json.loads(fixed)
+            logger.debug("Fixed truncated JSON by adding closing brace")
+            return data
+
+    @staticmethod
+    def _parse_json_object(text: str) -> dict:
+        """Parse a JSON object from text that may be malformed.
+
+        Handles arrays, truncated JSON, and JSON embedded in prose.
+
+        Args:
+            text: Cleaned text potentially containing JSON.
+
+        Returns:
+            Parsed dictionary.
+
+        Raises:
+            json.JSONDecodeError: If no valid JSON can be extracted.
+            ValueError: If text contains no JSON-like content.
+        """
+        if text.startswith("["):
+            return ContentAnalyzer._parse_json_array_text(text)
+        if text.startswith("{"):
+            return ContentAnalyzer._parse_json_object_text(text)
+
+        # Try to find JSON object anywhere in text
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            return json.loads(text[start:end])
+
+        raise ValueError(f"No JSON found in response: {text[:100]}")
+
+    @staticmethod
+    def _build_content_analysis(data: dict, emotion: str) -> ContentAnalysis:
+        """Build a ContentAnalysis from a parsed JSON dict and resolved emotion.
+
+        Validates and truncates fields to prevent injection and bound resource usage.
+
+        Args:
+            data: Parsed JSON dictionary.
+            emotion: Already-resolved emotion string.
+
+        Returns:
+            ContentAnalysis instance.
+        """
+        MAX_STR = 500
+        MAX_LIST = 10
+        description = str(data.get("description", ""))[:MAX_STR]
+        activities = [str(a)[:MAX_STR] for a in data.get("activities", [])[:MAX_LIST]]
+        subjects = [str(s)[:MAX_STR] for s in data.get("subjects", [])[:MAX_LIST]]
+        setting = str(data.get("setting", ""))[:MAX_STR]
+        emotion = emotion[:MAX_STR]
+
+        raw_interest = float(data.get("interestingness", 0.5))
+        raw_quality = float(data.get("quality", 0.5))
+        interestingness = max(0.0, min(1.0, raw_interest))
+        quality = max(0.0, min(1.0, raw_quality))
+
+        return ContentAnalysis(
+            description=description,
+            activities=activities,
+            subjects=subjects,
+            setting=setting,
+            emotion=emotion,
+            interestingness=interestingness,
+            quality=quality,
+            confidence=0.8,
+        )
+
+    @staticmethod
+    def _strip_thinking_blocks(text: str) -> str:
+        """Strip chain-of-thought blocks from models like Qwen3.5.
+
+        Removes ``<think>...</think>`` tags and common preamble patterns
+        like "The user wants..." that appear before the actual JSON output.
+        """
+        # Remove <think>...</think> blocks (Qwen3.5, DeepSeek, etc.)
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+        # Remove common preamble before JSON (e.g., "The user wants...\n{")
+        json_start = text.find("{")
+        if json_start > 0:
+            text = text[json_start:]
+        return text.strip()
+
+    def _parse_content_response(self, response_text: str) -> ContentAnalysis:
+        """Parse LLM response into ContentAnalysis."""
+        try:
+            text = response_text.strip()
+            logger.debug(f"Raw LLM response: {text[:500]}...")
+
+            text = self._strip_thinking_blocks(text)
+            text = self._extract_json_text(text)
+            data = self._parse_json_object(text)
+
+            # Handle emotion field - LLM sometimes returns number instead of string
+            emotion_raw = data.get("emotion", "")
+            if isinstance(emotion_raw, (int, float)):
+                emotion = self._numeric_emotion_to_str(emotion_raw)
+            else:
+                emotion = str(emotion_raw) if emotion_raw else ""
+
+            return self._build_content_analysis(data, emotion)
+
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            logger.warning(f"Failed to parse LLM response: {e}")
+            # Try to extract partial data using regex as fallback
+            return self._extract_partial_data(response_text)
+
+    @staticmethod
+    def _extract_emotion_from_text(text: str) -> str:
+        """Extract emotion field from raw LLM text (string or numeric fallback)."""
+        m = re.search(r'"emotion"\s*:\s*"([^"]+)"', text)
+        if m:
+            return m.group(1)
+        m = re.search(r'"emotion"\s*:\s*([\d.]+)', text)
+        if m:
+            with contextlib.suppress(ValueError):
+                return ContentAnalyzer._numeric_emotion_to_str(float(m.group(1)))
+        return ""
+
+    @staticmethod
+    def _extract_float_field(text: str, field: str) -> float | None:
+        """Extract a numeric float field from raw LLM text."""
+        m = re.search(rf'"{field}"\s*:\s*([\d.]+)', text)
+        if m:
+            with contextlib.suppress(ValueError):
+                return float(m.group(1))
+        return None
+
+    def _extract_partial_data(self, text: str) -> ContentAnalysis:
+        """Extract partial data from malformed JSON using regex.
+
+        This is a fallback when JSON parsing fails but the response
+        contains useful information in a JSON-like format.
+        """
+        result = ContentAnalysis(confidence=0.4)
+
+        desc_match = re.search(r'"description"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', text)
+        if desc_match:
+            result.description = desc_match.group(1).replace('\\"', '"').replace("\\n", " ")
+            logger.debug(f"Extracted description: {result.description[:80]}...")
+
+        result.emotion = self._extract_emotion_from_text(text)
+        if result.emotion:
+            logger.debug(f"Extracted emotion: {result.emotion}")
+
+        if (val := self._extract_float_field(text, "interestingness")) is not None:
+            result.interestingness = val
+            logger.debug(f"Extracted interestingness: {val}")
+
+        if (val := self._extract_float_field(text, "quality")) is not None:
+            result.quality = val
+            logger.debug(f"Extracted quality: {val}")
+
+        setting_match = re.search(r'"setting"\s*:\s*"([^"]+)"', text)
+        if setting_match:
+            result.setting = setting_match.group(1)
+
+        if result.description or result.emotion:
+            desc_preview = result.description[:50] if result.description else "(none)"
+            logger.info(
+                f"Partial extraction successful: desc='{desc_preview}...', emotion={result.emotion}"
+            )
+            result.confidence = 0.6
+        else:
+            logger.warning(f"Partial extraction found nothing in: {text[:150]}...")
+
+        return result

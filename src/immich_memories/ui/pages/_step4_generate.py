@@ -1,7 +1,4 @@
-"""Video generation logic for Step 4 export.
-
-Extracted from step4_export.py to keep file length under 500 lines.
-"""
+"""Video generation logic for Step 4 export."""
 
 from __future__ import annotations
 

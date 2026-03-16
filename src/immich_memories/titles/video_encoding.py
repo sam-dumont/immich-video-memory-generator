@@ -1,7 +1,6 @@
 """Video encoding helpers for title screen generation.
 
 Handles FFmpeg encoder selection and video creation from rendered frames.
-Split from renderer_pil.py to keep files under 500 lines.
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 """Configuration management for Immich Memories.
 
 Re-export shim: all config models and loader functions are defined in
-config_models.py, config_models_extra.py, and config_loader.py.
+config_models.py and config_loader.py.
 This module re-exports everything for backwards compatibility so that
 ``from immich_memories.config import Config, get_config`` etc. still work.
 """
@@ -13,23 +13,21 @@ from immich_memories.config_loader import (  # noqa: F401
     set_config,
 )
 from immich_memories.config_models import (  # noqa: F401
+    ACEStepConfig,
     AnalysisConfig,
+    AudioConfig,
+    AudioContentConfig,
     CacheConfig,
+    ContentAnalysisConfig,
     DefaultsConfig,
     HardwareAccelConfig,
     ImmichConfig,
     LLMConfig,
+    MusicGenConfig,
     OutputConfig,
     ServerConfig,
-    expand_env_vars,
-)
-from immich_memories.config_models_extra import (  # noqa: F401
-    ACEStepConfig,
-    AudioConfig,
-    AudioContentConfig,
-    ContentAnalysisConfig,
-    MusicGenConfig,
     TitleScreenConfig,
+    expand_env_vars,
 )
 
 __all__ = [

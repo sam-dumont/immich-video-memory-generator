@@ -198,21 +198,21 @@ class TestMultilineTextWrapping:
 
     def test_comma_split_preferred(self):
         """Titles with commas should split at the comma first."""
-        from immich_memories.titles.taichi_text import split_title_lines
+        from immich_memories.titles.renderer_taichi import split_title_lines
 
         lines = split_title_lines("TWO WEEKS IN SPAIN, SUMMER 2025", max_chars=25)
         assert lines == ["TWO WEEKS IN SPAIN,", "SUMMER 2025"]
 
     def test_word_wrap_fallback(self):
         """Titles without commas word-wrap normally."""
-        from immich_memories.titles.taichi_text import split_title_lines
+        from immich_memories.titles.renderer_taichi import split_title_lines
 
         lines = split_title_lines("TWO WEEKS IN SPAIN", max_chars=12)
         assert lines == ["TWO WEEKS IN", "SPAIN"]
 
     def test_short_title_single_line(self):
         """Short titles stay on one line."""
-        from immich_memories.titles.taichi_text import split_title_lines
+        from immich_memories.titles.renderer_taichi import split_title_lines
 
         lines = split_title_lines("A WEEK IN PARIS", max_chars=30)
         assert lines == ["A WEEK IN PARIS"]
@@ -393,7 +393,7 @@ class TestLocationDiversityScoring:
 
     def test_clips_from_new_locations_get_bonus(self):
         """Clips from underrepresented locations should score higher."""
-        from immich_memories.analysis.trip_scoring import location_diversity_bonus
+        from immich_memories.analysis.trip_detection import location_diversity_bonus
 
         selected = [
             {"location_name": "Barcelona", "latitude": 41.39, "longitude": 2.17},
@@ -410,7 +410,7 @@ class TestLocationDiversityScoring:
 
     def test_clips_from_existing_locations_get_no_bonus(self):
         """Clips from already-selected locations should get zero bonus."""
-        from immich_memories.analysis.trip_scoring import location_diversity_bonus
+        from immich_memories.analysis.trip_detection import location_diversity_bonus
 
         selected = [
             {"location_name": "Barcelona", "latitude": 41.39, "longitude": 2.17},
@@ -425,7 +425,7 @@ class TestLocationDiversityScoring:
 
     def test_empty_selection_gives_bonus(self):
         """First clip always gets a bonus (new location by definition)."""
-        from immich_memories.analysis.trip_scoring import location_diversity_bonus
+        from immich_memories.analysis.trip_detection import location_diversity_bonus
 
         bonus = location_diversity_bonus(
             candidate_location="Barcelona",

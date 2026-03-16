@@ -17,9 +17,9 @@ The **Makefile** is the single source of truth for all commands:
 
 ## Composition Pattern
 
-Large classes compose smaller service objects instead of inheriting from mixins.
+Large classes compose smaller service objects instead of inheritance: no mixins anywhere.
 Each service is a standalone class with a focused responsibility, injected via the constructor.
-This keeps classes under the 500-line limit while maintaining a single public API.
+This keeps classes under the 800-line soft limit (1000 hard) while maintaining a single public API.
 
 The four core orchestrators and their composed services:
 
@@ -55,8 +55,6 @@ The four core orchestrators and their composed services:
 Resolution/context setup lives in standalone functions:
 - `assembly_context_builder.py`: `resolve_target_resolution()`, `create_assembly_context()`
 
-Note: `UnifiedSegmentAnalyzer` (analysis/unified_analyzer.py) still uses mixins
-(`SegmentScoringMixin`, `CandidateGenerationMixin`) since it's a leaf-level analyzer,
 not a top-level orchestrator.
 
 ## Package Structure
@@ -93,9 +91,7 @@ src/immich_memories/
 │   ├── progress.py             # Progress tracking helpers
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
 │   ├── trip_scoring.py         # Location diversity scoring for trip clips
-│   ├── unified_analyzer.py     # UnifiedSegmentAnalyzer (uses 2 mixins)
-│   ├── segment_scoring.py      # SegmentScoringMixin
-│   ├── candidate_generation.py # CandidateGenerationMixin
+│   ├── unified_analyzer.py     # UnifiedSegmentAnalyzer (all methods merged, no mixins)
 │   ├── content_analyzer.py     # LLM-based content analysis
 │   ├── _content_parsing.py     # Content analysis response parsing
 │   ├── _content_providers.py   # Content analysis provider helpers

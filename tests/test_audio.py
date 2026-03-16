@@ -373,71 +373,59 @@ class TestPANNsAnalysis:
 
     def test_classify_frame_laughter(self):
         """Test frame classification detects laughter."""
-        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+        from immich_memories.audio.content_analyzer import AudioContentAnalyzer
 
-        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
-        mixin.min_confidence = 0.3
-        mixin.laughter_confidence = 0.2
+        analyzer = AudioContentAnalyzer(min_confidence=0.3, laughter_confidence=0.2)
 
-        meets, category = mixin._classify_frame("Laughter", 0.5)
+        meets, category = analyzer._classify_frame("Laughter", 0.5)
         assert meets
         assert category == "laughter"
 
     def test_classify_frame_laughter_low_threshold(self):
         """Test laughter uses lower confidence threshold."""
-        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+        from immich_memories.audio.content_analyzer import AudioContentAnalyzer
 
-        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
-        mixin.min_confidence = 0.3
-        mixin.laughter_confidence = 0.2
+        analyzer = AudioContentAnalyzer(min_confidence=0.3, laughter_confidence=0.2)
 
         # Score 0.25 is below min_confidence but above laughter_confidence
-        meets, category = mixin._classify_frame("Laughter", 0.25)
+        meets, category = analyzer._classify_frame("Laughter", 0.25)
         assert meets
         assert category == "laughter"
 
     def test_classify_frame_below_threshold(self):
         """Test frame below all thresholds is rejected."""
-        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+        from immich_memories.audio.content_analyzer import AudioContentAnalyzer
 
-        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
-        mixin.min_confidence = 0.3
-        mixin.laughter_confidence = 0.2
+        analyzer = AudioContentAnalyzer(min_confidence=0.3, laughter_confidence=0.2)
 
-        meets, category = mixin._classify_frame("Laughter", 0.1)
+        meets, category = analyzer._classify_frame("Laughter", 0.1)
         assert not meets
 
     def test_classify_frame_engine(self):
         """Test frame classification detects engine sounds."""
-        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+        from immich_memories.audio.content_analyzer import AudioContentAnalyzer
 
-        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
-        mixin.min_confidence = 0.3
-        mixin.laughter_confidence = 0.2
+        analyzer = AudioContentAnalyzer(min_confidence=0.3, laughter_confidence=0.2)
 
-        meets, category = mixin._classify_frame("Motor vehicle (road)", 0.5)
+        meets, category = analyzer._classify_frame("Motor vehicle (road)", 0.5)
         assert meets
         assert category == "engine"
 
     def test_classify_frame_singing(self):
         """Test singing is detected as its own category."""
-        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+        from immich_memories.audio.content_analyzer import AudioContentAnalyzer
 
-        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
-        mixin.min_confidence = 0.3
-        mixin.laughter_confidence = 0.2
+        analyzer = AudioContentAnalyzer(min_confidence=0.3, laughter_confidence=0.2)
 
-        meets, category = mixin._classify_frame("Singing", 0.5)
+        meets, category = analyzer._classify_frame("Singing", 0.5)
         assert meets
         assert category == "singing"
 
     def test_collect_events_from_scores(self):
         """Test event collection from PANNs score frames."""
-        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+        from immich_memories.audio.content_analyzer import AudioContentAnalyzer
 
-        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
-        mixin.min_confidence = 0.3
-        mixin.laughter_confidence = 0.2
+        analyzer = AudioContentAnalyzer(min_confidence=0.3, laughter_confidence=0.2)
 
         # Create fake scores: 10 frames, 5 classes
         # Class names: [Laughter, Speech, Music, Silence, Engine]
@@ -451,7 +439,7 @@ class TestPANNsAnalysis:
         scores[7, 1] = 0.5
         scores[8, 1] = 0.4
 
-        events, energy, categories = mixin._collect_events(
+        events, energy, categories = analyzer._collect_events(
             scores, class_names, frame_duration=1.0, audio_length_samples=320000
         )
 
@@ -464,19 +452,19 @@ class TestPANNsAnalysis:
         assert len(laugh_events) == 1
         assert laugh_events[0].start_time == pytest.approx(2.0)
 
-    def test_panns_mixin_check_available_import_error(self):
+    def test_panns_check_available_import_error(self):
         """Test graceful fallback when panns_inference is not installed."""
-        from immich_memories.audio.panns_analysis import PANNsAnalysisMixin
+        from immich_memories.audio.content_analyzer import AudioContentAnalyzer
 
-        mixin = PANNsAnalysisMixin.__new__(PANNsAnalysisMixin)
-        mixin._panns_available = None
-        mixin._panns_model = None
-        mixin._class_names = None
+        analyzer = AudioContentAnalyzer()
+        analyzer._panns_available = None
+        analyzer._panns_model = None
+        analyzer._class_names = None
 
         with patch.dict("sys.modules", {"panns_inference": None}):
-            result = mixin._check_panns_available()
+            result = analyzer._check_panns_available()
             assert not result
-            assert not mixin._panns_available
+            assert not analyzer._panns_available
 
 
 class TestMusicTrackEdgeCases:

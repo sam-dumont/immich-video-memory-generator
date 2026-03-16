@@ -18,10 +18,6 @@ from immich_memories.processing.assembly_config import (
     AssemblyClip,
     AssemblySettings,
 )
-from immich_memories.processing.assembly_context_builder import (
-    create_assembly_context,
-    resolve_target_resolution,
-)
 from immich_memories.processing.clip_encoder import log_ffmpeg_error
 from immich_memories.processing.hdr_utilities import (
     _get_gpu_encoder_args,
@@ -380,6 +376,11 @@ class ConcatService:
             f"video: {[f'{d:.2f}s' for d in video_durations]}"
         )
 
+        from immich_memories.processing.assembly_engine import (
+            create_assembly_context,
+            resolve_target_resolution,
+        )
+
         target_w, target_h = resolve_target_resolution(self.settings, self.prober, batches)
         ctx = create_assembly_context(self.settings, self.prober, batches, target_w, target_h)
 
@@ -440,6 +441,11 @@ class ConcatService:
                 shutil.copy2(clips[0].path, output_path)
                 return output_path
             raise ValueError("No clips to assemble")
+
+        from immich_memories.processing.assembly_engine import (
+            create_assembly_context,
+            resolve_target_resolution,
+        )
 
         target_w, target_h = resolve_target_resolution(self.settings, self.prober, clips)
         ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)

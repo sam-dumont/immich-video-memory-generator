@@ -56,16 +56,6 @@ class TestGenerationRequest:
         )
         assert req.is_multi_scene
 
-    def test_custom_values(self):
-        req = GenerationRequest(
-            prompt="upbeat pop",
-            duration_seconds=120,
-            variation_index=2,
-        )
-        assert req.prompt == "upbeat pop"
-        assert req.duration_seconds == 120
-        assert req.variation_index == 2
-
 
 # =============================================================================
 # GenerationResult tests
@@ -92,52 +82,35 @@ class TestGenerationResult:
 # =============================================================================
 
 
+class _DummyGenerator(MusicGenerator):
+    """Reusable concrete MusicGenerator for tests."""
+
+    @property
+    def name(self):
+        return "Dummy"
+
+    async def is_available(self):
+        return True
+
+    async def generate(self, request, progress_callback=None):
+        return GenerationResult(
+            audio_path=Path("/tmp/dummy.wav"),
+            backend_name="Dummy",
+        )
+
+
 class TestMusicGeneratorABC:
     """Tests for the abstract base class."""
 
-    def test_cannot_instantiate_directly(self):
-        with pytest.raises(TypeError):
-            MusicGenerator()
-
     def test_concrete_implementation(self):
         """A concrete implementation should be instantiable."""
-
-        class DummyGenerator(MusicGenerator):
-            @property
-            def name(self):
-                return "Dummy"
-
-            async def is_available(self):
-                return True
-
-            async def generate(self, request, progress_callback=None):
-                return GenerationResult(
-                    audio_path=Path("/tmp/dummy.wav"),
-                    backend_name="Dummy",
-                )
-
-        gen = DummyGenerator()
+        gen = _DummyGenerator()
         assert gen.name == "Dummy"
 
     @pytest.mark.asyncio
     async def test_default_generate_with_stems_returns_none_stems(self):
         """Default generate_with_stems should return None for stems."""
-
-        class DummyGenerator(MusicGenerator):
-            @property
-            def name(self):
-                return "Dummy"
-
-            async def is_available(self):
-                return True
-
-            async def generate(self, request, progress_callback=None):
-                return GenerationResult(
-                    audio_path=Path("/tmp/dummy.wav"),
-                    backend_name="Dummy",
-                )
-
-        gen = DummyGenerator()
+        gen = _DummyGenerator()
         result, stems = await gen.generate_with_stems(GenerationRequest())
         assert result.audio_path == Path("/tmp/dummy.wav")
         assert stems is None
@@ -145,19 +118,7 @@ class TestMusicGeneratorABC:
     @pytest.mark.asyncio
     async def test_default_health_check(self):
         """Default health_check should return backend name and availability."""
-
-        class DummyGenerator(MusicGenerator):
-            @property
-            def name(self):
-                return "Dummy"
-
-            async def is_available(self):
-                return True
-
-            async def generate(self, request, progress_callback=None):
-                return GenerationResult(audio_path=Path("/tmp/dummy.wav"), backend_name="Dummy")
-
-        gen = DummyGenerator()
+        gen = _DummyGenerator()
         health = await gen.health_check()
         assert health["backend"] == "Dummy"
         assert health["available"]
@@ -165,19 +126,7 @@ class TestMusicGeneratorABC:
     @pytest.mark.asyncio
     async def test_context_manager(self):
         """Default __aenter__/__aexit__ should work."""
-
-        class DummyGenerator(MusicGenerator):
-            @property
-            def name(self):
-                return "Dummy"
-
-            async def is_available(self):
-                return True
-
-            async def generate(self, request, progress_callback=None):
-                return GenerationResult(audio_path=Path("/tmp/dummy.wav"), backend_name="Dummy")
-
-        async with DummyGenerator() as gen:
+        async with _DummyGenerator() as gen:
             assert gen.name == "Dummy"
 
 

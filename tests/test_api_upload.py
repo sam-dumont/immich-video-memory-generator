@@ -230,7 +230,7 @@ class TestSyncUploadWrappers:
 
 class TestUploadConfig:
     def test_default_config(self):
-        from immich_memories.config_models_extra import UploadConfig
+        from immich_memories.config_models import UploadConfig
 
         cfg = UploadConfig()
         assert not cfg.enabled

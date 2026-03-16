@@ -307,8 +307,6 @@ ignore_errors = true
 module = [
     "immich_memories.analysis.scenes",
     "immich_memories.analysis.scoring",
-    "immich_memories.analysis.scoring_motion",
-    "immich_memories.analysis.scoring_face",
     "immich_memories.analysis.apple_vision",
     "immich_memories.processing.transforms",
     "immich_memories.processing._transforms_smart_crop",
@@ -343,12 +341,10 @@ module = [
 ]
 disable_error_code = ["dict-item"]
 
-# Audio content analyzer with PANNs (split into mixins)
+# Audio content analyzer with PANNs
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.audio.content_analyzer",
-    "immich_memories.audio.panns_analysis",
-    "immich_memories.audio.energy_analysis",
 ]
 disable_error_code = ["attr-defined", "assignment", "misc", "has-type"]
 
@@ -370,7 +366,7 @@ disable_error_code = ["assignment"]
 module = ["immich_memories.cache.video_cache"]
 disable_error_code = ["attr-defined"]
 
-# Taichi GPU renderers (uses Taichi-specific type annotations)
+# Taichi GPU renderers (uses Taichi-specific type annotations, absorbed particle/text mixins)
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.titles.renderer_taichi",
@@ -380,21 +376,12 @@ module = [
     "immich_memories.titles.sdf_font_rendering",
     "immich_memories.titles.taichi_video",
 ]
-disable_error_code = ["valid-type", "assignment", "misc", "truthy-function", "union-attr", "import-untyped"]
-
-# Taichi mixin files accessing parent class attributes
-[[tool.mypy.overrides]]
-module = [
-    "immich_memories.titles.taichi_text",
-    "immich_memories.titles.taichi_particles",
-]
-disable_error_code = ["attr-defined", "truthy-function", "assignment", "has-type"]
+disable_error_code = ["valid-type", "assignment", "misc", "truthy-function", "union-attr", "import-untyped", "attr-defined", "has-type"]
 
 # PIL renderer with optional font types
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.titles.renderer_pil",
-    "immich_memories.titles.text_rendering",
     "immich_memories.titles.ending_service",
 ]
 disable_error_code = ["attr-defined", "arg-type", "union-attr", "has-type"]
@@ -419,36 +406,12 @@ disable_error_code = ["var-annotated", "assignment", "attr-defined"]
 module = ["immich_memories.titles.generator"]
 disable_error_code = ["assignment", "misc"]
 
-# Video assembler composed services — properly typed with Protocol contracts
-
-# Clip encoding with dynamic hardware detection
-[[tool.mypy.overrides]]
-module = ["immich_memories.processing.clip_encoding"]
-disable_error_code = ["attr-defined"]
-
-# Cache mixins (access parent class _get_connection via mixin pattern)
-[[tool.mypy.overrides]]
-module = [
-    "immich_memories.cache.database_migrations",
-    "immich_memories.cache.database_queries",
-]
-disable_error_code = ["attr-defined"]
-
-# Tracking mixins (access parent class _get_connection via mixin pattern)
-[[tool.mypy.overrides]]
-module = [
-    "immich_memories.tracking.run_queries",
-    "immich_memories.tracking.active_jobs_mixin",
-]
-disable_error_code = ["attr-defined"]
-
 # Analysis pipeline services (composed services with callback injection)
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.analysis.clip_analyzer",
     "immich_memories.analysis.clip_refiner",
     "immich_memories.analysis.preview_builder",
-    "immich_memories.analysis.candidate_generation",
     "immich_memories.analysis.analyzer_factory",
     "immich_memories.analysis.smart_pipeline",
 ]
@@ -516,6 +479,7 @@ DEP002 = [
     "refurb", "interrogate", "import-linter",           # quality tools
     "grimp",                                            # import-linter backend
     "diff-cover", "deptry",                             # quality tools
+    "mutmut",                                           # mutation testing (CLI tool)
     "python-semantic-release",                          # CI release tool
     "types-PyYAML", "types-croniter",                   # mypy stubs
 ]

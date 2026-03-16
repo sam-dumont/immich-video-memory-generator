@@ -1,12 +1,14 @@
 """Interest scoring for video moments.
 
-Delegates to scoring_face, scoring_motion, scoring_segments, scoring_factory.
+Contains face detection, motion/duration scoring, segment generation,
+and the main SceneScorer class. Factory functions are in scoring_factory.py.
 """
 
 from __future__ import annotations
 
 import gc
 import logging
+import platform
 import random
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -17,26 +19,6 @@ import cv2
 import numpy as np
 
 from immich_memories.analysis.scenes import Scene, get_video_info
-from immich_memories.analysis.scoring_face import (
-    check_vision_available,
-    compute_face_score,
-    init_opencv_cascade,
-    init_vision_detector,
-)
-from immich_memories.analysis.scoring_factory import (
-    create_scorer_from_config,
-    sample_video,
-    score_scene,
-    select_top_moments,
-)
-from immich_memories.analysis.scoring_motion import (
-    compute_duration_score,
-    compute_motion_metrics,
-)
-from immich_memories.analysis.scoring_segments import (
-    generate_scene_aware_segments,
-    generate_segments,
-)
 
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
@@ -44,15 +26,472 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Re-export convenience functions and factory for backwards compatibility
 __all__ = [
     "MomentScore",
     "SceneScorer",
-    "create_scorer_from_config",
-    "sample_video",
-    "score_scene",
-    "select_top_moments",
+    "check_vision_available",
+    "compute_duration_score",
+    "compute_face_score",
+    "compute_motion_metrics",
+    "generate_scene_aware_segments",
+    "generate_segments",
+    "init_opencv_cascade",
+    "init_vision_detector",
+    "subdivide_scene",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Face detection scoring
+# ---------------------------------------------------------------------------
+
+_use_vision = None
+
+
+def check_vision_available() -> bool:
+    """Check if Apple Vision framework should be used for face detection."""
+    global _use_vision
+    if _use_vision is not None:
+        return _use_vision
+
+    if platform.system() != "Darwin":
+        _use_vision = False
+        return False
+
+    try:
+        from immich_memories.analysis.apple_vision import is_vision_available
+
+        _use_vision = is_vision_available()
+        if _use_vision:
+            logger.info("Using Apple Vision framework for face detection (GPU accelerated)")
+        return _use_vision
+    except ImportError:
+        _use_vision = False
+        return False
+
+
+def init_vision_detector():
+    """Initialize Apple Vision face detector.
+
+    Returns:
+        VisionFaceDetector instance or None if initialization fails.
+    """
+    try:
+        from immich_memories.analysis.apple_vision import VisionFaceDetector
+
+        detector = VisionFaceDetector(detect_landmarks=False)
+        logger.info("Using Apple Vision for GPU-accelerated face detection")
+        return detector
+    except Exception as e:
+        logger.warning(f"Failed to initialize Vision detector: {e}")
+        return None
+
+
+def init_opencv_cascade() -> cv2.CascadeClassifier | None:
+    """Initialize OpenCV face cascade classifier.
+
+    Returns:
+        CascadeClassifier instance or None if loading fails.
+    """
+    try:
+        cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        return cv2.CascadeClassifier(cascade_path)
+    except Exception as e:
+        logger.warning(f"Could not load face cascade: {e}")
+        return None
+
+
+def compute_face_score(
+    frame: np.ndarray,
+    use_vision: bool,
+    vision_detector,
+    face_cascade: cv2.CascadeClassifier | None,
+) -> tuple[float, list[tuple[float, float]]]:
+    """Compute face presence and size score.
+
+    Uses Apple Vision framework on Mac for GPU-accelerated detection,
+    falls back to OpenCV on other platforms.
+
+    Args:
+        frame: BGR image.
+        use_vision: Whether to use Apple Vision.
+        vision_detector: VisionFaceDetector instance (or None).
+        face_cascade: OpenCV CascadeClassifier instance (or None).
+
+    Returns:
+        Tuple of (score, list of face center positions).
+    """
+    h, w = frame.shape[:2]
+
+    if use_vision and vision_detector is not None:
+        return _compute_face_score_vision(frame, vision_detector)
+
+    return _compute_face_score_opencv(frame, w, h, face_cascade)
+
+
+def _compute_face_score_vision(
+    frame: np.ndarray,
+    vision_detector,
+) -> tuple[float, list[tuple[float, float]]]:
+    """Compute face score using Apple Vision framework."""
+    faces = vision_detector.detect_faces(frame, min_confidence=0.3)
+
+    if not faces:
+        return 0.0, []
+
+    total_coverage = 0
+    positions = []
+
+    for face in faces:
+        total_coverage += face.area
+        positions.append(face.center)
+
+    face_count_bonus = min(len(faces) * 0.1, 0.3)
+    coverage_score = min(total_coverage / 0.15, 1.0)
+
+    score = min(coverage_score + face_count_bonus, 1.0)
+    return score, positions
+
+
+def _compute_face_score_opencv(
+    frame: np.ndarray,
+    w: int,
+    h: int,
+    face_cascade: cv2.CascadeClassifier | None,
+) -> tuple[float, list[tuple[float, float]]]:
+    """Compute face score using OpenCV cascade classifier."""
+    if face_cascade is None:
+        return 0.5, []
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    faces = face_cascade.detectMultiScale(
+        gray,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(30, 30),
+    )
+
+    if not faces:
+        return 0.0, []
+
+    total_face_area = 0
+    positions = []
+
+    for x, y, fw, fh in faces:
+        face_area = fw * fh
+        total_face_area += face_area
+
+        center_x = (x + fw / 2) / w
+        center_y = (y + fh / 2) / h
+        positions.append((center_x, center_y))
+
+    frame_area = w * h
+    coverage = total_face_area / frame_area
+
+    face_count_bonus = min(len(faces) * 0.1, 0.3)
+    coverage_score = min(coverage / 0.15, 1.0)
+
+    score = min(coverage_score + face_count_bonus, 1.0)
+    return score, positions
+
+
+# ---------------------------------------------------------------------------
+# Motion and duration scoring
+# ---------------------------------------------------------------------------
+
+
+def compute_motion_metrics(
+    prev_frame: np.ndarray,
+    curr_frame: np.ndarray,
+) -> tuple[float, float]:
+    """Compute motion amount and stability.
+
+    Args:
+        prev_frame: Previous grayscale frame.
+        curr_frame: Current grayscale frame.
+
+    Returns:
+        Tuple of (motion_score, stability_score).
+    """
+    # Compute optical flow
+    flow = cv2.calcOpticalFlowFarneback(
+        prev_frame,
+        curr_frame,
+        None,
+        pyr_scale=0.5,
+        levels=3,
+        winsize=15,
+        iterations=3,
+        poly_n=5,
+        poly_sigma=1.2,
+        flags=0,
+    )
+
+    # Magnitude of flow
+    magnitude = np.sqrt(flow[..., 0] ** 2 + flow[..., 1] ** 2)
+    mean_motion = np.mean(magnitude)
+    motion_std = np.std(magnitude)
+
+    # Motion score: some motion is good, too much is bad
+    # Optimal range is roughly 2-10 pixels of movement
+    if mean_motion < 1:
+        motion_score = 0.3  # Too static
+    elif mean_motion < 5:
+        motion_score = 0.5 + (mean_motion - 1) * 0.125  # Good range
+    elif mean_motion < 15:
+        motion_score = 1.0 - (mean_motion - 5) * 0.05  # Getting shaky
+    else:
+        motion_score = 0.3  # Too much motion (shake or blur)
+
+    # Stability score: lower variance = more stable
+    # High std indicates camera shake or erratic motion
+    stability_score = max(0, 1 - (motion_std / 20))
+
+    return motion_score, float(stability_score)
+
+
+def compute_duration_score(
+    duration: float,
+    source_duration: float | None,
+    optimal_duration: float,
+    max_optimal_duration: float,
+    target_extraction_ratio: float,
+    min_duration: float,
+) -> float:
+    """Compute duration preference score using a Gaussian curve.
+
+    The score peaks at the optimal duration, which scales with source
+    duration for longer videos. For a 15s source, 5s is optimal. For a
+    70s source, ~10s is optimal (to avoid extracting too little).
+
+    Args:
+        duration: Clip duration in seconds.
+        source_duration: Full source video duration (for ratio-based scaling).
+        optimal_duration: Base sweet spot duration in seconds.
+        max_optimal_duration: Max optimal duration for long sources.
+        target_extraction_ratio: Target ratio of clip to source.
+        min_duration: Minimum acceptable duration in seconds.
+
+    Returns:
+        Score between 0.0 and 1.0, with 1.0 at optimal duration.
+    """
+    # Clips below minimum duration get heavy penalty
+    if duration < min_duration:
+        # Linear penalty: 0.0 at 0s, 0.3 at min_duration
+        return max(0.0, 0.3 * (duration / min_duration))
+
+    # Dynamic optimal duration based on source length
+    # For short sources (< 20s): optimal stays at base (5s)
+    # For longer sources: optimal scales up to max_optimal
+    if source_duration and source_duration > 20.0:
+        dynamic_optimal = min(
+            max_optimal_duration,
+            max(optimal_duration, source_duration * target_extraction_ratio),
+        )
+        logger.debug(
+            f"Duration scoring: source={source_duration:.1f}s, "
+            f"clip={duration:.1f}s, optimal={dynamic_optimal:.1f}s "
+            f"(target {target_extraction_ratio * 100:.0f}% of source)"
+        )
+    else:
+        dynamic_optimal = optimal_duration
+        if source_duration:
+            logger.debug(
+                f"Duration scoring: source={source_duration:.1f}s (short), "
+                f"clip={duration:.1f}s, optimal={dynamic_optimal:.1f}s (base)"
+            )
+
+    # Gaussian curve centered at dynamic optimal duration
+    # sigma scales with optimal to keep curve proportional
+    sigma = max(3.0, dynamic_optimal * 0.6)
+    diff = duration - dynamic_optimal
+    score = np.exp(-(diff * diff) / (2 * sigma * sigma))
+
+    # For very long clips (>15s), add extra penalty
+    if duration > 15.0:
+        long_penalty = (duration - 15.0) * 0.05
+        score = max(0.2, score - long_penalty)
+
+    return float(score)
+
+
+# ---------------------------------------------------------------------------
+# Segment generation
+# ---------------------------------------------------------------------------
+
+
+def generate_segments(
+    video_path: Path,
+    segment_duration: float,
+    overlap: float,
+) -> list[Scene]:
+    """Generate segment boundaries using sliding window.
+
+    Args:
+        video_path: Path to the video file.
+        segment_duration: Duration of each segment in seconds.
+        overlap: Overlap fraction between segments (0-1).
+
+    Returns:
+        List of Scene objects representing segments.
+    """
+    info = get_video_info(video_path)
+    duration = info.get("duration", 0)
+    fps = info.get("fps", 30) or 30
+
+    if duration <= 0:
+        return []
+
+    # Handle video shorter than segment_duration
+    if duration <= segment_duration:
+        return [
+            Scene(
+                start_time=0,
+                end_time=duration,
+                start_frame=0,
+                end_frame=int(duration * fps),
+            )
+        ]
+
+    step = segment_duration * (1 - overlap)
+    segments = []
+    current_start = 0.0
+
+    while current_start + segment_duration <= duration:
+        segments.append(
+            Scene(
+                start_time=current_start,
+                end_time=current_start + segment_duration,
+                start_frame=int(current_start * fps),
+                end_frame=int((current_start + segment_duration) * fps),
+            )
+        )
+        current_start += step
+
+    # Handle final partial segment if substantial
+    if current_start < duration and (duration - current_start) >= segment_duration * 0.5:
+        segments.append(
+            Scene(
+                start_time=current_start,
+                end_time=duration,
+                start_frame=int(current_start * fps),
+                end_frame=int(duration * fps),
+            )
+        )
+
+    return segments
+
+
+def generate_scene_aware_segments(
+    video_path: Path,
+    max_segment_duration: float,
+    min_segment_duration: float,
+    scene_threshold: float,
+    min_scene_duration: float,
+) -> list[Scene]:
+    """Generate segments using scene detection with subdivision for long scenes.
+
+    Args:
+        video_path: Path to the video file.
+        max_segment_duration: Maximum segment duration (subdivide longer scenes).
+        min_segment_duration: Minimum segment duration (filter out shorter).
+        scene_threshold: Threshold for scene detection.
+        min_scene_duration: Minimum scene duration for detection.
+
+    Returns:
+        List of Scene objects representing segments.
+    """
+    from immich_memories.analysis.scenes import SceneDetector
+
+    # Detect natural scene boundaries
+    scenes = SceneDetector(
+        threshold=scene_threshold,
+        min_scene_duration=min_scene_duration,
+        adaptive_threshold=True,
+    ).detect(
+        video_path,
+        extract_keyframes=False,  # Skip for performance
+    )
+
+    # Get video info for fps
+    info = get_video_info(video_path)
+    fps = info.get("fps", 30) or 30
+
+    # Process scenes into segments
+    segments = []
+
+    for scene in scenes:
+        if scene.duration < min_segment_duration:
+            # Skip very short scenes (likely flashes/glitches)
+            continue
+
+        if scene.duration <= max_segment_duration:
+            # Short/medium scene: use entire scene as one segment
+            segments.append(scene)
+        else:
+            # Long scene: subdivide with sliding window WITHIN scene boundaries
+            sub_segments = subdivide_scene(
+                scene=scene,
+                target_duration=max_segment_duration / 2,  # Target smaller segments
+                overlap=0.5,
+                fps=fps,
+            )
+            segments.extend(sub_segments)
+
+    return segments
+
+
+def subdivide_scene(
+    scene: Scene,
+    target_duration: float,
+    overlap: float,
+    fps: float,
+) -> list[Scene]:
+    """Subdivide a long scene into overlapping segments.
+
+    Args:
+        scene: The scene to subdivide.
+        target_duration: Target duration for each sub-segment.
+        overlap: Overlap fraction between segments (0-1).
+        fps: Video frame rate.
+
+    Returns:
+        List of Scene objects representing sub-segments.
+    """
+    sub_segments = []
+    step = target_duration * (1 - overlap)
+    current_start = scene.start_time
+
+    while current_start + target_duration <= scene.end_time:
+        sub_segments.append(
+            Scene(
+                start_time=current_start,
+                end_time=current_start + target_duration,
+                start_frame=int(current_start * fps),
+                end_frame=int((current_start + target_duration) * fps),
+            )
+        )
+        current_start += step
+
+    # Handle final partial segment if substantial
+    remaining = scene.end_time - current_start
+    if remaining >= target_duration * 0.5:
+        sub_segments.append(
+            Scene(
+                start_time=current_start,
+                end_time=scene.end_time,
+                start_frame=int(current_start * fps),
+                end_frame=int(scene.end_time * fps),
+            )
+        )
+
+    return sub_segments
+
+
+# ---------------------------------------------------------------------------
+# Data classes and main scorer
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -482,7 +921,7 @@ class SceneScorer:
                 f"optimal clip={self._optimal_duration:.1f}s (base)"
             )
 
-    # Backward-compatible shims delegating to helper modules
+    # Backward-compatible shims
     def _generate_segments(self, video_path, segment_duration, overlap):
         return generate_segments(video_path, segment_duration, overlap)
 
@@ -490,8 +929,6 @@ class SceneScorer:
         return generate_scene_aware_segments(**kwargs)
 
     def _subdivide_scene(self, scene, target_duration, overlap, fps):
-        from immich_memories.analysis.scoring_segments import subdivide_scene
-
         return subdivide_scene(
             scene=scene, target_duration=target_duration, overlap=overlap, fps=fps
         )

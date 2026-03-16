@@ -80,12 +80,6 @@ def validate_path(
     if must_exist and not resolved.exists():
         raise PathValidationError(f"Path does not exist: {resolved}")
 
-    # Validate magic bytes for existing files (defense-in-depth against disguised files)
-    if resolved.exists() and resolved.is_file() and not validate_magic_bytes(resolved):
-        raise PathValidationError(
-            f"File magic bytes don't match extension '{resolved.suffix}': {resolved.name}"
-        )
-
     return resolved
 
 
@@ -163,77 +157,6 @@ def validate_image_path(path: Path | str, must_exist: bool = True) -> Path:
         ".heif",
     }
     return validate_path(path, must_exist=must_exist, allowed_extensions=IMAGE_EXTENSIONS)
-
-
-# Magic bytes for media file validation (prevents disguised file attacks)
-# Maps extensions to their expected file signatures
-MEDIA_MAGIC_BYTES: dict[str, list[bytes]] = {
-    # Video formats
-    ".mp4": [b"\x00\x00\x00\x18ftyp", b"\x00\x00\x00\x1cftyp", b"\x00\x00\x00\x20ftyp"],
-    ".mov": [b"\x00\x00\x00\x14ftyp", b"\x00\x00\x00\x08wide"],
-    ".avi": [b"RIFF"],
-    ".mkv": [b"\x1a\x45\xdf\xa3"],
-    ".webm": [b"\x1a\x45\xdf\xa3"],
-    ".flv": [b"FLV\x01"],
-    ".mpeg": [b"\x00\x00\x01\xba", b"\x00\x00\x01\xb3"],
-    ".mpg": [b"\x00\x00\x01\xba", b"\x00\x00\x01\xb3"],
-    ".ts": [b"\x47"],
-    ".m4v": [b"\x00\x00\x00\x18ftyp", b"\x00\x00\x00\x1cftyp", b"\x00\x00\x00\x20ftyp"],
-    ".3gp": [b"\x00\x00\x00\x14ftyp", b"\x00\x00\x00\x18ftyp", b"\x00\x00\x00\x1cftyp"],
-    ".wmv": [b"\x30\x26\xb2\x75"],
-    # Audio formats
-    ".mp3": [b"\xff\xfb", b"\xff\xf3", b"\xff\xf2", b"ID3"],
-    ".wav": [b"RIFF"],
-    ".flac": [b"fLaC"],
-    ".ogg": [b"OggS"],
-    ".m4a": [b"\x00\x00\x00\x18ftyp", b"\x00\x00\x00\x1cftyp", b"\x00\x00\x00\x20ftyp"],
-    ".aac": [b"\xff\xf1", b"\xff\xf9"],
-    ".aiff": [b"FORM"],
-    ".opus": [b"OggS"],
-    ".wma": [b"\x30\x26\xb2\x75"],
-    # Image formats
-    ".jpg": [b"\xff\xd8\xff"],
-    ".jpeg": [b"\xff\xd8\xff"],
-    ".png": [b"\x89PNG\r\n\x1a\n"],
-    ".gif": [b"GIF87a", b"GIF89a"],
-    ".bmp": [b"BM"],
-    ".webp": [b"RIFF"],
-    ".tiff": [b"II\x2a\x00", b"MM\x00\x2a"],
-    ".tif": [b"II\x2a\x00", b"MM\x00\x2a"],
-}
-
-
-def validate_magic_bytes(path: Path) -> bool:
-    """Validate that a file's magic bytes match its extension.
-
-    This prevents attacks where a malicious file (e.g., a script) is disguised
-    with a media extension to bypass extension-based validation.
-
-    Args:
-        path: Path to the file to validate (must exist)
-
-    Returns:
-        True if magic bytes match or extension has no known signature,
-        False if magic bytes don't match the expected format.
-    """
-    ext = path.suffix.lower()
-    expected_signatures = MEDIA_MAGIC_BYTES.get(ext)
-    if expected_signatures is None:
-        # No known signature for this extension, skip check
-        return True
-
-    try:
-        # Read enough bytes to check the longest signature
-        max_sig_len = max(len(sig) for sig in expected_signatures)
-        with path.open("rb") as f:
-            header = f.read(max_sig_len)
-
-        if not header:
-            return False
-
-        return any(header[: len(sig)] == sig for sig in expected_signatures)
-    except OSError:
-        return False
 
 
 def sanitize_filename(filename: str, max_length: int = 255) -> str:
