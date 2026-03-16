@@ -1,7 +1,7 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
-.PHONY: help install dev dev-ci run preflight test benchmark test-cov test-integration lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity cognitive-complexity security-lint dead-code duplication refurb dep-check docstring-coverage arch-check diff-cover ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
+.PHONY: help install dev dev-ci run preflight test benchmark test-cov test-integration mutation lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check docstring-coverage arch-check diff-cover ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
 
 # Default target
 help:
@@ -175,6 +175,14 @@ dead-code:
 security-lint:
 	uvx bandit -r src/ --severity-level high -q
 
+# Bandit with JSON report and HIGH severity gate (for CI)
+bandit-ci:
+	@uvx bandit -r src/ --severity-level medium -f json -o bandit-report.json || true
+	@python3 -c "import json,sys; r=json.load(open('bandit-report.json')); \
+	high=[i for i in r['results'] if i['issue_severity']=='HIGH']; \
+	[print(f\"  {i['filename']}:{i['line_number']} [{i['test_id']}] {i['issue_text']}\") for i in high]; \
+	sys.exit(len(high))"
+
 # Commit message lint (Commitizen conventional commits)
 commitlint:
 	uvx --from commitizen cz check --rev-range HEAD~1..HEAD
@@ -199,6 +207,14 @@ duplication:
 # Modernization lint
 refurb:
 	cd src && uv run refurb immich_memories/ --quiet
+
+# Semgrep SAST (cross-file security analysis)
+# Excludes sqlalchemy-execute-raw-query: our SQL uses ?-parameterized values,
+# column names are hardcoded in code. Semgrep can't distinguish f-string placeholders from injection.
+semgrep:
+	uvx semgrep scan --config auto --config p/python --error --severity ERROR \
+		--exclude-rule python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query \
+		src/
 
 # Dependency hygiene (hallucinated/unused/transitive deps)
 dep-check:

@@ -206,13 +206,7 @@ jobs:
       - run: make dev-ci
 
       - name: Bandit (Python SAST)
-        run: |
-          uvx bandit -r src/ --severity-level medium -f json -o bandit-report.json || true
-          HIGH=$(python3 -c "import json; r=json.load(open('bandit-report.json')); high=[i for i in r['results'] if i['issue_severity']=='HIGH']; [print(f\"  {i['filename']}:{i['line_number']} [{i['test_id']}] {i['issue_text']}\") for i in high]; exit(len(high))")
-          if [ "$?" -ne 0 ]; then
-            echo "::error::Bandit found HIGH severity findings"
-            exit 1
-          fi
+        run: make bandit-ci
 
       - name: Semgrep (cross-file SAST)
         if: env.SEMGREP_APP_TOKEN != ''
@@ -224,13 +218,12 @@ jobs:
 
       - name: Semgrep (local, no token)
         if: env.SEMGREP_APP_TOKEN == ''
-        run: uvx semgrep scan --config auto --config p/python --error --severity ERROR src/
+        run: make semgrep
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
       - name: pip-audit (dependency CVEs)
-        run: uvx pip-audit -r <(uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==') --strict
-        shell: bash
+        run: make pip-audit
 
       - name: Gitleaks (secret detection)
         uses: gitleaks/gitleaks-action@v2
