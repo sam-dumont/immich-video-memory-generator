@@ -103,7 +103,7 @@ repos:
 
       - id: integration-tests
         name: Integration tests (FFmpeg, only on processing/titles changes)
-        entry: bash -c 'make test-integration && git add tests/integration-coverage.xml'
+        entry: bash -c 'make test-integration && git add tests/integration-coverage.xml tests/integration-junit.xml'
         language: system
         pass_filenames: false
         files: ^(src/immich_memories/(processing|titles|analysis)/|tests/integration/)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import secrets
@@ -14,8 +15,12 @@ from immich_memories.logging_config import configure_logging
 
 configure_logging()
 
+import httpx
 from nicegui import app, ui
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
+from immich_memories import __version__
 from immich_memories.config import get_config, init_config_dir
 from immich_memories.ui.state import get_app_state
 from immich_memories.ui.theme import apply_theme, render_theme_toggle
@@ -237,6 +242,59 @@ def cache_page() -> None:
             "color: var(--im-text)"
         )
         render_cache_management()
+
+
+# ============================================================================
+# Health Endpoint
+# ============================================================================
+
+
+async def _check_immich_reachable(config) -> bool:
+    """Ping Immich server, return True if reachable."""
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        resp = await client.get(
+            f"{config.immich.url.rstrip('/')}/api/server/ping",
+            headers={"x-api-key": config.immich.api_key},
+        )
+        return resp.status_code == 200
+
+
+def _get_last_successful_run() -> str | None:
+    """Return ISO timestamp of last completed run, or None."""
+    from immich_memories.tracking.run_database import RunDatabase
+
+    db = RunDatabase()
+    runs = db.list_runs(limit=1, status="completed")
+    if runs and runs[0].completed_at:
+        return runs[0].completed_at.isoformat()
+    return None
+
+
+async def _health_handler(request: Request) -> JSONResponse:  # noqa: ARG001
+    """Return JSON health status with Immich connectivity and last run info."""
+    config = get_config()
+
+    immich_reachable = False
+    with contextlib.suppress(Exception):
+        immich_reachable = await _check_immich_reachable(config)
+
+    last_successful_run: str | None = None
+    with contextlib.suppress(Exception):
+        last_successful_run = _get_last_successful_run()
+
+    status = "ok" if immich_reachable else "degraded"
+
+    return JSONResponse(
+        {
+            "status": status,
+            "immich_reachable": immich_reachable,
+            "last_successful_run": last_successful_run,
+            "version": __version__,
+        }
+    )
+
+
+app.add_api_route("/health", _health_handler, methods=["GET"])
 
 
 # ============================================================================

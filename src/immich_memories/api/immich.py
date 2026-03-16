@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime
@@ -31,6 +32,11 @@ if TYPE_CHECKING:
     from immich_memories.timeperiod import DateRange
 
 logger = logging.getLogger(__name__)
+
+
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+_MAX_RETRIES = 3
+_BACKOFF_BASE = 1.0
 
 
 class ImmichAPIError(Exception):
@@ -119,32 +125,19 @@ class ImmichClient:
     ) -> None:
         await self.close()
 
-    async def _request(
-        self,
-        method: str,
-        endpoint: str,
-        **kwargs,
-    ) -> dict | list | bytes:
-        """Make an API request.
-
-        Raises:
-            ImmichAPIError: If the request fails.
-        """
-        url = f"/api{endpoint}"
-        logger.debug(f"Request: {method} {url}")
-
-        try:
-            response = await self.client.request(method, url, **kwargs)
-        except httpx.TimeoutException as e:
-            raise ImmichAPIError(f"Request timed out: {e}") from e
-        except httpx.RequestError as e:
-            raise ImmichAPIError(f"Request failed: {e}") from e
-
+    @staticmethod
+    def _check_response(response: httpx.Response) -> dict | list | bytes:
+        """Check response status and return parsed body, or raise on error."""
         if response.status_code == 401:
             raise ImmichAuthError("Invalid API key", status_code=401)
-        elif response.status_code == 404:
+        if response.status_code == 404:
             raise ImmichNotFoundError("Resource not found", status_code=404)
-        elif response.status_code >= 400:
+        if response.status_code in _RETRYABLE_STATUS:
+            raise ImmichAPIError(
+                f"Server error: {response.status_code}",
+                status_code=response.status_code,
+            )
+        if response.status_code >= 400:
             try:
                 error_data = response.json()
                 message = error_data.get("message", response.text)
@@ -156,6 +149,54 @@ class ImmichClient:
         if "application/json" in content_type:
             return response.json()
         return response.content
+
+    @staticmethod
+    def _is_retryable(exc: Exception) -> bool:
+        """Return True if the exception warrants a retry."""
+        if isinstance(exc, (ImmichAuthError, ImmichNotFoundError)):
+            return False
+        return isinstance(exc, ImmichAPIError) and exc.status_code in _RETRYABLE_STATUS
+
+    async def _request(
+        self,
+        method: str,
+        endpoint: str,
+        **kwargs,
+    ) -> dict | list | bytes:
+        """Make an API request with retry on transient failures.
+
+        Retries up to _MAX_RETRIES times on timeout, network errors, and
+        retryable status codes (429, 500-504). Non-retryable errors (401, 404,
+        other 4xx) raise immediately.
+        """
+        url = f"/api{endpoint}"
+        logger.debug(f"Request: {method} {url}")
+
+        last_exception: Exception | None = None
+
+        for attempt in range(_MAX_RETRIES):
+            try:
+                response = await self.client.request(method, url, **kwargs)
+                return self._check_response(response)
+            except (httpx.TimeoutException, httpx.NetworkError) as e:
+                last_exception = ImmichAPIError(f"Request failed: {e}")
+                last_exception.__cause__ = e
+            except ImmichAPIError as e:
+                if not self._is_retryable(e):
+                    raise
+                last_exception = e
+            except httpx.RequestError as e:
+                raise ImmichAPIError(f"Request failed: {e}") from e
+
+            if attempt < _MAX_RETRIES - 1:
+                backoff = _BACKOFF_BASE * (2**attempt)
+                logger.warning(
+                    f"{method} {url} attempt {attempt + 1} failed ({last_exception}), "
+                    f"retrying in {backoff:.1f}s"
+                )
+                await asyncio.sleep(backoff)
+
+        raise last_exception or ImmichAPIError("Request failed after retries")
 
     async def get_server_info(self) -> ServerInfo:
         """Get server version information."""

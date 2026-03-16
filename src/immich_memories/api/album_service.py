@@ -38,6 +38,7 @@ class AlbumService:
                     "fileModifiedAt": mtime,
                 },
                 files={"assetData": (file_path.name, f, "video/mp4")},
+                timeout=600.0,  # 10 min for large video uploads on slow connections
             )
         return data["id"]
 

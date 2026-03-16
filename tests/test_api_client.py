@@ -104,7 +104,11 @@ class TestImmichClientRequest:
         client._client.is_closed = False
         client._client.request = AsyncMock(return_value=mock_response)
 
-        with pytest.raises(ImmichAPIError) as exc_info:
+        # WHY: avoid real sleep — retry backoff would add seconds
+        with (
+            patch("immich_memories.api.immich.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(ImmichAPIError) as exc_info,
+        ):
             await client._request("GET", "/test")
         assert exc_info.value.status_code == 500
 
@@ -116,7 +120,11 @@ class TestImmichClientRequest:
         client._client.is_closed = False
         client._client.request = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
 
-        with pytest.raises(ImmichAPIError, match="timed out"):
+        # WHY: avoid real sleep — retry backoff would add seconds
+        with (
+            patch("immich_memories.api.immich.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(ImmichAPIError, match="timed out"),
+        ):
             await client._request("GET", "/test")
 
     @pytest.mark.asyncio
@@ -127,7 +135,11 @@ class TestImmichClientRequest:
         client._client.is_closed = False
         client._client.request = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
-        with pytest.raises(ImmichAPIError, match="Request failed"):
+        # WHY: avoid real sleep — retry backoff would add seconds
+        with (
+            patch("immich_memories.api.immich.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(ImmichAPIError, match="Request failed"),
+        ):
             await client._request("GET", "/test")
 
     @pytest.mark.asyncio
