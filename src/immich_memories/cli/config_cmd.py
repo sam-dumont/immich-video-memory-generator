@@ -154,7 +154,7 @@ def register_config_commands(main: click.Group) -> None:
         console.print("[bold]Running Preflight Checks[/bold]")
         console.print()
 
-        results = run_preflight_checks(config)
+        checks = run_preflight_checks(config)
 
         # Build results table
         table = Table(title="Provider Status")
@@ -171,7 +171,7 @@ def register_config_commands(main: click.Group) -> None:
             CheckStatus.SKIPPED: "[dim]SKIPPED[/dim]",
         }
 
-        for check in results.checks:
+        for check in checks:
             row = [
                 check.name,
                 status_styles.get(check.status, str(check.status)),
@@ -185,13 +185,16 @@ def register_config_commands(main: click.Group) -> None:
         console.print()
 
         # Summary
-        ok_count = sum(1 for c in results.checks if c.status == CheckStatus.OK)
-        warn_count = sum(1 for c in results.checks if c.status == CheckStatus.WARNING)
-        error_count = sum(1 for c in results.checks if c.status == CheckStatus.ERROR)
-        skip_count = sum(1 for c in results.checks if c.status == CheckStatus.SKIPPED)
+        ok_count = sum(1 for c in checks if c.status == CheckStatus.OK)
+        warn_count = sum(1 for c in checks if c.status == CheckStatus.WARNING)
+        error_count = sum(1 for c in checks if c.status == CheckStatus.ERROR)
+        skip_count = sum(1 for c in checks if c.status == CheckStatus.SKIPPED)
 
-        if results.all_ok:
-            if results.has_warnings:
+        all_ok = all(c.status != CheckStatus.ERROR for c in checks)
+        has_warnings = any(c.status == CheckStatus.WARNING for c in checks)
+
+        if all_ok:
+            if has_warnings:
                 print_info(
                     f"Preflight complete: {ok_count} OK, {warn_count} warnings, {skip_count} skipped"
                 )

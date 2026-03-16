@@ -9,90 +9,49 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Characters that could cause issues in shell contexts (even without shell=True)
-DANGEROUS_CHARS = re.compile(r"[\x00-\x1f\x7f]")  # Control characters including null bytes
-
-
-class PathValidationError(ValueError):
-    """Raised when path validation fails."""
-
-    pass
+# Control characters for sanitizing filenames
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def validate_path(
     path: Path | str,
     must_exist: bool = False,
     allowed_extensions: set[str] | None = None,
-    base_dir: Path | None = None,
 ) -> Path:
-    """Validate and sanitize a file path for safe use in subprocess calls.
+    """Resolve a file path and optionally check existence / extension.
 
     Args:
-        path: The path to validate
-        must_exist: If True, raise error if path doesn't exist
-        allowed_extensions: Set of allowed extensions (e.g., {'.mp4', '.mov'})
-        base_dir: If provided, ensure path is within this directory
+        path: The path to validate.
+        must_exist: If True, raise error if path doesn't exist.
+        allowed_extensions: Set of allowed extensions (e.g., {'.mp4', '.mov'}).
 
     Returns:
-        Validated Path object
+        Resolved Path object.
 
     Raises:
-        PathValidationError: If path fails validation
+        ValueError: If path fails validation.
     """
     if isinstance(path, str):
         path = Path(path)
 
-    path_str = str(path)
-
-    # Check for null bytes (command injection via null byte truncation)
-    if "\x00" in path_str:
-        raise PathValidationError(f"Path contains null byte: {path_str!r}")
-
-    # Check for other control characters
-    if DANGEROUS_CHARS.search(path_str):
-        raise PathValidationError(f"Path contains control characters: {path_str!r}")
-
-    # Resolve to absolute path (handles .., symlinks, etc.)
     try:
         resolved = path.resolve()
     except (OSError, RuntimeError) as e:
-        raise PathValidationError(f"Cannot resolve path: {e}") from e
+        raise ValueError(f"Cannot resolve path: {e}") from e
 
-    # Check base directory constraint (prevent path traversal)
-    if base_dir is not None:
-        base_resolved = base_dir.resolve()
-        try:
-            resolved.relative_to(base_resolved)
-        except ValueError as e:
-            raise PathValidationError(
-                f"Path '{resolved}' is outside allowed directory '{base_resolved}'"
-            ) from e
-
-    # Check extension if specified
     if allowed_extensions is not None:
         ext = resolved.suffix.lower()
         if ext not in allowed_extensions:
-            raise PathValidationError(
-                f"Extension '{ext}' not in allowed list: {allowed_extensions}"
-            )
+            raise ValueError(f"Extension '{ext}' not in allowed list: {allowed_extensions}")
 
-    # Check existence if required
     if must_exist and not resolved.exists():
-        raise PathValidationError(f"Path does not exist: {resolved}")
+        raise ValueError(f"Path does not exist: {resolved}")
 
     return resolved
 
 
 def validate_video_path(path: Path | str, must_exist: bool = True) -> Path:
-    """Validate a video file path.
-
-    Args:
-        path: The video path to validate
-        must_exist: If True, raise error if path doesn't exist
-
-    Returns:
-        Validated Path object
-    """
+    """Validate a video file path."""
     VIDEO_EXTENSIONS = {
         ".mp4",
         ".mov",
@@ -111,15 +70,7 @@ def validate_video_path(path: Path | str, must_exist: bool = True) -> Path:
 
 
 def validate_audio_path(path: Path | str, must_exist: bool = True) -> Path:
-    """Validate an audio file path.
-
-    Args:
-        path: The audio path to validate
-        must_exist: If True, raise error if path doesn't exist
-
-    Returns:
-        Validated Path object
-    """
+    """Validate an audio file path."""
     AUDIO_EXTENSIONS = {
         ".mp3",
         ".m4a",
@@ -135,15 +86,7 @@ def validate_audio_path(path: Path | str, must_exist: bool = True) -> Path:
 
 
 def validate_image_path(path: Path | str, must_exist: bool = True) -> Path:
-    """Validate an image file path.
-
-    Args:
-        path: The image path to validate
-        must_exist: If True, raise error if path doesn't exist
-
-    Returns:
-        Validated Path object
-    """
+    """Validate an image file path."""
     IMAGE_EXTENSIONS = {
         ".jpg",
         ".jpeg",
@@ -163,14 +106,13 @@ def sanitize_filename(filename: str, max_length: int = 255) -> str:
     """Sanitize a filename for safe filesystem use.
 
     Args:
-        filename: The filename to sanitize
-        max_length: Maximum length for the filename
+        filename: The filename to sanitize.
+        max_length: Maximum length for the filename.
 
     Returns:
-        Sanitized filename
+        Sanitized filename.
     """
-    # Remove null bytes, control characters, path separators, whitespace and dots
-    sanitized = DANGEROUS_CHARS.sub("", filename).replace("/", "_").replace("\\", "_").strip(" .")
+    sanitized = _CONTROL_CHARS.sub("", filename).replace("/", "_").replace("\\", "_").strip(" .")
 
     # Truncate if too long (preserve extension if possible)
     if len(sanitized) > max_length:
@@ -181,7 +123,6 @@ def sanitize_filename(filename: str, max_length: int = 255) -> str:
         else:
             sanitized = sanitized[:max_length]
 
-    # Ensure non-empty
     if not sanitized:
         sanitized = "unnamed"
 

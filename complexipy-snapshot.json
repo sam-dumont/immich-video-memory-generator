@@ -245,7 +245,7 @@
         "name": "register_config_commands",
         "complexity": 44,
         "line_start": 14,
-        "line_end": 204,
+        "line_end": 207,
         "line_complexities": [
           {
             "line": 24,
@@ -417,18 +417,26 @@
           },
           {
             "line": 193,
-            "complexity": 2
+            "complexity": 0
           },
           {
             "line": 194,
+            "complexity": 0
+          },
+          {
+            "line": 196,
+            "complexity": 2
+          },
+          {
+            "line": 197,
             "complexity": 3
           },
           {
-            "line": 198,
+            "line": 201,
             "complexity": 1
           },
           {
-            "line": 200,
+            "line": 203,
             "complexity": 1
           }
         ]

@@ -6,7 +6,6 @@ import json
 import logging
 import subprocess
 from pathlib import Path
-from typing import Protocol, runtime_checkable
 
 from immich_memories.processing.assembly_config import (
     AssemblyClip,
@@ -15,23 +14,6 @@ from immich_memories.processing.assembly_config import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-@runtime_checkable
-class VideoProber(Protocol):
-    """What consumers need from a video prober."""
-
-    def get_video_resolution(self, video_path: Path) -> tuple[int, int] | None: ...
-    def detect_best_resolution(self, clips: list[AssemblyClip]) -> tuple[int, int]: ...
-    def probe_duration(self, file_path: Path, stream_type: str = "audio") -> float: ...
-    def probe_framerate(self, path: Path) -> float: ...
-    def has_audio_stream(self, path: Path) -> bool: ...
-    def has_video_stream(self, path: Path) -> bool: ...
-    def probe_batch_durations(
-        self, batches: list[AssemblyClip]
-    ) -> tuple[list[float], list[float]]: ...
-    def detect_max_framerate(self, clips: list[AssemblyClip]) -> int: ...
-    def estimate_duration(self, clips: list[AssemblyClip]) -> float: ...
 
 
 class FFmpegProber:
@@ -398,7 +380,7 @@ class FFmpegProber:
 
         # Subtract transition overlaps
         if self.settings.transition == TransitionType.CROSSFADE and len(clips) > 1:
-            overlap = self.settings.transition_duration * (len(clips) - 1)
+            overlap = (self.settings.transition_duration or 0.5) * (len(clips) - 1)
             total -= overlap
 
         return max(0, total)

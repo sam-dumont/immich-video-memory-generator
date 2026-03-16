@@ -24,7 +24,7 @@ from immich_memories.processing.assembly_config import (
 )
 from immich_memories.processing.clip_encoder import ClipEncoder
 from immich_memories.processing.ffmpeg_filter_graph import ConcatService
-from immich_memories.processing.ffmpeg_prober import VideoProber
+from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.ffmpeg_runner import AssemblyContext
 from immich_memories.processing.filter_builder import FilterBuilder
 from immich_memories.processing.hdr_utilities import (
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 def resolve_target_resolution(
     settings: AssemblySettings,
-    prober: VideoProber,
+    prober: FFmpegProber,
     clips: list[AssemblyClip],
 ) -> tuple[int, int]:
     """Resolve target resolution from settings, auto-detection, or config default."""
@@ -63,7 +63,7 @@ def resolve_target_resolution(
 
 
 def _swap_if_portrait(
-    prober: VideoProber,
+    prober: FFmpegProber,
     clips: list[AssemblyClip],
     target_w: int,
     target_h: int,
@@ -78,7 +78,7 @@ def _swap_if_portrait(
 
 def create_assembly_context(
     settings: AssemblySettings,
-    prober: VideoProber,
+    prober: FFmpegProber,
     clips: list[AssemblyClip],
     target_w: int | None = None,
     target_h: int | None = None,
@@ -120,7 +120,7 @@ def create_assembly_context(
         clip_primaries=clip_primaries,
         colorspace_filter=colorspace_filter,
         target_fps=target_fps,
-        fade_duration=settings.transition_duration,
+        fade_duration=settings.transition_duration or 0.5,
     )
 
 
@@ -161,7 +161,7 @@ class AssemblyEngine:
     def __init__(
         self,
         settings: AssemblySettings,
-        prober: VideoProber,
+        prober: FFmpegProber,
         encoder: ClipEncoder,
         filter_builder: FilterBuilder,
         check_cancelled_fn: Callable[[], None],
@@ -186,7 +186,7 @@ class AssemblyEngine:
                 return output_path
             raise ValueError("No clips to assemble")
 
-        fade = self.settings.transition_duration
+        fade = self.settings.transition_duration or 0.5
         temp_dir = output_path.parent / ".assembly_temps"
         temp_dir.mkdir(parents=True, exist_ok=True)
         target_resolution = resolve_target_resolution(self.settings, self.prober, clips)
@@ -530,7 +530,7 @@ class AssemblyEngine:
             )
             self.concat.assemble_batch_direct(batch, intermediate_path, cb)
             batch_duration = sum(c.duration for c in batch)
-            batch_duration -= self.settings.transition_duration * (len(batch) - 1)
+            batch_duration -= (self.settings.transition_duration or 0.5) * (len(batch) - 1)
         return AssemblyClip(
             path=intermediate_path,
             duration=batch_duration,
