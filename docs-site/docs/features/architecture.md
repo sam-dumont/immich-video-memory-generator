@@ -35,7 +35,7 @@ CI runs in tiers, cheap to expensive. If lint fails in 10 seconds, there's no po
 - Dead code detection (Vulture)
 - Cyclomatic complexity (Xenon grade C)
 - Cognitive complexity checks
-- File length enforcement (500 lines max)
+- File length enforcement (800 lines max)
 - Refurb modernization checks
 - Dependency vulnerability audit (pip-audit)
 - Docstring coverage
@@ -67,7 +67,7 @@ CI runs in tiers, cheap to expensive. If lint fails in 10 seconds, there's no po
 | Lint + format | Ruff | Style issues, import ordering, unused imports |
 | Type check | mypy | Type mismatches, missing annotations |
 | Complexity | Xenon | Functions too complex to reason about (grade C max) |
-| File length | Custom script | Files over 500 lines (split into services) |
+| File length | Custom script | Files over 800 lines (split into services) |
 | Dead code | Vulture | Unused functions, variables, imports |
 | Duplication | Custom | Copy-pasted code blocks |
 | Security | Bandit + Semgrep | Common vulnerability patterns |
@@ -83,7 +83,7 @@ CI runs in tiers, cheap to expensive. If lint fails in 10 seconds, there's no po
 ### Adding a new processing capability
 
 1. Create a service class in the relevant package (e.g., `processing/my_service.py`)
-2. Keep it under 500 lines. If it needs more, split into a service + helpers file
+2. Keep it under 800 lines. If it needs more, split into a service + helpers file
 3. Inject it into the orchestrator's `__init__` in `video_assembler.py`
 4. Add tests in `tests/test_my_service.py`
 5. Run `make check` before committing
