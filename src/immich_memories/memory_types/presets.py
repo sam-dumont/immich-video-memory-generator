@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from immich_memories.memory_types.registry import MemoryType
 from immich_memories.timeperiod import DateRange
 
+_PRIORITY_MULTIPLIERS = {"low": 0.5, "medium": 1.0, "high": 1.5}
+
 
 @dataclass
 class ScoringProfile:
@@ -29,6 +31,30 @@ class ScoringProfile:
             "content_weight": self.content_weight,
             "duration_weight": self.duration_weight,
         }
+
+    @classmethod
+    def from_priorities(
+        cls,
+        people: str = "high",
+        quality: str = "medium",
+        moment: str = "medium",
+    ) -> ScoringProfile:
+        """Map 3 user-facing knobs to 6 internal weights."""
+        for name, value in (("people", people), ("quality", quality), ("moment", moment)):
+            if value not in _PRIORITY_MULTIPLIERS:
+                msg = f"invalid priority '{value}' for {name} (use low/medium/high)"
+                raise ValueError(msg)
+        p = _PRIORITY_MULTIPLIERS[people]
+        q = _PRIORITY_MULTIPLIERS[quality]
+        m = _PRIORITY_MULTIPLIERS[moment]
+        return cls(
+            face_weight=0.4 * p,
+            content_weight=0.0 * p,
+            motion_weight=0.25 * q,
+            stability_weight=0.2 * q,
+            audio_weight=0.15 * m,
+            duration_weight=0.15 * m,
+        )
 
 
 @dataclass
