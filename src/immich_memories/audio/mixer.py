@@ -326,16 +326,3 @@ def _build_ducking_filter(
     )
 
     return filter_parts
-
-
-# ── Re-exports for backwards compatibility ────────────────────────────────────
-# Stem ducking functions live in mixer_helpers.py but are re-exported here
-# so existing `from immich_memories.audio.mixer import ...` continues to work.
-# AudioMixer class lives in mixer_class.py.
-
-from immich_memories.audio.mixer_class import AudioMixer as AudioMixer
-from immich_memories.audio.mixer_helpers import (
-    StemDuckingLevels as StemDuckingLevels,
-    mix_audio_with_4stem_ducking as mix_audio_with_4stem_ducking,
-    mix_audio_with_stem_ducking as mix_audio_with_stem_ducking,
-)

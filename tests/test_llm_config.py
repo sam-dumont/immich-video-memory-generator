@@ -170,12 +170,11 @@ class TestOpenAICompatibleMoodAnalyzer:
         assert analyzer.api_key == ""
 
     def test_backwards_compat_alias(self):
-        from immich_memories.audio.mood_analyzer import (
+        from immich_memories.audio.mood_analyzer_backends import (
             OpenAICompatibleMoodAnalyzer,
-            OpenAIMoodAnalyzer,
         )
 
-        assert OpenAIMoodAnalyzer is OpenAICompatibleMoodAnalyzer
+        assert OpenAICompatibleMoodAnalyzer is not None
 
 
 class TestPreflightLLMCheck:

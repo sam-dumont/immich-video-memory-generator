@@ -2,8 +2,7 @@
 
 Core data models, grouping logic, and video quality analysis.
 Hashing functions are in duplicate_hashing.py; thumbnail clustering
-is in thumbnail_clustering.py. All public symbols are re-exported here
-for backwards compatibility.
+is in thumbnail_clustering.py.
 """
 
 from __future__ import annotations
@@ -20,18 +19,7 @@ import numpy as np
 from immich_memories.api.models import VideoClipInfo
 from immich_memories.config import get_config
 
-# Re-export hashing functions for backwards compatibility
-from .duplicate_hashing import (  # noqa: F401
-    compute_image_hash,
-    compute_thumbnail_hash,
-    compute_video_hash,
-    hamming_distance,
-)
-from .thumbnail_clustering import (  # noqa: F401
-    ThumbnailCluster,
-    cluster_thumbnails,
-    deduplicate_by_thumbnails,
-)
+from .duplicate_hashing import compute_video_hash, hamming_distance
 
 logger = logging.getLogger(__name__)
 

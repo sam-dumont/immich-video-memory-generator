@@ -889,7 +889,7 @@ class SceneScorer:
         """Get segments using scene detection or fixed windowing."""
         if should_use_scene_detection:
             try:
-                segments = self._generate_scene_aware_segments(
+                segments = generate_scene_aware_segments(
                     video_path=video_path,
                     max_segment_duration=config.analysis.max_segment_duration,
                     min_segment_duration=config.analysis.min_segment_duration,
@@ -900,7 +900,7 @@ class SceneScorer:
                 return segments
             except Exception as e:
                 logger.warning(f"Scene detection failed, falling back to fixed segments: {e}")
-        return self._generate_segments(video_path, segment_duration, overlap)
+        return generate_segments(video_path, segment_duration, overlap)
 
     def _log_duration_info(self, video_duration: float) -> None:
         """Log duration scoring parameters."""
@@ -920,15 +920,3 @@ class SceneScorer:
                 f"Duration scoring: source={video_duration:.1f}s (short) -> "
                 f"optimal clip={self._optimal_duration:.1f}s (base)"
             )
-
-    # Backward-compatible shims
-    def _generate_segments(self, video_path, segment_duration, overlap):
-        return generate_segments(video_path, segment_duration, overlap)
-
-    def _generate_scene_aware_segments(self, **kwargs):
-        return generate_scene_aware_segments(**kwargs)
-
-    def _subdivide_scene(self, scene, target_duration, overlap, fps):
-        return subdivide_scene(
-            scene=scene, target_duration=target_duration, overlap=overlap, fps=fps
-        )

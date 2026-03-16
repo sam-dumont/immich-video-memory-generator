@@ -23,15 +23,19 @@ from immich_memories.audio.generators.factory import create_generator
 from immich_memories.audio.generators.musicgen_backend import MusicGenBackend
 from immich_memories.audio.music_generator import (
     MUSIC_PROMPTS,
+    _get_base_prompt,
+)
+from immich_memories.audio.music_generator_client import (
+    MusicGenClient,
+    MusicGenClientConfig,
+)
+from immich_memories.audio.music_generator_models import (
     SEASONAL_MOODS,
     ClipMood,
     GeneratedMusic,
-    MusicGenClient,
-    MusicGenClientConfig,
     MusicGenerationResult,
     MusicStems,
     VideoTimeline,
-    _get_base_prompt,
     get_seasonal_prompt,
 )
 

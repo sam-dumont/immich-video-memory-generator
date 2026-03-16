@@ -25,10 +25,10 @@ from .animations import (
     get_animation_preset,
     reverse_preset,
 )
-from .backgrounds import create_animated_background, create_background_for_style
+from .backgrounds import create_background_for_style
+from .backgrounds_animated import create_animated_background
 from .fonts import get_font_path as get_cached_font_path
 from .styles import TitleStyle
-from .video_encoding import create_title_video  # noqa: F401 -- re-export for backwards compat
 
 logger = logging.getLogger(__name__)
 

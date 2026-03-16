@@ -96,7 +96,7 @@ def register_music_commands(main: click.Group) -> None:
         """Analyze a video to determine its mood for music selection."""
         import asyncio
 
-        from immich_memories.audio.mood_analyzer import get_mood_analyzer
+        from immich_memories.audio.mood_analyzer_backends import get_mood_analyzer
 
         config = ctx.obj["config"]
 
@@ -184,7 +184,7 @@ def register_music_commands(main: click.Group) -> None:
         """
         import asyncio
 
-        from immich_memories.audio.mixer import AudioMixer
+        from immich_memories.audio.mixer_class import AudioMixer
 
         ctx.obj["config"]
 

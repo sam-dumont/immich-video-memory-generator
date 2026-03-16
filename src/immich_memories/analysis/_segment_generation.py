@@ -16,7 +16,7 @@ from immich_memories.analysis.scenes import SceneDetector
 from immich_memories.analysis.silence_detection import detect_silence_gaps
 
 if TYPE_CHECKING:
-    from immich_memories.audio.content_analyzer import AudioAnalysisResult
+    from immich_memories.audio.audio_models import AudioAnalysisResult
 
 logger = logging.getLogger(__name__)
 

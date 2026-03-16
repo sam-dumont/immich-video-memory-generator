@@ -47,7 +47,7 @@ def _get_clip_month(clip) -> int | None:
 
 def _build_timeline(state):
     """Build a VideoTimeline from selected clips in state."""
-    from immich_memories.audio.music_generator import VideoTimeline
+    from immich_memories.audio.music_generator_models import VideoTimeline
 
     config = get_config()
     selected_clips = state.get_selected_clips()
@@ -85,10 +85,8 @@ async def _generate_music(
     progress_bar.value = 0.0
 
     try:
-        from immich_memories.audio.music_generator import (
-            MusicGenClientConfig,
-            generate_music_for_video,
-        )
+        from immich_memories.audio.music_generator import generate_music_for_video
+        from immich_memories.audio.music_generator_client import MusicGenClientConfig
 
         timeline = _build_timeline(state)
 

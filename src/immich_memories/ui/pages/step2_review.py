@@ -21,15 +21,10 @@ from immich_memories.ui.pages.clip_grid import (
     _update_duration_summary,
 )
 from immich_memories.ui.pages.clip_pipeline import (
-    PipelineCancelled,
     _render_pipeline_progress_ui,
     render_pipeline_summary,
 )
 from immich_memories.ui.pages.clip_review import _render_review_selected_clips
-from immich_memories.ui.pages.step2_helpers import (
-    format_duration,
-    get_thumbnail,
-)
 from immich_memories.ui.pages.step2_loading import (
     _load_clips,
     _render_cached_analysis_summary,
@@ -37,23 +32,6 @@ from immich_memories.ui.pages.step2_loading import (
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
-
-# Re-export for backward compatibility
-__all__ = [
-    "PipelineCancelled",
-    "clip_quality_score",
-    "format_duration",
-    "get_thumbnail",
-    "render_step2",
-]
-
-
-def clip_quality_score(c: VideoClipInfo) -> tuple[int, int, int, int]:
-    """Score a clip for quality comparison. Higher is better."""
-    from immich_memories.ui.pages.clip_grid import clip_quality_score as _cqs
-
-    return _cqs(c)
-
 
 # ============================================================================
 # Main Step 2 Render Function

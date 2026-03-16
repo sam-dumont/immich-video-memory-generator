@@ -64,11 +64,9 @@ async def apply_ai_music(
         else:
             # Generate music fresh (no preview was done)
             status_label.set_text("Generating AI music...")
-            from immich_memories.audio.music_generator import (
-                MusicGenClientConfig,
-                VideoTimeline,
-                generate_music_for_video,
-            )
+            from immich_memories.audio.music_generator import generate_music_for_video
+            from immich_memories.audio.music_generator_client import MusicGenClientConfig
+            from immich_memories.audio.music_generator_models import VideoTimeline
 
             clip_data: list[tuple[float, str, int | None]] = [
                 (

@@ -380,16 +380,3 @@ def create_background_array(
     """
     image = create_background_for_style(width, height, background_type, colors, angle)
     return np.array(image)
-
-
-# =============================================================================
-# Re-exports from backgrounds_animated for backward compatibility
-# =============================================================================
-
-from .backgrounds_animated import (  # noqa: E402, F401
-    AnimatedBackgroundConfig,
-    create_animated_background,
-    create_animated_gradient,
-    create_animated_radial,
-    create_animated_vignette,
-)

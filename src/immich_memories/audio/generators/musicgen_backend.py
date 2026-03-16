@@ -31,7 +31,7 @@ class MusicGenBackend(MusicGenerator):
 
     def __init__(self, config=None):
         # Import here to avoid circular deps - this module is the bridge
-        from immich_memories.audio.music_generator import (
+        from immich_memories.audio.music_generator_client import (
             MusicGenClient,
             MusicGenClientConfig,
         )
@@ -44,7 +44,7 @@ class MusicGenBackend(MusicGenerator):
         return "MusicGen"
 
     async def __aenter__(self):
-        from immich_memories.audio.music_generator import MusicGenClient
+        from immich_memories.audio.music_generator_client import MusicGenClient
 
         self._client = MusicGenClient(self._config)
         await self._client.__aenter__()
@@ -58,7 +58,7 @@ class MusicGenBackend(MusicGenerator):
     async def is_available(self) -> bool:
         """Check if the MusicGen API server is reachable."""
         if self._client is None:
-            from immich_memories.audio.music_generator import MusicGenClient
+            from immich_memories.audio.music_generator_client import MusicGenClient
 
             async with MusicGenClient(self._config) as client:
                 try:
