@@ -296,7 +296,7 @@ jobs:
           git fetch origin main --depth=1
           make diff-cover-ci
 
-      - name: Upload coverage (unit + local integration)
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
         with:
@@ -305,11 +305,13 @@ jobs:
           fail_ci_if_error: false
 
       - name: Upload test results to Codecov
+        uses: codecov/codecov-action@v5
         if: ${{ !cancelled() && matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest' }}
-        uses: codecov/test-results-action@v1
         with:
           files: junit.xml,tests/integration-junit.xml
           token: ${{ secrets.CODECOV_TOKEN }}
+          report_type: test_results
+          fail_ci_if_error: false
 
   test-extras:
     name: Test Extras (${{ matrix.os }})
