@@ -37,9 +37,34 @@ from immich_memories.config_models import (
 )
 from immich_memories.scheduling.models import SchedulerConfig
 
+# Tier 2 sections — grouped under `advanced:` in YAML, flat on Config at runtime.
+_TIER2_SECTIONS = frozenset(
+    {
+        "analysis",
+        "hardware",
+        "llm",
+        "musicgen",
+        "ace_step",
+        "content_analysis",
+        "audio_content",
+        "server",
+    }
+)
+
 
 class Config(BaseSettings):
-    """Main configuration for Immich Memories."""
+    """Main configuration for Immich Memories.
+
+    Config tiers (YAML layout):
+      Tier 1 (top level): immich, defaults, output, audio, title_screens,
+                           cache, upload, trips
+      Tier 2 (advanced:):  analysis, hardware, llm, musicgen, ace_step,
+                           content_analysis, audio_content, server
+      Tier 3 (internal):   scheduler, title_llm
+
+    At runtime, ALL sections are flat fields on Config (config.analysis, etc.).
+    The tier grouping only affects YAML serialization.
+    """
 
     model_config = SettingsConfigDict(
         env_prefix="IMMICH_MEMORIES_",
@@ -70,20 +95,42 @@ class Config(BaseSettings):
 
     @classmethod
     def from_yaml(cls, path: Path) -> Config:
-        """Load configuration from a YAML file."""
+        """Load configuration from a YAML file.
+
+        Accepts both formats:
+          - Flat: all sections at top level (legacy)
+          - Tiered: tier 2 sections nested under ``advanced:``
+        """
         if not path.exists():
             return cls()
 
         with path.open() as f:
             data = yaml.safe_load(f) or {}
 
+        # Flatten advanced: namespace → top-level fields
+        if "advanced" in data and isinstance(data["advanced"], dict):
+            advanced = data.pop("advanced")
+            for key, value in advanced.items():
+                if key not in data:  # top-level keys take precedence
+                    data[key] = value
+
         return cls(**data)
 
     def save_yaml(self, path: Path) -> None:
-        """Save configuration to a YAML file."""
+        """Save configuration to a YAML file (tiered format)."""
         path.parent.mkdir(parents=True, exist_ok=True)
+        data = self.model_dump()
+
+        # Group tier 2 sections under advanced:
+        advanced: dict = {}
+        for key in _TIER2_SECTIONS:
+            if key in data:
+                advanced[key] = data.pop(key)
+        if advanced:
+            data["advanced"] = advanced
+
         with path.open("w") as f:
-            yaml.dump(self.model_dump(), f, default_flow_style=False, sort_keys=False)
+            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
         # Restrict config file permissions (contains API keys)
         with contextlib.suppress(OSError):
             path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0o600 - owner read/write only
