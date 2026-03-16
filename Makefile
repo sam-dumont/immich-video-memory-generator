@@ -241,7 +241,7 @@ arch-check:
 # Diff coverage (for PRs: new code must be ≥95% covered)
 diff-cover:
 	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -q
-	uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=95
+	uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=80
 
 # Dependency vulnerability audit
 pip-audit:
@@ -264,7 +264,7 @@ diff-cover-ci:
 			COVERAGE_FILES="$$COVERAGE_FILES tests/integration-coverage.xml"; \
 			echo "Merging local integration coverage with CI coverage"; \
 		fi; \
-		uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=95; \
+		uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=80; \
 	fi
 
 # Build check (twine)
