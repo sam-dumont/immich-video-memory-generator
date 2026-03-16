@@ -204,9 +204,9 @@ cognitive-complexity:
 duplication:
 	npx jscpd src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python --gitignore
 
-# Modernization lint
+# Modernization lint (cd src avoids duplicate module detection, --config-file reads ignores)
 refurb:
-	cd src && uv run refurb immich_memories/ --quiet
+	cd src && uv run refurb immich_memories/ --quiet --config-file ../pyproject.toml
 
 # Semgrep SAST (cross-file security analysis)
 # Excludes sqlalchemy-execute-raw-query: our SQL uses ?-parameterized values,
@@ -235,7 +235,9 @@ diff-cover:
 
 # Dependency vulnerability audit
 pip-audit:
-	uvx pip-audit -r <(uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==') --strict
+	uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==' -e '^audioop-lts==' > /tmp/pip-audit-reqs.txt
+	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict
+	rm -f /tmp/pip-audit-reqs.txt
 
 # Ensure dev dependencies are installed
 ensure-dev:
