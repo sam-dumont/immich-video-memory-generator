@@ -371,7 +371,7 @@ jobs:
   # ── Summary gate ──────────────────────────────────────────────────────────
   ci-success:
     name: CI Success
-    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique, test, test-extras, build, docs]
+    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique, test, test-extras, build, docker, docs]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -393,9 +393,11 @@ jobs:
             "${{ needs.test.result }}"
             "${{ needs.test-extras.result }}"
             "${{ needs.build.result }}"
+            "${{ needs.docker.result }}"
             "${{ needs.docs.result }}"
           )
           for r in "${results[@]}"; do
-            [[ "$r" != "success" ]] && echo "A job failed: $r" && exit 1
+            # Allow "success" and "skipped" (conditional jobs like docker)
+            [[ "$r" != "success" && "$r" != "skipped" ]] && echo "A job failed: $r" && exit 1
           done
           echo "All jobs passed!"
