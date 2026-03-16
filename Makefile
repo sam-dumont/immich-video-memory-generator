@@ -280,12 +280,8 @@ critique:  ## Run self-critique checks for AI code smells
 	@! grep -rn "to stay within\|to keep.*under.*line\|keep files under" src/ --include="*.py" || (echo "FAIL: Fix these splits" && exit 1)
 	@echo "Checking for wildcard re-exports (outside __init__)..."
 	@! grep -rn "from .* import \*" src/ --include="*.py" | grep -v __init__ || (echo "WARN: Wildcard re-exports found" && exit 1)
-	@echo "Checking for mock-heavy tests (>5 mocks per test)..."
-	@python3 -c "import pathlib, re; \
-	files = list(pathlib.Path('tests').rglob('test_*.py')); \
-	[print(f'HIGH-MOCK: {f}:{i+1}') for f in files if '__pycache__' not in str(f) \
-	for i, line in enumerate(f.read_text().splitlines()) \
-	if 'Mock()' in line or '@patch' in line]" 2>/dev/null | head -20 || true
+	@echo "Checking test quality (mock ratios, mock-only assertions, excessive patches)..."
+	@uv run python scripts/critique_tests.py
 	@echo "Self-critique complete."
 
 # Pre-commit hooks

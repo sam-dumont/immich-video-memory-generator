@@ -312,6 +312,24 @@ jobs:
 
       - run: make test
 
+  test-integration:
+    name: Integration Tests (FFmpeg)
+    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - run: make dev
+
+      - name: Run integration tests
+        run: make test-integration
+
   # ── Tier 3: Build + Docker (most expensive, after tests) ─────────────────
   build:
     name: Build Package
@@ -371,7 +389,7 @@ jobs:
   # ── Summary gate ──────────────────────────────────────────────────────────
   ci-success:
     name: CI Success
-    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique, test, test-extras, build, docker, docs]
+    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique, test, test-extras, test-integration, build, docker, docs]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -392,6 +410,7 @@ jobs:
             "${{ needs.critique.result }}"
             "${{ needs.test.result }}"
             "${{ needs.test-extras.result }}"
+            "${{ needs.test-integration.result }}"
             "${{ needs.build.result }}"
             "${{ needs.docker.result }}"
             "${{ needs.docs.result }}"
