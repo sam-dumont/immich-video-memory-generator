@@ -240,7 +240,7 @@ class RunDatabase:
             params.append(run_id)
 
             conn.execute(
-                f"UPDATE pipeline_runs SET {', '.join(updates)} WHERE run_id = ?",  # noqa: S608 - column names are hardcoded, values are parameterized
+                f"UPDATE pipeline_runs SET {', '.join(updates)} WHERE run_id = ?",  # noqa: S608  # nosemgrep: sqlalchemy-execute-raw-query — column names hardcoded, values parameterized
                 params,
             )
             conn.commit()

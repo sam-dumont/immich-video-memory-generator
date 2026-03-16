@@ -301,7 +301,9 @@ class VideoAnalysisCache:
             ("audio_categories", "TEXT"),  # JSON array
         ]
         for col_name, col_type in columns:
-            conn.execute(f"ALTER TABLE video_segments ADD COLUMN {col_name} {col_type}")
+            conn.execute(
+                f"ALTER TABLE video_segments ADD COLUMN {col_name} {col_type}"
+            )  # nosemgrep: sqlalchemy-execute-raw-query — col_name/col_type are hardcoded above
         logger.info("Added LLM and audio_categories columns to video_segments")
 
     # =========================================================================
@@ -379,7 +381,7 @@ class VideoAnalysisCache:
         with self._get_connection() as conn:
             placeholders = ",".join("?" * len(asset_ids))
             rows = conn.execute(
-                f"SELECT * FROM video_metadata WHERE asset_id IN ({placeholders})",  # noqa: S608
+                f"SELECT * FROM video_metadata WHERE asset_id IN ({placeholders})",  # noqa: S608  # nosemgrep: sqlalchemy-execute-raw-query — placeholders are parameterized ?-marks
                 asset_ids,
             ).fetchall()
 
@@ -823,7 +825,7 @@ class VideoAnalysisCache:
             # Get cached asset IDs
             placeholders = ",".join("?" * len(asset_ids))
             rows = conn.execute(
-                f"SELECT asset_id, checksum FROM video_analysis WHERE asset_id IN ({placeholders})",  # noqa: S608
+                f"SELECT asset_id, checksum FROM video_analysis WHERE asset_id IN ({placeholders})",  # noqa: S608  # nosemgrep: sqlalchemy-execute-raw-query — parameterized ?-marks
                 asset_ids,
             ).fetchall()
 
