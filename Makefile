@@ -106,6 +106,9 @@ test-integration:  ## Run ALL integration-marked tests (requires FFmpeg), saves 
 	uv run pytest -v -m integration \
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/integration-coverage.xml \
 		--cov-fail-under=0
+	@# Fix absolute paths in coverage XML to relative (portable between local and CI)
+	@sed -i.bak 's|<source>.*src/immich_memories</source>|<source>src/immich_memories</source>|g' tests/integration-coverage.xml \
+		&& rm -f tests/integration-coverage.xml.bak
 
 mutation:  ## Run mutation testing (slow — weekly CI or local deep validation)
 	uv run mutmut run --max-children 4
