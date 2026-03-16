@@ -367,6 +367,7 @@ jobs:
   # ── Summary gate ──────────────────────────────────────────────────────────
   ci-success:
     name: CI Success
+    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique, test, test-extras, build, docs]
     runs-on: ubuntu-latest
     if: always()
     steps:
