@@ -30,6 +30,7 @@ from immich_memories.config_models import (
     LLMConfig,
     MusicGenConfig,
     OutputConfig,
+    ScoringPriorityConfig,
     ServerConfig,
     TitleScreenConfig,
     TripsConfig,
@@ -90,6 +91,7 @@ class Config(BaseSettings):
     audio_content: AudioContentConfig = Field(default_factory=AudioContentConfig)
     title_screens: TitleScreenConfig = Field(default_factory=TitleScreenConfig)
     upload: UploadConfig = Field(default_factory=UploadConfig)
+    scoring_priority: ScoringPriorityConfig = Field(default_factory=ScoringPriorityConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     trips: TripsConfig = Field(default_factory=TripsConfig)
 
