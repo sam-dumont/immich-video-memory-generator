@@ -1,6 +1,7 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
+.PHONY: help install dev dev-ci run preflight test test-cov test-cov-xml test-integration test-fast mutation benchmark lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
 
 # Default target
 help:
@@ -108,6 +109,9 @@ test-cov:
 	uv run pytest --cov=src/immich_memories --cov-report=html --cov-report=term-missing
 	@echo "Coverage report: htmlcov/index.html"
 
+test-cov-xml:  ## Run tests with XML coverage (for CI upload)
+	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -v
+
 test-fast:
 	uv run pytest -v -m "not slow"
 
@@ -184,7 +188,7 @@ bandit-ci:
 
 # Commit message lint (Commitizen conventional commits)
 commitlint:
-	uvx --from commitizen cz check --rev-range HEAD~1..HEAD
+	uvx --from commitizen cz check --rev-range $${COMMIT_RANGE:-HEAD~1..HEAD}
 
 # Cognitive complexity (complements cyclomatic complexity)
 cognitive-complexity:
@@ -235,6 +239,19 @@ pip-audit:
 	uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==' -e '^audioop-lts==' > /tmp/pip-audit-reqs.txt
 	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict
 	rm -f /tmp/pip-audit-reqs.txt
+
+# Diff coverage for PRs (skips on large refactors >1000 changed lines)
+diff-cover-ci:
+	@CHANGED=$$(git diff --stat origin/main...HEAD -- '*.py' 2>/dev/null | tail -1 | grep -oE '[0-9]+' | head -1); \
+	if [ "$${CHANGED:-0}" -gt 1000 ]; then \
+		echo "WARN: Skipping diff-cover: $${CHANGED} lines changed (threshold: 1000)"; \
+	else \
+		uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=95; \
+	fi
+
+# Build check (twine)
+build-check:
+	uvx twine check dist/*
 
 # Ensure dev dependencies are installed
 ensure-dev:

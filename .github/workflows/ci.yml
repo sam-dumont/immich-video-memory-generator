@@ -44,7 +44,7 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: astral-sh/setup-uv@v7
       - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: uvx --from commitizen cz check --rev-range origin/${{ github.base_ref }}..HEAD
+      - run: COMMIT_RANGE="origin/${{ github.base_ref }}..HEAD" make commitlint
 
   lint:
     name: Lint + Format
@@ -163,7 +163,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - run: npx jscpd src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python --gitignore
+      - run: make duplication
 
   critique:
     name: AI Smell Audit
@@ -260,19 +260,13 @@ jobs:
       - run: make dev
 
       - name: Run tests with coverage
-        run: uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -v
+        run: make test-cov-xml
 
       - name: Diff coverage (≥95% on changed lines)
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
         run: |
           git fetch origin main --depth=1
-          # Skip diff-cover on large PRs (refactors move code without adding tests)
-          CHANGED=$(git diff --stat origin/${{ github.base_ref }}...HEAD -- '*.py' | tail -1 | grep -oE '[0-9]+' | head -1)
-          if [ "${CHANGED:-0}" -gt 1000 ]; then
-            echo "::warning::Skipping diff-cover: ${CHANGED} lines changed (threshold: 1000). Run manually for large refactors."
-          else
-            uvx diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref }} --fail-under=95
-          fi
+          make diff-cover-ci
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
@@ -330,7 +324,7 @@ jobs:
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make build
       - name: Check package
-        run: uvx twine check dist/*
+        run: make build-check
       - uses: actions/upload-artifact@v5
         with:
           name: dist-ci
