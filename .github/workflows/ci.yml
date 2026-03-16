@@ -31,6 +31,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
 
@@ -43,6 +44,9 @@ jobs:
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
       - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: COMMIT_RANGE="origin/${{ github.base_ref }}..HEAD" make commitlint
 
@@ -53,7 +57,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
       - name: Ruff check
@@ -68,7 +74,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
       - run: make typecheck
@@ -80,7 +88,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
       - run: make dead-code
@@ -92,7 +102,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
       - run: make complexity
@@ -104,7 +116,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
       - run: make cognitive-complexity
@@ -116,7 +130,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
       - run: make file-length
@@ -128,7 +144,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
       - run: make refurb
@@ -140,7 +158,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
       - run: make dep-check
@@ -152,7 +172,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
       - run: make arch-check
@@ -172,7 +194,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
       - run: make critique
@@ -189,7 +213,9 @@ jobs:
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
 
@@ -246,7 +272,9 @@ jobs:
         with:
           fetch-depth: 0  # Full history for diff-cover
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ matrix.python-version }}
 
       - name: Install FFmpeg (Linux)
@@ -257,7 +285,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ffmpeg
 
-      - run: make dev
+      - run: make dev-ci
 
       - name: Run tests with coverage
         run: make test-cov-xml
@@ -290,7 +318,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install "3.13"
 
       - name: Install FFmpeg (Linux)
@@ -319,7 +349,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true }
+        with:
+          enable-cache: true
+          prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install FFmpeg
