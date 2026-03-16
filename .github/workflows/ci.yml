@@ -321,6 +321,7 @@ jobs:
         with:
           enable-cache: true
           prune-cache: false
+          cache-suffix: extras
       - run: uv python install "3.13"
 
       - name: Install FFmpeg (Linux)
