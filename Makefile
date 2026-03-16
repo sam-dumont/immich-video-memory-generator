@@ -249,8 +249,8 @@ pip-audit:
 # Diff coverage for PRs — merges CI unit coverage with local integration coverage
 # (committed by pre-commit hook as tests/integration-coverage.xml)
 diff-cover-ci:
-	@SRC_CHANGED=$$(git diff --numstat origin/main...HEAD -- 'src/**/*.py' 2>/dev/null | awk '{s+=$$1+$$2} END {print s+0}'); \
-	echo "Changed source lines: $${SRC_CHANGED}"; \
+	@SRC_CHANGED=$$(git diff --numstat origin/main...HEAD -- '*.py' 2>/dev/null | grep '^' | grep -v 'tests/' | awk '{s+=$$1+$$2} END {print s+0}'); \
+	echo "Changed source lines (excl tests): $${SRC_CHANGED}"; \
 	if [ "$${SRC_CHANGED}" -gt 1000 ]; then \
 		echo "WARN: Skipping diff-cover: $${SRC_CHANGED} lines changed (>1000). Large refactor."; \
 	elif [ "$${SRC_CHANGED}" -lt 10 ]; then \
