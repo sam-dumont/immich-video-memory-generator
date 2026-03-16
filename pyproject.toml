@@ -522,6 +522,8 @@ forbidden_modules = ["immich_memories.cli"]
 # FURB184 (chained assignments) is a style preference — config + result = func(config)
 # is more readable than result = func(MockConfig()) in tests
 ignore = ["FURB184"]
+# refurb sees src/ layout modules twice — only scan the package, not src/
+python_version = "3.11"
 
 [tool.mutmut]
 paths_to_mutate = ["src/immich_memories/"]

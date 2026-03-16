@@ -33,19 +33,21 @@ repos:
       - id: commitizen
 
 
-  # ~0.3s — Modernization patterns (only checks changed files)
-  - repo: https://github.com/dosisod/refurb
-    rev: v2.0.0
-    hooks:
-      - id: refurb
-        additional_dependencies: [pydantic]
-
   # Local hooks using Makefile targets
+  # NOTE: refurb moved from upstream repo to local hook below (uses make refurb
+  # to avoid src/ layout duplicate module detection issue)
   - repo: local
     hooks:
       - id: file-length
         name: File length gate (max 800 lines)
         entry: make file-length
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: refurb
+        name: Modernization (refurb)
+        entry: make refurb
         language: system
         pass_filenames: false
         types: [python]
