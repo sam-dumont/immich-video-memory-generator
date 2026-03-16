@@ -15,7 +15,7 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     _get_rotation_filter,
 )
-from immich_memories.processing.ffmpeg_prober import VideoProber
+from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.ffmpeg_runner import AssemblyContext
 from immich_memories.processing.hdr_utilities import (
     _get_hdr_conversion_filter,
@@ -33,7 +33,7 @@ class FilterBuilder:
     def __init__(
         self,
         settings: AssemblySettings,
-        prober: VideoProber,
+        prober: FFmpegProber,
         face_center_fn: Callable[[Path], tuple[float, float] | None],
     ) -> None:
         self.settings = settings

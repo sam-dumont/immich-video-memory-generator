@@ -200,3 +200,16 @@ class TestCLIMemoryTypeResolve:
             config=config,
         )
         assert result.exit_code != 0
+
+
+class TestPreflightCommand:
+    """Test preflight command with real checks (no mocks)."""
+
+    def test_preflight_with_no_servers_shows_errors(self):
+        """Preflight with no servers configured should show errors but not crash."""
+        config = Config()  # Default config — no real servers
+        result = _invoke(["preflight"], config=config)
+
+        # Should complete (exit 0 or 1) and display the results table
+        assert result.exit_code in (0, 1)
+        assert "Preflight" in result.output or "Provider" in result.output

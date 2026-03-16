@@ -25,7 +25,7 @@ from immich_memories.processing.hdr_utilities import (
 
 if TYPE_CHECKING:
     from immich_memories.processing.clip_encoder import ClipEncoder
-    from immich_memories.processing.ffmpeg_prober import VideoProber
+    from immich_memories.processing.ffmpeg_prober import FFmpegProber
     from immich_memories.processing.filter_builder import FilterBuilder
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ class ConcatService:
     def __init__(
         self,
         settings: AssemblySettings,
-        prober: VideoProber,
+        prober: FFmpegProber,
         encoder: ClipEncoder,
         filter_builder: FilterBuilder,
     ) -> None:
@@ -156,7 +156,7 @@ class ConcatService:
             inputs.extend(["-i", str(f)])
 
         video_codec_args = _get_gpu_encoder_args(
-            crf=self.settings.output_crf,
+            crf=self.settings.output_crf or 18,
             preserve_hdr=self.settings.preserve_hdr,
         )
 
@@ -215,7 +215,7 @@ class ConcatService:
         filter_complex = "".join(filter_parts)
 
         video_codec_args = _get_gpu_encoder_args(
-            crf=self.settings.output_crf,
+            crf=self.settings.output_crf or 18,
             preserve_hdr=self.settings.preserve_hdr,
         )
 
@@ -321,7 +321,7 @@ class ConcatService:
         filter_complex = ";".join(filter_parts)
 
         video_codec_args = _get_gpu_encoder_args(
-            crf=self.settings.output_crf,
+            crf=self.settings.output_crf or 18,
             preserve_hdr=self.settings.preserve_hdr,
         )
 

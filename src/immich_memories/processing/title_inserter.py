@@ -13,7 +13,7 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     TransitionType,
 )
-from immich_memories.processing.ffmpeg_prober import VideoProber
+from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.hdr_utilities import has_any_hdr_clip
 from immich_memories.processing.scaling_utilities import aggregate_mood_from_clips
 
@@ -29,7 +29,7 @@ AssembleFn = Callable[
 class TitleInserter:
     """Inserts title screens, month/year dividers, and location cards into clip lists."""
 
-    def __init__(self, settings: AssemblySettings, prober: VideoProber) -> None:
+    def __init__(self, settings: AssemblySettings, prober: FFmpegProber) -> None:
         self.settings = settings
         self.prober = prober
 

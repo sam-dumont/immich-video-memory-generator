@@ -98,7 +98,7 @@ class AssemblySettings:
     """Settings for video assembly."""
 
     transition: TransitionType = TransitionType.CROSSFADE
-    transition_duration: float = 0.5
+    transition_duration: float | None = None
     music_path: Path | None = None
     music_volume: float = 0.3
     # Stem-based ducking paths (from MusicGen/Demucs separation)
@@ -113,7 +113,7 @@ class AssemblySettings:
     date_format: str = "%B %d, %Y"
     output_format: str = "mp4"
     output_codec: str = "h264"
-    output_crf: int = 18
+    output_crf: int | None = None
     # HDR and quality preservation
     preserve_hdr: bool = True  # Use HEVC with HDR metadata
     preserve_framerate: bool = True  # Keep original frame rate (e.g., 60fps)

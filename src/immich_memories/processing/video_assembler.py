@@ -54,9 +54,9 @@ class VideoAssembler:
         self._face_cache: OrderedDict[Path, tuple[float, float] | None] = OrderedDict()
 
         config = get_config()
-        if self.settings.output_crf == 18:
+        if self.settings.output_crf is None:
             self.settings.output_crf = config.output.crf
-        if self.settings.transition_duration == 0.5:
+        if self.settings.transition_duration is None:
             self.settings.transition_duration = config.defaults.transition_duration
 
         # Wire composed services

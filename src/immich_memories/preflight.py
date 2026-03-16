@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 
 import httpx
@@ -30,32 +30,6 @@ class CheckResult:
     status: CheckStatus
     message: str
     details: str | None = None
-
-
-@dataclass
-class PreflightResults:
-    """Results of all preflight checks."""
-
-    checks: list[CheckResult] = field(default_factory=list)
-
-    @property
-    def all_ok(self) -> bool:
-        """Check if all checks passed (no errors)."""
-        return all(c.status != CheckStatus.ERROR for c in self.checks)
-
-    @property
-    def has_warnings(self) -> bool:
-        """Check if there are any warnings."""
-        return any(c.status == CheckStatus.WARNING for c in self.checks)
-
-    @property
-    def has_errors(self) -> bool:
-        """Check if there are any errors."""
-        return any(c.status == CheckStatus.ERROR for c in self.checks)
-
-    def add(self, result: CheckResult) -> None:
-        """Add a check result."""
-        self.checks.append(result)
 
 
 def check_immich(config: Config | None = None) -> CheckResult:
@@ -308,26 +282,20 @@ def check_hardware() -> CheckResult:
         )
 
 
-def run_preflight_checks(config: Config | None = None) -> PreflightResults:
+def run_preflight_checks(config: Config | None = None) -> list[CheckResult]:
     """Run all preflight checks.
 
     Args:
         config: Configuration to use (defaults to global config).
 
     Returns:
-        PreflightResults containing all check results.
+        List of check results.
     """
     if config is None:
         config = get_config()
 
-    results = PreflightResults()
-
-    # Required checks
-    results.add(check_immich(config))
-
-    # LLM provider check
-    results.add(check_llm(config))
-    # Hardware check
-    results.add(check_hardware())
-
-    return results
+    return [
+        check_immich(config),
+        check_llm(config),
+        check_hardware(),
+    ]

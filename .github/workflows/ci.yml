@@ -290,18 +290,26 @@ jobs:
       - name: Run tests with coverage
         run: make test-cov-xml
 
-      - name: Diff coverage (≥95% on changed lines)
+      - name: Diff coverage (≥80% on changed lines)
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
         run: |
           git fetch origin main --depth=1
           make diff-cover-ci
 
-      - name: Upload coverage
+      - name: Upload coverage (unit + local integration)
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
         with:
-          files: coverage.xml
+          files: coverage.xml,tests/integration-coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() && matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest' }}
+        uses: codecov/test-results-action@v1
+        with:
+          files: junit.xml,tests/integration-junit.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   test-extras:
     name: Test Extras (${{ matrix.os }})

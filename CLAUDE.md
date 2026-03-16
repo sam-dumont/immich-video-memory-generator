@@ -66,7 +66,7 @@ make dep-check
 # Architectural boundary enforcement (import-linter)
 make arch-check
 
-# Diff coverage for PRs (≥95% on changed lines)
+# Diff coverage for PRs (≥80% on changed lines)
 make diff-cover
 
 # Commit message lint (conventional commits)

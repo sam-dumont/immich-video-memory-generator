@@ -15,7 +15,7 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     _get_rotation_filter,
 )
-from immich_memories.processing.ffmpeg_prober import VideoProber
+from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.ffmpeg_runner import (
     AssemblyContext,
     _run_ffmpeg_with_progress,
@@ -81,7 +81,7 @@ class ClipEncoder:
     def __init__(
         self,
         settings: AssemblySettings,
-        prober: VideoProber,
+        prober: FFmpegProber,
         face_center_fn: Callable[[Path], tuple[float, float] | None],
     ) -> None:
         self.settings = settings
@@ -161,7 +161,7 @@ class ClipEncoder:
         )
 
         video_codec_args = _get_gpu_encoder_args(
-            crf=self.settings.output_crf,
+            crf=self.settings.output_crf or 18,
             preserve_hdr=self.settings.preserve_hdr,
             hdr_type=hdr_type,
         )
@@ -285,7 +285,7 @@ class ClipEncoder:
         validate_video_path(input_path, must_exist=True)
 
         video_codec_args = _get_gpu_encoder_args(
-            crf=self.settings.output_crf,
+            crf=self.settings.output_crf or 18,
             preserve_hdr=self.settings.preserve_hdr,
         )
 
@@ -370,7 +370,7 @@ class ClipEncoder:
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> subprocess.CompletedProcess:
         video_codec_args = _get_gpu_encoder_args(
-            crf=self.settings.output_crf,
+            crf=self.settings.output_crf or 18,
             preserve_hdr=self.settings.preserve_hdr,
             hdr_type=ctx.hdr_type,
         )

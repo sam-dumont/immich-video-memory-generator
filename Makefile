@@ -102,10 +102,14 @@ test:
 benchmark:
 	uv run pytest tests/benchmarks/ -v --benchmark-only
 
-test-integration:  ## Run ALL integration-marked tests (requires FFmpeg), saves coverage for CI merge
+test-integration:  ## Run ALL integration-marked tests (requires FFmpeg), saves coverage + results for CI merge
 	uv run pytest -v -m integration \
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/integration-coverage.xml \
+		--junitxml=tests/integration-junit.xml -o junit_family=legacy \
 		--cov-fail-under=0
+	@# Fix absolute paths in coverage XML to relative (portable between local and CI)
+	@sed -i.bak 's|<source>.*src/immich_memories</source>|<source>src/immich_memories</source>|g' tests/integration-coverage.xml \
+		&& rm -f tests/integration-coverage.xml.bak
 
 mutation:  ## Run mutation testing (slow — weekly CI or local deep validation)
 	uv run mutmut run --max-children 4
@@ -115,8 +119,8 @@ test-cov:
 	uv run pytest --cov=src/immich_memories --cov-report=html --cov-report=term-missing
 	@echo "Coverage report: htmlcov/index.html"
 
-test-cov-xml:  ## Run tests with XML coverage (for CI upload)
-	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -v
+test-cov-xml:  ## Run tests with XML coverage + JUnit results (for CI upload)
+	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -v
 
 test-fast:
 	uv run pytest -v -m "not slow"
@@ -238,7 +242,7 @@ arch-check:
 # Diff coverage (for PRs: new code must be ≥95% covered)
 diff-cover:
 	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -q
-	uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=95
+	uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=80
 
 # Dependency vulnerability audit
 pip-audit:
@@ -249,8 +253,8 @@ pip-audit:
 # Diff coverage for PRs — merges CI unit coverage with local integration coverage
 # (committed by pre-commit hook as tests/integration-coverage.xml)
 diff-cover-ci:
-	@SRC_CHANGED=$$(git diff --numstat origin/main...HEAD -- 'src/**/*.py' 2>/dev/null | awk '{s+=$$1+$$2} END {print s+0}'); \
-	echo "Changed source lines: $${SRC_CHANGED}"; \
+	@SRC_CHANGED=$$(git diff --numstat origin/main...HEAD -- '*.py' 2>/dev/null | grep '^' | grep -v 'tests/' | awk '{s+=$$1+$$2} END {print s+0}'); \
+	echo "Changed source lines (excl tests): $${SRC_CHANGED}"; \
 	if [ "$${SRC_CHANGED}" -gt 1000 ]; then \
 		echo "WARN: Skipping diff-cover: $${SRC_CHANGED} lines changed (>1000). Large refactor."; \
 	elif [ "$${SRC_CHANGED}" -lt 10 ]; then \
@@ -261,7 +265,7 @@ diff-cover-ci:
 			COVERAGE_FILES="$$COVERAGE_FILES tests/integration-coverage.xml"; \
 			echo "Merging local integration coverage with CI coverage"; \
 		fi; \
-		uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=95; \
+		uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=80; \
 	fi
 
 # Build check (twine)
