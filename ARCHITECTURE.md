@@ -98,10 +98,7 @@ src/immich_memories/
 │   ├── duplicates.py           # Duplicate/near-duplicate detection
 │   ├── duplicate_hashing.py    # Perceptual hashing for duplicates
 │   ├── thumbnail_clustering.py # Thumbnail-based clustering
-│   ├── scoring.py              # Quality scoring (delegates to sub-modules)
-│   ├── scoring_face.py         # Face detection scoring
-│   ├── scoring_motion.py       # Motion/stability scoring
-│   ├── scoring_segments.py     # Segment generation helpers
+│   ├── scoring.py              # Quality scoring (face, motion, duration, segments)
 │   ├── scoring_factory.py      # Scorer factory & sampling
 │   ├── scenes.py               # Scene detection
 │   ├── silence_detection.py    # Audio silence detection
