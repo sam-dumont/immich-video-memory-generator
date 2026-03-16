@@ -228,6 +228,11 @@ jobs:
           git push origin "v$NEXT_VERSION"
 
       - name: Build package
+        env:
+          # Pin version explicitly so hatch-vcs/setuptools-scm doesn't
+          # produce a .devN version from a dirty tree (e.g. uv sync
+          # updating uv.lock before the build step).
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ needs.analyze.outputs.next_version }}
         run: uv build
 
       - name: Show built version
