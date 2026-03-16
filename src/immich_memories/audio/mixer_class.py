@@ -122,7 +122,7 @@ class AudioMixer:
         Returns:
             Path to selected music, or None if no music found (video copied to output).
         """
-        from immich_memories.audio.mood_analyzer import get_mood_analyzer
+        from immich_memories.audio.mood_analyzer_backends import get_mood_analyzer
         from immich_memories.audio.music_sources import LocalMusicSource
 
         # Analyze video mood if not provided

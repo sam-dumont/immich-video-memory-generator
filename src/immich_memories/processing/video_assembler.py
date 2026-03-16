@@ -23,7 +23,6 @@ from immich_memories.processing.scaling_utilities import (
     _detect_face_center_in_video,
 )
 from immich_memories.processing.title_inserter import TitleInserter
-from immich_memories.processing.transition_renderer import TransitionRenderer
 from immich_memories.tracking.run_database import RunDatabase
 
 __all__ = [
@@ -38,9 +37,9 @@ logger = logging.getLogger(__name__)
 class VideoAssembler:
     """Assemble multiple clips into a final video.
 
-    Composes 7 services via constructor injection:
+    Composes 6 services via constructor injection:
     - FFmpegProber, FilterBuilder, ClipEncoder, AssemblyEngine
-    - TransitionRenderer, AudioMixerService, TitleInserter
+    - AudioMixerService, TitleInserter
 
     Attributes:
         settings: AssemblySettings controlling output format and transitions.
@@ -63,9 +62,7 @@ class VideoAssembler:
         # Wire composed services
         self.prober = FFmpegProber(self.settings)
         self.filter_builder = FilterBuilder(self.settings, self.prober, self._get_face_center)
-        self.encoder = ClipEncoder(
-            self.settings, self.prober, self.filter_builder, self._get_face_center
-        )
+        self.encoder = ClipEncoder(self.settings, self.prober, self._get_face_center)
         self.engine = AssemblyEngine(
             self.settings,
             self.prober,
@@ -73,7 +70,6 @@ class VideoAssembler:
             self.filter_builder,
             self._check_cancelled,
         )
-        self.transitions = TransitionRenderer(self.settings, self.prober)
         self.audio_mixer = AudioMixerService(self.settings)
         self.title_inserter = TitleInserter(self.settings, self.prober)
 
@@ -160,7 +156,7 @@ def assemble_montage(
     music_vocals_path: Path | None = None,
     music_accompaniment_path: Path | None = None,
 ) -> Path:
-    from immich_memories.processing.clips import get_video_duration
+    from immich_memories.processing.clip_probing import get_video_duration
 
     assembly_clips = []
     for path in clips:

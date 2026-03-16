@@ -9,7 +9,6 @@ Orchestrates the 4-phase pipeline:
 
 from __future__ import annotations
 
-import gc
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -162,22 +161,18 @@ class SmartPipeline:
 
             # Phase 1: Cluster by thumbnail
             deduplicated = self._phase_cluster(clips)
-            gc.collect()
             self._check_cancelled()
 
             # Phase 2: Filter and pre-select
             candidates = self._phase_filter(deduplicated)
-            gc.collect()
             self._check_cancelled()
 
             # Phase 3: Analyze selected clips
             analyzed = self.analyzer.phase_analyze(candidates, self.tracker, self._check_cancelled)
-            gc.collect()
             self._check_cancelled()
 
             # Phase 4: Refine final selection
             result = self.refiner.phase_refine(analyzed, self.tracker)
-            gc.collect()
 
             self.tracker.finish()
             return result
@@ -193,7 +188,7 @@ class SmartPipeline:
 
     def _phase_cluster(self, clips: list[VideoClipInfo]) -> list[VideoClipInfo]:
         """Phase 1: Cluster clips by thumbnail similarity."""
-        from immich_memories.analysis.duplicates import deduplicate_by_thumbnails
+        from immich_memories.analysis.thumbnail_clustering import deduplicate_by_thumbnails
 
         self.tracker.start_phase(PipelinePhase.CLUSTERING, len(clips))
 
@@ -374,7 +369,3 @@ class SmartPipeline:
         )
 
         return selected
-
-
-# Re-export standalone functions from clip_selection for backwards compatibility
-# smart_select_clips and analyze_clip_for_highlight are imported at the top of this module

@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from .renderer_pil import create_title_video
 from .styles import TitleStyle
+from .video_encoding import create_title_video
 
 if TYPE_CHECKING:
     from .generator import TitleScreenConfig
@@ -22,9 +22,9 @@ if TYPE_CHECKING:
 try:
     from .renderer_taichi import (
         TaichiTitleConfig,
-        create_title_video_taichi,
         init_taichi,
     )
+    from .taichi_video import create_title_video_taichi
 
     TAICHI_AVAILABLE = True
 except ImportError:

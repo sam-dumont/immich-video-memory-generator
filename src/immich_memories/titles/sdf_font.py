@@ -183,25 +183,6 @@ def find_font(family: str, weight: str = "regular") -> Path | None:
     return None
 
 
-# =============================================================================
-# Re-exports for backwards compatibility
-# =============================================================================
-
-# Atlas generation and caching (from sdf_atlas_gen.py)
-from .sdf_atlas_gen import (  # noqa: E402
-    DEFAULT_CHARSET,
-    generate_sdf_atlas,
-    get_cached_atlas,
-)
-
-# GPU rendering, text layout, and measurement (from sdf_font_rendering.py)
-from .sdf_font_rendering import (  # noqa: E402
-    init_sdf_kernels,
-    layout_text,
-    measure_text,
-    render_text_sdf,
-)
-
 __all__ = [
     # Data structures
     "GlyphMetrics",
@@ -214,13 +195,4 @@ __all__ = [
     "FREETYPE_AVAILABLE",
     "TAICHI_AVAILABLE",
     "freetype",
-    # Re-exported from sdf_atlas_gen
-    "DEFAULT_CHARSET",
-    "generate_sdf_atlas",
-    "get_cached_atlas",
-    # Re-exported from sdf_font_rendering
-    "init_sdf_kernels",
-    "layout_text",
-    "measure_text",
-    "render_text_sdf",
 ]

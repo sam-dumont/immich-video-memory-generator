@@ -20,12 +20,14 @@ from .animations import (
     reverse_preset,
 )
 from .backgrounds import (
-    AnimatedBackgroundConfig,
     BackgroundType,
-    create_animated_background,
     create_gradient_background,
     create_radial_gradient,
     create_vignette_background,
+)
+from .backgrounds_animated import (
+    AnimatedBackgroundConfig,
+    create_animated_background,
 )
 from .colors import (
     brighten_color,
@@ -62,7 +64,6 @@ from .generator import (
 from .renderer_pil import (
     RenderSettings,
     TitleRenderer,
-    create_title_video,
     render_title_frame,
 )
 from .styles import (
@@ -80,6 +81,7 @@ from .text_builder import (
     get_month_name,
     get_ordinal,
 )
+from .video_encoding import create_title_video
 
 __all__ = [
     # Styles

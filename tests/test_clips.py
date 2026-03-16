@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from immich_memories.processing.clips import _validate_header, _validate_url
+from immich_memories.processing.clip_probing import _validate_header, _validate_url
 
 
 class TestUrlValidation:

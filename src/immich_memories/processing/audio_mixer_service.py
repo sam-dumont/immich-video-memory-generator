@@ -68,11 +68,8 @@ class AudioMixerService:
         accompaniment_path: Path,
     ) -> Path:
         """Add music with 2-stem ducking (ducks vocals during speech)."""
-        from immich_memories.audio.mixer import (
-            DuckingConfig,
-            MixConfig,
-            mix_audio_with_stem_ducking,
-        )
+        from immich_memories.audio.mixer import DuckingConfig, MixConfig
+        from immich_memories.audio.mixer_helpers import mix_audio_with_stem_ducking
 
         logger.info("Using stem-based audio ducking (vocals duck during speech, drums stay full)")
 
@@ -114,9 +111,8 @@ class AudioMixerService:
 
         Ducking levels: drums -3dB, bass -6dB, vocals -12dB, other -9dB.
         """
-        from immich_memories.audio.mixer import (
-            DuckingConfig,
-            MixConfig,
+        from immich_memories.audio.mixer import DuckingConfig, MixConfig
+        from immich_memories.audio.mixer_helpers import (
             StemDuckingLevels,
             mix_audio_with_4stem_ducking,
         )

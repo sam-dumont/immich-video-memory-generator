@@ -33,7 +33,7 @@ from immich_memories.analysis.scoring import SceneScorer
 
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
-    from immich_memories.audio.content_analyzer import AudioAnalysisResult
+    from immich_memories.audio.audio_models import AudioAnalysisResult
 
 logger = logging.getLogger(__name__)
 

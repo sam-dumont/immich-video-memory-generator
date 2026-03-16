@@ -39,7 +39,7 @@ def create_generator(
 
         if config is not None and hasattr(config, "base_url"):
             # It's already a MusicGenClientConfig or compatible
-            from immich_memories.audio.music_generator import MusicGenClientConfig
+            from immich_memories.audio.music_generator_client import MusicGenClientConfig
 
             if not isinstance(config, MusicGenClientConfig):
                 # Convert from app's MusicGenConfig (pydantic) to client config

@@ -313,24 +313,3 @@ class MoodAnalyzer(ABC):
                 description="Could not analyze video mood",
                 confidence=0.3,
             )
-
-
-# Lazy re-exports to avoid circular import when mood_analyzer_backends is
-# imported directly (it imports MoodAnalyzer/VideoMood from this module).
-_BACKEND_NAMES = {
-    "OllamaMoodAnalyzer",
-    "OpenAICompatibleMoodAnalyzer",
-    "OpenAIMoodAnalyzer",
-    "get_mood_analyzer",
-    "get_mood_analyzer_from_config",
-}
-
-
-def __getattr__(name: str):  # noqa: E302
-    if name in _BACKEND_NAMES:
-        from immich_memories.audio import mood_analyzer_backends as _b
-
-        if name == "OpenAIMoodAnalyzer":
-            return _b.OpenAICompatibleMoodAnalyzer  # backwards compat alias
-        return getattr(_b, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

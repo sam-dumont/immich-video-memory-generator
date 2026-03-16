@@ -13,12 +13,12 @@ except ImportError:
 
 from unittest.mock import patch
 
+from immich_memories.analysis.duplicate_hashing import hamming_distance
 from immich_memories.analysis.duplicates import (
     DuplicateGroup,
     VideoHash,
     _union_find_groups,
     find_duplicate_groups,
-    hamming_distance,
     rank_videos_by_quality,
 )
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo

@@ -855,7 +855,3 @@ class TaichiTitleRenderer:
             self._subtitle_layer = None
 
         self._cached_text = (title, subtitle)
-
-
-# Re-export video creation function for backwards compatibility
-from .taichi_video import create_title_video_taichi as create_title_video_taichi  # noqa: E402

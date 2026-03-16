@@ -23,14 +23,12 @@ This keeps classes under the 800-line soft limit (1000 hard) while maintaining a
 
 The four core orchestrators and their composed services:
 
-**VideoAssembler** (processing/video_assembler.py) composes 7 services:
+**VideoAssembler** (processing/video_assembler.py) composes 6 services:
 - `FFmpegProber` (ffmpeg_prober.py): duration/resolution probing via ffprobe
 - `FilterBuilder` (filter_builder.py): FFmpeg filter graph construction
 - `ClipEncoder` (clip_encoder.py): per-clip trimming and re-encoding
 - `AssemblyEngine` (assembly_engine.py): strategy-based multi-clip assembly
   - internally composes `ConcatService` (_assembly_concat.py)
-- `TransitionRenderer` (transition_renderer.py): crossfade/transition rendering
-  - internally composes `TransitionBlender` (transition_blender.py)
 - `AudioMixerService` (audio_mixer_service.py): background music mixing
 - `TitleInserter` (title_inserter.py): title screen concatenation
 
@@ -125,9 +123,6 @@ src/immich_memories/
 │   ├── clip_transitions.py     # Clip transition helpers
 │   ├── clips.py                # ClipExtractor: download & re-encode
 │   ├── title_inserter.py       # TitleInserter: title screen concatenation
-│   ├── transition_renderer.py  # TransitionRenderer (composes TransitionBlender)
-│   ├── transition_blender.py   # TransitionBlender: frame-level blending
-│   ├── transition_blend.py     # Transition blend helpers
 │   ├── audio_mixer_service.py  # AudioMixerService: background music mixing
 │   ├── downscaler.py           # Resolution downscaling
 │   ├── hdr_utilities.py        # HDR detection & conversion filters
@@ -304,7 +299,6 @@ VideoAssembler.assemble()
   ├── For each clip:
   │   ├── FilterBuilder.build_clip_video_filter() → scale, HDR, rotation
   │   └── FilterBuilder.build_audio_prep_filters() → normalize audio
-  ├── TransitionRenderer → transition filters (via TransitionBlender)
   └── AssemblyEngine → ConcatService → FFmpeg execution
 
 VideoAssembler.assemble_with_titles()

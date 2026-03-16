@@ -12,9 +12,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from immich_memories.titles.map_renderer import render_trip_map_array
 from immich_memories.titles.renderer_taichi import (
     TaichiTitleConfig,
-    create_title_video_taichi,
     init_taichi,
 )
+from immich_memories.titles.taichi_video import create_title_video_taichi
 
 OUTPUT_DIR = Path(__file__).parent.parent / "demo_output" / "videos"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

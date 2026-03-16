@@ -53,10 +53,6 @@ class MusicGenClientConfig:
         )
 
 
-# Alias for backwards compatibility
-MusicGenConfig = MusicGenClientConfig
-
-
 # =============================================================================
 # API Client
 # =============================================================================
@@ -65,8 +61,8 @@ MusicGenConfig = MusicGenClientConfig
 class MusicGenClient:
     """Client for the MusicGen API server."""
 
-    def __init__(self, config: MusicGenConfig | None = None):
-        self.config = config or MusicGenConfig()
+    def __init__(self, config: MusicGenClientConfig | None = None):
+        self.config = config or MusicGenClientConfig()
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self):

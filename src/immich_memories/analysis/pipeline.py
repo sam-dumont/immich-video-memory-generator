@@ -200,7 +200,7 @@ class VideoAnalyzer:
         """
         import tempfile
 
-        from immich_memories.analysis.duplicates import compute_video_hash
+        from immich_memories.analysis.duplicate_hashing import compute_video_hash
         from immich_memories.analysis.scoring import SceneScorer
 
         video_path: Path | None = None

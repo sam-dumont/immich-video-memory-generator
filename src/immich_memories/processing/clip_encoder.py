@@ -20,7 +20,6 @@ from immich_memories.processing.ffmpeg_runner import (
     AssemblyContext,
     _run_ffmpeg_with_progress,
 )
-from immich_memories.processing.filter_builder import FilterBuilder
 from immich_memories.processing.hdr_utilities import (
     _detect_hdr_type,
     _get_colorspace_filter,
@@ -83,12 +82,10 @@ class ClipEncoder:
         self,
         settings: AssemblySettings,
         prober: VideoProber,
-        filter_builder: FilterBuilder,
         face_center_fn: Callable[[Path], tuple[float, float] | None],
     ) -> None:
         self.settings = settings
         self.prober = prober
-        self.filter_builder = filter_builder
         self.face_center_fn = face_center_fn
 
     def resolve_encode_resolution(

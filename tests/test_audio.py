@@ -13,10 +13,10 @@ from immich_memories.audio.mixer import (
     DuckingConfig,
     MixConfig,
 )
-from immich_memories.audio.mood_analyzer import (
+from immich_memories.audio.mood_analyzer import VideoMood
+from immich_memories.audio.mood_analyzer_backends import (
     OllamaMoodAnalyzer,
-    OpenAIMoodAnalyzer,
-    VideoMood,
+    OpenAICompatibleMoodAnalyzer,
 )
 from immich_memories.audio.music_sources import (
     LocalMusicSource,
@@ -273,23 +273,25 @@ class TestOllamaMoodAnalyzer:
         assert mood.confidence == 0.3
 
 
-class TestOpenAIMoodAnalyzer:
-    """Tests for OpenAIMoodAnalyzer class."""
+class TestOpenAICompatibleMoodAnalyzer:
+    """Tests for OpenAICompatibleMoodAnalyzer class."""
 
     def test_initialization(self):
         """Test analyzer initialization."""
-        analyzer = OpenAIMoodAnalyzer(api_key="test_key", model="gpt-4o-mini")
+        analyzer = OpenAICompatibleMoodAnalyzer(api_key="test_key", model="gpt-4o-mini")
         assert analyzer.api_key == "test_key"
         assert analyzer.model == "gpt-4o-mini"
 
     def test_base_url_trailing_slash(self):
         """Test trailing slash is removed from URL."""
-        analyzer = OpenAIMoodAnalyzer(api_key="key", base_url="https://api.openai.com/v1/")
+        analyzer = OpenAICompatibleMoodAnalyzer(
+            api_key="key", base_url="https://api.openai.com/v1/"
+        )
         assert analyzer.base_url == "https://api.openai.com/v1"
 
     def test_parse_mood_response_inherits(self):
         """Test that parse_mood_response works from base class."""
-        analyzer = OpenAIMoodAnalyzer(api_key="test")
+        analyzer = OpenAICompatibleMoodAnalyzer(api_key="test")
         response = '{"primary_mood": "energetic"}'
         mood = analyzer._parse_mood_response(response)
         assert mood.primary_mood == "energetic"

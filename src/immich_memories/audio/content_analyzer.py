@@ -17,27 +17,12 @@ from pathlib import Path
 import numpy as np
 
 from immich_memories.audio.audio_models import (
-    AUDIO_EVENT_WEIGHTS,
-    PROTECTED_EVENTS,
     AudioAnalysisResult,
     AudioEvent,
-    adjust_boundaries_for_audio,
     classify_audio_event,
-    get_audio_content_score,
 )
 
 logger = logging.getLogger(__name__)
-
-# Re-export public API for backward compatibility
-__all__ = [
-    "AUDIO_EVENT_WEIGHTS",
-    "PROTECTED_EVENTS",
-    "AudioEvent",
-    "AudioAnalysisResult",
-    "AudioContentAnalyzer",
-    "adjust_boundaries_for_audio",
-    "get_audio_content_score",
-]
 
 
 def _classify_energy_event(

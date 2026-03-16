@@ -13,7 +13,9 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 try:
-    from .sdf_font import find_font, get_cached_atlas, init_sdf_kernels, layout_text
+    from .sdf_atlas_gen import get_cached_atlas
+    from .sdf_font import find_font
+    from .sdf_font_rendering import init_sdf_kernels, layout_text
 
     SDF_AVAILABLE = True
 except ImportError:

@@ -1,13 +1,8 @@
-"""MusicGen API client for AI-generated background music.
+"""High-level music generation functions.
 
-This module integrates with the MusicGen API server to:
-1. Generate multiple music versions for user selection
-2. Separate stems (vocals/accompaniment) for intelligent ducking
-3. Handle video timeline-aware duration calculations
-
-All data models are defined in music_generator_models.py.
-The API client is defined in music_generator_client.py.
-This module re-exports everything for backwards compatibility.
+Provides generate_music_for_video() and generate_music_sync() which
+orchestrate music generation using either the multi-provider pipeline
+or the legacy MusicGen client path.
 """
 
 from __future__ import annotations
@@ -17,45 +12,15 @@ import logging
 import random
 from pathlib import Path
 
-# Re-export client classes for backwards compatibility
 from immich_memories.audio.music_generator_client import (
     MusicGenClient,
     MusicGenClientConfig,
-    MusicGenConfig,
 )
-
-# Re-export all models for backwards compatibility
 from immich_memories.audio.music_generator_models import (
-    SEASONAL_MOODS,
-    ClipMood,
     GeneratedMusic,
     MusicGenerationResult,
-    MusicStems,
-    StemDuckingConfig,
     VideoTimeline,
-    get_seasonal_prompt,
 )
-
-__all__ = [
-    # Models
-    "SEASONAL_MOODS",
-    "ClipMood",
-    "GeneratedMusic",
-    "MusicGenerationResult",
-    "MusicStems",
-    "StemDuckingConfig",
-    "VideoTimeline",
-    "get_seasonal_prompt",
-    # Client
-    "MusicGenClient",
-    "MusicGenClientConfig",
-    "MusicGenConfig",
-    # High-level functions
-    "MUSIC_PROMPTS",
-    "generate_music_for_video",
-    "generate_music_sync",
-    "_get_base_prompt",
-]
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +97,7 @@ def _get_base_prompt(
 async def generate_music_for_video(
     timeline: VideoTimeline,
     output_dir: Path,
-    config: MusicGenConfig | None = None,
+    config: MusicGenClientConfig | None = None,
     progress_callback: callable | None = None,
     crossfade_duration: float = 2.0,
     hemisphere: str = "north",
@@ -175,7 +140,7 @@ async def generate_music_for_video(
             )
 
     # Legacy path: direct MusicGen client
-    config = config or MusicGenConfig()
+    config = config or MusicGenClientConfig()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     scenes = timeline.build_scenes(hemisphere=hemisphere)
@@ -250,7 +215,7 @@ def generate_music_sync(
     timeline: VideoTimeline,
     mood: str,
     output_dir: Path,
-    config: MusicGenConfig | None = None,
+    config: MusicGenClientConfig | None = None,
     progress_callback: callable | None = None,
 ) -> MusicGenerationResult:
     """Synchronous wrapper for generate_music_for_video."""
