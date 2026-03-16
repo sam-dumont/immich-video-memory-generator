@@ -19,43 +19,53 @@ from immich_memories.ui.state import get_app_state
 logger = logging.getLogger(__name__)
 
 
+def _build_mood_cache(state, selected_clips: list) -> dict[str, str]:
+    """Build a map of clip asset_id → LLM emotion from analysis cache."""
+    mood_cache: dict[str, str] = {}
+    if not state.analysis_cache:
+        return mood_cache
+    for clip in selected_clips:
+        analysis = state.analysis_cache.get_analysis(clip.asset.id)
+        if not (analysis and analysis.segments):
+            continue
+        for seg in analysis.segments:
+            if seg.llm_emotion:
+                mood_cache[clip.asset.id] = seg.llm_emotion
+                break
+    return mood_cache
+
+
+def _get_clip_month(clip) -> int | None:
+    """Return the month of a clip's creation date, or None."""
+    if not clip.asset.file_created_at:
+        return None
+    try:
+        return clip.asset.file_created_at.month
+    except AttributeError:
+        return None
+
+
 def _build_timeline(state):
     """Build a VideoTimeline from selected clips in state."""
     from immich_memories.audio.music_generator import VideoTimeline
 
     config = get_config()
     selected_clips = state.get_selected_clips()
-
-    # Look up LLM emotions from the analysis cache for accurate mood prompts
-    mood_cache: dict[str, str] = {}
-    if state.analysis_cache:
-        for clip in selected_clips:
-            analysis = state.analysis_cache.get_analysis(clip.asset.id)
-            if analysis and analysis.segments:
-                for seg in analysis.segments:
-                    if seg.llm_emotion:
-                        mood_cache[clip.asset.id] = seg.llm_emotion
-                        break
+    mood_cache = _build_mood_cache(state, selected_clips)
 
     clip_data: list[tuple[float, str, int | None]] = []
     for clip in selected_clips:
         segment = state.clip_segments.get(clip.asset.id, (0, clip.duration_seconds or 5))
         duration = segment[1] - segment[0]
         mood = mood_cache.get(clip.asset.id, "calm")
-        month = None
-        if clip.asset.file_created_at:
-            try:
-                month = clip.asset.file_created_at.month
-            except AttributeError:
-                pass
-        clip_data.append((duration, mood, month))
+        clip_data.append((duration, mood, _get_clip_month(clip)))
 
+    title_dur = config.title_screens.title_duration if config.title_screens.enabled else 0
+    ending_dur = config.title_screens.ending_duration if config.title_screens.enabled else 0
     return VideoTimeline.from_clips(
         clips=clip_data,
-        title_duration=(config.title_screens.title_duration if config.title_screens.enabled else 0),
-        ending_duration=(
-            config.title_screens.ending_duration if config.title_screens.enabled else 0
-        ),
+        title_duration=title_dur,
+        ending_duration=ending_dur,
     )
 
 
@@ -149,6 +159,72 @@ def _render_player(state, container):
         ui.audio(str(version.full_mix)).classes("w-full mt-2")
 
 
+def _render_title_metadata_chips(state) -> None:
+    """Render read-only trip/map mode badge chips if set."""
+    if not (state.title_suggestion_trip_type or state.title_suggestion_map_mode):
+        return
+    with ui.row().classes("gap-2 mt-1"):
+        if state.title_suggestion_trip_type:
+            ui.badge(f"Trip: {state.title_suggestion_trip_type}").props("outline").classes(
+                "text-xs"
+            )
+        if state.title_suggestion_map_mode:
+            ui.badge(f"Map: {state.title_suggestion_map_mode}").props("outline").classes("text-xs")
+
+
+def render_title_section() -> None:
+    """Render the title editing section in Step 3.
+
+    Shows LLM-generated title and subtitle as editable fields, plus
+    read-only chips for trip_type and map_mode when set.
+    """
+    state = get_app_state()
+
+    with ui.column().classes("w-full gap-3"):
+        title_input = ui.input(
+            label="Title",
+            value=state.title_suggestion_title or "",
+            placeholder="e.g. Summer in Saxony",
+        ).classes("w-full")
+
+        def on_title_change(e):
+            state.title_suggestion_title = e.value or None
+
+        title_input.on_value_change(on_title_change)
+
+        subtitle_input = ui.input(
+            label="Subtitle",
+            value=state.title_suggestion_subtitle or "",
+            placeholder="e.g. June – August 2025",
+        ).classes("w-full")
+
+        def on_subtitle_change(e):
+            state.title_suggestion_subtitle = e.value or None
+
+        subtitle_input.on_value_change(on_subtitle_change)
+
+        config = get_config()
+        with ui.row().classes("w-full gap-2 items-end"):
+            locale_select = ui.select(
+                label="Language",
+                options=["auto", "en", "fr", "de", "es", "it", "nl", "pt", "ja", "ko"],
+                value=config.title_screens.locale if config.title_screens else "en",
+            ).classes("w-32")
+
+            async def regenerate_title():
+                from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
+
+                if config.title_screens:
+                    config.title_screens.locale = locale_select.value
+                await generate_title_after_pipeline(state)
+                title_input.value = state.title_suggestion_title or ""
+                subtitle_input.value = state.title_suggestion_subtitle or ""
+
+            ui.button("Regenerate", on_click=regenerate_title).props("flat dense")
+
+        _render_title_metadata_chips(state)
+
+
 def render_music_preview_section(options: dict) -> None:
     """Render the music preview section in Step 3.
 
@@ -173,7 +249,7 @@ def render_music_preview_section(options: dict) -> None:
 
     # Generate / Regenerate button
     has_preview = state.music_preview_result and state.music_preview_result.versions
-    button_text = "Regenerate Music" if has_preview else "Generate Music Preview"
+    button_text = "Regenerate Music" if has_preview else "Generate Music"
     button_icon = "refresh" if has_preview else "music_note"
 
     async def on_generate():

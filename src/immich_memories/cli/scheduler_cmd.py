@@ -115,4 +115,3 @@ def register_scheduler_commands(main: click.Group) -> None:
             run_daemon_loop(config.scheduler)
         else:
             print_error("Background mode not yet supported. Use --foreground.")
-            return

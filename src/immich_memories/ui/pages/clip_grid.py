@@ -19,10 +19,10 @@ CLIPS_PER_PAGE = 20
 
 def clip_quality_score(c: VideoClipInfo) -> tuple[int, int, int, int]:
     """Score a clip for quality comparison. Higher is better."""
-    res_score = (c.width or 0) * (c.height or 0)
+    res_score = c.width * c.height
     hdr_score = 1 if c.is_hdr else 0
     depth_score = c.bit_depth or 8
-    bitrate_score = c.bitrate or 0
+    bitrate_score = c.bitrate
     return (res_score, hdr_score, depth_score, bitrate_score)
 
 
@@ -41,7 +41,7 @@ def _detect_duplicates(
 
     # Strategy 1: exact datetime+duration match
     clips_by_datetime = _group_clips_by_datetime(clips)
-    for _key, group in clips_by_datetime.items():
+    for group in clips_by_datetime.values():
         if len(group) > 1:
             _mark_lower_quality(group, duplicate_ids, lower_quality_ids)
 
@@ -192,6 +192,48 @@ def _render_clip_badges(badges: list[str]) -> None:
                     ui.badge(badge, color="blue").classes("text-xs")
 
 
+def _render_clip_thumbnail(asset_id: str) -> None:
+    """Render the thumbnail image or placeholder for a clip card."""
+    thumb = get_thumbnail(asset_id)
+    if thumb:
+        b64 = base64.b64encode(thumb).decode()
+        ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-24 object-cover rounded-lg")
+    else:
+        ui.element("div").classes("w-full h-24 rounded-lg flex items-center justify-center").style(
+            "background-color: var(--im-bg-surface)"
+        )
+
+
+def _render_clip_metadata(clip: VideoClipInfo) -> None:
+    """Render date, duration, filename, and resolution metadata."""
+    date_str = clip.asset.file_created_at.strftime("%b %d %H:%M")
+    duration_str = format_duration(clip.duration_seconds) if clip.duration_seconds else "N/A"
+
+    ui.label(date_str).classes("font-semibold text-sm").style("color: var(--im-text)")
+    ui.label(f"\u23f1 {duration_str}").classes("text-xs").style("color: var(--im-text-secondary)")
+
+    filename = clip.asset.original_file_name or "Unknown"
+    if len(filename) > 20:
+        filename = filename[:17] + "..."
+    ui.label(filename).classes("text-xs truncate").style("color: var(--im-text-secondary)")
+
+    if clip.width and clip.height:
+        res_str = f"{clip.width}x{clip.height}"
+        if clip.color_space:
+            res_str += f" \u2022 {clip.color_space}"
+        ui.label(res_str).classes("text-xs").style("color: var(--im-text-secondary)")
+
+
+def _render_duplicate_indicator(is_duplicate: bool, is_best: bool) -> None:
+    """Render the duplicate/best quality indicator label."""
+    if not is_duplicate:
+        return
+    if is_best:
+        ui.label("Best").classes("text-xs font-semibold").style("color: var(--im-success)")
+    else:
+        ui.label("Duplicate").classes("text-xs").style("color: var(--im-warning)")
+
+
 def _render_clip_card(
     clip: VideoClipInfo,
     state,
@@ -205,55 +247,16 @@ def _render_clip_card(
     is_duplicate = clip.asset.id in duplicate_ids
     is_best = is_duplicate and clip.asset.id not in lower_quality_ids
 
-    date_str = clip.asset.file_created_at.strftime("%b %d %H:%M")
-    duration_str = format_duration(clip.duration_seconds) if clip.duration_seconds else "N/A"
-
     with (
         ui.card()
         .classes("p-2 rounded-xl")
         .style("background-color: var(--im-bg-elevated); border: 1px solid var(--im-border)")
     ):
-        # Thumbnail
-        thumb = get_thumbnail(clip.asset.id)
-        if thumb:
-            b64 = base64.b64encode(thumb).decode()
-            ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-24 object-cover rounded-lg")
-        else:
-            ui.element("div").classes(
-                "w-full h-24 rounded-lg flex items-center justify-center"
-            ).style("background-color: var(--im-bg-surface)")
-
-        # Badges
+        _render_clip_thumbnail(clip.asset.id)
         _render_clip_badges(_get_clip_badges(clip))
-
-        # Audio category tags
         _render_audio_categories(clip)
-
-        # Date and duration
-        ui.label(date_str).classes("font-semibold text-sm").style("color: var(--im-text)")
-        ui.label(f"\u23f1 {duration_str}").classes("text-xs").style(
-            "color: var(--im-text-secondary)"
-        )
-
-        # Filename
-        filename = clip.asset.original_file_name or "Unknown"
-        if len(filename) > 20:
-            filename = filename[:17] + "..."
-        ui.label(filename).classes("text-xs truncate").style("color: var(--im-text-secondary)")
-
-        # Resolution
-        if clip.width and clip.height:
-            res_str = f"{clip.width}x{clip.height}"
-            if clip.color_space:
-                res_str += f" \u2022 {clip.color_space}"
-            ui.label(res_str).classes("text-xs").style("color: var(--im-text-secondary)")
-
-        # Duplicate indicator
-        if is_duplicate:
-            if is_best:
-                ui.label("Best").classes("text-xs font-semibold").style("color: var(--im-success)")
-            else:
-                ui.label("Duplicate").classes("text-xs").style("color: var(--im-warning)")
+        _render_clip_metadata(clip)
+        _render_duplicate_indicator(is_duplicate, is_best)
 
         # Selection checkbox
         def make_toggle_handler(asset_id: str):

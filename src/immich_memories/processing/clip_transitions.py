@@ -57,6 +57,60 @@ class TransitionPlan:
     buffer_end: list[bool]
 
 
+def _decide_fade(
+    transition_mode: str,
+    consecutive_fades: int,
+    consecutive_cuts: int,
+) -> bool:
+    """Decide whether to use a fade transition for smart mode."""
+    if transition_mode == "crossfade":
+        return True
+    # SMART mode: 70% crossfade, 30% cut with consecutive limits
+    use_fade = random.random() < 0.7
+    if consecutive_fades >= 3:
+        use_fade = False
+    if consecutive_cuts >= 2:
+        use_fade = True
+    return use_fade
+
+
+def _apply_title_screen_transition(
+    i: int,
+    clip_before: ClipTransitionInfo,
+    clip_after: ClipTransitionInfo,
+    transitions: list[str],
+    buffer_start: list[bool],
+    buffer_end: list[bool],
+) -> tuple[int, int]:
+    """Apply a fade transition involving a title screen. Returns updated (consecutive_fades, consecutive_cuts)."""
+    transitions.append("fade")
+    if not clip_before.is_title_screen:
+        buffer_end[i] = clip_before.can_buffer_end
+    if not clip_after.is_title_screen:
+        buffer_start[i + 1] = clip_after.can_buffer_start
+    return 1, 0  # consecutive_fades, consecutive_cuts reset
+
+
+def _apply_buffer_transition(
+    i: int,
+    use_fade: bool,
+    transitions: list[str],
+    buffer_start: list[bool],
+    buffer_end: list[bool],
+    consecutive_fades: int,
+    consecutive_cuts: int,
+) -> tuple[int, int]:
+    """Apply a buffered fade or cut transition. Returns updated (consecutive_fades, consecutive_cuts)."""
+    if use_fade:
+        transitions.append("fade")
+        buffer_end[i] = True
+        buffer_start[i + 1] = True
+        return consecutive_fades + 1, 0
+    else:
+        transitions.append("cut")
+        return 0, consecutive_cuts + 1
+
+
 def plan_transitions(
     clips: list[ClipTransitionInfo],
     transition_mode: str = "smart",
@@ -110,59 +164,26 @@ def plan_transitions(
         clip_before = clips[i]
         clip_after = clips[i + 1]
 
-        # Check buffer availability
-        can_fade_out = clip_before.can_buffer_end
-        can_fade_in = clip_after.can_buffer_start
-
-        # Title screens always get fades (they have synthetic content, so always have "buffer")
         if clip_before.is_title_screen or clip_after.is_title_screen:
-            # Title screens can always fade
-            transitions.append("fade")
-            if not clip_before.is_title_screen:
-                buffer_end[i] = can_fade_out  # Only buffer real clips
-            if not clip_after.is_title_screen:
-                buffer_start[i + 1] = can_fade_in
-            consecutive_fades += 1
-            consecutive_cuts = 0
+            consecutive_fades, consecutive_cuts = _apply_title_screen_transition(
+                i, clip_before, clip_after, transitions, buffer_start, buffer_end
+            )
             continue
 
-        # If either side can't buffer, must use cut
-        if not can_fade_out or not can_fade_in:
+        if not clip_before.can_buffer_end or not clip_after.can_buffer_start:
             transitions.append("cut")
             consecutive_cuts += 1
             consecutive_fades = 0
             logger.debug(
                 f"Transition {i}->{i + 1}: forced CUT (buffer unavailable: "
-                f"out={can_fade_out}, in={can_fade_in})"
+                f"out={clip_before.can_buffer_end}, in={clip_after.can_buffer_start})"
             )
             continue
 
-        # Both sides can buffer - decide based on mode
-        if transition_mode == "crossfade":
-            # Always crossfade when possible
-            use_fade = True
-        else:
-            # SMART mode: 70% crossfade, 30% cut with consecutive limits
-            use_fade = random.random() < 0.7
-
-            # Force cut if too many consecutive fades
-            if consecutive_fades >= 3:
-                use_fade = False
-
-            # Force fade if too many consecutive cuts
-            if consecutive_cuts >= 2:
-                use_fade = True
-
-        if use_fade:
-            transitions.append("fade")
-            buffer_end[i] = True
-            buffer_start[i + 1] = True
-            consecutive_fades += 1
-            consecutive_cuts = 0
-        else:
-            transitions.append("cut")
-            consecutive_cuts += 1
-            consecutive_fades = 0
+        use_fade = _decide_fade(transition_mode, consecutive_fades, consecutive_cuts)
+        consecutive_fades, consecutive_cuts = _apply_buffer_transition(
+            i, use_fade, transitions, buffer_start, buffer_end, consecutive_fades, consecutive_cuts
+        )
 
     logger.info(
         f"Transition plan ({transition_mode}): "

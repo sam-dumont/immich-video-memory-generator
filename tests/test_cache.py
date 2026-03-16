@@ -162,19 +162,19 @@ class TestVideoAnalysisCache:
 
     def test_needs_reanalysis_not_cached(self, cache, mock_asset):
         """Uncached asset should need reanalysis."""
-        assert cache.needs_reanalysis(mock_asset) is True
+        assert cache.needs_reanalysis(mock_asset)
 
     def test_needs_reanalysis_cached(self, cache, mock_asset, mock_video_info):
         """Cached asset with same checksum should not need reanalysis."""
         cache.save_analysis(asset=mock_asset, video_info=mock_video_info)
-        assert cache.needs_reanalysis(mock_asset) is False
+        assert not cache.needs_reanalysis(mock_asset)
 
     def test_needs_reanalysis_checksum_changed(self, cache, mock_asset, mock_video_info):
         """Cached asset with different checksum should need reanalysis."""
         cache.save_analysis(asset=mock_asset, video_info=mock_video_info)
 
         mock_asset.checksum = "different-checksum"
-        assert cache.needs_reanalysis(mock_asset) is True
+        assert cache.needs_reanalysis(mock_asset)
 
     def test_find_similar_videos(self, cache, mock_asset, mock_video_info):
         """Should find videos with similar hashes."""
@@ -235,7 +235,7 @@ class TestVideoAnalysisCache:
         assert cache.get_analysis(mock_asset.id) is not None
 
         result = cache.delete_analysis(mock_asset.id)
-        assert result is True
+        assert result
         assert cache.get_analysis(mock_asset.id) is None
 
     def test_clear_all(self, cache, mock_asset, mock_video_info):
@@ -352,12 +352,12 @@ class TestVideoAnalysisCacheEdgeCases:
         cache.save_analysis(asset=mock_asset, video_info=mock_video_info)
         analysis = cache.get_analysis(mock_asset.id, include_segments=True)
         assert analysis is not None
-        assert analysis.segments == []
+        assert not analysis.segments
 
     def test_delete_nonexistent_returns_false(self, cache):
         """Deleting a nonexistent asset returns False."""
         result = cache.delete_analysis("no-such-id")
-        assert result is False
+        assert not result
 
     def test_clear_empty_cache_returns_zero(self, cache):
         """Clearing an empty cache returns 0."""
@@ -371,7 +371,7 @@ class TestVideoAnalysisCacheEdgeCases:
 
     def test_get_uncached_asset_ids_empty_input(self, cache):
         """Empty input list returns empty."""
-        assert cache.get_uncached_asset_ids([]) == []
+        assert not cache.get_uncached_asset_ids([])
 
     def test_stats_empty_cache(self, cache):
         """Stats on empty cache return zeros."""

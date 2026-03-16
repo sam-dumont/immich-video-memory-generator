@@ -417,11 +417,10 @@ def detect_scenes(
     Returns:
         List of detected scenes.
     """
-    detector = SceneDetector(
+    return SceneDetector(
         threshold=threshold,
         min_scene_duration=min_duration,
-    )
-    return detector.detect(
+    ).detect(
         video_path,
         extract_keyframes=extract_keyframes,
         keyframe_output_dir=keyframe_output_dir,

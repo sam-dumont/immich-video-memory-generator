@@ -171,7 +171,7 @@ class TestACEStepAPIPayload:
             )
             asyncio.run(backend._generate_api(request))
 
-        assert captured_payload.get("instrumental") is True
+        assert captured_payload.get("instrumental")
         assert "bpm" in captured_payload
         assert "keyscale" in captured_payload
         assert "timesignature" in captured_payload

@@ -31,7 +31,6 @@ _hw_caps: HWAccelCapabilities | None = None
 
 
 def _get_hw_caps() -> HWAccelCapabilities:
-    """Get cached hardware capabilities."""
     global _hw_caps
     if _hw_caps is None:
         _hw_caps = detect_hardware_acceleration()
@@ -43,16 +42,7 @@ def _build_encode_args(
     config,
     codec: str = "h264",
 ) -> list[str]:
-    """Build FFmpeg encoding arguments with hardware acceleration if available.
-
-    Args:
-        hw_caps: Hardware capabilities.
-        config: Configuration object.
-        codec: Video codec.
-
-    Returns:
-        List of FFmpeg arguments.
-    """
+    """Build FFmpeg encoding arguments, using hardware acceleration when available."""
     args: list[str] = []
 
     if hw_caps and hw_caps.has_encoding and config.hardware.enabled:
@@ -101,11 +91,9 @@ class CropRegion:
 
     @property
     def center(self) -> tuple[int, int]:
-        """Get center point."""
         return (self.x + self.width // 2, self.y + self.height // 2)
 
     def to_ffmpeg_filter(self) -> str:
-        """Convert to FFmpeg crop filter string."""
         return f"crop={self.width}:{self.height}:{self.x}:{self.y}"
 
 
@@ -115,7 +103,6 @@ class CropRegion:
 
 
 def get_video_dimensions(video_path: Path) -> tuple[int, int]:
-    """Get video dimensions via ffprobe."""
     cmd = [
         "ffprobe",
         "-v",
@@ -197,7 +184,7 @@ def _transform_fit_software(
     output_path: Path,
     target_resolution: tuple[int, int],
 ) -> Path:
-    """Fallback software-only transform for letterbox/pillarbox."""
+    """Software-only fallback for letterbox/pillarbox."""
     target_w, target_h = target_resolution
     config = get_config()
 
@@ -297,7 +284,7 @@ def _transform_fill_software(
     output_path: Path,
     target_resolution: tuple[int, int],
 ) -> Path:
-    """Fallback software-only transform for fill mode."""
+    """Software-only fallback for fill mode."""
     target_w, target_h = target_resolution
     config = get_config()
 
@@ -386,7 +373,7 @@ def _apply_crop_transform_software(
     crop: CropRegion,
     target_resolution: tuple[int, int],
 ) -> Path:
-    """Fallback software-only crop transform."""
+    """Software-only fallback for crop transform."""
     target_w, target_h = target_resolution
     config = get_config()
 
@@ -433,19 +420,7 @@ def add_date_overlay(
     font_size: int = 24,
     opacity: float = 0.7,
 ) -> Path:
-    """Add a date overlay to a video.
-
-    Args:
-        input_path: Path to input video.
-        output_path: Path for output video.
-        date_text: Text to display.
-        position: Corner position.
-        font_size: Font size in points.
-        opacity: Text opacity (0-1).
-
-    Returns:
-        Path to output video.
-    """
+    """Add a date text overlay to a video with shadow for readability."""
     input_path = validate_video_path(input_path, must_exist=True)
     config = get_config()
 

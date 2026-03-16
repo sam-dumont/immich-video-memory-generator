@@ -11,6 +11,7 @@ class TestDetectColorPrimaries:
     def test_detects_bt709(self):
         from immich_memories.processing.hdr_utilities import _detect_color_primaries
 
+        # WHY: mock subprocess.run — ffprobe is an external binary; tests verify JSON parsing logic
         with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
             mock_run.return_value.returncode = 0
             mock_run.return_value.stdout = '{"streams": [{"color_primaries": "bt709"}]}'
@@ -31,6 +32,7 @@ class TestDetectColorPrimaries:
     def test_returns_none_on_failure(self):
         from immich_memories.processing.hdr_utilities import _detect_color_primaries
 
+        # WHY: mock subprocess.run raising — verify graceful fallback when ffprobe is missing
         with patch(
             "immich_memories.processing.hdr_utilities.subprocess.run",
             side_effect=Exception("ffprobe not found"),
@@ -57,6 +59,7 @@ class TestHdrConversionFilter:
         """Default SDR→HLG conversion should use bt709 primaries."""
         from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
 
+        # WHY: mock subprocess.run — filter builder checks zscale availability via ffmpeg
         with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
             mock_run.return_value.stdout = "zscale"
             result = _get_hdr_conversion_filter(None, "hlg")

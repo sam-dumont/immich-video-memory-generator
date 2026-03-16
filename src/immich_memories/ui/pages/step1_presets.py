@@ -31,6 +31,30 @@ _SEASONS = ["spring", "summer", "autumn", "winter"]
 _MONTHS = {i: cal.month_name[i] for i in range(1, 13)}
 
 
+def _build_preset_grid(grid_container: ui.element, state, select_preset_fn) -> None:
+    """Populate the preset card grid."""
+    grid_container.clear()
+    with (
+        grid_container,
+        ui.element("div").classes("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"),
+    ):
+        for key, icon, title, desc in _PRESET_CARDS:
+            is_selected = state.memory_type == key
+            with im_card(interactive=True) as card:
+                card.classes("p-3").style("display:flex;align-items:center;justify-content:center")
+                if is_selected:
+                    card.classes("im-preset-selected")
+                card.on("click", lambda _e, k=key: select_preset_fn(k))
+                with ui.column().classes("items-center gap-1 py-1 w-full"):
+                    ui.icon(icon).classes("text-2xl").style("color: var(--im-primary)")
+                    ui.label(title).classes("text-sm font-semibold text-center").style(
+                        "color: var(--im-text)"
+                    )
+                    ui.label(desc).classes("text-xs text-center").style(
+                        "color: var(--im-text-secondary)"
+                    )
+
+
 def render_preset_selector(on_custom_selected=None) -> None:
     """Render the memory type preset selection grid and parameter panel.
 
@@ -40,52 +64,25 @@ def render_preset_selector(on_custom_selected=None) -> None:
     """
     state = get_app_state()
     params_container = ui.column().classes("w-full")
+    grid_container = ui.element("div")
+
+    def _fill_params(key: str) -> None:
+        with params_container:
+            _render_params(key)
+            if key == "custom" and on_custom_selected:
+                on_custom_selected(params_container)
 
     def select_preset(key: str) -> None:
         state.memory_type = key
         state.memory_preset_params = {}
         params_container.clear()
-        with params_container:
-            _render_params(key)
-            if key == "custom" and on_custom_selected:
-                on_custom_selected(params_container)
-        # Re-render cards to update selection highlight
-        _rebuild_grid()
+        _fill_params(key)
+        _build_preset_grid(grid_container, state, select_preset)
 
-    grid_container = ui.element("div")
+    _build_preset_grid(grid_container, state, select_preset)
 
-    def _rebuild_grid() -> None:
-        grid_container.clear()
-        with (
-            grid_container,
-            ui.element("div").classes("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"),
-        ):
-            for key, icon, title, desc in _PRESET_CARDS:
-                is_selected = state.memory_type == key
-                with im_card(interactive=True) as card:
-                    card.classes("p-3").style(
-                        "display:flex;align-items:center;justify-content:center"
-                    )
-                    if is_selected:
-                        card.classes("im-preset-selected")
-                    card.on("click", lambda _e, k=key: select_preset(k))
-                    with ui.column().classes("items-center gap-1 py-1 w-full"):
-                        ui.icon(icon).classes("text-2xl").style("color: var(--im-primary)")
-                        ui.label(title).classes("text-sm font-semibold text-center").style(
-                            "color: var(--im-text)"
-                        )
-                        ui.label(desc).classes("text-xs text-center").style(
-                            "color: var(--im-text-secondary)"
-                        )
-
-    _rebuild_grid()
-
-    # Render params for the currently selected preset
     if state.memory_type:
-        with params_container:
-            _render_params(state.memory_type)
-            if state.memory_type == "custom" and on_custom_selected:
-                on_custom_selected(params_container)
+        _fill_params(state.memory_type)
 
 
 def _render_params(key: str) -> None:
@@ -127,14 +124,14 @@ def _render_params(key: str) -> None:
 def _year_options_with_all() -> list:
     """Return year options including 'All Time'."""
     state = get_app_state()
-    years = state.years if state.years else list(range(2024, 2019, -1))
+    years = state.years or list(range(2024, 2019, -1))
     return [("all", "All Time")] + [(y, str(y)) for y in years]
 
 
 def _render_year_picker() -> None:
     """Year picker shared by multiple presets."""
     state = get_app_state()
-    year_options = state.years if state.years else list(range(2024, 2019, -1))
+    year_options = state.years or list(range(2024, 2019, -1))
     current = state.memory_preset_params.get("year", year_options[0] if year_options else 2024)
 
     def on_change(e):
@@ -153,7 +150,7 @@ def _render_season_params() -> None:
     state = get_app_state()
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
-        year_options = state.years if state.years else list(range(2024, 2019, -1))
+        year_options = state.years or list(range(2024, 2019, -1))
         current_year = state.memory_preset_params.get(
             "year", year_options[0] if year_options else 2024
         )
@@ -199,7 +196,7 @@ def _render_person_spotlight_params() -> None:
     name_to_person = {p.name: p for p in named_people}
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
-        year_options = state.years if state.years else list(range(2024, 2019, -1))
+        year_options = state.years or list(range(2024, 2019, -1))
         year_list = ["All Time"] + [str(y) for y in year_options]
         default_year = year_options[0] if year_options else 2024
         saved_year = state.memory_preset_params.get("year", default_year)
@@ -259,7 +256,7 @@ def _render_multi_person_params() -> None:
     name_to_person = {p.name: p for p in named_people}
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
-        year_options = state.years if state.years else list(range(2024, 2019, -1))
+        year_options = state.years or list(range(2024, 2019, -1))
         year_list = ["All Time"] + [str(y) for y in year_options]
         saved_year = state.memory_preset_params.get("year", 0)
         current_label = "All Time" if saved_year == 0 else str(saved_year)
@@ -301,7 +298,7 @@ def _render_monthly_params() -> None:
     state = get_app_state()
 
     with ui.row().classes("gap-4 items-end flex-wrap"):
-        year_options = state.years if state.years else list(range(2024, 2019, -1))
+        year_options = state.years or list(range(2024, 2019, -1))
         current_year = state.memory_preset_params.get(
             "year", year_options[0] if year_options else 2024
         )
@@ -337,7 +334,7 @@ def _render_trip_params() -> None:
 
     state = get_app_state()
 
-    year_options = state.years if state.years else list(range(2024, 2019, -1))
+    year_options = state.years or list(range(2024, 2019, -1))
     current_year = state.memory_preset_params.get("year", year_options[0] if year_options else 2024)
 
     # Trip detection results container

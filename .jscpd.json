@@ -1,0 +1,10 @@
+{
+  "threshold": 5,
+  "minLines": 5,
+  "minTokens": 50,
+  "mode": "strict",
+  "format": ["python"],
+  "ignore": ["**/tests/**", "**/migrations/**", "**/cli/**", "**/_version.py"],
+  "reporters": ["console"],
+  "gitignore": true
+}

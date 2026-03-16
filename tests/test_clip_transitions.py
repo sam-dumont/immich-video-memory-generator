@@ -33,32 +33,32 @@ class TestClipTransitionInfo:
     def test_can_buffer_start_with_margin(self):
         """Clip starting at 0.5s can buffer (>= TRANSITION_BUFFER)."""
         clip = _clip(start=0.5)
-        assert clip.can_buffer_start is True
+        assert clip.can_buffer_start
 
     def test_cannot_buffer_start_at_zero(self):
         """Clip starting at 0s cannot buffer."""
         clip = _clip(start=0.0)
-        assert clip.can_buffer_start is False
+        assert not clip.can_buffer_start
 
     def test_can_buffer_start_within_tolerance(self):
         """Clip starting at 0.4s can buffer (within BOUNDARY_TOLERANCE)."""
         clip = _clip(start=0.4)
-        assert clip.can_buffer_start is True
+        assert clip.can_buffer_start
 
     def test_can_buffer_end_with_margin(self):
         """Clip ending 0.5s before video end can buffer."""
         clip = _clip(end=9.5, duration=10.0)
-        assert clip.can_buffer_end is True
+        assert clip.can_buffer_end
 
     def test_cannot_buffer_end_at_video_end(self):
         """Clip ending at video duration cannot buffer."""
         clip = _clip(end=10.0, duration=10.0)
-        assert clip.can_buffer_end is False
+        assert not clip.can_buffer_end
 
     def test_can_buffer_end_within_tolerance(self):
         """Clip ending 0.4s before end can buffer (within tolerance)."""
         clip = _clip(end=9.6, duration=10.0)
-        assert clip.can_buffer_end is True
+        assert clip.can_buffer_end
 
 
 class TestPlanTransitionsEdgeCases:
@@ -67,14 +67,14 @@ class TestPlanTransitionsEdgeCases:
     def test_empty_clips(self):
         """Empty clip list returns empty plan."""
         plan = plan_transitions([])
-        assert plan.transitions == []
-        assert plan.buffer_start == []
-        assert plan.buffer_end == []
+        assert not plan.transitions
+        assert not plan.buffer_start
+        assert not plan.buffer_end
 
     def test_single_clip(self):
         """Single clip has no transitions and no buffers."""
         plan = plan_transitions([_clip()])
-        assert plan.transitions == []
+        assert not plan.transitions
         assert plan.buffer_start == [False]
         assert plan.buffer_end == [False]
 
@@ -110,8 +110,8 @@ class TestPlanTransitionsCrossfadeMode:
         clips = [_clip() for _ in range(3)]
         plan = plan_transitions(clips, transition_mode="crossfade")
         # Middle clip should have both start and end buffers
-        assert plan.buffer_start[1] is True
-        assert plan.buffer_end[1] is True
+        assert plan.buffer_start[1]
+        assert plan.buffer_end[1]
 
     def test_forced_cut_at_video_start(self):
         """Clip at video start forces cut (can't buffer start)."""
@@ -155,8 +155,8 @@ class TestPlanTransitionsTitleScreens:
         """Title screens don't need buffers (synthetic content)."""
         clips = [_clip(is_title=True), _clip()]
         plan = plan_transitions(clips, transition_mode="crossfade")
-        assert plan.buffer_end[0] is False  # Title doesn't buffer
-        assert plan.buffer_start[1] is True  # Real clip does buffer
+        assert not plan.buffer_end[0]  # Title doesn't buffer
+        assert plan.buffer_start[1]  # Real clip does buffer
 
 
 class TestPlanTransitionsSmartMode:

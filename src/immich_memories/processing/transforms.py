@@ -172,8 +172,7 @@ class AspectRatioTransformer:
                 self._vision_detector,
                 self._face_cascade,
             )
-        else:
-            return transform_fit(input_path, output_path, self.target_resolution)
+        return transform_fit(input_path, output_path, self.target_resolution)
 
     # Keep legacy private helpers as thin delegates so subclasses still work.
 
@@ -271,12 +270,11 @@ def apply_aspect_ratio_transform(
     Returns:
         Path to transformed video.
     """
-    transformer = AspectRatioTransformer(
+    return AspectRatioTransformer(
         target_orientation=Orientation(orientation),
         scale_mode=ScaleMode(scale_mode),
         target_resolution=resolution,
-    )
-    return transformer.transform(input_path, output_path)
+    ).transform(input_path, output_path)
 
 
 def add_date_overlay(

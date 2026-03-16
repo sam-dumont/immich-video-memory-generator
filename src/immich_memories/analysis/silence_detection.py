@@ -114,6 +114,56 @@ def detect_silence_gaps(
     return _detect_silence_gaps_moviepy(video_path, threshold_db, min_silence_duration, window_size)
 
 
+def _collect_silence_gaps(
+    audio_array: np.ndarray,
+    samples_per_window: int,
+    num_windows: int,
+    threshold_db: float,
+    min_silence_duration: float,
+    window_size: float,
+    total_duration: float,
+) -> list[tuple[float, float]]:
+    """Walk audio windows and collect contiguous silence regions.
+
+    Args:
+        audio_array: Audio samples as numpy array.
+        samples_per_window: Number of samples per analysis window.
+        num_windows: Total number of windows to process.
+        threshold_db: Volume threshold in dB below which is silence.
+        min_silence_duration: Minimum gap length to keep.
+        window_size: Duration of each window in seconds.
+        total_duration: Total audio duration in seconds.
+
+    Returns:
+        List of (start, end) tuples for silence gaps.
+    """
+    silence_gaps: list[tuple[float, float]] = []
+    silence_start: float | None = None
+
+    for i in range(num_windows):
+        start_sample = i * samples_per_window
+        end_sample = start_sample + samples_per_window
+        window = audio_array[start_sample:end_sample]
+
+        rms = np.sqrt(np.mean(window**2))
+        db = 20 * np.log10(rms + 1e-10)
+        time_pos = i * window_size
+
+        if db < threshold_db:
+            if silence_start is None:
+                silence_start = time_pos
+        elif silence_start is not None:
+            if time_pos - silence_start >= min_silence_duration:
+                silence_gaps.append((silence_start, time_pos))
+            silence_start = None
+
+    # Handle trailing silence
+    if silence_start is not None and total_duration - silence_start >= min_silence_duration:
+        silence_gaps.append((silence_start, total_duration))
+
+    return silence_gaps
+
+
 def _analyze_audio_for_silence(
     audio_array: np.ndarray,
     sample_rate: int,
@@ -135,41 +185,17 @@ def _analyze_audio_for_silence(
     """
     samples_per_window = int(sample_rate * window_size)
     num_windows = len(audio_array) // samples_per_window
-    duration = len(audio_array) / sample_rate
+    total_duration = len(audio_array) / sample_rate
 
-    silence_gaps = []
-    silence_start = None
-
-    for i in range(num_windows):
-        start_sample = i * samples_per_window
-        end_sample = start_sample + samples_per_window
-        window = audio_array[start_sample:end_sample]
-
-        # Calculate RMS energy
-        rms = np.sqrt(np.mean(window**2))
-
-        # Convert to dB (with small epsilon to avoid log(0))
-        db = 20 * np.log10(rms + 1e-10)
-
-        time_pos = i * window_size
-
-        if db < threshold_db:
-            # In silence
-            if silence_start is None:
-                silence_start = time_pos
-        else:
-            # Sound detected
-            if silence_start is not None:
-                silence_duration = time_pos - silence_start
-                if silence_duration >= min_silence_duration:
-                    silence_gaps.append((silence_start, time_pos))
-                silence_start = None
-
-    # Handle trailing silence
-    if silence_start is not None:
-        silence_duration = duration - silence_start
-        if silence_duration >= min_silence_duration:
-            silence_gaps.append((silence_start, duration))
+    silence_gaps = _collect_silence_gaps(
+        audio_array,
+        samples_per_window,
+        num_windows,
+        threshold_db,
+        min_silence_duration,
+        window_size,
+        total_duration,
+    )
 
     logger.debug(f"Found {len(silence_gaps)} silence gaps")
     return silence_gaps

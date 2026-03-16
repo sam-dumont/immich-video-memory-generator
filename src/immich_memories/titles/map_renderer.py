@@ -6,6 +6,7 @@ or numpy arrays ready for the Taichi GPU pipeline.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
 
@@ -111,6 +112,40 @@ def render_location_card(
 
     draw.text((x, y), location_name, fill=_TEXT_COLOR, font=font)
     return img
+
+
+def render_equirectangular_map(
+    center_lat: float,
+    center_lon: float,
+    width: int = 720,
+    height: int = 360,
+    map_style: str = DEFAULT_MAP_STYLE,
+) -> np.ndarray:
+    """Fetch satellite tiles as a wide-area equirectangular texture.
+
+    Used as the globe projection texture — no pins or text, just the
+    raw satellite imagery centered on the trip area.
+
+    Returns:
+        float32 array (height, width, 3) normalized to [0, 1].
+    """
+    url_template = MAP_STYLES.get(map_style, MAP_STYLES[DEFAULT_MAP_STYLE])
+    m = StaticMap(width, height, url_template=url_template)
+
+    # Add an invisible marker at center to set the map viewport
+    m.add_marker(CircleMarker((center_lon, center_lat), "#00000000", 1))
+
+    try:
+        image = m.render()
+    except Exception:
+        logger.warning("Equirectangular tile fetch failed, using dark fallback")
+        dark = np.full((height, width, 3), 0.15, dtype=np.float32)
+        return dark
+
+    if image.size != (width, height):
+        image = image.resize((width, height))
+
+    return np.array(image.convert("RGB"), dtype=np.float32) / 255.0
 
 
 # ---------------------------------------------------------------------------
@@ -395,10 +430,8 @@ def _get_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFo
     cache_dir = Path.home() / ".immich-memories" / "fonts" / "Montserrat"
     montserrat = cache_dir / ("Montserrat-Bold.ttf" if bold else "Montserrat-Regular.ttf")
     if montserrat.exists():
-        try:
+        with contextlib.suppress(OSError):
             return ImageFont.truetype(str(montserrat), size)
-        except OSError:
-            pass
 
     # System fallbacks
     fallbacks = [
@@ -411,3 +444,53 @@ def _get_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFo
         except OSError:
             continue
     return ImageFont.load_default()
+
+
+def _wrap_text(
+    text: str,
+    draw: ImageDraw.ImageDraw,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    max_w: int,
+) -> list[str]:
+    """Word-wrap text to fit within max_w pixels."""
+    if "," in text:
+        parts = [p.strip() for p in text.split(",", 1)]
+        if all(draw.textbbox((0, 0), p, font=font)[2] <= max_w for p in parts):
+            return parts
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        test = f"{current} {word}".strip()
+        if draw.textbbox((0, 0), test, font=font)[2] > max_w and current:
+            lines.append(current)
+            current = word
+        else:
+            current = test
+    if current:
+        lines.append(current)
+    return lines or [text]
+
+
+def _draw_gradient_band(draw: ImageDraw.ImageDraw, y: int, bh: int, w: int, h: int) -> None:
+    """Soft dark gradient band for text readability."""
+    cy, half = y + bh // 2, bh // 2
+    for dy in range(-half, half + 1):
+        row = cy + dy
+        if 0 <= row < h:
+            a = int(100 * (1 - (abs(dy) / max(1, half)) ** 2))
+            draw.line([(0, row), (w, row)], fill=(0, 0, 0, a))
+
+
+def _overlay_composite(frame: Image.Image, ov: Image.Image, alpha: float) -> Image.Image:
+    """Composite RGBA overlay onto RGB frame with given opacity."""
+    import numpy as np
+
+    if alpha >= 0.99:
+        return Image.alpha_composite(frame.convert("RGBA"), ov).convert("RGB")
+    arr = np.array(ov.copy())
+    arr[:, :, 3] = (arr[:, :, 3].astype(np.float32) * alpha).astype(np.uint8)
+    return Image.alpha_composite(
+        frame.convert("RGBA"),
+        Image.fromarray(arr, "RGBA"),
+    ).convert("RGB")

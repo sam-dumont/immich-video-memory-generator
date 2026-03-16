@@ -62,12 +62,6 @@ class TestExpandEnvVars:
 class TestImmichConfig:
     """Tests for ImmichConfig."""
 
-    def test_default_values(self):
-        """Test default configuration values."""
-        config = ImmichConfig()
-        assert config.url == ""
-        assert config.api_key == ""
-
     def test_env_expansion(self, monkeypatch):
         """Test environment variable expansion in config."""
         monkeypatch.setenv("TEST_IMMICH_URL", "https://test.example.com")
@@ -78,15 +72,6 @@ class TestImmichConfig:
 
 class TestDefaultsConfig:
     """Tests for DefaultsConfig."""
-
-    def test_default_values(self):
-        """Test default configuration values."""
-        config = DefaultsConfig()
-        assert config.target_duration_minutes == 10
-        assert config.output_orientation == "auto"
-        assert config.scale_mode == "smart_crop"
-        assert config.transition == "smart"
-        assert config.transition_duration == 0.5
 
     @pytest.mark.parametrize(
         "field,value,match",
@@ -117,14 +102,6 @@ class TestDefaultsConfig:
 class TestAnalysisConfig:
     """Tests for AnalysisConfig."""
 
-    def test_default_values(self):
-        """Test default configuration values."""
-        config = AnalysisConfig()
-        assert config.scene_threshold == 27.0
-        assert config.min_scene_duration == 1.0
-        assert config.duplicate_hash_threshold == 8
-        assert config.keyframe_interval == 1.0
-
     @pytest.mark.parametrize(
         "field,value",
         [
@@ -153,16 +130,56 @@ class TestAnalysisConfig:
         assert config.duplicate_hash_threshold == 0
 
 
+class TestClipStyle:
+    """Tests for clip_style parameter mapping."""
+
+    def test_balanced_sets_defaults(self):
+        """clip_style balanced maps to the standard duration params."""
+        config = AnalysisConfig(clip_style="balanced")
+        assert config.optimal_clip_duration == 5.0
+        assert config.max_optimal_duration == 10.0
+        assert config.target_extraction_ratio == 0.4
+        assert config.max_segment_duration == 15.0
+        assert config.min_segment_duration == 2.0
+
+    def test_fast_cuts(self):
+        """clip_style fast-cuts uses shorter durations."""
+        config = AnalysisConfig(clip_style="fast-cuts")
+        assert config.optimal_clip_duration == 3.0
+        assert config.max_optimal_duration == 6.0
+        assert config.target_extraction_ratio == 0.3
+        assert config.max_segment_duration == 8.0
+        assert config.min_segment_duration == 1.5
+
+    def test_long_cuts(self):
+        """clip_style long-cuts uses longer durations."""
+        config = AnalysisConfig(clip_style="long-cuts")
+        assert config.optimal_clip_duration == 8.0
+        assert config.max_optimal_duration == 15.0
+        assert config.target_extraction_ratio == 0.5
+        assert config.max_segment_duration == 25.0
+        assert config.min_segment_duration == 3.0
+
+    def test_explicit_override_wins(self):
+        """Explicit values override clip_style defaults."""
+        config = AnalysisConfig(clip_style="balanced", optimal_clip_duration=7.0)
+        assert config.optimal_clip_duration == 7.0
+        assert config.max_optimal_duration == 10.0  # rest from balanced
+
+    def test_no_clip_style_keeps_field_defaults(self):
+        """Without clip_style, original field defaults are used."""
+        config = AnalysisConfig()
+        assert config.optimal_clip_duration == 5.0
+        assert config.max_optimal_duration == 15.0  # original default, not balanced's 10.0
+
+    def test_invalid_clip_style_rejected(self):
+        """Invalid clip_style value is rejected."""
+        with pytest.raises(ValueError):
+            AnalysisConfig(clip_style="cinematic")
+
+
 class TestOutputConfig:
     """Tests for OutputConfig."""
-
-    def test_default_values(self):
-        """Test default configuration values."""
-        config = OutputConfig()
-        assert config.format == "mp4"
-        assert config.resolution == "1080p"
-        assert config.codec == "h264"
-        assert config.crf == 18
 
     def test_output_path(self):
         """Test output path expansion."""

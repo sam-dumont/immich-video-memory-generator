@@ -17,27 +17,27 @@ class TestAppStateDefaults:
     def test_default_config_not_saved(self):
         """Config is not saved by default."""
         state = AppState()
-        assert state.config_saved is False
+        assert not state.config_saved
 
     def test_default_empty_clips(self):
         """Clips list is empty by default."""
         state = AppState()
-        assert state.clips == []
+        assert not state.clips
 
     def test_default_empty_selected_ids(self):
         """Selected clip IDs is empty by default."""
         state = AppState()
-        assert state.selected_clip_ids == set()
+        assert not state.selected_clip_ids
 
     def test_default_not_processing(self):
         """Not processing by default."""
         state = AppState()
-        assert state.processing is False
+        assert not state.processing
 
     def test_default_pipeline_not_running(self):
         """Pipeline not running by default."""
         state = AppState()
-        assert state.pipeline_running is False
+        assert not state.pipeline_running
 
     def test_default_time_period_mode(self):
         """Default time period mode is 'year'."""
@@ -53,21 +53,21 @@ class TestAppStateResetClips:
         state = AppState()
         state.clips = [make_clip("c1"), make_clip("c2")]
         state.reset_clips()
-        assert state.clips == []
+        assert not state.clips
 
     def test_reset_clears_selected_ids(self):
         """reset_clips() empties selected_clip_ids."""
         state = AppState()
         state.selected_clip_ids = {"id1", "id2"}
         state.reset_clips()
-        assert state.selected_clip_ids == set()
+        assert not state.selected_clip_ids
 
     def test_reset_clears_segments(self):
         """reset_clips() empties clip_segments."""
         state = AppState()
         state.clip_segments = {"id1": (0.0, 5.0)}
         state.reset_clips()
-        assert state.clip_segments == {}
+        assert not state.clip_segments
 
     def test_reset_clears_pipeline_result(self):
         """reset_clips() sets pipeline_result to None."""
@@ -81,7 +81,7 @@ class TestAppStateResetClips:
         state = AppState()
         state.clip_rotations = {"id1": 90}
         state.reset_clips()
-        assert state.clip_rotations == {}
+        assert not state.clip_rotations
 
 
 class TestAppStateGetSelectedClips:
@@ -105,13 +105,13 @@ class TestAppStateGetSelectedClips:
         state = AppState()
         state.clips = [make_clip("c1")]
         state.selected_clip_ids = set()
-        assert state.get_selected_clips() == []
+        assert not state.get_selected_clips()
 
     def test_returns_empty_when_no_clips(self):
         """get_selected_clips() returns empty when clips list is empty."""
         state = AppState()
         state.selected_clip_ids = {"c1"}
-        assert state.get_selected_clips() == []
+        assert not state.get_selected_clips()
 
 
 class TestAppStateSingleton:
@@ -173,17 +173,17 @@ class TestAppStateTransitions:
     def test_config_saved_flag(self):
         """config_saved flag can be toggled."""
         state = AppState()
-        assert state.config_saved is False
+        assert not state.config_saved
         state.config_saved = True
-        assert state.config_saved is True
+        assert state.config_saved
 
     def test_pipeline_running_flag(self):
         """pipeline_running flag tracks pipeline state."""
         state = AppState()
         state.pipeline_running = True
-        assert state.pipeline_running is True
+        assert state.pipeline_running
         state.pipeline_running = False
-        assert state.pipeline_running is False
+        assert not state.pipeline_running
 
 
 class TestAppStateResetIdempotent:
@@ -195,7 +195,7 @@ class TestAppStateResetIdempotent:
         state.clips = [make_clip("c1")]
         state.reset_clips()
         state.reset_clips()
-        assert state.clips == []
+        assert not state.clips
 
     def test_get_selected_clips_with_stale_ids(self):
         """Selected IDs referencing removed clips return empty."""

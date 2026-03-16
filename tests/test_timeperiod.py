@@ -46,7 +46,7 @@ class TestDateRange:
     def test_is_calendar_year_true(self):
         """Test is_calendar_year for full year."""
         dr = calendar_year(2024)
-        assert dr.is_calendar_year is True
+        assert dr.is_calendar_year
 
     def test_is_calendar_year_false(self):
         """Test is_calendar_year for partial year."""
@@ -54,7 +54,7 @@ class TestDateRange:
             start=datetime(2024, 1, 1, 0, 0, 0),
             end=datetime(2024, 6, 30, 23, 59, 59),
         )
-        assert dr.is_calendar_year is False
+        assert not dr.is_calendar_year
 
     def test_contains_datetime(self):
         """Test contains with datetime."""
@@ -179,7 +179,7 @@ class TestCalendarYear:
     def test_calendar_year_is_calendar_year(self):
         """Test that result is identified as calendar year."""
         dr = calendar_year(2024)
-        assert dr.is_calendar_year is True
+        assert dr.is_calendar_year
 
     def test_calendar_year_days(self):
         """Test days in regular year."""
@@ -204,7 +204,7 @@ class TestBirthdayYear:
     def test_birthday_year_not_calendar_year(self):
         """Test that birthday year is not identified as calendar year."""
         dr = birthday_year(date(1990, 2, 7), 2024)
-        assert dr.is_calendar_year is False
+        assert not dr.is_calendar_year
 
     def test_birthday_year_leap_year_birthday(self):
         """Test Feb 29 birthday on non-leap year."""

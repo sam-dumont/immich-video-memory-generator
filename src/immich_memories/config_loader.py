@@ -7,6 +7,7 @@ Re-exported from config.py for backwards compatibility.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import stat
@@ -17,23 +18,21 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from immich_memories.config_models import (
+    ACEStepConfig,
     AnalysisConfig,
+    AudioConfig,
+    AudioContentConfig,
     CacheConfig,
+    ContentAnalysisConfig,
     DefaultsConfig,
     HardwareAccelConfig,
     ImmichConfig,
     LLMConfig,
+    MusicGenConfig,
     OutputConfig,
     ServerConfig,
-    TripsConfig,
-)
-from immich_memories.config_models_extra import (
-    ACEStepConfig,
-    AudioConfig,
-    AudioContentConfig,
-    ContentAnalysisConfig,
-    MusicGenConfig,
     TitleScreenConfig,
+    TripsConfig,
     UploadConfig,
 )
 from immich_memories.scheduling.models import SchedulerConfig
@@ -56,6 +55,9 @@ class Config(BaseSettings):
     cache: CacheConfig = Field(default_factory=CacheConfig)
     hardware: HardwareAccelConfig = Field(default_factory=HardwareAccelConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    title_llm: LLMConfig | None = Field(
+        default=None, description="LLM for title generation (falls back to llm)"
+    )
     audio: AudioConfig = Field(default_factory=AudioConfig)
     musicgen: MusicGenConfig = Field(default_factory=MusicGenConfig)
     ace_step: ACEStepConfig = Field(default_factory=ACEStepConfig)
@@ -72,7 +74,7 @@ class Config(BaseSettings):
         if not path.exists():
             return cls()
 
-        with open(path) as f:
+        with path.open() as f:
             data = yaml.safe_load(f) or {}
 
         return cls(**data)
@@ -80,13 +82,11 @@ class Config(BaseSettings):
     def save_yaml(self, path: Path) -> None:
         """Save configuration to a YAML file."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
+        with path.open("w") as f:
             yaml.dump(self.model_dump(), f, default_flow_style=False, sort_keys=False)
         # Restrict config file permissions (contains API keys)
-        try:
+        with contextlib.suppress(OSError):
             path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0o600 - owner read/write only
-        except OSError:
-            pass  # Best-effort on non-POSIX systems
 
     @classmethod
     def get_default_path(cls) -> Path:
@@ -96,6 +96,32 @@ class Config(BaseSettings):
 
 # Global configuration instance
 _config: Config | None = None
+
+
+def _apply_env_overrides(config: Config) -> None:
+    """Apply environment variable overrides to a Config instance."""
+    if url := os.environ.get("IMMICH_URL"):
+        config.immich.url = url
+    if api_key := os.environ.get("IMMICH_API_KEY"):
+        config.immich.api_key = api_key
+    if openai_key := os.environ.get("OPENAI_API_KEY"):
+        config.llm.api_key = openai_key
+
+    # MusicGen env var overrides (also supported via IMMICH_MEMORIES_MUSICGEN__*)
+    if musicgen_enabled := os.environ.get("MUSICGEN_ENABLED"):
+        config.musicgen.enabled = musicgen_enabled.lower() in ("true", "1", "yes")
+    if musicgen_url := os.environ.get("MUSICGEN_BASE_URL"):
+        config.musicgen.base_url = musicgen_url
+    if musicgen_key := os.environ.get("MUSICGEN_API_KEY"):
+        config.musicgen.api_key = musicgen_key
+
+    # ACE-Step env var overrides (also supported via IMMICH_MEMORIES_ACE_STEP__*)
+    if ace_step_enabled := os.environ.get("ACE_STEP_ENABLED"):
+        config.ace_step.enabled = ace_step_enabled.lower() in ("true", "1", "yes")
+    if (ace_step_mode := os.environ.get("ACE_STEP_MODE")) and ace_step_mode in ("lib", "api"):
+        config.ace_step.mode = ace_step_mode  # type: ignore[assignment]
+    if ace_step_url := os.environ.get("ACE_STEP_API_URL"):
+        config.ace_step.api_url = ace_step_url
 
 
 def get_config(reload: bool = False) -> Config:
@@ -110,31 +136,8 @@ def get_config(reload: bool = False) -> Config:
     global _config
 
     if _config is None or reload:
-        config_path = Config.get_default_path()
-        _config = Config.from_yaml(config_path)
-
-        # Override with environment variables
-        if url := os.environ.get("IMMICH_URL"):
-            _config.immich.url = url
-        if api_key := os.environ.get("IMMICH_API_KEY"):
-            _config.immich.api_key = api_key
-        if openai_key := os.environ.get("OPENAI_API_KEY"):
-            _config.llm.api_key = openai_key
-        # MusicGen env var overrides (also supported via IMMICH_MEMORIES_MUSICGEN__*)
-        if musicgen_enabled := os.environ.get("MUSICGEN_ENABLED"):
-            _config.musicgen.enabled = musicgen_enabled.lower() in ("true", "1", "yes")
-        if musicgen_url := os.environ.get("MUSICGEN_BASE_URL"):
-            _config.musicgen.base_url = musicgen_url
-        if musicgen_key := os.environ.get("MUSICGEN_API_KEY"):
-            _config.musicgen.api_key = musicgen_key
-
-        # ACE-Step env var overrides (also supported via IMMICH_MEMORIES_ACE_STEP__*)
-        if ace_step_enabled := os.environ.get("ACE_STEP_ENABLED"):
-            _config.ace_step.enabled = ace_step_enabled.lower() in ("true", "1", "yes")
-        if (ace_step_mode := os.environ.get("ACE_STEP_MODE")) and ace_step_mode in ("lib", "api"):
-            _config.ace_step.mode = ace_step_mode  # type: ignore[assignment]
-        if ace_step_url := os.environ.get("ACE_STEP_API_URL"):
-            _config.ace_step.api_url = ace_step_url
+        _config = Config.from_yaml(Config.get_default_path())
+        _apply_env_overrides(_config)
 
     return _config
 
@@ -163,7 +166,7 @@ def init_config_dir() -> Path:
 
     # Enforce restrictive permissions on config directory (owner-only access)
     # This protects API keys and cached data on multi-user systems.
-    try:
+    with contextlib.suppress(OSError):
         for d in (config_dir, cache_dir, projects_dir):
             d.chmod(0o700)
 
@@ -177,7 +180,5 @@ def init_config_dir() -> Path:
                     config_file,
                     config_file,
                 )
-    except OSError:
-        pass  # Skip on platforms where chmod is not supported (e.g., some Windows setups)
 
     return config_dir

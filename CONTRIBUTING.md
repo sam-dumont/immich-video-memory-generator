@@ -1,276 +1,126 @@
 # Contributing to Immich Memories
 
-Thank you for your interest in contributing to Immich Memories! This document provides guidelines and instructions for contributing.
+## About this project
 
-## Context: AI-built codebase
+This codebase is built almost entirely with AI (Claude by Anthropic). That's not a disclaimer: it's a deliberate choice, and the quality gates exist because of it, not in spite of it. 1,100+ tests, 17 CI gates, mutation testing, composition over inheritance, TDD.
 
-> This project is written almost entirely with AI (Claude by Anthropic) as an experiment in
-> pushing AI-assisted development on a real, complex codebase. The quality gates are strict
-> (970+ tests, type checking, complexity limits, security scanning), so don't be shy about
-> holding contributions to the same bar. If you spot something the AI got wrong, fix it.
+If you spot something the AI got wrong, please fix it. That's how this gets better.
+
+## AI Tools Welcome (With Context)
+
+This entire project was built with GenAI (Claude by Anthropic). AI-assisted contributions are absolutely welcome: this is not a project that's going to lecture you about using Copilot.
+
+That said, AI code has specific failure modes: bloat, over-abstraction, tests that test mocks instead of behavior, verbose docstrings that add no value. That's why this project has 17 CI gates, mutation testing, and architectural rules like "no mixins": they exist specifically to catch the things AI gets wrong.
+
+When contributing with AI tools:
+
+1. **Mention it in the PR.** A quick "used Claude/Copilot for X" is enough. Not a judgment: just context for review. Following the [Apache Software Foundation approach](https://github.com/melissawm/open-source-ai-contribution-policies).
+
+2. **Review what the AI wrote.** You're responsible for every line. If the AI added a 200-line abstraction for something that needs 20 lines, catch that before submitting.
+
+3. **Run `make ci` and `make critique`.** These gates exist to catch AI-specific smells. If they pass, you're probably fine.
 
 ## Code of Conduct
 
-By participating in this project, you agree to maintain a respectful and inclusive environment for everyone.
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold this standard.
 
-## How to Contribute
+## How I Prefer to Work
 
-### Reporting Bugs
+I'm a solo maintainer. Here's what helps me most:
 
-1. **Check existing issues** - Search [GitHub Issues](https://github.com/sam-dumont/immich-video-memory-generator/issues) to see if the bug has already been reported
-2. **Create a new issue** - If not found, create a new issue with:
-   - Clear, descriptive title
-   - Steps to reproduce the bug
-   - Expected vs actual behavior
-   - Your environment (OS, Python version, hardware)
-   - Relevant logs or error messages
+**Open an Issue first.** Before writing code, open an Issue or Discussion describing what you want to change and why. Let me weigh in on the approach before you invest time. This prevents wasted work on both sides.
 
-### Suggesting Features
+**Ideas and bug reports are very welcome.** You don't have to write code to contribute. A well-described bug report or feature idea is worth more than a 500-line PR I didn't ask for.
 
-1. **Check existing issues** - Look for similar feature requests
-2. **Create a feature request** - Describe:
-   - The problem you're trying to solve
-   - Your proposed solution
-   - Alternative solutions you've considered
-   - Any additional context
-
-### Pull Requests
-
-**Keep PRs small: under 200-300 lines of diff.** Large PRs are hard to review and tend to hide bugs. If your change is bigger, split it into focused, reviewable chunks (one concern per PR). Yes, the pre-v1 history has some monster PRs. Do as I say, not as I did.
-
-1. **Fork the repository**
-2. **Create a feature branch** from `main`:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-3. **Set up development environment**:
-   ```bash
-   # Install uv (if not already installed)
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-
-   # Install all dependencies (including dev)
-   make dev
-   ```
-4. **Make your changes**
-5. **Run all checks**:
-   ```bash
-   make check  # Runs lint, format-check, typecheck, file-length, complexity, and tests
-   ```
-6. **Commit your changes**:
-   ```bash
-   git commit -m "feat: add amazing feature"
-   ```
-7. **Push to your fork**:
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-8. **Open a Pull Request** against the `main` branch
+**PRs are welcome too, but keep them focused:**
+- Max ~300 lines of diff (excluding generated files, lock files)
+- One concern per PR: don't mix refactoring with features
+- Link to the Issue you're addressing
+- `make ci` must pass before requesting review
 
 ## Development Setup
 
-### Prerequisites
-
-- Python 3.11+ (3.13 recommended)
-- FFmpeg
-- uv (recommended) or pip
-- GNU Make (pre-installed on most systems)
-
-### Quick Setup
+Prerequisites: Python 3.11+, FFmpeg, [uv](https://docs.astral.sh/uv/), GNU Make
 
 ```bash
-# Clone your fork
 git clone https://github.com/YOUR_USERNAME/immich-video-memory-generator.git
 cd immich-video-memory-generator
-
-# Install uv
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install all dependencies
-make dev
-
-# Verify everything works
-make check
+make dev       # Install all dependencies
+make check     # Verify everything works
 ```
 
-### Development Commands
+The **Makefile** is the single source of truth. Run `make help` to see everything.
 
-The **Makefile** is the single source of truth for all commands. Run `make help` to see everything available.
-
+Key commands:
 ```bash
-make dev           # Install all dependencies (including dev)
-make test          # Run tests
-make test-cov      # Run tests with coverage
-make lint          # Run ruff linter
-make format        # Format code with ruff
-make typecheck     # Run mypy type checker
-make file-length   # Check all .py files are ≤500 lines
-make complexity    # Check cyclomatic complexity (Xenon grade C)
-make check         # Run all checks (lint + format + type + length + complexity + test)
-make ci            # Full CI-equivalent pipeline (all checks + dead-code)
-make cli           # Run the CLI
-make run           # Launch the UI
-make build         # Build package
-make clean         # Remove build artifacts
+make test              # Unit tests
+make test-integration  # Real FFmpeg tests (requires FFmpeg)
+make ci                # Full CI pipeline locally
+make critique          # AI smell audit
+make mutation          # Mutation testing (slow, weekly CI)
 ```
 
-## Code Style
+## Code Rules
 
-### Python
+These are enforced by CI and pre-commit hooks. Not suggestions.
 
-- The project uses **Ruff** for linting and formatting
-- Code is automatically formatted on CI
-- Type hints are required for all public functions
-- Follow PEP 8 naming conventions
+**Architecture:**
+- Composition over inheritance: no mixins, no class hierarchies
+- File limit: 800 lines soft warning, 1000 lines hard error
+- Split along cohesion boundaries, not line counts
+- Use Protocol contracts for service dependencies
 
-### Commit Messages
+**Tests:**
+- TDD with vertical slices (RED → GREEN → REFACTOR)
+- Test behavior through public APIs, not internal methods
+- Every mock gets a `# WHY:` comment explaining what boundary it replaces
+- No testing Python arithmetic, Pydantic defaults, or ABC instantiation
+- Integration tests exist for FFmpeg pipeline changes
 
-This project follows [Conventional Commits](https://www.conventionalcommits.org/):
+**Style:**
+- Ruff for linting and formatting
+- mypy for type checking (no new suppressions without a clear reason)
+- Conventional commits: `feat(scope): description`
+- No docstrings that restate the function signature
 
-```
-<type>(<scope>): <description>
-
-[optional body]
-
-[optional footer]
-```
-
-Types:
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `style`: Code style changes (formatting, etc.)
-- `refactor`: Code refactoring
-- `test`: Adding or updating tests
-- `chore`: Maintenance tasks
-
-Examples:
-```
-feat(ui): add keyboard shortcuts for moment refinement
-fix(api): handle pagination correctly for large libraries
-docs: update installation instructions for macOS
-```
-
-### Documentation
-
-- Docs live in `docs-site/docs/` and are built with [Docusaurus](https://docusaurus.io/)
-- Preview locally: `make docs-dev` (opens at http://localhost:3000)
-- Build: `make docs-build`
-- **When changing user-facing behavior**, update the corresponding docs page:
-  - CLI commands/flags → `docs-site/docs/cli/`
-  - UI wizard changes → `docs-site/docs/ui-walkthrough/`
-  - Config options → `docs-site/docs/configuration/`
-  - Hardware support → `docs-site/docs/hardware/`
-  - Music/audio → `docs-site/docs/music/`
-  - New features → `docs-site/docs/features/` (create new page if needed)
-- If adding new pages, update `docs-site/sidebars.ts`
-- To add screenshots: run the Playwright script (`npx tsx scripts/take-screenshots.ts`),
-  blur faces (`npx tsx scripts/blur-faces.ts`), and commit to `static/img/screenshots/`
-- Add docstrings to all public functions and classes
-- Include type hints in function signatures
-
-## Testing
-
-### Running Tests
-
-```bash
-# All tests
-make test
-
-# With coverage
-make test-cov
-
-# Specific test file
-uv run pytest tests/test_specific.py
-
-# Specific test
-uv run pytest tests/test_specific.py::test_function_name -v
-```
-
-### Writing Tests
-
-- Place tests in the `tests/` directory
-- Name test files `test_*.py`
-- Use descriptive test names: `test_should_detect_faces_in_video`
-- Use fixtures for common setup
-- Mock external services (Immich API, FFmpeg)
+Full rules in [CLAUDE.md](CLAUDE.md) (yes, the AI reads it too).
 
 ## Project Structure
 
-The codebase enforces a 500-line limit per `.py` file. Large classes use mixins to split logic while keeping a single public API. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full module listing with 23+ files per package.
-
 ```
-immich-memories/
-├── src/immich_memories/
-│   ├── cli/                # CLI commands (Click)
-│   ├── config.py           # Configuration (re-exports from config_loader, config_models)
-│   ├── api/                # Immich API client (SyncImmichClient + 3 mixins)
-│   ├── analysis/           # Video analysis & clip selection (SmartPipeline + 4 mixins)
-│   ├── processing/         # Video processing (VideoAssembler + 11 mixins)
-│   ├── audio/              # Audio processing, music generation, mood analysis
-│   ├── titles/             # Title screen generation (PIL, Taichi, FFmpeg renderers)
-│   ├── tracking/           # Run history & telemetry (SQLite)
-│   ├── ui/                 # NiceGUI web interface
-│   │   ├── app.py
-│   │   └── pages/          # Step-by-step wizard pages
-│   └── cache/              # Thumbnail, video, and analysis caching
-├── tests/                  # Test files
-├── docker/                 # Docker configuration
-├── deploy/                 # Kubernetes & Terraform deployment
-├── .github/workflows/      # CI/CD workflows
-├── pyproject.toml          # Project configuration
-├── Makefile                # Single source of truth for all commands
-└── README.md
+src/immich_memories/
+├── api/          # Immich API client (ImmichClient + 5 composed services)
+├── analysis/     # Video analysis, scoring, clip selection (SmartPipeline + services)
+├── processing/   # Video assembly (VideoAssembler + 8 composed services)
+├── titles/       # Title screens, maps, globe animation (TitleScreenGenerator + services)
+├── audio/        # Music generation, audio ducking, mood analysis
+├── ui/           # NiceGUI 4-step wizard
+├── cache/        # Analysis, video, and thumbnail caching (SQLite)
+├── tracking/     # Run history and job management
+├── scheduling/   # Cron-based automatic generation
+└── memory_types/ # Preset system (Year in Review, Trip, Person, etc.)
 ```
 
-## Hardware-Specific Development
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full module map.
 
-### macOS (Apple Silicon)
+## Commit Messages
 
-For Vision framework development:
+[Conventional Commits](https://www.conventionalcommits.org/) format, enforced by commitlint:
 
-```bash
-# Install Mac-specific dependencies (includes Metal GPU acceleration)
-make dev-mac
-
-# Test Vision framework
-python -c "from immich_memories.analysis.apple_vision import is_vision_available; print(is_vision_available())"
 ```
-
-### NVIDIA (CUDA)
-
-For CUDA development:
-
-```bash
-# Ensure CUDA toolkit is installed
-nvcc --version
-
-# Test hardware detection
-uv run immich-memories hardware
+feat(ui): add keyboard shortcuts for clip review
+fix(api): handle pagination for large libraries
+docs: update installation for macOS
+refactor(analysis): extract scoring helpers
+test: add integration test for HDR passthrough
 ```
-
-## Release Process
-
-Releases are automated via GitHub Actions:
-
-1. Update version in `pyproject.toml`
-2. Create and push a git tag:
-   ```bash
-   git tag v0.2.0
-   git push origin v0.2.0
-   ```
-3. Create a GitHub Release from the tag
-4. CI will automatically:
-   - Run all tests
-   - Build the package
-   - Publish to PyPI
-   - Build and push Docker images
 
 ## Getting Help
 
-- **Questions**: Open a [GitHub Discussion](https://github.com/sam-dumont/immich-video-memory-generator/discussions)
-- **Bugs**: Open a [GitHub Issue](https://github.com/sam-dumont/immich-video-memory-generator/issues)
-- **Security**: See [SECURITY.md](SECURITY.md) for reporting vulnerabilities
+- **Questions**: [GitHub Discussions](https://github.com/sam-dumont/immich-video-memory-generator/discussions)
+- **Bugs**: [GitHub Issues](https://github.com/sam-dumont/immich-video-memory-generator/issues)
+- **Security**: See [SECURITY.md](SECURITY.md)
 
 ## License
 
-By contributing to Immich Memories, you agree that your contributions will be licensed under the MIT License.
+Contributions are licensed under the MIT License.

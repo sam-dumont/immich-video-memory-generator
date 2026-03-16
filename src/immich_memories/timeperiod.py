@@ -9,6 +9,7 @@ Supports:
 
 from __future__ import annotations
 
+import contextlib
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -50,8 +51,7 @@ class DateRange(NamedTuple):
     def is_calendar_year(self) -> bool:
         """Check if this is a full calendar year."""
         return (
-            self.start.month == 1
-            and self.start.day == 1
+            self.start.month == self.start.day == 1
             and self.end.month == 12
             and self.end.day == 31
             and self.start.year == self.end.year
@@ -233,8 +233,7 @@ def from_period(
         period = Period.parse(period)
 
     # End is period from start, minus 1 day, at end of day
-    end_date = period.add_to_date(start) - timedelta(days=1)
-    end = end_date.replace(hour=23, minute=59, second=59)
+    end = (period.add_to_date(start) - timedelta(days=1)).replace(hour=23, minute=59, second=59)
 
     return DateRange(
         start=start,
@@ -294,28 +293,20 @@ def parse_date(date_str: str) -> date:
     date_str = date_str.strip()
 
     # Try ISO format first (YYYY-MM-DD)
-    try:
+    with contextlib.suppress(ValueError):
         return datetime.strptime(date_str, "%Y-%m-%d").date()
-    except ValueError:
-        pass
 
     # Try YYYY/MM/DD
-    try:
+    with contextlib.suppress(ValueError):
         return datetime.strptime(date_str, "%Y/%m/%d").date()
-    except ValueError:
-        pass
 
     # Try DD/MM/YYYY (European format)
-    try:
+    with contextlib.suppress(ValueError):
         return datetime.strptime(date_str, "%d/%m/%Y").date()
-    except ValueError:
-        pass
 
     # Try MM/DD/YYYY (US format)
-    try:
+    with contextlib.suppress(ValueError):
         return datetime.strptime(date_str, "%m/%d/%Y").date()
-    except ValueError:
-        pass
 
     raise ValueError(
         f"Cannot parse date: '{date_str}'. Expected format: YYYY-MM-DD, DD/MM/YYYY, or MM/DD/YYYY"

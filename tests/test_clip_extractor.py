@@ -223,7 +223,7 @@ class TestClipExtractorBatchExtract:
             ClipSegment(source_path=source, start_time=0, end_time=5, asset_id="a"),
         ]
         results = extractor.batch_extract(segs)
-        assert results == []
+        assert not results
 
     @patch("immich_memories.processing.clips.ClipExtractor.extract")
     @patch("immich_memories.processing.clips.ClipExtractor.cleanup_old_clips")

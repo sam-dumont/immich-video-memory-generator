@@ -13,6 +13,13 @@ try:
 except ImportError:
     pytest.skip("cv2 not available", allow_module_level=True)
 
+from immich_memories.analysis._segment_generation import (
+    find_nearest_cut_point,
+    generate_candidate_segments,
+    generate_fallback_segments,
+    generate_segments_from_points,
+    merge_boundaries,
+)
 from immich_memories.analysis.scoring import MomentScore
 from immich_memories.analysis.unified_analyzer import (
     CutPoint,
@@ -130,6 +137,7 @@ class TestUnifiedSegmentAnalyzer:
     @pytest.fixture
     def analyzer(self):
         """Create an UnifiedSegmentAnalyzer instance with mocked scorer."""
+        # WHY: mock scorer — visual scoring requires real video frames + OpenCV processing
         mock_scorer = MagicMock()
         return UnifiedSegmentAnalyzer(
             scorer=mock_scorer,
@@ -140,7 +148,7 @@ class TestUnifiedSegmentAnalyzer:
 
     def test_merge_boundaries_empty(self, analyzer):
         """Empty boundaries should return video start/end."""
-        result = analyzer._merge_boundaries([], [], video_duration=30.0)
+        result = merge_boundaries([], [], video_duration=30.0, cut_point_merge_tolerance=0.5)
 
         assert len(result) == 2
         assert result[0].time == 0.0
@@ -148,30 +156,34 @@ class TestUnifiedSegmentAnalyzer:
 
     def test_merge_boundaries_visual_only(self, analyzer):
         """Visual-only boundaries should be marked correctly."""
-        result = analyzer._merge_boundaries([5.0, 10.0], [], video_duration=30.0)
+        result = merge_boundaries(
+            [5.0, 10.0], [], video_duration=30.0, cut_point_merge_tolerance=0.5
+        )
 
         # Should have: 0, 5, 10, 30
         assert len(result) >= 4
         # Find the 5.0 point
         point_5 = next(cp for cp in result if abs(cp.time - 5.0) < 0.5)
-        assert point_5.is_visual is True
-        assert point_5.is_audio is False
+        assert point_5.is_visual
+        assert not point_5.is_audio
 
     def test_merge_boundaries_audio_only(self, analyzer):
         """Audio-only boundaries should be marked correctly."""
-        result = analyzer._merge_boundaries([], [5.0, 10.0], video_duration=30.0)
+        result = merge_boundaries(
+            [], [5.0, 10.0], video_duration=30.0, cut_point_merge_tolerance=0.5
+        )
 
         # Should have: 0, 5, 10, 30
         assert len(result) >= 4
         # Find the 5.0 point
         point_5 = next(cp for cp in result if abs(cp.time - 5.0) < 0.5)
-        assert point_5.is_visual is False
-        assert point_5.is_audio is True
+        assert not point_5.is_visual
+        assert point_5.is_audio
 
     def test_merge_boundaries_merged(self, analyzer):
         """Nearby visual and audio boundaries should be merged."""
         # 5.0 visual and 5.2 audio should merge (within 0.5s tolerance)
-        result = analyzer._merge_boundaries([5.0], [5.2], video_duration=30.0)
+        result = merge_boundaries([5.0], [5.2], video_duration=30.0, cut_point_merge_tolerance=0.5)
 
         # Should merge into one point with both flags
         merged_points = [cp for cp in result if cp.is_visual and cp.is_audio]
@@ -181,16 +193,16 @@ class TestUnifiedSegmentAnalyzer:
     def test_merge_boundaries_not_merged(self, analyzer):
         """Distant visual and audio boundaries should not merge."""
         # 5.0 visual and 10.0 audio are too far apart
-        result = analyzer._merge_boundaries([5.0], [10.0], video_duration=30.0)
+        result = merge_boundaries([5.0], [10.0], video_duration=30.0, cut_point_merge_tolerance=0.5)
 
         # Find individual points
         point_5 = next(cp for cp in result if abs(cp.time - 5.0) < 0.3)
         point_10 = next(cp for cp in result if abs(cp.time - 10.0) < 0.3)
 
-        assert point_5.is_visual is True
-        assert point_5.is_audio is False
-        assert point_10.is_visual is False
-        assert point_10.is_audio is True
+        assert point_5.is_visual
+        assert not point_5.is_audio
+        assert not point_10.is_visual
+        assert point_10.is_audio
 
     def test_generate_candidate_segments_respects_duration(self, analyzer):
         """Segments should respect min/max duration."""
@@ -202,7 +214,13 @@ class TestUnifiedSegmentAnalyzer:
             CutPoint(time=30.0, is_visual=True, is_audio=True),  # Too long: 30-10=20s
         ]
 
-        result = analyzer._generate_candidate_segments(cut_points, video_duration=30.0)
+        result = generate_candidate_segments(
+            cut_points,
+            video_duration=30.0,
+            min_segment_duration=analyzer.min_segment_duration,
+            max_segment_duration=analyzer.max_segment_duration,
+            dynamic_optimal=5.0,
+        )
 
         # Check all generated segments respect duration constraints
         for start_cp, end_cp in result:
@@ -219,10 +237,16 @@ class TestUnifiedSegmentAnalyzer:
             CutPoint(time=15.0, is_visual=True, is_audio=True),
         ]
 
-        result = analyzer._generate_candidate_segments(cut_points, video_duration=30.0)
+        result = generate_candidate_segments(
+            cut_points,
+            video_duration=30.0,
+            min_segment_duration=analyzer.min_segment_duration,
+            max_segment_duration=analyzer.max_segment_duration,
+            dynamic_optimal=5.0,
+        )
 
         # Should include segments starting/ending on audio boundaries
-        assert len(result) > 0
+        assert result
 
         # First candidates should have audio boundaries
         if result:
@@ -238,7 +262,11 @@ class TestUnifiedSegmentAnalyzer:
             CutPoint(time=10.0, is_visual=True, is_audio=True),
         ]
 
-        result = analyzer._generate_segments_from_points(points)
+        result = generate_segments_from_points(
+            points,
+            min_segment_duration=analyzer.min_segment_duration,
+            max_segment_duration=analyzer.max_segment_duration,
+        )
 
         # Should include: (0,5), (0,10), (5,10)
         assert len(result) >= 2
@@ -253,7 +281,12 @@ class TestUnifiedSegmentAnalyzer:
             CutPoint(time=30.0, is_visual=True, is_audio=True),
         ]
 
-        result = analyzer._generate_fallback_segments(video_duration=30.0, cut_points=cut_points)
+        result = generate_fallback_segments(
+            video_duration=30.0,
+            cut_points=cut_points,
+            min_segment_duration=analyzer.min_segment_duration,
+            proportional_max=analyzer._get_max_segment_for_source(30.0),
+        )
 
         assert len(result) >= 1
 
@@ -265,18 +298,18 @@ class TestUnifiedSegmentAnalyzer:
             CutPoint(time=10.0, is_visual=True, is_audio=True),
         ]
 
-        result = analyzer._find_nearest_cut_point(cut_points, 4.0)
+        result = find_nearest_cut_point(cut_points, 4.0)
         assert result.time == 5.0
 
-        result = analyzer._find_nearest_cut_point(cut_points, 6.0)
+        result = find_nearest_cut_point(cut_points, 6.0)
         assert result.time == 5.0
 
-        result = analyzer._find_nearest_cut_point(cut_points, 8.0)
+        result = find_nearest_cut_point(cut_points, 8.0)
         assert result.time == 10.0
 
     def test_find_nearest_cut_point_empty(self, analyzer):
         """Should return None for empty list."""
-        result = analyzer._find_nearest_cut_point([], 5.0)
+        result = find_nearest_cut_point([], 5.0)
         assert result is None
 
     def test_compute_total_score_no_content(self, analyzer):
@@ -320,6 +353,8 @@ class TestUnifiedAnalyzerIntegration:
     @pytest.fixture
     def analyzer(self):
         """Create analyzer with mocked dependencies."""
+        # WHY: mock scorer — integration tests verify boundary detection + segment selection,
+        # not the visual scoring pipeline which needs real video frames
         mock_scorer = MagicMock()
         mock_scorer.score_scene.return_value = MomentScore(
             start_time=0.0,
@@ -338,13 +373,19 @@ class TestUnifiedAnalyzerIntegration:
     def test_analyze_file_not_found(self, analyzer):
         """Should return empty list for missing file."""
         result = analyzer.analyze(Path("/nonexistent/video.mp4"))
-        assert result == []
+        assert not result
 
     def test_analyze_with_mocked_detectors(self, analyzer):
         """Should analyze video with mocked boundary detectors."""
+        # WHY: mock boundary detectors + get_video_info — they require real video files with
+        # audio/video streams; we're testing the analyze() orchestration logic
         with (
-            patch.object(analyzer, "_detect_visual_boundaries") as mock_visual,
-            patch.object(analyzer, "_detect_audio_boundaries") as mock_audio,
+            patch(
+                "immich_memories.analysis.unified_analyzer.detect_visual_boundaries"
+            ) as mock_visual,
+            patch(
+                "immich_memories.analysis.unified_analyzer.detect_audio_boundaries"
+            ) as mock_audio,
             patch("immich_memories.analysis.unified_analyzer.get_video_info") as mock_info,
             tempfile.NamedTemporaryFile(suffix=".mp4") as f,
         ):
@@ -363,8 +404,12 @@ class TestUnifiedAnalyzerIntegration:
     def test_analyze_returns_sorted_segments(self, analyzer):
         """Results should be sorted by score (best first)."""
         with (
-            patch.object(analyzer, "_detect_visual_boundaries") as mock_visual,
-            patch.object(analyzer, "_detect_audio_boundaries") as mock_audio,
+            patch(
+                "immich_memories.analysis.unified_analyzer.detect_visual_boundaries"
+            ) as mock_visual,
+            patch(
+                "immich_memories.analysis.unified_analyzer.detect_audio_boundaries"
+            ) as mock_audio,
             patch.object(analyzer, "_score_visual") as mock_score,
             patch("immich_memories.analysis.unified_analyzer.get_video_info") as mock_info,
             tempfile.NamedTemporaryFile(suffix=".mp4") as f,
@@ -397,8 +442,12 @@ class TestUnifiedAnalyzerIntegration:
     def test_analyze_fallback_on_no_audio(self, analyzer):
         """Should fall back when no audio boundaries."""
         with (
-            patch.object(analyzer, "_detect_visual_boundaries") as mock_visual,
-            patch.object(analyzer, "_detect_audio_boundaries") as mock_audio,
+            patch(
+                "immich_memories.analysis.unified_analyzer.detect_visual_boundaries"
+            ) as mock_visual,
+            patch(
+                "immich_memories.analysis.unified_analyzer.detect_audio_boundaries"
+            ) as mock_audio,
             patch("immich_memories.analysis.unified_analyzer.get_video_info") as mock_info,
             tempfile.NamedTemporaryFile(suffix=".mp4") as f,
         ):
@@ -417,6 +466,7 @@ class TestCreateUnifiedAnalyzerFromConfig:
 
     def test_creates_analyzer_with_defaults(self):
         """Should create analyzer from config."""
+        # WHY: mock get_config — factory function reads global config; tests run without config file
         with patch("immich_memories.config.get_config") as mock_cfg:
             mock_cfg.return_value.analysis.min_segment_duration = 2.0
             mock_cfg.return_value.analysis.max_segment_duration = 15.0
@@ -441,6 +491,8 @@ class TestCreateUnifiedAnalyzerFromConfig:
 
     def test_creates_analyzer_with_content_analysis(self):
         """Should create analyzer with content analysis when enabled."""
+        # WHY: mock get_config + get_content_analyzer — factory reads config and creates LLM
+        # client; tests verify wiring without needing a running LLM server
         with (
             patch("immich_memories.config.get_config") as mock_cfg,
             patch(

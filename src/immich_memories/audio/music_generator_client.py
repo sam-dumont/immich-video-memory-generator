@@ -234,7 +234,7 @@ class MusicGenClient:
             output_dir = audio_path.parent
 
         # Upload file and submit separation job
-        with open(audio_path, "rb") as f:
+        with audio_path.open("rb") as f:
             files = {"file": (audio_path.name, f, "audio/wav")}
             resp = await self.client.post("/separate", files=files)
             resp.raise_for_status()
@@ -243,9 +243,7 @@ class MusicGenClient:
         logger.info(f"Stem separation job submitted: {job_id}")
 
         # Wait for completion
-        job = await self._wait_for_job(job_id, progress_callback)
-
-        result_urls = job.get("result_urls", [])
+        result_urls = (await self._wait_for_job(job_id, progress_callback)).get("result_urls", [])
         if not result_urls:
             raise RuntimeError("No stem files in result")
 
@@ -269,8 +267,7 @@ class MusicGenClient:
 
         if has_drums and len(result_urls) >= 4:
             return await self._download_four_stems(result_urls, job_id, output_dir)
-        else:
-            return await self._download_two_stems(result_urls, job_id, output_dir)
+        return await self._download_two_stems(result_urls, job_id, output_dir)
 
     async def _download_four_stems(
         self, result_urls: list[str], job_id: str, output_dir: Path

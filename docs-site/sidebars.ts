@@ -63,6 +63,7 @@ const sidebars: SidebarsConfig = {
         'features/llm-analysis',
         'features/title-screens',
         'features/audio-ducking',
+        'features/architecture',
       ],
     },
     {

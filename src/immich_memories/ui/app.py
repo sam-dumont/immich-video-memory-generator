@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 import os
-import signal
+import secrets
 import socket
 import sys
+from pathlib import Path
 
 # Configure logging before importing our modules
 from immich_memories.logging_config import configure_logging
@@ -20,6 +21,27 @@ from immich_memories.ui.state import get_app_state
 from immich_memories.ui.theme import apply_theme, render_theme_toggle
 
 logger = logging.getLogger(__name__)
+
+
+def _get_storage_secret() -> str:
+    """Get storage secret from env var, file, or generate one.
+
+    Priority: IMMICH_MEMORIES_STORAGE_SECRET env var > file > auto-generate.
+    Docker/K8s users can mount a secret via the env var.
+    """
+    env_secret = os.environ.get("IMMICH_MEMORIES_STORAGE_SECRET")
+    if env_secret:
+        return env_secret
+
+    secret_path = Path.home() / ".immich-memories" / ".storage_secret"
+    if secret_path.exists():
+        return secret_path.read_text().strip()
+    secret_path.parent.mkdir(parents=True, exist_ok=True)
+    secret = secrets.token_hex(32)
+    secret_path.write_text(secret)
+    secret_path.chmod(0o600)
+    return secret
+
 
 _STEPS = [
     ("Configuration", "settings", "/"),
@@ -37,6 +59,24 @@ _EXTRA_NAV = [
 # ============================================================================
 # Shared UI Components
 # ============================================================================
+
+
+def _render_demo_toggle(state) -> None:
+    """Render demo/privacy mode toggle in sidebar."""
+    # Re-apply body class on page load if demo mode was already active
+    if state.demo_mode:
+        ui.run_javascript("document.body.classList.add('demo-mode')")
+
+    def toggle_demo(e):
+        state.demo_mode = e.value
+        if e.value:
+            ui.run_javascript("document.body.classList.add('demo-mode')")
+        else:
+            ui.run_javascript("document.body.classList.remove('demo-mode')")
+
+    with ui.row().classes("items-center gap-2 mb-2"):
+        ui.switch(value=state.demo_mode, on_change=toggle_demo).props("dense")
+        ui.label("Demo mode").classes("text-xs").style("color: var(--im-text-secondary)")
 
 
 def render_step_indicator(current_step: int) -> None:  # noqa: ARG001
@@ -101,12 +141,13 @@ def render_sidebar(current_step: int) -> None:
                     ui.icon(icon).classes("text-xl")
                     ui.label(name).classes("text-sm")
 
-        # Spacer + theme toggle at bottom
+        # Spacer + toggles at bottom
         ui.element("div").classes("flex-grow")
         with ui.column().classes("px-5 pb-4 mt-auto"):
             ui.element("div").classes("mb-3").style(
                 "height: 1px; background: var(--im-border-light)"
             )
+            _render_demo_toggle(state)
             render_theme_toggle()
 
 
@@ -230,53 +271,8 @@ app.on_shutdown(_shutdown_app)
 # ============================================================================
 
 
-def _kill_port_holders(port: int) -> bool:
-    """Find and kill processes holding the given port. Returns True if any were killed."""
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            ["lsof", "-ti", f":{port}"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        pids = [p.strip() for p in result.stdout.strip().split("\n") if p.strip()]
-        if not pids:
-            return False
-
-        my_pid = str(os.getpid())
-        pids_to_kill = [p for p in pids if p != my_pid]
-        if not pids_to_kill:
-            return False
-
-        logger.warning(
-            f"Killing {len(pids_to_kill)} zombie process(es) on port {port}: {pids_to_kill}"
-        )
-        for pid in pids_to_kill:
-            try:
-                os.kill(int(pid), signal.SIGTERM)
-            except (ProcessLookupError, PermissionError):
-                pass
-
-        # Give them a moment, then force-kill survivors
-        import time
-
-        time.sleep(0.5)
-        for pid in pids_to_kill:
-            try:
-                os.kill(int(pid), signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
-
-        time.sleep(0.3)
-        return True
-    except Exception:
-        return False
-
-
 def _is_port_free(host: str, port: int) -> bool:
-    """Check if a port is available for binding (IPv4 and IPv6)."""
+    """Check if a port is available for binding."""
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
     sock = socket.socket(family, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -291,18 +287,12 @@ def _is_port_free(host: str, port: int) -> bool:
 
 def main(port: int = 8080, host: str = "0.0.0.0", reload: bool = False) -> None:  # noqa: S104
     """Run the NiceGUI application."""
-    # Kill zombie processes from previous runs before binding
     if not _is_port_free(host, port):
-        logger.warning(f"Port {port} is in use — attempting to clean up zombie processes")
-        if _kill_port_holders(port):
-            if not _is_port_free(host, port):
-                logger.error(
-                    f"Port {port} still in use after cleanup. Use: lsof -ti :{port} | xargs kill -9"
-                )
-                sys.exit(1)
-        else:
-            logger.error(f"Port {port} is in use. Use: lsof -ti :{port} | xargs kill -9")
-            sys.exit(1)
+        logger.error(
+            f"Port {port} is already in use. "
+            f"Stop the existing process: lsof -ti :{port} | xargs kill"
+        )
+        sys.exit(1)
 
     kwargs: dict = {
         "title": "Immich Memories",
@@ -310,7 +300,7 @@ def main(port: int = 8080, host: str = "0.0.0.0", reload: bool = False) -> None:
         "port": port,
         "host": host,
         "reload": reload,
-        "storage_secret": "immich-memories-ui",
+        "storage_secret": _get_storage_secret(),
     }
     if reload:
         kwargs["uvicorn_reload_includes"] = "*.py"

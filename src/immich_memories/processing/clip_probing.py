@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import subprocess
+from itertools import starmap
 from pathlib import Path
 
 from immich_memories.security import validate_video_path
@@ -13,14 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 def get_video_duration(video_path: Path) -> float:
-    """Get the duration of a video file.
-
-    Args:
-        video_path: Path to the video file.
-
-    Returns:
-        Duration in seconds.
-    """
     validated = validate_video_path(video_path, must_exist=True)
     cmd = [
         "ffprobe",
@@ -68,7 +62,7 @@ def get_main_video_stream_map(video_path: Path) -> str:
         "json",
         str(validated),
     ]
-    try:
+    with contextlib.suppress(Exception):
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         if result.returncode == 0:
             data = json.loads(result.stdout)
@@ -83,22 +77,12 @@ def get_main_video_stream_map(video_path: Path) -> str:
                     best.get("height", 0),
                 )
                 return f"0:{idx}"
-    except Exception:
-        pass
     return "0:v:0"
 
 
 def get_video_info(video_path: Path) -> dict:
-    """Get detailed video information.
-
-    Probes all video streams and picks the highest-resolution one
+    """Probes all video streams and picks the highest-resolution one
     (avoids iPhone depth maps in Live Photo videos).
-
-    Args:
-        video_path: Path to the video file (validated for safety).
-
-    Returns:
-        Dictionary with video metadata.
     """
     validated = validate_video_path(video_path, must_exist=True)
     cmd = [
@@ -131,17 +115,7 @@ def get_video_info(video_path: Path) -> dict:
 
 
 def _validate_url(url: str) -> str:
-    """Validate and sanitize a URL for use with ffprobe.
-
-    Args:
-        url: The URL to validate.
-
-    Returns:
-        The validated URL.
-
-    Raises:
-        ValueError: If the URL is invalid or potentially malicious.
-    """
+    """Only allows http/https, rejects shell metacharacters."""
     from urllib.parse import urlparse
 
     # Check for null bytes
@@ -167,24 +141,13 @@ def _validate_url(url: str) -> str:
     suspicious_chars = [";", "|", "&", "$", "`", "\n", "\r"]
     for char in suspicious_chars:
         if char in url:
-            raise ValueError(f"URL contains suspicious character: {repr(char)}")
+            raise ValueError(f"URL contains suspicious character: {char!r}")
 
     return url
 
 
 def _validate_header(key: str, value: str) -> tuple[str, str]:
-    """Validate a header key-value pair for use with ffprobe.
-
-    Args:
-        key: The header key.
-        value: The header value.
-
-    Returns:
-        Tuple of (validated_key, validated_value).
-
-    Raises:
-        ValueError: If the header is invalid.
-    """
+    """Rejects header injection (newlines, null bytes, excessive length)."""
     import re
 
     # Check for null bytes in key first (security critical)
@@ -258,14 +221,6 @@ def _parse_probe_streams(data: dict) -> dict:
 
 
 def _parse_frame_rate(stream: dict) -> float:
-    """Parse frame rate from an ffprobe stream entry.
-
-    Args:
-        stream: Stream dictionary from ffprobe JSON.
-
-    Returns:
-        Frame rate as float, or 0.0 if unavailable.
-    """
     if "r_frame_rate" not in stream:
         return 0.0
     parts = stream["r_frame_rate"].split("/")
@@ -275,14 +230,6 @@ def _parse_frame_rate(stream: dict) -> float:
 
 
 def _parse_bit_depth(stream: dict) -> int | None:
-    """Parse bit depth from an ffprobe stream entry.
-
-    Args:
-        stream: Stream dictionary from ffprobe JSON.
-
-    Returns:
-        Bit depth as int, or None if unavailable.
-    """
     if "bits_per_raw_sample" not in stream:
         return None
     try:
@@ -292,35 +239,16 @@ def _parse_bit_depth(stream: dict) -> int | None:
 
 
 def _parse_rotation(stream: dict) -> int:
-    """Parse rotation from ffprobe stream side_data_list.
-
-    Args:
-        stream: Stream dictionary from ffprobe JSON.
-
-    Returns:
-        Absolute rotation in degrees, or 0 if unavailable.
-    """
     for side_data in stream.get("side_data_list", []):
         if "rotation" in side_data:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 return abs(int(side_data["rotation"]))
-            except (ValueError, TypeError):
-                pass
             break
     return 0
 
 
 def probe_video_url(url: str, headers: dict[str, str] | None = None) -> dict:
-    """Probe video metadata from a URL without downloading the full file.
-
-    Args:
-        url: The video URL to probe (must be http/https).
-        headers: Optional HTTP headers (e.g., for authentication).
-
-    Returns:
-        Dictionary with video metadata including HDR info.
-        Empty dict if probing fails or URL is invalid.
-    """
+    """Probe video metadata from a URL without downloading the full file."""
     # Validate URL (security: prevent injection attacks)
     try:
         validated_url = _validate_url(url)
@@ -347,7 +275,7 @@ def probe_video_url(url: str, headers: dict[str, str] | None = None) -> dict:
     # Add headers if provided (with validation)
     if headers:
         try:
-            validated_headers = [_validate_header(k, v) for k, v in headers.items()]
+            validated_headers = list(starmap(_validate_header, headers.items()))
             header_str = "\r\n".join(f"{k}: {v}" for k, v in validated_headers)
             cmd.extend(["-headers", header_str])
         except ValueError as e:

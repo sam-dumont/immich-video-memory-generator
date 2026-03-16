@@ -224,89 +224,87 @@ class MoodAnalyzer(ABC):
 
         return frames
 
+    @staticmethod
+    def _extract_json_from_text(text: str) -> str:
+        """Strip markdown code fences from LLM response."""
+        if "```json" in text:
+            return text.split("```json")[1].split("```")[0]
+        if "```" in text:
+            return text.split("```")[1].split("```")[0]
+        return text
+
+    @staticmethod
+    def _validate_secondary_mood(data: dict) -> str | None:
+        """Validate secondary_mood against whitelist, returning None if invalid."""
+        secondary_mood = data.get("secondary_mood")
+        if secondary_mood is None:
+            return None
+        val = str(secondary_mood).lower().strip()
+        return val if val in VALID_MOODS else None
+
+    @staticmethod
+    def _validate_genres(data: dict) -> list[str]:
+        """Validate genre_suggestions against whitelist with count limit."""
+        raw = data.get("genre_suggestions", [])
+        if not isinstance(raw, list):
+            return ["ambient"]
+        genres = [
+            str(g).lower().strip()
+            for g in raw[:MAX_GENRE_COUNT]
+            if str(g).lower().strip() in VALID_GENRES
+        ]
+        return genres or ["ambient"]
+
+    @staticmethod
+    def _sanitize_confidence(data: dict) -> float:
+        """Parse and clamp confidence to [0.0, 1.0]."""
+        try:
+            return max(0.0, min(1.0, float(data.get("confidence", 0.7))))
+        except (ValueError, TypeError):
+            return 0.7
+
     def _parse_mood_response(self, response_text: str) -> VideoMood:
         """Parse and validate LLM response into VideoMood object.
 
         Uses whitelist validation to prevent LLM output injection attacks.
         """
         try:
-            # Try to extract JSON from response
-            text = response_text.strip()
-
-            # Handle markdown code blocks
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0]
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0]
-
+            text = self._extract_json_from_text(response_text.strip())
             data = json.loads(text)
 
-            # Validate and constrain primary_mood against whitelist
             primary_mood = str(data.get("primary_mood", "calm")).lower().strip()
             if primary_mood not in VALID_MOODS:
                 logger.warning(f"Invalid mood '{primary_mood}', defaulting to 'calm'")
                 primary_mood = "calm"
 
-            # Validate secondary_mood
-            secondary_mood = data.get("secondary_mood")
-            if secondary_mood is not None:
-                secondary_mood = str(secondary_mood).lower().strip()
-                if secondary_mood not in VALID_MOODS:
-                    secondary_mood = None
-
-            # Validate energy_level
             energy_level = str(data.get("energy_level", "medium")).lower().strip()
             if energy_level not in VALID_ENERGY_LEVELS:
                 energy_level = "medium"
 
-            # Validate tempo_suggestion
             tempo = str(data.get("tempo_suggestion", "medium")).lower().strip()
             if tempo not in VALID_TEMPOS:
                 tempo = "medium"
 
-            # Validate genre_suggestions (whitelist + limit count)
-            raw_genres = data.get("genre_suggestions", [])
-            if not isinstance(raw_genres, list):
-                raw_genres = []
-            genre_suggestions = [
-                str(g).lower().strip()
-                for g in raw_genres[:MAX_GENRE_COUNT]
-                if str(g).lower().strip() in VALID_GENRES
-            ]
-            if not genre_suggestions:
-                genre_suggestions = ["ambient"]
-
-            # Validate color_palette
             palette = str(data.get("color_palette", "neutral")).lower().strip()
             if palette not in VALID_PALETTES:
                 palette = "neutral"
 
-            # Sanitize description (limit length, strip control chars)
             description = str(data.get("description", ""))[:MAX_DESCRIPTION_LENGTH]
-            # Remove any control characters
             description = "".join(c for c in description if c.isprintable() or c in "\n\t")
-
-            # Validate confidence (numeric, 0-1 range)
-            try:
-                confidence = float(data.get("confidence", 0.7))
-                confidence = max(0.0, min(1.0, confidence))
-            except (ValueError, TypeError):
-                confidence = 0.7
 
             return VideoMood(
                 primary_mood=primary_mood,
-                secondary_mood=secondary_mood,
+                secondary_mood=self._validate_secondary_mood(data),
                 energy_level=energy_level,
                 tempo_suggestion=tempo,
-                genre_suggestions=genre_suggestions,
+                genre_suggestions=self._validate_genres(data),
                 color_palette=palette,
                 description=description,
-                confidence=confidence,
+                confidence=self._sanitize_confidence(data),
             )
 
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning(f"Failed to parse mood response: {e}")
-            # Return default mood
             return VideoMood(
                 primary_mood="calm",
                 energy_level="medium",

@@ -188,7 +188,4 @@ def generate_ending_screen(
         fps=fps,
     )
 
-    generator = TitleScreenGenerator(config=config, style=style)
-    result = generator.generate_ending_screen()
-
-    return result.path
+    return TitleScreenGenerator(config=config, style=style).generate_ending_screen().path

@@ -52,7 +52,7 @@ class TestBlendFramesNumpy:
 
     def test_preserves_dtype(self):
         """Output dtype matches input dtype."""
-        for dtype in [np.uint8, np.uint16, np.float32]:
+        for dtype in (np.uint8, np.uint16, np.float32):
             a = np.zeros((2, 2, 3), dtype=dtype)
             b = np.ones((2, 2, 3), dtype=dtype)
             result = _blend_frames_numpy(a, b, alpha=0.5, dtype=np.dtype(dtype), max_val=255.0)
@@ -117,4 +117,4 @@ class TestBlendFramesBatchGpu:
     def test_empty_batch(self):
         """Empty input lists return empty output."""
         results = blend_frames_batch_gpu([], [], [])
-        assert results == []
+        assert not results

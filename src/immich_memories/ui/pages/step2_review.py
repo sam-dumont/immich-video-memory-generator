@@ -81,7 +81,7 @@ def _render_step2_header(state) -> bool:
         return True
 
     # Show current date range
-    ui.label(f"{state.date_range.description}").classes("text-sm mb-4").style(
+    ui.label(str(state.date_range.description)).classes("text-sm mb-4").style(
         "color: var(--im-text-secondary)"
     )
 
@@ -157,12 +157,12 @@ def _render_step2_header(state) -> bool:
     return False
 
 
-def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
-    """Render the Generate Memories controls section."""
-    im_section_header("Generate Memories", icon="auto_awesome")
-
+def _render_duration_and_clip_row(state, clips: list[VideoClipInfo]) -> int:
+    """Render duration/clips-needed inputs. Returns clips_needed."""
     hdr_count = sum(1 for c in clips if c.is_hdr)
     fav_count = sum(1 for c in clips if c.asset.is_favorite)
+
+    clips_needed = max(1, int((state.target_duration * 60) / state.avg_clip_duration))
 
     with ui.row().classes("w-full gap-4 items-end"):
         target_duration_input = ui.number(
@@ -183,8 +183,6 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
 
         avg_clip_input.on_value_change(on_avg_change)
 
-        clips_needed = max(1, int((state.target_duration * 60) / state.avg_clip_duration))
-
         with ui.column().classes("items-center"):
             ui.label("Clips needed").classes("text-sm").style("color: var(--im-text-secondary)")
             ui.label(str(clips_needed)).classes("text-xl font-bold").style("color: var(--im-text)")
@@ -193,7 +191,11 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
             "text-sm"
         ).style("color: var(--im-text-secondary)")
 
-    # Selection options
+    return clips_needed
+
+
+def _render_selection_options(state, hdr_count: int) -> None:
+    """Render HDR / favorites / analyze-all checkboxes."""
     with ui.row().classes("w-full gap-6 mt-4"):
         hdr_checkbox = ui.checkbox("HDR clips only", value=state.hdr_only)
 
@@ -238,6 +240,15 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
                 max_nonfav_slider, "value", lambda v: f"{int(v)}%"
             )
 
+
+def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
+    """Render the Generate Memories controls section."""
+    im_section_header("Generate Memories", icon="auto_awesome")
+
+    hdr_count = sum(1 for c in clips if c.is_hdr)
+    clips_needed = _render_duration_and_clip_row(state, clips)
+    _render_selection_options(state, hdr_count)
+
     total_available_duration = sum(c.duration_seconds or 0 for c in clips)
     target_duration_sec = state.target_duration * 60
     if target_duration_sec > total_available_duration:
@@ -253,12 +264,11 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
         f"you need approximately {clips_needed} clips."
     ).classes("text-sm mt-2").style("color: var(--im-text-secondary)")
 
-    # Generate button
     def start_generate():
-        clips_needed = max(1, int((state.target_duration * 60) / state.avg_clip_duration))
+        clips_needed_now = max(1, int((state.target_duration * 60) / state.avg_clip_duration))
         state.pipeline_running = True
         state.pipeline_config = {
-            "target_clips": clips_needed,
+            "target_clips": clips_needed_now,
             "avg_clip_duration": float(state.avg_clip_duration),
             "hdr_only": state.hdr_only,
             "prioritize_favorites": state.prioritize_favorites,
@@ -276,7 +286,6 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
 
     im_separator()
 
-    # Bulk actions
     with ui.row().classes("w-full gap-2"):
 
         def select_all():
@@ -299,40 +308,51 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
     im_separator()
 
 
-def _render_step2_content(
-    state,
+def _auto_deselect_duplicates(state, lower_quality_ids: set[str]) -> None:
+    """Deselect lower-quality duplicate clips if not already processed."""
+    if not lower_quality_ids or state._duplicates_processed:
+        return
+    deselected_count = 0
+    for asset_id in lower_quality_ids:
+        if asset_id in state.selected_clip_ids:
+            state.selected_clip_ids.discard(asset_id)
+            deselected_count += 1
+    state._duplicates_processed = True
+    if deselected_count > 0:
+        ui.notify(f"Auto-deselected {deselected_count} lower-quality duplicates", type="info")
+
+
+def _make_lazy_loader(
+    exp: ui.expansion,
+    clips_list: list[VideoClipInfo],
+    dup_ids: set[str],
+    lq_ids: set[str],
+    summary_ctr: ui.element,
+) -> None:
+    """Wire a lazy-load handler onto an expansion panel."""
+    loaded = False
+    container = None
+
+    def on_expand(e):
+        nonlocal loaded, container
+        val = e.value if hasattr(e, "value") else e
+        if val and not loaded:
+            loaded = True
+            with exp:
+                container = ui.column().classes("w-full")
+                with container:
+                    _render_clip_grid_paginated(clips_list, dup_ids, lq_ids, summary_ctr)
+
+    exp.on_value_change(on_expand)
+
+
+def _render_period_expansions(
     clips: list[VideoClipInfo],
+    duplicate_ids: set[str],
+    lower_quality_ids: set[str],
     summary_container: ui.element,
 ) -> None:
-    """Render the clip grid and navigation section."""
-    im_section_header(f"{len(clips)} Videos Found", icon="video_library")
-
-    duplicate_ids, lower_quality_ids = _detect_duplicates(clips)
-
-    if lower_quality_ids and not state._duplicates_processed:
-        deselected_count = 0
-        for asset_id in lower_quality_ids:
-            if asset_id in state.selected_clip_ids:
-                state.selected_clip_ids.discard(asset_id)
-                deselected_count += 1
-        state._duplicates_processed = True
-        if deselected_count > 0:
-            ui.notify(
-                f"Auto-deselected {deselected_count} lower-quality duplicates",
-                type="info",
-            )
-
-    if duplicate_ids:
-        clips_by_datetime = _group_clips_by_datetime(clips)
-        num_duplicate_groups = len([g for g in clips_by_datetime.values() if len(g) > 1])
-        im_info_card(
-            f"Duplicate Detection: Found {num_duplicate_groups} duplicate groups "
-            f"({len(lower_quality_ids)} lower-quality copies auto-deselected). "
-            f"Best versions are marked with green check.",
-            variant="info",
-        )
-
-    # Group clips by (year, month) — show year prefix when range spans multiple years
+    """Render one expansion panel per (year, month)."""
     import calendar as cal
 
     clips_by_period: dict[tuple[int, int], list[VideoClipInfo]] = defaultdict(list)
@@ -349,44 +369,39 @@ def _render_step2_content(
         label = (
             f"{month_name} {year} ({len(period_clips)} clips)"
             if span_years
-            else (f"{month_name} ({len(period_clips)} clips)")
+            else f"{month_name} ({len(period_clips)} clips)"
         )
         expansion = ui.expansion(label, icon="calendar_month", value=False).classes("w-full")
-
-        def _make_lazy_loader(
-            exp: ui.expansion,
-            clips_list: list[VideoClipInfo],
-            dup_ids: set[str],
-            lq_ids: set[str],
-            summary_ctr: ui.element,
-        ) -> None:
-            loaded = False
-            container = None
-
-            def on_expand(e):
-                nonlocal loaded, container
-                val = e.value if hasattr(e, "value") else e
-                if val and not loaded:
-                    loaded = True
-                    with exp:
-                        container = ui.column().classes("w-full")
-                        with container:
-                            _render_clip_grid_paginated(
-                                clips_list,
-                                dup_ids,
-                                lq_ids,
-                                summary_ctr,
-                            )
-
-            exp.on_value_change(on_expand)
-
         _make_lazy_loader(
             expansion, period_clips, duplicate_ids, lower_quality_ids, summary_container
         )
 
+
+def _render_step2_content(
+    state,
+    clips: list[VideoClipInfo],
+    summary_container: ui.element,
+) -> None:
+    """Render the clip grid and navigation section."""
+    im_section_header(f"{len(clips)} Videos Found", icon="video_library")
+
+    duplicate_ids, lower_quality_ids = _detect_duplicates(clips)
+    _auto_deselect_duplicates(state, lower_quality_ids)
+
+    if duplicate_ids:
+        clips_by_datetime = _group_clips_by_datetime(clips)
+        num_duplicate_groups = len([g for g in clips_by_datetime.values() if len(g) > 1])
+        im_info_card(
+            f"Duplicate Detection: Found {num_duplicate_groups} duplicate groups "
+            f"({len(lower_quality_ids)} lower-quality copies auto-deselected). "
+            f"Best versions are marked with green check.",
+            variant="info",
+        )
+
+    _render_period_expansions(clips, duplicate_ids, lower_quality_ids, summary_container)
+
     im_separator()
 
-    # Navigation
     with ui.row().classes("w-full gap-4"):
 
         def go_back():

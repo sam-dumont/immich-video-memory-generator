@@ -22,7 +22,7 @@ def create_ci_image_from_numpy(image_array: np.ndarray) -> object:
     import Quartz
 
     # Convert BGR to RGB
-    if len(image_array.shape) == 3 and image_array.shape[2] == 3:
+    if len(image_array.shape) == image_array.shape[2] == 3:
         image_rgb = image_array[:, :, ::-1].copy()
     else:
         image_rgb = image_array
@@ -73,7 +73,7 @@ def create_cg_image_from_numpy(image_array: np.ndarray) -> object:
     import Quartz
 
     # Convert BGR to RGBA
-    if len(image_array.shape) == 3 and image_array.shape[2] == 3:
+    if len(image_array.shape) == image_array.shape[2] == 3:
         # Add alpha channel
         import cv2
 

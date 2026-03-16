@@ -97,8 +97,8 @@ class TestPersonFilter:
     def test_defaults(self) -> None:
         pf = PersonFilter()
         assert pf.mode == "any"
-        assert pf.person_names == []
-        assert pf.require_co_occurrence is False
+        assert not pf.person_names
+        assert not pf.require_co_occurrence
 
     def test_custom_values(self) -> None:
         pf = PersonFilter(
@@ -108,14 +108,14 @@ class TestPersonFilter:
         )
         assert pf.mode == "all_of"
         assert pf.person_names == ["Alice", "Bob"]
-        assert pf.require_co_occurrence is True
+        assert pf.require_co_occurrence
 
     def test_person_names_are_independent(self) -> None:
         """Each instance gets its own list (no shared mutable default)."""
         pf1 = PersonFilter()
         pf2 = PersonFilter()
         pf1.person_names.append("Alice")
-        assert pf2.person_names == []
+        assert not pf2.person_names
 
 
 class TestMemoryPreset:

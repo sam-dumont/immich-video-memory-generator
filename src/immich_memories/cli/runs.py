@@ -152,8 +152,7 @@ def register_runs_commands(main: click.Group) -> None:
         """
         from immich_memories.tracking import RunDatabase, format_duration
 
-        db = RunDatabase()
-        runs_data = db.list_runs(limit=limit, person_name=person, status=status)
+        runs_data = RunDatabase().list_runs(limit=limit, person_name=person, status=status)
 
         if not runs_data:
             print_info("No runs found")
@@ -236,8 +235,7 @@ def register_runs_commands(main: click.Group) -> None:
         """Show aggregate statistics across all runs."""
         from immich_memories.tracking import RunDatabase, format_duration
 
-        db = RunDatabase()
-        stats = db.get_aggregate_stats()
+        stats = RunDatabase().get_aggregate_stats()
 
         console.print()
         console.print("[bold]Aggregate Statistics[/bold]")

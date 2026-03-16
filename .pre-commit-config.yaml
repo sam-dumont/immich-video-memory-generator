@@ -1,4 +1,5 @@
 repos:
+  # ~0.1s — Formatting + linting (Rust, fast)
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.5
     hooks:
@@ -6,6 +7,7 @@ repos:
         args: [--fix]
       - id: ruff-format
 
+  # ~1s — Type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.19.1
     hooks:
@@ -18,21 +20,34 @@ repos:
         pass_filenames: false
         entry: mypy src/
 
+  # ~0.1s — Secrets detection
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.24.3
     hooks:
       - id: gitleaks
 
+  # ~0.1s — Conventional commits
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.13.9
     hooks:
       - id: commitizen
 
+
+  # Local hooks using Makefile targets
+  # NOTE: refurb moved from upstream repo to local hook below (uses make refurb
+  # to avoid src/ layout duplicate module detection issue)
   - repo: local
     hooks:
       - id: file-length
-        name: File length gate (max 500 lines)
+        name: File length gate (max 800 lines)
         entry: make file-length
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: refurb
+        name: Modernization (refurb)
+        entry: make refurb
         language: system
         pass_filenames: false
         types: [python]
@@ -54,6 +69,34 @@ repos:
       - id: security-lint
         name: Security lint (Bandit)
         entry: make security-lint
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: cognitive-complexity
+        name: Cognitive complexity (complexipy with snapshot)
+        entry: make cognitive-complexity
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: dep-check
+        name: Dependency hygiene (deptry)
+        entry: make dep-check
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: arch-check
+        name: Architectural boundaries (import-linter)
+        entry: make arch-check
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: duplication
+        name: Code duplication (jscpd ≤5%)
+        entry: make duplication
         language: system
         pass_filenames: false
         types: [python]

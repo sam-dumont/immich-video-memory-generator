@@ -8,29 +8,42 @@ This module provides:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def _get_gpu_encoder_args() -> list[str]:
-    """Get GPU-accelerated encoder arguments with 10-bit HDR (HLG) support.
+def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
+    """Get GPU-accelerated encoder arguments for title screen video.
 
-    Title screens must match the colorspace of video clips (bt2020/HLG)
-    to avoid decoder artifacts when concatenated with stream copy.
+    When hdr=True, outputs 10-bit HEVC with HLG (bt2020/arib-std-b67)
+    colorspace metadata for clean concatenation with HDR source clips.
+    When hdr=False, outputs 8-bit video without HDR metadata for SDR sources.
+
+    This is the SINGLE source of truth for title screen encoding.
+    All title video creation paths must call this function.
+
+    Args:
+        hdr: If True, use 10-bit HLG HDR encoding. If False, use 8-bit SDR.
     """
     import subprocess
     import sys
 
-    # HLG colorspace metadata — must match _encode_single_clip in assembly.py
-    color_args = [
-        "-color_primaries",
-        "bt2020",
-        "-color_trc",
-        "arib-std-b67",
-        "-colorspace",
-        "bt2020nc",
-    ]
+    color_args: list[str] = []
+    if hdr:
+        color_args = [
+            "-color_primaries",
+            "bt2020",
+            "-color_trc",
+            "arib-std-b67",
+            "-colorspace",
+            "bt2020nc",
+        ]
+
+    hdr_pix_fmt_hw = "p010le"  # 10-bit for hardware encoders
+    hdr_pix_fmt_sw = "yuv420p10le"  # 10-bit for software encoder
+    sdr_pix_fmt = "yuv420p"  # 8-bit for SDR
 
     # macOS: VideoToolbox (GPU accelerated)
     if sys.platform == "darwin":
@@ -40,14 +53,14 @@ def _get_gpu_encoder_args() -> list[str]:
             "-q:v",
             "50",
             "-pix_fmt",
-            "p010le",  # 10-bit
+            hdr_pix_fmt_hw if hdr else sdr_pix_fmt,
             "-tag:v",
             "hvc1",
             *color_args,
         ]
 
     # Check for NVIDIA NVENC
-    try:
+    with contextlib.suppress(Exception):
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-encoders"],
             capture_output=True,
@@ -64,13 +77,11 @@ def _get_gpu_encoder_args() -> list[str]:
                 "-qp",
                 "18",
                 "-pix_fmt",
-                "p010le",  # 10-bit
+                hdr_pix_fmt_hw if hdr else sdr_pix_fmt,
                 "-tag:v",
                 "hvc1",
                 *color_args,
             ]
-    except Exception:
-        pass
 
     # Fallback to CPU libx265 (slower)
     return [
@@ -81,7 +92,7 @@ def _get_gpu_encoder_args() -> list[str]:
         "-preset",
         "fast",
         "-pix_fmt",
-        "yuv420p10le",
+        hdr_pix_fmt_sw if hdr else sdr_pix_fmt,
         "-tag:v",
         "hvc1",
         *color_args,

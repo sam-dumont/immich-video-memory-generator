@@ -343,7 +343,7 @@ def register_titles_commands(main: click.Group) -> None:
 
             for font, success in results.items():
                 if success:
-                    print_success(f"{font}")
+                    print_success(font)
                 else:
                     print_error(f"{font} - download failed")
 

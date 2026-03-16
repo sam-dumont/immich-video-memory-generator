@@ -1,8 +1,4 @@
-"""Scaling and aspect ratio utilities.
-
-This module provides functions for handling video aspect ratio mismatches,
-smart cropping based on face detection, and mood aggregation from clips.
-"""
+"""Scaling and aspect ratio utilities."""
 
 from __future__ import annotations
 
@@ -165,39 +161,25 @@ def _get_smart_crop_filter(
     return f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y},scale={target_w}:{target_h}:flags=lanczos"
 
 
-def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None:
-    """Detect average face center position in a video.
-
-    Samples multiple frames throughout the video and detects faces in each.
-    Returns the average face position if faces are found, otherwise None.
-
-    Uses Apple Vision Framework on macOS (GPU-accelerated) with OpenCV fallback.
-
-    Args:
-        video_path: Path to video file
+def _init_face_detector() -> object | None:
+    """Initialize face detector: Apple Vision (preferred) or OpenCV.
 
     Returns:
-        Tuple of (center_x, center_y) in normalized 0-1 coordinates, or None if no faces found.
-        Coordinates are: X from left (0) to right (1), Y from top (0) to bottom (1).
+        VisionFaceDetector instance, or None to signal OpenCV fallback.
+        Raises ImportError if neither is available.
     """
-    import tempfile
-
     try:
-        # Try Apple Vision first (GPU-accelerated on macOS)
         from immich_memories.analysis.apple_vision import VisionFaceDetector
 
-        detector = VisionFaceDetector()
+        return VisionFaceDetector()
     except ImportError:
-        # Fallback to OpenCV
-        try:
-            import cv2  # noqa: F401
+        import cv2  # noqa: F401
 
-            detector = None  # Will use OpenCV directly
-        except ImportError:
-            logger.debug("No face detection available (Apple Vision or OpenCV)")
-            return None
+        return None  # Will use OpenCV directly
 
-    # Get video duration
+
+def _get_video_duration(video_path: Path) -> float:
+    """Probe video duration using ffprobe, falling back to 10s."""
     try:
         result = subprocess.run(
             [
@@ -213,75 +195,106 @@ def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None
             capture_output=True,
             text=True,
         )
-        duration = float(result.stdout.strip())
+        return float(result.stdout.strip())
     except (ValueError, subprocess.SubprocessError):
-        duration = 10.0  # Default fallback
+        return 10.0
 
-    # Sample 3 frames at 20%, 50%, 80% through video
-    sample_times = [duration * p for p in [0.2, 0.5, 0.8]]
+
+def _extract_frame(video_path: Path, sample_time: float) -> Path | None:
+    """Extract a single video frame to a temp JPEG file."""
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+        frame_path = Path(tmp.name)
+
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            str(sample_time),
+            "-i",
+            str(video_path),
+            "-frames:v",
+            "1",
+            "-q:v",
+            "2",
+            str(frame_path),
+        ],
+        capture_output=True,
+        timeout=30,
+    )
+    return frame_path if frame_path.exists() else None
+
+
+def _detect_faces_vision(detector: object, frame_path: Path) -> list[tuple[float, float]]:
+    """Detect faces using Apple Vision and return normalized (x, y) centers."""
+    import cv2
+
+    img = cv2.imread(str(frame_path))
+    if img is None:
+        return []
+    faces = detector.detect_faces(img)
+    positions = []
+    for face in faces:
+        center_x = face.bounds.x + face.bounds.width / 2
+        center_y = 1.0 - (face.bounds.y + face.bounds.height / 2)  # Flip Y
+        positions.append((center_x, center_y))
+    return positions
+
+
+def _detect_faces_opencv(frame_path: Path) -> list[tuple[float, float]]:
+    """Detect faces using OpenCV Haar cascade and return normalized (x, y) centers."""
+    import cv2
+
+    img = cv2.imread(str(frame_path))
+    if img is None:
+        return []
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    faces_cv = cv2.CascadeClassifier(
+        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    ).detectMultiScale(gray, 1.1, 4)
+    h, w = img.shape[:2]
+    return [((x + fw / 2) / w, (y + fh / 2) / h) for x, y, fw, fh in faces_cv]
+
+
+def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None:
+    """Detect average face center position in a video.
+
+    Samples multiple frames throughout the video and detects faces in each.
+    Returns the average face position if faces are found, otherwise None.
+
+    Uses Apple Vision Framework on macOS (GPU-accelerated) with OpenCV fallback.
+
+    Args:
+        video_path: Path to video file
+
+    Returns:
+        Tuple of (center_x, center_y) in normalized 0-1 coordinates, or None if no faces found.
+        Coordinates are: X from left (0) to right (1), Y from top (0) to bottom (1).
+    """
+    try:
+        detector = _init_face_detector()
+    except ImportError:
+        logger.debug("No face detection available (Apple Vision or OpenCV)")
+        return None
+
+    duration = _get_video_duration(video_path)
+    sample_times = [duration * p for p in (0.2, 0.5, 0.8)]
     all_face_positions: list[tuple[float, float]] = []
 
     for sample_time in sample_times:
         try:
-            # Extract frame to temp file
-            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-                frame_path = Path(tmp.name)
-
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-ss",
-                    str(sample_time),
-                    "-i",
-                    str(video_path),
-                    "-frames:v",
-                    "1",
-                    "-q:v",
-                    "2",
-                    str(frame_path),
-                ],
-                capture_output=True,
-                timeout=30,
-            )
-
-            if not frame_path.exists():
+            frame_path = _extract_frame(video_path, sample_time)
+            if frame_path is None:
                 continue
 
             if detector is not None:
-                # Apple Vision
-                import cv2
-
-                _img = cv2.imread(str(frame_path))
-                if _img is None:
-                    continue
-                faces = detector.detect_faces(_img)
-                for face in faces:
-                    # Apple Vision returns bounding box with origin at bottom-left
-                    # Convert to top-left origin normalized coordinates
-                    center_x = face.bounds.x + face.bounds.width / 2
-                    center_y = 1.0 - (face.bounds.y + face.bounds.height / 2)  # Flip Y
-                    all_face_positions.append((center_x, center_y))
+                all_face_positions.extend(_detect_faces_vision(detector, frame_path))
             else:
-                # OpenCV fallback
-                import cv2
+                all_face_positions.extend(_detect_faces_opencv(frame_path))
 
-                img = cv2.imread(str(frame_path))
-                if img is not None:
-                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                    face_cascade = cv2.CascadeClassifier(
-                        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-                    )
-                    faces_cv = face_cascade.detectMultiScale(gray, 1.1, 4)
-                    h, w = img.shape[:2]
-                    for x, y, fw, fh in faces_cv:
-                        center_x = (x + fw / 2) / w
-                        center_y = (y + fh / 2) / h
-                        all_face_positions.append((center_x, center_y))
-
-            # Cleanup
             frame_path.unlink(missing_ok=True)
-
         except Exception as e:
             logger.debug(f"Face detection failed for frame at {sample_time}s: {e}")
             continue
@@ -289,7 +302,6 @@ def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None
     if not all_face_positions:
         return None
 
-    # Average all face positions
     avg_x = sum(p[0] for p in all_face_positions) / len(all_face_positions)
     avg_y = sum(p[1] for p in all_face_positions) / len(all_face_positions)
 

@@ -24,6 +24,7 @@ Usage:
 """
 
 import logging
+from itertools import starmap
 
 import numpy as np
 
@@ -213,7 +214,7 @@ def blend_frames_gpu(frame_a: np.ndarray, frame_b: np.ndarray, alpha: float) -> 
             output = np.empty_like(a_float)
 
             # Run GPU kernel
-            _blend_frames_kernel(a_float, b_float, output, float(alpha))
+            _blend_frames_kernel(a_float, b_float, output, alpha)
 
             # Convert back to original dtype
             if dtype in (np.float32, np.float64):
@@ -246,8 +247,7 @@ def _blend_frames_numpy(
     # Clip and convert back
     if dtype in (np.float32, np.float64):
         return blended.astype(dtype)
-    else:
-        return np.clip(blended, 0, max_val).astype(dtype)
+    return np.clip(blended, 0, max_val).astype(dtype)
 
 
 def blend_frames_batch_gpu(
@@ -271,8 +271,4 @@ def blend_frames_batch_gpu(
     if len(frames_a) != len(frames_b) or len(frames_a) != len(alphas):
         raise ValueError("All input lists must have the same length")
 
-    results = []
-    for frame_a, frame_b, alpha in zip(frames_a, frames_b, alphas, strict=True):
-        results.append(blend_frames_gpu(frame_a, frame_b, alpha))
-
-    return results
+    return list(starmap(blend_frames_gpu, zip(frames_a, frames_b, alphas, strict=True)))

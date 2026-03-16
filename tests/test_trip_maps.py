@@ -198,21 +198,21 @@ class TestMultilineTextWrapping:
 
     def test_comma_split_preferred(self):
         """Titles with commas should split at the comma first."""
-        from immich_memories.titles.taichi_text import split_title_lines
+        from immich_memories.titles.renderer_taichi import split_title_lines
 
         lines = split_title_lines("TWO WEEKS IN SPAIN, SUMMER 2025", max_chars=25)
         assert lines == ["TWO WEEKS IN SPAIN,", "SUMMER 2025"]
 
     def test_word_wrap_fallback(self):
         """Titles without commas word-wrap normally."""
-        from immich_memories.titles.taichi_text import split_title_lines
+        from immich_memories.titles.renderer_taichi import split_title_lines
 
         lines = split_title_lines("TWO WEEKS IN SPAIN", max_chars=12)
         assert lines == ["TWO WEEKS IN", "SPAIN"]
 
     def test_short_title_single_line(self):
         """Short titles stay on one line."""
-        from immich_memories.titles.taichi_text import split_title_lines
+        from immich_memories.titles.renderer_taichi import split_title_lines
 
         lines = split_title_lines("A WEEK IN PARIS", max_chars=30)
         assert lines == ["A WEEK IN PARIS"]
@@ -243,6 +243,45 @@ class TestLocationCardWithMap:
         assert result.size == (1920, 1080)
 
 
+class TestEquirectangularMap:
+    """Equirectangular map fetching for globe projection texture."""
+
+    def test_renders_wide_area_map_array(self):
+        """render_equirectangular_map returns float32 array for globe texture."""
+        from immich_memories.titles.map_renderer import render_equirectangular_map
+
+        mock_map_img = Image.new("RGB", (720, 360), color=(100, 150, 200))
+        with patch("immich_memories.titles.map_renderer.StaticMap") as mock_sm:
+            mock_sm.return_value.render.return_value = mock_map_img
+            result = render_equirectangular_map(
+                center_lat=45.0,
+                center_lon=2.0,
+                width=720,
+                height=360,
+            )
+
+        assert isinstance(result, np.ndarray)
+        assert result.shape == (360, 720, 3)
+        assert result.dtype == np.float32
+        assert 0.0 <= result.max() <= 1.0
+
+    def test_fallback_on_tile_error(self):
+        """Returns solid dark array if tile fetch fails."""
+        from immich_memories.titles.map_renderer import render_equirectangular_map
+
+        with patch("immich_memories.titles.map_renderer.StaticMap") as mock_sm:
+            mock_sm.return_value.render.side_effect = Exception("Network error")
+            result = render_equirectangular_map(
+                center_lat=45.0,
+                center_lon=2.0,
+                width=720,
+                height=360,
+            )
+
+        assert result.shape == (360, 720, 3)
+        assert result.max() < 0.3  # Dark fallback
+
+
 class TestMapTitleRatioConsistency:
     """Font size should be consistent across orientations."""
 
@@ -266,7 +305,7 @@ class TestLocationDividerInsertion:
         """Clips with locations >30km apart get a divider between them."""
         from pathlib import Path
 
-        from immich_memories.processing.assembler_trip_mixin import AssemblerTripMixin
+        from immich_memories.processing.title_inserter import TitleInserter
 
         clips = [
             self._make_clip("clip1.mp4", lat=41.39, lon=2.17, name="Barcelona"),
@@ -282,8 +321,8 @@ class TestLocationDividerInsertion:
         mock_settings = MagicMock()
         mock_settings.month_divider_duration = 2.0
 
-        mixin = AssemblerTripMixin()
-        result = mixin._build_clips_with_location_dividers(clips, mock_gen, mock_settings, None)
+        inserter = TitleInserter(settings=MagicMock(), prober=MagicMock())
+        result = inserter.build_clips_with_location_dividers(clips, mock_gen, mock_settings, None)
 
         # 3 content clips + 1 location divider = 4
         assert len(result) == 4
@@ -292,15 +331,15 @@ class TestLocationDividerInsertion:
 
     def test_no_divider_for_same_location(self):
         """Clips at the same location should not get dividers."""
-        from immich_memories.processing.assembler_trip_mixin import AssemblerTripMixin
+        from immich_memories.processing.title_inserter import TitleInserter
 
         clips = [
             self._make_clip("clip1.mp4", lat=41.39, lon=2.17, name="Barcelona"),
             self._make_clip("clip2.mp4", lat=41.40, lon=2.18, name="Barcelona"),
         ]
 
-        mixin = AssemblerTripMixin()
-        result = mixin._build_clips_with_location_dividers(clips, MagicMock(), MagicMock(), None)
+        inserter = TitleInserter(settings=MagicMock(), prober=MagicMock())
+        result = inserter.build_clips_with_location_dividers(clips, MagicMock(), MagicMock(), None)
 
         assert len(result) == 2  # No dividers
 
@@ -308,7 +347,7 @@ class TestLocationDividerInsertion:
         """Clips without GPS should pass through without dividers."""
         from pathlib import Path
 
-        from immich_memories.processing.assembler_trip_mixin import AssemblerTripMixin
+        from immich_memories.processing.title_inserter import TitleInserter
 
         clips = [
             self._make_clip("clip1.mp4", lat=41.39, lon=2.17, name="Barcelona"),
@@ -323,8 +362,8 @@ class TestLocationDividerInsertion:
         mock_settings = MagicMock()
         mock_settings.month_divider_duration = 2.0
 
-        mixin = AssemblerTripMixin()
-        result = mixin._build_clips_with_location_dividers(clips, mock_gen, mock_settings, None)
+        inserter = TitleInserter(settings=MagicMock(), prober=MagicMock())
+        result = inserter.build_clips_with_location_dividers(clips, mock_gen, mock_settings, None)
 
         # clip1, clip2 (no GPS), divider, clip3 = 4
         assert len(result) == 4
@@ -354,7 +393,7 @@ class TestLocationDiversityScoring:
 
     def test_clips_from_new_locations_get_bonus(self):
         """Clips from underrepresented locations should score higher."""
-        from immich_memories.analysis.trip_scoring import location_diversity_bonus
+        from immich_memories.analysis.trip_detection import location_diversity_bonus
 
         selected = [
             {"location_name": "Barcelona", "latitude": 41.39, "longitude": 2.17},
@@ -371,7 +410,7 @@ class TestLocationDiversityScoring:
 
     def test_clips_from_existing_locations_get_no_bonus(self):
         """Clips from already-selected locations should get zero bonus."""
-        from immich_memories.analysis.trip_scoring import location_diversity_bonus
+        from immich_memories.analysis.trip_detection import location_diversity_bonus
 
         selected = [
             {"location_name": "Barcelona", "latitude": 41.39, "longitude": 2.17},
@@ -386,7 +425,7 @@ class TestLocationDiversityScoring:
 
     def test_empty_selection_gives_bonus(self):
         """First clip always gets a bonus (new location by definition)."""
-        from immich_memories.analysis.trip_scoring import location_diversity_bonus
+        from immich_memories.analysis.trip_detection import location_diversity_bonus
 
         bonus = location_diversity_bonus(
             candidate_location="Barcelona",

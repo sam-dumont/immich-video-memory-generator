@@ -68,13 +68,13 @@ class TestTitleStyle:
 
     def test_color_palettes_exist(self):
         """Test that color palettes are defined."""
-        assert len(COLOR_PALETTES) > 0
+        assert COLOR_PALETTES
         for name, palette in COLOR_PALETTES.items():
             assert len(palette) >= 2, f"Palette {name} should have at least 2 colors"
 
     def test_font_stack_exists(self):
         """Test that font stack is defined."""
-        assert len(FONT_STACK) > 0
+        assert FONT_STACK
         assert "Outfit" in FONT_STACK
 
 
@@ -228,7 +228,7 @@ class TestOrientationResolutions:
 
     def test_resolution_tiers_defined(self):
         """Test that all resolution tiers are defined."""
-        for orientation in ["landscape", "portrait", "square"]:
+        for orientation in ("landscape", "portrait", "square"):
             assert "720p" in ORIENTATION_RESOLUTIONS[orientation]
             assert "1080p" in ORIENTATION_RESOLUTIONS[orientation]
             assert "4k" in ORIENTATION_RESOLUTIONS[orientation]
@@ -260,7 +260,7 @@ class TestTitleScreenConfig:
     def test_default_config(self):
         """Test default configuration values."""
         config = TitleScreenConfig()
-        assert config.enabled is True
+        assert config.enabled
         assert config.title_duration == 3.5
         assert config.month_divider_duration == 2.0
         assert config.ending_duration == 7.0
@@ -279,13 +279,13 @@ class TestAnimations:
 
     def test_text_animations_defined(self):
         """Test that text animations are defined."""
-        assert len(TEXT_ANIMATIONS) > 0
+        assert TEXT_ANIMATIONS
         assert "fade_up" in TEXT_ANIMATIONS
         assert "slow_fade" in TEXT_ANIMATIONS
 
     def test_easing_functions_defined(self):
         """Test that easing functions are defined."""
-        assert len(EASING_FUNCTIONS) > 0
+        assert EASING_FUNCTIONS
         assert "linear" in EASING_FUNCTIONS
         assert "ease_out_quad" in EASING_FUNCTIONS
 
@@ -409,7 +409,7 @@ class TestAssemblyIntegration:
 
     def test_title_screen_settings_dataclass(self):
         """Test TitleScreenSettings dataclass."""
-        from immich_memories.processing.assembly import TitleScreenSettings
+        from immich_memories.processing.assembly_config import TitleScreenSettings
 
         settings = TitleScreenSettings(
             year=2024,
@@ -418,12 +418,12 @@ class TestAssemblyIntegration:
         )
         assert settings.year == 2024
         assert settings.locale == "en"
-        assert settings.show_month_dividers is True
-        assert settings.enabled is True
+        assert settings.show_month_dividers
+        assert settings.enabled
 
     def test_assembly_settings_with_titles(self):
         """Test AssemblySettings with title screens."""
-        from immich_memories.processing.assembly import (
+        from immich_memories.processing.assembly_config import (
             AssemblySettings,
             TitleScreenSettings,
             TransitionType,
@@ -441,11 +441,11 @@ class TestAssemblyIntegration:
         """Test date parsing from AssemblyClip."""
         from datetime import date
 
-        from immich_memories.processing.assembly import (
+        from immich_memories.processing.assembly_config import (
             AssemblyClip,
             AssemblySettings,
-            VideoAssembler,
         )
+        from immich_memories.processing.video_assembler import VideoAssembler
 
         assembler = VideoAssembler(AssemblySettings())
 
@@ -455,7 +455,7 @@ class TestAssemblyIntegration:
             duration=5.0,
             date="2024-06-15",
         )
-        parsed = assembler._parse_clip_date(clip)
+        parsed = assembler.title_inserter.parse_clip_date(clip)
         assert parsed == date(2024, 6, 15)
 
         # Test None date
@@ -464,15 +464,15 @@ class TestAssemblyIntegration:
             duration=5.0,
             date=None,
         )
-        assert assembler._parse_clip_date(clip_no_date) is None
+        assert assembler.title_inserter.parse_clip_date(clip_no_date) is None
 
     def test_video_assembler_detect_month_changes(self):
         """Test month change detection."""
-        from immich_memories.processing.assembly import (
+        from immich_memories.processing.assembly_config import (
             AssemblyClip,
             AssemblySettings,
-            VideoAssembler,
         )
+        from immich_memories.processing.video_assembler import VideoAssembler
 
         assembler = VideoAssembler(AssemblySettings())
 
@@ -484,7 +484,7 @@ class TestAssemblyIntegration:
             AssemblyClip(path=Path("/tmp/5.mp4"), duration=5.0, date="2024-03-01"),
         ]
 
-        changes = assembler._detect_month_changes(clips)
+        changes = assembler.title_inserter.detect_month_changes(clips)
 
         # Should detect first month and subsequent month changes
         assert len(changes) == 3

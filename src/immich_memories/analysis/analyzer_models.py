@@ -86,14 +86,13 @@ class ScoredSegment:
 
     def to_moment_score(self) -> MomentScore:
         """Convert to MomentScore for compatibility with existing code."""
-        # Ensure all values are Python floats (not numpy.float64) for SQLite compatibility
         return MomentScore(
-            start_time=float(self.start_time),
-            end_time=float(self.end_time),
-            total_score=float(self.total_score),
-            face_score=float(self.face_score),
-            motion_score=float(self.motion_score),
-            stability_score=float(self.stability_score),
-            audio_score=float(self.audio_score),
-            content_score=float(self.content_score),
+            start_time=self.start_time,
+            end_time=self.end_time,
+            total_score=self.total_score,
+            face_score=self.face_score,
+            motion_score=self.motion_score,
+            stability_score=self.stability_score,
+            audio_score=self.audio_score,
+            content_score=self.content_score,
         )

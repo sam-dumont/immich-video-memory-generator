@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from immich_memories.api.client_search import SearchMixin
 from immich_memories.api.models import Asset
+from immich_memories.api.search_service import SearchService
 from immich_memories.timeperiod import DateRange
 
 
@@ -40,15 +40,15 @@ class TestAssetLivePhotoField:
     def test_is_live_photo_property(self):
         with_lp = Asset(**_make_asset(livePhotoVideoId="vid-1"))
         without_lp = Asset(**_make_asset())
-        assert with_lp.is_live_photo is True
-        assert without_lp.is_live_photo is False
+        assert with_lp.is_live_photo
+        assert not without_lp.is_live_photo
 
 
 class TestGetLivePhotosForDateRange:
-    """Slice 2: Fetching live photos from Immich via SearchMixin."""
+    """Slice 2: Fetching live photos from Immich via SearchService."""
 
-    def _make_search_mixin(self, pages: list[list[dict]]) -> SearchMixin:
-        """Create a SearchMixin with mocked _request returning paginated results."""
+    def _make_search_service(self, pages: list[list[dict]]) -> SearchService:
+        """Create a SearchService with a fake request fn returning paginated results."""
         call_count = 0
 
         async def fake_request(method: str, endpoint: str, **kwargs) -> dict:
@@ -65,9 +65,7 @@ class TestGetLivePhotosForDateRange:
                 },
             }
 
-        mixin = SearchMixin()
-        mixin._request = fake_request  # type: ignore[attr-defined]
-        return mixin
+        return SearchService(fake_request)
 
     @pytest.mark.asyncio
     async def test_returns_only_live_photos(self):
@@ -77,13 +75,13 @@ class TestGetLivePhotosForDateRange:
             _make_asset(id="img-2", type="IMAGE"),  # no live photo
             _make_asset(id="img-3", type="IMAGE", livePhotoVideoId="vid-3"),
         ]
-        mixin = self._make_search_mixin([assets_data])
+        service = self._make_search_service([assets_data])
         dr = DateRange(
             start=datetime(2024, 1, 1, tzinfo=UTC),
             end=datetime(2024, 12, 31, tzinfo=UTC),
         )
 
-        result = await mixin.get_live_photos_for_date_range(dr)
+        result = await service.get_live_photos_for_date_range(dr)
 
         assert len(result) == 2
         assert result[0].id == "img-1"
@@ -97,28 +95,28 @@ class TestGetLivePhotosForDateRange:
             _make_asset(id="img-1", type="IMAGE"),
             _make_asset(id="img-2", type="IMAGE"),
         ]
-        mixin = self._make_search_mixin([assets_data])
+        service = self._make_search_service([assets_data])
         dr = DateRange(
             start=datetime(2024, 1, 1, tzinfo=UTC),
             end=datetime(2024, 12, 31, tzinfo=UTC),
         )
 
-        result = await mixin.get_live_photos_for_date_range(dr)
+        result = await service.get_live_photos_for_date_range(dr)
 
-        assert result == []
+        assert not result
 
     @pytest.mark.asyncio
     async def test_paginates_through_all_pages(self):
         """Should paginate and collect live photos from all pages."""
         page1 = [_make_asset(id="img-1", type="IMAGE", livePhotoVideoId="vid-1")]
         page2 = [_make_asset(id="img-2", type="IMAGE", livePhotoVideoId="vid-2")]
-        mixin = self._make_search_mixin([page1, page2])
+        service = self._make_search_service([page1, page2])
         dr = DateRange(
             start=datetime(2024, 1, 1, tzinfo=UTC),
             end=datetime(2024, 12, 31, tzinfo=UTC),
         )
 
-        result = await mixin.get_live_photos_for_date_range(dr)
+        result = await service.get_live_photos_for_date_range(dr)
 
         assert len(result) == 2
         assert result[0].id == "img-1"
@@ -229,7 +227,7 @@ class TestTemporalClustering:
         from immich_memories.processing.live_photo_merger import cluster_live_photos
 
         clusters = cluster_live_photos([], merge_window_seconds=10)
-        assert clusters == []
+        assert not clusters
 
     def test_sorted_by_timestamp_within_cluster(self):
         from immich_memories.processing.live_photo_merger import cluster_live_photos
@@ -419,8 +417,8 @@ class TestTemporalClustering:
 
         clusters = cluster_live_photos(burst + single, merge_window_seconds=10)
 
-        assert clusters[0].is_burst is True
-        assert clusters[1].is_burst is False
+        assert clusters[0].is_burst
+        assert not clusters[1].is_burst
 
     def test_cluster_is_favorite_if_any_photo_favorite(self):
         """Cluster should be favorite if ANY photo in it is favorited."""
@@ -453,7 +451,7 @@ class TestTemporalClustering:
             ),
         ]
         cluster = LivePhotoCluster(assets=assets)
-        assert cluster.is_favorite is True
+        assert cluster.is_favorite
 
     def test_cluster_not_favorite_if_none_favorite(self):
         """Cluster should not be favorite if no photos are favorited."""
@@ -470,7 +468,7 @@ class TestTemporalClustering:
             ),
         ]
         cluster = LivePhotoCluster(assets=assets)
-        assert cluster.is_favorite is False
+        assert not cluster.is_favorite
 
 
 class TestBurstMergerCommand:
@@ -541,7 +539,7 @@ class TestLivePhotoConfig:
         from immich_memories.config_models import AnalysisConfig
 
         config = AnalysisConfig()
-        assert config.include_live_photos is False
+        assert not config.include_live_photos
 
     def test_default_merge_window(self):
         from immich_memories.config_models import AnalysisConfig
@@ -563,7 +561,7 @@ class TestLivePhotoConfig:
             live_photo_merge_window_seconds=15.0,
             live_photo_min_burst_count=2,
         )
-        assert config.include_live_photos is True
+        assert config.include_live_photos
         assert config.live_photo_merge_window_seconds == 15.0
         assert config.live_photo_min_burst_count == 2
 
@@ -604,8 +602,8 @@ class TestFilterValidClips:
         ):
             valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
 
-        assert valid_paths == []
-        assert valid_trims == []
+        assert not valid_paths
+        assert not valid_trims
 
     def test_all_clips_valid_returns_all(self):
         """When all clips are valid, return everything unchanged."""
@@ -635,8 +633,7 @@ class TestCLILivePhotosFlag:
 
         from immich_memories.cli import main
 
-        runner = CliRunner()
         # --help should list the flag without error
-        result = runner.invoke(main, ["generate", "--help"])
+        result = CliRunner().invoke(main, ["generate", "--help"])
         assert result.exit_code == 0
         assert "--include-live-photos" in result.output

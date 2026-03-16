@@ -89,31 +89,14 @@ DEFAULT_ANALYSIS_HEIGHT = 480  # 480p for analysis
 
 
 def get_downscaled_path(original_path: Path, target_height: int = DEFAULT_ANALYSIS_HEIGHT) -> Path:
-    """Get the path where downscaled version would be stored.
-
-    Stores in same directory with _{height}p suffix.
-
-    Args:
-        original_path: Path to original video.
-        target_height: Target height in pixels.
-
-    Returns:
-        Path for downscaled version.
-    """
+    """Stores in same directory with _{height}p suffix."""
     stem = original_path.stem
     suffix = original_path.suffix
     return original_path.parent / f"{stem}_{target_height}p{suffix}"
 
 
 def get_video_height(video_path: Path) -> int:
-    """Get video height using ffprobe.
-
-    Args:
-        video_path: Path to video file.
-
-    Returns:
-        Video height in pixels, or 0 if unable to determine.
-    """
+    """Returns 0 if unable to determine."""
     try:
         validate_video_path(video_path, must_exist=True)
         result = subprocess.run(
@@ -140,17 +123,7 @@ def get_video_height(video_path: Path) -> int:
 
 
 def needs_downscaling(video_path: Path, target_height: int = DEFAULT_ANALYSIS_HEIGHT) -> bool:
-    """Check if video needs downscaling based on resolution.
-
-    Only downscales if video is significantly larger than target (1.5x).
-
-    Args:
-        video_path: Path to video file.
-        target_height: Target height in pixels.
-
-    Returns:
-        True if video should be downscaled.
-    """
+    """Only downscales if video is significantly larger than target (1.5x)."""
     video_height = get_video_height(video_path)
 
     if video_height <= 0:
@@ -254,12 +227,7 @@ def cleanup_downscaled(
     video_path: Path,
     target_height: int = DEFAULT_ANALYSIS_HEIGHT,
 ) -> None:
-    """Remove downscaled version if it exists.
-
-    Args:
-        video_path: Path to original video.
-        target_height: Target height used for downscaling.
-    """
+    """Remove downscaled version if it exists."""
     downscaled = get_downscaled_path(video_path, target_height)
     if downscaled.exists() and downscaled != video_path:
         try:

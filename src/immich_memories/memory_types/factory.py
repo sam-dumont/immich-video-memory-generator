@@ -71,10 +71,10 @@ def list_memory_types() -> list[dict[str, str]]:
     Returns:
         List of dicts with 'type', 'name', 'description' keys.
     """
-    result = []
-    for mt, (name, desc) in _DESCRIPTIONS.items():
-        result.append({"type": str(mt), "name": name, "description": desc})
-    return result
+    return [
+        {"type": str(mt), "name": name, "description": desc}
+        for mt, (name, desc) in _DESCRIPTIONS.items()
+    ]
 
 
 # ─── Built-in preset factories ────────────────────────────────────────────────
@@ -182,7 +182,7 @@ def _multi_person(
     mode = "all_of" if require_co_occurrence else "any"
     return MemoryPreset(
         memory_type=MemoryType.MULTI_PERSON,
-        name=f"{joined}",
+        name=joined,
         description=f"Moments with {joined} in {year}",
         date_ranges=[calendar_year(year)],
         person_filter=PersonFilter(

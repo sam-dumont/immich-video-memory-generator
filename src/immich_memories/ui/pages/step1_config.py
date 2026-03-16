@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import date
 from typing import TYPE_CHECKING
 
@@ -12,7 +13,6 @@ from immich_memories.api.immich import ImmichAPIError, SyncImmichClient
 from immich_memories.config import Config, get_config, set_config
 from immich_memories.security import sanitize_error_message
 from immich_memories.timeperiod import (
-    available_years,
     birthday_year,
     calendar_year,
     custom_range,
@@ -26,10 +26,14 @@ from immich_memories.ui.components import (
     im_separator,
 )
 from immich_memories.ui.pages.step1_presets import render_preset_selector
+from immich_memories.ui.pages.step1_tabs import (
+    _render_custom_tab,
+    _render_duration_tab,
+    _render_year_tab,
+)
 from immich_memories.ui.state import get_app_state
 
 if TYPE_CHECKING:
-    from nicegui.elements.menu import Menu
     from nicegui.elements.number import Number
 
 logger = logging.getLogger(__name__)
@@ -135,7 +139,7 @@ def _render_immich_config_section(state) -> None:
 
         # Auto-connect on page load if credentials are prefilled but not yet connected
         if state.immich_url and state.immich_api_key and not state.connected_user:
-            ui.timer(0.1, lambda: test_connection(), once=True)
+            ui.timer(0.1, test_connection, once=True)
 
 
 def _render_preset_section(state) -> None:
@@ -150,89 +154,56 @@ def _render_preset_section(state) -> None:
     render_preset_selector(on_custom_selected=_on_custom_selected)
 
 
-def _render_time_period_tabs(state) -> None:
-    """Render time period mode tabs (Year / Duration / Custom Range)."""
-    with ui.tabs().classes("w-full") as tabs:
-        year_tab = ui.tab("Year")
-        duration_tab = ui.tab("Duration")
-        custom_tab = ui.tab("Custom Range")
+def _compute_date_range(state):
+    """Compute DateRange from current state. Returns None if not computable."""
+    if state.time_period_mode == "year" and state.selected_year:
+        if state.year_type == "birthday" and state.birthday:
+            return birthday_year(state.birthday, state.selected_year)
+        return calendar_year(state.selected_year)
+    if state.time_period_mode == "period":
+        start = state.custom_start or date.today().replace(month=1, day=1)
+        unit_char = "m" if state.period_unit == "months" else "y"
+        return from_period(start, f"{state.period_value}{unit_char}")
+    if state.time_period_mode == "custom":
+        start = state.custom_start or date.today().replace(month=1, day=1)
+        end = state.custom_end or date.today()
+        return custom_range(start, end)
+    return None
 
-    def on_tab_change(e):
-        value = e.value if hasattr(e, "value") else e
-        if value == "Year":
-            state.time_period_mode = "year"
-        elif value == "Duration":
-            state.time_period_mode = "period"
-        elif value == "Custom Range":
-            state.time_period_mode = "custom"
-        update_date_range_display()
 
-    tabs.on_value_change(on_tab_change)
+def _make_date_range_updater(
+    state, date_range_label, duration_input_ref: list
+) -> Callable[[], None]:
+    """Return a closure that updates the date range display label."""
 
-    _updater = [lambda: None]
-
-    def update_date_range_display():
-        _updater[0]()
-
-    _tab_map = {"year": year_tab, "period": duration_tab, "custom": custom_tab}
-    _initial_tab = _tab_map.get(state.time_period_mode, year_tab)
-
-    with ui.tab_panels(tabs, value=_initial_tab).classes("w-full"):
-        _render_year_tab(state, year_tab, update_date_range_display)
-        _render_duration_tab(state, duration_tab, update_date_range_display)
-        _render_custom_tab(state, custom_tab, update_date_range_display)
-
-    # Date range display
-    date_range_label = (
-        ui.label("")
-        .classes("p-2 rounded-lg mt-4")
-        .style("color: var(--im-info); background: rgba(59,130,246,0.1)")
-    )
-    _duration_input: list[Number | None] = [None]
-
-    def _real_update_date_range_display() -> None:
+    def update() -> None:
         try:
-            if state.time_period_mode == "year" and state.selected_year:
-                if state.year_type == "birthday" and state.birthday:
-                    dr = birthday_year(state.birthday, state.selected_year)
-                else:
-                    dr = calendar_year(state.selected_year)
-            elif state.time_period_mode == "period":
-                start = state.custom_start or date.today().replace(month=1, day=1)
-                unit_char = "m" if state.period_unit == "months" else "y"
-                period_str = f"{state.period_value}{unit_char}"
-                dr = from_period(start, period_str)
-            elif state.time_period_mode == "custom":
-                start = state.custom_start or date.today().replace(month=1, day=1)
-                end = state.custom_end or date.today()
-                dr = custom_range(start, end)
-            else:
+            dr = _compute_date_range(state)
+            if dr is None:
                 date_range_label.set_text("")
                 return
-
             state.date_range = dr
             date_range_label.set_text(f"{dr.description} ({dr.days} days)")
-
             auto_duration = max(1, min(60, round(dr.days / 365 * 10)))
             state.target_duration = auto_duration
-            if _duration_input[0] is not None and _duration_input[0].value != auto_duration:
-                _duration_input[0].value = auto_duration
+            if duration_input_ref[0] is not None and duration_input_ref[0].value != auto_duration:
+                duration_input_ref[0].value = auto_duration
         except Exception as e:
             date_range_label.set_text(f"Invalid date range: {e}")
             date_range_label.style("color: var(--im-error); background: rgba(239,68,68,0.1)")
 
-    _updater[0] = _real_update_date_range_display
-    _real_update_date_range_display()
+    return update  # type: ignore[return-value]
 
-    # Person filter + target duration
+
+def _render_person_filter(state, update_fn, duration_input_ref: list) -> None:
+    """Render person filter + target duration row."""
     im_section_header("Person Filter", icon="person")
+    named_people = [p for p in state.people if p.name]
+    person_options = {"all": "All people"}
+    for p in named_people:
+        person_options[p.id] = p.name
 
     with ui.row().classes("w-full gap-4 items-end"):
-        named_people = [p for p in state.people if p.name]
-        person_options = {"all": "All people"}
-        for p in named_people:
-            person_options[p.id] = p.name
-
         person_select = ui.select(options=person_options, label="Person", value="all").classes(
             "w-64"
         )
@@ -241,17 +212,17 @@ def _render_time_period_tabs(state) -> None:
             value = e.value if hasattr(e, "value") else e
             if value == "all":
                 state.selected_person = None
-            else:
-                selected = next((p for p in named_people if p.id == value), None)
-                state.selected_person = selected
-                if selected and selected.birth_date and state.time_period_mode == "year":
-                    state.birthday = selected.birth_date.date()
-                    state.year_type = "birthday"
-                    ui.notify(
-                        f"Using {selected.name}'s birthday: {state.birthday.strftime('%B %d, %Y')}",
-                        type="info",
-                    )
-                    update_date_range_display()
+                return
+            selected = next((p for p in named_people if p.id == value), None)
+            state.selected_person = selected
+            if selected and selected.birth_date and state.time_period_mode == "year":
+                state.birthday = selected.birth_date.date()
+                state.year_type = "birthday"
+                ui.notify(
+                    f"Using {selected.name}'s birthday: {state.birthday.strftime('%B %d, %Y')}",
+                    type="info",
+                )
+                update_fn()
 
         person_select.on_value_change(on_person_change)
 
@@ -260,172 +231,50 @@ def _render_time_period_tabs(state) -> None:
             .classes("w-48")
             .bind_value(state, "target_duration")
         )
-        _duration_input[0] = duration_select
+        duration_input_ref[0] = duration_select
 
 
-def _render_year_tab(state, tab, update_fn) -> None:
-    """Render the Year tab panel."""
-    with ui.tab_panel(tab):
-        with ui.row().classes("w-full gap-4 items-end"):
-            year_options = state.years if state.years else available_years()
-            year_select = ui.select(
-                options=year_options,
-                label="Year",
-                value=state.selected_year or (year_options[0] if year_options else None),
-            ).classes("w-48")
+def _render_time_period_tabs(state) -> None:
+    """Render time period mode tabs (Year / Duration / Custom Range)."""
+    _tab_mode_map = {"Year": "year", "Duration": "period", "Custom Range": "custom"}
 
-            def on_year_change(e):
-                state.selected_year = e.value if hasattr(e, "value") else e
-                update_fn()
+    with ui.tabs().classes("w-full") as tabs:
+        year_tab = ui.tab("Year")
+        duration_tab = ui.tab("Duration")
+        custom_tab = ui.tab("Custom Range")
 
-            year_select.on_value_change(on_year_change)
-            if not state.selected_year and year_options:
-                state.selected_year = year_options[0]
+    _updater: list = [lambda: None]
 
-            with ui.column().classes("gap-1"):
-                ui.label("Year type").classes("text-sm").style("color: var(--im-text-secondary)")
-                with ui.row().classes("gap-2"):
-                    calendar_btn = ui.button(
-                        "Calendar Year",
-                        on_click=lambda: set_year_type("calendar"),
-                    ).props("flat" if state.year_type != "calendar" else "")
-                    birthday_btn = ui.button(
-                        "From Birthday",
-                        on_click=lambda: set_year_type("birthday"),
-                    ).props("flat" if state.year_type != "birthday" else "")
+    def on_tab_change(e):
+        value = e.value if hasattr(e, "value") else e
+        if value in _tab_mode_map:
+            state.time_period_mode = _tab_mode_map[value]
+        _updater[0]()
 
-        birthday_container = ui.column().classes("mt-4")
+    tabs.on_value_change(on_tab_change)
 
-        def set_year_type(year_type: str) -> None:
-            state.year_type = year_type
-            if year_type == "calendar":
-                calendar_btn.props(remove="flat")
-                birthday_btn.props("flat")
-            else:
-                calendar_btn.props("flat")
-                birthday_btn.props(remove="flat")
-            _update_birthday_ui()
-            update_fn()
+    _initial_tab = {"year": year_tab, "period": duration_tab, "custom": custom_tab}.get(
+        state.time_period_mode, year_tab
+    )
 
-        def _update_birthday_ui() -> None:
-            birthday_container.clear()
-            if state.year_type == "birthday":
-                with birthday_container:
-                    current_bday = state.birthday or date(2000, 1, 1)
-                    bday_menu: Menu
-                    with ui.input("Birthday") as bday_input:
-                        with bday_input.add_slot("prepend"):
-                            ui.icon("event").on("click", lambda: bday_menu.open()).classes(
-                                "cursor-pointer"
-                            )
-                        with ui.menu().props("no-auto-close") as bday_menu:
+    with ui.tab_panels(tabs, value=_initial_tab).classes("w-full"):
+        _render_year_tab(state, year_tab, lambda: _updater[0]())
+        _render_duration_tab(state, duration_tab, lambda: _updater[0]())
+        _render_custom_tab(state, custom_tab, lambda: _updater[0]())
 
-                            def on_date_pick(e):
-                                picked = e.value if hasattr(e, "value") else e
-                                if picked:
-                                    state.birthday = date.fromisoformat(picked)
-                                    bday_input.value = picked
-                                    bday_menu.close()
-                                    update_fn()
+    # Date range display label
+    date_range_label = (
+        ui.label("")
+        .classes("p-2 rounded-lg mt-4")
+        .style("color: var(--im-info); background: rgba(59,130,246,0.1)")
+    )
+    _duration_input: list[Number | None] = [None]
 
-                            ui.date(value=current_bday.isoformat(), on_change=on_date_pick)
-                    bday_input.value = current_bday.strftime("%Y-%m-%d")
+    update_fn = _make_date_range_updater(state, date_range_label, _duration_input)
+    _updater[0] = update_fn
+    update_fn()
 
-        _update_birthday_ui()
-
-
-def _render_duration_tab(state, tab, update_fn) -> None:
-    """Render the Duration tab panel."""
-    with ui.tab_panel(tab), ui.row().classes("w-full gap-4 items-end"):
-        duration_input = ui.number("Duration", value=state.period_value, min=1, max=24).classes(
-            "w-24"
-        )
-
-        def on_duration_change(e):
-            state.period_value = int(e.value if hasattr(e, "value") else e)
-            update_fn()
-
-        duration_input.on_value_change(on_duration_change)
-
-        unit_select = ui.select(
-            options=["Months", "Years"],
-            label="Unit",
-            value="Months" if state.period_unit == "months" else "Years",
-        ).classes("w-32")
-
-        def on_unit_change(e):
-            state.period_unit = (e.value if hasattr(e, "value") else e).lower()
-            update_fn()
-
-        unit_select.on_value_change(on_unit_change)
-
-        period_start_menu: Menu
-        with ui.input("Starting from") as start_input:
-            with start_input.add_slot("prepend"):
-                ui.icon("event").on("click", lambda: period_start_menu.open()).classes(
-                    "cursor-pointer"
-                )
-            with ui.menu().props("no-auto-close") as period_start_menu:
-                start_val = state.custom_start or date.today().replace(month=1, day=1)
-
-                def on_period_start_pick(e):
-                    val = e.value if hasattr(e, "value") else e
-                    if val:
-                        state.custom_start = date.fromisoformat(val)
-                        start_input.value = val
-                        period_start_menu.close()
-                        update_fn()
-
-                ui.date(value=start_val.isoformat(), on_change=on_period_start_pick)
-        start_input.value = (state.custom_start or date.today().replace(month=1, day=1)).strftime(
-            "%Y-%m-%d"
-        )
-
-
-def _render_custom_tab(state, tab, update_fn) -> None:
-    """Render the Custom Range tab panel."""
-    with ui.tab_panel(tab), ui.row().classes("w-full gap-4 items-end"):
-        custom_start_menu: Menu
-        with ui.input("Start date") as custom_start_input:
-            with custom_start_input.add_slot("prepend"):
-                ui.icon("event").on("click", lambda: custom_start_menu.open()).classes(
-                    "cursor-pointer"
-                )
-            with ui.menu().props("no-auto-close") as custom_start_menu:
-                start_val = state.custom_start or date.today().replace(month=1, day=1)
-
-                def on_custom_start_pick(e):
-                    val = e.value if hasattr(e, "value") else e
-                    if val:
-                        state.custom_start = date.fromisoformat(val)
-                        custom_start_input.value = val
-                        custom_start_menu.close()
-                        update_fn()
-
-                ui.date(value=start_val.isoformat(), on_change=on_custom_start_pick)
-        custom_start_input.value = (
-            state.custom_start or date.today().replace(month=1, day=1)
-        ).strftime("%Y-%m-%d")
-
-        custom_end_menu: Menu
-        with ui.input("End date") as custom_end_input:
-            with custom_end_input.add_slot("prepend"):
-                ui.icon("event").on("click", lambda: custom_end_menu.open()).classes(
-                    "cursor-pointer"
-                )
-            with ui.menu().props("no-auto-close") as custom_end_menu:
-                end_val = state.custom_end or date.today()
-
-                def on_custom_end_pick(e):
-                    val = e.value if hasattr(e, "value") else e
-                    if val:
-                        state.custom_end = date.fromisoformat(val)
-                        custom_end_input.value = val
-                        custom_end_menu.close()
-                        update_fn()
-
-                ui.date(value=end_val.isoformat(), on_change=on_custom_end_pick)
-        custom_end_input.value = (state.custom_end or date.today()).strftime("%Y-%m-%d")
+    _render_person_filter(state, update_fn, _duration_input)
 
 
 def _render_options_section(state) -> None:

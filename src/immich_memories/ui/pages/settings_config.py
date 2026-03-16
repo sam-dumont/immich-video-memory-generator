@@ -41,7 +41,7 @@ def _format_value(value: Any) -> str:
 
 def _section_icon(section: str) -> str:
     """Map config section names to Material icons."""
-    icons = {
+    return {
         "immich": "cloud",
         "defaults": "tune",
         "analysis": "analytics",
@@ -57,8 +57,7 @@ def _section_icon(section: str) -> str:
         "title_screens": "title",
         "upload": "cloud_upload",
         "scheduler": "schedule",
-    }
-    return icons.get(section, "settings")
+    }.get(section, "settings")
 
 
 def _render_section_table(section_data: dict) -> None:
@@ -97,8 +96,7 @@ def _render_section_table(section_data: dict) -> None:
 def render_config_viewer() -> None:
     """Render the configuration viewer panel."""
     config = get_config(reload=True)
-    raw = config.model_dump()
-    redacted = _redact(raw)
+    redacted = _redact(config.model_dump())
 
     im_info_card(
         "Active config from ~/.immich-memories/config.yaml with env overrides. "

@@ -15,7 +15,7 @@ class TestConfigureLogging:
         """Default format is text with StreamHandler."""
         configure_logging(fmt="text")
         root = logging.getLogger()
-        assert len(root.handlers) >= 1
+        assert root.handlers
         handler = root.handlers[-1]
         assert not isinstance(handler.formatter, JsonFormatter)
 

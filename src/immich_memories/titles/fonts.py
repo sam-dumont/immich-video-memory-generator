@@ -241,7 +241,7 @@ def download_font(
                 # Save with our naming convention: FontFamily-Weight.ttf
                 target_path = font_dir / f"{dir_name}-{weight_name}.ttf"
 
-                with open(target_path, "wb") as f:
+                with target_path.open("wb") as f:
                     f.write(response.content)
                     downloaded_count += 1
                     logger.debug(f"Downloaded: {target_path.name}")
@@ -302,12 +302,9 @@ def get_available_fonts(fonts_dir: Path | None = None) -> list[str]:
     if fonts_dir is None:
         fonts_dir = get_fonts_cache_dir()
 
-    available = []
-    for font_family in FONT_DEFINITIONS:
-        if is_font_cached(font_family, fonts_dir):
-            available.append(font_family)
-
-    return available
+    return [
+        font_family for font_family in FONT_DEFINITIONS if is_font_cached(font_family, fonts_dir)
+    ]
 
 
 def clear_font_cache(fonts_dir: Path | None = None) -> None:

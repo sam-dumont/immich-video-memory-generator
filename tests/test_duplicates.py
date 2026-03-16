@@ -116,7 +116,7 @@ class TestDuplicateGroup:
         group = DuplicateGroup(videos=[clip])
         assert group.best_video_id == "v1"
         assert group.best_video == clip
-        assert group.other_videos == []
+        assert not group.other_videos
 
     def test_best_video_by_resolution(self):
         """Test that higher resolution is preferred."""
@@ -183,7 +183,7 @@ class TestUnionFindEdgeCases:
 
     def test_empty_items(self):
         """Empty items list returns empty groups."""
-        assert _union_find_groups([], []) == []
+        assert not _union_find_groups([], [])
 
     def test_single_item_no_pairs(self):
         """Single item returns one single-item group."""
@@ -213,7 +213,7 @@ class TestFindDuplicateGroups:
     def test_empty_videos_returns_empty(self, sample_config):
         """Empty input returns empty list."""
         groups = find_duplicate_groups([])
-        assert groups == []
+        assert not groups
 
     @patch("immich_memories.analysis.duplicates.compute_video_hash")
     def test_identical_hashes_grouped(self, mock_hash, sample_config, tmp_path):
@@ -294,7 +294,7 @@ class TestRankVideosByQuality:
 
     def test_empty_list(self):
         """Empty input returns empty list."""
-        assert rank_videos_by_quality([]) == []
+        assert not rank_videos_by_quality([])
 
     def test_single_video(self):
         """Single video returns that video."""

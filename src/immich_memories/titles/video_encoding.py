@@ -1,20 +1,20 @@
 """Video encoding helpers for title screen generation.
 
 Handles FFmpeg encoder selection and video creation from rendered frames.
-Split from renderer_pil.py to keep files under 500 lines.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import queue
 import subprocess
-import sys
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .animations import get_animation_preset, reverse_preset
+from .encoding import _get_gpu_encoder_args
 from .styles import TitleStyle
 
 if TYPE_CHECKING:
@@ -30,19 +30,24 @@ except ImportError:
     HAS_PIL = False
 
 
-def _get_sdr_to_hlg_filter() -> str:
-    """Get video filter to convert sRGB title screen frames to HLG/BT.2020.
+def _get_sdr_to_hlg_filter(hdr: bool = True) -> str:
+    """Get video filter to convert sRGB frames to HLG/BT.2020.
 
-    Title screens are rendered in sRGB (8-bit RGB24) but need to match
-    the HLG colorspace of video clips for clean concatenation. Without
-    this conversion, title screens appear pinkish/washed out because
-    sRGB pixel values get misinterpreted as HLG.
+    PIL renders sRGB (8-bit RGB24) frames. When outputting HDR, we need
+    proper transfer function conversion so titles don't appear pinkish.
+    When outputting SDR, no conversion needed.
+
+    Args:
+        hdr: If True, return SDR→HLG conversion filter. If False, return "".
 
     Returns:
-        FFmpeg video filter string for SDR→HLG conversion.
+        FFmpeg video filter string, or "" for SDR output.
     """
+    if not hdr:
+        return ""
+
     # zscale handles proper transfer function conversion (sRGB → HLG)
-    try:
+    with contextlib.suppress(Exception):
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-filters"],
             capture_output=True,
@@ -56,113 +61,104 @@ def _get_sdr_to_hlg_filter() -> str:
                 ":min=bt709:m=bt2020nc,"
                 "format=p010le"
             )
-    except Exception:
-        pass
 
     # Fallback: just do format conversion (colors slightly off but not pink)
     logger.warning("zscale not available — title screen colors may be slightly inaccurate")
     return "format=p010le"
 
 
-def _get_best_encoder() -> tuple[list[str], str]:
-    """Get the best available video encoder for intermediate files.
+def _get_best_encoder(hdr: bool = True) -> tuple[list[str], str]:
+    """Get the best encoder args and optional SDR→HLG video filter.
 
-    Returns encoder flags optimized for:
-    - VERY HIGH quality (near-lossless for intermediate files that will be re-encoded)
-    - Fast encoding (GPU when available)
-    - 10-bit color depth (eliminates gradient banding)
-    - Compatible with .mp4 container
+    Delegates encoder selection to the shared _get_gpu_encoder_args(),
+    then adds the PIL-specific SDR→HLG conversion filter when needed.
+
+    Args:
+        hdr: If True, output HLG HDR. If False, output SDR.
 
     Returns:
         Tuple of (encoder args, video filter for SDR→HLG conversion).
     """
-    # HLG colorspace metadata — must match video clips for clean concat
-    color_args = [
-        "-color_primaries",
-        "bt2020",
-        "-color_trc",
-        "arib-std-b67",
-        "-colorspace",
-        "bt2020nc",
+    encoder_args = _get_gpu_encoder_args(hdr=hdr)
+    video_filter = _get_sdr_to_hlg_filter(hdr=hdr)
+    return encoder_args, video_filter
+
+
+def _build_ffmpeg_cmd(
+    width: int,
+    height: int,
+    fps: float,
+    duration: float,
+    encoder_args: list[str],
+    video_filter: str,
+    output_path: Path,
+) -> list[str]:
+    """Build the FFmpeg command for piped raw-video input."""
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-s",
+        f"{width}x{height}",
+        "-r",
+        str(fps),
+        "-i",
+        "pipe:0",
+        "-f",
+        "lavfi",
+        "-i",
+        "anullsrc=r=48000:cl=stereo",
     ]
+    if video_filter:
+        cmd.extend(["-vf", video_filter])
+    cmd.extend(
+        [
+            *encoder_args,
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-t",
+            str(duration),
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ]
+    )
+    return cmd
 
-    sdr_to_hlg = _get_sdr_to_hlg_filter()
 
-    # macOS: Use VideoToolbox hardware encoder (GPU accelerated, 10-bit support)
-    if sys.platform == "darwin":
-        return [
-            "-c:v",
-            "hevc_videotoolbox",
-            "-q:v",
-            "50",  # High quality (lower = better, 0-100)
-            "-tag:v",
-            "hvc1",  # Better compatibility
-            *color_args,
-        ], sdr_to_hlg
+def _render_frame_with_animation(
+    renderer,
+    title: str,
+    subtitle: str | None,
+    frame_idx: int,
+    *,
+    preset,
+    reversed_preset,
+    fade_out_start_frame: int,
+    fade_out_frames: int,
+    animation_frames: int,
+    fade_from_white: bool,
+    fade_in_frames: int,
+    white_frame,
+):
+    """Render a single frame applying fade-in/fade-out animation logic."""
+    if frame_idx >= fade_out_start_frame:
+        fade_out_progress = (frame_idx - fade_out_start_frame) / fade_out_frames
+        fade_out_frame = int(fade_out_progress * animation_frames)
+        return renderer.render_frame(title, subtitle, fade_out_frame, reversed_preset)
 
-    # Other platforms: Check for available encoders
-    try:
-        result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"],
-            capture_output=True,
-            text=True,
-        )
-        encoders = result.stdout
+    if fade_from_white and frame_idx < fade_in_frames:
+        frame = renderer.render_frame(title, subtitle, frame_idx, preset)
+        fade_in_progress = frame_idx / fade_in_frames
+        blend_alpha = 1.0 - (1.0 - fade_in_progress) ** 2
+        return Image.blend(white_frame, frame, blend_alpha)
 
-        # Try NVIDIA NVENC (GPU accelerated)
-        if "hevc_nvenc" in encoders:
-            return [
-                "-c:v",
-                "hevc_nvenc",
-                "-preset",
-                "p4",  # Quality preset
-                "-rc",
-                "constqp",
-                "-qp",
-                "18",
-                "-tag:v",
-                "hvc1",
-                *color_args,
-            ], sdr_to_hlg
-
-        # Fallback to libx265 (CPU, slower but high quality)
-        if "libx265" in encoders:
-            return [
-                "-c:v",
-                "libx265",
-                "-crf",
-                "18",
-                "-preset",
-                "fast",
-                "-tag:v",
-                "hvc1",
-                *color_args,
-            ], sdr_to_hlg
-
-        # Last fallback to libx264 (8-bit, no HDR)
-        return [
-            "-c:v",
-            "libx264",
-            "-crf",
-            "18",
-            "-preset",
-            "fast",
-            "-pix_fmt",
-            "yuv420p",
-        ], ""
-
-    except Exception:
-        # Default to libx264 if detection fails
-        return [
-            "-c:v",
-            "libx264",
-            "-crf",
-            "18",
-            "-preset",
-            "fast",
-            "-pix_fmt",
-            "yuv420p",
-        ], ""
+    return renderer.render_frame(title, subtitle, frame_idx, preset)
 
 
 def create_title_video(
@@ -176,6 +172,7 @@ def create_title_video(
     fps: float = 60.0,  # 60fps for smooth animations (downsample later if needed)
     animated_background: bool = True,
     fade_from_white: bool = False,
+    hdr: bool = True,
 ) -> Path:
     """Create a complete title video with full animation support.
 
@@ -209,53 +206,11 @@ def create_title_video(
     renderer = TitleRenderer(style, settings)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    encoder_args, video_filter = _get_best_encoder()
-
-    # Build FFmpeg command to read raw video from pipe
-    cmd = [
-        "ffmpeg",
-        "-y",
-        # Input: raw RGB frames from stdin
-        "-f",
-        "rawvideo",
-        "-pix_fmt",
-        "rgb24",
-        "-s",
-        f"{width}x{height}",
-        "-r",
-        str(fps),
-        "-i",
-        "pipe:0",
-        # Add silent audio track (required for crossfades in assembly)
-        "-f",
-        "lavfi",
-        "-i",
-        "anullsrc=r=48000:cl=stereo",
-    ]
-
-    # SDR→HLG color conversion (fixes pinkish title screens)
-    if video_filter:
-        cmd.extend(["-vf", video_filter])
-
-    cmd.extend(
-        [
-            *encoder_args,
-            # Audio codec for the silent track
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            # Duration to match video
-            "-t",
-            str(duration),
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ]
-    )
+    encoder_args, video_filter = _get_best_encoder(hdr=hdr)
+    cmd = _build_ffmpeg_cmd(width, height, fps, duration, encoder_args, video_filter, output_path)
 
     # Use a queue to pass frames between threads
-    frame_queue: queue.Queue = queue.Queue(maxsize=10)  # Buffer up to 10 frames
+    frame_queue: queue.Queue = queue.Queue(maxsize=10)
     write_error: list = []
 
     def write_frames_to_ffmpeg(process: subprocess.Popen) -> None:
@@ -263,72 +218,54 @@ def create_title_video(
         try:
             while True:
                 frame_bytes = frame_queue.get()
-                if frame_bytes is None:  # Sentinel to stop
+                if frame_bytes is None:
                     break
                 process.stdin.write(frame_bytes)
             process.stdin.close()
         except Exception as e:
             write_error.append(e)
 
-    # Start FFmpeg process
     process = subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
-
-    # Start writer thread
     writer_thread = threading.Thread(target=write_frames_to_ffmpeg, args=(process,))
     writer_thread.start()
 
-    # Render frames and add to queue
+    # Animation parameters
     total_frames = int(duration * fps)
     preset = get_animation_preset(style.animation_preset)
     reversed_preset = reverse_preset(preset)
-
-    # Text fade-out animation
-    fade_out_duration = 1.0
-    fade_out_frames = int(fade_out_duration * fps)
+    fade_out_frames = int(1.0 * fps)
     fade_out_start_frame = total_frames - fade_out_frames
     animation_frames = int(preset.duration_ms / 1000 * fps)
-
-    # Fade FROM white at the start (only for intro title, not month dividers)
     fade_in_frames = int(0.8 * fps) if fade_from_white else 0
     white_frame = Image.new("RGB", (width, height), (255, 255, 255)) if fade_from_white else None
 
     for i in range(total_frames):
-        if i >= fade_out_start_frame:
-            # Text fade-out (background stays visible for assembly crossfade)
-            fade_out_progress = (i - fade_out_start_frame) / fade_out_frames
-            fade_out_frame = int(fade_out_progress * animation_frames)
-            frame = renderer.render_frame(title, subtitle, fade_out_frame, reversed_preset)
-        elif fade_from_white and i < fade_in_frames:
-            # Fade-in phase: blend FROM white to frame (intro title only)
-            frame = renderer.render_frame(title, subtitle, i, preset)
-            fade_in_progress = i / fade_in_frames
-            blend_alpha = 1.0 - (1.0 - fade_in_progress) ** 2  # Ease out curve
-            frame = Image.blend(white_frame, frame, blend_alpha)
-        else:
-            # Normal rendering
-            frame = renderer.render_frame(title, subtitle, i, preset)
+        frame = _render_frame_with_animation(
+            renderer,
+            title,
+            subtitle,
+            i,
+            preset=preset,
+            reversed_preset=reversed_preset,
+            fade_out_start_frame=fade_out_start_frame,
+            fade_out_frames=fade_out_frames,
+            animation_frames=animation_frames,
+            fade_from_white=fade_from_white,
+            fade_in_frames=fade_in_frames,
+            white_frame=white_frame,
+        )
+        frame_queue.put(frame.tobytes())
 
-        # Convert PIL Image to raw RGB bytes and add to queue
-        frame_bytes = frame.tobytes()
-        frame_queue.put(frame_bytes)
-
-    # Signal end of frames
     frame_queue.put(None)
     writer_thread.join()
 
-    # Wait for FFmpeg to finish (stdin already closed by writer thread)
-    # Read stderr directly instead of using communicate()
     stderr = process.stderr.read() if process.stderr else b""
     process.wait()
 
     if write_error:
         raise RuntimeError(f"Write error: {write_error[0]}")
-
     if process.returncode != 0:
         raise RuntimeError(f"FFmpeg failed: {stderr.decode()}")
 

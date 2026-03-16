@@ -2,28 +2,29 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
 from pydantic import ValidationError
 
-from immich_memories.api.client_album import AlbumMixin
-from immich_memories.api.client_all_assets import AllAssetsMixin
-from immich_memories.api.client_asset import AssetMixin
-from immich_memories.api.client_person import PersonMixin
-from immich_memories.api.client_search import SearchMixin
+from immich_memories.api.album_service import AlbumService
+from immich_memories.api.all_assets_service import AllAssetsService
+from immich_memories.api.asset_service import AssetService
 from immich_memories.api.models import (
     Asset,
+    AssetType,
     MetadataSearchResult,
     Person,
     ServerInfo,
     TimeBucket,
     UserInfo,
 )
+from immich_memories.api.person_service import PersonService
+from immich_memories.api.search_service import SearchService
 from immich_memories.config import Config, get_config
 
 if TYPE_CHECKING:
@@ -52,8 +53,12 @@ class ImmichNotFoundError(ImmichAPIError):
     pass
 
 
-class ImmichClient(AlbumMixin, AssetMixin, PersonMixin, SearchMixin, AllAssetsMixin):
-    """Client for interacting with the Immich API."""
+class ImmichClient:
+    """Client for interacting with the Immich API.
+
+    Composes 5 services via constructor injection:
+    - SearchService, AllAssetsService, AssetService, PersonService, AlbumService
+    """
 
     def __init__(
         self,
@@ -62,14 +67,6 @@ class ImmichClient(AlbumMixin, AssetMixin, PersonMixin, SearchMixin, AllAssetsMi
         config: Config | None = None,
         timeout: float = 30.0,
     ):
-        """Initialize the Immich client.
-
-        Args:
-            base_url: Immich server URL. If not provided, uses config.
-            api_key: Immich API key. If not provided, uses config.
-            config: Configuration object. If not provided, uses global config.
-            timeout: Request timeout in seconds.
-        """
         if config is None:
             config = get_config()
 
@@ -83,6 +80,13 @@ class ImmichClient(AlbumMixin, AssetMixin, PersonMixin, SearchMixin, AllAssetsMi
             raise ValueError("Immich API key not configured")
 
         self._client: httpx.AsyncClient | None = None
+
+        # Wire composed services
+        self.search = SearchService(self._request)
+        self.all_assets = AllAssetsService(self.search)
+        self.assets = AssetService(self._request, self.base_url, lambda: self.client)
+        self.people = PersonService(self._request)
+        self.albums = AlbumService(self._request)
 
     @property
     def client(self) -> httpx.AsyncClient:
@@ -105,7 +109,6 @@ class ImmichClient(AlbumMixin, AssetMixin, PersonMixin, SearchMixin, AllAssetsMi
             self._client = None
 
     async def __aenter__(self) -> ImmichClient:
-        """Async context manager entry."""
         return self
 
     async def __aexit__(
@@ -114,7 +117,6 @@ class ImmichClient(AlbumMixin, AssetMixin, PersonMixin, SearchMixin, AllAssetsMi
         _exc_val: BaseException | None,
         _exc_tb: object,
     ) -> None:
-        """Async context manager exit."""
         await self.close()
 
     async def _request(
@@ -124,14 +126,6 @@ class ImmichClient(AlbumMixin, AssetMixin, PersonMixin, SearchMixin, AllAssetsMi
         **kwargs,
     ) -> dict | list | bytes:
         """Make an API request.
-
-        Args:
-            method: HTTP method.
-            endpoint: API endpoint (without /api prefix).
-            **kwargs: Additional arguments for httpx.
-
-        Returns:
-            Response data (JSON or bytes).
 
         Raises:
             ImmichAPIError: If the request fails.
@@ -194,242 +188,205 @@ class ImmichClient(AlbumMixin, AssetMixin, PersonMixin, SearchMixin, AllAssetsMi
         except ImmichAPIError:
             raise
 
+    # ---- Delegate to SearchService ----
 
-# Synchronous wrapper for non-async contexts
-
-
-class SyncImmichClient:
-    """Synchronous wrapper for ImmichClient."""
-
-    def __init__(self, *args, **kwargs):
-        self._async_client = ImmichClient(*args, **kwargs)
-        self._loop: asyncio.AbstractEventLoop | None = None
-
-    @property
-    def base_url(self) -> str:
-        """Get the base URL of the Immich server."""
-        return self._async_client.base_url
-
-    @property
-    def api_key(self) -> str:
-        """Get the API key."""
-        return self._async_client.api_key
-
-    @property
-    def timeout(self) -> float:
-        """Get the request timeout."""
-        return self._async_client.timeout
-
-    def _run(self, coro):
-        """Run an async coroutine synchronously.
-
-        Uses a persistent event loop so httpx's AsyncClient can reuse TCP
-        connections across calls. asyncio.run() creates and destroys a loop
-        each time, which breaks httpx's transport references on the 2nd call.
-        """
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            # No event loop running — use persistent loop for connection reuse
-            if self._loop is None or self._loop.is_closed():
-                self._loop = asyncio.new_event_loop()
-            return self._loop.run_until_complete(coro)
-        else:
-            # Already inside an event loop (e.g., NiceGUI) — run in a thread
-            import concurrent.futures
-
-            def _run_with_persistent_loop():
-                if self._loop is None or self._loop.is_closed():
-                    self._loop = asyncio.new_event_loop()
-                return self._loop.run_until_complete(coro)
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(_run_with_persistent_loop).result()
-
-    def close(self) -> None:
-        """Close the client and its event loop."""
-        try:
-            if self._loop is None or self._loop.is_closed():
-                self._loop = asyncio.new_event_loop()
-            self._loop.run_until_complete(self._async_client.close())
-        finally:
-            if self._loop is not None and not self._loop.is_closed():
-                self._loop.close()
-
-    def __enter__(self) -> SyncImmichClient:
-        return self
-
-    def __exit__(
+    async def search_metadata(
         self,
-        _exc_type: type[BaseException] | None,
-        _exc_val: BaseException | None,
-        _exc_tb: object,
-    ) -> None:
-        self.close()
+        person_ids: list[str] | None = None,
+        asset_type: AssetType | None = None,
+        taken_after: datetime | None = None,
+        taken_before: datetime | None = None,
+        page: int = 1,
+        size: int = 100,
+    ) -> MetadataSearchResult:
+        return await self.search.search_metadata(
+            person_ids=person_ids,
+            asset_type=asset_type,
+            taken_after=taken_after,
+            taken_before=taken_before,
+            page=page,
+            size=size,
+        )
 
-    def validate_connection(self) -> bool:
-        return self._run(self._async_client.validate_connection())
-
-    def get_server_info(self) -> ServerInfo:
-        return self._run(self._async_client.get_server_info())
-
-    def get_current_user(self) -> UserInfo:
-        return self._run(self._async_client.get_current_user())
-
-    def get_all_people(self, with_hidden: bool = False) -> list[Person]:
-        return self._run(self._async_client.get_all_people(with_hidden))
-
-    def get_person(self, person_id: str) -> Person:
-        return self._run(self._async_client.get_person(person_id))
-
-    def get_person_by_name(self, name: str) -> Person | None:
-        return self._run(self._async_client.get_person_by_name(name))
-
-    def get_asset(self, asset_id: str) -> Asset:
-        return self._run(self._async_client.get_asset(asset_id))
-
-    def get_asset_thumbnail(self, asset_id: str, size: str = "preview") -> bytes:
-        return self._run(self._async_client.get_asset_thumbnail(asset_id, size))
-
-    def get_video_playback_url(self, asset_id: str) -> str:
-        return self._async_client.get_video_playback_url(asset_id)
-
-    def get_video_original_url(self, asset_id: str) -> str:
-        return self._async_client.get_video_original_url(asset_id)
-
-    def get_video_playback(self, asset_id: str) -> bytes:
-        return self._run(self._async_client.get_video_playback(asset_id))
-
-    def download_asset(self, asset_id: str, output_path: Path) -> Path:
-        return self._run(self._async_client.download_asset(asset_id, output_path))
-
-    def search_metadata(self, **kwargs) -> MetadataSearchResult:
-        return self._run(self._async_client.search_metadata(**kwargs))
-
-    def get_videos_for_person_and_year(
+    async def get_videos_for_person_and_year(
         self,
         person_id: str,
         year: int,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[Asset]:
-        return self._run(
-            self._async_client.get_videos_for_person_and_year(person_id, year, progress_callback)
-        )
+        return await self.search.get_videos_for_person_and_year(person_id, year, progress_callback)
 
-    def get_all_videos_for_year(
+    async def get_all_videos_for_year(
         self,
         year: int,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[Asset]:
-        return self._run(self._async_client.get_all_videos_for_year(year, progress_callback))
+        return await self.search.get_all_videos_for_year(year, progress_callback)
 
-    def get_time_buckets(self, **kwargs) -> list[TimeBucket]:
-        return self._run(self._async_client.get_time_buckets(**kwargs))
-
-    def get_bucket_assets(self, bucket: str, **kwargs) -> list[Asset]:
-        return self._run(self._async_client.get_bucket_assets(bucket, **kwargs))
-
-    def get_available_years(self, person_id: str | None = None) -> list[int]:
-        return self._run(self._async_client.get_available_years(person_id))
-
-    def get_videos_for_date_range(
+    async def get_videos_for_date_range(
         self,
         date_range: DateRange,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[Asset]:
-        return self._run(
-            self._async_client.get_videos_for_date_range(date_range, progress_callback)
-        )
+        return await self.search.get_videos_for_date_range(date_range, progress_callback)
 
-    def get_assets_for_date_range(
-        self,
-        date_range: DateRange,
-        progress_callback: Callable[[int, int], None] | None = None,
-    ) -> list[Asset]:
-        return self._run(
-            self._async_client.get_assets_for_date_range(date_range, progress_callback)
-        )
-
-    def get_videos_for_person_and_date_range(
+    async def get_videos_for_person_and_date_range(
         self,
         person_id: str,
         date_range: DateRange,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[Asset]:
-        return self._run(
-            self._async_client.get_videos_for_person_and_date_range(
-                person_id, date_range, progress_callback
-            )
+        return await self.search.get_videos_for_person_and_date_range(
+            person_id, date_range, progress_callback
         )
 
-    def get_live_photos_for_date_range(
+    async def get_videos_for_any_person(
+        self,
+        person_ids: list[str],
+        date_range: DateRange,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[Asset]:
+        return await self.search.get_videos_for_any_person(
+            person_ids, date_range, progress_callback
+        )
+
+    async def get_videos_for_all_persons(
+        self,
+        person_ids: list[str],
+        date_range: DateRange,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[Asset]:
+        return await self.search.get_videos_for_all_persons(
+            person_ids, date_range, progress_callback
+        )
+
+    async def get_live_photos_for_date_range(
         self,
         date_range: DateRange,
         progress_callback: Callable[[int, int], None] | None = None,
         person_id: str | None = None,
         person_ids: list[str] | None = None,
     ) -> list[Asset]:
-        return self._run(
-            self._async_client.get_live_photos_for_date_range(
-                date_range,
-                progress_callback,
-                person_id=person_id,
-                person_ids=person_ids,
-            )
+        return await self.search.get_live_photos_for_date_range(
+            date_range, progress_callback, person_id=person_id, person_ids=person_ids
         )
 
-    def get_videos_for_any_person(
+    async def iter_videos_for_date_range(
         self,
-        person_ids: list[str],
         date_range: DateRange,
-        progress_callback: Callable[[int, int], None] | None = None,
-    ) -> list[Asset]:
-        return self._run(
-            self._async_client.get_videos_for_any_person(person_ids, date_range, progress_callback)
-        )
+        person_id: str | None = None,
+        batch_size: int = 20,
+    ) -> AsyncIterator[Asset]:
+        async for asset in self.search.iter_videos_for_date_range(
+            date_range, person_id, batch_size
+        ):
+            yield asset
 
-    def get_assets_for_person_and_date_range(
+    async def get_time_buckets(self, **kwargs) -> list[TimeBucket]:
+        return await self.search.get_time_buckets(**kwargs)
+
+    async def get_bucket_assets(self, bucket: str, **kwargs) -> list[Asset]:
+        return await self.search.get_bucket_assets(bucket, **kwargs)
+
+    async def get_available_years(self, person_id: str | None = None) -> list[int]:
+        return await self.search.get_available_years(person_id)
+
+    async def iter_person_videos(
+        self, person_id: str, year: int, batch_size: int = 20
+    ) -> AsyncIterator[Asset]:
+        async for asset in self.search.iter_person_videos(person_id, year, batch_size):
+            yield asset
+
+    # ---- Delegate to AllAssetsService ----
+
+    async def get_assets_for_date_range(
+        self,
+        date_range: DateRange,
+        progress_callback: Callable[[int, int | None], None] | None = None,
+    ) -> list[Asset]:
+        return await self.all_assets.get_assets_for_date_range(date_range, progress_callback)
+
+    async def get_assets_for_person_and_date_range(
         self,
         person_id: str,
         date_range: DateRange,
-        progress_callback: Callable[[int, int], None] | None = None,
+        progress_callback: Callable[[int, int | None], None] | None = None,
     ) -> list[Asset]:
-        return self._run(
-            self._async_client.get_assets_for_person_and_date_range(
-                person_id, date_range, progress_callback
-            )
+        return await self.all_assets.get_assets_for_person_and_date_range(
+            person_id, date_range, progress_callback
         )
 
-    def get_assets_for_any_person(
+    async def get_assets_for_any_person(
         self,
         person_ids: list[str],
         date_range: DateRange,
-        progress_callback: Callable[[int, int], None] | None = None,
+        progress_callback: Callable[[int, int | None], None] | None = None,
     ) -> list[Asset]:
-        return self._run(
-            self._async_client.get_assets_for_any_person(person_ids, date_range, progress_callback)
+        return await self.all_assets.get_assets_for_any_person(
+            person_ids, date_range, progress_callback
         )
 
-    def get_videos_for_all_persons(
-        self,
-        person_ids: list[str],
-        date_range: DateRange,
-        progress_callback: Callable[[int, int], None] | None = None,
-    ) -> list[Asset]:
-        return self._run(
-            self._async_client.get_videos_for_all_persons(person_ids, date_range, progress_callback)
-        )
+    # ---- Delegate to AssetService ----
 
-    def upload_asset(self, file_path: Path) -> str:
-        return self._run(self._async_client.upload_asset(file_path))
+    async def get_asset(self, asset_id: str) -> Asset:
+        return await self.assets.get_asset(asset_id)
 
-    def create_album(self, name: str, description: str | None = None) -> str:
-        return self._run(self._async_client.create_album(name, description))
+    async def get_asset_thumbnail(self, asset_id: str, size: str = "preview") -> bytes:
+        return await self.assets.get_asset_thumbnail(asset_id, size)
 
-    def add_assets_to_album(self, album_id: str, asset_ids: list[str]) -> None:
-        self._run(self._async_client.add_assets_to_album(album_id, asset_ids))
+    def get_video_playback_url(self, asset_id: str) -> str:
+        return self.assets.get_video_playback_url(asset_id)
 
-    def upload_memory(
+    def get_video_original_url(self, asset_id: str) -> str:
+        return self.assets.get_video_original_url(asset_id)
+
+    async def get_video_playback(self, asset_id: str) -> bytes:
+        return await self.assets.get_video_playback(asset_id)
+
+    async def download_asset(self, asset_id: str, output_path: Path) -> Path:
+        return await self.assets.download_asset(asset_id, output_path)
+
+    # ---- Delegate to PersonService ----
+
+    async def get_all_people(self, with_hidden: bool = False) -> list[Person]:
+        return await self.people.get_all_people(with_hidden)
+
+    async def get_person(self, person_id: str) -> Person:
+        return await self.people.get_person(person_id)
+
+    async def get_person_by_name(self, name: str) -> Person | None:
+        return await self.people.get_person_by_name(name)
+
+    # ---- Delegate to AlbumService ----
+
+    async def get_albums(self) -> list[dict]:
+        return await self.albums.get_albums()
+
+    async def find_album_by_name(self, name: str) -> str | None:
+        return await self.albums.find_album_by_name(name)
+
+    async def upload_asset(self, file_path: Path) -> str:
+        return await self.albums.upload_asset(file_path)
+
+    async def create_album(self, name: str, description: str | None = None) -> str:
+        return await self.albums.create_album(name, description)
+
+    async def add_assets_to_album(self, album_id: str, asset_ids: list[str]) -> None:
+        await self.albums.add_assets_to_album(album_id, asset_ids)
+
+    async def upload_memory(
         self, video_path: Path, album_name: str | None = None
     ) -> dict[str, str | None]:
-        return self._run(self._async_client.upload_memory(video_path, album_name))
+        return await self.albums.upload_memory(video_path, album_name)
+
+
+# Re-export SyncImmichClient — bottom import avoids circular dependency
+from immich_memories.api.sync_client import SyncImmichClient  # noqa: E402
+
+__all__ = [
+    "ImmichAPIError",
+    "ImmichAuthError",
+    "ImmichClient",
+    "ImmichNotFoundError",
+    "SyncImmichClient",
+]

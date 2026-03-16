@@ -90,7 +90,7 @@ class Person(BaseModel):
     @property
     def display_name(self) -> str:
         """Get display name, falling back to ID if no name set."""
-        return self.name if self.name else f"Person {self.id[:8]}"
+        return self.name or f"Person {self.id[:8]}"
 
 
 class AssetFace(BaseModel):
@@ -132,6 +132,12 @@ class AssetFace(BaseModel):
         )
 
 
+class SmartInfo(BaseModel):
+    """Immich object detection results."""
+
+    objects: list[str] | None = None
+
+
 class Asset(BaseModel):
     """An asset (photo or video) from Immich."""
 
@@ -157,6 +163,7 @@ class Asset(BaseModel):
     faces: list[AssetFace] = Field(default_factory=list)
     checksum: str | None = None
     live_photo_video_id: str | None = Field(default=None, alias="livePhotoVideoId")
+    smart_info: SmartInfo | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -425,12 +432,11 @@ class VideoClipInfo(BaseModel):
         """Get the HDR format name if HDR, otherwise SDR."""
         if not self.color_transfer:
             return "SDR"
-        format_map = {
+        return {
             "smpte2084": "HDR10",
             "arib-std-b67": "HLG",
             "smpte428": "DCI-P3",
-        }
-        return format_map.get(self.color_transfer, "SDR")
+        }.get(self.color_transfer, "SDR")
 
     @property
     def is_camera_original(self) -> bool:

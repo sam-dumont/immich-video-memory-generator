@@ -1,7 +1,4 @@
-"""Memory type title generation helpers.
-
-Extracted from text_builder.py to stay under the 500-line file limit.
-"""
+"""Memory type title generation helpers."""
 
 from __future__ import annotations
 

@@ -12,6 +12,7 @@ Extensible to other languages by adding .po/.mo files.
 
 from __future__ import annotations
 
+import contextlib
 import gettext
 import locale
 import os
@@ -218,9 +219,8 @@ def get_ordinal(n: int, locale_code: str = "en") -> str:
             return "1ère"
         return f"{n}ème"
 
-    else:
-        # Fallback to English
-        return get_ordinal(n, "en")
+    # Fallback to English
+    return get_ordinal(n, "en")
 
 
 def detect_system_locale() -> str:
@@ -229,15 +229,13 @@ def detect_system_locale() -> str:
     Returns:
         Two-letter language code.
     """
-    try:
+    with contextlib.suppress(Exception):
         # Try to get system locale
         sys_locale = locale.getdefaultlocale()[0]
         if sys_locale:
             lang = sys_locale.split("_")[0].lower()
             if lang in SUPPORTED_LOCALES:
                 return lang
-    except Exception:
-        pass
 
     # Check LANG environment variable
     lang_env = os.environ.get("LANG", "")

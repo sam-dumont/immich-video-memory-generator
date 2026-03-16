@@ -50,7 +50,7 @@ def _detect_nvidia() -> HWAccelCapabilities | None:
         )
         if result.returncode == 0:
             parts = result.stdout.strip().split(", ")
-            if len(parts) >= 1:
+            if parts:
                 caps.device_name = parts[0]
             if len(parts) >= 2:
                 with contextlib.suppress(ValueError):

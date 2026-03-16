@@ -80,11 +80,17 @@ class TitleScreenSettings:
     show_ending_screen: bool = True
     use_first_name_only: bool = True  # Use only first name for titles
 
+    # LLM-generated title override (bypasses template generation)
+    title_override: str | None = None
+    subtitle_override: str | None = None
+
     # Trip map settings (used when memory_type == "trip")
     memory_type: str | None = None  # "trip" enables map intro + location cards
     trip_locations: list[tuple[float, float]] | None = None  # (lat, lon) pairs for map pins
     trip_title_text: str | None = None  # e.g. "TWO WEEKS IN SPAIN, SUMMER 2025"
     show_location_cards: bool = True  # Insert location cards between clips
+    home_lat: float | None = None  # Homebase latitude for globe animation
+    home_lon: float | None = None  # Homebase longitude for globe animation
 
 
 @dataclass
@@ -128,6 +134,8 @@ class AssemblySettings:
     debug_preserve_intermediates: bool = False
     # Aspect ratio handling mode: "blur", "smart_zoom", "black_bars", "exclude"
     scale_mode: str = "blur"
+    # Privacy/demo mode: blur video + mute speech for showcase videos
+    privacy_mode: bool = False
 
 
 @dataclass
@@ -166,9 +174,8 @@ def _get_rotation_filter(rotation: int) -> str:
     Returns:
         FFmpeg filter string (e.g., "transpose=1" for 90° clockwise).
     """
-    rotation_filters = {
+    return {
         90: "transpose=1",  # 90° clockwise
         180: "hflip,vflip",  # 180° rotation
         270: "transpose=2",  # 90° counter-clockwise (270° clockwise)
-    }
-    return rotation_filters.get(rotation, "")
+    }.get(rotation, "")

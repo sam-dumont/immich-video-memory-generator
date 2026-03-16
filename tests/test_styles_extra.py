@@ -104,4 +104,4 @@ class TestGetStyleForMood:
     def test_calm_disables_line_accent(self):
         """Calm mood disables line accent."""
         style = get_style_for_mood("calm", randomize=False)
-        assert style.use_line_accent is False
+        assert not style.use_line_accent

@@ -104,6 +104,13 @@ dev = [
     "python-semantic-release>=9.0",
     "types-PyYAML>=6.0",
     "types-croniter>=6.0",
+    # Advanced quality gates
+    "refurb>=2.0",
+    "import-linter>=2.0",
+    "grimp>=3.0",
+    "deptry>=0.20",
+    "mutmut>=2.0",
+    "diff-cover>=9.0",
 ]
 
 [project.scripts]
@@ -299,8 +306,6 @@ ignore_errors = true
 module = [
     "immich_memories.analysis.scenes",
     "immich_memories.analysis.scoring",
-    "immich_memories.analysis.scoring_motion",
-    "immich_memories.analysis.scoring_face",
     "immich_memories.analysis.apple_vision",
     "immich_memories.processing.transforms",
     "immich_memories.processing._transforms_smart_crop",
@@ -312,9 +317,6 @@ disable_error_code = ["attr-defined", "call-overload", "union-attr", "assignment
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.api.immich",
-    "immich_memories.api.client_search",
-    "immich_memories.api.client_person",
-    "immich_memories.api.client_asset",
 ]
 disable_error_code = ["attr-defined", "arg-type", "return-value"]
 
@@ -338,12 +340,10 @@ module = [
 ]
 disable_error_code = ["dict-item"]
 
-# Audio content analyzer with PANNs (split into mixins)
+# Audio content analyzer with PANNs
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.audio.content_analyzer",
-    "immich_memories.audio.panns_analysis",
-    "immich_memories.audio.energy_analysis",
 ]
 disable_error_code = ["attr-defined", "assignment", "misc", "has-type"]
 
@@ -365,31 +365,23 @@ disable_error_code = ["assignment"]
 module = ["immich_memories.cache.video_cache"]
 disable_error_code = ["attr-defined"]
 
-# Taichi GPU renderers (uses Taichi-specific type annotations)
+# Taichi GPU renderers (uses Taichi-specific type annotations, absorbed particle/text mixins)
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.titles.renderer_taichi",
     "immich_memories.titles.sdf_font",
     "immich_memories.titles.taichi_kernels",
+    "immich_memories.titles.taichi_globe",
     "immich_memories.titles.sdf_font_rendering",
     "immich_memories.titles.taichi_video",
 ]
-disable_error_code = ["valid-type", "assignment", "misc", "truthy-function", "union-attr", "import-untyped"]
+disable_error_code = ["valid-type", "assignment", "misc", "truthy-function", "union-attr", "import-untyped", "attr-defined", "has-type"]
 
-# Taichi mixin files accessing parent class attributes
-[[tool.mypy.overrides]]
-module = [
-    "immich_memories.titles.taichi_text",
-    "immich_memories.titles.taichi_particles",
-]
-disable_error_code = ["attr-defined", "truthy-function", "assignment", "has-type"]
-
-# PIL renderer with optional font types (split into mixins)
+# PIL renderer with optional font types
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.titles.renderer_pil",
-    "immich_memories.titles.text_rendering",
-    "immich_memories.titles.ending_mixin",
+    "immich_memories.titles.ending_service",
 ]
 disable_error_code = ["attr-defined", "arg-type", "union-attr", "has-type"]
 
@@ -398,15 +390,10 @@ disable_error_code = ["attr-defined", "arg-type", "union-attr", "has-type"]
 module = ["immich_memories.titles.video_encoding"]
 disable_error_code = ["union-attr", "arg-type"]
 
-# Title rendering mixin with optional Taichi imports
+# Title rendering service with optional Taichi imports
 [[tool.mypy.overrides]]
-module = ["immich_memories.titles.rendering_mixin"]
+module = ["immich_memories.titles.rendering_service"]
 disable_error_code = ["assignment", "misc", "attr-defined", "arg-type"]
-
-# Trip map/location mixin (access parent class attributes via mixin pattern)
-[[tool.mypy.overrides]]
-module = ["immich_memories.titles.trip_mixin"]
-disable_error_code = ["attr-defined"]
 
 # Unified analyzer with complex audio analysis
 [[tool.mypy.overrides]]
@@ -418,75 +405,149 @@ disable_error_code = ["var-annotated", "assignment", "attr-defined"]
 module = ["immich_memories.titles.generator"]
 disable_error_code = ["assignment", "misc"]
 
-# Video assembler mixins (access parent class attributes via mixin pattern)
+# Analysis pipeline services (composed services with callback injection)
 [[tool.mypy.overrides]]
 module = [
-    "immich_memories.processing.assembly",
-    "immich_memories.processing.assembler_helpers",
-    "immich_memories.processing.assembler_encoding",
-    "immich_memories.processing.assembler_strategies",
-    "immich_memories.processing.assembler_scalable",
-    "immich_memories.processing.assembler_batch",
-    "immich_memories.processing.assembler_concat",
-    "immich_memories.processing.assembler_audio",
-    "immich_memories.processing.assembler_probing",
-    "immich_memories.processing.assembler_transitions",
-    "immich_memories.processing.assembler_transition_render",
-    "immich_memories.processing.assembler_titles",
-    "immich_memories.processing.assembler_trip_mixin",
-]
-disable_error_code = ["attr-defined"]
-
-# Clip encoding with dynamic hardware detection
-[[tool.mypy.overrides]]
-module = ["immich_memories.processing.clip_encoding"]
-disable_error_code = ["attr-defined"]
-
-# Cache mixins (access parent class _get_connection via mixin pattern)
-[[tool.mypy.overrides]]
-module = [
-    "immich_memories.cache.database_migrations",
-    "immich_memories.cache.database_queries",
-]
-disable_error_code = ["attr-defined"]
-
-# Tracking mixins (access parent class _get_connection via mixin pattern)
-[[tool.mypy.overrides]]
-module = [
-    "immich_memories.tracking.run_queries",
-    "immich_memories.tracking.active_jobs_mixin",
-]
-disable_error_code = ["attr-defined"]
-
-# Analysis pipeline mixins (access parent class attributes via mixin pattern)
-[[tool.mypy.overrides]]
-module = [
-    "immich_memories.analysis.pipeline_analysis",
-    "immich_memories.analysis.pipeline_refinement",
-    "immich_memories.analysis.pipeline_preview",
-    "immich_memories.analysis.candidate_generation",
+    "immich_memories.analysis.clip_analyzer",
+    "immich_memories.analysis.clip_refiner",
+    "immich_memories.analysis.preview_builder",
     "immich_memories.analysis.analyzer_factory",
     "immich_memories.analysis.smart_pipeline",
 ]
-disable_error_code = ["attr-defined", "arg-type", "return-value"]
+disable_error_code = ["attr-defined", "arg-type", "return-value", "operator"]
+
+# API services (callback-based request delegation)
+[[tool.mypy.overrides]]
+module = [
+    "immich_memories.api.search_service",
+    "immich_memories.api.sync_client",
+]
+disable_error_code = ["arg-type"]
 
 # Pandas is optional for UI
 [[tool.mypy.overrides]]
 module = ["pandas", "pandas.*"]
 ignore_missing_imports = true
 
+# Cognitive complexity (complements cyclomatic complexity from xenon)
+[tool.complexipy]
+paths = ["src"]
+max_complexity_allowed = 15
+exclude = [
+    "src/immich_memories/_version.py",
+    "src/immich_memories/cli/",              # Click decorators inflate complexity scores
+    "src/immich_memories/titles/taichi_*",    # GPU kernel compilation is inherently complex
+    "src/immich_memories/titles/sdf_*",       # SDF font rendering kernels
+]
+
+# Dependency hygiene
+[tool.deptry]
+exclude = ["tests", "docs", "scripts"]
+
+[tool.deptry.per_rule_ignores]
+DEP002 = [
+    "gunicorn", "uvicorn",                              # Runtime-only servers
+    "hatch-vcs", "hatchling",                           # Build-only
+    "semantic-release",                                 # CI-only
+    "opencv-python",                                    # imported as cv2
+    "pyyaml",                                           # imported as yaml
+    "pillow",                                           # imported as PIL
+    "imagehash",                                        # imported via videohash
+    "videohash",                                        # used via subprocess
+    "watchdog",                                         # runtime scheduler
+    "face-recognition",                                 # imported as face_recognition
+    "dlib",                                             # face-recognition backend
+    "pyobjc-core", "pyobjc-framework-Vision",           # macOS-only, runtime
+    "pyobjc-framework-Quartz", "pyobjc-framework-Metal", # macOS GPU
+    "torch",                                            # PANNs inference backend
+    "freetype-py",                                      # imported as freetype
+    "pytest", "pytest-cov", "pytest-asyncio",           # dev tools (CLI usage)
+    "pytest-benchmark", "mypy", "ruff",                 # dev tools
+    "pre-commit", "commitizen",                         # dev tools
+    "types-pyyaml",                                     # mypy stub
+    "grimp",                                            # import-linter backend
+    "refurb", "import-linter",                          # quality CLI tools
+    "diff-cover", "deptry",                             # quality tools
+    "mutmut",                                           # mutation testing (CLI tool)
+    "python-semantic-release",                          # CI release tool
+    "types-PyYAML", "types-croniter",                   # mypy stubs
+]
+DEP001 = [
+    "cv2", "Quartz", "Vision", "Metal", "CoreImage",   # Platform/alt-name imports
+    "yaml", "acestep", "soundfile", "scipy",            # Optional deps imported conditionally
+    "PIL", "av", "freetype", "streamlit",               # Alt package names (Pillow→PIL, pyav→av)
+]
+DEP003 = ["PIL", "cv2", "yaml"]  # Known transitive imports
+
+# Architectural boundaries
+[tool.importlinter]
+root_packages = ["immich_memories"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+id = "no-ui-in-core"
+name = "Core analysis/processing must not import UI"
+type = "forbidden"
+source_modules = [
+    "immich_memories.analysis",
+    "immich_memories.processing",
+    "immich_memories.titles",
+]
+forbidden_modules = ["immich_memories.ui"]
+
+[[tool.importlinter.contracts]]
+id = "no-cli-in-core"
+name = "Core must not import CLI"
+type = "forbidden"
+source_modules = [
+    "immich_memories.analysis",
+    "immich_memories.processing",
+    "immich_memories.titles",
+    "immich_memories.audio",
+]
+forbidden_modules = ["immich_memories.cli"]
+
+[tool.refurb]
+# FURB184 (chained assignments) is a style preference — config + result = func(config)
+# is more readable than result = func(MockConfig()) in tests
+ignore = [
+    "FURB184",  # chained assignments: config + result is more readable
+    "FURB110",  # X if X else Y: false positive on Linux with similar variable names
+]
+# refurb sees src/ layout modules twice — only scan the package, not src/
+python_version = "3.11"
+
+[tool.mutmut]
+paths_to_mutate = ["src/immich_memories/"]
+pytest_add_cli_args_test_selection = ["tests/"]
+backup = false
+# Exclude modules that use C extensions (segfault risk during mutation):
+# taichi GPU kernels, face-recognition/dlib, PyAV frame blending
+dict_synonyms = ""
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: requires FFmpeg (deselect with '-m not integration')",
+]
+addopts = "-m 'not integration'"
 
 [tool.coverage.run]
 source = ["src/immich_memories"]
 branch = true
 
 [tool.coverage.report]
+# Target: 85%. Currently at ~40% due to heavy external dependencies (FFmpeg, Immich API,
+# Taichi GPU). Diff-cover at 95% on changed lines prevents regression. This floor prevents
+# overall erosion. Raise as E2E tests improve coverage.
+fail_under = 35
+show_missing = true
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
+    "@(abc\\.)?abstractmethod",
+    "\\.\\.\\.",  # Protocol stubs
 ]

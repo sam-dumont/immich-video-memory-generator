@@ -24,6 +24,7 @@ on:
 
 env:
   PYTHON_VERSION: "3.13"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # Determine if a release is needed based on commits AND branch names
@@ -38,6 +39,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          fetch-tags: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install uv
@@ -52,18 +54,31 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FORCE_VERSION: ${{ inputs.force_version }}
         run: |
-          # Get the previous tag
-          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          # Get the latest version tag globally (not just reachable from HEAD)
+          # git describe only finds tags in commit ancestry — unreliable after merges
+          git fetch --tags --force 2>/dev/null || true
+          PREV_TAG=$(git tag --list 'v*' --sort=-version:refname | head -1)
+
+          echo "All version tags (latest first):"
+          git tag --list 'v*' --sort=-version:refname | head -5
+
           if [[ -z "$PREV_TAG" ]]; then
             echo "No previous tag found, this will be the first release"
             PREV_VERSION="0.0.0"
-            # Get all commits when no previous tag exists
             COMMIT_RANGE="HEAD"
           else
             PREV_VERSION=${PREV_TAG#v}
-            COMMIT_RANGE="$PREV_TAG..HEAD"
+            # Use merge-base to get commits since last tag, even if tag is on different branch
+            MERGE_BASE=$(git merge-base "$PREV_TAG" HEAD 2>/dev/null || echo "")
+            if [[ -n "$MERGE_BASE" ]]; then
+              COMMIT_RANGE="$PREV_TAG..HEAD"
+            else
+              COMMIT_RANGE="HEAD"
+            fi
           fi
+          echo "Previous tag: $PREV_TAG"
           echo "Previous version: $PREV_VERSION"
+          echo "Commit range: $COMMIT_RANGE"
 
           # Initialize release type from commits
           RELEASE_TYPE="none"
@@ -201,6 +216,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEXT_VERSION: ${{ needs.analyze.outputs.next_version }}
         run: |
+          # Check if tag already exists (safety valve)
+          if git rev-parse "v$NEXT_VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag v$NEXT_VERSION already exists! Version calculation may be wrong."
+            echo "Existing tags:"
+            git tag --list 'v*' --sort=-version:refname | head -5
+            exit 1
+          fi
           # Create tag
           git tag -a "v$NEXT_VERSION" -m "Release v$NEXT_VERSION"
           git push origin "v$NEXT_VERSION"

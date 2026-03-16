@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -139,10 +140,8 @@ class ProgressTracker:
     def _notify_callbacks(self) -> None:
         """Notify all registered callbacks of progress update."""
         for callback in self._callbacks:
-            try:
+            with contextlib.suppress(Exception):
                 callback(self.progress)
-            except Exception:
-                pass  # Don't let callback errors break the pipeline
 
     def start(self) -> None:
         """Start the pipeline."""
@@ -186,6 +185,40 @@ class ProgressTracker:
 
         self._notify_callbacks()
 
+    def _update_display_fields(
+        self,
+        item_id: str,
+        segment: tuple[float, float] | None,
+        score: float | None,
+        preview_path: str | None,
+        llm_description: str | None,
+        llm_emotion: str | None,
+        llm_interestingness: float | None,
+        llm_quality: float | None,
+        audio_categories: list[str] | None,
+    ) -> None:
+        """Update 'Last Analyzed' display fields if any displayable data is present."""
+        has_display_data = (
+            preview_path is not None or llm_description is not None or audio_categories is not None
+        )
+        if not has_display_data:
+            return
+        self.progress.last_completed_asset_id = item_id
+        self.progress.last_completed_segment = segment
+        self.progress.last_completed_score = score
+        if preview_path is not None:
+            self.progress.last_completed_video_path = preview_path
+        if llm_description is not None:
+            self.progress.last_completed_llm_description = llm_description
+        if llm_emotion is not None:
+            self.progress.last_completed_llm_emotion = llm_emotion
+        if llm_interestingness is not None:
+            self.progress.last_completed_llm_interestingness = llm_interestingness
+        if llm_quality is not None:
+            self.progress.last_completed_llm_quality = llm_quality
+        if audio_categories is not None:
+            self.progress.last_completed_audio_categories = audio_categories
+
     def complete_item(
         self,
         item_id: str,
@@ -221,52 +254,30 @@ class ProgressTracker:
             duration = time.time() - self._item_start_time
 
         completed = CompletedItem(
-            item_id=item_id,
-            duration_seconds=duration,
-            success=success,
-            error=error,
+            item_id=item_id, duration_seconds=duration, success=success, error=error
         )
 
         if success:
             self.progress.completed.append(completed)
-
-            # Memory optimization: trim completed history if it exceeds limit
             if len(self.progress.completed) > MAX_COMPLETED_HISTORY:
                 self.progress.completed = self.progress.completed[-MAX_COMPLETED_HISTORY:]
 
-            # Only update "Last Analyzed" display fields when we have
-            # displayable data. Cached clips with no preview/LLM should NOT
-            # overwrite the previous fresh clip's display.
-            has_display_data = (
-                preview_path is not None
-                or llm_description is not None
-                or audio_categories is not None
+            self._update_display_fields(
+                item_id,
+                segment,
+                score,
+                preview_path,
+                llm_description,
+                llm_emotion,
+                llm_interestingness,
+                llm_quality,
+                audio_categories,
             )
-            if has_display_data:
-                self.progress.last_completed_asset_id = item_id
-                self.progress.last_completed_segment = segment
-                self.progress.last_completed_score = score
-                if preview_path is not None:
-                    self.progress.last_completed_video_path = preview_path
-                if llm_description is not None:
-                    self.progress.last_completed_llm_description = llm_description
-                if llm_emotion is not None:
-                    self.progress.last_completed_llm_emotion = llm_emotion
-                if llm_interestingness is not None:
-                    self.progress.last_completed_llm_interestingness = llm_interestingness
-                if llm_quality is not None:
-                    self.progress.last_completed_llm_quality = llm_quality
-                if audio_categories is not None:
-                    self.progress.last_completed_audio_categories = audio_categories
-
-            # Track video duration for speed ratio
             if video_duration is not None and video_duration > 0:
                 self.progress.total_video_duration += video_duration
                 self.progress.total_processing_time += duration
         else:
             self.progress.errors.append(completed)
-
-            # Memory optimization: trim error history if it exceeds limit
             if len(self.progress.errors) > MAX_ERROR_HISTORY:
                 self.progress.errors = self.progress.errors[-MAX_ERROR_HISTORY:]
 

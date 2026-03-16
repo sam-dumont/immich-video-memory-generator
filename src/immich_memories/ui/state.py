@@ -85,6 +85,12 @@ class AppState:
     memory_type: str | None = None
     memory_preset_params: dict[str, Any] = field(default_factory=dict)
 
+    # LLM-generated title (shown in Step 3, used in Step 4)
+    title_suggestion_title: str | None = None
+    title_suggestion_subtitle: str | None = None
+    title_suggestion_trip_type: str | None = None
+    title_suggestion_map_mode: str | None = None
+
     # Trip detection results (populated dynamically in Step 1 for trip preset)
     detected_trips: list[Any] = field(default_factory=list)
 
@@ -92,6 +98,9 @@ class AppState:
     upload_enabled: bool = False
     upload_album_name: str = "Memories"
     upload_result: dict[str, Any] | None = None
+
+    # Demo/privacy mode: blur thumbnails + video, mute speech
+    demo_mode: bool = False
 
     # Duplicate tracking
     _duplicates_processed: bool = False

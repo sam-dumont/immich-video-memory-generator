@@ -60,7 +60,7 @@ class TestAsset:
         )
         assert asset.id == "asset-123"
         assert asset.type == AssetType.VIDEO
-        assert asset.is_video is True
+        assert asset.is_video
 
     def test_type_parsing_from_string(self):
         """Test type parsing from string value."""
@@ -180,8 +180,8 @@ class TestVideoClipInfo:
             width=1080,
             height=1920,
         )
-        assert clip.is_portrait is True
-        assert clip.is_landscape is False
+        assert clip.is_portrait
+        assert not clip.is_landscape
 
     def test_quality_score(self):
         """Test quality score calculation."""
@@ -218,7 +218,7 @@ class TestVideoClipInfo:
             color_transfer="smpte2084",  # HDR10 transfer function
             color_primaries="bt2020",
         )
-        assert clip.is_hdr is True
+        assert clip.is_hdr
         assert clip.hdr_format == "HDR10"
 
     def test_is_hdr_with_hlg(self):
@@ -236,7 +236,7 @@ class TestVideoClipInfo:
             height=2160,
             color_transfer="arib-std-b67",  # HLG transfer function
         )
-        assert clip.is_hdr is True
+        assert clip.is_hdr
         assert clip.hdr_format == "HLG"
 
     def test_is_hdr_sdr(self):
@@ -254,7 +254,7 @@ class TestVideoClipInfo:
             height=1080,
             color_transfer="bt709",  # SDR transfer function
         )
-        assert clip.is_hdr is False
+        assert not clip.is_hdr
         assert clip.hdr_format == "SDR"
 
     def test_is_hdr_none(self):
@@ -271,7 +271,7 @@ class TestVideoClipInfo:
             width=1920,
             height=1080,
         )
-        assert clip.is_hdr is False
+        assert not clip.is_hdr
         assert clip.hdr_format == "SDR"
 
 
@@ -290,8 +290,8 @@ class TestVideoClipInfoEdgeCases:
     def test_square_video_not_portrait_or_landscape(self):
         """Square video (1:1) is neither portrait nor landscape."""
         clip = VideoClipInfo(asset=self._make_asset(), width=1080, height=1080)
-        assert clip.is_portrait is False
-        assert clip.is_landscape is False
+        assert not clip.is_portrait
+        assert not clip.is_landscape
 
     def test_aspect_ratio_portrait(self):
         """Portrait video has aspect ratio < 1."""
@@ -468,7 +468,7 @@ class TestIsCameraOriginal:
             exifInfo=ExifInfo(make="Apple", model="iPhone 15 Pro"),
         )
         clip = VideoClipInfo(asset=asset, width=1920, height=1080)
-        assert clip.is_camera_original is True
+        assert clip.is_camera_original
 
     def test_without_exif(self):
         """Not camera original without exif info."""
@@ -480,7 +480,7 @@ class TestIsCameraOriginal:
             updatedAt=datetime.now(),
         )
         clip = VideoClipInfo(asset=asset, width=1920, height=1080)
-        assert clip.is_camera_original is False
+        assert not clip.is_camera_original
 
     def test_with_exif_no_make_no_model(self):
         """Not camera original when exif has neither make nor model."""
@@ -493,7 +493,7 @@ class TestIsCameraOriginal:
             exifInfo=ExifInfo(),
         )
         clip = VideoClipInfo(asset=asset, width=1920, height=1080)
-        assert clip.is_camera_original is False
+        assert not clip.is_camera_original
 
 
 class TestPersonDisplayName:

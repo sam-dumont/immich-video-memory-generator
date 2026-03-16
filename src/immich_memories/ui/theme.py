@@ -36,9 +36,9 @@ _THEME_CSS = """
 }
 
 .body--dark {
-    --im-primary: #accbfa;
-    --im-primary-hover: #8bb8f8;
-    --im-primary-light: rgba(172, 203, 250, 0.10);
+    --im-primary: #6B8FE8;
+    --im-primary-hover: #5A7FD8;
+    --im-primary-light: rgba(107, 143, 232, 0.12);
     --im-bg: #000000;
     --im-bg-surface: #222222;
     --im-bg-elevated: #222222;
@@ -48,13 +48,13 @@ _THEME_CSS = """
     --im-border: #262626;
     --im-border-light: #262626;
     --im-sidebar-bg: #000000;
-    --im-sidebar-active: rgba(172, 203, 250, 0.10);
+    --im-sidebar-active: rgba(107, 143, 232, 0.12);
     --im-sidebar-text: #d4d4d4;
-    --im-sidebar-text-active: #accbfa;
+    --im-sidebar-text-active: #6B8FE8;
     --im-success: #81c784;
     --im-warning: #f57c00;
     --im-error: #e57373;
-    --im-info: #accbfa;
+    --im-info: #6B8FE8;
     --im-shadow: none;
     --im-shadow-md: 0 2px 8px rgba(0,0,0,0.4);
 }
@@ -145,10 +145,17 @@ body {
 .im-alert-warning { background-color: rgba(217, 119, 6, 0.10); }
 .im-alert-success { background-color: rgba(5, 150, 105, 0.10); }
 .im-alert-error { background-color: rgba(220, 38, 38, 0.10); }
-.body--dark .im-alert-info { background-color: rgba(172, 203, 250, 0.08); }
+.body--dark .im-alert-info { background-color: rgba(107, 143, 232, 0.10); }
 .body--dark .im-alert-warning { background-color: rgba(245, 124, 0, 0.08); }
 .body--dark .im-alert-success { background-color: rgba(129, 199, 132, 0.08); }
 .body--dark .im-alert-error { background-color: rgba(229, 115, 115, 0.08); }
+
+/* Demo/privacy mode: blur all thumbnails and video elements */
+body.demo-mode img:not(.no-blur),
+body.demo-mode video {
+    filter: blur(12px) !important;
+    -webkit-filter: blur(12px) !important;
+}
 """
 
 
@@ -163,7 +170,7 @@ def apply_theme() -> None:
     pref = app.storage.user.get("theme", "system")
     if pref == "dark":
         ui.dark_mode(True)
-        ui.colors(primary="#accbfa")
+        ui.colors(primary="#6B8FE8")
     elif pref == "light":
         ui.dark_mode(False)
         ui.colors(primary="#4250af")

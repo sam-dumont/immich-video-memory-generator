@@ -1,13 +1,8 @@
 """Main title screen generation logic.
 
 Orchestrates creation of opening title screens, month divider screens,
-and ending screens. Integrates text generation, styling, and rendering
-to produce complete title screen video clips ready for assembly.
-
-Key Classes:
-    TitleScreenConfig: Configuration for title generation
-    TitleScreenGenerator: Main generator class
-    GeneratedScreen: Result object containing path, duration, and screen type
+and ending screens via composed services (RenderingService, EndingService,
+TripService).
 """
 
 from __future__ import annotations
@@ -25,16 +20,17 @@ from .encoding import (  # noqa: F401
     ORIENTATION_RESOLUTIONS,
     get_resolution_for_orientation,
 )
-from .ending_mixin import EndingScreenMixin
-from .rendering_mixin import RenderingMixin
+from .ending_service import EndingService
+from .rendering_service import RenderingService
 from .styles import TitleStyle, get_random_style, get_style_for_mood
 from .text_builder import (
     SelectionType,
+    TitleInfo,
     generate_month_divider_text,
     generate_title,
     infer_selection_type,
 )
-from .trip_mixin import TripScreenMixin
+from .trip_service import TripService
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +68,10 @@ class TitleScreenConfig:
     # Font override
     custom_font_path: str | None = None
 
+    # LLM-generated title override (bypasses template generation)
+    title_override: str | None = None
+    subtitle_override: str | None = None
+
     # Month dividers
     show_month_dividers: bool = True
     month_divider_threshold: int = 2  # Minimum clips to show month divider
@@ -80,6 +80,9 @@ class TitleScreenConfig:
     orientation: str = "landscape"  # "landscape", "portrait", or "square"
     resolution: str = "1080p"  # "720p", "1080p", or "4k"
     fps: float = 60.0  # 60fps for smooth animations (downsample later if needed)
+
+    # HDR: match source clips. True = HLG bt2020, False = SDR yuv420p.
+    hdr: bool = True
 
     @property
     def output_resolution(self) -> tuple[int, int]:
@@ -96,14 +99,13 @@ class GeneratedScreen:
     screen_type: str  # "title", "month_divider", "ending"
 
 
-class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
+class TitleScreenGenerator:
     """Generates title screens, month dividers, and ending screens.
 
-    Main entry point for generating all title-related video clips.
-    Handles text generation, style selection, rendering, and audio tracks.
-
-    Automatically selects the best renderer (Taichi GPU or PIL fallback).
-    All generated videos include silent audio tracks for FFmpeg concat.
+    Composes 3 services via constructor injection:
+    - RenderingService: GPU/CPU renderer selection and video creation
+    - EndingService: fade-to-white ending video generation
+    - TripService: trip map screens and location cards
 
     Attributes:
         config: TitleScreenConfig with timing, resolution, and style settings.
@@ -118,14 +120,6 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         mood: str | None = None,
         output_dir: Path | None = None,
     ):
-        """Initialize the generator.
-
-        Args:
-            config: Configuration for generation. Uses defaults if None.
-            style: Visual style. If None, determined from mood or randomly.
-            mood: Video mood for automatic style selection (e.g., "happy", "calm").
-            output_dir: Directory for generated videos. Defaults to ./title_screens.
-        """
         self.config = config or TitleScreenConfig()
         self.output_dir = output_dir or Path.cwd() / "title_screens"
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -138,8 +132,10 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         if not self.config.show_decorative_lines:
             self.style.use_line_accent = False
 
-        # Initialize GPU renderer if requested and available
-        self._init_gpu_renderer()
+        # Compose services
+        self._rendering = RenderingService(self.config)
+        self._ending = EndingService(self.style)
+        self._trip = TripService(self.config, self._rendering, self.output_dir)
 
     def _init_style(self, style: TitleStyle | None) -> None:
         """Initialize the visual style based on config and mood."""
@@ -172,20 +168,7 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         birthday_age: int | None = None,
         selection_type: SelectionType | None = None,
     ) -> GeneratedScreen:
-        """Generate the opening title screen.
-
-        Args:
-            year: Year for title.
-            month: Month for title.
-            start_date: Start date for range.
-            end_date: End date for range.
-            person_name: Person's name (subtitle).
-            birthday_age: Age for birthday titles.
-            selection_type: Type of selection (auto-detected if not provided).
-
-        Returns:
-            GeneratedScreen with path to video file.
-        """
+        """Generate the opening title screen."""
         if selection_type is None:
             selection_type = infer_selection_type(
                 year=year,
@@ -195,7 +178,26 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
                 birthday_age=birthday_age,
             )
 
-        self._log_title_inputs(
+        # Use LLM-generated title if available
+        if self.config.title_override:
+            title_info = TitleInfo(
+                main_title=self.config.title_override,
+                subtitle=self.config.subtitle_override or "",
+                selection_type=selection_type or SelectionType.CALENDAR_YEAR,
+            )
+        else:
+            title_info = generate_title(
+                selection_type,
+                year=year,
+                month=month,
+                start_date=start_date,
+                end_date=end_date,
+                person_name=person_name,
+                birthday_age=birthday_age,
+                locale=self.config.locale,
+            )
+
+        self._log_title_generation(
             selection_type,
             year,
             month,
@@ -203,25 +205,13 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
             end_date,
             person_name,
             birthday_age,
+            title_info,
         )
-
-        title_info = generate_title(
-            selection_type,
-            year=year,
-            month=month,
-            start_date=start_date,
-            end_date=end_date,
-            person_name=person_name,
-            birthday_age=birthday_age,
-            locale=self.config.locale,
-        )
-
-        self._log_title_output(title_info)
 
         width, height = self.config.output_resolution
         output_path = self.output_dir / "title_screen.mp4"
 
-        self._create_title_video(
+        self._rendering.create_title_video(
             title=title_info.main_title,
             subtitle=title_info.subtitle,
             style=self.style,
@@ -234,7 +224,7 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
             fade_from_white=True,
         )
 
-        renderer_type = "GPU (Taichi)" if self._use_gpu else "CPU (PIL)"
+        renderer_type = "GPU (Taichi)" if self._rendering.use_gpu else "CPU (PIL)"
         logger.info(f"Title screen generated [{renderer_type}]: {output_path}")
 
         return GeneratedScreen(
@@ -243,7 +233,7 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
             screen_type="title",
         )
 
-    def _log_title_inputs(
+    def _log_title_generation(
         self,
         selection_type,
         year,
@@ -252,8 +242,9 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         end_date,
         person_name,
         birthday_age,
+        title_info,
     ) -> None:
-        """Log title screen generation input parameters."""
+        """Log title screen inputs, generated text, and rendering config."""
         logger.info("=" * 60)
         logger.info("TITLE SCREEN GENERATION")
         logger.info("=" * 60)
@@ -270,16 +261,12 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
             logger.info(f"  Person name: {person_name}")
         if birthday_age:
             logger.info(f"  Birthday age: {birthday_age}")
-
-    def _log_title_output(self, title_info) -> None:
-        """Log generated title text and style info."""
         logger.info("-" * 40)
         logger.info(f'  Main title: "{title_info.main_title}"')
         if title_info.subtitle:
             logger.info(f'  Subtitle: "{title_info.subtitle}"')
         else:
             logger.info("  Subtitle: (none)")
-
         logger.info("-" * 40)
         logger.info(f"  Style: {self.style.name}")
         logger.info(f"  Font: {self.style.font_family} ({self.style.font_weight})")
@@ -287,7 +274,6 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         logger.info(f"  Background: {self.style.background_type}")
         if self._mood:
             logger.info(f"  Mood: {self._mood}")
-
         width, height = self.config.output_resolution
         logger.info("-" * 40)
         logger.info(f"  Resolution: {width}x{height}")
@@ -302,16 +288,7 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         year: int | None = None,
         is_birthday_month: bool = False,
     ) -> GeneratedScreen:
-        """Generate a month divider screen.
-
-        Args:
-            month: Month number (1-12).
-            year: Optional year to include.
-            is_birthday_month: If True, add birthday celebration elements.
-
-        Returns:
-            GeneratedScreen with path to video file.
-        """
+        """Generate a month divider screen."""
         month_text = generate_month_divider_text(
             month,
             year=year,
@@ -340,7 +317,7 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         output_path = self.output_dir / f"month_divider_{month:02d}.mp4"
         width, height = self.config.output_resolution
 
-        self._create_title_video(
+        self._rendering.create_title_video(
             title=month_text,
             subtitle=subtitle,
             style=divider_style,
@@ -365,14 +342,7 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         self,
         year: int,
     ) -> GeneratedScreen:
-        """Generate a year divider screen.
-
-        Args:
-            year: Year number (e.g. 2024).
-
-        Returns:
-            GeneratedScreen with path to video file.
-        """
+        """Generate a year divider screen."""
         year_text = str(year)
 
         divider_style = TitleStyle(
@@ -390,7 +360,7 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         output_path = self.output_dir / f"year_divider_{year}.mp4"
         width, height = self.config.output_resolution
 
-        self._create_title_video(
+        self._rendering.create_title_video(
             title=year_text,
             subtitle=None,
             style=divider_style,
@@ -415,26 +385,19 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         video_clips: list[Path] | None = None,
         _dominant_color: tuple[int, int, int] | None = None,
     ) -> GeneratedScreen:
-        """Generate the ending screen with fade to white.
-
-        Args:
-            video_clips: List of video clip paths (unused, kept for API compatibility).
-            _dominant_color: Ignored - always fades to white.
-
-        Returns:
-            GeneratedScreen with path to video file.
-        """
+        """Generate the ending screen with fade to white."""
         fade_to_color = (255, 255, 255)
         output_path = self.output_dir / "ending_screen.mp4"
         width, height = self.config.output_resolution
 
-        self._create_ending_video(
+        self._ending.create_ending_video(
             output_path=output_path,
             fade_to_color=fade_to_color,
             width=width,
             height=height,
             duration=self.config.ending_duration,
             fps=self.config.fps,
+            hdr=self.config.hdr,
         )
 
         logger.info("Generated ending screen with fade to white")
@@ -444,6 +407,32 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
             duration=self.config.ending_duration,
             screen_type="ending",
         )
+
+    def generate_trip_map_screen(
+        self,
+        locations: list[tuple[float, float]],
+        title_text: str,
+        subtitle_text: str | None = None,
+        home_lat: float | None = None,
+        home_lon: float | None = None,
+        location_names: list[str] | None = None,
+    ) -> GeneratedScreen:
+        """Generate a trip map overview screen (delegates to TripService)."""
+        return self._trip.generate_trip_map_screen(
+            locations=locations,
+            title_text=title_text,
+            subtitle_text=subtitle_text,
+            home_lat=home_lat,
+            home_lon=home_lon,
+            location_names=location_names,
+        )
+
+    def generate_location_card_screen(
+        self,
+        location_name: str,
+    ) -> GeneratedScreen:
+        """Generate a location interstitial card (delegates to TripService)."""
+        return self._trip.generate_location_card_screen(location_name)
 
     def generate_all_screens(
         self,
@@ -457,21 +446,7 @@ class TitleScreenGenerator(RenderingMixin, EndingScreenMixin, TripScreenMixin):
         video_clips: list[Path] | None = None,
         months_in_video: list[int] | None = None,
     ) -> dict[str, GeneratedScreen]:
-        """Generate all screens needed for a video.
-
-        Args:
-            year: Year for title.
-            month: Month for title.
-            start_date: Start date for range.
-            end_date: End date for range.
-            person_name: Person's name.
-            birthday_age: Age for birthday titles.
-            video_clips: List of video clips for color extraction.
-            months_in_video: List of months present in video (for month dividers).
-
-        Returns:
-            Dict mapping screen type to GeneratedScreen.
-        """
+        """Generate all screens (title, month dividers, ending) for a video."""
         screens: dict[str, GeneratedScreen] = {}
 
         screens["title"] = self.generate_title_screen(

@@ -33,10 +33,19 @@ const REDACTIONS: Array<{selector: string; value: string}> = [
 
 // Text replacements applied via JS on the page
 const TEXT_REDACTIONS: Array<{find: RegExp; replace: string}> = [
+  // Connection & server info
   {find: /Connected as: .+/, replace: 'Connected as: user@example.com'},
-  {find: /\/Users\/\w+\/Videos\/Memories\/.*/, replace: '/home/user/Videos/Memories/alice_2025_memories.mp4'},
   {find: /http:\/\/\d+\.\d+\.\d+\.\d+:\d+/, replace: 'https://photos.example.com'},
+  // File paths (macOS and Linux patterns)
+  {find: /\/Users\/\w+\/Videos\/Memories\/.*/, replace: '/home/user/Videos/Memories/alice_2025_memories.mp4'},
+  {find: /\/Users\/\w+\/\.immich-memories\/.*/, replace: '/home/user/.immich-memories/config.yaml'},
   {find: /Will be saved to: .*/, replace: 'Will be saved to: /home/user/Videos/Memories/alice_2025_memories.mp4'},
+  {find: /Saved to: .*/, replace: 'Saved to: /home/user/Videos/Memories/alice_2025_memories.mp4'},
+  {find: /Config file: .*/, replace: 'Config file: /home/user/.immich-memories/config.yaml'},
+  // Birthday info
+  {find: /Using \w+'s birthday: .+/, replace: "Using Alice's birthday: June 15, 1995"},
+  // GPS coordinates
+  {find: /\d+\.\d{4,},\s*-?\d+\.\d{4,}/, replace: '48.8566, 2.3522'},
 ];
 
 async function redactPage(page: Page) {

@@ -33,7 +33,7 @@ def build_output_filename(
     who = _build_who_part(memory_type, preset_params, person_name)
     when = _build_when_part(memory_type, preset_params, date_start, date_end)
 
-    parts = [p for p in [who, when] if p]
+    parts = [p for p in (who, when) if p]
     slug = "_".join(parts) if parts else "memories"
 
     return f"{slug}_memories.mp4"
@@ -191,6 +191,35 @@ def _build_who_part(
     return "everyone"
 
 
+def _when_trip(preset_params: dict, date_start: date | None, date_end: date | None) -> str:
+    """Build 'when' part for trip memory type."""
+    import re
+
+    location = preset_params.get("location_name")
+    if location:
+        return re.sub(r"[^a-z0-9]+", "_", location.lower()).strip("_")
+    if date_start and date_end:
+        return _date_range_slug(date_start, date_end)
+    return str(preset_params.get("year", ""))
+
+
+def _when_season(preset_params: dict) -> str:
+    """Build 'when' part for season memory type."""
+    season = preset_params.get("season", "")
+    year = preset_params.get("year", "")
+    return f"{season}_{year}" if season and year else str(year or "")
+
+
+def _when_monthly(preset_params: dict) -> str:
+    """Build 'when' part for monthly highlights memory type."""
+    month = preset_params.get("month")
+    year = preset_params.get("year", "")
+    if month:
+        month_name = calendar.month_name[month].lower()
+        return f"{month_name}_{year}" if year else month_name
+    return str(year or "")
+
+
 def _build_when_part(
     memory_type: str | None,
     preset_params: dict,
@@ -198,32 +227,14 @@ def _build_when_part(
     date_end: date | None,
 ) -> str:
     """Build the 'when' portion of the filename."""
-    # Trip: use location name if available
     if memory_type == "trip":
-        location = preset_params.get("location_name")
-        if location:
-            import re
+        return _when_trip(preset_params, date_start, date_end)
 
-            return re.sub(r"[^a-z0-9]+", "_", location.lower()).strip("_")
-        # Fallback to date range
-        if date_start and date_end:
-            return _date_range_slug(date_start, date_end)
-        return str(preset_params.get("year", ""))
-
-    # Season preset: season + year
     if memory_type == "season":
-        season = preset_params.get("season", "")
-        year = preset_params.get("year", "")
-        return f"{season}_{year}" if season and year else str(year or "")
+        return _when_season(preset_params)
 
-    # Monthly highlights: month name + year
     if memory_type == "monthly_highlights":
-        month = preset_params.get("month")
-        year = preset_params.get("year", "")
-        if month:
-            month_name = calendar.month_name[month].lower()
-            return f"{month_name}_{year}" if year else month_name
-        return str(year or "")
+        return _when_monthly(preset_params)
 
     # On This Day: month + day (no year, it spans years)
     if memory_type == "on_this_day" and date_start:
@@ -246,8 +257,7 @@ def _date_range_slug(start: date, end: date) -> str:
     """Build a readable slug from a date range."""
     # Full calendar year
     if (
-        start.month == 1
-        and start.day == 1
+        start.month == start.day == 1
         and end.month == 12
         and end.day == 31
         and start.year == end.year

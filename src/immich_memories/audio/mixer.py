@@ -318,11 +318,11 @@ def _build_ducking_filter(
         f"makeup={_db_to_linear(ducking.makeup_db):.2f}"
         f"[ducked_music]"
     )
-    filter_parts.append(sidechain_filter)
-
-    # Mix ducked music with video audio
-    filter_parts.append(
-        "[video_audio][ducked_music]amix=inputs=2:duration=first:dropout_transition=2[mixed]"
+    filter_parts.extend(
+        (
+            sidechain_filter,
+            "[video_audio][ducked_music]amix=inputs=2:duration=first:dropout_transition=2[mixed]",
+        )
     )
 
     return filter_parts

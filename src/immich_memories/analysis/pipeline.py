@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -163,6 +164,26 @@ class VideoAnalyzer:
 
         return favorites + others
 
+    @staticmethod
+    def _get_safe_video_suffix(filename: str | None) -> str:
+        """Return a safe file extension from a video filename, defaulting to .mp4."""
+        _safe_exts = {
+            ".mp4",
+            ".mov",
+            ".avi",
+            ".mkv",
+            ".webm",
+            ".m4v",
+            ".wmv",
+            ".flv",
+            ".mpeg",
+            ".mpg",
+            ".3gp",
+            ".ts",
+        }
+        raw = Path(filename or "video.mp4").suffix or ".mp4"
+        return raw if raw.isalnum() or raw in _safe_exts else ".mp4"
+
     def _analyze_video(
         self,
         clip: VideoClipInfo,
@@ -186,37 +207,13 @@ class VideoAnalyzer:
         temp_file: Path | None = None
 
         try:
-            # Get video - use cache if available, otherwise download to temp
             if self.video_cache:
                 logger.info(f"Getting {clip.asset.id} from video cache...")
                 video_path = self.video_cache.download_or_get(self.client, clip.asset)
             else:
-                # Create temp file for download
-                raw_suffix = Path(clip.asset.original_file_name or "video.mp4").suffix or ".mp4"
-                # Sanitize suffix from API-provided filename to prevent path injection
-                suffix = (
-                    raw_suffix
-                    if raw_suffix.isalnum()
-                    or raw_suffix
-                    in {
-                        ".mp4",
-                        ".mov",
-                        ".avi",
-                        ".mkv",
-                        ".webm",
-                        ".m4v",
-                        ".wmv",
-                        ".flv",
-                        ".mpeg",
-                        ".mpg",
-                        ".3gp",
-                        ".ts",
-                    }
-                    else ".mp4"
-                )
+                suffix = self._get_safe_video_suffix(clip.asset.original_file_name)
                 with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                     temp_file = Path(tmp.name)
-
                 logger.info(f"Downloading {clip.asset.id} to temp file...")
                 self.client.download_asset(clip.asset.id, temp_file)
                 video_path = temp_file
@@ -225,7 +222,6 @@ class VideoAnalyzer:
                 logger.error(f"Failed to get video for {clip.asset.id}")
                 return None
 
-            # Compute perceptual hash
             logger.info(f"Computing hash for {clip.asset.id}...")
             try:
                 video_hash = compute_video_hash(str(video_path))
@@ -233,37 +229,24 @@ class VideoAnalyzer:
                 logger.warning(f"Failed to compute hash: {e}")
                 video_hash = None
 
-            # Sample and score segments
             logger.info(f"Scoring segments for {clip.asset.id}...")
             scorer = SceneScorer()
             moments = scorer.sample_and_score_video(
-                video_path,
-                segment_duration=segment_duration,
-                overlap=0.5,
-                sample_frames=5,
+                video_path, segment_duration=segment_duration, overlap=0.5, sample_frames=5
             )
 
-            # Save to cache
             self.cache.save_analysis(
-                asset=clip.asset,
-                video_info=clip,
-                perceptual_hash=video_hash,
-                segments=moments,
+                asset=clip.asset, video_info=clip, perceptual_hash=video_hash, segments=moments
             )
-
-            # Return cached result
             return self.cache.get_analysis(clip.asset.id)
 
         except Exception as e:
             logger.error(f"Analysis failed for {clip.asset.id}: {e}")
             return None
         finally:
-            # Clean up temp file (but NOT cached videos)
             if temp_file:
-                try:
+                with contextlib.suppress(Exception):
                     temp_file.unlink(missing_ok=True)
-                except Exception:
-                    pass
 
     def get_analysis_status(
         self,
@@ -296,6 +279,35 @@ class ClusterManager:
         """
         self.cache = cache
 
+    def _build_cluster_from_group(
+        self,
+        cluster_id: int,
+        group_ids: set[str],
+        clip_lookup: dict[str, VideoClipInfo],
+        hashes: dict[str, str],
+    ) -> DuplicateCluster | None:
+        """Build a DuplicateCluster from a group of IDs, or None for singletons."""
+        if len(group_ids) <= 1:
+            return None
+        best_id = max(
+            group_ids,
+            key=lambda aid: (
+                (clip_lookup[aid].width) * (clip_lookup[aid].height) if aid in clip_lookup else 0
+            ),
+        )
+        best_hash = hashes.get(best_id, "")
+        similarity_scores = {
+            aid: self._hamming_distance(best_hash, hashes.get(aid, ""))
+            for aid in group_ids
+            if aid != best_id
+        }
+        return DuplicateCluster(
+            cluster_id=cluster_id,
+            asset_ids=list(group_ids),
+            best_asset_id=best_id,
+            similarity_scores=similarity_scores,
+        )
+
     def build_clusters(
         self,
         clips: list[VideoClipInfo],
@@ -310,64 +322,34 @@ class ClusterManager:
         Returns:
             List of duplicate clusters (only multi-video clusters).
         """
-        # Get hashes from cache
         hashes = self.cache.get_all_hashes()
-
-        # Filter to only clips we have
         clip_ids = {c.asset.id for c in clips}
         hashes = {k: v for k, v in hashes.items() if k in clip_ids}
 
         if len(hashes) < 2:
             return []
 
-        # Build adjacency list
-        similar_pairs: list[tuple[str, str, int]] = []
         asset_ids = list(hashes.keys())
+        similar_pairs: list[tuple[str, str, int]] = [
+            (id1, id2, dist)
+            for i, id1 in enumerate(asset_ids)
+            for id2 in asset_ids[i + 1 :]
+            if (dist := self._hamming_distance(hashes[id1], hashes[id2])) <= threshold
+        ]
 
-        for i, id1 in enumerate(asset_ids):
-            for id2 in asset_ids[i + 1 :]:
-                dist = self._hamming_distance(hashes[id1], hashes[id2])
-                if dist <= threshold:
-                    similar_pairs.append((id1, id2, dist))
-
-        # Union-find to build clusters
         groups = self._union_find(asset_ids, similar_pairs)
-
-        # Create cluster objects with best selection
         clip_lookup = {c.asset.id: c for c in clips}
-        clusters = []
 
-        for cluster_id, group_ids in enumerate(groups):
-            if len(group_ids) > 1:  # Only multi-video clusters
-                # Find best by resolution * quality_score
-                best_id = max(
-                    group_ids,
-                    key=lambda aid: (
-                        (clip_lookup[aid].width or 0) * (clip_lookup[aid].height or 0)
-                        if aid in clip_lookup
-                        else 0
-                    ),
+        return [
+            cluster
+            for cluster_id, group_ids in enumerate(groups)
+            if (
+                cluster := self._build_cluster_from_group(
+                    cluster_id, group_ids, clip_lookup, hashes
                 )
-
-                # Compute similarity scores relative to best
-                similarity_scores = {}
-                best_hash = hashes.get(best_id, "")
-                for aid in group_ids:
-                    if aid != best_id:
-                        similarity_scores[aid] = self._hamming_distance(
-                            best_hash, hashes.get(aid, "")
-                        )
-
-                clusters.append(
-                    DuplicateCluster(
-                        cluster_id=cluster_id,
-                        asset_ids=list(group_ids),
-                        best_asset_id=best_id,
-                        similarity_scores=similarity_scores,
-                    )
-                )
-
-        return clusters
+            )
+            is not None
+        ]
 
     def _hamming_distance(self, hash1: str, hash2: str) -> int:
         """Compute Hamming distance between two hex hash strings."""
@@ -375,7 +357,7 @@ class ClusterManager:
             int1 = int(hash1, 16)
             int2 = int(hash2, 16)
             xor = int1 ^ int2
-            return bin(xor).count("1")
+            return xor.bit_count()
         except (ValueError, TypeError):
             return 64  # Maximum distance if hashes are invalid
 

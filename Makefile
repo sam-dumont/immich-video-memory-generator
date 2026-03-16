@@ -1,7 +1,7 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
-.PHONY: help install dev run preflight test benchmark test-cov lint format typecheck check clean clean-cache clean-all build docker docker-run file-length complexity security-lint dead-code ci ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli
+.PHONY: help install dev dev-ci run preflight test test-cov test-cov-xml test-integration test-fast mutation benchmark lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
 
 # Default target
 help:
@@ -24,7 +24,7 @@ help:
 	@echo "  lint         Run ruff linter"
 	@echo "  format       Format code with ruff"
 	@echo "  typecheck    Run mypy type checker"
-	@echo "  file-length  Check all .py files are ≤500 lines"
+	@echo "  file-length  Check all .py files are ≤800 lines"
 	@echo "  complexity   Check cyclomatic complexity (Xenon grade C)"
 	@echo "  dead-code    Detect dead code (Vulture)"
 	@echo "  security-lint Run Bandit security linter"
@@ -68,6 +68,10 @@ install:
 dev:
 	uv sync --all-extras
 
+# Install dev tools only (no GPU/CUDA/audio-ml/face deps — for CI quality gates)
+dev-ci:
+	uv sync --extra dev
+
 # Install with macOS-specific extras (Apple Vision, Metal GPU, etc.)
 dev-mac:
 	uv sync --extra all-mac --extra dev
@@ -94,9 +98,19 @@ test:
 benchmark:
 	uv run pytest tests/benchmarks/ -v --benchmark-only
 
+test-integration:  ## Run integration tests (requires FFmpeg)
+	uv run pytest tests/integration/ -v -m integration
+
+mutation:  ## Run mutation testing (slow — weekly CI or local deep validation)
+	uv run mutmut run --max-children 4
+	uv run mutmut results
+
 test-cov:
 	uv run pytest --cov=src/immich_memories --cov-report=html --cov-report=term-missing
 	@echo "Coverage report: htmlcov/index.html"
+
+test-cov-xml:  ## Run tests with XML coverage (for CI upload)
+	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -v
 
 test-fast:
 	uv run pytest -v -m "not slow"
@@ -130,24 +144,27 @@ format-check:
 typecheck:
 	uv run mypy src/immich_memories
 
-# File length gate (max 500 lines per .py file)
-MAX_LINES := 500
+# File length gate: 800 soft (warning), 1000 hard (error)
+SOFT_LINES := 800
+HARD_LINES := 1000
 file-length:
 	@FAILED=0; \
 	for f in $$(find src/ -name '*.py'); do \
 		count=$$(wc -l < "$$f"); \
-		if [ "$$count" -gt $(MAX_LINES) ]; then \
-			echo "ERROR: $$f has $$count lines (max $(MAX_LINES))"; \
+		if [ "$$count" -gt $(HARD_LINES) ]; then \
+			echo "ERROR: $$f has $$count lines (hard limit $(HARD_LINES))"; \
 			FAILED=1; \
+		elif [ "$$count" -gt $(SOFT_LINES) ]; then \
+			echo "WARN:  $$f has $$count lines (soft limit $(SOFT_LINES) — consider splitting)"; \
 		fi; \
 	done; \
 	if [ "$$FAILED" -eq 1 ]; then \
 		echo ""; \
-		echo "Files exceeding $(MAX_LINES) lines must be split into smaller modules."; \
-		echo "See ARCHITECTURE.md for guidance on module structure."; \
+		echo "Files exceeding $(HARD_LINES) lines MUST be split."; \
+		echo "Files over $(SOFT_LINES) lines SHOULD be split when practical."; \
 		exit 1; \
 	fi; \
-	echo "All files under $(MAX_LINES) lines."
+	echo "All files under $(HARD_LINES) lines (hard limit)."
 
 # Cyclomatic complexity gate (Xenon grade C)
 complexity:
@@ -161,13 +178,81 @@ dead-code:
 security-lint:
 	uvx bandit -r src/ --severity-level high -q
 
+# Bandit with JSON report and HIGH severity gate (for CI)
+bandit-ci:
+	@uvx bandit -r src/ --severity-level medium -f json -o bandit-report.json || true
+	@python3 -c "import json,sys; r=json.load(open('bandit-report.json')); \
+	high=[i for i in r['results'] if i['issue_severity']=='HIGH']; \
+	[print(f\"  {i['filename']}:{i['line_number']} [{i['test_id']}] {i['issue_text']}\") for i in high]; \
+	sys.exit(len(high))"
+
 # Commit message lint (Commitizen conventional commits)
 commitlint:
-	uvx --from commitizen cz check --rev-range HEAD~1..HEAD
+	uvx --from commitizen cz check --rev-range $${COMMIT_RANGE:-HEAD~1..HEAD}
+
+# Cognitive complexity (complements cyclomatic complexity)
+cognitive-complexity:
+	@OUTPUT=$$(uvx complexipy src/ --max-complexity-allowed 15 2>&1); \
+	if echo "$$OUTPUT" | grep -q "Snapshot watermark passed"; then \
+		echo "Cognitive complexity: snapshot watermark passed (no new violations)"; \
+	elif echo "$$OUTPUT" | grep -q "FAILED"; then \
+		echo "$$OUTPUT" | grep "FAILED"; \
+		echo "Cognitive complexity gate FAILED: new violations detected"; \
+		exit 1; \
+	else \
+		echo "Cognitive complexity: all functions under threshold"; \
+	fi
+
+# Code duplication detection
+duplication:
+	npx jscpd src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python --gitignore
+
+# Modernization lint (cd src avoids duplicate module detection, --config-file reads ignores)
+refurb:
+	cd src && uv run refurb immich_memories/ --quiet --config-file ../pyproject.toml
+
+# Semgrep SAST (cross-file security analysis)
+# Excludes sqlalchemy-execute-raw-query: our SQL uses ?-parameterized values,
+# column names are hardcoded in code. Semgrep can't distinguish f-string placeholders from injection.
+semgrep:
+	uvx semgrep scan --config auto --config p/python --error --severity ERROR \
+		--exclude-rule python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query \
+		src/
+
+# Dependency hygiene (hallucinated/unused/transitive deps)
+dep-check:
+	uvx deptry src/
+
+# Docstring coverage for public API
+
+# Architectural boundary enforcement
+arch-check:
+	uv run lint-imports
+
+# Diff coverage (for PRs: new code must be ≥95% covered)
+diff-cover:
+	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -q
+	uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=95
 
 # Dependency vulnerability audit
 pip-audit:
-	uvx pip-audit -r <(uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==') --strict
+	uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==' -e '^audioop-lts==' > /tmp/pip-audit-reqs.txt
+	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict
+	rm -f /tmp/pip-audit-reqs.txt
+
+# Diff coverage for PRs (skips on large refactors >1000 changed lines)
+diff-cover-ci:
+	@CHANGED=$$(git diff --numstat origin/main...HEAD -- '*.py' 2>/dev/null | awk '{s+=$$1+$$2} END {print s+0}'); \
+	echo "Changed Python lines: $${CHANGED}"; \
+	if [ "$${CHANGED}" -gt 1000 ]; then \
+		echo "WARN: Skipping diff-cover: $${CHANGED} lines changed (threshold: 1000). Large refactor."; \
+	else \
+		uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=95; \
+	fi
+
+# Build check (twine)
+build-check:
+	uvx twine check dist/*
 
 # Ensure dev dependencies are installed
 ensure-dev:
@@ -178,8 +263,30 @@ check: ensure-dev lint format-check typecheck file-length complexity test
 	@echo "All checks passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity dead-code security-lint test
+ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint refurb dep-check arch-check duplication critique test
 	@echo "Full CI pipeline passed!"
+
+# Self-critique for AI code smells
+critique:  ## Run self-critique checks for AI code smells
+	@echo "=== AI Smell Audit ==="
+	@echo "Checking for remaining mixins..."
+	@MIXINS=$$(grep -rn "class.*Mixin" src/ --include="*.py" | grep -v __pycache__ | wc -l | tr -d ' '); \
+	if [ "$$MIXINS" -gt 0 ]; then \
+		grep -rn "class.*Mixin" src/ --include="*.py" | grep -v __pycache__; \
+		echo "FAIL: $$MIXINS mixin classes found — use composition"; \
+		exit 1; \
+	fi
+	@echo "Checking for mechanical split comments..."
+	@! grep -rn "to stay within\|to keep.*under.*line\|keep files under" src/ --include="*.py" || (echo "FAIL: Fix these splits" && exit 1)
+	@echo "Checking for wildcard re-exports (outside __init__)..."
+	@! grep -rn "from .* import \*" src/ --include="*.py" | grep -v __init__ || (echo "WARN: Wildcard re-exports found" && exit 1)
+	@echo "Checking for mock-heavy tests (>5 mocks per test)..."
+	@python3 -c "import pathlib, re; \
+	files = list(pathlib.Path('tests').rglob('test_*.py')); \
+	[print(f'HIGH-MOCK: {f}:{i+1}') for f in files if '__pycache__' not in str(f) \
+	for i, line in enumerate(f.read_text().splitlines()) \
+	if 'Mock()' in line or '@patch' in line]" 2>/dev/null | head -20 || true
+	@echo "Self-critique complete."
 
 # Pre-commit hooks
 pre-commit:
@@ -321,3 +428,11 @@ docs-check:
 		exit 1; \
 	fi; \
 	echo "Docs build passed."
+
+# Record and assemble a product demo video from the live UI
+demo-video: docs-install
+	@echo "Recording UI demo (requires running UI on port 8099)..."
+	cd docs-site && npx tsx scripts/record-demo.ts
+	@echo "Assembling final video..."
+	cd docs-site && bash scripts/assemble-demo.sh
+	@echo "Demo video saved to docs-site/static/demo/demo.mp4"

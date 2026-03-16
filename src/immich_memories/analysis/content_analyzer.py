@@ -17,7 +17,6 @@ from immich_memories.analysis._content_parsing import (  # noqa: F401
     CONTENT_ANALYSIS_PROMPT,
     ContentAnalysis,
     ContentAnalyzer,
-    ContentParsingMixin,
 )
 from immich_memories.analysis._content_providers import (  # noqa: F401
     OllamaContentAnalyzer,

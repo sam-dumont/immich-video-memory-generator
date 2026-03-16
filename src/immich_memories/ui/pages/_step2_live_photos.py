@@ -32,7 +32,7 @@ def expand_to_neighbors(
     tagged_ids = {a.id for a in tagged}
     tagged_times = [a.file_created_at for a in tagged]
 
-    result_ids = set(tagged_ids)
+    result_ids = tagged_ids.copy()
     for asset in all_live:
         if asset.id in result_ids:
             continue
@@ -49,6 +49,68 @@ def expand_to_neighbors(
     return result
 
 
+def _search_live_photos_multi_person(
+    client: SyncImmichClient,
+    date_range: DateRange,
+    person_ids: list[str],
+) -> list:
+    """Intersect live photos across multiple persons."""
+    from immich_memories.api.models import Asset
+
+    per_person: list[set[str]] = []
+    assets_by_id: dict[str, Asset] = {}
+    for pid in person_ids:
+        results = search_live_photos(client, date_range, person_id=pid)
+        per_person.append({a.id for a in results})
+        assets_by_id.update({a.id: a for a in results})
+    common = per_person[0]
+    for s in per_person[1:]:
+        common &= s
+    result = [assets_by_id[aid] for aid in common]
+    result.sort(key=lambda a: a.file_created_at)
+    return result
+
+
+def _search_live_photos_for_person(
+    client: SyncImmichClient,
+    date_range: DateRange,
+    person_id: str,
+) -> list:
+    """Fetch live photos tagged with a specific person, then expand to neighbors."""
+    from immich_memories.api.models import Asset
+
+    tagged: list[Asset] = []
+    page = 1
+    while True:
+        result = client._run(
+            client._async_client.search_metadata(
+                person_ids=[person_id],
+                taken_after=date_range.start,
+                taken_before=date_range.end,
+                page=page,
+                size=100,
+            )
+        )
+        for asset in result.all_assets:
+            if asset.is_live_photo:
+                tagged.append(asset)
+        if not result.next_page:
+            break
+        page += 1
+
+    if not tagged:
+        logger.info("Live photo person search: 0 tagged live photos")
+        return []
+
+    all_live = client.get_live_photos_for_date_range(date_range)
+    merged = expand_to_neighbors(tagged, all_live)
+    logger.info(
+        f"Live photo person search: {len(tagged)} tagged, "
+        f"{len(merged)} after neighbor expansion (from {len(all_live)} total)"
+    )
+    return merged
+
+
 def search_live_photos(
     client: SyncImmichClient,
     date_range: DateRange,
@@ -63,54 +125,10 @@ def search_live_photos(
 
     Without a person filter we use the dedicated live photo endpoint.
     """
-    from immich_memories.api.models import Asset
-
     if person_ids and len(person_ids) >= 2:
-        per_person: list[set[str]] = []
-        assets_by_id: dict[str, Asset] = {}
-        for pid in person_ids:
-            results = search_live_photos(client, date_range, person_id=pid)
-            per_person.append({a.id for a in results})
-            assets_by_id.update({a.id: a for a in results})
-        common = per_person[0]
-        for s in per_person[1:]:
-            common &= s
-        result = [assets_by_id[aid] for aid in common]
-        result.sort(key=lambda a: a.file_created_at)
-        return result
-
+        return _search_live_photos_multi_person(client, date_range, person_ids)
     if person_id:
-        tagged: list[Asset] = []
-        page = 1
-        while True:
-            result = client._run(
-                client._async_client.search_metadata(
-                    person_ids=[person_id],
-                    taken_after=date_range.start,
-                    taken_before=date_range.end,
-                    page=page,
-                    size=100,
-                )
-            )
-            for asset in result.all_assets:
-                if asset.is_live_photo:
-                    tagged.append(asset)
-            if not result.next_page:
-                break
-            page += 1
-
-        if not tagged:
-            logger.info("Live photo person search: 0 tagged live photos")
-            return []
-
-        all_live = client.get_live_photos_for_date_range(date_range)
-        merged = expand_to_neighbors(tagged, all_live)
-        logger.info(
-            f"Live photo person search: {len(tagged)} tagged, "
-            f"{len(merged)} after neighbor expansion (from {len(all_live)} total)"
-        )
-        return merged
-
+        return _search_live_photos_for_person(client, date_range, person_id)
     return client.get_live_photos_for_date_range(date_range)
 
 

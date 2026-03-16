@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
 from dataclasses import dataclass
@@ -47,12 +48,10 @@ class VideoDownloadCache:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _video_path(self, asset_id: str, ext: str) -> Path:
-        """Return the cache path for a given asset."""
         subdir = asset_id[:2] if len(asset_id) >= 2 else "00"
         return self.cache_dir / subdir / f"{asset_id}{ext}"
 
     def _find_cached(self, asset_id: str) -> Path | None:
-        """Find an existing cached file for asset_id (any extension)."""
         subdir = asset_id[:2] if len(asset_id) >= 2 else "00"
         sub_path = self.cache_dir / subdir
         if not sub_path.exists():
@@ -173,7 +172,6 @@ class VideoDownloadCache:
         return original, original
 
     def get_stats(self) -> dict:
-        """Return cache statistics."""
         if not self.cache_dir.exists():
             return {
                 "file_count": 0,
@@ -203,10 +201,8 @@ class VideoDownloadCache:
         # Clean empty subdirectories
         for d in sorted(self.cache_dir.rglob("*"), reverse=True):
             if d.is_dir():
-                try:
+                with contextlib.suppress(OSError):
                     d.rmdir()
-                except OSError:
-                    pass
 
         return count
 

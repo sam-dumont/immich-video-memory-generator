@@ -122,6 +122,41 @@ FONT_MAPPINGS = {
 }
 
 
+def _build_font_candidates(family: str, weight: str) -> list[str]:
+    """Build a list of candidate font filenames for a family and weight."""
+    candidates = list(
+        FONT_MAPPINGS.get(family, [f"{family}.ttf", f"{family}.otf", f"{family}.ttc"])
+    )
+    weight_suffixes = {
+        "light": ["Light", "Thin"],
+        "regular": ["Regular", ""],
+        "medium": ["Medium"],
+        "semibold": ["SemiBold", "DemiBold"],
+        "bold": ["Bold"],
+    }
+    for suffix in weight_suffixes.get(weight, ["Regular"]):
+        for ext in (".ttf", ".otf", ".ttc"):
+            candidates.extend((f"{family}-{suffix}{ext}", f"{family}{suffix}{ext}"))
+    return candidates
+
+
+def _search_font_paths(candidates: list[str]) -> Path | None:
+    """Search FONT_SEARCH_PATHS for a matching candidate file (one level deep)."""
+    for search_path in FONT_SEARCH_PATHS:
+        if not search_path.exists():
+            continue
+        for candidate in candidates:
+            font_path = search_path / candidate
+            if font_path.exists():
+                return font_path
+            for subdir in search_path.iterdir():
+                if subdir.is_dir():
+                    font_path = subdir / candidate
+                    if font_path.exists():
+                        return font_path
+    return None
+
+
 def find_font(family: str, weight: str = "regular") -> Path | None:
     """Find a font file for the given family and weight.
 
@@ -132,43 +167,13 @@ def find_font(family: str, weight: str = "regular") -> Path | None:
     Returns:
         Path to font file, or None if not found.
     """
-    # Get candidate filenames for this family
-    candidates = FONT_MAPPINGS.get(family, [f"{family}.ttf", f"{family}.otf", f"{family}.ttc"])
-
-    # Add weight-specific variants
-    weight_suffixes = {
-        "light": ["Light", "Thin"],
-        "regular": ["Regular", ""],
-        "medium": ["Medium"],
-        "semibold": ["SemiBold", "DemiBold"],
-        "bold": ["Bold"],
-    }
-
-    for suffix in weight_suffixes.get(weight, ["Regular"]):
-        for ext in [".ttf", ".otf", ".ttc"]:
-            candidates.append(f"{family}-{suffix}{ext}")
-            candidates.append(f"{family}{suffix}{ext}")
-
-    # Search for font files
-    for search_path in FONT_SEARCH_PATHS:
-        if not search_path.exists():
-            continue
-
-        for candidate in candidates:
-            # Direct match
-            font_path = search_path / candidate
-            if font_path.exists():
-                return font_path
-
-            # Recursive search (one level deep)
-            for subdir in search_path.iterdir():
-                if subdir.is_dir():
-                    font_path = subdir / candidate
-                    if font_path.exists():
-                        return font_path
+    candidates = _build_font_candidates(family, weight)
+    result = _search_font_paths(candidates)
+    if result:
+        return result
 
     # System fallback
-    for fallback in ["Helvetica", "Arial", "SF Pro"]:
+    for fallback in ("Helvetica", "Arial", "SF Pro"):
         if fallback != family:
             result = find_font(fallback, weight)
             if result:

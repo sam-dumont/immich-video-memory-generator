@@ -131,50 +131,51 @@ class LocalMusicSource(MusicSource):
         self.music_dir = Path(music_dir)
         self._tracks: list[MusicTrack] | None = None
 
+    @staticmethod
+    def _read_mutagen_metadata(path: Path) -> tuple[float, str, str]:
+        """Read duration, title, artist from audio file via mutagen."""
+        from mutagen import File as MutagenFile
+
+        audio = MutagenFile(path)
+        duration = audio.info.length if audio and audio.info else 0.0
+        title = path.stem
+        artist = "Unknown"
+        if audio and hasattr(audio, "tags") and audio.tags:
+            title = str(audio.tags.get("title", [path.stem])[0])
+            artist = str(audio.tags.get("artist", ["Unknown"])[0])
+        return duration, title, artist
+
+    @staticmethod
+    def _extract_tags_from_path(path: Path, title: str) -> list[str]:
+        """Infer mood tags from parent directory name and title."""
+        parent_name = path.parent.name.lower()
+        return [
+            mood
+            for mood in ("happy", "sad", "calm", "energetic", "romantic")
+            if mood in parent_name or mood in title.lower()
+        ]
+
+    def _load_track_metadata(self, path: Path) -> tuple[float, str, str]:
+        """Load duration, title, artist — falls back to filename on error."""
+        try:
+            return self._read_mutagen_metadata(path)
+        except (ImportError, Exception):
+            return 0.0, path.stem, "Unknown"
+
     def _scan_directory(self) -> list[MusicTrack]:
         """Scan directory for music files."""
-        tracks: list[MusicTrack] = []
-
         if not self.music_dir.exists():
             logger.warning(f"Music directory does not exist: {self.music_dir}")
-            return tracks
+            return []
 
+        tracks: list[MusicTrack] = []
         for path in self.music_dir.rglob("*"):
-            if path.suffix.lower() in self.SUPPORTED_EXTENSIONS:
-                # Try to extract metadata
-                try:
-                    from mutagen import File as MutagenFile
-
-                    audio = MutagenFile(path)
-                    duration = audio.info.length if audio and audio.info else 0
-
-                    # Try to get tags
-                    title = path.stem
-                    artist = "Unknown"
-
-                    if audio and hasattr(audio, "tags") and audio.tags:
-                        title = str(audio.tags.get("title", [path.stem])[0])
-                        artist = str(audio.tags.get("artist", ["Unknown"])[0])
-
-                except ImportError:
-                    # Mutagen not installed, use filename
-                    duration = 0
-                    title = path.stem
-                    artist = "Unknown"
-                except Exception:
-                    duration = 0
-                    title = path.stem
-                    artist = "Unknown"
-
-                # Parse mood/genre from directory structure or filename
-                parent_name = path.parent.name.lower()
-                tags = []
-
-                for mood in ["happy", "sad", "calm", "energetic", "romantic"]:
-                    if mood in parent_name or mood in title.lower():
-                        tags.append(mood)
-
-                track = MusicTrack(
+            if path.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
+                continue
+            duration, title, artist = self._load_track_metadata(path)
+            tags = self._extract_tags_from_path(path, title)
+            tracks.append(
+                MusicTrack(
                     id=str(path),
                     title=title,
                     artist=artist,
@@ -185,8 +186,7 @@ class LocalMusicSource(MusicSource):
                     source="local",
                     local_path=path,
                 )
-                tracks.append(track)
-
+            )
         return tracks
 
     @property
@@ -195,6 +195,21 @@ class LocalMusicSource(MusicSource):
         if self._tracks is None:
             self._tracks = self._scan_directory()
         return self._tracks
+
+    @staticmethod
+    def _track_matches_duration(
+        track: MusicTrack, min_duration: float, max_duration: float
+    ) -> bool:
+        """Return False if track duration is known and outside bounds."""
+        if track.duration_seconds <= 0:
+            return True
+        return min_duration <= track.duration_seconds <= max_duration
+
+    @staticmethod
+    def _track_matches_term(track: MusicTrack, term: str) -> bool:
+        """Return True if term appears in any of the track's tags, title, or artist."""
+        term_lower = term.lower()
+        return any(term_lower in t.lower() for t in track.tags + [track.title, track.artist])
 
     async def search(
         self,
@@ -207,35 +222,16 @@ class LocalMusicSource(MusicSource):
     ) -> list[MusicTrack]:
         """Search local music library."""
         results = []
-
         for track in self.tracks:
-            # Filter by duration
-            if track.duration_seconds > 0:
-                if track.duration_seconds < min_duration:
-                    continue
-                if track.duration_seconds > max_duration:
-                    continue
-
-            # Filter by mood/genre in tags or title
-            if mood:
-                mood_lower = mood.lower()
-                if not any(
-                    mood_lower in t.lower() for t in track.tags + [track.title, track.artist]
-                ):
-                    continue
-
-            if genre:
-                genre_lower = genre.lower()
-                if not any(
-                    genre_lower in t.lower() for t in track.tags + [track.title, track.artist]
-                ):
-                    continue
-
+            if not self._track_matches_duration(track, min_duration, max_duration):
+                continue
+            if mood and not self._track_matches_term(track, mood):
+                continue
+            if genre and not self._track_matches_term(track, genre):
+                continue
             results.append(track)
-
             if len(results) >= limit:
                 break
-
         return results
 
     async def download(

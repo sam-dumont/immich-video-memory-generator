@@ -1,0 +1,167 @@
+Third-Party Software Notices
+============================
+
+This project includes or depends on the following third-party software.
+Each entry lists the license under which that software is distributed.
+
+
+Python Dependencies
+-------------------
+
+staticmap 0.5.7
+  License: Apache-2.0
+  Copyright: 2015 komoot GmbH
+  URL: https://github.com/komoot/staticmap
+
+opencv-python 4.x
+  License: Apache-2.0
+  Copyright: OpenCV team
+  URL: https://github.com/opencv/opencv-python
+
+watchdog 6.x
+  License: Apache-2.0
+  Copyright: Mickaël Schoentgen
+  URL: https://github.com/gorakhargosh/watchdog
+
+httpx 0.28.x
+  License: BSD-3-Clause
+  Copyright: Tom Christie
+  URL: https://github.com/encode/httpx
+
+scenedetect 0.6.x
+  License: BSD-3-Clause
+  Copyright: Brandon Castellano
+  URL: https://www.scenedetect.com
+
+click 8.x
+  License: BSD-3-Clause
+  Copyright: 2014 Pallets
+  URL: https://palletsprojects.com/p/click/
+
+numpy 2.x
+  License: BSD-3-Clause
+  Copyright: Travis E. Oliphant et al.
+  URL: https://numpy.org/
+
+imagehash 4.x
+  License: BSD-2-Clause
+  Copyright: Johannes Buchner
+  URL: https://github.com/JohannesBuchner/imagehash
+
+pydantic 2.x
+  License: MIT
+  Copyright: Samuel Colvin et al.
+  URL: https://github.com/pydantic/pydantic
+
+pydantic-settings 2.x
+  License: MIT
+  Copyright: Samuel Colvin, Eric Jolibois, Hasan Ramezani
+  URL: https://github.com/pydantic/pydantic-settings
+
+nicegui 3.x
+  License: MIT
+  Copyright: Zauberzeug GmbH
+  URL: https://nicegui.io/
+
+moviepy 1.x
+  License: MIT
+  Copyright: Zulko 2017
+  URL: https://zulko.github.io/moviepy/
+
+videohash 3.x
+  License: MIT
+  Copyright: Akash Mahanty
+  URL: https://github.com/akamhy/videohash
+
+PyYAML 6.x
+  License: MIT
+  Copyright: Kirill Simonov
+  URL: https://pyyaml.org/
+
+rich 14.x
+  License: MIT
+  Copyright: Will McGugan
+  URL: https://github.com/Textualize/rich
+
+Pillow 12.x
+  License: HPND (Historical Permission Notice and Disclaimer)
+  Copyright: Jeffrey A. Clark
+  URL: https://python-pillow.org/
+
+croniter 6.x
+  License: MIT
+  Copyright: Matsumoto Taichi, kiorky
+  URL: https://github.com/kiorky/croniter
+
+geopy 2.x
+  License: MIT
+  Copyright: geopy contributors
+  URL: https://github.com/geopy/geopy
+
+
+Algorithms
+----------
+
+Van Wijk smooth zoom interpolation
+  Ported from d3-interpolate (https://github.com/d3/d3-interpolate)
+  License: ISC
+  Copyright: 2010-2021 Mike Bostock
+  Based on: "Smooth and efficient zooming and panning"
+  by Jarke J. van Wijk and Wim A.A. Nuij (IEEE InfoVis 2003)
+
+
+External Services
+-----------------
+
+ESRI / ArcGIS World Imagery (satellite tiles)
+  License: Esri Master License Agreement
+  Copyright: Esri, Maxar, Earthstar Geographics, GIS User Community
+  URL: https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer
+  Attribution: "Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community"
+
+OpenStreetMap (optional map style)
+  License: ODbL (data), CC-BY-SA 2.0 (tiles)
+  Copyright: OpenStreetMap contributors
+  URL: https://www.openstreetmap.org/
+  Attribution: "© OpenStreetMap contributors"
+
+OpenTopoMap (optional map style)
+  License: CC-BY-SA (rendering), ODbL (data)
+  Copyright: OpenTopoMap contributors
+  URL: https://opentopomap.org/
+
+Nominatim (reverse geocoding via geopy)
+  License: ODbL
+  Copyright: OpenStreetMap contributors
+  URL: https://nominatim.openstreetmap.org/
+
+
+Runtime Dependencies
+--------------------
+
+FFmpeg
+  License: LGPL-2.1 or GPL-2.0+ (depending on build)
+  Copyright: FFmpeg developers
+  URL: https://ffmpeg.org/
+
+
+Fonts (downloaded at runtime, SIL Open Font License)
+----------------------------------------------------
+
+Montserrat — Julieta Ulanovsky
+  URL: https://github.com/JulietaUla/montserrat
+
+Outfit — Rodrigo Fuenzalida
+  URL: https://github.com/nicholasjimmy/outfit
+
+Raleway — Matt McInerney, Pablo Impallari, Rodrigo Fuenzalida
+  URL: https://github.com/impallari/Raleway
+
+Josefin Sans — Santiago Orozco
+  URL: https://github.com/googlefonts/josefinsans
+
+Quicksand — Andrew Paglinawan
+  URL: https://github.com/googlefonts/Quicksand
+
+All fonts licensed under SIL Open Font License 1.1
+Served via Fontsource CDN (https://fontsource.org/, MIT license)

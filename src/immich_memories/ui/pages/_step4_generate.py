@@ -1,10 +1,8 @@
-"""Video generation logic for Step 4 export.
-
-Extracted from step4_export.py to keep file length under 500 lines.
-"""
+"""Video generation logic for Step 4 export."""
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -25,7 +23,7 @@ async def _extract_clips(
     selected_clips, state, client, video_cache, output_dir, progress_bar, status_label
 ):
     """Phase 1: Download and extract clip segments."""
-    from immich_memories.processing.assembly import AssemblyClip
+    from immich_memories.processing.assembly_config import AssemblyClip
     from immich_memories.processing.clips import extract_clip
     from immich_memories.ui.pages.step4_export import _download_and_merge_burst
 
@@ -232,11 +230,9 @@ async def run_generation(
 def _cleanup_temp_clips(assembly_clips) -> None:
     """Remove temporary intermediate clip files."""
     for clip in assembly_clips:
-        try:
+        with contextlib.suppress(Exception):
             if clip.path.exists() and "tmp" in str(clip.path).lower():
                 clip.path.unlink()
-        except Exception:
-            pass
 
 
 def _show_output(output_container, result_path: Path) -> None:
@@ -263,11 +259,11 @@ def _show_output(output_container, result_path: Path) -> None:
 
 def _build_assembly_settings(state, config, assembly_clips):
     """Build AssemblySettings and VideoAssembler from state and config."""
-    from immich_memories.processing.assembly import (
+    from immich_memories.processing.assembly_config import (
         AssemblySettings,
         TransitionType,
-        VideoAssembler,
     )
+    from immich_memories.processing.video_assembler import VideoAssembler
     from immich_memories.ui.filename_builder import (
         build_title_person_name,
         get_divider_mode,
@@ -277,13 +273,12 @@ def _build_assembly_settings(state, config, assembly_clips):
     person = state.selected_person
     date_range = state.date_range
 
-    transition_map = {
+    transition_type = {
         "Smart (mix of fades & cuts)": TransitionType.SMART,
         "Crossfade": TransitionType.CROSSFADE,
         "Cut": TransitionType.CUT,
         "None": TransitionType.NONE,
-    }
-    transition_type = transition_map.get(
+    }.get(
         gen_options.get("transition", "Smart (mix of fades & cuts)"),
         TransitionType.SMART,
     )
@@ -295,7 +290,7 @@ def _build_assembly_settings(state, config, assembly_clips):
 
     title_screen_settings = None
     if config.title_screens.enabled:
-        from immich_memories.processing.assembly import TitleScreenSettings
+        from immich_memories.processing.assembly_config import TitleScreenSettings
 
         title_start_date = date_range.start if date_range else None
         title_end_date = date_range.end if date_range else None
@@ -339,7 +334,14 @@ def _build_assembly_settings(state, config, assembly_clips):
             memory_type=state.memory_type,
             trip_locations=trip_locations,
             trip_title_text=trip_title_text,
+            home_lat=state.memory_preset_params.get("home_lat"),
+            home_lon=state.memory_preset_params.get("home_lon"),
         )
+
+        # Use LLM-generated title if available
+        if state.title_suggestion_title:
+            title_screen_settings.title_override = state.title_suggestion_title
+            title_screen_settings.subtitle_override = state.title_suggestion_subtitle
 
     settings = AssemblySettings(
         transition=transition_type,
@@ -349,6 +351,7 @@ def _build_assembly_settings(state, config, assembly_clips):
         target_resolution=target_resolution,
         title_screens=title_screen_settings,
         debug_preserve_intermediates=gen_options.get("keep_intermediates", False),
+        privacy_mode=state.demo_mode,
     )
     return settings, VideoAssembler(settings)
 

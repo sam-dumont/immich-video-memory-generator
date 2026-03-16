@@ -20,6 +20,58 @@ from immich_memories.ui.state import get_app_state
 logger = logging.getLogger(__name__)
 
 
+def _render_volume_slider(options: dict, width: str = "w-64") -> None:
+    """Render a music volume slider."""
+    with ui.row().classes("items-center gap-4 mt-4"):
+        ui.label("Music volume:").classes("text-sm")
+        volume_slider = ui.slider(
+            min=0.0, max=1.0, step=0.05, value=options.get("music_volume", 0.70)
+        ).classes(width)
+
+        def on_volume_change(e):
+            options["music_volume"] = e.value
+
+        volume_slider.on_value_change(on_volume_change)
+        ui.label().bind_text_from(volume_slider, "value", lambda v: f"{int(v * 100)}%")
+
+
+def _render_upload_music_options(options: dict) -> None:
+    """Render the 'Upload file' music source options."""
+    ui.label("Select a music file:").classes("text-sm mt-4").style(
+        "color: var(--im-text-secondary)"
+    )
+
+    async def handle_upload(e):
+        options["music_file"] = e.content.read()
+        options["music_filename"] = e.name
+        ui.notify(f"Uploaded: {e.name}", type="positive")
+
+    ui.upload(
+        label="Select music file",
+        auto_upload=True,
+        on_upload=handle_upload,
+    ).props("accept='.mp3,.m4a,.wav'").classes("w-full max-w-md")
+
+    if options.get("music_filename"):
+        ui.label(f"Selected: {options['music_filename']}").classes("text-sm").style(
+            "color: var(--im-success)"
+        )
+    _render_volume_slider(options, "w-64")
+
+
+def _render_ai_music_options(options: dict) -> None:
+    """Render the 'AI Generated' music source options."""
+    im_info_card(
+        "AI will generate music based on the mood of your video clips",
+        variant="info",
+    )
+    _render_volume_slider(options, "w-48")
+
+    from immich_memories.ui.pages._step3_music_preview import render_music_preview_section
+
+    render_music_preview_section(options)
+
+
 def render_step3() -> None:
     """Render Step 3: Generation Options."""
     state = get_app_state()
@@ -147,6 +199,19 @@ def render_step3() -> None:
     im_separator()
 
     # ========================================================================
+    # Title Settings
+    # ========================================================================
+    im_section_header("Title", icon="title")
+
+    with im_card() as title_card:
+        title_card.classes("p-5")
+        from immich_memories.ui.pages._step3_music_preview import render_title_section
+
+        render_title_section()
+
+    im_separator()
+
+    # ========================================================================
     # Music Settings
     # ========================================================================
     im_section_header("Music", icon="music_note")
@@ -161,67 +226,9 @@ def render_step3() -> None:
         music_options_container.clear()
         with music_options_container:
             if source == "Upload file":
-                ui.label("Select a music file:").classes("text-sm mt-4").style(
-                    "color: var(--im-text-secondary)"
-                )
-
-                async def handle_upload(e):
-                    options["music_file"] = e.content.read()
-                    options["music_filename"] = e.name
-                    ui.notify(f"Uploaded: {e.name}", type="positive")
-
-                ui.upload(
-                    label="Select music file",
-                    auto_upload=True,
-                    on_upload=handle_upload,
-                ).props("accept='.mp3,.m4a,.wav'").classes("w-full max-w-md")
-
-                if options.get("music_filename"):
-                    ui.label(f"Selected: {options['music_filename']}").classes("text-sm").style(
-                        "color: var(--im-success)"
-                    )
-
-                with ui.row().classes("items-center gap-4 mt-4"):
-                    ui.label("Music volume:").classes("text-sm")
-                    volume_slider = ui.slider(
-                        min=0.0,
-                        max=1.0,
-                        step=0.05,
-                        value=options.get("music_volume", 0.5),
-                    ).classes("w-64")
-
-                    def on_upload_volume_change(e):
-                        options["music_volume"] = e.value
-
-                    volume_slider.on_value_change(on_upload_volume_change)
-                    ui.label().bind_text_from(volume_slider, "value", lambda v: f"{int(v * 100)}%")
-
+                _render_upload_music_options(options)
             elif source == "AI Generated":
-                im_info_card(
-                    "AI will generate music based on the mood of your video clips",
-                    variant="info",
-                )
-
-                with ui.row().classes("items-center gap-4 mt-4"):
-                    ui.label("Music volume:").classes("text-sm")
-                    volume_slider = ui.slider(
-                        min=0.0,
-                        max=1.0,
-                        step=0.05,
-                        value=options.get("music_volume", 0.5),
-                    ).classes("w-48")
-
-                    def on_ai_volume_change(e):
-                        options["music_volume"] = e.value
-
-                    volume_slider.on_value_change(on_ai_volume_change)
-                    ui.label().bind_text_from(volume_slider, "value", lambda v: f"{int(v * 100)}%")
-
-                from immich_memories.ui.pages._step3_music_preview import (
-                    render_music_preview_section,
-                )
-
-                render_music_preview_section(options)
+                _render_ai_music_options(options)
 
     music_source_select = ui.select(
         options=music_sources,
@@ -247,7 +254,7 @@ def render_step3() -> None:
     total_duration = sum(
         end - start
         for clip in selected_clips
-        for start, end in [state.clip_segments.get(clip.asset.id, (0, clip.duration_seconds or 5))]
+        for start, end in (state.clip_segments.get(clip.asset.id, (0, clip.duration_seconds or 5)),)
     )
 
     minutes = int(total_duration // 60)

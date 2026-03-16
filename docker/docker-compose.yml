@@ -26,6 +26,9 @@ services:
       - IMMICH_URL=${IMMICH_URL:-}
       - IMMICH_API_KEY=${IMMICH_API_KEY:-}
 
+      # Session secret (auto-generated if not set, but set this for multi-replica/K8s)
+      - IMMICH_MEMORIES_STORAGE_SECRET=${IMMICH_MEMORIES_STORAGE_SECRET:-}
+
     # Security hardening
     security_opt:
       - no-new-privileges:true

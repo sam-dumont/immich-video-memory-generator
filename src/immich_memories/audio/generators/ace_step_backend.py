@@ -128,8 +128,7 @@ class ACEStepBackend(MusicGenerator):
             # Fallback: check API mode
             logger.info("ACE-Step lib not found, checking API fallback...")
             return await self._check_api()
-        else:
-            return await self._check_api()
+        return await self._check_api()
 
     async def _check_api(self) -> bool:
         """Check if ACE-Step REST API server is reachable."""
@@ -210,8 +209,7 @@ class ACEStepBackend(MusicGenerator):
 
         if mode == "lib":
             return await self._generate_lib(request, progress_callback)
-        else:
-            return await self._generate_api(request, progress_callback)
+        return await self._generate_api(request, progress_callback)
 
     async def _generate_lib(
         self,

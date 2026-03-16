@@ -6,6 +6,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import signal
 import subprocess
@@ -43,7 +44,7 @@ def run_daemon_loop(config: SchedulerConfig) -> None:
     scheduler = Scheduler(config)
     logger.info(f"Scheduler daemon started ({len(config.schedules)} schedules)")
 
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         while not _shutdown_requested:
             now = datetime.now(tz=UTC)
             wait = scheduler.seconds_until_next(now)
@@ -72,9 +73,6 @@ def run_daemon_loop(config: SchedulerConfig) -> None:
 
             # Execute the job
             execute_job(next_job)
-
-    except KeyboardInterrupt:
-        pass
 
     logger.info("Scheduler daemon stopped")
 

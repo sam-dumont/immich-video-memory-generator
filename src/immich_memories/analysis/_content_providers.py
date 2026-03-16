@@ -80,6 +80,47 @@ class OllamaContentAnalyzer(ContentAnalyzer):
         except httpx.HTTPError:
             return False
 
+    def _ollama_request_with_retry(
+        self, payload: dict, images: list[str], max_retries: int = 2
+    ) -> ContentAnalysis:
+        """POST to Ollama /api/generate, retrying on near-empty responses."""
+        for attempt in range(max_retries + 1):
+            response = self.client.post(f"{self.base_url}/api/generate", json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+            raw_response = data.get("response", "")
+            prompt_tokens = data.get("prompt_eval_count", 0)
+            completion_tokens = data.get("eval_count", 0)
+
+            if completion_tokens <= 5 or len(raw_response.strip()) < 10:
+                if attempt < max_retries:
+                    logger.warning(
+                        f"Model returned near-empty response (attempt {attempt + 1}/{max_retries + 1}), "
+                        f"retrying... (tokens: {completion_tokens}, len: {len(raw_response)})"
+                    )
+                    continue
+                logger.warning(f"Model failed after {max_retries + 1} attempts, using fallback")
+                result = ContentAnalysis(
+                    description="(analysis unavailable)",
+                    interestingness=0.5,
+                    quality=0.5,
+                    confidence=0.2,
+                )
+                self._log_analysis_result(result, prompt_tokens, completion_tokens, len(images))
+                return result
+
+            result = self._parse_content_response(raw_response)
+            self._log_analysis_result(
+                result,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                num_images=len(images),
+            )
+            return result
+
+        return ContentAnalysis(confidence=0.0)
+
     def analyze_segment(
         self,
         video_path: Path,
@@ -100,12 +141,9 @@ class OllamaContentAnalyzer(ContentAnalyzer):
         """
         # For models with small context (Moondream: ~729 tokens/image),
         # use 2 images max: 2x729 + ~400 prompt = ~1858 tokens < 2048 limit
-        if self.single_image_mode:
-            actual_frames = min(2, num_frames)
-            max_images = 2
-        else:
-            actual_frames = num_frames
-            max_images = 4
+        actual_frames, max_images = (
+            (min(2, num_frames), 2) if self.single_image_mode else (num_frames, 4)
+        )
 
         frames = self.extract_frames(
             video_path, start_time, end_time, actual_frames, max_height=self.max_height
@@ -116,10 +154,9 @@ class OllamaContentAnalyzer(ContentAnalyzer):
             return ContentAnalysis(confidence=0.0)
 
         try:
-            # Encode images to base64
             images = []
             for path in frames[:max_images]:
-                with open(path, "rb") as f:
+                with path.open("rb") as f:
                     images.append(base64.b64encode(f.read()).decode("utf-8"))
 
             payload = {
@@ -127,72 +164,16 @@ class OllamaContentAnalyzer(ContentAnalyzer):
                 "prompt": CONTENT_ANALYSIS_PROMPT,
                 "images": images,
                 "stream": False,
-                "options": {
-                    "temperature": 0.3,
-                    "num_ctx": self.num_ctx,  # Explicitly set context size
-                },
+                "options": {"temperature": 0.3, "num_ctx": self.num_ctx},
             }
 
-            # Retry up to 2 times if model returns empty response
-            max_retries = 2
-            for attempt in range(max_retries + 1):
-                response = self.client.post(
-                    f"{self.base_url}/api/generate",
-                    json=payload,
-                )
-                response.raise_for_status()
-                data = response.json()
-
-                raw_response = data.get("response", "")
-                prompt_tokens = data.get("prompt_eval_count", 0)
-                completion_tokens = data.get("eval_count", 0)
-
-                # Check if response is too short (model failure)
-                if completion_tokens <= 5 or len(raw_response.strip()) < 10:
-                    if attempt < max_retries:
-                        logger.warning(
-                            f"Model returned near-empty response (attempt {attempt + 1}/{max_retries + 1}), "
-                            f"retrying... (tokens: {completion_tokens}, len: {len(raw_response)})"
-                        )
-                        continue
-                    else:
-                        logger.warning(
-                            f"Model failed after {max_retries + 1} attempts, using fallback"
-                        )
-                        # Return a low-confidence fallback instead of empty
-                        result = ContentAnalysis(
-                            description="(analysis unavailable)",
-                            interestingness=0.5,
-                            quality=0.5,
-                            confidence=0.2,
-                        )
-                        self._log_analysis_result(
-                            result, prompt_tokens, completion_tokens, len(images)
-                        )
-                        return result
-
-                # Parse the response
-                result = self._parse_content_response(raw_response)
-
-                # Log result with token tracking
-                self._log_analysis_result(
-                    result,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    num_images=len(images),
-                )
-
-                return result
-
-            # Should never reach here, but just in case
-            return ContentAnalysis(confidence=0.0)
+            return self._ollama_request_with_retry(payload, images)
 
         except httpx.HTTPError as e:
             logger.warning(f"Ollama API error: {e}")
             return ContentAnalysis(confidence=0.0)
 
         finally:
-            # Cleanup temporary frames
             for frame in frames:
                 with contextlib.suppress(OSError):
                     frame.unlink()
@@ -269,7 +250,7 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
             content: list[dict] = [{"type": "text", "text": CONTENT_ANALYSIS_PROMPT}]
 
             for path in frames[:4]:
-                with open(path, "rb") as f:
+                with path.open("rb") as f:
                     b64 = base64.b64encode(f.read()).decode("utf-8")
                 content.append(
                     {

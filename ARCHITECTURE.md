@@ -6,7 +6,7 @@
 ## Overview
 
 Immich Memories generates video compilations from an Immich photo library.
-The pipeline: **fetch clips → analyze → select → assemble → export**.
+The pipeline: **fetch clips -> analyze -> select -> assemble -> export**.
 
 ## Build System
 
@@ -15,41 +15,83 @@ The **Makefile** is the single source of truth for all commands:
 - Pre-commit hooks use `make` targets for file-length and complexity
 - Run `make check` before committing (lint + format + typecheck + file-length + complexity + test)
 
+## Composition Pattern
+
+Large classes compose smaller service objects instead of inheritance: no mixins anywhere.
+Each service is a standalone class with a focused responsibility, injected via the constructor.
+This keeps classes under the 800-line soft limit (1000 hard) while maintaining a single public API.
+
+The four core orchestrators and their composed services:
+
+**VideoAssembler** (processing/video_assembler.py) composes 7 services:
+- `FFmpegProber` (ffmpeg_prober.py): duration/resolution probing via ffprobe
+- `FilterBuilder` (filter_builder.py): FFmpeg filter graph construction
+- `ClipEncoder` (clip_encoder.py): per-clip trimming and re-encoding
+- `AssemblyEngine` (assembly_engine.py): strategy-based multi-clip assembly
+  - internally composes `ConcatService` (_assembly_concat.py)
+- `TransitionRenderer` (transition_renderer.py): crossfade/transition rendering
+  - internally composes `TransitionBlender` (transition_blender.py)
+- `AudioMixerService` (audio_mixer_service.py): background music mixing
+- `TitleInserter` (title_inserter.py): title screen concatenation
+
+**SmartPipeline** (analysis/smart_pipeline.py) composes 4 services:
+- `ClipAnalyzer` (clip_analyzer.py): download, analyze, and score clips
+- `PreviewBuilder` (preview_builder.py): extract preview segments
+- `ClipRefiner` (clip_refiner.py): select and distribute final clips
+- `ClipScaler` (clip_scaler.py): scale to target duration, deduplicate
+
+**ImmichClient** (api/immich.py) composes 5 services:
+- `SearchService` (search_service.py): video search and time bucket queries
+- `AllAssetsService` (all_assets_service.py): type-agnostic asset queries (trip detection)
+- `AssetService` (asset_service.py): asset/video download operations
+- `PersonService` (person_service.py): person/face operations
+- `AlbumService` (album_service.py): album operations
+
+**TitleScreenGenerator** (titles/generator.py) composes 3 services:
+- `RenderingService` (rendering_service.py): GPU/CPU renderer selection, video creation
+- `EndingService` (ending_service.py): fade-to-white ending generation
+- `TripService` (trip_service.py): trip map and location card screens
+
+Resolution/context setup lives in standalone functions:
+- `assembly_context_builder.py`: `resolve_target_resolution()`, `create_assembly_context()`
+
+not a top-level orchestrator.
+
 ## Package Structure
 
 ```
 src/immich_memories/
 ├── api/                        # Immich server communication
-│   ├── immich.py               # SyncImmichClient - REST API wrapper (uses 3 mixins)
-│   ├── client_asset.py         # AssetMixin - asset/video operations
-│   ├── client_person.py        # PersonMixin - person/face operations
-│   ├── client_search.py        # SearchMixin - search/video query operations
-│   ├── client_all_assets.py    # AllAssetsMixin - type-agnostic queries (trip detection)
+│   ├── immich.py               # ImmichClient (composes 5 services)
+│   ├── search_service.py       # SearchService: video search, time buckets
+│   ├── all_assets_service.py   # AllAssetsService: type-agnostic queries
+│   ├── asset_service.py        # AssetService: asset/video download
+│   ├── person_service.py       # PersonService: person/face operations
+│   ├── album_service.py        # AlbumService: album operations
+│   ├── sync_client.py          # Sync wrapper for async client
 │   └── models.py               # API data models (Asset, Person, etc.)
 │
-├── memory_types/                  # Memory type presets & factory
-│   ├── __init__.py                # Re-export shim (public API)
-│   ├── registry.py                # MemoryType enum
-│   ├── presets.py                 # ScoringProfile, PersonFilter, MemoryPreset
-│   ├── date_builders.py           # build_season(), build_month(), build_on_this_day()
-│   └── factory.py                 # Registry + 6 built-in preset factories
+├── memory_types/               # Memory type presets & factory
+│   ├── __init__.py             # Public API re-exports
+│   ├── registry.py             # MemoryType enum
+│   ├── presets.py              # ScoringProfile, PersonFilter, MemoryPreset
+│   ├── date_builders.py        # build_season(), build_month(), build_on_this_day()
+│   └── factory.py              # Registry + 6 built-in preset factories
 │
 ├── analysis/                   # Video analysis & clip selection
-│   ├── smart_pipeline.py       # SmartPipeline - main orchestrator (uses 4 mixins)
+│   ├── smart_pipeline.py       # SmartPipeline (composes 4 services)
 │   ├── pipeline.py             # Pipeline base/helpers
-│   ├── pipeline_analysis.py    # AnalysisMixin - clip analysis phase
-│   ├── pipeline_preview.py     # PreviewMixin - preview extraction
-│   ├── pipeline_refinement.py  # RefinementMixin - clip refinement
-│   ├── pipeline_scaling.py     # ScalingMixin - duration scaling
+│   ├── clip_analyzer.py        # ClipAnalyzer: download + analyze + score
+│   ├── clip_refiner.py         # ClipRefiner: final selection + distribution
+│   ├── clip_scaler.py          # ClipScaler: duration scaling + dedup
+│   ├── clip_refinement.py      # Standalone refinement functions
+│   ├── clip_scaling.py         # Duration scaling helpers
+│   ├── clip_selection.py       # Standalone clip selection functions
+│   ├── preview_builder.py      # PreviewBuilder: preview segment extraction
 │   ├── progress.py             # Progress tracking helpers
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
 │   ├── trip_scoring.py         # Location diversity scoring for trip clips
-│   ├── clip_selection.py       # Standalone clip selection functions
-│   ├── clip_refinement.py      # Standalone refinement functions
-│   ├── clip_scaling.py         # Duration scaling helpers
-│   ├── unified_analyzer.py     # UnifiedSegmentAnalyzer (uses 2 mixins)
-│   ├── segment_scoring.py      # SegmentScoringMixin
-│   ├── candidate_generation.py # CandidateGenerationMixin
+│   ├── unified_analyzer.py     # UnifiedSegmentAnalyzer (all methods merged, no mixins)
 │   ├── content_analyzer.py     # LLM-based content analysis
 │   ├── _content_parsing.py     # Content analysis response parsing
 │   ├── _content_providers.py   # Content analysis provider helpers
@@ -66,28 +108,27 @@ src/immich_memories/
 │   ├── scenes.py               # Scene detection
 │   ├── silence_detection.py    # Audio silence detection
 │   ├── apple_vision.py         # macOS Vision framework integration
-│   └── apple_vision_image.py   # Vision image conversion helpers
+│   ├── apple_vision_image.py   # Vision image conversion helpers
+│   └── llm_query.py            # LLM query helpers
 │
 ├── processing/                 # Video processing & assembly
-│   ├── assembly.py             # Re-export shim (backwards compat)
+│   ├── video_assembler.py      # VideoAssembler (composes 7 services)
+│   ├── assembly_engine.py      # AssemblyEngine (composes ConcatService)
+│   ├── _assembly_concat.py     # ConcatService: concat/xfade/batch ops
 │   ├── assembly_config.py      # Dataclasses: AssemblySettings, AssemblyClip, etc.
-│   ├── video_assembler.py      # VideoAssembler class (uses 11 mixins)
-│   ├── assembler_strategies.py # Assembly strategy methods
-│   ├── assembler_encoding.py   # Encoding/trimming methods
-│   ├── assembler_transitions.py    # Transition filter building
-│   ├── assembler_transition_render.py # Transition rendering
-│   ├── assembler_concat.py     # Concatenation/merge methods
-│   ├── assembler_audio.py      # Music/audio methods
-│   ├── assembler_titles.py     # Title screen integration
-│   ├── assembler_helpers.py    # Shared helper methods
-│   ├── assembler_scalable.py   # Scalable chunked assembly
-│   ├── assembler_batch.py      # Batch merge/direct assembly
-│   ├── assembler_trip_mixin.py # Trip-specific assembly (location dividers)
-│   ├── assembler_probing.py    # FFprobe-based duration probing
-│   ├── clips.py                # ClipExtractor - download & re-encode
+│   ├── assembly_context_builder.py # Standalone: resolve_target_resolution(), create_assembly_context()
+│   ├── ffmpeg_prober.py        # FFmpegProber: ffprobe-based duration/resolution
+│   ├── filter_builder.py       # FilterBuilder: FFmpeg filter graph construction
+│   ├── clip_encoder.py         # ClipEncoder: per-clip trimming/re-encoding
 │   ├── clip_encoding.py        # Clip encoding helpers
 │   ├── clip_probing.py         # Clip probing helpers
 │   ├── clip_transitions.py     # Clip transition helpers
+│   ├── clips.py                # ClipExtractor: download & re-encode
+│   ├── title_inserter.py       # TitleInserter: title screen concatenation
+│   ├── transition_renderer.py  # TransitionRenderer (composes TransitionBlender)
+│   ├── transition_blender.py   # TransitionBlender: frame-level blending
+│   ├── transition_blend.py     # Transition blend helpers
+│   ├── audio_mixer_service.py  # AudioMixerService: background music mixing
 │   ├── downscaler.py           # Resolution downscaling
 │   ├── hdr_utilities.py        # HDR detection & conversion filters
 │   ├── scaling_utilities.py    # Resolution, aspect ratio, smart crop
@@ -98,11 +139,11 @@ src/immich_memories/
 │   ├── transforms.py           # Video transforms (rotate, scale)
 │   ├── _transforms_ffmpeg.py   # FFmpeg transform filters
 │   ├── _transforms_smart_crop.py # Smart crop transforms
-│   └── transition_blend.py     # Frame-level transition blending
+│   └── live_photo_merger.py    # Live Photo merging
 │
 ├── audio/                      # Audio processing
 │   ├── content_analyzer.py     # PANNs audio classification
-│   ├── panns_analysis.py       # PANNs (PyTorch AudioSet) mixin
+│   ├── panns_analysis.py       # PANNs (PyTorch AudioSet) helpers
 │   ├── energy_analysis.py      # Audio energy analysis
 │   ├── audio_models.py         # Audio data models
 │   ├── mixer.py                # Audio mixing & ducking (re-exports)
@@ -114,40 +155,45 @@ src/immich_memories/
 │   ├── music_generator_client.py # Music generation client
 │   ├── music_generator_models.py # Music generation data models
 │   ├── music_sources.py        # Music source providers (local library)
-│   ├── music_pipeline.py       # Multi-provider pipeline (ACE-Step → MusicGen fallback)
+│   ├── music_pipeline.py       # Multi-provider pipeline (ACE-Step -> MusicGen fallback)
 │   └── generators/             # Music generation backends
 │       ├── base.py             # Abstract MusicGenerator interface
 │       ├── factory.py          # Generator factory
 │       ├── musicgen_backend.py # MusicGen API (generation + Demucs stems)
 │       ├── ace_step_backend.py # ACE-Step REST API (generation)
-│       └── ace_step_captions.py # Dense caption templates (genre, BPM, key, instruments)
+│       └── ace_step_captions.py # Dense caption templates
 │
 ├── titles/                     # Title screen generation
-│   ├── _text_memory_types.py      # Memory type title helpers
-│   ├── _trip_titles.py         # Trip title text generation (duration/season-aware)
-│   ├── generator.py            # TitleScreenGenerator orchestrator
-│   ├── rendering_mixin.py      # Rendering mixin for generator (incl. map videos)
-│   ├── trip_mixin.py           # Trip map/location card screen generation
-│   ├── map_renderer.py         # Map tile rendering (staticmap + PIL overlay)
-│   ├── ending_mixin.py         # Ending screen mixin
+│   ├── generator.py            # TitleScreenGenerator (composes 3 services)
+│   ├── rendering_service.py    # RenderingService: GPU/CPU renderer selection
+│   ├── ending_service.py       # EndingService: fade-to-white ending
+│   ├── trip_service.py         # TripService: trip map + location cards
+│   ├── _text_memory_types.py   # Memory type title helpers
+│   ├── _trip_titles.py         # Trip title text generation
 │   ├── convenience.py          # Convenience/factory functions
 │   ├── encoding.py             # Title video encoding
 │   ├── video_encoding.py       # Video encoding helpers
 │   ├── text_builder.py         # Text layout & positioning
 │   ├── text_rendering.py       # Text rendering helpers
 │   ├── renderer_pil.py         # PIL-based renderer
-│   ├── renderer_taichi.py      # Taichi GPU renderer (uses 2 mixins)
+│   ├── renderer_taichi.py      # Taichi GPU renderer
+│   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
 │   ├── taichi_kernels.py       # Taichi GPU kernels
 │   ├── taichi_particles.py     # Taichi particle systems
 │   ├── taichi_text.py          # Taichi text rendering
 │   ├── taichi_video.py         # Taichi video creation
-│   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
+│   ├── taichi_globe.py         # Taichi globe rendering
+│   ├── globe_renderer.py       # Globe renderer
+│   ├── globe_video.py          # Globe video creation
+│   ├── map_animation.py        # Map animation
+│   ├── map_renderer.py         # Map tile rendering (staticmap + PIL overlay)
 │   ├── backgrounds.py          # Background generation (re-exports)
 │   ├── backgrounds_animated.py # Animated gradient backgrounds
 │   ├── animations.py           # Text animations
 │   ├── styles.py               # Visual style presets
 │   ├── colors.py               # Color utilities
 │   ├── fonts.py                # Font management
+│   ├── llm_titles.py           # LLM-generated titles
 │   ├── sdf_font.py             # SDF font rendering
 │   ├── sdf_font_rendering.py   # SDF rendering helpers
 │   └── sdf_atlas_gen.py        # SDF atlas generation
@@ -162,26 +208,38 @@ src/immich_memories/
 │   ├── music_cmd.py            # `music search`, `music analyze`
 │   ├── hardware_cmd.py         # `hardware` info display
 │   ├── _helpers.py             # Shared console/print utilities
+│   ├── _analyze_export.py      # Analysis export helpers
+│   ├── _config_errors.py       # Config error formatting
 │   ├── _trip_display.py        # Trip detection display & selection
 │   └── _date_resolution.py     # Date range resolution for memory types
 │
 ├── ui/                         # NiceGUI web interface
 │   ├── app.py                  # App setup & routing
 │   ├── state.py                # Shared UI state
+│   ├── theme.py                # UI theme
+│   ├── components.py           # Shared UI components
+│   ├── filename_builder.py     # Output filename generation
 │   └── pages/
 │       ├── step1_config.py         # Connection & time period config
-│       ├── step1_cache.py          # Cache management UI (stats & clear)
+│       ├── step1_cache.py          # Cache management UI
+│       ├── step1_presets.py        # Memory preset selection
+│       ├── step1_tabs.py           # Step 1 tab layout
 │       ├── step2_review.py         # Clip review orchestration
 │       ├── step2_loading.py        # Loading state UI
 │       ├── step2_helpers.py        # Shared step2 utilities
+│       ├── _step2_live_photos.py   # Live photo handling
 │       ├── clip_grid.py            # Clip card grid display
 │       ├── clip_review.py          # Clip refinement controls
 │       ├── clip_pipeline.py        # Pipeline execution UI
+│       ├── clip_pipeline_helpers.py # Pipeline helper functions
+│       ├── pipeline_title.py       # Pipeline title display
 │       ├── step3_options.py        # Assembly options
+│       ├── _step3_music_preview.py # Music preview controls
 │       ├── step4_export.py         # Export & download
-│       ├── _step4_generate.py     # Generation logic (extracted from export)
-│       ├── _step4_upload.py       # Upload-back to Immich controls
-│       └── _step4_music.py        # Music generation/mixing helpers
+│       ├── _step4_generate.py      # Generation logic
+│       ├── _step4_upload.py        # Upload-back to Immich
+│       ├── _step4_music.py         # Music generation/mixing helpers
+│       └── settings_config.py      # Settings page
 │
 ├── tracking/                   # Run history & telemetry
 │   ├── run_database.py         # SQLite run storage
@@ -192,19 +250,20 @@ src/immich_memories/
 │   ├── models.py               # Run/phase data models
 │   └── system_info.py          # System info collection
 │
-├── cache/                         # Analysis caching system
-│   ├── __init__.py                # Re-exports public API
-│   ├── database.py                # VideoAnalysisCache class (CRUD/query/stats)
-│   ├── database_models.py         # CachedSegment, CachedVideoAnalysis, SimilarVideo
-│   ├── database_migrations.py     # DatabaseMigrationsMixin (schema v1-v5)
-│   ├── database_queries.py        # DatabaseQueryMixin (read/query methods)
-│   ├── thumbnail_cache.py         # ThumbnailCache - file-based thumbnail storage
-│   └── video_cache.py             # VideoDownloadCache - downloaded video files
+├── cache/                      # Analysis caching system
+│   ├── __init__.py             # Re-exports public API
+│   ├── database.py             # VideoAnalysisCache class
+│   ├── database_models.py      # CachedSegment, CachedVideoAnalysis, SimilarVideo
+│   ├── database_migrations.py  # Schema migrations (v1-v5)
+│   ├── database_queries.py     # Read/query methods
+│   ├── thumbnail_cache.py      # File-based thumbnail storage
+│   └── video_cache.py          # Downloaded video file cache
 │
 ├── scheduling/                 # Scheduled memory generation
-│   ├── engine.py               # Scheduler - cron parsing, next job calculation
-│   ├── executor.py             # JobExecutor - parameter resolution
-│   └── daemon.py               # Daemon loop (foreground, SIGINT/SIGTERM)
+│   ├── engine.py               # Scheduler: cron parsing, next job calculation
+│   ├── executor.py             # JobExecutor: parameter resolution
+│   ├── daemon.py               # Daemon loop (foreground, SIGINT/SIGTERM)
+│   └── models.py               # Scheduling data models
 │
 ├── config.py                   # YAML configuration management (re-exports)
 ├── config_loader.py            # Config loading logic
@@ -213,7 +272,8 @@ src/immich_memories/
 ├── timeperiod.py               # Date range utilities
 ├── security.py                 # Input sanitization
 ├── i18n.py                     # Internationalization
-└── preflight.py                # Dependency checks
+├── preflight.py                # Dependency checks
+└── logging_config.py           # Logging setup
 ```
 
 ## Key Classes & Their Relationships
@@ -224,80 +284,40 @@ src/immich_memories/
 SmartPipeline.run()
   ├── _phase_cluster()     → ClipExtractor.extract() → Immich API
   ├── _phase_filter()      → quality/resolution/HDR filtering
-  ├── _phase_analyze()     → UnifiedSegmentAnalyzer.analyze()
+  ├── _phase_analyze()     → ClipAnalyzer.analyze()
+  │                            via UnifiedSegmentAnalyzer:
   │                            ├── boundary detection
   │                            ├── candidate generation
   │                            ├── visual + LLM scoring
   │                            └── best segment selection
-  └── _phase_refine()      → clip_refinement functions
+  └── _phase_refine()      → ClipRefiner.refine()
                                ├── favorites-first selection
                                ├── date distribution
-                               └── duration scaling
+                               └── ClipScaler: duration scaling
 ```
 
 ### Assembly Flow
 
 ```
 VideoAssembler.assemble()
-  ├── Strategy selection (cuts / crossfade / smart transitions)
+  ├── AssemblyEngine picks strategy (cuts / crossfade / smart transitions)
   ├── For each clip:
-  │   ├── _build_clip_video_filter() → scale, HDR, rotation
-  │   └── _build_audio_prep_filters() → normalize audio
-  ├── _build_xfade_chain() → transition filters
-  └── _run_ffmpeg_assembly() → FFmpeg execution
+  │   ├── FilterBuilder.build_clip_video_filter() → scale, HDR, rotation
+  │   └── FilterBuilder.build_audio_prep_filters() → normalize audio
+  ├── TransitionRenderer → transition filters (via TransitionBlender)
+  └── AssemblyEngine → ConcatService → FFmpeg execution
 
 VideoAssembler.assemble_with_titles()
   ├── TitleScreenGenerator → title/month/ending screens
   ├── assemble() → main content
-  └── _add_music() → background music
+  └── AudioMixerService → background music
 ```
-
-### Mixin Architecture
-
-**SmartPipeline** inherits from:
-- `AnalysisMixin` (pipeline_analysis.py)
-- `PreviewMixin` (pipeline_preview.py)
-- `RefinementMixin` (pipeline_refinement.py)
-- `ScalingMixin` (pipeline_scaling.py)
-
-**UnifiedSegmentAnalyzer** inherits from:
-- `SegmentScoringMixin` (segment_scoring.py)
-- `CandidateGenerationMixin` (candidate_generation.py)
-
-**VideoAssembler** inherits from (11 mixins):
-- `AssemblerHelpersMixin` (assembler_helpers.py)
-- `AssemblerProbingMixin` (assembler_probing.py)
-- `AssemblerEncodingMixin` (assembler_encoding.py)
-- `AssemblerTransitionMixin` (assembler_transitions.py)
-- `AssemblerTransitionRenderMixin` (assembler_transition_render.py)
-- `AssemblerAudioMixin` (assembler_audio.py)
-- `AssemblerConcatMixin` (assembler_concat.py)
-- `AssemblerStrategyMixin` (assembler_strategies.py)
-- `AssemblerScalableMixin` (assembler_scalable.py)
-- `AssemblerBatchMixin` (assembler_batch.py)
-- `AssemblerTitleMixin` (assembler_titles.py)
-
-**ImmichClient** inherits from:
-- `AllAssetsMixin` (client_all_assets.py)
-- `AlbumMixin` (client_album.py)
-- `AssetMixin` (client_asset.py)
-- `PersonMixin` (client_person.py)
-- `SearchMixin` (client_search.py)
-
-**TitleScreenGenerator** inherits from:
-- `RenderingMixin` (rendering_mixin.py) — GPU/CPU renderer selection, map videos
-- `TripMapMixin` (trip_mixin.py) — trip map + location card screen generation
-- `EndingMixin` (ending_mixin.py) — ending screen generation
-
-**TaichiTitleRenderer** inherits from:
-- `TaichiParticlesMixin` (taichi_particles.py)
-- `TaichiTextMixin` (taichi_text.py)
 
 ## Configuration
 
-- `Config` (config.py) — loaded from `~/.immich-memories/config.yaml`
-- `AssemblySettings` (assembly_config.py) — video assembly parameters
-- `PipelineConfig` (smart_pipeline.py) — analysis pipeline parameters
+- `Config` (config.py): loaded from `~/.immich-memories/config.yaml`
+- `AssemblySettings` (assembly_config.py): video assembly parameters
+- `PipelineConfig` (smart_pipeline.py): analysis pipeline parameters
 
 ## Data Flow
 
@@ -310,10 +330,10 @@ Immich API → Asset models → ClipExtractor → VideoClipInfo
 ## Conventions
 
 - **Max file length**: 500 lines (enforced in CI via `make file-length`)
-- **Max complexity**: Xenon grade C (≤20 cyclomatic complexity, `make complexity`)
+- **Max complexity**: Xenon grade C (<=20 cyclomatic complexity, `make complexity`)
 - **Makefile**: Single source of truth for all commands (CI, pre-commit, CLAUDE.md)
-- **Mixins**: Used to split large classes while keeping a single public API
-- **Re-export shims**: `assembly.py`, `mixer.py`, `config.py` etc. re-export from sub-modules
+- **Composition**: Top-level orchestrators compose service objects via constructor injection
+- **Re-export shims**: `mixer.py`, `config.py` etc. re-export from sub-modules for backwards compat
 - **Private helpers**: Prefixed with `_`, same package
 - **Tests**: `tests/` directory, run with `make test`
 - **Pre-commit**: Run `make check` before committing
