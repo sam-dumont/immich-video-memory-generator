@@ -16,6 +16,36 @@ Immich Memories connects to your self-hosted Immich server, intelligently select
 
 ---
 
+## Docker (recommended for self-hosters)
+
+```bash
+# 1. Download the compose file
+curl -O https://raw.githubusercontent.com/sam-dumont/immich-video-memory-generator/main/docker-compose.yml
+
+# 2. Set your Immich connection
+export IMMICH_URL="http://your-immich-server:2283"
+export IMMICH_API_KEY="your-api-key"
+
+# 3. Start
+docker compose up -d
+
+# 4. Open http://localhost:8080
+```
+
+### Resource Usage
+
+| State | RAM | CPU | Notes |
+|-------|-----|-----|-------|
+| Idle (UI only) | ~50MB | minimal | NiceGUI web server |
+| Analyzing clips | 1-2GB | 1-2 cores | Downloads + scores video clips |
+| Encoding video | 1-4GB | 2-4 cores | FFmpeg assembly, depends on resolution |
+
+Default Docker limits: 2GB RAM, 2 CPUs. Increase for 4K output or large libraries (500+ videos).
+
+### Supported Immich Versions
+
+Tested with Immich v1.100+. Uses the `/api/` endpoint prefix.
+
 ## Quick Install
 
 ```bash

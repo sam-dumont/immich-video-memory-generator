@@ -1,0 +1,24 @@
+# Immich Memories — self-hoster quickstart
+# Usage: docker compose up -d
+# Then open http://localhost:8080
+services:
+  immich-memories:
+    image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
+    container_name: immich-memories
+    ports:
+      - "8080:8080"
+    volumes:
+      - immich-memories-config:/home/immich/.immich-memories
+      - ./output:/output
+    environment:
+      IMMICH_URL: "${IMMICH_URL:-http://immich-server:2283}"
+      IMMICH_API_KEY: "${IMMICH_API_KEY}"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2"
+
+volumes:
+  immich-memories-config:
