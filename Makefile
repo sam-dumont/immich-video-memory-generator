@@ -102,9 +102,10 @@ test:
 benchmark:
 	uv run pytest tests/benchmarks/ -v --benchmark-only
 
-test-integration:  ## Run ALL integration-marked tests (requires FFmpeg), saves coverage for CI merge
+test-integration:  ## Run ALL integration-marked tests (requires FFmpeg), saves coverage + results for CI merge
 	uv run pytest -v -m integration \
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/integration-coverage.xml \
+		--junitxml=tests/integration-junit.xml -o junit_family=legacy \
 		--cov-fail-under=0
 	@# Fix absolute paths in coverage XML to relative (portable between local and CI)
 	@sed -i.bak 's|<source>.*src/immich_memories</source>|<source>src/immich_memories</source>|g' tests/integration-coverage.xml \
@@ -118,8 +119,8 @@ test-cov:
 	uv run pytest --cov=src/immich_memories --cov-report=html --cov-report=term-missing
 	@echo "Coverage report: htmlcov/index.html"
 
-test-cov-xml:  ## Run tests with XML coverage (for CI upload)
-	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -v
+test-cov-xml:  ## Run tests with XML coverage + JUnit results (for CI upload)
+	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -v
 
 test-fast:
 	uv run pytest -v -m "not slow"
