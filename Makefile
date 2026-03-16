@@ -242,9 +242,10 @@ pip-audit:
 
 # Diff coverage for PRs (skips on large refactors >1000 changed lines)
 diff-cover-ci:
-	@CHANGED=$$(git diff --stat origin/main...HEAD -- '*.py' 2>/dev/null | tail -1 | grep -oE '[0-9]+' | head -1); \
-	if [ "$${CHANGED:-0}" -gt 1000 ]; then \
-		echo "WARN: Skipping diff-cover: $${CHANGED} lines changed (threshold: 1000)"; \
+	@CHANGED=$$(git diff --numstat origin/main...HEAD -- '*.py' 2>/dev/null | awk '{s+=$$1+$$2} END {print s+0}'); \
+	echo "Changed Python lines: $${CHANGED}"; \
+	if [ "$${CHANGED}" -gt 1000 ]; then \
+		echo "WARN: Skipping diff-cover: $${CHANGED} lines changed (threshold: 1000). Large refactor."; \
 	else \
 		uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=95; \
 	fi
