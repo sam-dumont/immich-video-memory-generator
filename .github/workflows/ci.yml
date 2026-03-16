@@ -305,7 +305,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Upload test results to Codecov
-        if: ${{ !cancelled() }} && matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
+        if: ${{ !cancelled() && matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest' }}
         uses: codecov/test-results-action@v1
         with:
           files: junit.xml,tests/integration-junit.xml
