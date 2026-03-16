@@ -285,7 +285,8 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ffmpeg
 
-      - run: make dev-ci
+      - name: Install test dependencies (dev + gpu, no torch/audio-ml)
+        run: uv sync --extra dev --extra gpu
 
       - name: Run tests with coverage
         run: make test-cov-xml
