@@ -7,19 +7,29 @@ scene detection with audio analysis to find natural cut points.
 
 from __future__ import annotations
 
+import gc
 import logging
 import operator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
+
+from immich_memories.analysis._segment_generation import (
+    adjust_candidates_for_audio,
+    detect_audio_boundaries,
+    detect_visual_boundaries,
+    generate_candidate_segments,
+    generate_fallback_segments,
+    merge_boundaries,
+    score_segment_audio,
+)
 from immich_memories.analysis.analyzer_factory import (  # noqa: F401
     create_unified_analyzer_from_config,
 )
 from immich_memories.analysis.analyzer_models import CutPoint, ScoredSegment  # noqa: F401
-from immich_memories.analysis.candidate_generation import CandidateGenerationMixin
-from immich_memories.analysis.scenes import SceneDetector, get_video_info
+from immich_memories.analysis.scenes import Scene, SceneDetector, get_video_info
 from immich_memories.analysis.scoring import SceneScorer
-from immich_memories.analysis.segment_scoring import SegmentScoringMixin
 
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
@@ -28,7 +38,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
+class UnifiedSegmentAnalyzer:
     """Unified video segment analysis with audio-aware boundaries.
 
     This analyzer ensures video segments start and end during silence gaps
@@ -342,18 +352,22 @@ class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
 
         # Step 1: Detect boundaries
         logger.info(f"Step 1a: Detecting visual scene boundaries from {visual_video.name}")
-        visual_boundaries = self._detect_visual_boundaries(visual_video)
+        visual_boundaries = detect_visual_boundaries(visual_video, self._scene_detector)
         logger.info(f"  -> Found {len(visual_boundaries)} visual boundaries")
 
         logger.info(f"Step 1b: Detecting audio/silence boundaries from {audio_video.name}")
-        audio_boundaries = self._detect_audio_boundaries(audio_video)
+        audio_boundaries = detect_audio_boundaries(
+            audio_video, self.silence_threshold_db, self.min_silence_duration
+        )
         logger.info(f"  -> Found {len(audio_boundaries)} audio boundaries (silence gaps)")
 
         audio_content_result = self._run_audio_content_analysis(audio_video, video_duration)
 
         # Step 2: Merge boundaries
         logger.info("Step 2: Merging visual + audio boundaries into cut points")
-        cut_points = self._merge_boundaries(visual_boundaries, audio_boundaries, video_duration)
+        cut_points = merge_boundaries(
+            visual_boundaries, audio_boundaries, video_duration, self.cut_point_merge_tolerance
+        )
         priority_2_count = sum(1 for cp in cut_points if cp.priority == 2)
         logger.info(
             f"  -> {len(cut_points)} cut points ({priority_2_count} ideal = both visual+audio)"
@@ -361,10 +375,20 @@ class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
 
         # Step 3: Generate candidates
         logger.info("Step 3: Generating candidate segments (must start/end on silence)")
-        candidates = self._generate_candidate_segments(cut_points, video_duration)
+        dynamic_optimal = self._get_dynamic_optimal_duration(video_duration)
+        candidates = generate_candidate_segments(
+            cut_points,
+            video_duration,
+            self.min_segment_duration,
+            self.max_segment_duration,
+            dynamic_optimal,
+        )
         if not candidates:
             logger.warning("No valid segments found, using fallback (visual-only)")
-            candidates = self._generate_fallback_segments(video_duration, cut_points)
+            proportional_max = self._get_max_segment_for_source(video_duration)
+            candidates = generate_fallback_segments(
+                video_duration, cut_points, self.min_segment_duration, proportional_max
+            )
         logger.info(f"  -> Generated {len(candidates)} candidate segments")
 
         # Step 3b: Adjust for audio
@@ -403,8 +427,13 @@ class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
         if audio_content_result and audio_content_result.protected_ranges:
             logger.info("Step 3b: Adjusting boundaries to avoid cutting mid-laugh/speech")
             original_count = len(candidates)
-            candidates = self._adjust_candidates_for_audio(
-                candidates, audio_content_result, video_duration
+            proportional_max = self._get_max_segment_for_source(video_duration)
+            candidates = adjust_candidates_for_audio(
+                candidates,
+                audio_content_result,
+                video_duration,
+                self.min_segment_duration,
+                proportional_max,
             )
             logger.info(
                 f"  -> Adjusted {original_count} candidates to {len(candidates)} candidates"
@@ -458,3 +487,281 @@ class UnifiedSegmentAnalyzer(SegmentScoringMixin, CandidateGenerationMixin):
         except Exception as e:
             logger.warning(f"Audio content analysis failed: {e}")
             return None
+
+    def _get_dynamic_optimal_duration(self, source_duration: float) -> float:
+        """Calculate the optimal clip duration based on source video length.
+
+        For short sources (< 20s): optimal stays at base (5s)
+        For longer sources: optimal scales up to max_optimal (10s)
+
+        Args:
+            source_duration: Total source video duration in seconds.
+
+        Returns:
+            Dynamic optimal clip duration in seconds.
+        """
+        if source_duration > 20.0:
+            return min(
+                self.max_optimal_duration,
+                max(self.optimal_clip_duration, source_duration * self.target_extraction_ratio),
+            )
+        return self.optimal_clip_duration
+
+    def _compute_duration_score(self, clip_duration: float, source_duration: float) -> float:
+        """Compute duration preference score using a Gaussian curve.
+
+        The score peaks at the dynamic optimal duration and falls off
+        smoothly for shorter or longer clips.
+
+        Args:
+            clip_duration: Duration of the clip in seconds.
+            source_duration: Total source video duration in seconds.
+
+        Returns:
+            Score between 0.0 and 1.0, with 1.0 at optimal duration.
+        """
+        # Clips below minimum duration get heavy penalty
+        if clip_duration < self.min_segment_duration:
+            return max(0.0, 0.3 * (clip_duration / self.min_segment_duration))
+
+        # Get dynamic optimal for this source
+        dynamic_optimal = self._get_dynamic_optimal_duration(source_duration)
+
+        # Gaussian curve centered at dynamic optimal duration
+        # sigma scales with optimal to keep curve proportional
+        sigma = max(3.0, dynamic_optimal * 0.6)
+        diff = clip_duration - dynamic_optimal
+        score = float(np.exp(-(diff * diff) / (2 * sigma * sigma)))
+
+        # For very long clips (>15s), add extra penalty
+        if clip_duration > 15.0:
+            long_penalty = (clip_duration - 15.0) * 0.05
+            score = max(0.2, score - long_penalty)
+
+        return score
+
+    def _score_visual(
+        self, video_path: Path, start_time: float, end_time: float
+    ) -> dict[str, float]:
+        """Score a segment using visual analysis (faces, motion, stability).
+
+        Args:
+            video_path: Path to video file.
+            start_time: Segment start time.
+            end_time: Segment end time.
+
+        Returns:
+            Dictionary with face, motion, stability, and total scores.
+        """
+        # Create a temporary Scene object for the scorer
+        scene = Scene(
+            start_time=start_time,
+            end_time=end_time,
+            start_frame=0,  # Will be recalculated
+            end_frame=0,
+        )
+
+        # Use the SceneScorer to get component scores
+        moment = self.scorer.score_scene(video_path, scene, sample_frames=5)
+
+        return {
+            "face": moment.face_score,
+            "motion": moment.motion_score,
+            "stability": moment.stability_score,
+            "total": (
+                moment.face_score * 0.4
+                + moment.motion_score * 0.25
+                + moment.stability_score * 0.2
+                + 0.5 * 0.15  # Audio placeholder
+            ),
+        }
+
+    def _score_content(
+        self,
+        video_path: Path,
+        start_time: float,
+        end_time: float,
+        segment=None,
+    ) -> float:
+        """Score a segment using LLM content analysis.
+
+        Args:
+            video_path: Path to video file.
+            start_time: Segment start time.
+            end_time: Segment end time.
+            segment: Optional ScoredSegment to update with full LLM analysis.
+
+        Returns:
+            Content score from 0.0 to 1.0.
+        """
+        if not self.content_analyzer:
+            return 0.5
+
+        try:
+            analysis = self.content_analyzer.analyze_segment(video_path, start_time, end_time)
+
+            # If segment provided, store full LLM analysis results
+            if segment is not None:
+                segment.llm_description = analysis.description
+                segment.llm_emotion = analysis.emotion
+                segment.llm_setting = analysis.setting
+                segment.llm_activities = analysis.activities
+                segment.llm_subjects = analysis.subjects
+                segment.llm_interestingness = analysis.interestingness
+                segment.llm_quality = analysis.quality
+
+            return analysis.content_score
+        except Exception as e:
+            logger.debug(f"Content analysis failed: {e}")
+            return 0.5
+
+    def _compute_total_score(self, segment) -> float:
+        """Compute the total score for a segment.
+
+        Args:
+            segment: ScoredSegment with component scores.
+
+        Returns:
+            Total score from 0.0 to ~1.15 (includes cut quality bonus).
+        """
+        # Distribute weights between visual, content, audio, and duration
+        # Total should be 1.0 before bonuses
+        total_weight = 1.0
+        content_w = self.content_weight
+        audio_w = self.audio_content_weight if self.audio_content_enabled else 0.0
+        duration_w = self.duration_weight
+        visual_w = total_weight - content_w - audio_w - duration_w
+
+        # Ensure weights are non-negative
+        if visual_w < 0:
+            # Reduce other weights proportionally to make room
+            other_total = content_w + audio_w + duration_w
+            if other_total > 0:
+                scale = 1.0 / other_total
+                content_w *= scale
+                audio_w *= scale
+                duration_w *= scale
+            visual_w = 0.0
+
+        base_score = (
+            segment.visual_score * visual_w
+            + segment.content_score * content_w
+            + segment.audio_score * audio_w
+            + segment.duration_score * duration_w
+        )
+
+        # Significant bonus for high-quality cut points (max 0.15)
+        # This ensures we prefer clean audio boundaries over mid-speech cuts
+        cut_bonus = segment.cut_quality * 0.15
+
+        # Extra bonus for segments with laughter (highly desirable for memories)
+        laughter_bonus = 0.1 if segment.has_laughter else 0.0
+
+        return base_score + cut_bonus + laughter_bonus
+
+    def _score_segments_visual_only(
+        self,
+        video_path: Path,
+        candidates: list[tuple],
+        _all_cut_points: list,
+        audio_content_result: AudioAnalysisResult | None = None,
+        video_duration: float | None = None,
+    ) -> list:
+        """Score candidate segments using visual analysis only (fast).
+
+        LLM content analysis is done separately on top candidates only.
+
+        Args:
+            video_path: Path to video file.
+            candidates: List of (start, end) cut point pairs.
+            _all_cut_points: All available cut points (for context).
+            audio_content_result: Optional audio content analysis results.
+            video_duration: Total video duration for duration scoring.
+
+        Returns:
+            List of ScoredSegment with visual scores populated.
+        """
+        scored = []
+
+        for i, (start_cp, end_cp) in enumerate(candidates):
+            segment = ScoredSegment(
+                start_time=start_cp.time,
+                end_time=end_cp.time,
+                start_cut_priority=start_cp.priority,
+                end_cut_priority=end_cp.priority,
+            )
+
+            # Score using visual analysis only
+            try:
+                visual_scores = self._score_visual(video_path, segment.start_time, segment.end_time)
+                segment.face_score = visual_scores.get("face", 0.0)
+                segment.motion_score = visual_scores.get("motion", 0.0)
+                segment.stability_score = visual_scores.get("stability", 0.0)
+                segment.visual_score = visual_scores.get("total", 0.0)
+            except Exception as e:
+                logger.warning(f"Visual scoring failed: {e}")
+                segment.visual_score = 0.5  # Neutral fallback
+
+            # Score using audio content analysis (if available)
+            if audio_content_result and self.audio_content_enabled:
+                audio_score_info = score_segment_audio(
+                    segment.start_time, segment.end_time, audio_content_result
+                )
+                segment.audio_score = audio_score_info["score"]
+                segment.has_laughter = audio_score_info["has_laughter"]
+                segment.has_speech = audio_score_info["has_speech"]
+                segment.has_music = audio_score_info["has_music"]
+                segment.audio_categories = audio_score_info["audio_categories"]
+
+            # Score duration preference (clips closer to optimal get higher scores)
+            if video_duration:
+                segment.duration_score = self._compute_duration_score(
+                    segment.duration, video_duration
+                )
+
+            # Compute total score (visual + audio + duration at this stage)
+            segment.total_score = self._compute_total_score(segment)
+            scored.append(segment)
+
+            # Memory cleanup every 5 candidates to prevent OOM on long videos
+            if (i + 1) % 5 == 0:
+                gc.collect()
+                logger.debug(f"Memory cleanup after {i + 1}/{len(candidates)} candidates")
+
+        # Final cleanup after all candidates
+        # Release cached video capture to free memory
+        self.scorer.release_capture()
+        gc.collect()
+        return scored
+
+    def _run_llm_scoring(
+        self,
+        scored_segments: list,
+        audio_video: Path,
+    ) -> None:
+        """Run LLM content analysis on top candidates (in-place).
+
+        Args:
+            scored_segments: Segments to score (modified in place).
+            audio_video: Path to video for content analysis.
+        """
+        if not (self.content_analyzer and self.content_weight > 0):
+            logger.info("  -> LLM content analysis DISABLED")
+            return
+
+        top_n = min(5, len(scored_segments))
+        logger.info(f"Step 4b: LLM content analysis on TOP {top_n} candidates only")
+        for i, segment in enumerate(scored_segments[:top_n]):
+            try:
+                logger.info(
+                    f"  -> Analyzing candidate {i + 1}/{top_n}: {segment.start_time:.1f}s-{segment.end_time:.1f}s"
+                )
+                segment.content_score = self._score_content(
+                    audio_video, segment.start_time, segment.end_time, segment=segment
+                )
+                segment.total_score = self._compute_total_score(segment)
+            except Exception as e:
+                logger.warning(f"  -> LLM analysis failed: {e}")
+                segment.content_score = 0.5
+
+        scored_segments.sort(key=lambda s: s.total_score, reverse=True)
