@@ -1,8 +1,10 @@
-"""Integration tests for the VideoAssembler.
+"""Unit tests for the VideoAssembler.
 
 Tests the assembler through its public API (assemble()) by mocking at
 external boundaries (FFmpeg subprocess, get_config) rather than internal
 methods. Renaming internal methods should not break these tests.
+
+For real FFmpeg integration tests, see tests/integration/test_assembly_real.py.
 """
 
 from __future__ import annotations

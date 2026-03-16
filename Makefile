@@ -1,7 +1,7 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 
-.PHONY: help install dev dev-ci run preflight test test-cov test-cov-xml test-integration test-fast mutation benchmark lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
+.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-fast mutation benchmark lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
 
 # Default target
 help:
@@ -72,6 +72,10 @@ dev:
 dev-ci:
 	uv sync --extra dev
 
+# Install dev + GPU extras for CI test jobs (taichi/freetype, no torch/nvidia)
+dev-test:
+	uv sync --extra dev --extra gpu
+
 # Install with macOS-specific extras (Apple Vision, Metal GPU, etc.)
 dev-mac:
 	uv sync --extra all-mac --extra dev
@@ -98,8 +102,8 @@ test:
 benchmark:
 	uv run pytest tests/benchmarks/ -v --benchmark-only
 
-test-integration:  ## Run integration tests (requires FFmpeg)
-	uv run pytest tests/integration/ -v -m integration
+test-integration:  ## Run integration tests (requires FFmpeg), appends to coverage
+	uv run pytest tests/integration/ -v -m integration --cov=src/immich_memories --cov-append --cov-report=term-missing
 
 mutation:  ## Run mutation testing (slow — weekly CI or local deep validation)
 	uv run mutmut run --max-children 4
@@ -280,12 +284,8 @@ critique:  ## Run self-critique checks for AI code smells
 	@! grep -rn "to stay within\|to keep.*under.*line\|keep files under" src/ --include="*.py" || (echo "FAIL: Fix these splits" && exit 1)
 	@echo "Checking for wildcard re-exports (outside __init__)..."
 	@! grep -rn "from .* import \*" src/ --include="*.py" | grep -v __init__ || (echo "WARN: Wildcard re-exports found" && exit 1)
-	@echo "Checking for mock-heavy tests (>5 mocks per test)..."
-	@python3 -c "import pathlib, re; \
-	files = list(pathlib.Path('tests').rglob('test_*.py')); \
-	[print(f'HIGH-MOCK: {f}:{i+1}') for f in files if '__pycache__' not in str(f) \
-	for i, line in enumerate(f.read_text().splitlines()) \
-	if 'Mock()' in line or '@patch' in line]" 2>/dev/null | head -20 || true
+	@echo "Checking test quality (mock ratios, mock-only assertions, excessive patches)..."
+	@uv run python scripts/critique_tests.py
 	@echo "Self-critique complete."
 
 # Pre-commit hooks
