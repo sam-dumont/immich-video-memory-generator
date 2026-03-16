@@ -290,7 +290,7 @@ jobs:
       - name: Run tests with coverage
         run: make test-cov-xml
 
-      - name: Diff coverage (≥95% on changed lines)
+      - name: Diff coverage (≥80% on changed lines)
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
         run: |
           git fetch origin main --depth=1
