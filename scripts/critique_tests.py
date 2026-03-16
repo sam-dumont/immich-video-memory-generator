@@ -104,6 +104,19 @@ def check_excessive_patches(test_files: list[Path]) -> list[str]:
     return issues
 
 
+def check_patch_without_why(test_files: list[Path]) -> list[str]:
+    """Flag @patch decorators without a # WHY: comment on the preceding line."""
+    issues = []
+    for f in test_files:
+        lines = f.read_text().splitlines()
+        for i, line in enumerate(lines):
+            if line.strip().startswith("@patch"):
+                prev = lines[i - 1].strip() if i > 0 else ""
+                if not prev.startswith("# WHY:") and not prev.startswith("@patch"):
+                    issues.append(f"  {f}:{i + 1}")
+    return issues
+
+
 def main() -> int:
     test_files = sorted(f for f in TESTS_DIR.rglob("test_*.py") if "__pycache__" not in str(f))
 
@@ -135,7 +148,14 @@ def main() -> int:
         has_issues = True
         print()
 
-    if not ratio_issues and not mock_only and not excessive:
+    # Check 4: @patch without WHY comment
+    missing_why = check_patch_without_why(test_files)
+    if missing_why:
+        print("WARN: @patch decorators without # WHY: comment on preceding line:")
+        print("\n".join(missing_why))
+        print()
+
+    if not ratio_issues and not mock_only and not excessive and not missing_why:
         print("Test critique: all clean.")
 
     # Only fail on excessive patches (the worst smell).

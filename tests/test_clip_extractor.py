@@ -146,6 +146,7 @@ class TestClipExtractorExtract:
         assert result == expected
         assert seg.output_path == expected
 
+    # WHY: _extract_copy runs FFmpeg stream copy — avoid real encoding in unit tests
     @patch("immich_memories.processing.clips.ClipExtractor._extract_copy")
     def test_extract_calls_copy_by_default(self, mock_copy, tmp_path):
         """Default extraction uses stream copy."""
@@ -157,6 +158,7 @@ class TestClipExtractorExtract:
         extractor.extract(seg)
         mock_copy.assert_called_once()
 
+    # WHY: _extract_with_reencode runs FFmpeg re-encode — avoid real encoding in unit tests
     @patch("immich_memories.processing.clips.ClipExtractor._extract_with_reencode")
     def test_extract_with_reencode(self, mock_reencode, tmp_path):
         """reencode=True uses re-encode path."""
@@ -172,7 +174,9 @@ class TestClipExtractorExtract:
 class TestClipExtractorBatchExtract:
     """Tests for batch_extract method."""
 
+    # WHY: extract() calls FFmpeg — isolate batch orchestration from real extraction
     @patch("immich_memories.processing.clips.ClipExtractor.extract")
+    # WHY: cleanup_old_clips() deletes files on disk — prevent side effects in tests
     @patch("immich_memories.processing.clips.ClipExtractor.cleanup_old_clips")
     def test_batch_returns_all_successes(self, mock_cleanup, mock_extract, tmp_path):
         """All successful extracts are returned."""
@@ -191,7 +195,9 @@ class TestClipExtractorBatchExtract:
         results = extractor.batch_extract(segs)
         assert len(results) == 2
 
+    # WHY: extract() calls FFmpeg — simulate failure to test batch error handling
     @patch("immich_memories.processing.clips.ClipExtractor.extract")
+    # WHY: cleanup_old_clips() deletes files on disk — prevent side effects in tests
     @patch("immich_memories.processing.clips.ClipExtractor.cleanup_old_clips")
     def test_batch_continues_on_failure(self, mock_cleanup, mock_extract, tmp_path):
         """Failures are logged and skipped; successes returned."""
@@ -210,7 +216,9 @@ class TestClipExtractorBatchExtract:
         results = extractor.batch_extract(segs)
         assert len(results) == 1
 
+    # WHY: extract() calls FFmpeg — simulate all-failures scenario
     @patch("immich_memories.processing.clips.ClipExtractor.extract")
+    # WHY: cleanup_old_clips() deletes files on disk — prevent side effects in tests
     @patch("immich_memories.processing.clips.ClipExtractor.cleanup_old_clips")
     def test_batch_all_failures_returns_empty(self, mock_cleanup, mock_extract, tmp_path):
         """All failures returns empty list."""
@@ -225,7 +233,9 @@ class TestClipExtractorBatchExtract:
         results = extractor.batch_extract(segs)
         assert not results
 
+    # WHY: extract() calls FFmpeg — isolate progress callback logic from real extraction
     @patch("immich_memories.processing.clips.ClipExtractor.extract")
+    # WHY: cleanup_old_clips() deletes files on disk — prevent side effects in tests
     @patch("immich_memories.processing.clips.ClipExtractor.cleanup_old_clips")
     def test_batch_progress_callback(self, mock_cleanup, mock_extract, tmp_path):
         """Progress callback called with (current, total)."""

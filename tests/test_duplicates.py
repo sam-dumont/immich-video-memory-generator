@@ -215,6 +215,7 @@ class TestFindDuplicateGroups:
         groups = find_duplicate_groups([])
         assert not groups
 
+    # WHY: compute_video_hash reads video frames via OpenCV — provide deterministic hashes
     @patch("immich_memories.analysis.duplicates.compute_video_hash")
     def test_identical_hashes_grouped(self, mock_hash, sample_config, tmp_path):
         """Videos with identical hashes are grouped together."""
@@ -236,6 +237,7 @@ class TestFindDuplicateGroups:
         assert len(multi_groups) == 1
         assert {v.asset.id for v in multi_groups[0].videos} == {"v1", "v2"}
 
+    # WHY: compute_video_hash reads video frames via OpenCV — provide distinct hashes
     @patch("immich_memories.analysis.duplicates.compute_video_hash")
     def test_different_hashes_separate(self, mock_hash, sample_config, tmp_path):
         """Videos with very different hashes stay separate."""
@@ -255,6 +257,7 @@ class TestFindDuplicateGroups:
         )
         assert all(len(g.videos) == 1 for g in groups)
 
+    # WHY: compute_video_hash reads video frames via OpenCV — test missing-path edge case
     @patch("immich_memories.analysis.duplicates.compute_video_hash")
     def test_missing_path_video_ungrouped(self, mock_hash, sample_config, tmp_path):
         """Videos without paths appear as single-item groups."""

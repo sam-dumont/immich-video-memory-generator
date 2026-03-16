@@ -36,6 +36,7 @@ class TestFormatDuration:
 class TestRunTrackerInit:
     """Tests for RunTracker initialization."""
 
+    # WHY: RunDatabase opens a SQLite connection — isolate tracker logic from disk I/O
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_generates_run_id_when_none(self, mock_db_cls: MagicMock):
         """RunTracker generates an ID when none provided."""
@@ -43,12 +44,14 @@ class TestRunTrackerInit:
         assert tracker.run_id is not None
         assert len(tracker.run_id) == 20
 
+    # WHY: RunDatabase opens a SQLite connection — isolate tracker logic from disk I/O
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_uses_provided_run_id(self, mock_db_cls: MagicMock):
         """RunTracker uses the provided run ID."""
         tracker = RunTracker(run_id="20250101_000000_abcd")
         assert tracker.run_id == "20250101_000000_abcd"
 
+    # WHY: RunDatabase opens a SQLite connection — isolate tracker logic from disk I/O
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_current_run_is_none_initially(self, mock_db_cls: MagicMock):
         """current_run is None before start_run."""
@@ -59,6 +62,7 @@ class TestRunTrackerInit:
 class TestRunTrackerPhases:
     """Tests for phase tracking logic."""
 
+    # WHY: RunDatabase opens a SQLite connection — isolate phase tracking from disk I/O
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_start_phase_sets_state(self, mock_db_cls: MagicMock):
         """start_phase records the phase name and time."""
@@ -68,6 +72,7 @@ class TestRunTrackerPhases:
         assert tracker._phase_items_total == 100
         assert tracker._phase_start is not None
 
+    # WHY: RunDatabase opens a SQLite connection — isolate phase tracking from disk I/O
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_start_phase_completes_previous(self, mock_db_cls: MagicMock):
         """Starting a new phase completes the previous one."""
@@ -79,6 +84,7 @@ class TestRunTrackerPhases:
         # save_phase_stats should have been called for phase1
         tracker.db.save_phase_stats.assert_called_once()
 
+    # WHY: RunDatabase opens a SQLite connection — isolate phase tracking from disk I/O
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_complete_phase_resets_state(self, mock_db_cls: MagicMock):
         """complete_phase clears phase state."""
@@ -89,6 +95,7 @@ class TestRunTrackerPhases:
         assert tracker._phase_start is None
         assert tracker._phase_items_total == 0
 
+    # WHY: RunDatabase opens a SQLite connection — isolate phase tracking from disk I/O
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_complete_phase_noop_without_active_phase(self, mock_db_cls: MagicMock):
         """complete_phase does nothing if no phase is active."""
@@ -96,6 +103,7 @@ class TestRunTrackerPhases:
         tracker.complete_phase()  # Should not raise
         tracker.db.save_phase_stats.assert_not_called()
 
+    # WHY: RunDatabase opens a SQLite connection — isolate phase tracking from disk I/O
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_complete_phase_defaults_items_to_total(self, mock_db_cls: MagicMock):
         """complete_phase defaults items_processed to total_items."""
@@ -110,7 +118,9 @@ class TestRunTrackerPhases:
 class TestRunTrackerStartRun:
     """Tests for start_run with mocked dependencies."""
 
+    # WHY: capture_system_info runs subprocess calls for CPU/GPU/RAM — avoid hardware probing
     @patch("immich_memories.tracking.run_tracker.capture_system_info")
+    # WHY: RunDatabase opens a SQLite connection — isolate run lifecycle from disk I/O
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_start_run_captures_system_info(self, mock_db_cls: MagicMock, mock_capture: MagicMock):
         """start_run captures system info when enabled."""
@@ -121,7 +131,9 @@ class TestRunTrackerStartRun:
         mock_capture.assert_called_once()
         tracker.db.save_run.assert_called_once()
 
+    # WHY: capture_system_info runs subprocess calls for CPU/GPU/RAM — verify it's not called
     @patch("immich_memories.tracking.run_tracker.capture_system_info")
+    # WHY: RunDatabase opens a SQLite connection — isolate run lifecycle from disk I/O
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_start_run_skips_system_info_when_disabled(
         self, mock_db_cls: MagicMock, mock_capture: MagicMock
@@ -131,7 +143,9 @@ class TestRunTrackerStartRun:
         tracker.start_run()
         mock_capture.assert_not_called()
 
+    # WHY: capture_system_info runs subprocess calls — simulate failure to test resilience
     @patch("immich_memories.tracking.run_tracker.capture_system_info")
+    # WHY: RunDatabase opens a SQLite connection — isolate run lifecycle from disk I/O
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_start_run_handles_system_info_failure(
         self, mock_db_cls: MagicMock, mock_capture: MagicMock
@@ -146,6 +160,7 @@ class TestRunTrackerStartRun:
 class TestRunTrackerFailCancel:
     """Tests for fail_run and cancel_run."""
 
+    # WHY: RunDatabase opens a SQLite connection — verify status update without real DB
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_fail_run_updates_status(self, mock_db_cls: MagicMock):
         """fail_run marks the run as failed in the database."""
@@ -156,6 +171,7 @@ class TestRunTrackerFailCancel:
         assert call_kwargs["status"] == "failed"
         assert call_kwargs["errors_count"] == 3
 
+    # WHY: RunDatabase opens a SQLite connection — verify phase cleanup on failure
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_fail_run_completes_active_phase(self, mock_db_cls: MagicMock):
         """fail_run completes any active phase before failing."""
@@ -166,6 +182,7 @@ class TestRunTrackerFailCancel:
         tracker.db.save_phase_stats.assert_called_once()
         tracker.db.update_run_status.assert_called_once()
 
+    # WHY: RunDatabase opens a SQLite connection — verify cancellation without real DB
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
     def test_cancel_run_updates_status(self, mock_db_cls: MagicMock):
         """cancel_run marks the run as cancelled."""
