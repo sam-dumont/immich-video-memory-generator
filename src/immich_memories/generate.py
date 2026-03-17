@@ -6,6 +6,7 @@ All UI interaction is replaced by a progress callback.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 from collections.abc import Callable
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.cache.video_cache import VideoDownloadCache
     from immich_memories.config_loader import Config
+    from immich_memories.tracking import RunTracker
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,7 @@ class GenerationParams:
     # Music
     music_path: Path | None = None
     music_volume: float = 0.5
+    no_music: bool = False
 
     # Upload
     upload_enabled: bool = False
@@ -71,6 +74,12 @@ class GenerationParams:
     # Clip overrides from review step
     clip_segments: dict[str, tuple[float, float]] = field(default_factory=dict)
     clip_rotations: dict[str, int | None] = field(default_factory=dict)
+
+    # Output format and display
+    scale_mode: str | None = None
+    output_format: str | None = None
+    add_date_overlay: bool = False
+    debug_preserve_intermediates: bool = False
 
     # Privacy mode
     privacy_mode: bool = False
@@ -147,12 +156,8 @@ def generate_memory(params: GenerationParams) -> Path:
         result_path = assembler.assemble_with_titles(assembly_clips, result_output_path)
         run_tracker.complete_phase(items_processed=len(assembly_clips))
 
-        # Phase 3: Music (if provided)
-        if params.music_path and params.music_path.exists():
-            _report(params, "music", 0.9, "Adding music...")
-            run_tracker.start_phase("music", 1)
-            _apply_music_file(result_path, params.music_path, params.music_volume)
-            run_tracker.complete_phase(items_processed=1)
+        # Phase 3: Music
+        _run_music_phase(params, assembly_clips, result_path, run_output_dir, run_tracker)
 
         # Phase 4: Upload (if requested)
         if params.upload_enabled and params.client:
@@ -426,13 +431,26 @@ def _build_assembly_settings(
         "none": TransitionType.NONE,
     }.get(params.transition.lower(), TransitionType.CROSSFADE)
 
-    resolution_map = {"4K": (3840, 2160), "1080p": (1920, 1080), "720p": (1280, 720)}
+    resolution_map = {"4k": (3840, 2160), "1080p": (1920, 1080), "720p": (1280, 720)}
     auto_resolution = params.output_resolution is None
     target_resolution = (
-        resolution_map.get(params.output_resolution or "") if not auto_resolution else None
+        resolution_map.get((params.output_resolution or "").lower())
+        if not auto_resolution
+        else None
     )
 
     title_screen_settings = _build_title_settings(params, config, assembly_clips)
+
+    # Scale mode: CLI/param > config > default
+    effective_scale_mode = params.scale_mode or config.defaults.scale_mode
+
+    # Output format → codec mapping
+    _format_to_codec = {"mp4": "h264", "prores": "prores"}
+    output_codec: str = (
+        _format_to_codec.get(params.output_format.lower(), config.output.codec)
+        if params.output_format
+        else config.output.codec
+    )
 
     return AssemblySettings(
         transition=transition_type,
@@ -441,6 +459,10 @@ def _build_assembly_settings(
         auto_resolution=auto_resolution,
         target_resolution=target_resolution,
         title_screens=title_screen_settings,
+        scale_mode=effective_scale_mode,
+        output_codec=output_codec,
+        add_date_overlay=params.add_date_overlay,
+        debug_preserve_intermediates=params.debug_preserve_intermediates,
         privacy_mode=params.privacy_mode,
     )
 
@@ -512,6 +534,127 @@ def _create_assembler(settings: AssemblySettings, run_id: str):
     from immich_memories.processing.video_assembler import VideoAssembler
 
     return VideoAssembler(settings, run_id=run_id)
+
+
+def _resolve_music_file(
+    params: GenerationParams,
+    assembly_clips: list[AssemblyClip],
+    run_output_dir: Path,
+) -> Path | None:
+    """Determine the music file to use: provided path, auto-generated, or None."""
+    if params.no_music:
+        return None
+    if params.music_path and params.music_path.exists():
+        return params.music_path
+    if not params.music_path and _music_config_available(params.config):
+        _report(params, "music", 0.85, "Generating AI music...")
+        return _auto_generate_music(params, assembly_clips, run_output_dir)
+    return None
+
+
+def _run_music_phase(
+    params: GenerationParams,
+    assembly_clips: list[AssemblyClip],
+    result_path: Path,
+    run_output_dir: Path,
+    run_tracker: RunTracker,
+) -> None:
+    """Resolve and apply music to the assembled video."""
+    music_file = _resolve_music_file(params, assembly_clips, run_output_dir)
+    if not music_file:
+        return
+    _report(params, "music", 0.9, "Mixing music...")
+    run_tracker.start_phase("music", 1)
+    _apply_music_file(result_path, music_file, params.music_volume)
+    run_tracker.complete_phase(items_processed=1)
+
+
+def _music_config_available(config: Config) -> bool:
+    """Check if any AI music generation backend is configured and enabled."""
+    ace = getattr(config, "ace_step", None)
+    mg = getattr(config, "musicgen", None)
+    return bool((ace and ace.enabled) or (mg and mg.enabled))
+
+
+def _auto_generate_music(
+    params: GenerationParams,
+    assembly_clips: list[AssemblyClip],
+    run_output_dir: Path,
+) -> Path | None:
+    """Auto-generate music using configured AI backends.
+
+    Returns the path to the generated music file, or None if generation
+    fails or no backend is available.
+    """
+    if not _music_config_available(params.config):
+        return None
+
+    try:
+        from immich_memories.audio.music_generator import generate_music_for_video
+        from immich_memories.audio.music_generator_client import MusicGenClientConfig
+        from immich_memories.audio.music_generator_models import VideoTimeline
+
+        clip_data: list[tuple[float, str, int | None]] = [
+            (
+                clip.duration,
+                clip.llm_emotion or "calm",
+                _clip_month_from_date(clip.date),
+            )
+            for clip in assembly_clips
+        ]
+
+        config = params.config
+        timeline = VideoTimeline.from_clips(
+            clips=clip_data,
+            title_duration=(
+                config.title_screens.title_duration if config.title_screens.enabled else 0
+            ),
+            ending_duration=(
+                config.title_screens.ending_duration if config.title_screens.enabled else 0
+            ),
+        )
+
+        musicgen_config = MusicGenClientConfig.from_app_config(config.musicgen)
+        musicgen_config.num_versions = 1  # CLI: just generate one, accept it
+
+        music_dir = run_output_dir / "music"
+        music_dir.mkdir(parents=True, exist_ok=True)
+
+        def music_progress(version_idx: int, status: str, progress: float, detail: object) -> None:
+            _report(params, "music", 0.85 + (progress / 100.0) * 0.05, f"Music: {status}")
+
+        result = asyncio.run(
+            generate_music_for_video(
+                timeline=timeline,
+                output_dir=music_dir,
+                config=musicgen_config,
+                progress_callback=music_progress,
+                app_config=config,
+                memory_type=params.memory_type,
+            )
+        )
+
+        if result and result.versions:
+            result.selected_version = 0
+            selected = result.selected
+            if selected and selected.full_mix and selected.full_mix.exists():
+                logger.info(f"Auto-generated music: {selected.full_mix}")
+                return selected.full_mix
+
+    except Exception:
+        logger.warning("Auto music generation failed, continuing without music", exc_info=True)
+
+    return None
+
+
+def _clip_month_from_date(date_str: str | None) -> int | None:
+    """Extract month from a YYYY-MM-DD date string."""
+    if not date_str:
+        return None
+    try:
+        return int(date_str.split("-")[1])
+    except (IndexError, ValueError):
+        return None
 
 
 def _apply_music_file(video_path: Path, music_path: Path, volume: float) -> None:

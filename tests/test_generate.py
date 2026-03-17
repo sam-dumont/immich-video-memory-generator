@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -13,6 +14,7 @@ from immich_memories.generate import (
     GenerationParams,
     _build_assembly_settings,
     _clip_location_name,
+    _music_config_available,
     _report,
     _total_clip_duration,
     assets_to_clips,
@@ -198,6 +200,140 @@ class TestTitleOverride:
         title_settings = _build_title_settings(params, Config(), [])
         assert title_settings.title_override == "My Custom Title"
         assert title_settings.subtitle_override == "Summer 2025"
+
+
+class TestMusicConfigAvailable:
+    def test_returns_false_when_nothing_configured(self):
+        config = Config()
+        assert _music_config_available(config) is False
+
+    def test_returns_true_when_musicgen_enabled(self):
+        config = Config()
+        config.musicgen.enabled = True
+        assert _music_config_available(config) is True
+
+    def test_returns_true_when_ace_step_enabled(self):
+        config = Config()
+        config.ace_step.enabled = True
+        assert _music_config_available(config) is True
+
+    def test_returns_false_when_both_disabled(self):
+        config = Config()
+        config.musicgen.enabled = False
+        config.ace_step.enabled = False
+        assert _music_config_available(config) is False
+
+
+class TestAutoMusicGeneration:
+    """Test that generate_memory() auto-generates music when config is available."""
+
+    def test_no_music_flag_skips_generation(self):
+        """no_music=True should prevent any music generation."""
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/out.mp4"),
+            config=Config(),
+            no_music=True,
+        )
+        assert params.no_music is True
+
+    def test_no_music_defaults_false(self):
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/out.mp4"),
+            config=Config(),
+        )
+        assert params.no_music is False
+
+    def test_auto_music_called_when_config_available(self, tmp_path):
+        """When no music_path and config has music backends, auto-generate is called."""
+        from immich_memories.generate import _auto_generate_music
+        from immich_memories.processing.assembly_config import AssemblyClip
+
+        config = Config()
+        config.musicgen.enabled = True
+
+        assembly_clips = [
+            AssemblyClip(path=tmp_path / "a.mp4", duration=5.0),
+        ]
+        params = GenerationParams(
+            clips=[],
+            output_path=tmp_path / "out.mp4",
+            config=config,
+        )
+
+        # WHY: mock the async music generation to avoid real API calls
+        with patch(
+            "immich_memories.generate.asyncio.run",
+        ) as mock_run:
+            from immich_memories.audio.music_generator_models import (
+                GeneratedMusic,
+                MusicGenerationResult,
+                VideoTimeline,
+            )
+
+            fake_music_path = tmp_path / "music.wav"
+            fake_music_path.write_bytes(b"fake audio")
+            mock_run.return_value = MusicGenerationResult(
+                versions=[
+                    GeneratedMusic(
+                        version_id=0,
+                        full_mix=fake_music_path,
+                        duration=30.0,
+                        prompt="test",
+                        mood="happy",
+                    )
+                ],
+                timeline=VideoTimeline(),
+                mood="happy",
+            )
+
+            result = _auto_generate_music(params, assembly_clips, tmp_path / "run_output")
+            assert result is not None
+            assert result == fake_music_path
+
+    def test_auto_music_returns_none_when_no_config(self, tmp_path):
+        """When no music backend is configured, auto-generate returns None."""
+        from immich_memories.generate import _auto_generate_music
+        from immich_memories.processing.assembly_config import AssemblyClip
+
+        config = Config()
+        # Both disabled by default
+        assembly_clips = [
+            AssemblyClip(path=tmp_path / "a.mp4", duration=5.0),
+        ]
+        params = GenerationParams(
+            clips=[],
+            output_path=tmp_path / "out.mp4",
+            config=config,
+        )
+        result = _auto_generate_music(params, assembly_clips, tmp_path / "run_output")
+        assert result is None
+
+    def test_auto_music_returns_none_on_failure(self, tmp_path):
+        """If music generation fails, return None instead of crashing."""
+        from immich_memories.generate import _auto_generate_music
+        from immich_memories.processing.assembly_config import AssemblyClip
+
+        config = Config()
+        config.musicgen.enabled = True
+
+        assembly_clips = [
+            AssemblyClip(path=tmp_path / "a.mp4", duration=5.0),
+        ]
+        params = GenerationParams(
+            clips=[],
+            output_path=tmp_path / "out.mp4",
+            config=config,
+        )
+
+        # WHY: mock to simulate API failure
+        with patch(
+            "immich_memories.generate.asyncio.run",
+            side_effect=RuntimeError("API unreachable"),
+        ):
+            result = _auto_generate_music(params, assembly_clips, tmp_path / "run_output")
+            assert result is None
 
 
 class TestClipLocationName:

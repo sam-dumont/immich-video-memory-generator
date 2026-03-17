@@ -212,6 +212,7 @@ class TestLivePhotoSpectrogram:
 
         config.title_screens.enabled = False
         output = tmp_path / "live_memory.mp4"
+        # WHY: test focuses on burst merging, not music generation
 
         params = GenerationParams(
             clips=[clip],
@@ -220,6 +221,7 @@ class TestLivePhotoSpectrogram:
             client=client,
             transition="cut",
             upload_enabled=False,
+            no_music=True,
         )
 
         result = generate_memory(params)

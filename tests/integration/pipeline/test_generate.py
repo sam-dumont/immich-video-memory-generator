@@ -43,6 +43,7 @@ class TestGenerateMemoryIntegration:
             transition_duration=0.3,
             date_start=date(2025, 1, 1),
             date_end=date(2025, 12, 31),
+            no_music=True,
             progress_callback=lambda phase, _pct, _msg: progress_calls.append(phase),
         )
 
@@ -84,6 +85,7 @@ class TestGenerateMemoryIntegration:
             transition="cut",
             date_start=date(2025, 6, 1),
             date_end=date(2025, 6, 30),
+            no_music=True,
         )
 
         result = generate_memory(params)

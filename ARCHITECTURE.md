@@ -104,7 +104,8 @@ src/immich_memories/
 │   ├── silence_detection.py    # Audio silence detection
 │   ├── apple_vision.py         # macOS Vision framework integration
 │   ├── apple_vision_image.py   # Vision image conversion helpers
-│   └── llm_query.py            # LLM query helpers
+│   ├── llm_query.py            # LLM query helpers
+│   └── live_photo_pipeline.py  # Live Photo fetch, cluster, convert (shared CLI/UI)
 │
 ├── processing/                 # Video processing & assembly
 │   ├── video_assembler.py      # VideoAssembler (composes 6 services)
@@ -219,7 +220,7 @@ src/immich_memories/
 │       ├── step2_review.py         # Clip review orchestration
 │       ├── step2_loading.py        # Loading state UI
 │       ├── step2_helpers.py        # Shared step2 utilities
-│       ├── _step2_live_photos.py   # Live photo handling
+│       ├── _step2_live_photos.py   # Re-exports from analysis/live_photo_pipeline
 │       ├── clip_grid.py            # Clip card grid display
 │       ├── clip_review.py          # Clip refinement controls
 │       ├── clip_pipeline.py        # Pipeline execution UI
