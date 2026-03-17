@@ -366,6 +366,9 @@ def _gap_aware_trims(
             right = max((shutter_abs[i] + shutter_abs[i + 1]) / 2, clip_starts[i + 1])
         ls = max(0.0, left - clip_starts[i])
         le = min(durations[i], right - clip_starts[i])
+        # Ensure positive duration (can go negative for non-overlapping misaligned pairs)
+        le = max(le, ls + 0.1)
+        le = min(le, durations[i])
         trims.append((round(ls, 4), round(le, 4)))
     return trims
 

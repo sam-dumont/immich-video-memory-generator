@@ -103,6 +103,22 @@ test:
 benchmark:
 	uv run pytest tests/benchmarks/ -v --benchmark-only
 
+test-integration-live-photos:  ## Run ONLY live photo merge tests (~30s, needs Immich)
+	uv run pytest tests/integration/live_photos/ -v -m integration --log-cli-level=INFO --tb=short \
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/live-photos-coverage.xml --cov-fail-under=0
+
+test-integration-assembly:  ## Run ONLY FFmpeg assembly tests (~10s, no Immich needed)
+	uv run pytest tests/integration/assembly/ -v -m integration --log-cli-level=INFO --tb=short \
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/assembly-coverage.xml --cov-fail-under=0
+
+test-integration-pipeline:  ## Run ONLY pipeline tests (~60s, needs Immich + FFmpeg)
+	uv run pytest tests/integration/pipeline/ -v -m integration --log-cli-level=INFO --tb=short \
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/pipeline-coverage.xml --cov-fail-under=0
+
+test-integration-cli:  ## Run ONLY CLI generate tests (SLOW ~15min, needs Immich + full pipeline)
+	uv run pytest tests/integration/cli/ -v -m integration --log-cli-level=INFO --tb=short \
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/cli-coverage.xml --cov-fail-under=0
+
 test-integration:  ## Run ALL integration-marked tests (requires FFmpeg/Immich), saves per-module coverage
 	uv run pytest -v -m integration --log-cli-level=INFO \
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/integration-coverage.xml \
