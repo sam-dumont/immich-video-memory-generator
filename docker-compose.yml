@@ -1,0 +1,37 @@
+# Immich Memories — self-hoster quickstart
+# Usage: docker compose up -d
+# Then open http://localhost:8080
+#
+# Resource requirements:
+#   Idle (UI): ~100MB RAM
+#   Analysis:  2-4GB RAM, 2+ cores (downloads + scores clips)
+#   Encoding:  4-8GB RAM, 4+ cores (FFmpeg assembly, depends on resolution)
+#
+# For GPU-accelerated title rendering or 4K output, increase limits
+# or use docker-compose.gpu.yml (see docs).
+#
+# For LLM-based clip analysis, set LLM env vars below.
+services:
+  immich-memories:
+    image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
+    container_name: immich-memories
+    ports:
+      - "8080:8080"
+    volumes:
+      - immich-memories-config:/home/immich/.immich-memories
+      - ./output:/output
+    environment:
+      IMMICH_URL: "${IMMICH_URL:-http://immich-server:2283}"
+      IMMICH_API_KEY: "${IMMICH_API_KEY}"
+      # Optional: LLM for clip content analysis (any OpenAI-compatible API)
+      # IMMICH_MEMORIES_LLM__BASE_URL: "http://your-llm:8080/v1"
+      # IMMICH_MEMORIES_LLM__MODEL: "qwen2.5-vl"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "4"
+
+volumes:
+  immich-memories-config:

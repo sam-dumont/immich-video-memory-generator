@@ -101,9 +101,11 @@ repos:
         pass_filenames: false
         types: [python]
 
-      - id: integration-tests
-        name: Integration tests (FFmpeg, only on processing/titles changes)
-        entry: bash -c 'make test-integration && git add tests/integration-coverage.xml tests/integration-junit.xml'
+      - id: diff-cover-check
+        name: Diff coverage check (≥80% on changed lines)
+        entry: make diff-cover-local
         language: system
         pass_filenames: false
-        files: ^(src/immich_memories/(processing|titles|analysis)/|tests/integration/)
+        types: [python]
+        stages: [pre-push]
+

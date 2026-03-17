@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 from rich.table import Table
@@ -11,6 +12,123 @@ from rich.table import Table
 from immich_memories.cli._date_resolution import resolve_date_range
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
 from immich_memories.timeperiod import DateRange
+
+if TYPE_CHECKING:
+    from rich.progress import Progress
+
+    from immich_memories.api.immich import SyncImmichClient
+    from immich_memories.config_loader import Config
+
+
+def _run_pipeline_and_generate(
+    *,
+    assets: list,
+    client: SyncImmichClient,
+    config: Config,
+    progress: Progress,
+    duration: int,
+    transition: str,
+    music: str | None,
+    output_path: Path,
+    memory_type: str | None,
+    person_names: list[str],
+    date_range: DateRange,
+    upload_to_immich: bool,
+    album: str | None,
+) -> tuple[Path, bool, str | None]:
+    """Run smart pipeline analysis + video generation.
+
+    Returns (result_path, should_upload, album_name).
+    """
+    from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
+    from immich_memories.cache.database import VideoAnalysisCache
+    from immich_memories.cache.thumbnail_cache import ThumbnailCache
+    from immich_memories.generate import GenerationParams, assets_to_clips, generate_memory
+
+    clips = assets_to_clips(assets)
+    if not clips:
+        print_error("No usable video clips (all too short)")
+        sys.exit(1)
+
+    print_success(f"{len(clips)} clips ready for generation")
+
+    # Run smart pipeline for analysis + selection
+    task = progress.add_task("Analyzing and selecting clips...", total=100)
+
+    pipeline_config = PipelineConfig(
+        hdr_only=False,
+        prioritize_favorites=True,
+    )
+    target_seconds = duration * 60
+    pipeline_config.target_clips = max(
+        10,
+        int(target_seconds / pipeline_config.avg_clip_duration),
+    )
+
+    analysis_cache = VideoAnalysisCache()
+    thumbnail_cache = ThumbnailCache()
+    pipeline = SmartPipeline(
+        client=client,
+        analysis_cache=analysis_cache,
+        thumbnail_cache=thumbnail_cache,
+        config=pipeline_config,
+    )
+
+    def pipeline_progress(status: dict) -> None:
+        pct = status.get("overall_progress", 0)
+        phase_name = status.get("current_phase", "")
+        progress.update(
+            task,
+            completed=int(pct * 100),
+            description=f"Pipeline: {phase_name}",
+        )
+
+    pipeline_result = pipeline.run(clips, progress_callback=pipeline_progress)
+    progress.update(task, completed=100)
+    selected_clips = pipeline_result.selected_clips
+    clip_segments = pipeline_result.clip_segments
+
+    if not selected_clips:
+        print_error("Pipeline selected no clips")
+        sys.exit(1)
+
+    print_success(f"Selected {len(selected_clips)} clips for final video")
+
+    # Build generation params
+    should_upload = upload_to_immich or config.upload.enabled
+    album_name = album or config.upload.album_name
+    person_name = person_names[0] if person_names else None
+
+    gen_task = progress.add_task("Generating video...", total=100)
+
+    def gen_progress(phase: str, frac: float, msg: str) -> None:
+        progress.update(
+            gen_task,
+            completed=int(frac * 100),
+            description=msg,
+        )
+
+    gen_params = GenerationParams(
+        clips=selected_clips,
+        output_path=output_path,
+        config=config,
+        client=client,
+        transition=transition,
+        music_path=Path(music) if music else None,
+        upload_enabled=should_upload,
+        upload_album=album_name,
+        clip_segments=clip_segments,
+        memory_type=memory_type,
+        person_name=person_name,
+        date_start=date_range.start,
+        date_end=date_range.end,
+        progress_callback=gen_progress,
+    )
+
+    result_path = generate_memory(gen_params)
+    progress.update(gen_task, completed=100)
+
+    return result_path, should_upload, album_name
 
 
 def register_generate_commands(main: click.Group) -> None:
@@ -259,6 +377,7 @@ def register_generate_commands(main: click.Group) -> None:
             return
 
         from immich_memories.api.immich import ImmichAPIError, SyncImmichClient
+        from immich_memories.generate import GenerationError
 
         try:
             with Progress(
@@ -367,38 +486,37 @@ def register_generate_commands(main: click.Group) -> None:
                     console.print(f"Total video duration: {total_duration / 60:.1f} minutes")
                     console.print()
 
-                    # TODO: Implement full generation pipeline
-                    # This is a placeholder showing the structure
+                    result_path, should_upload, album_name = _run_pipeline_and_generate(
+                        assets=assets,
+                        client=client,
+                        config=config,
+                        progress=progress,
+                        duration=duration,
+                        transition=transition,
+                        music=music,
+                        output_path=output_path,
+                        memory_type=memory_type,
+                        person_names=person_names,
+                        date_range=date_range,
+                        upload_to_immich=upload_to_immich,
+                        album=album,
+                    )
 
-                    print_info("Video generation pipeline:")
-                    console.print("  1. Download videos from Immich")
-                    console.print("  2. Analyze scenes and detect moments")
-                    console.print("  3. Select best moments for target duration")
-                    console.print("  4. Apply aspect ratio transforms")
-                    console.print("  5. Assemble final video with transitions")
-                    if music:
-                        console.print("  6. Add background music")
-
-                    console.print()
-                    print_info("Full generation pipeline coming soon!")
-                    print_info(f"Output would be saved to: {output_path}")
-
-                    # Upload to Immich if requested (or config-enabled)
-                    should_upload = upload_to_immich or config.upload.enabled
-                    album_name = album or config.upload.album_name
-                    if should_upload and output_path.exists():
-                        task = progress.add_task("Uploading to Immich...", total=None)
-                        result = client.upload_memory(output_path, album_name=album_name)
-                        progress.update(task, completed=True)
-                        print_success(f"Uploaded to Immich (asset: {result['asset_id']})")
-                        if result["album_id"]:
-                            print_success(f"Added to album: {album_name}")
+                console.print()
+                print_success(f"Video saved to: {result_path}")
+                if should_upload:
+                    print_success(f"Uploaded to Immich (album: {album_name or 'none'})")
 
         except ImmichAPIError as e:
             print_error(f"Immich API error: {e}")
             sys.exit(1)
+        except GenerationError as e:
+            print_error(str(e))
+            sys.exit(1)
         except Exception as e:
-            print_error(f"Error: {e}")
+            from immich_memories.security import sanitize_error_message
+
+            print_error(f"Error: {sanitize_error_message(str(e))}")
             sys.exit(1)
 
     # Register analyze and export-project commands from separate module

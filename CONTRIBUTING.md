@@ -54,11 +54,46 @@ The **Makefile** is the single source of truth. Run `make help` to see everythin
 Key commands:
 ```bash
 make test              # Unit tests
-make test-integration  # Real FFmpeg tests (requires FFmpeg)
+make test-integration  # Real FFmpeg + integration tests (requires FFmpeg)
 make ci                # Full CI pipeline locally
 make critique          # AI smell audit
 make mutation          # Mutation testing (slow, weekly CI)
 ```
+
+### Testing tiers
+
+| Tier | Where | Command | What it needs |
+|------|-------|---------|---------------|
+| **Unit tests** | CI + local | `make test` | Nothing external |
+| **Integration tests** | Local only | `make test-integration` | FFmpeg + Immich server |
+
+**Unit tests** cover pure logic: scoring math, config parsing, data models, helpers.
+They run in CI on every PR. No FFmpeg, no Immich, no network needed.
+
+**Integration tests** cover the real pipeline: download from Immich, FFmpeg assembly,
+video output validation. They run locally because they need your Immich server and
+FFmpeg. They skip gracefully if services aren't available.
+
+### Integration tests and diff-cover
+
+If CI's diff-cover fails because changed lines aren't covered by unit tests:
+
+```bash
+make test-integration   # Runs real FFmpeg + Immich tests, generates coverage XML
+git add tests/integration-coverage.xml tests/integration-junit.xml
+git commit --amend      # Add coverage files to your commit
+git push
+```
+
+CI merges both `coverage.xml` (unit, from CI) and `tests/integration-coverage.xml`
+(integration, committed locally) when calculating diff-cover at 80% threshold.
+
+**What integration tests cover that unit tests can't:**
+- FFmpeg filter graph construction and assembly
+- Real video download from Immich API (read-only, no writes)
+- End-to-end `generate_memory()` pipeline
+- Crossfade/transition rendering
+- Title screen generation with Taichi GPU
 
 ## Code Rules
 

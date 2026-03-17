@@ -14,7 +14,80 @@ Immich Memories connects to your self-hosted Immich server, intelligently select
 
 > **Full documentation**: [sam-dumont.github.io/immich-video-memory-generator](https://sam-dumont.github.io/immich-video-memory-generator/)
 
+### Reference Setup
+
+```mermaid
+graph LR
+    subgraph "Apple M2 Pro – 16GB RAM"
+        IM["Immich Memories<br/>Python + FFmpeg"]
+        LLM["omlx (mlx-vlm)<br/>Qwen2.5-VL local"]
+    end
+
+    subgraph "K8s Cluster (GPUs)"
+        ACE["ACE-Step 1.5<br/>T1000 8GB"]
+        MG["MusicGen API<br/>GTX 1070 8GB"]
+    end
+
+    subgraph "Synology NAS"
+        Immich["Immich v2.5.6<br/>Photos + Videos"]
+    end
+
+    IM -->|"API reads<br/>(download clips)"| Immich
+    IM -->|"Vision analysis<br/>(clip scoring)"| LLM
+    IM -->|"Background music<br/>(AI-generated)"| ACE
+    ACE -.->|"fallback"| MG
+    IM -->|"Upload back<br/>(optional)"| Immich
+```
+
+*The LLM runs locally on the Mac via [omlx](https://github.com/nicepkg/omlx) (Apple Silicon MLX). Music generation runs on a K8s cluster with dedicated GPUs. Both are optional — the tool works without them, just without AI clip descriptions and generated music.*
+
 ---
+
+## Docker (recommended for self-hosters)
+
+```bash
+# 1. Download the compose file
+curl -O https://raw.githubusercontent.com/sam-dumont/immich-video-memory-generator/main/docker-compose.yml
+
+# 2. Set your Immich connection
+export IMMICH_URL="http://your-immich-server:2283"
+export IMMICH_API_KEY="your-api-key"
+
+# 3. Start
+docker compose up -d
+
+# 4. Open http://localhost:8080
+```
+
+### Resource Requirements
+
+| Phase | RAM | CPU | Time estimate |
+|-------|-----|-----|---------------|
+| Idle (UI) | ~100MB | minimal | — |
+| Analyzing clips | 2-4GB | 2+ cores | ~1 min per 10 clips |
+| Encoding (1080p) | 4GB | 4 cores | ~2 min for 5 min video |
+| Encoding (4K) | 6-8GB | 4+ cores | ~5 min for 5 min video |
+
+Default Docker limits: 4GB RAM, 4 CPUs. This is **not a NAS app** — video analysis and encoding need real compute. Best run on a machine with 8GB+ RAM.
+
+> **Developed and tested on:** Apple M2 Pro, 16GB RAM, macOS. Not yet tested on other hardware. If you run it on Linux/x86, Synology, Unraid, or Raspberry Pi — please [report your experience](https://github.com/sam-dumont/immich-video-memory-generator/issues).
+
+### Supported Immich Versions
+
+Developed and tested against **Immich v2.5.6**. Should work with v1.100+ (uses the `/api/` endpoint prefix), but no guarantees for older versions.
+
+### Optional: LLM for smart clip analysis
+
+For AI-powered content analysis (identifies what's happening in each clip), point to any OpenAI-compatible vision model:
+
+```yaml
+# In ~/.immich-memories/config.yaml
+advanced:
+  llm:
+    provider: "openai-compatible"
+    base_url: "http://your-llm-server:8080/v1"
+    model: "qwen2.5-vl"
+```
 
 ## Quick Install
 

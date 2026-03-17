@@ -1,5 +1,6 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
+export PYTHONUNBUFFERED=1
 
 .PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-fast mutation benchmark lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
 
@@ -102,14 +103,34 @@ test:
 benchmark:
 	uv run pytest tests/benchmarks/ -v --benchmark-only
 
-test-integration:  ## Run ALL integration-marked tests (requires FFmpeg), saves coverage + results for CI merge
-	uv run pytest -v -m integration \
+test-integration:  ## Run ALL integration-marked tests (requires FFmpeg/Immich), saves per-module coverage
+	uv run pytest -v -m integration --log-cli-level=INFO \
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/integration-coverage.xml \
 		--junitxml=tests/integration-junit.xml -o junit_family=legacy \
 		--cov-fail-under=0
 	@# Fix absolute paths in coverage XML to relative (portable between local and CI)
 	@sed -i.bak 's|<source>.*src/immich_memories</source>|<source>src/immich_memories</source>|g' tests/integration-coverage.xml \
 		&& rm -f tests/integration-coverage.xml.bak
+	@echo ""
+	@echo "═══════════════════════════════════════════════════"
+	@echo "  INTEGRATION TEST PERFORMANCE REPORT"
+	@echo "═══════════════════════════════════════════════════"
+	@python3 -c "\
+	import xml.etree.ElementTree as ET; \
+	root = ET.parse('tests/integration-junit.xml').getroot(); \
+	suite = root.find('.//testsuite'); \
+	total = float(suite.get('time', 0)); \
+	tests = suite.findall('testcase'); \
+	tests.sort(key=lambda t: float(t.get('time', 0)), reverse=True); \
+	print(f'  Total: {total:.0f}s ({total/60:.1f} min)'); \
+	print(f'  Tests: {len(tests)}'); \
+	print(''); \
+	print('  Slowest tests:'); \
+	[print(f'    {float(t.get(\"time\",0)):>7.1f}s  {t.get(\"name\")}') for t in tests[:5]]; \
+	print(''); \
+	print('  All tests:'); \
+	[print(f'    {float(t.get(\"time\",0)):>7.1f}s  {t.get(\"classname\").split(\".\")[-1]}::{t.get(\"name\")}') for t in tests]; \
+	print('═══════════════════════════════════════════════════')"
 
 mutation:  ## Run mutation testing (slow — weekly CI or local deep validation)
 	uv run mutmut run --max-children 4
@@ -250,8 +271,20 @@ pip-audit:
 	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict
 	rm -f /tmp/pip-audit-reqs.txt
 
-# Diff coverage for PRs — merges CI unit coverage with local integration coverage
-# (committed by pre-commit hook as tests/integration-coverage.xml)
+diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merges integration coverage)
+	@echo "Running unit tests with coverage..."
+	@uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -q
+	@echo "Checking diff coverage against main..."
+	@COVERAGE_FILES="coverage.xml"; \
+	for f in tests/*-coverage.xml; do \
+		if [ -f "$$f" ]; then COVERAGE_FILES="$$COVERAGE_FILES $$f"; fi; \
+	done; \
+	uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=80 \
+	|| (echo "" && echo "⚠️  Diff coverage below 80%." && echo "   Run: make test-integration" && echo "   Then: git add tests/integration-coverage.xml tests/integration-junit.xml" && exit 1)
+
+# Diff coverage for PRs — merges CI unit coverage with local integration coverage.
+# If coverage is low, run `make test-integration` locally and commit the updated
+# tests/integration-coverage.xml before pushing.
 diff-cover-ci:
 	@SRC_CHANGED=$$(git diff --numstat origin/main...HEAD -- '*.py' 2>/dev/null | grep '^' | grep -v 'tests/' | awk '{s+=$$1+$$2} END {print s+0}'); \
 	echo "Changed source lines (excl tests): $${SRC_CHANGED}"; \
@@ -261,8 +294,12 @@ diff-cover-ci:
 		echo "WARN: Skipping diff-cover: $${SRC_CHANGED} source lines changed (<10). Too few for meaningful threshold."; \
 	else \
 		COVERAGE_FILES="coverage.xml"; \
-		if [ -f tests/integration-coverage.xml ]; then \
-			COVERAGE_FILES="$$COVERAGE_FILES tests/integration-coverage.xml"; \
+		for f in tests/*-coverage.xml; do \
+			if [ -f "$$f" ]; then \
+				COVERAGE_FILES="$$COVERAGE_FILES $$f"; \
+			fi; \
+		done; \
+		if [ "$$COVERAGE_FILES" != "coverage.xml" ]; then \
 			echo "Merging local integration coverage with CI coverage"; \
 		fi; \
 		uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=80; \

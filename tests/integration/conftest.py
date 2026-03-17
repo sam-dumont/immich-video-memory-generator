@@ -2,10 +2,37 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
+
+logger = logging.getLogger("test.performance")
+
+
+# ---------------------------------------------------------------------------
+# Automatic timing for ALL integration tests
+# ---------------------------------------------------------------------------
+
+_test_start_times: dict[str, float] = {}
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item):
+    """Record test start time."""
+    if "integration" in [m.name for m in item.iter_markers()]:
+        _test_start_times[item.nodeid] = time.monotonic()
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_runtest_teardown(item):
+    """Log test duration after completion."""
+    start = _test_start_times.pop(item.nodeid, None)
+    if start is not None:
+        duration = time.monotonic() - start
+        logger.info(f"TIMING: {item.nodeid} — {duration:.1f}s")
 
 
 def _has_ffmpeg() -> bool:
