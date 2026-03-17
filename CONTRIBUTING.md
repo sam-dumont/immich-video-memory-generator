@@ -60,20 +60,40 @@ make critique          # AI smell audit
 make mutation          # Mutation testing (slow, weekly CI)
 ```
 
+### Testing tiers
+
+| Tier | Where | Command | What it needs |
+|------|-------|---------|---------------|
+| **Unit tests** | CI + local | `make test` | Nothing external |
+| **Integration tests** | Local only | `make test-integration` | FFmpeg + Immich server |
+
+**Unit tests** cover pure logic: scoring math, config parsing, data models, helpers.
+They run in CI on every PR. No FFmpeg, no Immich, no network needed.
+
+**Integration tests** cover the real pipeline: download from Immich, FFmpeg assembly,
+video output validation. They run locally because they need your Immich server and
+FFmpeg. They skip gracefully if services aren't available.
+
 ### Integration tests and diff-cover
 
-Integration tests (FFmpeg, real video assembly) run separately from unit tests.
-If CI's diff-cover fails because changed lines aren't covered, run:
+If CI's diff-cover fails because changed lines aren't covered by unit tests:
 
 ```bash
-make test-integration   # Generates tests/integration-coverage.xml
+make test-integration   # Runs real FFmpeg + Immich tests, generates coverage XML
 git add tests/integration-coverage.xml tests/integration-junit.xml
 git commit --amend      # Add coverage files to your commit
+git push
 ```
 
-CI merges both `coverage.xml` (unit) and `tests/integration-coverage.xml`
-(local integration) when calculating diff-cover. The integration coverage
-is committed to the repo so CI sees it without needing FFmpeg.
+CI merges both `coverage.xml` (unit, from CI) and `tests/integration-coverage.xml`
+(integration, committed locally) when calculating diff-cover at 80% threshold.
+
+**What integration tests cover that unit tests can't:**
+- FFmpeg filter graph construction and assembly
+- Real video download from Immich API (read-only, no writes)
+- End-to-end `generate_memory()` pipeline
+- Crossfade/transition rendering
+- Title screen generation with Taichi GPU
 
 ## Code Rules
 

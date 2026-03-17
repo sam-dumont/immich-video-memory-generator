@@ -158,8 +158,22 @@ locally, CI will pass too. Use conventional commit message format (see above).
 - Do NOT test dataclass field access, property getters, or Python arithmetic
 - Do NOT mock more than 3 boundaries in a single test — if you need more, the code under test has too many dependencies
 - Every mock MUST have a `# WHY:` comment explaining what external boundary it replaces
+- Mock WRITES (uploads, database mutations), not READS — use real Immich/FFmpeg for reads
 - Integration tests (`make test-integration`) must exist for any FFmpeg pipeline change
-- Integration tests run locally via pre-commit hook (not in CI) when processing/titles code changes
+
+**Testing tiers (what runs where):**
+
+| Tier | Runs in | Command | What it tests | Needs |
+|------|---------|---------|---------------|-------|
+| Unit | CI + local | `make test` | Pure logic, scoring math, config, helpers | Nothing external |
+| Integration | Local only | `make test-integration` | Real FFmpeg assembly, real Immich reads, real pipeline | FFmpeg + Immich |
+| Coverage merge | CI | `make diff-cover-ci` | Merges unit (CI) + integration (local, committed XML) | `tests/integration-coverage.xml` committed |
+
+**Integration test workflow:**
+1. Change processing/analysis/titles code
+2. Run `make test-integration` locally (requires FFmpeg + Immich)
+3. Commit the updated `tests/integration-coverage.xml` + `tests/integration-junit.xml`
+4. Push — CI merges both coverage files for diff-cover
 
 **Comments:**
 - Do NOT write comments that describe what the next line does
