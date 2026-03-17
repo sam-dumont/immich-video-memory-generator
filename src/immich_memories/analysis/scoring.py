@@ -21,6 +21,7 @@ from immich_memories.analysis.scenes import Scene, get_video_info
 
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
+    from immich_memories.config_models import AnalysisConfig, ContentAnalysisConfig
     from immich_memories.memory_types.presets import ScoringProfile
 
 logger = logging.getLogger(__name__)
@@ -549,6 +550,8 @@ class SceneScorer:
         max_optimal_duration: float = 10.0,
         target_extraction_ratio: float = 0.15,
         min_duration: float = 2.0,
+        content_analysis_config: ContentAnalysisConfig | None = None,
+        analysis_config: AnalysisConfig | None = None,
     ):
         """Initialize the scorer with component weights and duration settings."""
         self.face_weight = face_weight
@@ -562,6 +565,8 @@ class SceneScorer:
         self._max_optimal_duration = max_optimal_duration
         self._target_extraction_ratio = target_extraction_ratio
         self._min_duration = min_duration
+        self._content_analysis_config = content_analysis_config
+        self._analysis_config = analysis_config
 
         # Check for Apple Vision (GPU-accelerated on Mac)
         self._use_vision = check_vision_available()
@@ -707,16 +712,18 @@ class SceneScorer:
             return 0.0
 
         try:
-            from immich_memories.config import get_config
+            ca_config = self._content_analysis_config
+            if ca_config is None:
+                from immich_memories.config import get_config
 
-            config = get_config()
+                ca_config = get_config().content_analysis
             analysis = self._content_analyzer.analyze_segment(
                 video_path,
                 scene.start_time,
                 scene.end_time,
-                num_frames=config.content_analysis.analyze_frames,
+                num_frames=ca_config.analyze_frames,
             )
-            if analysis.confidence >= config.content_analysis.min_confidence:
+            if analysis.confidence >= ca_config.min_confidence:
                 return analysis.content_score
             return 0.5
         except Exception as e:
@@ -821,18 +828,18 @@ class SceneScorer:
         use_scene_detection: bool | None = None,
     ) -> list[MomentScore]:
         """Sample video and score segments, sorted by score (best first)."""
-        from immich_memories.config import get_config
-
         video_path = Path(video_path)
         if not video_path.exists():
             raise FileNotFoundError(f"Video not found: {video_path}")
 
-        config = get_config()
+        a_config = self._analysis_config
+        if a_config is None:
+            from immich_memories.config import get_config
+
+            a_config = get_config().analysis
 
         should_use_scene_detection = (
-            use_scene_detection
-            if use_scene_detection is not None
-            else config.analysis.use_scene_detection
+            use_scene_detection if use_scene_detection is not None else a_config.use_scene_detection
         )
 
         video_duration = get_video_info(video_path).get("duration", 0)
@@ -844,7 +851,7 @@ class SceneScorer:
         segments = self._get_segments(
             video_path,
             should_use_scene_detection,
-            config,
+            a_config,
             segment_duration,
             overlap,
         )

@@ -34,6 +34,7 @@ from immich_memories.analysis.segment_generation import (
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
     from immich_memories.audio.audio_models import AudioAnalysisResult
+    from immich_memories.config_models import AudioContentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ class UnifiedSegmentAnalyzer:
         target_extraction_ratio: float = 0.15,
         duration_weight: float = 0.15,
         audio_analyzer: object | None = None,
+        audio_content_config: AudioContentConfig | None = None,
     ):
         """Initialize the unified analyzer.
 
@@ -89,6 +91,8 @@ class UnifiedSegmentAnalyzer:
             max_optimal_duration: Max optimal duration for long sources (default 10s).
             target_extraction_ratio: Target ratio of clip to source (default 0.15).
             duration_weight: Weight for duration preference score (default 0.15).
+            audio_content_config: AudioContentConfig for lazy audio analyzer init.
+                                  Falls back to get_config().
         """
         self.scorer = scorer or SceneScorer()
         self.content_analyzer = content_analyzer
@@ -104,6 +108,7 @@ class UnifiedSegmentAnalyzer:
         self.max_optimal_duration = max_optimal_duration
         self.target_extraction_ratio = target_extraction_ratio
         self.duration_weight = duration_weight
+        self._audio_content_config = audio_content_config
 
         self._scene_detector = SceneDetector()
         self._audio_analyzer = audio_analyzer  # Injected or lazy-created
@@ -470,14 +475,17 @@ class UnifiedSegmentAnalyzer:
 
         try:
             from immich_memories.audio.content_analyzer import AudioContentAnalyzer
-            from immich_memories.config import get_config
 
             if self._audio_analyzer is None:
-                config = get_config()
+                ac_config = self._audio_content_config
+                if ac_config is None:
+                    from immich_memories.config import get_config
+
+                    ac_config = get_config().audio_content
                 self._audio_analyzer = AudioContentAnalyzer(
-                    use_panns=config.audio_content.use_panns,
-                    min_confidence=config.audio_content.min_confidence,
-                    laughter_confidence=config.audio_content.laughter_confidence,
+                    use_panns=ac_config.use_panns,
+                    min_confidence=ac_config.min_confidence,
+                    laughter_confidence=ac_config.laughter_confidence,
                 )
 
             result = self._audio_analyzer.analyze(video_path, video_duration)

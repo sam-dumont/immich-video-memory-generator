@@ -30,16 +30,17 @@ def get_thumbnail(asset_id: str) -> bytes | None:
         return None
 
 
-def _get_preview_path(asset_id: str) -> Path | None:
+def _get_preview_path(asset_id: str, *, config=None) -> Path | None:
     """Get or create an H.264 480p preview for a clip (Chrome/Windows compatible).
 
     Returns the path to the preview file, or None if the source isn't cached.
     """
     import subprocess
 
-    from immich_memories.config import get_config
+    if config is None:
+        from immich_memories.config import get_config
 
-    config = get_config()
+        config = get_config()
     preview_dir = config.cache.cache_path / "preview-cache"
     preview_dir.mkdir(parents=True, exist_ok=True)
 
@@ -123,19 +124,20 @@ def _get_preview_path(asset_id: str) -> Path | None:
     return None
 
 
-def _download_immich_preview(asset_id: str) -> Path | None:
+def _download_immich_preview(asset_id: str, *, config=None) -> Path | None:
     """Download transcoded preview from Immich and cache locally.
 
     Used as fallback when the source video isn't in the local cache
     (e.g. clips loaded from analysis cache without re-downloading).
     """
-    from immich_memories.config import get_config
-
     state = get_app_state()
     if not state.immich_url or not state.immich_api_key:
         return None
 
-    config = get_config()
+    if config is None:
+        from immich_memories.config import get_config
+
+        config = get_config()
     preview_dir = config.cache.cache_path / "preview-cache"
     preview_dir.mkdir(parents=True, exist_ok=True)
     preview_path = preview_dir / f"{asset_id}.mp4"

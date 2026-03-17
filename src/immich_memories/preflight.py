@@ -8,7 +8,7 @@ from enum import Enum
 
 import httpx
 
-from immich_memories.config import Config, get_config
+from immich_memories.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,8 @@ def check_immich(config: Config | None = None) -> CheckResult:
         CheckResult with status and details.
     """
     if config is None:
+        from immich_memories.config import get_config
+
         config = get_config()
 
     if not config.immich.url:
@@ -210,6 +212,8 @@ def check_llm(config: Config | None = None) -> CheckResult:
         CheckResult with status and details.
     """
     if config is None:
+        from immich_memories.config import get_config
+
         config = get_config()
 
     provider = config.llm.provider
@@ -292,6 +296,8 @@ def run_preflight_checks(config: Config | None = None) -> list[CheckResult]:
         List of check results.
     """
     if config is None:
+        from immich_memories.config import get_config
+
         config = get_config()
 
     return [

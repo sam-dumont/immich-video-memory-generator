@@ -12,7 +12,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from immich_memories.config import get_config
 from immich_memories.config_loader import Config
 from immich_memories.processing.clip_probing import (
     get_video_duration,
@@ -71,7 +70,13 @@ class ClipSegment:
 class ClipExtractor:
     """Extract and process video clips."""
 
-    def __init__(self, output_dir: Path | None = None):
+    def __init__(self, output_dir: Path | None = None, config: Config | None = None):
+        if config is None:
+            from immich_memories.config import get_config
+
+            config = get_config()
+        self._config = config
+
         if output_dir is None:
             output_dir = Path(tempfile.gettempdir()) / "immich_memories" / "clips"
         self.output_dir = Path(output_dir)
@@ -292,7 +297,7 @@ class ClipExtractor:
     ) -> list[str]:
         validate_video_path(segment.source_path, must_exist=True)
 
-        config = get_config()
+        config = self._config
         codec = "h264" if config.output.codec in ("h264", "h265") else "h264"
 
         cmd = ["ffmpeg", "-y"]
@@ -435,7 +440,7 @@ class ClipExtractor:
             progress_callback: Optional progress callback.
             use_hw_accel: Whether to use hardware acceleration if available.
         """
-        config = get_config()
+        config = self._config
         hw_caps = _get_hw_caps() if use_hw_accel and config.hardware.enabled else None
 
         cmd = self._build_reencode_command(segment, output_path, hw_caps)

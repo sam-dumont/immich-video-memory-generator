@@ -6,11 +6,13 @@ import logging
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 
-from immich_memories.config import get_config
+if TYPE_CHECKING:
+    from immich_memories.config_models import AnalysisConfig, HardwareAccelConfig
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +34,13 @@ def _check_cuda_available() -> bool:
     return _cuda_available
 
 
-def _use_cuda_for_analysis() -> bool:
+def _use_cuda_for_analysis(hardware_config: HardwareAccelConfig | None = None) -> bool:
     """Check if we should use CUDA for analysis."""
-    config = get_config()
-    return config.hardware.enabled and config.hardware.gpu_analysis and _check_cuda_available()
+    if hardware_config is None:
+        from immich_memories.config import get_config
+
+        hardware_config = get_config().hardware
+    return hardware_config.enabled and hardware_config.gpu_analysis and _check_cuda_available()
 
 
 @dataclass
@@ -82,6 +87,7 @@ class SceneDetector:
         threshold: float | None = None,
         min_scene_duration: float | None = None,
         adaptive_threshold: bool = True,
+        analysis_config: AnalysisConfig | None = None,
     ):
         """Initialize the scene detector.
 
@@ -89,10 +95,14 @@ class SceneDetector:
             threshold: Detection threshold (lower = more sensitive).
             min_scene_duration: Minimum scene duration in seconds.
             adaptive_threshold: Use adaptive threshold detection.
+            analysis_config: Analysis config for defaults. Falls back to get_config().
         """
-        config = get_config()
-        self.threshold = threshold or config.analysis.scene_threshold
-        self.min_scene_duration = min_scene_duration or config.analysis.min_scene_duration
+        if analysis_config is None:
+            from immich_memories.config import get_config
+
+            analysis_config = get_config().analysis
+        self.threshold = threshold or analysis_config.scene_threshold
+        self.min_scene_duration = min_scene_duration or analysis_config.min_scene_duration
         self.adaptive_threshold = adaptive_threshold
 
     def detect(

@@ -9,7 +9,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from immich_memories.config import get_config
 from immich_memories.processing.assembly_config import (
     AssemblyClip,
     AssemblySettings,
@@ -95,6 +94,8 @@ class ClipEncoder:
             return target_resolution
         if self.settings.target_resolution:
             return self.settings.target_resolution
+        from immich_memories.config import get_config
+
         return get_config().output.resolution_tuple
 
     def resolve_encode_hdr(self, clip: AssemblyClip) -> tuple[str, str]:

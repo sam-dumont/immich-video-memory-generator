@@ -19,6 +19,15 @@ def _make_date_range(
     return DateRange(start=start, end=end)
 
 
+def _make_config(**overrides) -> MagicMock:
+    """Build a mock Config with sane defaults."""
+    cfg = MagicMock()
+    cfg.title_llm = overrides.get("title_llm")
+    cfg.llm.model = overrides.get("llm_model", "")
+    cfg.title_screens.locale = overrides.get("locale", "en")
+    return cfg
+
+
 class TestCollectClipDescriptions:
     """Extract LLM descriptions from analysis cache."""
 
@@ -81,18 +90,12 @@ class TestGenerateTitleAfterPipeline:
 
         state = AppState()
         state.date_range = _make_date_range()
+        state.config = _make_config(llm_model="")
 
-        with (
-            patch(
-                "immich_memories.ui.pages.pipeline_title.get_config", return_value=MagicMock()
-            ) as mock_cfg,
-            patch(
-                "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
-                new_callable=AsyncMock,
-            ) as mock_llm,
-        ):
-            mock_cfg.return_value.title_llm = None
-            mock_cfg.return_value.llm.model = ""
+        with patch(
+            "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
+            new_callable=AsyncMock,
+        ) as mock_llm:
             await generate_title_after_pipeline(state)
 
         mock_llm.assert_not_called()
@@ -104,17 +107,12 @@ class TestGenerateTitleAfterPipeline:
 
         state = AppState()
         state.date_range = None
+        state.config = _make_config(llm_model="omlx")
 
-        with (
-            patch(
-                "immich_memories.ui.pages.pipeline_title.get_config", return_value=MagicMock()
-            ) as mock_cfg,
-            patch(
-                "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
-                new_callable=AsyncMock,
-            ) as mock_llm,
-        ):
-            mock_cfg.return_value.llm.model = "omlx"
+        with patch(
+            "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
+            new_callable=AsyncMock,
+        ) as mock_llm:
             await generate_title_after_pipeline(state)
 
         mock_llm.assert_not_called()
@@ -128,6 +126,7 @@ class TestGenerateTitleAfterPipeline:
         state.date_range = _make_date_range()
         state.memory_type = "year"
         state.analysis_cache = None
+        state.config = _make_config(llm_model="omlx")
 
         suggestion = TitleSuggestion(
             title="Summer 2024",
@@ -136,19 +135,11 @@ class TestGenerateTitleAfterPipeline:
             map_mode=None,
         )
 
-        with (
-            patch(
-                "immich_memories.ui.pages.pipeline_title.get_config", return_value=MagicMock()
-            ) as mock_cfg,
-            patch(
-                "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
-                new_callable=AsyncMock,
-                return_value=suggestion,
-            ),
+        with patch(
+            "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
+            new_callable=AsyncMock,
+            return_value=suggestion,
         ):
-            cfg = mock_cfg.return_value
-            cfg.llm.model = "omlx"
-            cfg.title_screens.locale = "en"
             await generate_title_after_pipeline(state)
 
         assert state.title_suggestion_title == "Summer 2024"
@@ -165,20 +156,13 @@ class TestGenerateTitleAfterPipeline:
         state.date_range = _make_date_range()
         state.memory_type = "year"
         state.analysis_cache = None
+        state.config = _make_config(llm_model="omlx")
 
-        with (
-            patch(
-                "immich_memories.ui.pages.pipeline_title.get_config", return_value=MagicMock()
-            ) as mock_cfg,
-            patch(
-                "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("unexpected"),
-            ),
+        with patch(
+            "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("unexpected"),
         ):
-            cfg = mock_cfg.return_value
-            cfg.llm.model = "omlx"
-            cfg.title_screens.locale = "en"
             # Must not raise
             await generate_title_after_pipeline(state)
 
@@ -194,6 +178,7 @@ class TestGenerateTitleAfterPipeline:
         state.date_range = _make_date_range()
         state.memory_type = "person"
         state.analysis_cache = None
+        state.config = _make_config(llm_model="omlx")
 
         person = MagicMock()
         person.name = "Alice"
@@ -201,19 +186,11 @@ class TestGenerateTitleAfterPipeline:
 
         suggestion = TitleSuggestion(title="Alice Through the Years")
 
-        with (
-            patch(
-                "immich_memories.ui.pages.pipeline_title.get_config", return_value=MagicMock()
-            ) as mock_cfg,
-            patch(
-                "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
-                new_callable=AsyncMock,
-                return_value=suggestion,
-            ) as mock_llm,
-        ):
-            cfg = mock_cfg.return_value
-            cfg.llm.model = "omlx"
-            cfg.title_screens.locale = "en"
+        with patch(
+            "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
+            new_callable=AsyncMock,
+            return_value=suggestion,
+        ) as mock_llm:
             await generate_title_after_pipeline(state)
 
         call_kwargs = mock_llm.call_args.kwargs
@@ -230,6 +207,7 @@ class TestGenerateTitleAfterPipeline:
         state.memory_type = "trip"
         state.clips = []
         state.analysis_cache = None
+        state.config = _make_config(title_llm=None, llm_model="omlx")
 
         suggestion = TitleSuggestion(
             title="A Week in Bretagne",
@@ -237,20 +215,11 @@ class TestGenerateTitleAfterPipeline:
             map_mode="excursions",
         )
 
-        with (
-            patch(
-                "immich_memories.ui.pages.pipeline_title.get_config", return_value=MagicMock()
-            ) as mock_cfg,
-            patch(
-                "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
-                new_callable=AsyncMock,
-                return_value=suggestion,
-            ),
+        with patch(
+            "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
+            new_callable=AsyncMock,
+            return_value=suggestion,
         ):
-            cfg = mock_cfg.return_value
-            cfg.title_llm = None
-            cfg.llm.model = "omlx"
-            cfg.title_screens.locale = "en"
             await generate_title_after_pipeline(state)
 
         assert state.title_suggestion_trip_type == "multi_base"

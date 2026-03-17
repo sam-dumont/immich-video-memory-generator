@@ -13,7 +13,6 @@ from itertools import chain
 from typing import TYPE_CHECKING
 
 from immich_memories.api.models import VideoClipInfo
-from immich_memories.config import get_config
 
 from .duplicate_hashing import compute_thumbnail_hash, hamming_distance
 
@@ -197,8 +196,10 @@ def cluster_thumbnails(
     """
     from .duplicates import _union_find_groups
 
-    config = get_config()
-    threshold = threshold or config.analysis.duplicate_hash_threshold
+    if threshold is None:
+        from immich_memories.config import get_config
+
+        threshold = get_config().analysis.duplicate_hash_threshold
 
     hashes = _compute_thumbnail_hashes(clips, thumbnail_cache, progress_callback)
 

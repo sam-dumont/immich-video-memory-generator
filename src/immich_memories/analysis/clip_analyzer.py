@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.audio.content_analyzer import AudioContentAnalyzer
     from immich_memories.cache.database import VideoAnalysisCache
+    from immich_memories.config_loader import Config
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +34,23 @@ class ClipAnalyzer:
         client: SyncImmichClient,
         analysis_cache: VideoAnalysisCache,
         preview_builder: PreviewBuilder,
+        app_config: Config | None = None,
     ):
         self.config = config
         self.client = client
         self.analysis_cache = analysis_cache
         self.preview_builder = preview_builder
+        self._app_config = app_config
         self._cached_content_analyzer: ContentAnalyzer | None = None
         self._cached_audio_analyzer: AudioContentAnalyzer | None = None
+
+    def _get_app_config(self) -> Config:
+        """Get the app config, falling back to get_config() if not injected."""
+        if self._app_config is None:
+            from immich_memories.config import get_config
+
+            self._app_config = get_config()
+        return self._app_config
 
     def phase_analyze(
         self,
@@ -184,9 +195,8 @@ class ClipAnalyzer:
         import tempfile
 
         from immich_memories.cache.video_cache import VideoDownloadCache
-        from immich_memories.config import get_config
 
-        config = get_config()
+        config = self._get_app_config()
         temp_file: Path | None = None
 
         if config.cache.video_cache_enabled:
@@ -226,9 +236,7 @@ class ClipAnalyzer:
 
     def _init_content_analyzer(self) -> tuple[object | None, float]:
         """Get or create cached LLM content analyzer."""
-        from immich_memories.config import get_config
-
-        config = get_config()
+        config = self._get_app_config()
         if not config.content_analysis.enabled:
             return None, 0.0
 
@@ -263,9 +271,7 @@ class ClipAnalyzer:
 
     def _get_cached_audio_analyzer(self) -> object | None:
         """Get or create a pipeline-level cached AudioContentAnalyzer."""
-        from immich_memories.config import get_config
-
-        config = get_config()
+        config = self._get_app_config()
         if not config.audio_content.enabled:
             return None
 
@@ -326,9 +332,8 @@ class ClipAnalyzer:
         """Run unified audio-aware analysis."""
         from immich_memories.analysis.scoring import SceneScorer
         from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
-        from immich_memories.config import get_config
 
-        config = get_config()
+        config = self._get_app_config()
         content_analyzer, content_weight = self._init_content_analyzer()
         audio_analyzer = self._get_cached_audio_analyzer()
 
@@ -430,13 +435,11 @@ class ClipAnalyzer:
         clip: VideoClipInfo,
     ) -> tuple[float, float, float, str | None, dict[str, object] | None]:
         """Analyze a clip and extract a preview segment."""
-        from immich_memories.config import get_config
-
         cached_result = self._check_analysis_cache(clip)
         if cached_result is not None:
             return cached_result
 
-        config = get_config()
+        config = self._get_app_config()
         analysis_video: Path | None = None
         original_video: Path | None = None
         temp_file: Path | None = None

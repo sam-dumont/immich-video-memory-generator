@@ -14,7 +14,6 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from immich_memories.config import get_config
 from immich_memories.processing.assembly_config import (
     CHUNK_SIZE,
     CHUNKED_ASSEMBLY_THRESHOLD,
@@ -55,6 +54,8 @@ def resolve_target_resolution(
     elif settings.auto_resolution:
         target_w, target_h = prober.detect_best_resolution(clips)
     else:
+        from immich_memories.config import get_config
+
         config = get_config()
         target_w, target_h = config.output.resolution_tuple
         logger.info(f"Using config resolution {target_w}x{target_h}")

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.cache.database import CachedVideoAnalysis, VideoAnalysisCache
     from immich_memories.cache.video_cache import VideoDownloadCache
+    from immich_memories.config_models import CacheConfig
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class VideoAnalyzer:
         client: SyncImmichClient,
         cache: VideoAnalysisCache,
         video_cache: VideoDownloadCache | None = None,
+        cache_config: CacheConfig | None = None,
     ):
         """Initialize the analyzer.
 
@@ -53,6 +55,7 @@ class VideoAnalyzer:
             client: Immich API client for downloading videos.
             cache: Cache for storing analysis results.
             video_cache: Optional video file cache to avoid re-downloads.
+            cache_config: Cache config for video cache setup. Falls back to get_config().
         """
         self.client = client
         self.cache = cache
@@ -60,16 +63,17 @@ class VideoAnalyzer:
 
         # Initialize video cache if enabled
         if video_cache is None:
-            from immich_memories.config import get_config
+            if cache_config is None:
+                from immich_memories.config import get_config
 
-            config = get_config()
-            if config.cache.video_cache_enabled:
+                cache_config = get_config().cache
+            if cache_config.video_cache_enabled:
                 from immich_memories.cache.video_cache import VideoDownloadCache
 
                 self.video_cache = VideoDownloadCache(
-                    cache_dir=config.cache.video_cache_path,
-                    max_size_gb=config.cache.video_cache_max_size_gb,
-                    max_age_days=config.cache.video_cache_max_age_days,
+                    cache_dir=cache_config.video_cache_path,
+                    max_size_gb=cache_config.video_cache_max_size_gb,
+                    max_age_days=cache_config.video_cache_max_age_days,
                 )
             else:
                 self.video_cache = None

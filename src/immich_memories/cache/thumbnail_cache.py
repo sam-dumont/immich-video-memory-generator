@@ -6,8 +6,6 @@ import contextlib
 import logging
 from pathlib import Path
 
-from immich_memories.config import get_config
-
 logger = logging.getLogger(__name__)
 
 
@@ -16,8 +14,9 @@ class ThumbnailCache:
 
     def __init__(self, cache_dir: Path | None = None) -> None:
         if cache_dir is None:
-            config = get_config()
-            cache_dir = config.cache.cache_path / "thumbnails"
+            from immich_memories.config import get_config
+
+            cache_dir = get_config().cache.cache_path / "thumbnails"
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 

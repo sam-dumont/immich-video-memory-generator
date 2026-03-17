@@ -17,7 +17,6 @@ import cv2
 import numpy as np
 
 from immich_memories.api.models import VideoClipInfo
-from immich_memories.config import get_config
 
 from .duplicate_hashing import compute_video_hash, hamming_distance
 
@@ -149,6 +148,7 @@ def find_duplicate_groups(
     videos: list[VideoClipInfo],
     threshold: int | None = None,
     video_paths: dict[str, Path] | None = None,
+    duplicate_hash_threshold: int | None = None,
 ) -> list[DuplicateGroup]:
     """Find groups of duplicate/similar videos.
 
@@ -160,12 +160,18 @@ def find_duplicate_groups(
         videos: List of video clip info objects.
         threshold: Hamming distance threshold for duplicates.
         video_paths: Mapping of asset IDs to local video paths.
+        duplicate_hash_threshold: Default threshold from config. Falls back to get_config().
 
     Returns:
         List of duplicate groups.
     """
-    config = get_config()
-    threshold = threshold or config.analysis.duplicate_hash_threshold
+    if threshold is None:
+        if duplicate_hash_threshold is not None:
+            threshold = duplicate_hash_threshold
+        else:
+            from immich_memories.config import get_config
+
+            threshold = get_config().analysis.duplicate_hash_threshold
 
     if not video_paths:
         return [DuplicateGroup(videos=[v]) for v in videos]

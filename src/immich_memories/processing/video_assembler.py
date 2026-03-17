@@ -7,7 +7,6 @@ from collections import OrderedDict
 from collections.abc import Callable
 from pathlib import Path
 
-from immich_memories.config import get_config
 from immich_memories.processing.assembly_config import (
     MAX_FACE_CACHE_SIZE,
     AssemblyClip,
@@ -53,11 +52,14 @@ class VideoAssembler:
         # Face detection cache: path -> (center_x, center_y) or None
         self._face_cache: OrderedDict[Path, tuple[float, float] | None] = OrderedDict()
 
-        config = get_config()
-        if self.settings.output_crf is None:
-            self.settings.output_crf = config.output.crf
-        if self.settings.transition_duration is None:
-            self.settings.transition_duration = config.defaults.transition_duration
+        if self.settings.output_crf is None or self.settings.transition_duration is None:
+            from immich_memories.config import get_config
+
+            config = get_config()
+            if self.settings.output_crf is None:
+                self.settings.output_crf = config.output.crf
+            if self.settings.transition_duration is None:
+                self.settings.transition_duration = config.defaults.transition_duration
 
         # Wire composed services
         self.prober = FFmpegProber(self.settings)

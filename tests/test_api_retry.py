@@ -21,7 +21,7 @@ def _mock_config():
     cfg.immich.url = "https://immich.example.com"
     cfg.immich.api_key = "test-api-key"
     # WHY: ImmichClient.__init__ calls get_config() for default URL/key
-    with patch("immich_memories.api.immich.get_config", return_value=cfg):
+    with patch("immich_memories.config.get_config", return_value=cfg):
         yield cfg
 
 

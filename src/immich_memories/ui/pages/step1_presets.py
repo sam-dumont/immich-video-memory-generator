@@ -372,11 +372,10 @@ def _render_trip_params() -> None:
         try:
             from immich_memories.analysis.trip_detection import detect_trips
             from immich_memories.api.immich import SyncImmichClient
-            from immich_memories.config import get_config
             from immich_memories.timeperiod import DateRange
 
-            config = get_config()
-            trips_config = config.trips
+            assert state.config is not None  # set in initialize_app
+            trips_config = state.config.trips
 
             def do_detect() -> list[DetectedTrip]:
                 from datetime import datetime

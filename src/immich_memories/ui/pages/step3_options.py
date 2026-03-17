@@ -6,7 +6,6 @@ import logging
 
 from nicegui import ui
 
-from immich_memories.config import get_config
 from immich_memories.ui.components import (
     im_button,
     im_card,
@@ -76,10 +75,12 @@ def render_step3() -> None:
     """Render Step 3: Generation Options."""
     state = get_app_state()
 
-    config = get_config()
-    ace_step_available = getattr(config, "ace_step", None) and config.ace_step.enabled
+    config = state.config
+    ace_step_available = (
+        config is not None and getattr(config, "ace_step", None) and config.ace_step.enabled
+    )
     musicgen_available = (
-        config.musicgen.enabled and config.musicgen.base_url
+        config is not None and config.musicgen.enabled and config.musicgen.base_url
     ) or ace_step_available
 
     if not state.generation_options:

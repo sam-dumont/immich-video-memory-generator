@@ -12,6 +12,10 @@ factory functions and re-exports.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from immich_memories.config_models import ContentAnalysisConfig, LLMConfig
 
 from immich_memories.analysis._content_providers import (  # noqa: F401
     OllamaContentAnalyzer,
@@ -85,31 +89,40 @@ def get_content_analyzer(
     return None
 
 
-def get_content_analyzer_from_config() -> ContentAnalyzer | None:
+def get_content_analyzer_from_config(
+    content_analysis_config: ContentAnalysisConfig | None = None,
+    llm_config: LLMConfig | None = None,
+) -> ContentAnalyzer | None:
     """Get a content analyzer using settings from config.
 
     Uses the shared LLM settings from config.llm for provider selection.
 
+    Args:
+        content_analysis_config: ContentAnalysisConfig instance. Falls back to get_config().
+        llm_config: LLMConfig instance. Falls back to get_config().
+
     Returns:
         ContentAnalyzer instance or None if no analyzer available.
     """
-    from immich_memories.config import get_config
+    if content_analysis_config is None or llm_config is None:
+        from immich_memories.config import get_config
 
-    config = get_config()
+        config = get_config()
+        if content_analysis_config is None:
+            content_analysis_config = config.content_analysis
+        if llm_config is None:
+            llm_config = config.llm
 
-    if not config.content_analysis.enabled:
+    if not content_analysis_config.enabled:
         logger.info("Content analysis is disabled in config")
         return None
 
-    llm = config.llm
-    ca = config.content_analysis
-
     return get_content_analyzer(
-        provider=llm.provider,
-        base_url=llm.base_url,
-        model=llm.model,
-        api_key=llm.api_key,
-        image_detail=ca.openai_image_detail,
-        max_height=ca.frame_max_height,
-        timeout=float(llm.timeout_seconds),
+        provider=llm_config.provider,
+        base_url=llm_config.base_url,
+        model=llm_config.model,
+        api_key=llm_config.api_key,
+        image_detail=content_analysis_config.openai_image_detail,
+        max_height=content_analysis_config.frame_max_height,
+        timeout=float(llm_config.timeout_seconds),
     )
