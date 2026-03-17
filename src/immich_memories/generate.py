@@ -279,8 +279,14 @@ def _download_and_merge_burst(
 
     clip_paths = _download_burst_clips(client, video_cache.cache_dir, burst_ids)
 
-    if not clip_paths or len(clip_paths) != len(trim_points):
+    if not clip_paths:
         return video_cache.download_or_get(client, clip.asset)
+
+    # If some downloads failed, filter to the valid subset instead of abandoning
+    if len(clip_paths) != len(trim_points):
+        clip_paths, trim_points = _align_burst_subset(clip_paths, burst_ids, trim_points)
+        if not clip_paths:
+            return video_cache.download_or_get(client, clip.asset)
 
     merged = _try_merge_burst(clip_paths, trim_points, merged_path)
     return merged or video_cache.download_or_get(client, clip.asset)
@@ -307,31 +313,50 @@ def _download_burst_clips(
     return clip_paths
 
 
+def _align_burst_subset(
+    downloaded_paths: list[Path],
+    burst_ids: list[str],
+    trim_points: list[tuple[float, float]],
+) -> tuple[list[Path], list[tuple[float, float]]]:
+    """Match downloaded clips back to their trim points by burst ID.
+
+    When some burst downloads fail, we have fewer clip_paths than trim_points.
+    Re-align by matching the downloaded filenames (which contain the burst ID)
+    to the original burst_ids ordering, keeping only paired entries.
+    """
+    # Map downloaded filenames (stem = burst ID) back to their paths
+    path_by_id = {p.stem: p for p in downloaded_paths}
+
+    aligned_paths: list[Path] = []
+    aligned_trims: list[tuple[float, float]] = []
+    for bid, trim in zip(burst_ids, trim_points, strict=False):
+        if bid in path_by_id:
+            aligned_paths.append(path_by_id[bid])
+            aligned_trims.append(trim)
+
+    return aligned_paths, aligned_trims
+
+
 def _try_merge_burst(clip_paths: list[Path], trim_points: list, merged_path: Path) -> Path | None:
-    """Try to merge burst clips, retrying with filtered clips on failure."""
+    """Try to merge burst clips, pre-validating to avoid a doomed FFmpeg run."""
     import subprocess
 
     from immich_memories.processing.live_photo_merger import build_merge_command, filter_valid_clips
 
-    cmd = build_merge_command(clip_paths, trim_points, merged_path)
+    # Pre-validate: filter out clips with no valid video stream BEFORE merging
+    valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
+    if not valid_paths:
+        return None
+
+    cmd = build_merge_command(valid_paths, valid_trims, merged_path)
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # noqa: S603
         if result.returncode == 0 and merged_path.exists():
             return merged_path
+        logger.warning(f"Live photo merge failed: {result.stderr[:500]}")
     except Exception as e:
         logger.warning(f"Live photo merge error: {e}")
 
-    # Retry with filtered valid clips
-    valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
-    if not valid_paths or len(valid_paths) >= len(clip_paths):
-        return None
-    if merged_path.exists():
-        merged_path.unlink()
-    retry_cmd = build_merge_command(valid_paths, valid_trims, merged_path)
-    with contextlib.suppress(Exception):
-        retry = subprocess.run(retry_cmd, capture_output=True, text=True, timeout=120)  # noqa: S603
-        if retry.returncode == 0 and merged_path.exists():
-            return merged_path
     return None
 
 

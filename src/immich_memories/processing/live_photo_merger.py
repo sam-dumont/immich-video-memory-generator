@@ -40,8 +40,8 @@ class LivePhotoCluster:
 
     @property
     def is_burst(self) -> bool:
-        """A cluster with 3+ photos is considered a burst."""
-        return self.count >= 3
+        """A cluster with 2+ photos is considered a burst (pairs are common for quick reactions)."""
+        return self.count >= 2
 
     @property
     def is_favorite(self) -> bool:
@@ -181,6 +181,33 @@ def filter_valid_clips(
     return valid_paths, valid_trims
 
 
+def probe_clip_has_audio(clip_path: Path) -> bool:
+    """Check if a video clip has at least one audio stream."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "csv=p=0",
+                str(clip_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.stdout.strip() == "audio"
+    except Exception:
+        return False
+
+
 def _detect_clip_hdr(clip_path: Path) -> bool:
     """Check if a video clip is HDR by probing color_transfer."""
     import subprocess
@@ -214,54 +241,142 @@ def build_merge_command(
     trim_points: list[tuple[float, float]],
     output: Path,
 ) -> list[str]:
-    """Build an FFmpeg command that trims and concatenates Live Photo clips.
+    """Build an FFmpeg command that trims and merges Live Photo clips with xfade.
 
-    Each clip is trimmed to its non-overlapping portion (from trim_points),
-    then all clips are concatenated into a single output file.
+    Each clip is trimmed to its non-overlapping portion, normalized for
+    exposure/white balance consistency, then merged with short dissolve
+    transitions at each boundary.
 
     HDR clips (iPhone HLG) are encoded with libx265 10-bit to preserve
     color metadata. SDR clips use libx264.
     """
-    is_hdr = clip_paths and _detect_clip_hdr(clip_paths[0])
+    is_hdr = bool(clip_paths) and _detect_clip_hdr(clip_paths[0])
+
+    # Check if all clips have audio — skip audio mapping if any lacks it
+    has_audio = all(probe_clip_has_audio(p) for p in clip_paths)
 
     cmd: list[str] = ["ffmpeg", "-y"]
 
-    # Input files
     for path in clip_paths:
         cmd.extend(["-i", str(path)])
 
     n = len(clip_paths)
-
-    # Build filter_complex
     parts: list[str] = []
     v_labels: list[str] = []
     a_labels: list[str] = []
 
+    # Trim durations for xfade offset calculation
+    trim_durations = [end - start for start, end in trim_points]
+
     for i, (start, end) in enumerate(trim_points):
         v_label = f"v{i}"
-        a_label = f"a{i}"
-        parts.extend(
-            (
-                f"[{i}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[{v_label}]",
-                f"[{i}:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[{a_label}]",
-            )
+        # Normalize harmonizes exposure/white balance; fps ensures matching frame rates for xfade
+        normalize = ",normalize=smoothing=20:independence=0:strength=0.4"
+        fps_filter = ",fps=30" if n > 1 else ""
+        parts.append(
+            f"[{i}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS{normalize}{fps_filter}[{v_label}]"
         )
         v_labels.append(f"[{v_label}]")
-        a_labels.append(f"[{a_label}]")
+
+        if has_audio:
+            a_label = f"a{i}"
+            parts.append(f"[{i}:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[{a_label}]")
+            a_labels.append(f"[{a_label}]")
 
     if n > 1:
-        concat_inputs = "".join(f"{v}{a}" for v, a in zip(v_labels, a_labels, strict=True))
-        parts.append(f"{concat_inputs}concat=n={n}:v=1:a=1[outv][outa]")
-        filter_str = ";\n".join(parts)
-        cmd.extend(["-filter_complex", filter_str])
-        cmd.extend(["-map", "[outv]", "-map", "[outa]"])
+        filter_str = _build_multi_clip_filter(
+            parts, v_labels, a_labels, trim_durations, has_audio, n
+        )
     else:
         filter_str = ";\n".join(parts)
-        cmd.extend(["-filter_complex", filter_str])
-        cmd.extend(["-map", f"[{v_labels[0].strip('[]')}]", "-map", f"[{a_labels[0].strip('[]')}]"])
 
+    cmd.extend(["-filter_complex", filter_str])
+
+    if n > 1:
+        cmd.extend(["-map", "[outv]"])
+        if has_audio:
+            cmd.extend(["-map", "[outa]"])
+    else:
+        cmd.extend(["-map", f"[{v_labels[0].strip('[]')}]"])
+        if has_audio:
+            cmd.extend(["-map", f"[{a_labels[0].strip('[]')}]"])
+
+    _append_encoding_args(cmd, is_hdr, has_audio, output)
+    return cmd
+
+
+def _build_multi_clip_filter(
+    parts: list[str],
+    v_labels: list[str],
+    a_labels: list[str],
+    trim_durations: list[float],
+    has_audio: bool,
+    n: int,
+) -> str:
+    """Build filter graph for multiple clips, using xfade when possible."""
+    fade_duration = 0.3
+
+    # Check if xfade is viable: each clip must be longer than the fade duration
+    xfade_viable = all(d > fade_duration * 2 for d in trim_durations)
+
+    if xfade_viable and n >= 2:
+        return _build_xfade_filter(
+            parts, v_labels, a_labels, trim_durations, has_audio, n, fade_duration
+        )
+
+    # Fallback: simple concat
+    if has_audio:
+        concat_inputs = "".join(f"{v}{a}" for v, a in zip(v_labels, a_labels, strict=True))
+        parts.append(f"{concat_inputs}concat=n={n}:v=1:a=1[outv][outa]")
+    else:
+        concat_inputs = "".join(v_labels)
+        parts.append(f"{concat_inputs}concat=n={n}:v=1:a=0[outv]")
+    return ";\n".join(parts)
+
+
+def _build_xfade_filter(
+    parts: list[str],
+    v_labels: list[str],
+    a_labels: list[str],
+    trim_durations: list[float],
+    has_audio: bool,
+    n: int,
+    fade_duration: float,
+) -> str:
+    """Build xfade chain between clips with dissolve transitions.
+
+    For N clips with durations d0..dN-1 and fade F:
+    offset_0 = d0 - F
+    offset_1 = d0 + d1 - 2*F
+    offset_k = sum(d0..dk) - (k+1)*F
+    """
+    # Chain xfade between video streams
+    current_v = v_labels[0]
+    for i in range(1, n):
+        offset = sum(trim_durations[: i + 1]) - (i) * fade_duration - fade_duration
+        out_label = "outv" if i == n - 1 else f"xv{i}"
+        parts.append(
+            f"{current_v}{v_labels[i]}xfade=transition=fade:duration={fade_duration}:offset={offset:.4f}[{out_label}]"
+        )
+        current_v = f"[{out_label}]"
+
+    # Chain acrossfade between audio streams (if audio exists)
+    if has_audio:
+        current_a = a_labels[0]
+        for i in range(1, n):
+            out_label = "outa" if i == n - 1 else f"xa{i}"
+            # acrossfade duration must match xfade for sync
+            parts.append(
+                f"{current_a}{a_labels[i]}acrossfade=d={fade_duration}:c1=tri:c2=tri[{out_label}]"
+            )
+            current_a = f"[{out_label}]"
+
+    return ";\n".join(parts)
+
+
+def _append_encoding_args(cmd: list[str], is_hdr: bool, has_audio: bool, output: Path) -> None:
+    """Append video/audio codec arguments to the FFmpeg command."""
     if is_hdr:
-        # Preserve HDR: use HEVC 10-bit with color metadata
         cmd.extend(
             [
                 "-c:v",
@@ -276,12 +391,12 @@ def build_merge_command(
                 "bt2020nc",
                 "-tag:v",
                 "hvc1",
-                "-c:a",
-                "aac",
-                str(output),
             ]
         )
     else:
-        cmd.extend(["-c:v", "libx264", "-c:a", "aac", str(output)])
+        cmd.extend(["-c:v", "libx264"])
 
-    return cmd
+    if has_audio:
+        cmd.extend(["-c:a", "aac"])
+
+    cmd.append(str(output))
