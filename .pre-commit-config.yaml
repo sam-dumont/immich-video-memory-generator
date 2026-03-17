@@ -101,3 +101,11 @@ repos:
         pass_filenames: false
         types: [python]
 
+      - id: diff-cover-check
+        name: Diff coverage check (≥80% on changed lines)
+        entry: make diff-cover-local
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [pre-push]
+

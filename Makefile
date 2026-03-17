@@ -259,7 +259,8 @@ diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merg
 	for f in tests/*-coverage.xml; do \
 		if [ -f "$$f" ]; then COVERAGE_FILES="$$COVERAGE_FILES $$f"; fi; \
 	done; \
-	uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=80
+	uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=80 \
+	|| (echo "" && echo "⚠️  Diff coverage below 80%." && echo "   Run: make test-integration" && echo "   Then: git add tests/integration-coverage.xml tests/integration-junit.xml" && exit 1)
 
 # Diff coverage for PRs — merges CI unit coverage with local integration coverage.
 # If coverage is low, run `make test-integration` locally and commit the updated
