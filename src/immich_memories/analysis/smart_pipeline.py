@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.cache.database import VideoAnalysisCache
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
+    from immich_memories.config_models import AnalysisConfig
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,7 @@ class SmartPipeline:
         thumbnail_cache: ThumbnailCache,
         config: PipelineConfig | None = None,
         run_id: str | None = None,
+        analysis_config: AnalysisConfig | None = None,
     ):
         self.client = client
         self.analysis_cache = analysis_cache
@@ -126,6 +128,7 @@ class SmartPipeline:
         self.tracker = ProgressTracker(total_phases=4)
         self.run_id = run_id
         self._run_db: RunDatabase | None = None
+        self._analysis_config = analysis_config
 
         # Wire composed services
         self.previewer = PreviewBuilder(client)
@@ -308,10 +311,12 @@ class SmartPipeline:
         self.tracker.start_phase(PipelinePhase.FILTERING, 1)
         self.tracker.start_item("Preparing analysis candidates")
 
-        from immich_memories.config import get_config
+        a_config = self._analysis_config
+        if a_config is None:
+            from immich_memories.config import get_config
 
-        config = get_config()
-        min_duration = config.analysis.min_segment_duration
+            a_config = get_config().analysis
+        min_duration = a_config.min_segment_duration
 
         # Filter too-short clips (applies to ALL clips)
         before_count = len(clips)

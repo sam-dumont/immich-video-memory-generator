@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.cache.database import VideoAnalysisCache
+    from immich_memories.config_models import AnalysisConfig, CacheConfig
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +27,34 @@ class PreviewBuilder:
     def __init__(
         self,
         client: SyncImmichClient,
+        cache_config: CacheConfig | None = None,
+        analysis_config: AnalysisConfig | None = None,
     ):
         self.client = client
+        self._cache_config = cache_config
+        self._analysis_config = analysis_config
+
+    def _resolve_cache_config(self) -> CacheConfig:
+        """Resolve cache config, falling back to get_config() if not injected."""
+        if self._cache_config is None:
+            from immich_memories.config import get_config
+
+            self._cache_config = get_config().cache
+        return self._cache_config
+
+    def _resolve_analysis_config(self) -> AnalysisConfig:
+        """Resolve analysis config, falling back to get_config() if not injected."""
+        if self._analysis_config is None:
+            from immich_memories.config import get_config
+
+            self._analysis_config = get_config().analysis
+        return self._analysis_config
 
     def find_cached_preview(self, asset_id: str, start: float, end: float) -> str | None:
         """Find or build a preview for a cached clip from the video cache."""
-        from immich_memories.config import get_config
+        c_config = self._resolve_cache_config()
 
-        config = get_config()
-
-        preview_cache_dir = config.cache.cache_path / "preview-cache"
+        preview_cache_dir = c_config.cache_path / "preview-cache"
         stable_preview = preview_cache_dir / f"{asset_id}.mp4"
         if stable_preview.exists():
             return str(stable_preview)
@@ -45,7 +64,7 @@ class PreviewBuilder:
             if p.exists():
                 return str(p)
 
-        video_cache_dir = config.cache.video_cache_path
+        video_cache_dir = c_config.video_cache_path
         if not video_cache_dir.exists():
             return None
 
@@ -77,14 +96,13 @@ class PreviewBuilder:
     def download_clip_video(self, clip: VideoClipInfo) -> tuple[Path, Path | None]:
         """Download clip video, returning (video_path, temp_file_or_None)."""
         from immich_memories.cache.video_cache import VideoDownloadCache
-        from immich_memories.config import get_config
 
-        config = get_config()
-        if config.cache.video_cache_enabled:
+        c_config = self._resolve_cache_config()
+        if c_config.video_cache_enabled:
             video_cache = VideoDownloadCache(
-                cache_dir=config.cache.video_cache_path,
-                max_size_gb=config.cache.video_cache_max_size_gb,
-                max_age_days=config.cache.video_cache_max_age_days,
+                cache_dir=c_config.video_cache_path,
+                max_size_gb=c_config.video_cache_max_size_gb,
+                max_age_days=c_config.video_cache_max_age_days,
             )
             video_path = video_cache.download_or_get(self.client, clip.asset)
             return video_path, None
@@ -109,11 +127,10 @@ class PreviewBuilder:
         import gc
 
         from immich_memories.analysis.scoring import SceneScorer
-        from immich_memories.config import get_config
 
-        app_config = get_config()
-        min_segment = app_config.analysis.min_segment_duration
-        max_segment = app_config.analysis.max_segment_duration
+        a_config = self._resolve_analysis_config()
+        min_segment = a_config.min_segment_duration
+        max_segment = a_config.max_segment_duration
 
         scorer = SceneScorer()
         moments = scorer.sample_and_score_video(

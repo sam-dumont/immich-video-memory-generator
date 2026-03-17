@@ -6,22 +6,31 @@ Extracted from unified_analyzer.py to keep file size manageable.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from immich_memories.analysis.scoring import SceneScorer
+
+if TYPE_CHECKING:
+    from immich_memories.config_loader import Config
 
 logger = logging.getLogger(__name__)
 
 
-def create_unified_analyzer_from_config():
+def create_unified_analyzer_from_config(config: Config | None = None):
     """Create a UnifiedSegmentAnalyzer from current configuration.
+
+    Args:
+        config: App config. Falls back to get_config().
 
     Returns:
         Configured UnifiedSegmentAnalyzer instance.
     """
     from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
-    from immich_memories.config import get_config
 
-    config = get_config()
+    if config is None:
+        from immich_memories.config import get_config
+
+        config = get_config()
 
     # Get content analyzer if enabled
     content_analyzer = None

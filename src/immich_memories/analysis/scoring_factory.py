@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from immich_memories.analysis.scenes import Scene
     from immich_memories.analysis.scoring import MomentScore, SceneScorer
+    from immich_memories.config_loader import Config
 
 logger = logging.getLogger(__name__)
 
@@ -60,20 +61,25 @@ def select_top_moments(
     return moments[:target_count]
 
 
-def create_scorer_from_config() -> SceneScorer:
+def create_scorer_from_config(config: Config | None = None) -> SceneScorer:
     """Create a SceneScorer with content analysis configured from config.
 
     This factory function creates a SceneScorer that respects the
     content_analysis config settings, initializing the content analyzer
     if enabled.
 
+    Args:
+        config: App config. Falls back to get_config().
+
     Returns:
         SceneScorer instance configured from current config.
     """
     from immich_memories.analysis.scoring import SceneScorer
-    from immich_memories.config import get_config
 
-    config = get_config()
+    if config is None:
+        from immich_memories.config import get_config
+
+        config = get_config()
 
     # Base weights (sum to 1.0 without content analysis)
     # Duration weight gives preference to ~5 second clips
