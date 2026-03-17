@@ -39,6 +39,43 @@ def _get_resolution(probe_data: dict) -> tuple[int, int]:
     raise ValueError("No video stream found")
 
 
+def _get_stream_duration(probe_data: dict, codec_type: str) -> float:
+    """Get duration of a specific stream type (video/audio)."""
+    for s in probe_data.get("streams", []):
+        if s.get("codec_type") == codec_type and "duration" in s:
+            return float(s["duration"])
+    return 0.0
+
+
+def _extract_frame_brightness(video_path: Path, timestamp: float) -> float:
+    """Extract a frame at the given timestamp and return its mean brightness (0-255)."""
+    result = subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            str(timestamp),
+            "-i",
+            str(video_path),
+            "-frames:v",
+            "1",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "gray",
+            "-",
+        ],
+        capture_output=True,
+        timeout=10,
+    )
+    if result.returncode != 0 or len(result.stdout) == 0:
+        return -1.0
+    import numpy as np
+
+    pixels = np.frombuffer(result.stdout, dtype=np.uint8)
+    return float(np.mean(pixels))
+
+
 def _make_test_clip(path: Path, asset_id: str = "test", **kwargs) -> object:
     """Create a VideoClipInfo pointing to a real local file."""
     clip = make_clip(asset_id, duration=3.0, width=1280, height=720, **kwargs)
@@ -343,6 +380,13 @@ class TestFullPipelineSynthetic:
         # 3 clips * 3s - crossfade overlap + titles ~4s = should be > 8s
         assert duration > 8.0, f"Duration too short: {duration}s"
 
+        # Title screen at t=0.5 should NOT be all-black — title rendering produced content
+        brightness = _extract_frame_brightness(result, 0.5)
+        assert brightness > 5.0, (
+            f"Title frame at t=0.5 appears all-black (brightness={brightness:.1f}), "
+            "title rendering may have failed"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Test 3: Trip memory type pipeline
@@ -440,6 +484,14 @@ class TestPipelineWithMusic:
         duration = get_duration(probe)
         assert duration > 3.0
 
+        # Audio duration should match video duration (music trimmed to fit)
+        audio_dur = _get_stream_duration(probe, "audio")
+        video_dur = _get_stream_duration(probe, "video")
+        if audio_dur > 0 and video_dur > 0:
+            assert abs(audio_dur - video_dur) < 0.5, (
+                f"Audio/video duration mismatch: audio={audio_dur:.2f}s, video={video_dur:.2f}s"
+            )
+
 
 # ---------------------------------------------------------------------------
 # Test 5: Resolution and format variations
@@ -480,9 +532,13 @@ class TestResolutionVariations:
         probe = ffprobe_json(result)
         assert has_stream(probe, "video")
         w, h = _get_resolution(probe)
-        # Resolution should match the 720p target OR the source (depending on scaling)
-        assert w > 0 and h > 0, f"Invalid resolution: {w}x{h}"
-        assert w <= 1280 and h <= 720, f"Output larger than 720p: {w}x{h}"
+        # Source is 720p (1280x720), target is 720p — output must be at most 720p
+        assert w <= 1280, f"Width exceeds 720p target: {w}"
+        assert h <= 720, f"Height exceeds 720p target: {h}"
+        # Should actually BE 720p (not downscaled further) since source matches target
+        assert w == 1280 and h == 720, (
+            f"Expected exact 720p output (1280x720) since source is 720p, got {w}x{h}"
+        )
 
     def test_scale_mode_applied_in_assembly(self, test_clip_720p, test_clip_720p_b, tmp_path):
         """Verify assembly with explicit scale_mode setting runs without error.
@@ -519,6 +575,12 @@ class TestResolutionVariations:
         probe = ffprobe_json(result)
         assert has_stream(probe, "video")
         assert get_duration(probe) > 4.0
+
+        # Output resolution should match the target_resolution (1280x720)
+        w, h = _get_resolution(probe)
+        assert w == 1280 and h == 720, (
+            f"Scale mode 'blur' should produce target resolution 1280x720, got {w}x{h}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -696,8 +758,11 @@ class TestCutTransitionPipeline:
         probe = ffprobe_json(result)
         assert has_stream(probe, "video")
         duration = get_duration(probe)
-        # Two 3s clips with cut = ~6s (no crossfade overlap)
-        assert 5.0 < duration < 7.0, f"Expected ~6s, got {duration}s"
+        # Cut transitions: no crossfade overlap, so output = sum of inputs
+        expected_duration = 6.0  # 2 clips * 3s each
+        assert abs(duration - expected_duration) < 0.5, (
+            f"Cut transition duration should equal sum of inputs: expected ~{expected_duration}s, got {duration}s"
+        )
 
 
 # ---------------------------------------------------------------------------

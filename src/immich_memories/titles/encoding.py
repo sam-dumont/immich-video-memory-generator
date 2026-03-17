@@ -59,14 +59,27 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
             *color_args,
         ]
 
-    # Check for NVIDIA NVENC
+    # Check for NVIDIA NVENC (probe with a 1-frame encode to verify GPU is actually available)
     with contextlib.suppress(Exception):
-        result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"],
+        probe = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=16x16:d=0.01",
+                "-c:v",
+                "hevc_nvenc",
+                "-f",
+                "null",
+                "-",
+            ],
             capture_output=True,
             text=True,
+            timeout=5,
         )
-        if "hevc_nvenc" in result.stdout:
+        if probe.returncode == 0:
             return [
                 "-c:v",
                 "hevc_nvenc",

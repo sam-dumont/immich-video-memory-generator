@@ -2,6 +2,8 @@
 
 These tests verify actual image/video output. PIL tests are always run.
 FFmpeg tests require ffmpeg installed (skipped otherwise).
+
+Run: make test-integration-assembly
 """
 
 from __future__ import annotations
@@ -14,6 +16,9 @@ import numpy as np
 import pytest
 
 from immich_memories.titles.styles import TitleStyle
+from tests.integration.conftest import requires_ffmpeg
+
+pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
 # ---------------------------------------------------------------------------
 # PIL Renderer tests
