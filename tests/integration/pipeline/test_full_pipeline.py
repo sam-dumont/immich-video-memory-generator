@@ -241,6 +241,39 @@ def short_music(tmp_path_factory) -> Path:
     return out
 
 
+def _extract_frame_brightness(video_path: Path, timestamp: float) -> float:
+    """Extract a frame and return its mean brightness (0=black, 255=white)."""
+    import subprocess
+    import tempfile
+
+    import numpy as np
+
+    with tempfile.NamedTemporaryFile(suffix=".raw") as f:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-ss",
+                str(timestamp),
+                "-i",
+                str(video_path),
+                "-frames:v",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "gray",
+                f.name,
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+        if Path(f.name).stat().st_size > 0:
+            data = np.fromfile(f.name, dtype=np.uint8)
+            return float(np.mean(data))
+    return 0.0
+
+
 @pytest.fixture(scope="module")
 def immich_short_clips():
     """Fetch 3 short clips (<30s) from Immich. Module-scoped for speed."""

@@ -1,6 +1,6 @@
 # Architecture Overview
 
-This document describes the technical architecture of Immich Memories after the major refactor that split the codebase into 80+ files, all under 500 lines each.
+This document describes the technical architecture of Immich Memories after the major refactor that split the codebase into 80+ files, all under 800 lines each.
 
 For the LLM-optimized version with full module listings, see the root [ARCHITECTURE.md](../ARCHITECTURE.md).
 
@@ -15,7 +15,7 @@ make check       # Run all checks (lint + format + typecheck + file-length + com
 make ci          # Full CI-equivalent pipeline (all checks + dead-code)
 make test        # Run tests
 make complexity  # Check cyclomatic complexity (Xenon grade C)
-make file-length # Verify all .py files are ≤500 lines
+make file-length # Verify all .py files are ≤800 lines
 ```
 
 ## High-Level Architecture
@@ -190,7 +190,7 @@ src/immich_memories/
 └── preflight.py            # Dependency checks
 ```
 
-Every `.py` file is under 500 lines. Large classes use mixins. Re-export shims (`assembly.py`, `mixer.py`, `config.py`) maintain backwards compatibility.
+Every `.py` file is under 800 lines. Large classes use mixins. Re-export shims (`assembly.py`, `mixer.py`, `config.py`) maintain backwards compatibility.
 
 ## Data Flow
 

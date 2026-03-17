@@ -29,7 +29,7 @@ This works with anything that speaks the OpenAI chat completions API:
 ```yaml
 content_analysis:
   enabled: false               # opt-in, off by default
-  api_base: "http://localhost:8000/v1"
+  base_url: "http://localhost:8000/v1"
   api_key: "not-needed"        # for local models
   model: "mlx-community/Qwen2.5-VL-7B-Instruct-8bit"
   weight: 0.3                  # how much LLM score influences final ranking

@@ -29,10 +29,10 @@ In the sidebar, there's a "Demo mode" switch. Toggling it on also blurs thumbnai
 
 ### CLI flag
 
-Pass `--demo-mode` to the `generate` command:
+Pass `--privacy-mode` to the `generate` command:
 
 ```bash
-immich-memories generate --demo-mode --year 2024
+immich-memories generate --privacy-mode --year 2024
 ```
 
 ## What stays unblurred

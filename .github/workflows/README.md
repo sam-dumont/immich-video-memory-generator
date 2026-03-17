@@ -34,7 +34,7 @@ Runs on every push to `main` and on pull requests. All jobs use `make` targets a
 - **commitlint**: Validates commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
 - **lint**: Runs `make lint` and `make format-check`
 - **typecheck**: Runs `make typecheck`
-- **file-length**: Runs `make file-length` (all `.py` files must be ≤500 lines)
+- **file-length**: Runs `make file-length` (all `.py` files must be ≤800 lines)
 - **complexity**: Runs `make complexity` (Xenon grade C max)
 - **test**: Runs `make test` on Python 3.11, 3.12, and 3.13, on Ubuntu and macOS
 - **test-extras**: Tests optional extras (face, audio, audio-ml, gpu, mac) on Python 3.13

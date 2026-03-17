@@ -8,7 +8,7 @@
 #   Encoding:  4-8GB RAM, 4+ cores (FFmpeg assembly, depends on resolution)
 #
 # For GPU-accelerated title rendering or 4K output, increase limits
-# or use docker-compose.gpu.yml (see docs).
+# For GPU acceleration, see the hardware docs.
 #
 # For LLM-based clip analysis, set LLM env vars below.
 services:

@@ -45,5 +45,5 @@ We will acknowledge receipt within 48 hours and provide a detailed response with
 We regularly update dependencies to patch known vulnerabilities. Run:
 
 ```bash
-just update  # Update all dependencies
+pip install --upgrade immich-video-memory-generator  # or pull latest Docker image
 ```
