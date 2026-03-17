@@ -197,12 +197,16 @@ def fetch_live_photo_clips(
 
         burst_ids = cluster.video_asset_ids if cluster.count > 1 else None
         burst_trims = cluster.trim_points() if cluster.count > 1 else None
+        burst_shutters = (
+            [a.file_created_at.timestamp() for a in cluster.assets] if cluster.count > 1 else None
+        )
 
         clip = VideoClipInfo(
             asset=first_asset,
             duration_seconds=cluster.estimated_duration,
             live_burst_video_ids=burst_ids,
             live_burst_trim_points=burst_trims,
+            live_burst_shutter_timestamps=burst_shutters,
         )
         if cluster.is_favorite:
             clip.asset.is_favorite = True

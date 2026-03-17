@@ -502,12 +502,12 @@ class TestBurstMergerCommand:
         assert "[1:v]trim=start=0.5:end=3.0,setpts=PTS-STARTPTS,normalize=" in filter_str
         assert "[2:v]trim=start=0.0:end=3.0,setpts=PTS-STARTPTS,normalize=" in filter_str
 
-        # Should use xfade transitions (not concat)
-        assert "xfade=transition=fade" in filter_str
+        # Should use concat (clean cuts, crossfade belongs at assembly stage)
+        assert "concat=n=3:v=1:a=0[outv]" in filter_str
         assert str(output) == cmd[-1]
 
-    def test_includes_audio_with_acrossfade(self):
-        """Should trim audio and use acrossfade when clips have audio."""
+    def test_includes_audio_with_fade(self):
+        """Should trim audio with 30ms fade and concat separately from video."""
         from unittest.mock import patch
 
         from immich_memories.processing.live_photo_merger import build_merge_command
@@ -531,7 +531,9 @@ class TestBurstMergerCommand:
         filter_str = cmd[cmd.index("-filter_complex") + 1]
         assert "[0:a]atrim=start=0.0:end=2.5" in filter_str
         assert "[1:a]atrim=start=0.5:end=3.0" in filter_str
-        assert "acrossfade" in filter_str
+        # Audio uses concat with 30ms fade (not acrossfade — it misaligns with video)
+        assert "concat=n=2:v=0:a=1[outa]" in filter_str
+        assert "afade=t=out" in filter_str
 
     def test_skips_audio_when_clips_lack_audio(self):
         """Should produce video-only output when any clip lacks audio."""

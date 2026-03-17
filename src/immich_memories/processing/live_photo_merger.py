@@ -1,25 +1,21 @@
 """Live Photo temporal clustering and overlap-aware merging.
 
-Apple Live Photos are ~3s each (1.5s before + 1.5s after shutter press).
-When taken in rapid succession, the video portions overlap. This module
-clusters temporally adjacent Live Photos and computes non-overlapping
-trim points so each clip contributes only its unique frames.
+Spectrogram cross-correlation aligns audio tracks sample-accurately.
+Frame correlation aligns video independently (iPhone MOV has ~50ms
+audio/video offset). Gap-aware shutter-centered cuts ensure full
+timeline coverage with no holes.
 
-Handoff strategy: each clip plays until the next photo's shutter time,
-then the next clip picks up from that point in its own timeline. This
-puts transitions at the exact moment someone pressed the shutter button
-— the natural "moment of interest."
-
-Example: photos at t=0, t=0.5, t=2 (each 3s, half_dur=1.5):
-  P1 absolute [-1.5, 1.5] → plays [-1.5, 0.5] → local (0.0, 2.0)
-  P2 absolute [-1.0, 2.0] → plays [0.5, 2.0]  → local (1.5, 3.0)
-  P3 absolute [0.5, 3.5]  → plays [2.0, 3.5]  → local (1.5, 3.0)
+Works for ANY phone/camera — uses audio fingerprint, not Apple metadata.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
 
 from immich_memories.api.models import Asset
 
@@ -236,61 +232,280 @@ def _detect_clip_hdr(clip_path: Path) -> bool:
         return False
 
 
+def align_clips_spectrogram(
+    clip_paths: list[Path],
+    shutter_timestamps: list[float],
+    durations: list[float],
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    """Compute audio-aligned trim points using spectrogram cross-correlation.
+
+    Returns (video_trims, audio_trims) — separate timelines because iPhone MOV
+    containers have a ~50ms offset between audio and video tracks.
+
+    Algorithm:
+    1. STFT spectrogram fingerprint of each clip's audio
+    2. Cross-correlate consecutive pairs to find exact temporal offset
+    3. Shutter-centered cuts (handoff at midpoint between shutters)
+    4. Gap-aware: extend clips when handoff falls before next clip starts
+
+    Works for ANY phone/camera — uses audio fingerprint, not Apple metadata.
+    """
+
+    n = len(clip_paths)
+    if n <= 1:
+        return [(0.0, durations[0])], [(0.0, durations[0])]
+
+    audio_starts = _find_audio_offsets(clip_paths, durations)
+    video_starts = _find_video_offsets(clip_paths, audio_starts)
+
+    shutter_abs = [s - shutter_timestamps[0] for s in shutter_timestamps]
+    return (
+        _gap_aware_trims(video_starts, shutter_abs, durations),
+        _gap_aware_trims(audio_starts, shutter_abs, durations),
+    )
+
+
+def _find_audio_offsets(clip_paths: list[Path], durations: list[float]) -> list[float]:
+    """Find when each clip's audio starts using spectrogram cross-correlation."""
+    import subprocess
+    import tempfile
+
+    import numpy as np
+    from scipy.signal import stft
+
+    sr, nfft, hop = 48000, 1024, 256
+    audios: list[np.ndarray] = []
+    with tempfile.TemporaryDirectory() as td:
+        for i, p in enumerate(clip_paths):
+            raw = Path(td) / f"a{i}.raw"
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(p),
+                    "-vn",
+                    "-f",
+                    "s16le",
+                    "-acodec",
+                    "pcm_s16le",
+                    "-ar",
+                    str(sr),
+                    "-ac",
+                    "1",
+                    str(raw),
+                ],
+                capture_output=True,
+                timeout=10,
+            )
+            if raw.exists() and raw.stat().st_size > 0:
+                audios.append(np.fromfile(str(raw), dtype=np.int16).astype(np.float64) / 32768.0)
+            else:
+                audios.append(np.zeros(int(durations[i] * sr)))
+
+    specs = [np.abs(stft(a, fs=sr, nperseg=nfft, noverlap=nfft - hop)[2]) for a in audios]
+
+    starts = [0.0]
+    for i in range(len(specs) - 1):
+        offset = _spectrogram_match(specs[i], specs[i + 1], hop, sr)
+        starts.append(starts[i] + offset)
+    return starts
+
+
+def _spectrogram_match(spec_a: np.ndarray, spec_b: np.ndarray, hop: int, sr: int) -> float:
+    """Find where spec_b's start appears in spec_a using spectral fingerprint."""
+    import numpy as np
+
+    tpl = spec_b[:, :20].flatten()
+    tpl_norm = float(np.linalg.norm(tpl))
+    best_sim, best_pos = -1.0, 0
+    for j in range(spec_a.shape[1] - 20):
+        w = spec_a[:, j : j + 20].flatten()
+        sim = float(np.dot(w, tpl) / (np.linalg.norm(w) * tpl_norm + 1e-10))
+        if sim > best_sim:
+            best_sim, best_pos = sim, j
+    return best_pos * hop / sr
+
+
+def _find_video_offsets(clip_paths: list[Path], audio_starts: list[float]) -> list[float]:
+    """Find when each clip's video starts using frame correlation."""
+
+    fps = 30
+    starts = [0.0]
+    for i in range(len(clip_paths) - 1):
+        frames_a = _extract_grayscale_frames(clip_paths[i], fps)
+        frames_b = _extract_grayscale_frames(clip_paths[i + 1], fps)
+        offset = _frame_match(frames_a, frames_b, fps)
+        if offset is not None:
+            starts.append(starts[i] + offset)
+        else:
+            # Fallback to audio alignment when frames are too similar
+            starts.append(starts[i] + (audio_starts[i + 1] - audio_starts[i]))
+    return starts
+
+
+def _extract_grayscale_frames(clip_path: Path, fps: int) -> list:
+    """Extract small grayscale frames from a clip for fast comparison."""
+    import subprocess
+    import tempfile
+
+    import numpy as np
+
+    with tempfile.TemporaryDirectory() as td:
+        fd = Path(td) / "frames"
+        fd.mkdir()
+        subprocess.run(  # noqa: S603, S607
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(clip_path),
+                "-vf",
+                "scale=80:60,format=gray",
+                "-r",
+                str(fps),
+                str(fd / "f%04d.raw"),
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+        return [
+            np.fromfile(str(f), dtype=np.uint8).astype(np.float32) for f in sorted(fd.glob("*.raw"))
+        ]
+
+
+def _frame_match(frames_a: list, frames_b: list, fps: int) -> float | None:
+    """Find frame offset of clip B in clip A. Returns None if no strong match."""
+    import numpy as np
+
+    offsets = []
+    search_start = len(frames_a) // 2
+    for j in range(min(10, len(frames_b))):
+        best_s, best_k = -1.0, 0
+        for k in range(search_start, len(frames_a)):
+            if len(frames_a[k]) == len(frames_b[j]):
+                s = float(
+                    np.dot(frames_a[k], frames_b[j])
+                    / (np.linalg.norm(frames_a[k]) * np.linalg.norm(frames_b[j]) + 1e-10)
+                )
+                if s > best_s:
+                    best_s, best_k = s, k
+        if best_s > 0.98:
+            offsets.append(best_k - j)
+
+    if offsets:
+        return float(np.median(offsets)) / fps
+    return None
+
+
+def _gap_aware_trims(
+    clip_starts: list[float], shutter_abs: list[float], durations: list[float]
+) -> list[tuple[float, float]]:
+    """Compute shutter-centered trims that cover gaps in the timeline."""
+    n = len(clip_starts)
+    trims = []
+    for i in range(n):
+        if i == 0:
+            left = clip_starts[0]
+        else:
+            left = max((shutter_abs[i - 1] + shutter_abs[i]) / 2, clip_starts[i])
+        if i == n - 1:
+            right = clip_starts[i] + durations[i]
+        else:
+            right = max((shutter_abs[i] + shutter_abs[i + 1]) / 2, clip_starts[i + 1])
+        ls = max(0.0, left - clip_starts[i])
+        le = min(durations[i], right - clip_starts[i])
+        trims.append((round(ls, 4), round(le, 4)))
+    return trims
+
+
 def build_merge_command(
     clip_paths: list[Path],
     trim_points: list[tuple[float, float]],
     output: Path,
+    *,
+    audio_trim_points: list[tuple[float, float]] | None = None,
 ) -> list[str]:
-    """Build an FFmpeg command that trims and merges Live Photo clips with xfade.
+    """Build an FFmpeg command that trims and merges Live Photo clips.
 
     Each clip is trimmed to its non-overlapping portion, normalized for
-    exposure/white balance consistency, then merged with short dissolve
-    transitions at each boundary.
+    exposure/white balance consistency, then concatenated with clean cuts.
+
+    If audio_trim_points is provided, audio and video are trimmed independently
+    (iPhone MOV containers have ~50ms audio/video offset). A 30ms fade at each
+    audio boundary prevents crackling from waveform discontinuities.
 
     HDR clips (iPhone HLG) are encoded with libx265 10-bit to preserve
     color metadata. SDR clips use libx264.
     """
     is_hdr = bool(clip_paths) and _detect_clip_hdr(clip_paths[0])
-
-    # Check if all clips have audio — skip audio mapping if any lacks it
     has_audio = all(probe_clip_has_audio(p) for p in clip_paths)
+    a_trims = audio_trim_points or trim_points
+    n = len(clip_paths)
 
     cmd: list[str] = ["ffmpeg", "-y"]
-
     for path in clip_paths:
         cmd.extend(["-i", str(path)])
 
-    n = len(clip_paths)
+    parts, v_labels, a_labels = _build_trim_filters(trim_points, a_trims, n, has_audio)
+    _build_concat_and_map(cmd, parts, v_labels, a_labels, n, has_audio)
+
+    _append_encoding_args(cmd, is_hdr, has_audio, output)
+    return cmd
+
+
+def _build_trim_filters(
+    v_trims: list[tuple[float, float]],
+    a_trims: list[tuple[float, float]],
+    n: int,
+    has_audio: bool,
+) -> tuple[list[str], list[str], list[str]]:
+    """Build per-clip trim + normalize filter strings."""
     parts: list[str] = []
     v_labels: list[str] = []
     a_labels: list[str] = []
+    fade_dur = 0.03  # 30ms anti-crackle fade
 
-    # Trim durations for xfade offset calculation
-    trim_durations = [end - start for start, end in trim_points]
-
-    for i, (start, end) in enumerate(trim_points):
-        v_label = f"v{i}"
-        # Normalize harmonizes exposure/white balance; fps ensures matching frame rates for xfade
+    for i, (v_start, v_end) in enumerate(v_trims):
         normalize = ",normalize=smoothing=20:independence=0:strength=0.4"
         fps_filter = ",fps=30" if n > 1 else ""
         parts.append(
-            f"[{i}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS{normalize}{fps_filter}[{v_label}]"
+            f"[{i}:v]trim=start={v_start}:end={v_end},setpts=PTS-STARTPTS{normalize}{fps_filter}[v{i}]"
         )
-        v_labels.append(f"[{v_label}]")
+        v_labels.append(f"[v{i}]")
 
         if has_audio:
-            a_label = f"a{i}"
-            parts.append(f"[{i}:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[{a_label}]")
-            a_labels.append(f"[{a_label}]")
+            a_start, a_end = a_trims[i]
+            seg_dur = a_end - a_start
+            fade_in = f",afade=t=in:st=0:d={fade_dur}" if i > 0 else ""
+            fade_out = (
+                f",afade=t=out:st={max(0.01, seg_dur - fade_dur)}:d={fade_dur}" if i < n - 1 else ""
+            )
+            parts.append(
+                f"[{i}:a]atrim=start={a_start}:end={a_end},asetpts=PTS-STARTPTS{fade_in}{fade_out}[a{i}]"
+            )
+            a_labels.append(f"[a{i}]")
 
+    return parts, v_labels, a_labels
+
+
+def _build_concat_and_map(
+    cmd: list[str],
+    parts: list[str],
+    v_labels: list[str],
+    a_labels: list[str],
+    n: int,
+    has_audio: bool,
+) -> None:
+    """Append concat filter and stream mapping to FFmpeg command."""
     if n > 1:
-        filter_str = _build_multi_clip_filter(
-            parts, v_labels, a_labels, trim_durations, has_audio, n
-        )
-    else:
-        filter_str = ";\n".join(parts)
+        v_concat = "".join(v_labels)
+        parts.append(f"{v_concat}concat=n={n}:v=1:a=0[outv]")
+        if has_audio:
+            a_concat = "".join(a_labels)
+            parts.append(f"{a_concat}concat=n={n}:v=0:a=1[outa]")
 
-    cmd.extend(["-filter_complex", filter_str])
+    cmd.extend(["-filter_complex", ";\n".join(parts)])
 
     if n > 1:
         cmd.extend(["-map", "[outv]"])
@@ -300,78 +515,6 @@ def build_merge_command(
         cmd.extend(["-map", f"[{v_labels[0].strip('[]')}]"])
         if has_audio:
             cmd.extend(["-map", f"[{a_labels[0].strip('[]')}]"])
-
-    _append_encoding_args(cmd, is_hdr, has_audio, output)
-    return cmd
-
-
-def _build_multi_clip_filter(
-    parts: list[str],
-    v_labels: list[str],
-    a_labels: list[str],
-    trim_durations: list[float],
-    has_audio: bool,
-    n: int,
-) -> str:
-    """Build filter graph for multiple clips, using xfade when possible."""
-    fade_duration = 0.3
-
-    # Check if xfade is viable: each clip must be longer than the fade duration
-    xfade_viable = all(d > fade_duration * 2 for d in trim_durations)
-
-    if xfade_viable and n >= 2:
-        return _build_xfade_filter(
-            parts, v_labels, a_labels, trim_durations, has_audio, n, fade_duration
-        )
-
-    # Fallback: simple concat
-    if has_audio:
-        concat_inputs = "".join(f"{v}{a}" for v, a in zip(v_labels, a_labels, strict=True))
-        parts.append(f"{concat_inputs}concat=n={n}:v=1:a=1[outv][outa]")
-    else:
-        concat_inputs = "".join(v_labels)
-        parts.append(f"{concat_inputs}concat=n={n}:v=1:a=0[outv]")
-    return ";\n".join(parts)
-
-
-def _build_xfade_filter(
-    parts: list[str],
-    v_labels: list[str],
-    a_labels: list[str],
-    trim_durations: list[float],
-    has_audio: bool,
-    n: int,
-    fade_duration: float,
-) -> str:
-    """Build xfade chain between clips with dissolve transitions.
-
-    For N clips with durations d0..dN-1 and fade F:
-    offset_0 = d0 - F
-    offset_1 = d0 + d1 - 2*F
-    offset_k = sum(d0..dk) - (k+1)*F
-    """
-    # Chain xfade between video streams
-    current_v = v_labels[0]
-    for i in range(1, n):
-        offset = sum(trim_durations[: i + 1]) - (i) * fade_duration - fade_duration
-        out_label = "outv" if i == n - 1 else f"xv{i}"
-        parts.append(
-            f"{current_v}{v_labels[i]}xfade=transition=fade:duration={fade_duration}:offset={offset:.4f}[{out_label}]"
-        )
-        current_v = f"[{out_label}]"
-
-    # Chain acrossfade between audio streams (if audio exists)
-    if has_audio:
-        current_a = a_labels[0]
-        for i in range(1, n):
-            out_label = "outa" if i == n - 1 else f"xa{i}"
-            # acrossfade duration must match xfade for sync
-            parts.append(
-                f"{current_a}{a_labels[i]}acrossfade=d={fade_duration}:c1=tri:c2=tri[{out_label}]"
-            )
-            current_a = f"[{out_label}]"
-
-    return ";\n".join(parts)
 
 
 def _append_encoding_args(cmd: list[str], is_hdr: bool, has_audio: bool, output: Path) -> None:

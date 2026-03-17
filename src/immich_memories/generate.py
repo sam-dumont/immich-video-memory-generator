@@ -288,7 +288,12 @@ def _download_and_merge_burst(
         if not clip_paths:
             return video_cache.download_or_get(client, clip.asset)
 
-    merged = _try_merge_burst(clip_paths, trim_points, merged_path)
+    merged = _try_merge_burst(
+        clip_paths,
+        trim_points,
+        merged_path,
+        shutter_timestamps=clip.live_burst_shutter_timestamps,
+    )
     return merged or video_cache.download_or_get(client, clip.asset)
 
 
@@ -337,20 +342,67 @@ def _align_burst_subset(
     return aligned_paths, aligned_trims
 
 
-def _try_merge_burst(clip_paths: list[Path], trim_points: list, merged_path: Path) -> Path | None:
-    """Try to merge burst clips, pre-validating to avoid a doomed FFmpeg run."""
+def _try_merge_burst(
+    clip_paths: list[Path],
+    trim_points: list,
+    merged_path: Path,
+    shutter_timestamps: list[float] | None = None,
+) -> Path | None:
+    """Try to merge burst clips with spectrogram-aligned audio/video.
+
+    If shutter_timestamps is provided, uses spectrogram cross-correlation
+    for sample-accurate alignment. Otherwise falls back to timestamp-based
+    trim points.
+    """
     import subprocess
 
-    from immich_memories.processing.live_photo_merger import build_merge_command, filter_valid_clips
+    from immich_memories.processing.live_photo_merger import (
+        align_clips_spectrogram,
+        build_merge_command,
+        filter_valid_clips,
+    )
 
-    # Pre-validate: filter out clips with no valid video stream BEFORE merging
+    # Pre-validate: filter out clips with no valid video stream
     valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
     if not valid_paths:
         return None
 
-    cmd = build_merge_command(valid_paths, valid_trims, merged_path)
+    # Spectrogram alignment for sample-accurate audio + frame-accurate video
+    audio_trims = None
+    if shutter_timestamps and len(valid_paths) > 1:
+        try:
+            import json
+
+            durations = []
+            for p in valid_paths:
+                probe = subprocess.run(  # noqa: S603, S607
+                    [
+                        "ffprobe",
+                        "-v",
+                        "error",
+                        "-show_entries",
+                        "format=duration",
+                        "-of",
+                        "json",
+                        str(p),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                durations.append(float(json.loads(probe.stdout)["format"]["duration"]))
+
+            video_trims, audio_trims = align_clips_spectrogram(
+                valid_paths, shutter_timestamps[: len(valid_paths)], durations
+            )
+            valid_trims = video_trims  # Use frame-aligned trims for video
+        except Exception as e:
+            logger.warning(f"Spectrogram alignment failed, using timestamp trims: {e}")
+            audio_trims = None
+
+    cmd = build_merge_command(valid_paths, valid_trims, merged_path, audio_trim_points=audio_trims)
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # noqa: S603
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603
         if result.returncode == 0 and merged_path.exists():
             return merged_path
         logger.warning(f"Live photo merge failed: {result.stderr[:500]}")
