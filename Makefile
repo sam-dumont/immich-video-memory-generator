@@ -111,6 +111,26 @@ test-integration:  ## Run ALL integration-marked tests (requires FFmpeg/Immich),
 	@# Fix absolute paths in coverage XML to relative (portable between local and CI)
 	@sed -i.bak 's|<source>.*src/immich_memories</source>|<source>src/immich_memories</source>|g' tests/integration-coverage.xml \
 		&& rm -f tests/integration-coverage.xml.bak
+	@echo ""
+	@echo "═══════════════════════════════════════════════════"
+	@echo "  INTEGRATION TEST PERFORMANCE REPORT"
+	@echo "═══════════════════════════════════════════════════"
+	@python3 -c "\
+	import xml.etree.ElementTree as ET; \
+	root = ET.parse('tests/integration-junit.xml').getroot(); \
+	suite = root.find('.//testsuite'); \
+	total = float(suite.get('time', 0)); \
+	tests = suite.findall('testcase'); \
+	tests.sort(key=lambda t: float(t.get('time', 0)), reverse=True); \
+	print(f'  Total: {total:.0f}s ({total/60:.1f} min)'); \
+	print(f'  Tests: {len(tests)}'); \
+	print(''); \
+	print('  Slowest tests:'); \
+	[print(f'    {float(t.get(\"time\",0)):>7.1f}s  {t.get(\"name\")}') for t in tests[:5]]; \
+	print(''); \
+	print('  All tests:'); \
+	[print(f'    {float(t.get(\"time\",0)):>7.1f}s  {t.get(\"classname\").split(\".\")[-1]}::{t.get(\"name\")}') for t in tests]; \
+	print('═══════════════════════════════════════════════════')"
 
 mutation:  ## Run mutation testing (slow — weekly CI or local deep validation)
 	uv run mutmut run --max-children 4
