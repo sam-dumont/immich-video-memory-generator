@@ -72,6 +72,12 @@ class GenerationParams:
     clip_segments: dict[str, tuple[float, float]] = field(default_factory=dict)
     clip_rotations: dict[str, int | None] = field(default_factory=dict)
 
+    # Output format and display
+    scale_mode: str | None = None
+    output_format: str | None = None
+    add_date_overlay: bool = False
+    debug_preserve_intermediates: bool = False
+
     # Privacy mode
     privacy_mode: bool = False
 
@@ -436,6 +442,17 @@ def _build_assembly_settings(
 
     title_screen_settings = _build_title_settings(params, config, assembly_clips)
 
+    # Scale mode: CLI/param > config > default
+    effective_scale_mode = params.scale_mode or config.defaults.scale_mode
+
+    # Output format → codec mapping
+    _format_to_codec = {"mp4": "h264", "prores": "prores"}
+    output_codec: str = (
+        _format_to_codec.get(params.output_format.lower(), config.output.codec)
+        if params.output_format
+        else config.output.codec
+    )
+
     return AssemblySettings(
         transition=transition_type,
         transition_duration=params.transition_duration,
@@ -443,6 +460,10 @@ def _build_assembly_settings(
         auto_resolution=auto_resolution,
         target_resolution=target_resolution,
         title_screens=title_screen_settings,
+        scale_mode=effective_scale_mode,
+        output_codec=output_codec,
+        add_date_overlay=params.add_date_overlay,
+        debug_preserve_intermediates=params.debug_preserve_intermediates,
         privacy_mode=params.privacy_mode,
     )
 

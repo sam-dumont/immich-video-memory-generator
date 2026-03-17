@@ -342,6 +342,25 @@ def _build_assembly_settings(state, config, assembly_clips):
             title_screen_settings.title_override = state.title_suggestion_title
             title_screen_settings.subtitle_override = state.title_suggestion_subtitle
 
+    # Map UI scale mode labels to internal values
+    scale_mode_map = {
+        "Smart Crop (keep faces)": "smart_crop",
+        "Fill (crop)": "fill",
+        "Fit (letterbox)": "fit",
+    }
+    effective_scale_mode = scale_mode_map.get(
+        gen_options.get("scale_mode", "Smart Crop (keep faces)"), "smart_crop"
+    )
+
+    # Map UI format labels to codec values
+    format_codec_map = {
+        "MP4 (H.264)": "h264",
+        "MOV (ProRes)": "prores",
+    }
+    effective_codec = format_codec_map.get(
+        gen_options.get("format", "MP4 (H.264)"), config.output.codec
+    )
+
     settings = AssemblySettings(
         transition=transition_type,
         transition_duration=0.5,
@@ -349,6 +368,9 @@ def _build_assembly_settings(state, config, assembly_clips):
         auto_resolution=auto_resolution,
         target_resolution=target_resolution,
         title_screens=title_screen_settings,
+        scale_mode=effective_scale_mode,
+        output_codec=effective_codec,
+        add_date_overlay=gen_options.get("add_date", False),
         debug_preserve_intermediates=gen_options.get("keep_intermediates", False),
         privacy_mode=state.demo_mode,
     )

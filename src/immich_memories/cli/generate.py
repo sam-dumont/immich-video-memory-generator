@@ -33,6 +33,13 @@ def _run_pipeline_and_generate(
     music_volume: float = 0.5,
     output_path: Path,
     output_resolution: str | None = None,
+    scale_mode: str | None = None,
+    output_format: str | None = None,
+    add_date_overlay: bool = False,
+    debug_preserve_intermediates: bool = False,
+    privacy_mode: bool = False,
+    title_override: str | None = None,
+    subtitle_override: str | None = None,
     memory_type: str | None,
     person_names: list[str],
     date_range: DateRange,
@@ -121,6 +128,13 @@ def _run_pipeline_and_generate(
         client=client,
         transition=transition,
         output_resolution=output_resolution,
+        scale_mode=scale_mode,
+        output_format=output_format,
+        add_date_overlay=add_date_overlay,
+        debug_preserve_intermediates=debug_preserve_intermediates,
+        privacy_mode=privacy_mode,
+        title=title_override,
+        subtitle=subtitle_override,
         music_path=Path(music) if music else None,
         music_volume=music_volume,
         upload_enabled=should_upload,
@@ -204,6 +218,64 @@ def _fetch_videos_and_live_photos(
     return assets, live_photo_clips
 
 
+def _build_params_table(
+    *,
+    config: Config,
+    memory_type: str | None,
+    date_range: DateRange,
+    person_names: list[str],
+    duration: int,
+    orientation: str,
+    scale_mode: str | None,
+    transition: str,
+    resolution: str,
+    output_format: str,
+    output_path: Path,
+    add_date: bool,
+    keep_intermediates: bool,
+    privacy_mode: bool,
+    title_override: str | None,
+    subtitle_override: str | None,
+    use_live_photos: bool,
+    music: str | None,
+    music_volume: float,
+) -> Table:
+    """Build a Rich table displaying generation parameters."""
+    table = Table(title="Generation Parameters")
+    table.add_column("Setting", style="cyan")
+    table.add_column("Value", style="green")
+
+    if memory_type:
+        table.add_row("Memory Type", memory_type)
+    table.add_row("Time Period", date_range.description)
+    table.add_row("Duration", f"{date_range.days} days")
+    table.add_row("Person", ", ".join(person_names) if person_names else "All people")
+    table.add_row("Target Duration", f"{duration} minutes")
+    table.add_row("Orientation", orientation)
+    table.add_row("Scale Mode", scale_mode or config.defaults.scale_mode)
+    table.add_row("Transition", transition)
+    table.add_row("Resolution", resolution)
+    table.add_row("Format", output_format)
+    table.add_row("Output", str(output_path))
+    if add_date:
+        table.add_row("Date Overlay", "Enabled")
+    if keep_intermediates:
+        table.add_row("Keep Intermediates", "Enabled")
+    if privacy_mode:
+        table.add_row("Privacy Mode", "Enabled (blur faces, mute speech)")
+    if title_override:
+        table.add_row("Title Override", title_override)
+    if subtitle_override:
+        table.add_row("Subtitle Override", subtitle_override)
+    if use_live_photos:
+        table.add_row("Live Photos", "Enabled")
+    if music:
+        table.add_row("Music", music)
+        table.add_row("Music Volume", f"{int(music_volume * 100)}%")
+
+    return table
+
+
 def register_generate_commands(main: click.Group) -> None:
     """Register the generate command on the main CLI group."""
 
@@ -260,9 +332,9 @@ def register_generate_commands(main: click.Group) -> None:
     @click.option(
         "--scale-mode",
         "-s",
-        type=click.Choice(["fit", "fill", "smart_crop"]),
-        default="smart_crop",
-        help="Scaling mode",
+        type=click.Choice(["fit", "fill", "smart_crop", "blur"]),
+        default=None,
+        help="Scale mode (default: from config or smart_crop)",
     )
     @click.option(
         "--transition",
@@ -301,6 +373,28 @@ def register_generate_commands(main: click.Group) -> None:
         help="Upload generated video back to Immich",
     )
     @click.option("--album", type=str, default=None, help="Immich album name for uploaded video")
+    @click.option("--add-date", is_flag=True, default=False, help="Add date overlay to clips")
+    @click.option(
+        "--keep-intermediates",
+        is_flag=True,
+        default=False,
+        help="Keep intermediate files for debugging",
+    )
+    @click.option("--privacy-mode", is_flag=True, default=False, help="Blur faces and mute speech")
+    @click.option(
+        "--title",
+        "title_override",
+        type=str,
+        default=None,
+        help="Override video title text",
+    )
+    @click.option(
+        "--subtitle",
+        "subtitle_override",
+        type=str,
+        default=None,
+        help="Override video subtitle text",
+    )
     @click.option(
         "--include-live-photos",
         is_flag=True,
@@ -334,7 +428,7 @@ def register_generate_commands(main: click.Group) -> None:
         hemisphere: str,
         duration: int,
         orientation: str,
-        scale_mode: str,
+        scale_mode: str | None,
         transition: str,
         resolution: str,
         music_volume: float,
@@ -344,6 +438,11 @@ def register_generate_commands(main: click.Group) -> None:
         dry_run: bool,
         upload_to_immich: bool,
         album: str | None,
+        add_date: bool,
+        keep_intermediates: bool,
+        privacy_mode: bool,
+        title_override: str | None,
+        subtitle_override: str | None,
         include_live_photos: bool,
         trip_index: int | None,
         all_trips: bool,
@@ -443,31 +542,30 @@ def register_generate_commands(main: click.Group) -> None:
         console.print("[bold]Immich Memories Generator[/bold]")
         console.print()
 
-        # Show parameters
-        table = Table(title="Generation Parameters")
-        table.add_column("Setting", style="cyan")
-        table.add_column("Value", style="green")
-
-        if memory_type:
-            table.add_row("Memory Type", memory_type)
-        table.add_row("Time Period", date_range.description)
-        table.add_row("Duration", f"{date_range.days} days")
-        table.add_row("Person", ", ".join(person_names) if person_names else "All people")
-        table.add_row("Target Duration", f"{duration} minutes")
-        table.add_row("Orientation", orientation)
-        table.add_row("Scale Mode", scale_mode)
-        table.add_row("Transition", transition)
-        table.add_row("Resolution", resolution)
-        table.add_row("Format", output_format)
-        table.add_row("Output", str(output_path))
         # Resolve live photos: CLI flag OR config
         use_live_photos = include_live_photos or config.analysis.include_live_photos
-        if use_live_photos:
-            table.add_row("Live Photos", "Enabled")
-        if music:
-            table.add_row("Music", music)
-            table.add_row("Music Volume", f"{int(music_volume * 100)}%")
 
+        table = _build_params_table(
+            config=config,
+            memory_type=memory_type,
+            date_range=date_range,
+            person_names=person_names,
+            duration=duration,
+            orientation=orientation,
+            scale_mode=scale_mode,
+            transition=transition,
+            resolution=resolution,
+            output_format=output_format,
+            output_path=output_path,
+            add_date=add_date,
+            keep_intermediates=keep_intermediates,
+            privacy_mode=privacy_mode,
+            title_override=title_override,
+            subtitle_override=subtitle_override,
+            use_live_photos=use_live_photos,
+            music=music,
+            music_volume=music_volume,
+        )
         console.print(table)
         console.print()
 
@@ -573,6 +671,12 @@ def register_generate_commands(main: click.Group) -> None:
                         console.print(f"Live photo clips: {len(live_photo_clips)}")
                     console.print()
 
+                    # Config fallbacks: CLI flag > config > hardcoded default
+                    effective_transition = (
+                        transition if transition != "smart" else config.defaults.transition
+                    )
+                    effective_scale_mode = scale_mode or config.defaults.scale_mode
+
                     result_path, should_upload, album_name = _run_pipeline_and_generate(
                         assets=assets,
                         live_photo_clips=live_photo_clips,
@@ -580,11 +684,18 @@ def register_generate_commands(main: click.Group) -> None:
                         config=config,
                         progress=progress,
                         duration=duration,
-                        transition=transition,
+                        transition=effective_transition,
                         music=music,
                         music_volume=music_volume,
                         output_path=output_path,
                         output_resolution=None if resolution == "auto" else resolution,
+                        scale_mode=effective_scale_mode,
+                        output_format=output_format,
+                        add_date_overlay=add_date,
+                        debug_preserve_intermediates=keep_intermediates,
+                        privacy_mode=privacy_mode,
+                        title_override=title_override,
+                        subtitle_override=subtitle_override,
                         memory_type=memory_type,
                         person_names=person_names,
                         date_range=date_range,
