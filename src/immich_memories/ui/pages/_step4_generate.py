@@ -136,10 +136,9 @@ async def run_generation(
     try:
         from immich_memories.api.immich import SyncImmichClient
         from immich_memories.cache.video_cache import VideoDownloadCache
-        from immich_memories.config import get_config
         from immich_memories.tracking import RunTracker, generate_run_id
 
-        config = get_config()
+        config = state.config
         person = state.selected_person
         date_range = state.date_range
 

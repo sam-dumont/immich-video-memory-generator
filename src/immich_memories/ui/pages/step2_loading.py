@@ -77,6 +77,7 @@ def _fetch_live_photos(state, date_range) -> tuple[list[VideoClipInfo], set[str]
             date_range,
             person_id=lp_person_id,
             person_ids=multi_ids if len(multi_ids) >= 2 else None,
+            config=state.config,
         )
 
 

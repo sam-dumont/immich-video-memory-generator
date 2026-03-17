@@ -307,6 +307,7 @@ def initialize_app() -> None:
     init_config_dir()
     state = get_app_state()
     config = get_config(reload=True)
+    state.config = config
     state.immich_url = config.immich.url
     state.immich_api_key = config.immich.api_key
     state.include_live_photos = config.analysis.include_live_photos

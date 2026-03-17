@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from immich_memories.api.models import Person, VideoClipInfo
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
+    from immich_memories.config_loader import Config
     from immich_memories.timeperiod import DateRange
 
 
@@ -25,6 +26,7 @@ class AppState:
     step: int = 1
 
     # Configuration
+    config: Config | None = None
     config_saved: bool = False
     immich_url: str = ""
     immich_api_key: str = ""

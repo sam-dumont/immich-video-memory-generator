@@ -32,9 +32,12 @@ def _make_preview_loader(video_aid: str, container: ui.element, vid_id: str):
     async def load_preview():
         from nicegui import app as nicegui_app
 
-        preview_path = await run.io_bound(_get_preview_path, video_aid)
+        state = get_app_state()
+        preview_path = await run.io_bound(_get_preview_path, video_aid, config=state.config)
         if not preview_path:
-            preview_path = await run.io_bound(_download_immich_preview, video_aid)
+            preview_path = await run.io_bound(
+                _download_immich_preview, video_aid, config=state.config
+            )
 
         if preview_path:
             preview_url = nicegui_app.add_media_file(local_file=preview_path)

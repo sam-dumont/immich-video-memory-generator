@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from nicegui import run, ui
 
 from immich_memories.api.immich import ImmichAPIError, SyncImmichClient
-from immich_memories.config import Config, get_config, set_config
+from immich_memories.config import Config, set_config
 from immich_memories.security import sanitize_error_message
 from immich_memories.timeperiod import (
     birthday_year,
@@ -125,7 +125,7 @@ def _render_immich_config_section(state) -> None:
                     status_label.style("color: var(--im-error)")
 
             def save_config() -> None:
-                config = get_config()
+                config = state.config
                 config.immich.url = state.immich_url
                 config.immich.api_key = state.immich_api_key
                 config_path = Config.get_default_path()
@@ -327,10 +327,9 @@ def render_step1() -> None:
     """Render Step 1: Configuration."""
     state = get_app_state()
 
-    if not state.immich_url:
-        config = get_config(reload=True)
-        state.immich_url = config.immich.url
-        state.immich_api_key = config.immich.api_key
+    if not state.immich_url and state.config:
+        state.immich_url = state.config.immich.url
+        state.immich_api_key = state.config.immich.api_key
 
     _render_immich_config_section(state)
 

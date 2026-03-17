@@ -10,7 +10,6 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from immich_memories.config import get_config
 from immich_memories.titles.llm_titles import generate_title_with_llm
 
 if TYPE_CHECKING:
@@ -142,7 +141,10 @@ async def generate_title_after_pipeline(state: AppState) -> None:
 
     Best-effort: skips if LLM is unconfigured; logs and continues on failure.
     """
-    config = get_config()
+    config = state.config
+    if config is None:
+        logger.debug("Config not initialized — skipping title generation")
+        return
 
     llm_cfg = config.title_llm if config.title_llm and config.title_llm.model else config.llm
     if not llm_cfg.model:

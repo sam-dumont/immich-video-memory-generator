@@ -12,7 +12,6 @@ from pathlib import Path
 
 from nicegui import ui
 
-from immich_memories.config import get_config
 from immich_memories.security import sanitize_error_message
 from immich_memories.ui.state import get_app_state
 
@@ -45,11 +44,10 @@ def _get_clip_month(clip) -> int | None:
         return None
 
 
-def _build_timeline(state):
+def _build_timeline(state, config):
     """Build a VideoTimeline from selected clips in state."""
     from immich_memories.audio.music_generator_models import VideoTimeline
 
-    config = get_config()
     selected_clips = state.get_selected_clips()
     mood_cache = _build_mood_cache(state, selected_clips)
 
@@ -76,7 +74,7 @@ async def _generate_music(
     player_container,
 ):
     """Generate a single music track using the multi-provider pipeline."""
-    config = get_config()
+    config = state.config
 
     state.music_generating = True
     progress_bar.set_visibility(True)
@@ -88,7 +86,7 @@ async def _generate_music(
         from immich_memories.audio.music_generator import generate_music_for_video
         from immich_memories.audio.music_generator_client import MusicGenClientConfig
 
-        timeline = _build_timeline(state)
+        timeline = _build_timeline(state, config)
 
         musicgen_config = MusicGenClientConfig.from_app_config(config.musicgen)
         musicgen_config.num_versions = 1
@@ -201,18 +199,19 @@ def render_title_section() -> None:
 
         subtitle_input.on_value_change(on_subtitle_change)
 
-        config = get_config()
+        config = state.config
+        locale_default = config.title_screens.locale if config and config.title_screens else "en"
         with ui.row().classes("w-full gap-2 items-end"):
             locale_select = ui.select(
                 label="Language",
                 options=["auto", "en", "fr", "de", "es", "it", "nl", "pt", "ja", "ko"],
-                value=config.title_screens.locale if config.title_screens else "en",
+                value=locale_default,
             ).classes("w-32")
 
             async def regenerate_title():
                 from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
-                if config.title_screens:
+                if config and config.title_screens:
                     config.title_screens.locale = locale_select.value
                 await generate_title_after_pipeline(state)
                 title_input.value = state.title_suggestion_title or ""

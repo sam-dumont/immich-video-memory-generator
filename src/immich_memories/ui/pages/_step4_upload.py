@@ -20,9 +20,7 @@ logger = logging.getLogger(__name__)
 def init_upload_state(state) -> None:
     """Initialize upload state from config defaults."""
     with contextlib.suppress(Exception):
-        from immich_memories.config import get_config
-
-        upload_config = get_config().upload
+        upload_config = state.config.upload
         if upload_config.enabled and not state.upload_enabled:
             state.upload_enabled = True
         if upload_config.album_name and state.upload_album_name == "Memories":

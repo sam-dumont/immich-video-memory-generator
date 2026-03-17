@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 def expand_to_neighbors(
     tagged: list,
     all_live: list,
+    *,
+    merge_window_seconds: float = 10.0,
 ) -> list:
     """Include untagged live photos that are near tagged ones.
 
@@ -24,10 +26,7 @@ def expand_to_neighbors(
     tagged with the person, 1 and 3 are clearly from the same moment and
     should be included too.
     """
-    from immich_memories.config import get_config
-
-    config = get_config()
-    window = config.analysis.live_photo_merge_window_seconds
+    window = merge_window_seconds
 
     tagged_ids = {a.id for a in tagged}
     tagged_times = [a.file_created_at for a in tagged]
@@ -53,6 +52,8 @@ def _search_live_photos_multi_person(
     client: SyncImmichClient,
     date_range: DateRange,
     person_ids: list[str],
+    *,
+    merge_window_seconds: float = 10.0,
 ) -> list:
     """Intersect live photos across multiple persons."""
     from immich_memories.api.models import Asset
@@ -60,7 +61,9 @@ def _search_live_photos_multi_person(
     per_person: list[set[str]] = []
     assets_by_id: dict[str, Asset] = {}
     for pid in person_ids:
-        results = search_live_photos(client, date_range, person_id=pid)
+        results = search_live_photos(
+            client, date_range, person_id=pid, merge_window_seconds=merge_window_seconds
+        )
         per_person.append({a.id for a in results})
         assets_by_id.update({a.id: a for a in results})
     common = per_person[0]
@@ -75,6 +78,8 @@ def _search_live_photos_for_person(
     client: SyncImmichClient,
     date_range: DateRange,
     person_id: str,
+    *,
+    merge_window_seconds: float = 10.0,
 ) -> list:
     """Fetch live photos tagged with a specific person, then expand to neighbors."""
     from immich_memories.api.models import Asset
@@ -103,7 +108,7 @@ def _search_live_photos_for_person(
         return []
 
     all_live = client.get_live_photos_for_date_range(date_range)
-    merged = expand_to_neighbors(tagged, all_live)
+    merged = expand_to_neighbors(tagged, all_live, merge_window_seconds=merge_window_seconds)
     logger.info(
         f"Live photo person search: {len(tagged)} tagged, "
         f"{len(merged)} after neighbor expansion (from {len(all_live)} total)"
@@ -116,6 +121,8 @@ def search_live_photos(
     date_range: DateRange,
     person_id: str | None = None,
     person_ids: list[str] | None = None,
+    *,
+    merge_window_seconds: float = 10.0,
 ) -> list:
     """Search for live photo assets, handling person filtering.
 
@@ -126,9 +133,13 @@ def search_live_photos(
     Without a person filter we use the dedicated live photo endpoint.
     """
     if person_ids and len(person_ids) >= 2:
-        return _search_live_photos_multi_person(client, date_range, person_ids)
+        return _search_live_photos_multi_person(
+            client, date_range, person_ids, merge_window_seconds=merge_window_seconds
+        )
     if person_id:
-        return _search_live_photos_for_person(client, date_range, person_id)
+        return _search_live_photos_for_person(
+            client, date_range, person_id, merge_window_seconds=merge_window_seconds
+        )
     return client.get_live_photos_for_date_range(date_range)
 
 
@@ -137,20 +148,30 @@ def fetch_live_photo_clips(
     date_range: DateRange,
     person_id: str | None = None,
     person_ids: list[str] | None = None,
+    *,
+    config=None,
 ) -> tuple[list[VideoClipInfo], set[str]]:
     """Fetch Live Photo assets and convert to VideoClipInfo clips.
 
     Returns:
         Tuple of (live_photo_clips, live_video_ids).
     """
-    from immich_memories.config import get_config
     from immich_memories.processing.live_photo_merger import cluster_live_photos
 
-    config = get_config()
+    if config is None:
+        from immich_memories.config import get_config
+
+        config = get_config()
+
+    merge_window = config.analysis.live_photo_merge_window_seconds
 
     try:
         live_assets = search_live_photos(
-            client, date_range, person_id=person_id, person_ids=person_ids
+            client,
+            date_range,
+            person_id=person_id,
+            person_ids=person_ids,
+            merge_window_seconds=merge_window,
         )
     except Exception:
         logger.warning("Failed to fetch live photos", exc_info=True)
@@ -164,7 +185,7 @@ def fetch_live_photo_clips(
 
     clusters = cluster_live_photos(
         live_assets,
-        merge_window_seconds=config.analysis.live_photo_merge_window_seconds,
+        merge_window_seconds=merge_window,
     )
 
     clips: list[VideoClipInfo] = []
