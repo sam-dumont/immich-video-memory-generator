@@ -102,8 +102,8 @@ test:
 benchmark:
 	uv run pytest tests/benchmarks/ -v --benchmark-only
 
-test-integration:  ## Run ALL integration-marked tests (requires FFmpeg), saves coverage + results for CI merge
-	uv run pytest -v -m integration \
+test-integration:  ## Run ALL integration-marked tests (requires FFmpeg/Immich), saves per-module coverage
+	uv run pytest -v -m integration --log-cli-level=INFO \
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/integration-coverage.xml \
 		--junitxml=tests/integration-junit.xml -o junit_family=legacy \
 		--cov-fail-under=0
@@ -250,6 +250,16 @@ pip-audit:
 	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict
 	rm -f /tmp/pip-audit-reqs.txt
 
+diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merges integration coverage)
+	@echo "Running unit tests with coverage..."
+	@uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml -q
+	@echo "Checking diff coverage against main..."
+	@COVERAGE_FILES="coverage.xml"; \
+	for f in tests/*-coverage.xml; do \
+		if [ -f "$$f" ]; then COVERAGE_FILES="$$COVERAGE_FILES $$f"; fi; \
+	done; \
+	uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=80
+
 # Diff coverage for PRs — merges CI unit coverage with local integration coverage.
 # If coverage is low, run `make test-integration` locally and commit the updated
 # tests/integration-coverage.xml before pushing.
@@ -262,8 +272,12 @@ diff-cover-ci:
 		echo "WARN: Skipping diff-cover: $${SRC_CHANGED} source lines changed (<10). Too few for meaningful threshold."; \
 	else \
 		COVERAGE_FILES="coverage.xml"; \
-		if [ -f tests/integration-coverage.xml ]; then \
-			COVERAGE_FILES="$$COVERAGE_FILES tests/integration-coverage.xml"; \
+		for f in tests/*-coverage.xml; do \
+			if [ -f "$$f" ]; then \
+				COVERAGE_FILES="$$COVERAGE_FILES $$f"; \
+			fi; \
+		done; \
+		if [ "$$COVERAGE_FILES" != "coverage.xml" ]; then \
 			echo "Merging local integration coverage with CI coverage"; \
 		fi; \
 		uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=80; \
