@@ -129,7 +129,7 @@ def cluster_live_photos(
 
 
 def probe_clip_has_video(clip_path: Path) -> bool:
-    """Check if a video clip has at least one decodable video frame."""
+    """Check if a video clip has at least one video stream (fast, no frame decoding)."""
     import subprocess
 
     try:
@@ -140,19 +140,17 @@ def probe_clip_has_video(clip_path: Path) -> bool:
                 "error",
                 "-select_streams",
                 "v:0",
-                "-count_frames",
                 "-show_entries",
-                "stream=nb_read_frames",
+                "stream=codec_type",
                 "-of",
                 "csv=p=0",
                 str(clip_path),
             ],
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=5,
         )
-        frame_count = result.stdout.strip()
-        return frame_count.isdigit() and int(frame_count) > 0
+        return "video" in result.stdout.strip()
     except Exception:
         return False
 
