@@ -13,7 +13,6 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from immich_memories.config import get_config
 from immich_memories.processing.transforms_ffmpeg import (
     CropRegion,
     apply_crop_transform,
@@ -106,8 +105,9 @@ class AspectRatioTransformer:
         self.scale_mode = scale_mode
 
         if target_resolution is None:
-            config = get_config()
-            self.target_resolution = config.output.resolution_tuple
+            from immich_memories.config import get_config
+
+            self.target_resolution = get_config().output.resolution_tuple
         else:
             self.target_resolution = target_resolution
 

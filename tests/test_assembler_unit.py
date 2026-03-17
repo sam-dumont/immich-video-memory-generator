@@ -35,7 +35,7 @@ def _make_assembler(settings: AssemblySettings | None = None):
     from immich_memories.processing.video_assembler import VideoAssembler
 
     # WHY: mock get_config — assembler reads global config at init, tests shouldn't need a config file
-    with patch("immich_memories.processing.video_assembler.get_config", return_value=MagicMock()):
+    with patch("immich_memories.config.get_config", return_value=MagicMock()):
         return VideoAssembler(settings or AssemblySettings())
 
 
@@ -109,9 +109,7 @@ class TestVideoAssemblerIntegration:
 
         from immich_memories.processing.video_assembler import VideoAssembler
 
-        with patch(
-            "immich_memories.processing.video_assembler.get_config", return_value=mock_config
-        ):
+        with patch("immich_memories.config.get_config", return_value=mock_config):
             assembler = VideoAssembler()
 
         assert assembler.settings.output_crf == 23

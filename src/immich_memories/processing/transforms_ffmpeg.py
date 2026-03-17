@@ -11,7 +11,6 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from immich_memories.config import get_config
 from immich_memories.processing.hardware import (
     HWAccelBackend,
     HWAccelCapabilities,
@@ -141,6 +140,8 @@ def transform_fit(
 
     Uses hardware acceleration for encoding when available.
     """
+    from immich_memories.config import get_config
+
     target_w, target_h = target_resolution
     config = get_config()
     hw_caps = _get_hw_caps() if config.hardware.enabled else None
@@ -185,6 +186,8 @@ def _transform_fit_software(
     target_resolution: tuple[int, int],
 ) -> Path:
     """Software-only fallback for letterbox/pillarbox."""
+    from immich_memories.config import get_config
+
     target_w, target_h = target_resolution
     config = get_config()
 
@@ -237,6 +240,8 @@ def transform_fill(
 
     Uses hardware acceleration when available.
     """
+    from immich_memories.config import get_config
+
     target_w, target_h = target_resolution
     config = get_config()
     hw_caps = _get_hw_caps() if config.hardware.enabled else None
@@ -285,6 +290,8 @@ def _transform_fill_software(
     target_resolution: tuple[int, int],
 ) -> Path:
     """Software-only fallback for fill mode."""
+    from immich_memories.config import get_config
+
     target_w, target_h = target_resolution
     config = get_config()
 
@@ -336,6 +343,8 @@ def apply_crop_transform(
 
     Uses hardware acceleration when available.
     """
+    from immich_memories.config import get_config
+
     target_w, target_h = target_resolution
     config = get_config()
     hw_caps = _get_hw_caps() if config.hardware.enabled else None
@@ -374,6 +383,8 @@ def _apply_crop_transform_software(
     target_resolution: tuple[int, int],
 ) -> Path:
     """Software-only fallback for crop transform."""
+    from immich_memories.config import get_config
+
     target_w, target_h = target_resolution
     config = get_config()
 
@@ -422,6 +433,9 @@ def add_date_overlay(
 ) -> Path:
     """Add a date text overlay to a video with shadow for readability."""
     input_path = validate_video_path(input_path, must_exist=True)
+
+    from immich_memories.config import get_config
+
     config = get_config()
 
     positions = {
