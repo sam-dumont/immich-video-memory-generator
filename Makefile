@@ -1,5 +1,6 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
+export PYTHONUNBUFFERED=1
 
 .PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-fast mutation benchmark lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
 
