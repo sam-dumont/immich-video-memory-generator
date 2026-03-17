@@ -253,25 +253,23 @@ def align_clips_spectrogram(
     if n <= 1:
         return [(0.0, durations[0])], [(0.0, durations[0])]
 
-    audio_starts = _find_audio_offsets(clip_paths, durations)
-    video_starts = _find_video_offsets(clip_paths, audio_starts)
-
     shutter_abs = [s - shutter_timestamps[0] for s in shutter_timestamps]
+    audio_starts = _find_audio_offsets(clip_paths, durations, shutter_abs)
+
     return (
-        _gap_aware_trims(video_starts, shutter_abs, durations),
+        _gap_aware_trims(audio_starts, shutter_abs, durations),
         _gap_aware_trims(audio_starts, shutter_abs, durations),
     )
 
 
-def _find_audio_offsets(clip_paths: list[Path], durations: list[float]) -> list[float]:
-    """Find when each clip's audio starts using spectrogram cross-correlation."""
+def _extract_audio_raw(clip_paths: list[Path], durations: list[float]) -> list[np.ndarray]:
+    """Extract mono 48kHz PCM audio from each clip for spectrogram analysis."""
     import subprocess
     import tempfile
 
     import numpy as np
-    from scipy.signal import stft
 
-    sr, nfft, hop = 48000, 1024, 256
+    sr = 48000
     audios: list[np.ndarray] = []
     with tempfile.TemporaryDirectory() as td:
         for i, p in enumerate(clip_paths):
@@ -300,14 +298,40 @@ def _find_audio_offsets(clip_paths: list[Path], durations: list[float]) -> list[
                 audios.append(np.fromfile(str(raw), dtype=np.int16).astype(np.float64) / 32768.0)
             else:
                 audios.append(np.zeros(int(durations[i] * sr)))
+    return audios
 
-    specs = [np.abs(stft(a, fs=sr, nperseg=nfft, noverlap=nfft - hop)[2]) for a in audios]
+
+def _find_audio_offsets(
+    clip_paths: list[Path], durations: list[float], shutter_abs: list[float] | None = None
+) -> list[float]:
+    """Find when each clip's audio starts using spectrogram cross-correlation.
+
+    Only aligns overlapping pairs (shutter gap < clip duration).
+    Non-overlapping pairs use the shutter timestamp gap as fallback.
+    """
+    from scipy.signal import stft
+
+    sr, nfft, hop = 48000, 1024, 256
+    audios = _extract_audio_raw(clip_paths, durations)
+    specs = [abs(stft(a, fs=sr, nperseg=nfft, noverlap=nfft - hop)[2]) for a in audios]
 
     starts = [0.0]
     for i in range(len(specs) - 1):
-        offset = _spectrogram_match(specs[i], specs[i + 1], hop, sr)
+        has_overlap = _clips_overlap(shutter_abs, durations, i)
+        if has_overlap:
+            offset = _spectrogram_match(specs[i], specs[i + 1], hop, sr)
+        else:
+            offset = shutter_abs[i + 1] - shutter_abs[i] if shutter_abs else durations[i]
         starts.append(starts[i] + offset)
     return starts
+
+
+def _clips_overlap(shutter_abs: list[float] | None, durations: list[float], i: int) -> bool:
+    """Check if clip i and i+1 have overlapping audio (shutter gap < clip duration)."""
+    if not shutter_abs or i + 1 >= len(shutter_abs):
+        return True
+    gap = shutter_abs[i + 1] - shutter_abs[i]
+    return gap < durations[i]
 
 
 def _spectrogram_match(spec_a: np.ndarray, spec_b: np.ndarray, hop: int, sr: int) -> float:
@@ -323,77 +347,6 @@ def _spectrogram_match(spec_a: np.ndarray, spec_b: np.ndarray, hop: int, sr: int
         if sim > best_sim:
             best_sim, best_pos = sim, j
     return best_pos * hop / sr
-
-
-def _find_video_offsets(clip_paths: list[Path], audio_starts: list[float]) -> list[float]:
-    """Find when each clip's video starts using frame correlation."""
-
-    fps = 30
-    starts = [0.0]
-    for i in range(len(clip_paths) - 1):
-        frames_a = _extract_grayscale_frames(clip_paths[i], fps)
-        frames_b = _extract_grayscale_frames(clip_paths[i + 1], fps)
-        offset = _frame_match(frames_a, frames_b, fps)
-        if offset is not None:
-            starts.append(starts[i] + offset)
-        else:
-            # Fallback to audio alignment when frames are too similar
-            starts.append(starts[i] + (audio_starts[i + 1] - audio_starts[i]))
-    return starts
-
-
-def _extract_grayscale_frames(clip_path: Path, fps: int) -> list:
-    """Extract small grayscale frames from a clip for fast comparison."""
-    import subprocess
-    import tempfile
-
-    import numpy as np
-
-    with tempfile.TemporaryDirectory() as td:
-        fd = Path(td) / "frames"
-        fd.mkdir()
-        subprocess.run(  # noqa: S603, S607
-            [
-                "ffmpeg",
-                "-y",
-                "-i",
-                str(clip_path),
-                "-vf",
-                "scale=80:60,format=gray",
-                "-r",
-                str(fps),
-                str(fd / "f%04d.raw"),
-            ],
-            capture_output=True,
-            timeout=30,
-        )
-        return [
-            np.fromfile(str(f), dtype=np.uint8).astype(np.float32) for f in sorted(fd.glob("*.raw"))
-        ]
-
-
-def _frame_match(frames_a: list, frames_b: list, fps: int) -> float | None:
-    """Find frame offset of clip B in clip A. Returns None if no strong match."""
-    import numpy as np
-
-    offsets = []
-    search_start = len(frames_a) // 2
-    for j in range(min(10, len(frames_b))):
-        best_s, best_k = -1.0, 0
-        for k in range(search_start, len(frames_a)):
-            if len(frames_a[k]) == len(frames_b[j]):
-                s = float(
-                    np.dot(frames_a[k], frames_b[j])
-                    / (np.linalg.norm(frames_a[k]) * np.linalg.norm(frames_b[j]) + 1e-10)
-                )
-                if s > best_s:
-                    best_s, best_k = s, k
-        if best_s > 0.98:
-            offsets.append(best_k - j)
-
-    if offsets:
-        return float(np.median(offsets)) / fps
-    return None
 
 
 def _gap_aware_trims(
