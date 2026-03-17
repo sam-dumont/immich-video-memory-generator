@@ -244,7 +244,14 @@ def _download_clip(
     clip: VideoClipInfo,
     output_dir: Path,
 ) -> Path | None:
-    """Download a single clip, handling live photo bursts."""
+    """Download a single clip, handling live photo bursts.
+
+    If clip.local_path is already set and the file exists, skip downloading.
+    """
+    # Use pre-downloaded clip if available (e.g., from analysis cache)
+    if clip.local_path and Path(clip.local_path).exists():
+        return Path(clip.local_path)
+
     if client is None:
         return None
 
