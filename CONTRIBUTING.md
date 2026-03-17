@@ -54,11 +54,26 @@ The **Makefile** is the single source of truth. Run `make help` to see everythin
 Key commands:
 ```bash
 make test              # Unit tests
-make test-integration  # Real FFmpeg tests (requires FFmpeg)
+make test-integration  # Real FFmpeg + integration tests (requires FFmpeg)
 make ci                # Full CI pipeline locally
 make critique          # AI smell audit
 make mutation          # Mutation testing (slow, weekly CI)
 ```
+
+### Integration tests and diff-cover
+
+Integration tests (FFmpeg, real video assembly) run separately from unit tests.
+If CI's diff-cover fails because changed lines aren't covered, run:
+
+```bash
+make test-integration   # Generates tests/integration-coverage.xml
+git add tests/integration-coverage.xml tests/integration-junit.xml
+git commit --amend      # Add coverage files to your commit
+```
+
+CI merges both `coverage.xml` (unit) and `tests/integration-coverage.xml`
+(local integration) when calculating diff-cover. The integration coverage
+is committed to the repo so CI sees it without needing FFmpeg.
 
 ## Code Rules
 

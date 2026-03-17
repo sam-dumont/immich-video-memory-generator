@@ -250,8 +250,9 @@ pip-audit:
 	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict
 	rm -f /tmp/pip-audit-reqs.txt
 
-# Diff coverage for PRs — merges CI unit coverage with local integration coverage
-# (committed by pre-commit hook as tests/integration-coverage.xml)
+# Diff coverage for PRs — merges CI unit coverage with local integration coverage.
+# If coverage is low, run `make test-integration` locally and commit the updated
+# tests/integration-coverage.xml before pushing.
 diff-cover-ci:
 	@SRC_CHANGED=$$(git diff --numstat origin/main...HEAD -- '*.py' 2>/dev/null | grep '^' | grep -v 'tests/' | awk '{s+=$$1+$$2} END {print s+0}'); \
 	echo "Changed source lines (excl tests): $${SRC_CHANGED}"; \
