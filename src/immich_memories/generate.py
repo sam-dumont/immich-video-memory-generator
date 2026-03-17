@@ -426,10 +426,12 @@ def _build_assembly_settings(
         "none": TransitionType.NONE,
     }.get(params.transition.lower(), TransitionType.CROSSFADE)
 
-    resolution_map = {"4K": (3840, 2160), "1080p": (1920, 1080), "720p": (1280, 720)}
+    resolution_map = {"4k": (3840, 2160), "1080p": (1920, 1080), "720p": (1280, 720)}
     auto_resolution = params.output_resolution is None
     target_resolution = (
-        resolution_map.get(params.output_resolution or "") if not auto_resolution else None
+        resolution_map.get((params.output_resolution or "").lower())
+        if not auto_resolution
+        else None
     )
 
     title_screen_settings = _build_title_settings(params, config, assembly_clips)

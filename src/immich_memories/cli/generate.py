@@ -23,13 +23,16 @@ if TYPE_CHECKING:
 def _run_pipeline_and_generate(
     *,
     assets: list,
+    live_photo_clips: list | None = None,
     client: SyncImmichClient,
     config: Config,
     progress: Progress,
     duration: int,
     transition: str,
     music: str | None,
+    music_volume: float = 0.5,
     output_path: Path,
+    output_resolution: str | None = None,
     memory_type: str | None,
     person_names: list[str],
     date_range: DateRange,
@@ -46,6 +49,9 @@ def _run_pipeline_and_generate(
     from immich_memories.generate import GenerationParams, assets_to_clips, generate_memory
 
     clips = assets_to_clips(assets)
+    # Add live photo clips (already VideoClipInfo, no conversion needed)
+    if live_photo_clips:
+        clips.extend(live_photo_clips)
     if not clips:
         print_error("No usable video clips (all too short)")
         sys.exit(1)
@@ -114,7 +120,9 @@ def _run_pipeline_and_generate(
         config=config,
         client=client,
         transition=transition,
+        output_resolution=output_resolution,
         music_path=Path(music) if music else None,
+        music_volume=music_volume,
         upload_enabled=should_upload,
         upload_album=album_name,
         clip_segments=clip_segments,
@@ -129,6 +137,71 @@ def _run_pipeline_and_generate(
     progress.update(gen_task, completed=100)
 
     return result_path, should_upload, album_name
+
+
+def _fetch_videos_and_live_photos(
+    *,
+    client: SyncImmichClient,
+    config: Config,
+    progress: Progress,
+    date_ranges: list[DateRange],
+    person_ids: list[str],
+    use_live_photos: bool,
+) -> tuple[list, list]:
+    """Fetch video assets and optionally live photo clips.
+
+    Returns (assets, live_photo_clips).
+    """
+    task = progress.add_task("Fetching videos...", total=None)
+
+    all_assets = []
+    for dr in date_ranges:
+        if len(person_ids) > 1:
+            batch = client.get_videos_for_any_person(person_ids, dr)
+        elif len(person_ids) == 1:
+            batch = client.get_videos_for_person_and_date_range(person_ids[0], dr)
+        else:
+            batch = client.get_videos_for_date_range(dr)
+        all_assets.extend(batch)
+
+    # Deduplicate across date ranges
+    seen: dict[str, object] = {}
+    assets = []
+    for a in all_assets:
+        if a.id not in seen:
+            seen[a.id] = True
+            assets.append(a)
+
+    progress.update(task, completed=True)
+    print_success(f"Found {len(assets)} videos")
+
+    live_photo_clips: list = []
+    if use_live_photos:
+        from immich_memories.analysis.live_photo_pipeline import fetch_live_photo_clips
+
+        lp_task = progress.add_task("Fetching live photos...", total=None)
+        all_lp_clips: list = []
+        all_lp_video_ids: set[str] = set()
+        for dr in date_ranges:
+            lp_clips, lp_vid_ids = fetch_live_photo_clips(
+                client,
+                dr,
+                person_id=person_ids[0] if len(person_ids) == 1 else None,
+                person_ids=person_ids if len(person_ids) > 1 else None,
+                config=config,
+            )
+            all_lp_clips.extend(lp_clips)
+            all_lp_video_ids.update(lp_vid_ids)
+
+        # Remove regular videos that are live photo video components
+        if all_lp_video_ids:
+            assets = [a for a in assets if a.id not in all_lp_video_ids]
+        live_photo_clips = all_lp_clips
+        progress.update(lp_task, completed=True)
+        if live_photo_clips:
+            print_success(f"Found {len(live_photo_clips)} live photo clips")
+
+    return assets, live_photo_clips
 
 
 def register_generate_commands(main: click.Group) -> None:
@@ -194,9 +267,29 @@ def register_generate_commands(main: click.Group) -> None:
     @click.option(
         "--transition",
         "-t",
-        type=click.Choice(["cut", "crossfade", "none"]),
-        default="crossfade",
-        help="Transition style",
+        type=click.Choice(["smart", "cut", "crossfade", "none"]),
+        default="smart",
+        help="Transition style (default: smart — mix of fades & cuts)",
+    )
+    @click.option(
+        "--resolution",
+        "-r",
+        type=click.Choice(["auto", "4k", "1080p", "720p"]),
+        default="auto",
+        help="Output resolution (default: auto — match source clips)",
+    )
+    @click.option(
+        "--music-volume",
+        type=float,
+        default=0.5,
+        help="Music volume 0.0-1.0 (default: 0.5)",
+    )
+    @click.option(
+        "--format",
+        "output_format",
+        type=click.Choice(["mp4", "prores"]),
+        default="mp4",
+        help="Output format",
     )
     @click.option("--output", "-O", type=click.Path(), help="Output file path")
     @click.option("--music", "-m", type=click.Path(exists=True), help="Background music file")
@@ -243,6 +336,9 @@ def register_generate_commands(main: click.Group) -> None:
         orientation: str,
         scale_mode: str,
         transition: str,
+        resolution: str,
+        music_volume: float,
+        output_format: str,
         output: str | None,
         music: str | None,
         dry_run: bool,
@@ -361,6 +457,8 @@ def register_generate_commands(main: click.Group) -> None:
         table.add_row("Orientation", orientation)
         table.add_row("Scale Mode", scale_mode)
         table.add_row("Transition", transition)
+        table.add_row("Resolution", resolution)
+        table.add_row("Format", output_format)
         table.add_row("Output", str(output_path))
         # Resolve live photos: CLI flag OR config
         use_live_photos = include_live_photos or config.analysis.include_live_photos
@@ -368,6 +466,7 @@ def register_generate_commands(main: click.Group) -> None:
             table.add_row("Live Photos", "Enabled")
         if music:
             table.add_row("Music", music)
+            table.add_row("Music Volume", f"{int(music_volume * 100)}%")
 
         console.print(table)
         console.print()
@@ -452,49 +551,40 @@ def register_generate_commands(main: click.Group) -> None:
                             progress.update(task, completed=True)
                             print_success(f"Found person: {found_person.name}")
 
-                    # Fetch videos using date range(s)
-                    task = progress.add_task("Fetching videos...", total=None)
+                    # Fetch videos and optionally live photos
+                    assets, live_photo_clips = _fetch_videos_and_live_photos(
+                        client=client,
+                        config=config,
+                        progress=progress,
+                        date_ranges=date_ranges,
+                        person_ids=person_ids,
+                        use_live_photos=use_live_photos,
+                    )
 
-                    all_assets = []
-                    for dr in date_ranges:
-                        if len(person_ids) > 1:
-                            batch = client.get_videos_for_any_person(person_ids, dr)
-                        elif len(person_ids) == 1:
-                            batch = client.get_videos_for_person_and_date_range(person_ids[0], dr)
-                        else:
-                            batch = client.get_videos_for_date_range(dr)
-                        all_assets.extend(batch)
-
-                    # Deduplicate across date ranges
-                    seen: dict[str, object] = {}
-                    assets = []
-                    for a in all_assets:
-                        if a.id not in seen:
-                            seen[a.id] = True
-                            assets.append(a)
-
-                    progress.update(task, completed=True)
-                    print_success(f"Found {len(assets)} videos")
-
-                    if not assets:
+                    if not assets and not live_photo_clips:
                         print_error("No videos found matching criteria")
                         sys.exit(1)
 
                     # Display video summary
                     console.print()
-                    total_duration = sum(a.duration_seconds or 0 for a in assets)
-                    console.print(f"Total video duration: {total_duration / 60:.1f} minutes")
+                    total_dur = sum(a.duration_seconds or 0 for a in assets)
+                    console.print(f"Total video duration: {total_dur / 60:.1f} minutes")
+                    if live_photo_clips:
+                        console.print(f"Live photo clips: {len(live_photo_clips)}")
                     console.print()
 
                     result_path, should_upload, album_name = _run_pipeline_and_generate(
                         assets=assets,
+                        live_photo_clips=live_photo_clips,
                         client=client,
                         config=config,
                         progress=progress,
                         duration=duration,
                         transition=transition,
                         music=music,
+                        music_volume=music_volume,
                         output_path=output_path,
+                        output_resolution=None if resolution == "auto" else resolution,
                         memory_type=memory_type,
                         person_names=person_names,
                         date_range=date_range,
