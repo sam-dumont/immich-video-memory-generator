@@ -20,6 +20,20 @@ if TYPE_CHECKING:
     from immich_memories.config_loader import Config
 
 
+def _resolve_music_arg(music: str | None) -> str | None:
+    """Resolve --music CLI argument to a file path or None.
+
+    "auto" or None means let generate_memory() decide based on config.
+    A file path is validated to exist.
+    """
+    if not music or music == "auto":
+        return None
+    if not Path(music).exists():
+        print_error(f"Music file not found: {music}")
+        sys.exit(1)
+    return music
+
+
 def _run_pipeline_and_generate(
     *,
     assets: list,
@@ -31,6 +45,7 @@ def _run_pipeline_and_generate(
     transition: str,
     music: str | None,
     music_volume: float = 0.5,
+    no_music: bool = False,
     output_path: Path,
     output_resolution: str | None = None,
     scale_mode: str | None = None,
@@ -135,8 +150,9 @@ def _run_pipeline_and_generate(
         privacy_mode=privacy_mode,
         title=title_override,
         subtitle=subtitle_override,
-        music_path=Path(music) if music else None,
+        music_path=Path(music) if music and music != "auto" else None,
         music_volume=music_volume,
+        no_music=no_music,
         upload_enabled=should_upload,
         upload_album=album_name,
         clip_segments=clip_segments,
@@ -239,6 +255,7 @@ def _build_params_table(
     use_live_photos: bool,
     music: str | None,
     music_volume: float,
+    no_music: bool = False,
 ) -> Table:
     """Build a Rich table displaying generation parameters."""
     table = Table(title="Generation Parameters")
@@ -269,11 +286,23 @@ def _build_params_table(
         table.add_row("Subtitle Override", subtitle_override)
     if use_live_photos:
         table.add_row("Live Photos", "Enabled")
-    if music:
+    if no_music:
+        table.add_row("Music", "Disabled")
+    elif music and music != "auto":
         table.add_row("Music", music)
+        table.add_row("Music Volume", f"{int(music_volume * 100)}%")
+    elif music == "auto" or _has_music_backends(config):
+        table.add_row("Music", "Auto (AI-generated)")
         table.add_row("Music Volume", f"{int(music_volume * 100)}%")
 
     return table
+
+
+def _has_music_backends(config: Config) -> bool:
+    """Check if any music generation backend is enabled in config."""
+    from immich_memories.generate import _music_config_available
+
+    return _music_config_available(config)
 
 
 def register_generate_commands(main: click.Group) -> None:
@@ -364,7 +393,20 @@ def register_generate_commands(main: click.Group) -> None:
         help="Output format",
     )
     @click.option("--output", "-O", type=click.Path(), help="Output file path")
-    @click.option("--music", "-m", type=click.Path(exists=True), help="Background music file")
+    @click.option(
+        "--music",
+        "-m",
+        type=str,
+        default=None,
+        help="Music: path to audio file, 'auto' to generate from config, or omit for default behavior",
+    )
+    @click.option(
+        "--no-music",
+        "no_music",
+        is_flag=True,
+        default=False,
+        help="Disable all music (skip both provided files and AI generation)",
+    )
     @click.option("--dry-run", is_flag=True, help="Show what would be done without generating")
     @click.option(
         "--upload-to-immich",
@@ -435,6 +477,7 @@ def register_generate_commands(main: click.Group) -> None:
         output_format: str,
         output: str | None,
         music: str | None,
+        no_music: bool,
         dry_run: bool,
         upload_to_immich: bool,
         album: str | None,
@@ -565,6 +608,7 @@ def register_generate_commands(main: click.Group) -> None:
             use_live_photos=use_live_photos,
             music=music,
             music_volume=music_volume,
+            no_music=no_music,
         )
         console.print(table)
         console.print()
@@ -677,6 +721,8 @@ def register_generate_commands(main: click.Group) -> None:
                     )
                     effective_scale_mode = scale_mode or config.defaults.scale_mode
 
+                    resolved_music = _resolve_music_arg(music)
+
                     result_path, should_upload, album_name = _run_pipeline_and_generate(
                         assets=assets,
                         live_photo_clips=live_photo_clips,
@@ -685,8 +731,9 @@ def register_generate_commands(main: click.Group) -> None:
                         progress=progress,
                         duration=duration,
                         transition=effective_transition,
-                        music=music,
+                        music=resolved_music,
                         music_volume=music_volume,
+                        no_music=no_music,
                         output_path=output_path,
                         output_resolution=None if resolution == "auto" else resolution,
                         scale_mode=effective_scale_mode,
