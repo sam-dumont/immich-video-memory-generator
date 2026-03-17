@@ -5,7 +5,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 const config: Config = {
   title: 'Immich Memories',
   tagline: 'Create beautiful video compilations from your Immich photo library',
-  favicon: 'img/favicon.ico',
+  favicon: 'img/favicon.png',
 
   future: {
     v4: true,
@@ -52,6 +52,12 @@ const config: Config = {
     },
     navbar: {
       title: 'Immich Memories',
+      logo: {
+        alt: 'Immich Memories',
+        src: 'img/logo.svg',
+        width: 32,
+        height: 32,
+      },
       items: [
         {
           type: 'docSidebar',

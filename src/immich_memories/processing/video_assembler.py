@@ -139,13 +139,23 @@ class VideoAssembler:
         return result
 
     def _process_single_clip(self, clip: AssemblyClip, output_path: Path) -> Path:
+        needs_processing = (
+            self.settings.privacy_mode
+            or (not self.settings.auto_resolution and self.settings.target_resolution)
+            or (clip.rotation_override is not None and clip.rotation_override != 0)
+        )
+
+        if needs_processing:
+            # Single clip still needs FFmpeg for filters (blur, resize, rotation)
+            return self.engine.assemble_scalable([clip], output_path)
+
         if self.settings.music_path and self.settings.music_path.exists():
             return self.audio_mixer.add_music_to_clip(clip.path, output_path)
-        else:
-            import shutil
 
-            shutil.copy2(clip.path, output_path)
-            return output_path
+        import shutil
+
+        shutil.copy2(clip.path, output_path)
+        return output_path
 
 
 def assemble_montage(

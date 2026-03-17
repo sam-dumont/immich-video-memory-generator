@@ -29,16 +29,12 @@ Two animation modes get picked automatically based on how far apart departure an
 Map animation settings live under `title_screens`:
 
 ```yaml
-title_screens:
-  memory_type: trip
-  home_lat: 48.8566      # Your home coordinates
-  home_lon: 2.3522
-  trip_locations:        # Destination pins
-    - [45.7640, 4.8357]  # e.g. Lyon
-  trip_title_text: "Two weeks in Provence"
+trips:
+  homebase_latitude: 48.8566    # Your home coordinates
+  homebase_longitude: 2.3522
 ```
 
-The `home_lat` / `home_lon` values come from your config's `home` block and get passed through automatically when using the trip preset.
+Home coordinates come from the `trips` config section and get passed through automatically when using the trip preset. Destination pins are derived from the overnight detection algorithm: you don't configure them manually.
 
 ### Tile source
 

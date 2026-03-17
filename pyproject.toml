@@ -542,12 +542,21 @@ addopts = "-m 'not integration'"
 [tool.coverage.run]
 source = ["src/immich_memories"]
 branch = true
+# Exclude NiceGUI UI pages from coverage measurement.
+# These are presentation-only (widgets, progress bars, video player) and cannot be
+# tested without a browser. Core logic lives in generate.py, processing/, analysis/.
+# When Playwright E2E tests are added (#37), remove this exclusion.
+omit = [
+    "src/immich_memories/ui/pages/*",
+    "src/immich_memories/ui/theme.py",
+    "src/immich_memories/ui/components/*",
+]
 
 [tool.coverage.report]
-# Target: 85%. Currently at ~40% due to heavy external dependencies (FFmpeg, Immich API,
-# Taichi GPU). Diff-cover at 95% on changed lines prevents regression. This floor prevents
-# overall erosion. Raise as E2E tests improve coverage.
-fail_under = 35
+# Unit tests alone reach ~48%. Integration XMLs push core to 60%.
+# This floor prevents erosion — the REAL check is diff-cover at 80% per PR.
+# UI pages are excluded (see [tool.coverage.run].omit) until Playwright E2E (#37).
+fail_under = 45
 show_missing = true
 exclude_lines = [
     "pragma: no cover",

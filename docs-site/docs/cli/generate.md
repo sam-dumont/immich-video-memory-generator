@@ -15,24 +15,69 @@ immich-memories generate [OPTIONS]
 
 ## Flags
 
+### Time period
+
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
 | `--year` | `-y` | int | — | Year to generate (calendar year by default) |
 | `--birthday` | `-b` | string | — | Birthday date for year calculation (use with `--year`) |
 | `--start` | — | string | — | Start date (`YYYY-MM-DD` or `DD/MM/YYYY`) |
 | `--end` | — | string | — | End date (use with `--start`) |
-| `--period` | — | string | — | Period from start date (e.g., `6m`, `1y`, `2w`) |
-| `--person` | `-p` | string | — | Filter by person name (from Immich face recognition) |
+| `--period` | — | string | — | Period from start date (e.g., `6m`, `1y`, `2w`, `30d`) |
+
+### Memory type
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--memory-type` | — | choice | — | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `trip` |
+| `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Alice" --person "Bob"`) |
+| `--season` | — | choice | — | `spring`, `summer`, `fall`, `autumn`, `winter` (use with `--memory-type season`) |
+| `--month` | — | int | — | Month 1-12 (use with `--memory-type monthly_highlights`) |
+| `--hemisphere` | — | choice | `north` | `north` or `south` (for season date calculation) |
+
+### Output
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
 | `--duration` | `-d` | int | `10` | Target duration in minutes |
 | `--orientation` | `-o` | choice | `landscape` | `landscape`, `portrait`, or `square` |
-| `--scale-mode` | `-s` | choice | `smart_crop` | `fit`, `fill`, or `smart_crop` |
-| `--transition` | `-t` | choice | `crossfade` | `cut`, `crossfade`, or `none` |
+| `--resolution` | `-r` | choice | `auto` | `auto`, `4k`, `1080p`, or `720p` |
+| `--scale-mode` | `-s` | choice | config/`smart_crop` | `fit`, `fill`, `smart_crop`, or `blur` |
+| `--transition` | `-t` | choice | `smart` | `smart`, `cut`, `crossfade`, or `none` |
+| `--format` | — | choice | `mp4` | `mp4` or `prores` |
 | `--output` | `-O` | path | auto | Output file path |
-| `--music` | `-m` | path | — | Background music file |
+| `--title` | — | string | — | Override title screen text |
+| `--subtitle` | — | string | — | Override subtitle text |
+| `--add-date` | — | flag | — | Add date overlay to clips |
+
+### Music
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--music` | `-m` | string | — | Path to audio file, or `auto` to generate from config |
+| `--no-music` | — | flag | — | Disable all music (skip files and AI generation) |
+| `--music-volume` | — | float | `0.5` | Music volume 0.0-1.0 |
+
+### Modes
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
 | `--dry-run` | — | flag | — | Show what would be done, don't generate |
+| `--privacy-mode` | — | flag | — | Blur all video and mute speech |
+| `--include-live-photos` | — | flag | — | Include Live Photo video clips (merged when burst-captured) |
+| `--keep-intermediates` | — | flag | — | Keep intermediate files for debugging |
+
+### Upload
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
 | `--upload-to-immich` | — | flag | — | Upload generated video back to Immich |
 | `--album` | — | string | — | Album name for uploaded video (created if missing) |
-| `--include-live-photos` | — | flag | — | Include Live Photo video clips (3s iPhone clips, merged when burst-captured) |
+
+### Trip-specific
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
 | `--trip-index` | — | int | — | Select a specific trip by index (use with `--memory-type trip`) |
 | `--all-trips` | — | flag | — | Generate a video for every detected trip (use with `--memory-type trip`) |
 

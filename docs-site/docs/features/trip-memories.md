@@ -52,6 +52,6 @@ The trip type classification and map mode are shown below the title fields. Chan
 
 ## Requirements
 
-- `home_lat` and `home_lon` must be set in your config
+- `trips.homebase_latitude` and `trips.homebase_longitude` must be set in your config
 - A `title_llm` should be configured for title generation (falls back to `llm` if not set, or template title if neither is set)
 - GPS must be present in most of the album's assets for overnight detection to work well

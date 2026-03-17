@@ -33,7 +33,32 @@ Rather than chopping videos at fixed intervals, the pipeline uses [PySceneDetect
 
 After scene detection, segments are filtered:
 
-- **Minimum duration**: 1.5 seconds. Anything shorter is usually a flash or artifact.
-- **Maximum duration**: 10 seconds. Longer scenes get subdivided to keep the final video punchy.
+- **Minimum duration**: 2.0 seconds (default). Anything shorter is usually a flash or artifact.
+- **Maximum duration**: 15.0 seconds (default). Longer scenes get subdivided to keep the final video punchy.
 
 Both values are configurable in `analysis.min_segment_duration` and `analysis.max_segment_duration`.
+
+## Clip style presets
+
+Instead of tuning individual duration parameters, pick a preset:
+
+| Preset | Vibe | Clip lengths |
+|--------|------|-------------|
+| `fast-cuts` | Energetic, music video feel | Short clips, frequent transitions |
+| `balanced` | Default. Works for most memories | Mix of short and medium clips |
+| `long-cuts` | Documentary, slow pacing | Longer clips, fewer cuts |
+
+Set in config: `analysis.clip_style: balanced` (or pass no value to use individual duration params).
+
+## Scoring priority
+
+Three knobs control what the scoring algorithm values most:
+
+```yaml
+scoring_priority:
+  people: high      # Favor clips with recognized faces
+  quality: medium   # Favor stable, well-lit footage
+  moment: medium    # Favor interesting content (motion, events)
+```
+
+For a family birthday compilation, `people: high` makes sense. For a landscape trip, try `people: low, moment: high`.

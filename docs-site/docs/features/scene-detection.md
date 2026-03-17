@@ -17,8 +17,8 @@ Uses [PySceneDetect](https://www.scenedetect.com/) under the hood. It analyzes f
 analysis:
   use_scene_detection: true    # enabled by default
   scene_threshold: 27.0        # default sensitivity
-  min_segment_duration: 1.5    # seconds — drop anything shorter
-  max_segment_duration: 10.0   # seconds — subdivide anything longer
+  min_segment_duration: 2.0    # seconds — drop anything shorter
+  max_segment_duration: 15.0   # seconds — subdivide anything longer
 ```
 
 ### Threshold tuning
@@ -33,8 +33,8 @@ The `scene_threshold` controls sensitivity:
 
 After scene detection splits the video:
 
-- Segments shorter than `min_segment_duration` (1.5s) are discarded. These are usually flash frames or detection artifacts.
-- Segments longer than `max_segment_duration` (10s) are subdivided into smaller chunks. A 25-second continuous shot becomes two or three segments.
+- Segments shorter than `min_segment_duration` (2.0s default) are discarded. These are usually flash frames or detection artifacts.
+- Segments longer than `max_segment_duration` (15.0s default) are subdivided into smaller chunks. A 30-second continuous shot becomes two or three segments.
 
 ## When scene detection is off
 

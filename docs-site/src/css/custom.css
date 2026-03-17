@@ -1,24 +1,88 @@
-/* Immich Memories docs — subtle branding, not heavy-handed */
+/* Immich Memories docs — matches NiceGUI app visual system */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --ifm-color-primary: #4263eb;
-  --ifm-color-primary-dark: #3554d1;
-  --ifm-color-primary-darker: #2f4ec5;
-  --ifm-color-primary-darkest: #2740a2;
-  --ifm-color-primary-light: #5a78ef;
-  --ifm-color-primary-lighter: #6682f1;
-  --ifm-color-primary-lightest: #8ea1f5;
+  /* Match NiceGUI app primary: #4250af */
+  --ifm-color-primary: #4250af;
+  --ifm-color-primary-dark: #3b489e;
+  --ifm-color-primary-darker: #384495;
+  --ifm-color-primary-darkest: #2e387b;
+  --ifm-color-primary-light: #4d5cba;
+  --ifm-color-primary-lighter: #5565bf;
+  --ifm-color-primary-lightest: #6f7dcc;
   --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ifm-heading-font-weight: 600;
+  --ifm-border-radius: 10px;
+  --docusaurus-highlighted-code-line-bg: rgba(66, 80, 175, 0.1);
+
+  /* App-matched tokens */
+  --im-bg-surface: #f6f6f4;
+  --im-border: #e5e7eb;
+  --im-border-light: #f3f4f6;
+  --im-text-secondary: #6b7280;
+  --im-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --im-shadow-md: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04);
 }
 
 [data-theme='dark'] {
-  --ifm-color-primary: #748ffc;
-  --ifm-color-primary-dark: #5474fb;
-  --ifm-color-primary-darker: #4467fb;
-  --ifm-color-primary-darkest: #143ffa;
-  --ifm-color-primary-light: #94aafd;
-  --ifm-color-primary-lighter: #a4b7fd;
-  --ifm-color-primary-lightest: #d4ddfe;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  /* Match NiceGUI dark: #6B8FE8 */
+  --ifm-color-primary: #6B8FE8;
+  --ifm-color-primary-dark: #5A7FD8;
+  --ifm-color-primary-darker: #4F75D3;
+  --ifm-color-primary-darkest: #3559BC;
+  --ifm-color-primary-light: #7D9DEC;
+  --ifm-color-primary-lighter: #87A5EE;
+  --ifm-color-primary-lightest: #A8BEF4;
+  --ifm-background-color: #000000;
+  --ifm-background-surface-color: #222222;
+  --docusaurus-highlighted-code-line-bg: rgba(107, 143, 232, 0.15);
+
+  --im-bg-surface: #222222;
+  --im-border: #262626;
+  --im-border-light: #262626;
+  --im-text-secondary: #d4d4d4;
+  --im-shadow: none;
+  --im-shadow-md: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+/* Typography — all Inter, no serif */
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.01em;
+}
+
+.navbar__title {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+/* Cards match app's 10px radius, flat style */
+.card {
+  border-radius: 10px;
+}
+
+.prism-code {
+  border-radius: 10px;
+}
+
+.alert {
+  border-radius: 10px;
+}
+
+/* Sidebar font sizing matches app */
+.theme-doc-sidebar-menu .menu__link {
+  font-size: 0.9rem;
+  border-radius: 10px;
+}
+
+/* Dark mode: true black background like app */
+[data-theme='dark'] .navbar {
+  background: #000000;
+  border-bottom: 1px solid #262626;
+}
+
+[data-theme='dark'] .footer--dark {
+  background: #000000;
+  border-top: 1px solid #262626;
 }

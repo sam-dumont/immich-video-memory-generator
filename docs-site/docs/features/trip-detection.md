@@ -11,7 +11,7 @@ The trip detection system figures out where you slept each night of a trip, then
 
 ## How it works
 
-Trip detection runs a 4-phase algorithm against GPS-tagged assets from the album. It needs `home_lat` / `home_lon` set in your config — that's the reference point for deciding what counts as "away".
+Trip detection runs a 4-phase algorithm against GPS-tagged assets from the album. It needs `trips.homebase_latitude` / `trips.homebase_longitude` set in your config: that's the reference point for deciding what counts as "away".
 
 ### Phase 1: Cluster + identify home bases
 
@@ -54,15 +54,12 @@ The LLM produces a `map_mode` field alongside the title suggestion. You can over
 ## Configuration
 
 ```yaml
-home:
-  lat: 48.8566    # Your home coordinates
-  lon: 2.3522
-
-trip_detection:
-  min_distance_km: 50     # Minimum distance from home to count as "away"
-  min_duration_days: 2    # Minimum trip length
-  max_gap_days: 2         # Max days without photos before splitting into separate trips
-  merge_radius_km: 5.0    # Distance within which consecutive nights merge
+trips:
+  homebase_latitude: 48.8566    # Your home coordinates
+  homebase_longitude: 2.3522
+  min_distance_km: 50           # Minimum distance from home to count as "away"
+  min_duration_days: 2          # Minimum trip length
+  max_gap_days: 2               # Max days without photos before splitting into separate trips
 ```
 
 ## Requirements

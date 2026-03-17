@@ -14,7 +14,7 @@ The AI writes code. I make sure it's good. Every line goes through:
 - Ruff linting and formatting on every PR
 - mypy static type checking
 - Cyclomatic complexity gates (Xenon grade C max, cognitive complexity checks)
-- 500-line file length limits
+- 800-line file length limits
 - Dead code detection (Vulture)
 - Code duplication detection
 - Refurb modernization checks
