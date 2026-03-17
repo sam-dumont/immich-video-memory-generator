@@ -58,10 +58,12 @@ Title screen settings live under `title_screens` in your config:
 
 ```yaml
 title_screens:
-  style: modern_warm          # or elegant_minimal, vintage_charm, etc.
-  animated_background: true   # GPU-accelerated backgrounds (auto-detected)
-  duration: 3.5               # seconds per title card
-  locale: en                  # en or fr for month names
+  style_mode: auto              # auto (mood-based) or random
+  animated_background: true     # GPU-accelerated backgrounds (auto-detected)
+  title_duration: 3.5           # seconds per title card
+  locale: auto                  # auto, en, or fr
+  show_month_dividers: true     # month dividers in yearly memories
+  use_first_name_only: true     # "Emma" instead of "Emma Dumont"
 ```
 
 For trip memories, additional map settings apply. See [Map Animation](./map-animation.md) and [Trip Memories](./trip-memories.md).

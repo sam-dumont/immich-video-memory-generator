@@ -130,6 +130,29 @@ ace_step:
   timeout_seconds: 3600
 ```
 
+## LLM (vision model)
+
+Used by content analysis and title generation. Any OpenAI-compatible endpoint works: mlx-vlm, Ollama, vLLM, Groq, OpenAI itself.
+
+```yaml
+llm:
+  provider: "openai-compatible"   # openai-compatible or ollama
+  base_url: "http://localhost:8080/v1"
+  model: ""                        # e.g. mlx-community/Qwen2.5-VL-7B-Instruct-8bit
+  api_key: ""                      # optional, only for cloud APIs
+  timeout_seconds: 300             # increase for slow local models (10-3600)
+```
+
+A separate `title_llm` section can override these for trip title generation (useful if you want a different model for titles vs. content analysis):
+
+```yaml
+title_llm:
+  base_url: "http://localhost:11434/v1"
+  model: "llama3.2"
+```
+
+Any field not set in `title_llm` falls back to the `llm` values.
+
 ## Content analysis (LLM-based scoring)
 
 ```yaml
@@ -183,6 +206,45 @@ trips:
   min_duration_days: 2
   max_gap_days: 2
 ```
+
+## Scoring priority
+
+Three knobs that control how clips get ranked. Each can be `low`, `medium`, or `high`.
+
+```yaml
+scoring_priority:
+  people: high                   # Favor clips with recognized faces
+  quality: medium                # Favor stable, well-lit footage
+  moment: medium                 # Favor interesting content (motion, events)
+```
+
+`people: high` means clips with faces score significantly higher. Useful for family compilations. Set it to `low` if you're doing a landscape/travel memory where faces aren't the point.
+
+## Cache
+
+Controls where analysis results and downloaded videos are stored. The video cache avoids re-downloading from Immich on repeated runs.
+
+```yaml
+cache:
+  directory: "~/.immich-memories/cache"
+  database: "~/.immich-memories/cache.db"
+  max_age_days: 30               # Analysis cache expiry (1-365)
+  video_cache_enabled: true      # Cache downloaded videos locally
+  video_cache_max_size_gb: 10.0  # Max disk usage for video cache (1-500 GB)
+  video_cache_max_age_days: 7    # Auto-delete cached videos older than this (1-365)
+```
+
+The video cache defaults to 10 GB. If you're tight on disk, lower `video_cache_max_size_gb` or disable it entirely with `video_cache_enabled: false`.
+
+## Server (UI)
+
+```yaml
+server:
+  host: "0.0.0.0"               # Listen address (use 127.0.0.1 to restrict to localhost)
+  port: 8080                     # Listen port (1-65535)
+```
+
+These can also be set via CLI flags: `immich-memories ui --host 127.0.0.1 --port 9090`.
 
 ## Upload to Immich
 

@@ -36,7 +36,7 @@ Here's what happens when you rapid-fire 3 photos of an Italian hilltop. Each Liv
 1. **Discovery**: queries Immich for IMAGE assets with a linked `livePhotoVideoId`
 2. **Person filtering**: searches by person with no asset type filter, then filters client-side for live photos (Immich quirk — see [below](#person-filtering-quirk))
 3. **Neighbor expansion**: untagged live photos taken within the merge window of a tagged one get pulled in automatically
-4. **Clustering**: groups photos taken within a configurable time window (default 3s) into bursts
+4. **Clustering**: groups photos taken within a configurable time window (default 10s) into bursts
 5. **Spectrogram alignment**: cross-correlates audio between overlapping clips to find the exact temporal offset (sample-accurate, ~10ms per pair)
 6. **Burst merging**: stitches clips with shutter-centered cuts, exposure normalization, and 30ms audio fade at boundaries
 7. **Prioritization**: if there's enough regular video, live photos are available but not pre-selected

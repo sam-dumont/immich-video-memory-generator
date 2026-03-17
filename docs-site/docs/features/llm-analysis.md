@@ -26,24 +26,40 @@ This works with anything that speaks the OpenAI chat completions API:
 
 ## Configuration
 
+Content analysis needs TWO config sections: `content_analysis` controls the feature itself, and `llm` tells it which model to talk to.
+
 ```yaml
+# Which LLM to use (shared with title generation)
+llm:
+  base_url: "http://localhost:8000/v1"
+  model: "mlx-community/Qwen2.5-VL-7B-Instruct-8bit"
+  api_key: "not-needed"        # for local models
+  provider: "openai"           # openai-compatible API
+  timeout_seconds: 300
+
+# Content analysis settings
 content_analysis:
   enabled: false               # opt-in, off by default
-  base_url: "http://localhost:8000/v1"
-  api_key: "not-needed"        # for local models
-  model: "mlx-community/Qwen2.5-VL-7B-Instruct-8bit"
-  weight: 0.3                  # how much LLM score influences final ranking
-  frames_per_segment: 2        # 1-4 frames analyzed per segment
-  timeout: 30                  # seconds, per API call
+  weight: 0.35                 # how much LLM score influences final ranking
+  analyze_frames: 2            # 1-4 frames analyzed per segment
+  min_confidence: 0.5          # ignore scores below this threshold
+  frame_max_height: 480        # downscale frames before sending (480=fast, 720=balanced)
+  openai_image_detail: low     # low=85 tokens/cheap, high=1889 tokens/detailed
 ```
 
 ### Weight
 
-The `weight` parameter (0.0 to 1.0) controls how much the LLM score matters relative to the other scoring factors (faces, motion, stability). At 0.3, it's a meaningful input but won't override a clip that scores well on everything else.
+The `weight` parameter (0.0 to 1.0) controls how much the LLM score matters relative to the other scoring factors (faces, motion, stability). At 0.35, it's a meaningful input but won't override a clip that scores well on everything else.
 
 ### Frames per segment
 
-More frames = better understanding but slower and more expensive. For most use cases, 2 frames per segment is the sweet spot: one near the start, one near the end.
+`analyze_frames` controls how many frames per segment get sent to the LLM. More frames = better understanding but slower and more expensive. 2 is the sweet spot: one near the start, one near the end.
+
+### Frame optimization
+
+`frame_max_height` downscales frames before sending them. At 480px, API costs are low and most vision models still understand the scene. Bump to 720 or 1080 if your model benefits from detail.
+
+`openai_image_detail` maps to the OpenAI `detail` parameter: `low` uses a fixed 85-token budget per image, `high` tiles the image for up to 1889 tokens. For clip scoring, `low` is usually enough.
 
 ## Cost considerations
 

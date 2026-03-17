@@ -355,7 +355,15 @@ class TestFullPipelineWithTitles:
         # 2 clips (3-30s each) + title (~2s) + ending (~2s) — at least 4s
         assert duration > 4.0, f"Duration too short: {duration}s"
 
-        # Progress callback was invoked
+        # Title frame at t=0.5 should have visible content (not all-black)
+        brightness = _extract_frame_brightness(result, 0.5)
+        assert brightness > 5.0, f"Title frame appears blank (brightness={brightness:.1f})"
+
+        # Resolution should be reasonable (not 0x0)
+        w, h = _get_resolution(probe)
+        assert w >= 320 and h >= 240, f"Output resolution too small: {w}x{h}"
+
+        # Progress callback was invoked with expected phases
         assert len(progress_phases) > 0
         assert "extract" in progress_phases
         assert "assemble" in progress_phases
@@ -470,7 +478,12 @@ class TestTripMemoryPipeline:
         probe = ffprobe_json(result)
         assert has_stream(probe, "video")
         duration = get_duration(probe)
-        assert duration > 4.0, f"Duration too short: {duration}s"
+        # 2 clips + title with trip map + ending = at least 4s
+        assert duration > 4.0, f"Duration too short for trip memory: {duration}s"
+
+        # Trip title should render something visible at the start
+        brightness = _extract_frame_brightness(result, 0.5)
+        assert brightness > 3.0, f"Trip title frame appears blank (brightness={brightness:.1f})"
 
 
 # ---------------------------------------------------------------------------
@@ -705,6 +718,13 @@ class TestLivePhotoFullPipeline:
         assert final.exists()
         assert final.stat().st_size > 1000
 
+        # Final output duration should match the merged burst duration
+        final_dur = get_duration(ffprobe_json(final))
+        merged_dur = get_duration(probe)
+        assert abs(final_dur - merged_dur) < 1.0, (
+            f"Final duration {final_dur:.1f}s doesn't match merged burst {merged_dur:.1f}s"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Test 7: Title override + custom subtitle
@@ -751,8 +771,12 @@ class TestTitleOverridePipeline:
         probe = ffprobe_json(result)
         assert has_stream(probe, "video")
         duration = get_duration(probe)
-        # 2 clips + title + ending
-        assert duration > 6.0, f"Duration too short: {duration}s"
+        # 2 clips (~3s each) + title (~2s) + ending (~2s) = ~10s
+        assert duration > 6.0, f"Duration too short for titled video: {duration}s"
+
+        # Title frame should have visible content (custom title was rendered)
+        brightness = _extract_frame_brightness(result, 0.5)
+        assert brightness > 5.0, f"Title override frame appears blank (brightness={brightness:.1f})"
 
 
 # ---------------------------------------------------------------------------
