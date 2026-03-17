@@ -183,8 +183,7 @@ class AssemblyEngine:
         """Assemble clips using scalable transition-only rendering."""
         if len(clips) < 2:
             if len(clips) == 1:
-                shutil.copy2(clips[0].path, output_path)
-                return output_path
+                return self._assemble_single_clip(clips[0], output_path)
             raise ValueError("No clips to assemble")
 
         fade = self.settings.transition_duration or 0.5
@@ -224,6 +223,20 @@ class AssemblyEngine:
                 shutil.rmtree(temp_dir, ignore_errors=True)
             else:
                 logger.info(f"Debug mode: preserving temp files in {temp_dir}")
+
+    def _assemble_single_clip(self, clip: AssemblyClip, output_path: Path) -> Path:
+        """Handle single clip: encode through FFmpeg if filters needed, else copy."""
+        needs_encoding = (
+            self.settings.privacy_mode
+            or (not self.settings.auto_resolution and self.settings.target_resolution)
+            or (clip.rotation_override is not None and clip.rotation_override != 0)
+        )
+        if needs_encoding:
+            target_resolution = resolve_target_resolution(self.settings, self.prober, [clip])
+            self.encoder.encode_single_clip(clip, output_path, target_resolution=target_resolution)
+            return output_path
+        shutil.copy2(clip.path, output_path)
+        return output_path
 
     def assemble_with_cuts(
         self,

@@ -706,33 +706,84 @@ class TestCutTransitionPipeline:
 
 
 class TestPrivacyModePipeline:
-    def test_privacy_mode_produces_valid_output(self, short_clip_a, tmp_path):
-        """Privacy mode flag flows through to assembly without crash.
-
-        Exercises: GenerationParams.privacy_mode, AssemblySettings.privacy_mode,
-        blur filter application in filter_builder.
+    def test_privacy_mode_blurs_clips(self, short_clip_a, short_clip_b, tmp_path):
+        """Privacy mode: clips get blurred (sigma=30). Verify by comparing
+        the same clip assembled with and without privacy mode.
         """
+        import subprocess
+
+        import numpy as np
+
         from immich_memories.config_loader import Config
         from immich_memories.generate import GenerationParams, generate_memory
 
-        clip = _make_test_clip(short_clip_a, "privacy-clip")
+        clip_a = _make_test_clip(short_clip_a, "priv-a")
 
         config = Config()
         config.title_screens.enabled = False
 
-        output = tmp_path / "privacy.mp4"
+        # Generate WITHOUT privacy mode
+        normal_output = tmp_path / "normal.mp4"
+        params_normal = GenerationParams(
+            clips=[clip_a],
+            output_path=normal_output,
+            config=config,
+            transition="cut",
+            privacy_mode=False,
+        )
+        result_normal = generate_memory(params_normal)
 
-        params = GenerationParams(
-            clips=[clip],
-            output_path=output,
+        # Generate WITH privacy mode
+        privacy_output = tmp_path / "privacy.mp4"
+        params_privacy = GenerationParams(
+            clips=[clip_a],
+            output_path=privacy_output,
             config=config,
             transition="cut",
             privacy_mode=True,
         )
+        result_privacy = generate_memory(params_privacy)
 
-        result = generate_memory(params)
+        assert result_normal.exists()
+        assert result_privacy.exists()
 
-        assert result.exists()
-        assert result.stat().st_size > 1000
-        probe = ffprobe_json(result)
-        assert has_stream(probe, "video")
+        # Extract a frame from each at t=1s
+        frames_dir = tmp_path / "frames"
+        frames_dir.mkdir()
+
+        for label, path in [("normal", result_normal), ("privacy", result_privacy)]:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-ss",
+                    "1",
+                    "-i",
+                    str(path),
+                    "-frames:v",
+                    "1",
+                    "-f",
+                    "rawvideo",
+                    "-pix_fmt",
+                    "gray",
+                    str(frames_dir / f"{label}.raw"),
+                ],
+                capture_output=True,
+                timeout=10,
+            )
+
+        normal_f = frames_dir / "normal.raw"
+        privacy_f = frames_dir / "privacy.raw"
+
+        if normal_f.exists() and privacy_f.exists():
+            normal_data = np.fromfile(str(normal_f), dtype=np.uint8).astype(np.float32)
+            privacy_data = np.fromfile(str(privacy_f), dtype=np.uint8).astype(np.float32)
+
+            # Edge content: variance of pixel differences (high = sharp, low = blurred)
+            normal_edges = float(np.var(np.diff(normal_data))) if len(normal_data) > 1 else 0
+            privacy_edges = float(np.var(np.diff(privacy_data))) if len(privacy_data) > 1 else 0
+
+            # Privacy mode should produce LESS edge content (sigma=30 blur)
+            assert privacy_edges < normal_edges, (
+                f"Privacy should be blurrier: privacy={privacy_edges:.1f} vs normal={normal_edges:.1f}"
+            )

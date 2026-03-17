@@ -90,6 +90,7 @@ dist/
 dmypy.json
 docs/plans/
 docs/superpowers/
+docs/reviews/
 downloads/
 eggs/
 env.bak/
