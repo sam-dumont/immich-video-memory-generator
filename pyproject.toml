@@ -295,6 +295,11 @@ module = [
 ]
 ignore_missing_imports = true
 
+# scipy lacks type stubs
+[[tool.mypy.overrides]]
+module = ["scipy", "scipy.*"]
+ignore_missing_imports = true
+
 # OpenCV has incomplete type stubs, especially for CUDA
 [[tool.mypy.overrides]]
 module = ["cv2", "cv2.*"]

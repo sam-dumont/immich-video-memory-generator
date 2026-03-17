@@ -395,30 +395,27 @@ class TestTemporalClustering:
         assert clusters[0].estimated_duration == pytest.approx(5.0, abs=0.01)
 
     def test_is_burst(self):
-        """A cluster with 3+ photos is considered a burst."""
+        """A cluster with 2+ photos is considered a burst."""
         from immich_memories.processing.live_photo_merger import cluster_live_photos
 
-        burst = [
+        pair = [
             Asset(
                 **_make_asset(id="a", fileCreatedAt="2024-07-15T10:30:00Z", livePhotoVideoId="v1")
             ),
             Asset(
                 **_make_asset(id="b", fileCreatedAt="2024-07-15T10:30:02Z", livePhotoVideoId="v2")
             ),
-            Asset(
-                **_make_asset(id="c", fileCreatedAt="2024-07-15T10:30:04Z", livePhotoVideoId="v3")
-            ),
         ]
         single = [
             Asset(
-                **_make_asset(id="d", fileCreatedAt="2024-07-15T11:00:00Z", livePhotoVideoId="v4")
+                **_make_asset(id="c", fileCreatedAt="2024-07-15T11:00:00Z", livePhotoVideoId="v3")
             ),
         ]
 
-        clusters = cluster_live_photos(burst + single, merge_window_seconds=10)
+        clusters = cluster_live_photos(pair + single, merge_window_seconds=10)
 
-        assert clusters[0].is_burst
-        assert not clusters[1].is_burst
+        assert clusters[0].is_burst  # 2 photos = burst
+        assert not clusters[1].is_burst  # 1 photo = not burst
 
     def test_cluster_is_favorite_if_any_photo_favorite(self):
         """Cluster should be favorite if ANY photo in it is favorited."""
@@ -474,62 +471,151 @@ class TestTemporalClustering:
 class TestBurstMergerCommand:
     """Slice 4: FFmpeg command construction for merging Live Photo burst clips."""
 
-    def test_builds_trim_and_concat_filter(self):
-        """Should generate ffmpeg filter_complex that trims each clip and concatenates."""
+    def test_builds_trim_and_xfade_filter(self):
+        """Should generate ffmpeg filter_complex that trims, normalizes, and xfades."""
+        from unittest.mock import patch
+
         from immich_memories.processing.live_photo_merger import build_merge_command
 
         clip_paths = [Path("/tmp/clip0.mov"), Path("/tmp/clip1.mov"), Path("/tmp/clip2.mov")]
         trim_points = [(0.0, 2.5), (0.5, 3.0), (0.0, 3.0)]
         output = Path("/tmp/merged.mp4")
 
-        cmd = build_merge_command(clip_paths, trim_points, output)
+        # WHY: probing real files would fail since they don't exist
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_audio",
+                return_value=True,
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger._detect_clip_hdr", return_value=False
+            ),
+        ):
+            cmd = build_merge_command(clip_paths, trim_points, output)
 
-        # Should have -i for each input
         assert cmd.count("-i") == 3
-        # Should use filter_complex with trim + concat
         assert "-filter_complex" in cmd
-        filter_idx = cmd.index("-filter_complex")
-        filter_str = cmd[filter_idx + 1]
-        # Each input should be trimmed
-        assert "[0:v]trim=start=0.0:end=2.5" in filter_str
-        assert "[1:v]trim=start=0.5:end=3.0" in filter_str
-        assert "[2:v]trim=start=0.0:end=3.0" in filter_str
-        # Should concatenate all streams
-        assert "concat=n=3" in filter_str
-        # Output path
+        filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+        # Each input should be trimmed with normalize filter
+        assert "[0:v]trim=start=0.0:end=2.5,setpts=PTS-STARTPTS,normalize=" in filter_str
+        assert "[1:v]trim=start=0.5:end=3.0,setpts=PTS-STARTPTS,normalize=" in filter_str
+        assert "[2:v]trim=start=0.0:end=3.0,setpts=PTS-STARTPTS,normalize=" in filter_str
+
+        # Should use concat (clean cuts, crossfade belongs at assembly stage)
+        assert "concat=n=3:v=1:a=0[outv]" in filter_str
         assert str(output) == cmd[-1]
 
-    def test_includes_audio_streams(self):
-        """Should trim and concat both video and audio streams."""
+    def test_includes_audio_with_fade(self):
+        """Should trim audio with 30ms fade and concat separately from video."""
+        from unittest.mock import patch
+
         from immich_memories.processing.live_photo_merger import build_merge_command
 
         clip_paths = [Path("/tmp/a.mov"), Path("/tmp/b.mov")]
         trim_points = [(0.0, 2.5), (0.5, 3.0)]
         output = Path("/tmp/out.mp4")
 
-        cmd = build_merge_command(clip_paths, trim_points, output)
-        filter_str = cmd[cmd.index("-filter_complex") + 1]
+        # WHY: probing real files would fail since they don't exist
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_audio",
+                return_value=True,
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger._detect_clip_hdr", return_value=False
+            ),
+        ):
+            cmd = build_merge_command(clip_paths, trim_points, output)
 
-        # Should have audio trim + concat too
+        filter_str = cmd[cmd.index("-filter_complex") + 1]
         assert "[0:a]atrim=start=0.0:end=2.5" in filter_str
         assert "[1:a]atrim=start=0.5:end=3.0" in filter_str
-        assert "concat=n=2:v=1:a=1" in filter_str
+        # Audio uses concat with 30ms fade (not acrossfade — it misaligns with video)
+        assert "concat=n=2:v=0:a=1[outa]" in filter_str
+        assert "afade=t=out" in filter_str
+
+    def test_skips_audio_when_clips_lack_audio(self):
+        """Should produce video-only output when any clip lacks audio."""
+        from unittest.mock import patch
+
+        from immich_memories.processing.live_photo_merger import build_merge_command
+
+        clip_paths = [Path("/tmp/a.mov"), Path("/tmp/b.mov")]
+        trim_points = [(0.0, 2.5), (0.5, 3.0)]
+        output = Path("/tmp/out.mp4")
+
+        # WHY: simulating clips without audio streams
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_audio",
+                return_value=False,
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger._detect_clip_hdr", return_value=False
+            ),
+        ):
+            cmd = build_merge_command(clip_paths, trim_points, output)
+
+        filter_str = cmd[cmd.index("-filter_complex") + 1]
+        assert "atrim" not in filter_str
+        assert "-c:a" not in cmd
 
     def test_single_clip_no_concat(self):
-        """A single clip should just trim without concat filter."""
+        """A single clip should just trim and normalize without xfade."""
+        from unittest.mock import patch
+
         from immich_memories.processing.live_photo_merger import build_merge_command
 
         clip_paths = [Path("/tmp/only.mov")]
         trim_points = [(0.0, 3.0)]
         output = Path("/tmp/out.mp4")
 
-        cmd = build_merge_command(clip_paths, trim_points, output)
+        # WHY: probing real files would fail since they don't exist
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_audio",
+                return_value=True,
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger._detect_clip_hdr", return_value=False
+            ),
+        ):
+            cmd = build_merge_command(clip_paths, trim_points, output)
 
-        # Single clip: just trim, no concat needed
         assert "-filter_complex" in cmd
         filter_str = cmd[cmd.index("-filter_complex") + 1]
         assert "[0:v]trim=start=0.0:end=3.0" in filter_str
+        assert "normalize=" in filter_str
         assert "concat" not in filter_str
+        assert "xfade" not in filter_str
+
+    def test_falls_back_to_concat_for_very_short_clips(self):
+        """When clips are too short for xfade, should fall back to concat."""
+        from unittest.mock import patch
+
+        from immich_memories.processing.live_photo_merger import build_merge_command
+
+        clip_paths = [Path("/tmp/a.mov"), Path("/tmp/b.mov")]
+        # Very short trim durations (0.3s each — too short for 0.3s fade)
+        trim_points = [(0.0, 0.3), (0.0, 0.3)]
+        output = Path("/tmp/out.mp4")
+
+        # WHY: probing real files would fail since they don't exist
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_audio",
+                return_value=True,
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger._detect_clip_hdr", return_value=False
+            ),
+        ):
+            cmd = build_merge_command(clip_paths, trim_points, output)
+
+        filter_str = cmd[cmd.index("-filter_complex") + 1]
+        assert "concat=n=2" in filter_str
+        assert "xfade" not in filter_str
 
 
 class TestLivePhotoConfig:

@@ -246,6 +246,92 @@ class TestLivePhotoBurst:
 
 
 # ---------------------------------------------------------------------------
+# Scenario 9: Live photo merge pipeline (real Immich — auto-detect clusters)
+# ---------------------------------------------------------------------------
+
+
+@requires_immich
+class TestLivePhotoMergeReal:
+    """Auto-detect live photo clusters from Immich and verify merge pipeline."""
+
+    def test_auto_detect_and_merge_live_photos(self, tmp_path):
+        """Find live photos in Immich, cluster, merge into a valid video."""
+        from datetime import date
+
+        from immich_memories.api.immich import SyncImmichClient
+        from immich_memories.config_loader import Config
+        from immich_memories.processing.live_photo_merger import (
+            build_merge_command,
+            cluster_live_photos,
+        )
+        from immich_memories.timeperiod import DateRange
+
+        config = Config.from_yaml(Config.get_default_path())
+        client = SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
+
+        # Broad date range to find any live photos
+        live_assets = client.get_live_photos_for_date_range(
+            DateRange(start=date(2024, 1, 1), end=date(2026, 1, 1))
+        )
+
+        if len(live_assets) < 2:
+            pytest.skip("Need at least 2 live photos in Immich for cluster detection")
+
+        clusters = cluster_live_photos(live_assets, merge_window_seconds=10.0)
+
+        # Find first cluster with 2+ photos
+        merge_cluster = None
+        for cluster in clusters:
+            if cluster.count >= 2:
+                merge_cluster = cluster
+                break
+
+        if merge_cluster is None:
+            pytest.skip("No live photo clusters with 2+ photos found")
+
+        # Download the video components
+        burst_ids = merge_cluster.video_asset_ids
+        if len(burst_ids) < 2:
+            pytest.skip("Cluster video components missing live photo video IDs")
+
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        clip_paths = []
+        for vid in burst_ids:
+            dest = cache_dir / f"{vid}.MOV"
+            try:
+                client.download_asset(vid, dest)
+                if dest.exists() and dest.stat().st_size > 0:
+                    clip_paths.append(dest)
+            except Exception:
+                pass
+
+        if len(clip_paths) < 2:
+            pytest.skip("Could not download enough burst video components")
+
+        # Build merge command and run FFmpeg
+        trim_points = merge_cluster.trim_points()[: len(clip_paths)]
+        merged_path = tmp_path / "merged.mp4"
+        cmd = build_merge_command(clip_paths, trim_points, merged_path)
+
+        import subprocess
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        assert result.returncode == 0, f"FFmpeg merge failed: {result.stderr[:500]}"
+        assert merged_path.exists()
+        assert merged_path.stat().st_size > 1000
+
+        # Verify output is a valid video with expected properties
+        from tests.integration.conftest import ffprobe_json, get_duration, has_stream
+
+        probe = ffprobe_json(merged_path)
+        assert has_stream(probe, "video"), "Merged output must have a video stream"
+
+        duration = get_duration(probe)
+        assert duration > 0, "Merged video must have positive duration"
+
+
+# ---------------------------------------------------------------------------
 # Scenario 7: Error wrapping
 # ---------------------------------------------------------------------------
 

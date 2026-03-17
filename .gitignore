@@ -1,141 +1,114 @@
-# Byte-compiled / optimized / DLL files
+
 __pycache__/
-*.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
+.agent/
+.cache
+.claude/
+.complexipy_cache/
+.continue/
 .coverage
 .coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-
-# Translations
-*.mo
-*.pot
-
-# Environments
+.dmypy.json
+.DS_Store
+.eggs/
 .env
+.env.local
+.hypothesis/
+.idea/
+.installed.cfg
+.ipynb_checkpoints
+.junie/
+.kiro/
+.mutmut-cache/
+.mypy_cache/
+.nox/
+.pytest_cache/
+.Python
+.ruff_cache/
+.streamlit/
+.terraform.lock.hcl
+.terraform/
+.tox/
 .venv
 .venv-test/
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# IDEs
-.idea/
 .vscode/
-*.swp
-*.swo
-*~
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Ruff
-.ruff_cache/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# Project specific
-*.mp4
-*.mov
+.worktrees/
 *.avi
-*.mkv
-output/
-# Runtime cache dirs only (not src/immich_memories/cache/ which is source code)
-/cache/
+*.cover
 *.db
-
-# Config files with secrets
-config.yaml
-.env.local
-
-# Temporary files
-*.tmp
-*.temp
-.DS_Store
-Thumbs.db
-
-# Auto-generated version file
-src/immich_memories/_version.py
-
-# Claude Code
-.claude/
-
-# Internal plans/marketing (not for public repo)
-docs/plans/
-
-# Streamlit (legacy)
-.streamlit/
-
-# Logs
-error_log.log
+*.egg
+*.egg-info/
+*.enc.json
+*.enc.yaml
 *.log
-
-# Terraform state and secrets
+*.manifest
+*.mkv
+*.mo
+*.mov
+*.mp4
+*.pot
+*.py,cover
+*.py[cod]
+*.so
+*.spec
+*.swo
+*.swp
+*.temp
 *.tfstate
 *.tfstate.backup
-.terraform/
-.terraform.lock.hcl
-*.enc.yaml
-*.enc.json
-.worktrees/
-
+*.tmp
+*~
+*$py.class
+/cache/
+# Auto-generated version file
+# Byte-compiled / optimized / DLL files
+# C extensions
+# Claude Code
+# Config files with secrets
+# Distribution / packaging
+# Environments
 # IDE/AI tool directories
-.agent/
-.complexipy_cache/
-.continue/
-.junie/
-.kiro/
-
-# IDE/AI tool directories
-.agent/
-.complexipy_cache/
-.continue/
-.junie/
-.kiro/
-mutants/
-.mutmut-cache/
+# IDEs
+# Installer logs
+# Internal plans/marketing (not for public repo)
+# Jupyter Notebook
+# Logs
+# mypy
+# Project specific
+# PyInstaller
+# Ruff
+# Runtime cache dirs only (not src/immich_memories/cache/ which is source code)
+# Streamlit (legacy)
+# Temporary files
+# Terraform state and secrets
+# Translations
+# Unit test / coverage reports
+build/
+config.yaml
+coverage.xml
+develop-eggs/
+dist/
+dmypy.json
+docs/plans/
 docs/superpowers/
+downloads/
+eggs/
+env.bak/
+env/
+ENV/
+error_log.log
+htmlcov/
+lib/
+lib64/
+mutants/
+nosetests.xml
+output/
+parts/
+pip-delete-this-directory.txt
+pip-log.txt
+sdist/
+src/immich_memories/_version.py
+Thumbs.db
+var/
+venv.bak/
+venv/
+wheels/

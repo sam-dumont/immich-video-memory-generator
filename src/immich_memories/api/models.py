@@ -336,9 +336,10 @@ class VideoClipInfo(BaseModel):
     color_primaries: str | None = None  # e.g., "bt2020"
     bit_depth: int | None = None  # 8, 10, 12
 
-    # Live Photo burst: video IDs + trim points for merging multiple clips
+    # Live Photo burst: video IDs + trim points + shutter timestamps for merging
     live_burst_video_ids: list[str] | None = None
     live_burst_trim_points: list[tuple[float, float]] | None = None
+    live_burst_shutter_timestamps: list[float] | None = None  # epoch seconds per clip
 
     # Audio categories detected (populated during pipeline analysis)
     audio_categories: list[str] | None = None  # e.g. ["laughter", "speech", "engine"]
