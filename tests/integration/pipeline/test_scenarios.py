@@ -110,6 +110,7 @@ class TestErrorHandling:
             output_path=tmp_path / "err.mp4",
             config=config,
             transition="cut",
+            no_music=True,
             # Force an error by pointing to nonexistent segment
             clip_segments={"err-clip": (100.0, 200.0)},  # Beyond clip duration
         )
@@ -353,6 +354,7 @@ class TestErrorWrapping:
             output_path=tmp_path / "err.mp4",
             config=config,
             transition="cut",
+            no_music=True,
         )
 
         # WHY: force an error inside assembly to test the wrapping logic
@@ -391,6 +393,7 @@ class TestTripTitleSettings:
             output_path=tmp_path / "trip.mp4",
             config=config,
             memory_type="trip",
+            no_music=True,
             memory_preset_params={
                 "location_name": "Bruges",
                 "trip_start": date(2025, 7, 1),
@@ -438,6 +441,7 @@ class TestClipSegmentOverrides:
             output_path=output,
             config=config,
             transition="cut",
+            no_music=True,
             # Trim to first 2 seconds of the 3s clip
             clip_segments={"seg-clip": (0.0, 2.0)},
         )

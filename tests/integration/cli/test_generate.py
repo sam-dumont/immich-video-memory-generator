@@ -114,6 +114,7 @@ class TestGenerateMemoryPipeline:
             date_start=date(2024, 1, 1),
             date_end=date(2025, 12, 31),
             upload_enabled=False,
+            no_music=True,
             progress_callback=timing_callback,
         )
 
@@ -169,6 +170,7 @@ class TestGenerateMemoryPipeline:
             date_start=date(2025, 1, 1),
             date_end=date(2025, 12, 31),
             upload_enabled=False,
+            no_music=True,
         )
 
         result = generate_memory(params)
@@ -193,6 +195,7 @@ class TestGenerateMemoryPipeline:
             date_end=date(2025, 12, 31),
             upload_enabled=True,
             upload_album="Test Album",
+            no_music=True,
         )
 
         # WHY: upload_memory WRITES to Immich — mock writes only
@@ -219,6 +222,7 @@ class TestGenerateMemoryPipeline:
             output_path=output,
             config=config,
             transition="cut",
+            no_music=True,
         )
 
         with pytest.raises(GenerationError, match="No clips"):
