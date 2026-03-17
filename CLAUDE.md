@@ -169,11 +169,27 @@ locally, CI will pass too. Use conventional commit message format (see above).
 | Integration | Local only | `make test-integration` | Real FFmpeg assembly, real Immich reads, real pipeline | FFmpeg + Immich |
 | Coverage merge | CI | `make diff-cover-ci` | Merges unit (CI) + integration (local, committed XML) | `tests/integration-coverage.xml` committed |
 
+**Coverage targets:**
+- Core (non-UI): **60%** — enforced by `fail_under = 55` (unit) + integration XMLs push to 60%+
+- UI pages are **excluded** from coverage (`pyproject.toml [tool.coverage.run].omit`) — NiceGUI
+  presentation code (widgets, progress bars, video player) needs a browser to test. Will be
+  covered when Playwright E2E tests are added (#37).
+- Diff-cover: **80%** on changed lines per PR
+
 **Integration test workflow:**
 1. Change processing/analysis/titles code
 2. Run `make test-integration` locally (requires FFmpeg + Immich)
-3. Commit the updated `tests/integration-coverage.xml` + `tests/integration-junit.xml`
-4. Push — CI merges both coverage files for diff-cover
+3. Commit the updated `tests/*-coverage.xml` files (pre-commit hook auto-fixes paths)
+4. Push — CI merges all coverage XMLs for diff-cover
+
+**Integration test folders:**
+```
+tests/integration/
+├── assembly/     make test-integration-assembly     (~1min, FFmpeg only)
+├── pipeline/     make test-integration-pipeline     (~7min, FFmpeg + Immich)
+├── cli/          make test-integration-cli          (~15min, full pipeline)
+└── live_photos/  make test-integration-live-photos  (~4min, FFmpeg + Immich)
+```
 
 **Comments:**
 - Do NOT write comments that describe what the next line does
