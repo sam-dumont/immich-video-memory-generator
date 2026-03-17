@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -140,6 +141,63 @@ class TestTotalClipDuration:
             config=Config(),
         )
         assert _total_clip_duration(params) == 8
+
+
+class TestTripLocations:
+    def test_extract_trip_locations_deduplicates(self):
+        """Clips with GPS data produce unique location list."""
+        from immich_memories.generate import _extract_trip_locations
+        from immich_memories.processing.assembly_config import AssemblyClip
+
+        clips = [
+            AssemblyClip(
+                path=Path("/fake/a.mp4"), duration=3.0, latitude=48.8566, longitude=2.3522
+            ),
+            AssemblyClip(
+                path=Path("/fake/b.mp4"), duration=3.0, latitude=48.8566, longitude=2.3522
+            ),
+            AssemblyClip(
+                path=Path("/fake/c.mp4"), duration=3.0, latitude=51.5074, longitude=-0.1278
+            ),
+        ]
+        locations = _extract_trip_locations(clips)
+        assert len(locations) == 2
+
+    def test_generate_trip_title_text(self):
+        from immich_memories.generate import _generate_trip_title_text
+
+        result = _generate_trip_title_text(
+            {
+                "location_name": "Barcelona",
+                "trip_start": date(2025, 7, 1),
+                "trip_end": date(2025, 7, 7),
+            }
+        )
+        assert result is not None
+        assert "barcelona" in result.lower()
+
+    def test_generate_trip_title_returns_none_without_params(self):
+        from immich_memories.generate import _generate_trip_title_text
+
+        assert _generate_trip_title_text({}) is None
+
+
+class TestTitleOverride:
+    def test_custom_title_passed_to_settings(self):
+        from immich_memories.generate import _build_title_settings
+
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/out.mp4"),
+            config=Config(),
+            title="My Custom Title",
+            subtitle="Summer 2025",
+            date_start=date(2025, 1, 1),
+            date_end=date(2025, 12, 31),
+        )
+        title_settings = _build_title_settings(params, Config(), [])
+        assert title_settings.title_override == "My Custom Title"
+        assert title_settings.subtitle_override == "Summer 2025"
 
 
 class TestClipLocationName:

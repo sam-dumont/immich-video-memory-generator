@@ -81,14 +81,29 @@ class TestGenerateMemoryPipeline:
     """End-to-end generate_memory() with real Immich + FFmpeg."""
 
     def test_two_clips_crossfade(self, immich_short_clips, tmp_path):
-        """2 clips → crossfade → valid video output."""
+        """2 clips → crossfade → valid video output. Captures phase timings."""
+        import time
+
         from immich_memories.generate import GenerationParams, generate_memory
 
         clips, config, client = immich_short_clips
         config.title_screens.enabled = False
         output = tmp_path / "crossfade.mp4"
-        progress_phases = []
+        timings: dict[str, float] = {}
+        phase_starts: dict[str, float] = {}
 
+        def timing_callback(phase: str, _pct: float, _msg: str) -> None:
+            now = time.monotonic()
+            # Close previous phase
+            for p, start in list(phase_starts.items()):
+                if p != phase:
+                    timings[p] = now - start
+                    del phase_starts[p]
+            # Start new phase
+            if phase not in phase_starts:
+                phase_starts[phase] = now
+
+        t0 = time.monotonic()
         params = GenerationParams(
             clips=clips[:2],
             output_path=output,
@@ -99,18 +114,43 @@ class TestGenerateMemoryPipeline:
             date_start=date(2024, 1, 1),
             date_end=date(2025, 12, 31),
             upload_enabled=False,
-            progress_callback=lambda phase, _pct, _msg: progress_phases.append(phase),
+            progress_callback=timing_callback,
         )
 
         result = generate_memory(params)
+        total_time = time.monotonic() - t0
+
+        # Close any remaining phase
+        now = time.monotonic()
+        for p, start in phase_starts.items():
+            timings[p] = now - start
 
         assert result.exists()
         assert result.stat().st_size > 1000
         from tests.integration.conftest import ffprobe_json, get_duration, has_stream
 
-        assert has_stream(ffprobe_json(result), "video")
-        assert get_duration(ffprobe_json(result)) > 0
-        assert len(progress_phases) > 0
+        probe = ffprobe_json(result)
+        assert has_stream(probe, "video")
+        duration = get_duration(probe)
+        assert duration > 0
+
+        # Report timings + metrics
+        import logging
+
+        logger = logging.getLogger("test.timings")
+        logger.info("=" * 60)
+        logger.info("PIPELINE PERFORMANCE REPORT")
+        logger.info("=" * 60)
+        logger.info(f"  Clips: {len(clips[:2])}")
+        logger.info(f"  Output duration: {duration:.1f}s")
+        logger.info(f"  Output size: {result.stat().st_size / 1024:.0f} KB")
+        logger.info(
+            f"  Resolution: {probe.get('streams', [{}])[0].get('width', '?')}x{probe.get('streams', [{}])[0].get('height', '?')}"
+        )
+        logger.info(f"  Total time: {total_time:.1f}s")
+        for phase, t in sorted(timings.items()):
+            logger.info(f"  Phase '{phase}': {t:.1f}s")
+        logger.info("=" * 60)
 
     def test_single_clip_cut(self, immich_short_clips, tmp_path):
         """1 clip → cut transition → valid video."""
