@@ -12,6 +12,7 @@ from immich_memories.photos.grouper import PhotoGrouper
 from immich_memories.photos.models import AnimationMode, PhotoClipInfo, PhotoGroup
 from immich_memories.photos.renderer import (
     KenBurnsParams,
+    face_aware_pan,
     render_collage,
     render_ken_burns,
     render_slide_in,
@@ -31,6 +32,7 @@ __all__ = [
     "score_photo",
     "split_filter",
     "KenBurnsParams",
+    "face_aware_pan",
     "render_ken_burns",
     "render_slide_in",
     "render_collage",

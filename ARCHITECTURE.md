@@ -72,7 +72,10 @@ src/immich_memories/
 ├── photos/                     # Photo-to-video animation (converts stills to .mp4 clips)
 │   ├── __init__.py             # Public API re-exports
 │   ├── models.py               # AnimationMode enum, PhotoClipInfo, PhotoGroup
-│   ├── filter_expressions.py   # Pure FFmpeg filter strings: ken_burns, face_zoom, blur_bg, collage
+│   ├── renderer.py             # Frame-by-frame renderer: Ken Burns, slide-in, collage, face_aware_pan
+│   ├── animator.py             # PhotoAnimator: FFmpeg command builder, HEIC decode, HDR detection
+│   ├── ultrahdr.py             # Ultra HDR JPEG (Android/Pixel): MPF parser, gain map, ISO 21496-1
+│   ├── filter_expressions.py   # LEGACY FFmpeg filter strings (superseded by renderer.py)
 │   ├── grouper.py              # PhotoGrouper: temporal clustering, series detection
 │   └── scoring.py              # Photo scoring: favorites, faces, camera, penalty
 │

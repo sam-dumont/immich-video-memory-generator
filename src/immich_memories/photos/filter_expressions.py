@@ -1,10 +1,9 @@
-"""Pure functions returning FFmpeg filter strings for photo animations.
+"""LEGACY: FFmpeg filter strings for photo animations.
 
-Each function takes photo/target dimensions and animation parameters,
-returning a complete FFmpeg filter graph string. No I/O — just math and strings.
-
-Every function accepts an optional `seed` for reproducible randomness —
-each photo gets a unique pan direction, zoom start point, etc.
+Superseded by renderer.py which generates frames in Python (numpy/cv2)
+for subpixel-precise Ken Burns, HDR support, and no zoompan jitter.
+Keep this module for backward compatibility — new code should use
+render_ken_burns(), render_slide_in(), render_collage() from renderer.py.
 """
 
 from __future__ import annotations
