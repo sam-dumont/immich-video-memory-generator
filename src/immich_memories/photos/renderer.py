@@ -15,6 +15,7 @@ Validated on real iPhone 16 Pro HEIC photos with HDR gain maps.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 import cv2
@@ -89,7 +90,17 @@ def render_ken_burns(
     vp_h: int,
     params: KenBurnsParams | None = None,
 ) -> list[np.ndarray]:
-    """Render Ken Burns frames with fixed-frame dynamic blur background.
+    """Render Ken Burns frames as a list (for collage compositing etc)."""
+    return list(render_ken_burns_streaming(src, vp_w, vp_h, params))
+
+
+def render_ken_burns_streaming(
+    src: np.ndarray,
+    vp_w: int,
+    vp_h: int,
+    params: KenBurnsParams | None = None,
+) -> Iterator[np.ndarray]:
+    """Yield Ken Burns frames one at a time (O(1) memory).
 
     The photo "window" is a fixed rectangle centered in the viewport.
     Ken Burns zooms/pans INSIDE that window. Blur fills the rest,
@@ -131,7 +142,6 @@ def render_ken_burns(
     big_blur = cv2.GaussianBlur(big, (0, 0), sigmaX=40) if needs_blur else None
 
     n_frames = int(params.fps * params.duration)
-    frames: list[np.ndarray] = []
 
     for i in range(n_frames):
         t = i / max(n_frames - 1, 1)
@@ -154,7 +164,6 @@ def render_ken_burns(
         )
 
         if needs_blur and big_blur is not None:
-            # Blur crop → fill viewport
             fsx, fsy = vp_w / vis_w, vp_h / vis_h
             m_blur = np.array([[fsx, 0, -x0 * fsx], [0, fsy, -y0 * fsy]], dtype=np.float32)
             bg = cv2.warpAffine(
@@ -165,17 +174,13 @@ def render_ken_burns(
                 borderMode=cv2.BORDER_REPLICATE,
             )
             bg[win_y : win_y + win_h, win_x : win_x + win_w] = sharp
-            frames.append(bg)
+            yield bg
         else:
-            # No blur needed — sharp covers the viewport
             vsx, vsy = vp_w / vis_w, vp_h / vis_h
             m_vp = np.array([[vsx, 0, -x0 * vsx], [0, vsy, -y0 * vsy]], dtype=np.float32)
-            frame = cv2.warpAffine(
+            yield cv2.warpAffine(
                 big, m_vp, (vp_w, vp_h), flags=cv2.INTER_AREA, borderMode=cv2.BORDER_REPLICATE
             )
-            frames.append(frame)
-
-    return frames
 
 
 def render_slide_in(

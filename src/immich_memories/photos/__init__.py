@@ -8,6 +8,7 @@ from immich_memories.photos.renderer import (
     face_aware_pan,
     render_collage,
     render_ken_burns,
+    render_ken_burns_streaming,
     render_slide_in,
     render_split,
 )
@@ -25,5 +26,6 @@ __all__ = [
     "render_ken_burns",
     "render_slide_in",
     "render_collage",
+    "render_ken_burns_streaming",
     "render_split",
 ]

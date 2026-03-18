@@ -151,7 +151,7 @@ def generate_memory(params: GenerationParams) -> Path:
         # Phase 1b: Render photo clips (if enabled)
         if params.include_photos and params.photo_assets:
             _report(params, "photos", 0.5, "Rendering photo animations...")
-            photo_clips = _render_photos(params, run_output_dir)
+            photo_clips = _render_photos(params, run_output_dir, len(assembly_clips))
             assembly_clips = _merge_by_date(assembly_clips, photo_clips)
 
         if not assembly_clips:
@@ -203,7 +203,9 @@ def _total_clip_duration(params: GenerationParams) -> int:
     return int(total)
 
 
-def _render_photos(params: GenerationParams, output_dir: Path) -> list[AssemblyClip]:
+def _render_photos(
+    params: GenerationParams, output_dir: Path, video_clip_count: int
+) -> list[AssemblyClip]:
     """Render photo assets as animated video clips for assembly."""
     from immich_memories.photos.photo_pipeline import render_photo_clips
 
@@ -223,6 +225,7 @@ def _render_photos(params: GenerationParams, output_dir: Path) -> list[AssemblyC
         target_h=target_res[1],
         work_dir=photo_dir,
         download_fn=download_fn,
+        video_clip_count=video_clip_count,
     )
 
 
