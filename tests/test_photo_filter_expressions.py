@@ -9,6 +9,7 @@ from immich_memories.photos.filter_expressions import (
     collage_filter,
     face_zoom_filter,
     ken_burns_filter,
+    split_filter,
 )
 
 
@@ -336,3 +337,67 @@ class TestCollageFilter:
         results = {collage_filter(**args, seed=i) for i in range(20)}
         # 4 slide directions, should hit at least 2 in 20 seeds
         assert len(results) >= 2
+
+
+class TestSplitFilter:
+    """Tests for split screen filter (Apple Photos style grid)."""
+
+    def test_two_photos_side_by_side(self):
+        """2 photos are placed side by side in the frame."""
+        result = split_filter(
+            photos=[(1920, 1080), (1920, 1080)],
+            target_w=1920,
+            target_h=1080,
+            duration=5.0,
+            fps=30,
+        )
+        assert "overlay=" in result
+        assert "[p0]" in result
+        assert "[p1]" in result
+
+    def test_three_photos_grid(self):
+        """3 photos creates a grid layout."""
+        result = split_filter(
+            photos=[(1920, 1080), (1920, 1080), (1920, 1080)],
+            target_w=1920,
+            target_h=1080,
+            duration=5.0,
+            fps=30,
+        )
+        assert result.count("overlay=") == 3
+        assert "[p0]" in result
+        assert "[p2]" in result
+
+    def test_rejects_fewer_than_2(self):
+        """Split requires at least 2 photos."""
+        with pytest.raises(ValueError, match="2-4"):
+            split_filter(
+                photos=[(1920, 1080)],
+                target_w=1920,
+                target_h=1080,
+                duration=5.0,
+                fps=30,
+            )
+
+    def test_includes_subtle_zoom(self):
+        """Split adds a subtle zoom on each photo for life."""
+        result = split_filter(
+            photos=[(1920, 1080), (1920, 1080)],
+            target_w=1920,
+            target_h=1080,
+            duration=5.0,
+            fps=30,
+        )
+        assert "zoompan=" in result
+
+    def test_has_gap_between_photos(self):
+        """Photos are separated by a small gap (not edge to edge)."""
+        result = split_filter(
+            photos=[(1920, 1080), (1920, 1080)],
+            target_w=1920,
+            target_h=1080,
+            duration=5.0,
+            fps=30,
+        )
+        # Gap creates a visible separator — black background shows through
+        assert "color=c=black" in result

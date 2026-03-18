@@ -16,6 +16,7 @@ class TestAnimationMode:
         assert AnimationMode.FACE_ZOOM == "face_zoom"
         assert AnimationMode.BLUR_BG == "blur_bg"
         assert AnimationMode.COLLAGE == "collage"
+        assert AnimationMode.SPLIT == "split"
         assert AnimationMode.AUTO == "auto"
 
     def test_enum_is_str(self):

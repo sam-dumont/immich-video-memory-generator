@@ -252,3 +252,97 @@ def collage_filter(
         prev = out
 
     return ";".join(inputs) + ";" + chain
+
+
+def split_filter(
+    photos: list[tuple[int, int]],
+    target_w: int,
+    target_h: int,
+    duration: float,
+    fps: int,
+    gap: int = 6,
+    seed: int | None = None,
+) -> str:
+    """Generate a split screen filter (Apple Photos style grid).
+
+    2-4 photos are displayed simultaneously in a clean grid layout with
+    a small gap between them. Each photo gets a subtle individual zoom
+    for life. No slide-in — photos appear immediately.
+
+    Layouts:
+      2 photos: side by side (2 columns)
+      3 photos: 1 large left + 2 stacked right
+      4 photos: 2×2 grid
+    """
+    n = len(photos)
+    if n < 2 or n > 4:
+        msg = f"Split requires 2-4 photos, got {n}"
+        raise ValueError(msg)
+
+    rng = random.Random(seed)
+    total_frames = int(fps * duration)
+
+    if n == 2:
+        cells = _split_layout_2(target_w, target_h, gap)
+    elif n == 3:
+        cells = _split_layout_3(target_w, target_h, gap)
+    else:
+        cells = _split_layout_4(target_w, target_h, gap)
+
+    # Scale each photo to fill its cell + subtle individual zoom
+    inputs = []
+    for i, (_cx, _cy, cw, ch) in enumerate(cells):
+        zoom_amount = rng.uniform(0.03, 0.08)
+        zoom_step = zoom_amount / total_frames
+        z_expr = f"min(zoom+{zoom_step:.6f},{1.0 + zoom_amount})"
+
+        inputs.append(
+            f"[{i}:v]scale={int(cw * (1 + zoom_amount) * 1.05)}:-1"
+            f":force_original_aspect_ratio=increase,"
+            f"zoompan=z='{z_expr}':"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+            f"d={total_frames}:s={cw}x{ch}:fps={fps}[p{i}]"
+        )
+
+    # Overlay on black background
+    chain = f"color=c=black:s={target_w}x{target_h}:d={duration}:r={fps}[base]"
+    prev = "base"
+    for i, (cx, cy, _cw, _ch) in enumerate(cells):
+        out = f"s{i}" if i < n - 1 else "vout"
+        chain += f";[{prev}][p{i}]overlay=x={cx}:y={cy}[{out}]"
+        prev = out
+
+    return ";".join(inputs) + ";" + chain
+
+
+def _split_layout_2(target_w: int, target_h: int, gap: int) -> list[tuple[int, int, int, int]]:
+    """2 photos side by side: [(x, y, w, h), ...]."""
+    cell_w = (target_w - gap) // 2
+    return [
+        (0, 0, cell_w, target_h),
+        (cell_w + gap, 0, cell_w, target_h),
+    ]
+
+
+def _split_layout_3(target_w: int, target_h: int, gap: int) -> list[tuple[int, int, int, int]]:
+    """1 large left + 2 stacked right."""
+    left_w = (target_w - gap) * 2 // 3
+    right_w = target_w - left_w - gap
+    right_h = (target_h - gap) // 2
+    return [
+        (0, 0, left_w, target_h),
+        (left_w + gap, 0, right_w, right_h),
+        (left_w + gap, right_h + gap, right_w, right_h),
+    ]
+
+
+def _split_layout_4(target_w: int, target_h: int, gap: int) -> list[tuple[int, int, int, int]]:
+    """2×2 grid."""
+    cell_w = (target_w - gap) // 2
+    cell_h = (target_h - gap) // 2
+    return [
+        (0, 0, cell_w, cell_h),
+        (cell_w + gap, 0, cell_w, cell_h),
+        (0, cell_h + gap, cell_w, cell_h),
+        (cell_w + gap, cell_h + gap, cell_w, cell_h),
+    ]

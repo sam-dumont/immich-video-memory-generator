@@ -17,6 +17,7 @@ class AnimationMode(StrEnum):
     FACE_ZOOM = "face_zoom"
     BLUR_BG = "blur_bg"
     COLLAGE = "collage"
+    SPLIT = "split"
     AUTO = "auto"
 
 

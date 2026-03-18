@@ -5,6 +5,7 @@ from immich_memories.photos.filter_expressions import (
     collage_filter,
     face_zoom_filter,
     ken_burns_filter,
+    split_filter,
 )
 from immich_memories.photos.grouper import PhotoGrouper
 from immich_memories.photos.models import AnimationMode, PhotoClipInfo, PhotoGroup
@@ -20,4 +21,5 @@ __all__ = [
     "face_zoom_filter",
     "ken_burns_filter",
     "score_photo",
+    "split_filter",
 ]
