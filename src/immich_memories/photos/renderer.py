@@ -250,12 +250,15 @@ def _compute_slide_position(
     t = (frame_idx - stagger_frames) / slide_frames
     ease = 1 - (1 - t) ** 3
 
+    # WHY: slide perpendicular to the collage layout direction.
+    # Horizontal collage (side by side) → photos slide in vertically.
+    # Vertical collage (stacked) → photos slide in horizontally.
     if orientation == "horizontal":
-        start_x = -cell_w if cell_idx % 2 == 0 else vp_w
-        return int(start_x + (final_x - start_x) * ease), final_y
+        start_y = -cell_h if cell_idx % 2 == 0 else vp_h
+        return final_x, int(start_y + (final_y - start_y) * ease)
 
-    start_y = -cell_h if cell_idx % 2 == 0 else vp_h
-    return final_x, int(start_y + (final_y - start_y) * ease)
+    start_x = -cell_w if cell_idx % 2 == 0 else vp_w
+    return int(start_x + (final_x - start_x) * ease), final_y
 
 
 def _blit_cell(canvas: np.ndarray, cell: np.ndarray, cx: int, cy: int) -> None:
