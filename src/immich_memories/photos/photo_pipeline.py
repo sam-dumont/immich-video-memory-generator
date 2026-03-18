@@ -52,15 +52,14 @@ def render_photo_clips(
 
     # Score all photos (cheap — no I/O)
     scored = [(a, score_photo(a, config)) for a in assets]
-    scored.sort(key=operator.itemgetter(1), reverse=True)
 
-    # Pre-cap: only render as many photos as we'll actually use
+    # Pre-cap: select top photos with temporal distribution
     max_photos = _compute_max_photos(video_clip_count, config.max_ratio)
     if len(scored) > max_photos:
+        scored = _select_distributed(scored, max_photos)
         logger.info(
-            f"Photo pre-cap: {len(scored)} → {max_photos} (top scored, {config.max_ratio:.0%} of {video_clip_count} videos)"
+            f"Photo pre-cap: {len(assets)} → {len(scored)} (distributed, {config.max_ratio:.0%} of {video_clip_count} videos)"
         )
-        scored = scored[:max_photos]
 
     # Render each photo (streaming to FFmpeg, O(1) memory)
     clips: list[AssemblyClip] = []
@@ -83,6 +82,38 @@ def _compute_max_photos(video_count: int, max_ratio: float) -> int:
     # max_ratio of total: photos / (videos + photos) <= max_ratio
     # photos <= max_ratio * videos / (1 - max_ratio)
     return max(1, int(max_ratio * video_count / (1 - max_ratio)))
+
+
+def _select_distributed(
+    scored: list[tuple[Asset, float]], max_count: int
+) -> list[tuple[Asset, float]]:
+    """Select top photos with temporal spread across the date range.
+
+    Divides the date range into equal buckets and picks the best-scored
+    photo from each bucket, cycling until max_count is reached.
+    """
+    if max_count >= len(scored):
+        return scored
+
+    # Sort by date for bucketing
+    by_date = sorted(scored, key=lambda x: x[0].file_created_at)
+
+    # Divide into max_count buckets
+    bucket_size = max(1, len(by_date) // max_count)
+    selected: list[tuple[Asset, float]] = []
+    seen: set[str] = set()
+
+    for bucket_start in range(0, len(by_date), bucket_size):
+        if len(selected) >= max_count:
+            break
+        bucket = by_date[bucket_start : bucket_start + bucket_size]
+        # Pick the highest-scored photo in this bucket
+        best = max(bucket, key=operator.itemgetter(1))
+        if best[0].id not in seen:
+            selected.append(best)
+            seen.add(best[0].id)
+
+    return selected
 
 
 def _render_single_photo(
@@ -173,10 +204,14 @@ def _stream_render_to_mp4(
     # outputs HEVC HLG. We must ACTUALLY convert the pixel values from
     # sRGB to HLG transfer function — not just tag the metadata.
     # setparams alone would lie about the transfer, causing red tint.
+    # WHY: npl=203 sets SDR white to 203 nits (standard reference white)
+    # which matches the brightness iPhone HLG videos display at.
+    # Without it, photos appear dimmer than videos in the assembly.
     vf = (
         "zscale=transfer=arib-std-b67:transferin=iec61966-2-1"
         ":primaries=bt2020:primariesin=bt709"
         ":matrix=bt2020nc:matrixin=bt709"
+        ":npl=203"
         ",format=yuv420p10le"
     )
 
