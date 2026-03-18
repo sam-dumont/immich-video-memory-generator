@@ -100,28 +100,31 @@ def _convert_heif(source_path: Path, work_dir: Path) -> PreparedPhoto:
     img = Image.open(source_path)
     w, h = img.size
 
-    # Check for Apple HDR gain map
+    # Check for Apple HDR gain map (present on iPhone 12+ photos)
     primary = heif_file[0] if len(heif_file) > 0 else heif_file
     aux_data = primary.info.get("aux", {})
-    gain_map_indices = []
-    for key, indices in aux_data.items():
-        if "hdrgainmap" in key:
-            gain_map_indices = indices
-            break
+    has_gain_map = any("hdrgainmap" in k for k in aux_data)
 
-    if gain_map_indices:
-        return _apply_hdr_gain_map(img, heif_file, gain_map_indices[0], w, h, work_dir, source_path)
+    # TODO: apply gain map for true HDR output once we can parse the
+    # ISO 21496-1 metadata (min/max boost, offsets). Without those params,
+    # the gain math produces overbright/wrong-color results. For now, the
+    # SDR base with Display P3 ICC profile looks great on all displays.
 
-    # No gain map — standard JPEG conversion
     icc_profile = img.info.get("icc_profile")
     out_path = work_dir / f"{source_path.stem}_converted.jpg"
     save_kwargs: dict = {"quality": 95}
     if icc_profile:
         save_kwargs["icc_profile"] = icc_profile
     img.save(out_path, "JPEG", **save_kwargs)
-    logger.info(f"Converted {source_path.name} ({w}x{h}) → JPEG (no gain map)")
 
-    return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=False)
+    if has_gain_map:
+        logger.info(
+            f"Converted {source_path.name} ({w}x{h}) → JPEG with Display P3 (gain map present, SDR base used)"
+        )
+    else:
+        logger.info(f"Converted {source_path.name} ({w}x{h}) → JPEG")
+
+    return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=has_gain_map)
 
 
 def _apply_hdr_gain_map(
@@ -133,12 +136,18 @@ def _apply_hdr_gain_map(
     work_dir: Path,
     source_path: Path,
 ) -> PreparedPhoto:
-    """Apply Apple HDR gain map to SDR base → 16-bit HDR PNG.
+    """Apply Apple HDR gain map to SDR base → 16-bit linear HDR PNG.
 
-    Apple stores iPhone photos as 8-bit SDR + logarithmic gain map.
-    Formula: HDR_linear = SDR_linear * 2^(gain * headroom)
+    Apple stores iPhone photos as 8-bit SDR (gamma-encoded) + logarithmic
+    gain map. The gain must be applied in LINEAR light, not gamma space.
+
+    Steps:
+    1. Inverse sRGB gamma → linear SDR
+    2. Apply gain: HDR_linear = SDR_linear * 2^(gain * headroom)
+    3. Save as 16-bit PNG (linear values)
+    4. FFmpeg zscale transferin=linear → PQ is then correct
+
     Headroom ≈ 2.3 (log2(1000/203) for ~1000 nit peak).
-    The output 16-bit PNG is consumed by FFmpeg with zscale PQ transfer.
     """
     import numpy as np
     from PIL import Image
@@ -149,11 +158,25 @@ def _apply_hdr_gain_map(
     sdr_arr = np.array(sdr_img, dtype=np.float32) / 255.0
     gain_arr = np.array(gain_resized, dtype=np.float32) / 255.0
 
+    # Step 1: inverse sRGB gamma → linear light
+    # WHY: SDR pixels are gamma-encoded. Gain must be applied in linear space,
+    # otherwise highlights get crushed and the PQ transfer looks washed out.
+    sdr_linear = np.where(
+        sdr_arr <= 0.04045,
+        sdr_arr / 12.92,
+        np.power((sdr_arr + 0.055) / 1.055, 2.4),
+    )
+
+    # Step 2: apply gain in linear space
     # WHY: headroom=2.3 maps SDR white (203 nits) to ~1000 nit peak
-    # which is the standard HDR10 reference
     headroom = 2.3
     hdr_gain = np.power(2.0, gain_arr * headroom)
-    hdr_arr = np.clip(sdr_arr * hdr_gain[:, :, np.newaxis], 0, 1)
+    hdr_linear = sdr_linear * hdr_gain[:, :, np.newaxis]
+
+    # Normalize: SDR white (1.0 linear) maps to 203/10000 in PQ absolute scale
+    # Scale so that 1.0 = 10000 nits (PQ reference)
+    hdr_pq_scale = hdr_linear * (203.0 / 10000.0)
+    hdr_arr = np.clip(hdr_pq_scale, 0, 1)
 
     # Save as 16-bit PNG (cv2 handles 16-bit natively)
     hdr_16 = (hdr_arr * 65535).astype(np.uint16)
