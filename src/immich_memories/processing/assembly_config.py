@@ -163,6 +163,8 @@ class AssemblyClip:
     # "fade" = crossfade to next clip, "cut" = hard cut to next clip
     # None = let assembler decide (title screens always use fade)
     outgoing_transition: str | None = None
+    # Photo clip flag — True when this clip was generated from a still image
+    is_photo: bool = False
 
 
 def _get_rotation_filter(rotation: int) -> str:

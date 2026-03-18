@@ -38,6 +38,8 @@ def _run_pipeline_and_generate(
     *,
     assets: list,
     live_photo_clips: list | None = None,
+    photo_assets: list | None = None,
+    include_photos: bool = False,
     client: SyncImmichClient,
     config: Config,
     progress: Progress,
@@ -160,6 +162,8 @@ def _run_pipeline_and_generate(
         person_name=person_name,
         date_start=date_range.start,
         date_end=date_range.end,
+        include_photos=include_photos,
+        photo_assets=photo_assets,
         progress_callback=gen_progress,
     )
 
@@ -444,6 +448,18 @@ def register_generate_commands(main: click.Group) -> None:
         help="Include Live Photo video clips (3s iPhone clips, merged when burst-captured)",
     )
     @click.option(
+        "--include-photos",
+        is_flag=True,
+        default=False,
+        help="Include photos as animated Ken Burns clips (blur background, face-aware pan)",
+    )
+    @click.option(
+        "--photo-duration",
+        type=float,
+        default=None,
+        help="Duration per photo clip in seconds (default: 4.0)",
+    )
+    @click.option(
         "--trip-index",
         type=int,
         default=None,
@@ -487,6 +503,8 @@ def register_generate_commands(main: click.Group) -> None:
         title_override: str | None,
         subtitle_override: str | None,
         include_live_photos: bool,
+        include_photos: bool,
+        photo_duration: float | None,
         trip_index: int | None,
         all_trips: bool,
     ) -> None:
@@ -587,6 +605,11 @@ def register_generate_commands(main: click.Group) -> None:
 
         # Resolve live photos: CLI flag OR config
         use_live_photos = include_live_photos or config.analysis.include_live_photos
+
+        # Resolve photo inclusion: CLI flag OR config
+        use_photos = include_photos or config.photos.enabled
+        if photo_duration is not None:
+            config.photos.duration = photo_duration
 
         table = _build_params_table(
             config=config,
@@ -703,8 +726,19 @@ def register_generate_commands(main: click.Group) -> None:
                         use_live_photos=use_live_photos,
                     )
 
-                    if not assets and not live_photo_clips:
-                        print_error("No videos found matching criteria")
+                    # Fetch photos (if enabled)
+                    fetched_photos: list = []
+                    if use_photos:
+                        for dr in date_ranges:
+                            pid = person_ids[0] if len(person_ids) == 1 else None
+                            fetched_photos.extend(
+                                client.get_photos_for_date_range(dr, person_id=pid)
+                            )
+                        if fetched_photos:
+                            console.print(f"Found {len(fetched_photos)} photos")
+
+                    if not assets and not live_photo_clips and not fetched_photos:
+                        print_error("No videos or photos found matching criteria")
                         sys.exit(1)
 
                     # Display video summary
@@ -713,6 +747,8 @@ def register_generate_commands(main: click.Group) -> None:
                     console.print(f"Total video duration: {total_dur / 60:.1f} minutes")
                     if live_photo_clips:
                         console.print(f"Live photo clips: {len(live_photo_clips)}")
+                    if fetched_photos:
+                        console.print(f"Photo clips to render: {len(fetched_photos)}")
                     console.print()
 
                     # Config fallbacks: CLI flag > config > hardcoded default
@@ -726,6 +762,8 @@ def register_generate_commands(main: click.Group) -> None:
                     result_path, should_upload, album_name = _run_pipeline_and_generate(
                         assets=assets,
                         live_photo_clips=live_photo_clips,
+                        photo_assets=fetched_photos if use_photos else None,
+                        include_photos=use_photos and bool(fetched_photos),
                         client=client,
                         config=config,
                         progress=progress,

@@ -84,6 +84,10 @@ class GenerationParams:
     # Privacy mode
     privacy_mode: bool = False
 
+    # Photo support
+    include_photos: bool = False
+    photo_assets: list | None = None  # Pre-fetched photo assets (IMAGE type)
+
     # Progress callback: (phase, progress_fraction, status_message)
     progress_callback: Callable[[str, float, str], None] | None = None
 
@@ -144,6 +148,12 @@ def generate_memory(params: GenerationParams) -> Path:
         assembly_clips = _extract_clips(params, video_cache, run_output_dir)
         run_tracker.complete_phase(items_processed=len(assembly_clips))
 
+        # Phase 1b: Render photo clips (if enabled)
+        if params.include_photos and params.photo_assets:
+            _report(params, "photos", 0.5, "Rendering photo animations...")
+            photo_clips = _render_photos(params, run_output_dir, len(assembly_clips))
+            assembly_clips = _merge_by_date(assembly_clips, photo_clips)
+
         if not assembly_clips:
             raise GenerationError("No clips could be processed")
 
@@ -191,6 +201,41 @@ def _total_clip_duration(params: GenerationParams) -> int:
         else:
             total += clip.duration_seconds or 5.0
     return int(total)
+
+
+def _render_photos(
+    params: GenerationParams, output_dir: Path, video_clip_count: int
+) -> list[AssemblyClip]:
+    """Render photo assets as animated video clips for assembly."""
+    from immich_memories.photos.photo_pipeline import render_photo_clips
+
+    photo_dir = output_dir / "photos"
+    photo_dir.mkdir(exist_ok=True)
+
+    target_res = params.config.output.resolution_tuple
+    download_fn = params.client.download_asset if params.client else None
+    if not download_fn:
+        logger.warning("No Immich client — cannot download photos")
+        return []
+
+    return render_photo_clips(
+        assets=params.photo_assets or [],
+        config=params.config.photos,
+        target_w=target_res[0],
+        target_h=target_res[1],
+        work_dir=photo_dir,
+        download_fn=download_fn,
+        video_clip_count=video_clip_count,
+    )
+
+
+def _merge_by_date(
+    video_clips: list[AssemblyClip], photo_clips: list[AssemblyClip]
+) -> list[AssemblyClip]:
+    """Interleave video and photo clips by date, videos first for ties."""
+    all_clips = video_clips + photo_clips
+    all_clips.sort(key=lambda c: c.date or "")
+    return all_clips
 
 
 def _extract_clips(
@@ -365,6 +410,7 @@ def _try_merge_burst(
         align_clips_spectrogram,
         build_merge_command,
         filter_valid_clips,
+        probe_clip_has_audio,
     )
 
     # Pre-validate: filter out clips with no valid video stream
@@ -374,7 +420,10 @@ def _try_merge_burst(
 
     # Spectrogram alignment for sample-accurate audio + frame-accurate video
     audio_trims = None
-    if shutter_timestamps and len(valid_paths) > 1:
+    has_audio = probe_clip_has_audio(valid_paths[0]) if valid_paths else False
+    if not has_audio:
+        logger.info("Burst clips have no audio — skipping spectrogram alignment")
+    if has_audio and shutter_timestamps and len(valid_paths) > 1:
         try:
             import json
 

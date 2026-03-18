@@ -314,6 +314,16 @@ class ImmichClient:
             date_range, progress_callback, person_id=person_id, person_ids=person_ids
         )
 
+    async def get_photos_for_date_range(
+        self,
+        date_range: DateRange,
+        progress_callback: Callable[[int, int], None] | None = None,
+        person_id: str | None = None,
+    ) -> list[Asset]:
+        return await self.search.get_photos_for_date_range(
+            date_range, progress_callback, person_id=person_id
+        )
+
     async def iter_videos_for_date_range(
         self,
         date_range: DateRange,

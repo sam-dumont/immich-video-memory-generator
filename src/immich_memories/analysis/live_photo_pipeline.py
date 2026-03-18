@@ -217,8 +217,12 @@ def fetch_live_photo_clips(
 
         clips.append(clip)
 
+    device_makes = sorted(
+        {(a.exif_info.make or "unknown") for a in live_assets if a.exif_info} or {"unknown"}
+    )
     logger.info(
         f"Live Photos: {len(live_assets)} photos → {len(clusters)} clusters → "
-        f"{len(clips)} clips ({len(live_video_ids)} video components to filter)"
+        f"{len(clips)} clips ({len(live_video_ids)} video components to filter) "
+        f"[devices: {', '.join(device_makes)}]"
     )
     return clips, live_video_ids

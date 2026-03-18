@@ -41,6 +41,7 @@ dependencies = [
     "click>=8.1",
     "rich>=13.0",
     "pillow>=12.1.1",
+    "pillow-heif>=1.0",
     "numpy>=1.24",
     "imagehash>=4.3",
     "watchdog>=3.0",

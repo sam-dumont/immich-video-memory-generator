@@ -69,6 +69,16 @@ src/immich_memories/
 │   ├── sync_client.py          # Sync wrapper for async client
 │   └── models.py               # API data models (Asset, Person, etc.)
 │
+├── photos/                     # Photo-to-video animation (converts stills to .mp4 clips)
+│   ├── __init__.py             # Public API re-exports
+│   ├── models.py               # AnimationMode enum, PhotoClipInfo, PhotoGroup
+│   ├── renderer.py             # Frame-by-frame renderer: Ken Burns, slide-in, collage, face_aware_pan
+│   ├── animator.py             # PhotoAnimator: FFmpeg command builder, HEIC decode, HDR detection
+│   ├── ultrahdr.py             # Ultra HDR JPEG (Android/Pixel): MPF parser, gain map, ISO 21496-1
+│   ├── filter_expressions.py   # LEGACY FFmpeg filter strings (superseded by renderer.py)
+│   ├── grouper.py              # PhotoGrouper: temporal clustering, series detection
+│   └── scoring.py              # Photo scoring: favorites, faces, camera, penalty
+│
 ├── memory_types/               # Memory type presets & factory
 │   ├── __init__.py             # Public API re-exports
 │   ├── registry.py             # MemoryType enum
@@ -323,7 +333,7 @@ Immich API → Asset models → ClipExtractor → VideoClipInfo
 
 Config is organized in 3 tiers (see `config_loader.py`):
 
-- **Tier 1** (top-level YAML): `immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`, `trips`
+- **Tier 1** (top-level YAML): `immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`, `trips`, `photos`
 - **Tier 2** (under `advanced:` in YAML): `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`, `audio_content`, `server`
 - **Tier 3** (internal): `scheduler`, `title_llm`
 

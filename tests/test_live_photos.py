@@ -135,6 +135,7 @@ class TestTemporalClustering:
     def test_groups_photos_within_window(self):
         from immich_memories.processing.live_photo_merger import cluster_live_photos
 
+        # Photos 1s apart — overlap with 3s clip duration AND within merge window
         assets = [
             Asset(
                 **_make_asset(
@@ -148,7 +149,7 @@ class TestTemporalClustering:
                 **_make_asset(
                     id="b",
                     type="IMAGE",
-                    fileCreatedAt="2024-07-15T10:30:05Z",
+                    fileCreatedAt="2024-07-15T10:30:01Z",
                     livePhotoVideoId="v2",
                 )
             ),
@@ -156,7 +157,7 @@ class TestTemporalClustering:
                 **_make_asset(
                     id="c",
                     type="IMAGE",
-                    fileCreatedAt="2024-07-15T10:30:08Z",
+                    fileCreatedAt="2024-07-15T10:30:02Z",
                     livePhotoVideoId="v3",
                 )
             ),
@@ -171,6 +172,7 @@ class TestTemporalClustering:
     def test_separates_distant_photos(self):
         from immich_memories.processing.live_photo_merger import cluster_live_photos
 
+        # a,b overlap (1s gap < 3s clip) but c is an hour away
         assets = [
             Asset(
                 **_make_asset(
@@ -184,7 +186,7 @@ class TestTemporalClustering:
                 **_make_asset(
                     id="b",
                     type="IMAGE",
-                    fileCreatedAt="2024-07-15T10:00:05Z",
+                    fileCreatedAt="2024-07-15T10:00:01Z",
                     livePhotoVideoId="v2",
                 )
             ),
@@ -232,12 +234,13 @@ class TestTemporalClustering:
     def test_sorted_by_timestamp_within_cluster(self):
         from immich_memories.processing.live_photo_merger import cluster_live_photos
 
+        # Photos 2s apart (overlap with 3s clip), given out of order
         assets = [
             Asset(
                 **_make_asset(
                     id="c",
                     type="IMAGE",
-                    fileCreatedAt="2024-07-15T10:30:08Z",
+                    fileCreatedAt="2024-07-15T10:30:04Z",
                     livePhotoVideoId="v3",
                 )
             ),
@@ -253,7 +256,7 @@ class TestTemporalClustering:
                 **_make_asset(
                     id="b",
                     type="IMAGE",
-                    fileCreatedAt="2024-07-15T10:30:04Z",
+                    fileCreatedAt="2024-07-15T10:30:02Z",
                     livePhotoVideoId="v2",
                 )
             ),
@@ -265,10 +268,11 @@ class TestTemporalClustering:
         assert [a.id for a in clusters[0].assets] == ["a", "b", "c"]
 
     def test_trim_points_no_overlap(self):
-        """When clips don't overlap (>3s apart), each uses full 0-3s range."""
+        """When clips don't overlap (>3s apart), split into individual clusters."""
         from immich_memories.processing.live_photo_merger import cluster_live_photos
 
         # Photos 5s apart — no overlap since each clip is only 3s
+        # With auto-detection + split, these become 2 separate single-clip clusters
         assets = [
             Asset(
                 **_make_asset(
@@ -289,12 +293,11 @@ class TestTemporalClustering:
         ]
 
         clusters = cluster_live_photos(assets, merge_window_seconds=10)
-        trims = clusters[0].trim_points()
 
-        # No overlap: each clip uses its full duration
-        assert len(trims) == 2
-        assert trims[0] == (0.0, 3.0)
-        assert trims[1] == (0.0, 3.0)
+        # Non-overlapping clips get split into individual clusters
+        assert len(clusters) == 2
+        assert clusters[0].trim_points() == [(0.0, 3.0)]
+        assert clusters[1].trim_points() == [(0.0, 3.0)]
 
     def test_trim_points_with_overlap_handoff_at_shutter(self):
         """Handoff at next shutter time: P1 plays until P2's shutter, P2 picks up from there."""
@@ -708,6 +711,156 @@ class TestFilterValidClips:
 
         assert valid_paths == clip_paths
         assert valid_trims == trim_points
+
+
+class TestEstimateClipDuration:
+    """Detect device-specific clip durations from EXIF make."""
+
+    def test_google_clip_duration(self):
+        from immich_memories.processing.live_photo_merger import estimate_clip_duration
+
+        asset = Asset(
+            **_make_asset(
+                id="px",
+                type="IMAGE",
+                livePhotoVideoId="v1",
+                exifInfo={"make": "Google"},
+            )
+        )
+        assert estimate_clip_duration(asset) == 1.5
+
+    def test_samsung_clip_duration(self):
+        from immich_memories.processing.live_photo_merger import estimate_clip_duration
+
+        asset = Asset(
+            **_make_asset(
+                id="sam",
+                type="IMAGE",
+                livePhotoVideoId="v1",
+                exifInfo={"make": "samsung"},
+            )
+        )
+        # Samsung behaves like Apple — 3.0s default
+        assert estimate_clip_duration(asset) == 3.0
+
+    def test_unknown_clip_duration_fallback(self):
+        from immich_memories.processing.live_photo_merger import estimate_clip_duration
+
+        asset = Asset(**_make_asset(id="unk", type="IMAGE", livePhotoVideoId="v1"))
+        assert estimate_clip_duration(asset) == 3.0
+
+
+class TestSplitNonOverlapping:
+    """Split clusters at gaps where clips don't temporally overlap."""
+
+    def test_non_overlapping_google_clips_split_into_individuals(self):
+        """4 Google Pixel clips ~2s apart with 1.5s clip_duration → 4 individual clusters."""
+        from immich_memories.processing.live_photo_merger import (
+            LivePhotoCluster,
+            split_non_overlapping,
+        )
+
+        assets = [
+            Asset(
+                **_make_asset(
+                    id=f"px{i}",
+                    type="IMAGE",
+                    fileCreatedAt=f"2024-07-15T10:30:{i * 2:02d}Z",
+                    livePhotoVideoId=f"v{i}",
+                    exifInfo={"make": "Google"},
+                )
+            )
+            for i in range(4)
+        ]
+        cluster = LivePhotoCluster(assets=assets, clip_duration=1.5)
+        result = split_non_overlapping(cluster)
+
+        assert len(result) == 4
+        for c in result:
+            assert c.count == 1
+            assert c.clip_duration == 1.5
+
+    def test_overlapping_samsung_cluster_stays_merged(self):
+        """7 Samsung clips 0.2s apart → 1 cluster (massive overlap)."""
+        from immich_memories.processing.live_photo_merger import (
+            LivePhotoCluster,
+            split_non_overlapping,
+        )
+
+        assets = [
+            Asset(
+                **_make_asset(
+                    id=f"sam{i}",
+                    type="IMAGE",
+                    fileCreatedAt=f"2024-07-15T14:13:0{i}.200Z",
+                    livePhotoVideoId=f"v{i}",
+                    exifInfo={"make": "samsung"},
+                )
+            )
+            for i in range(7)
+        ]
+        # Samsung clips: 3.0s duration, 1s apart → all overlap (gap < 3.0)
+        cluster = LivePhotoCluster(assets=assets, clip_duration=3.0)
+        result = split_non_overlapping(cluster)
+
+        assert len(result) == 1
+        assert result[0].count == 7
+
+    def test_mixed_overlap_splits_at_gap(self):
+        """A-B overlap (gap=0.5s), gap to C (gap=5s), C-D overlap (gap=0.5s) → 2 clusters."""
+        from immich_memories.processing.live_photo_merger import (
+            LivePhotoCluster,
+            split_non_overlapping,
+        )
+
+        assets = [
+            Asset(
+                **_make_asset(
+                    id="a", fileCreatedAt="2024-07-15T10:30:00.000Z", livePhotoVideoId="v1"
+                )
+            ),
+            Asset(
+                **_make_asset(
+                    id="b", fileCreatedAt="2024-07-15T10:30:00.500Z", livePhotoVideoId="v2"
+                )
+            ),
+            Asset(
+                **_make_asset(
+                    id="c", fileCreatedAt="2024-07-15T10:30:05.000Z", livePhotoVideoId="v3"
+                )
+            ),
+            Asset(
+                **_make_asset(
+                    id="d", fileCreatedAt="2024-07-15T10:30:05.500Z", livePhotoVideoId="v4"
+                )
+            ),
+        ]
+        cluster = LivePhotoCluster(assets=assets, clip_duration=3.0)
+        result = split_non_overlapping(cluster)
+
+        assert len(result) == 2
+        assert [a.id for a in result[0].assets] == ["a", "b"]
+        assert [a.id for a in result[1].assets] == ["c", "d"]
+
+    def test_single_clip_cluster_passes_through(self):
+        """Single-clip cluster returns unchanged."""
+        from immich_memories.processing.live_photo_merger import (
+            LivePhotoCluster,
+            split_non_overlapping,
+        )
+
+        assets = [
+            Asset(
+                **_make_asset(
+                    id="solo", fileCreatedAt="2024-07-15T10:30:00Z", livePhotoVideoId="v1"
+                )
+            ),
+        ]
+        cluster = LivePhotoCluster(assets=assets, clip_duration=3.0)
+        result = split_non_overlapping(cluster)
+
+        assert len(result) == 1
+        assert result[0].count == 1
 
 
 class TestCLILivePhotosFlag:

@@ -197,6 +197,17 @@ def render_step3() -> None:
 
                 debug_checkbox.on_value_change(on_debug_change)
 
+                # Photo support
+                photo_checkbox = ui.checkbox(
+                    "Include photos (animated Ken Burns)",
+                    value=options.get("include_photos", False),
+                )
+
+                def on_photo_change(e):
+                    options["include_photos"] = e.value
+
+                photo_checkbox.on_value_change(on_photo_change)
+
     im_separator()
 
     # ========================================================================

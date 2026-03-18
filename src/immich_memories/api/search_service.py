@@ -302,6 +302,38 @@ class SearchService:
 
         return await self._get_live_photos_single_person(date_range, progress_callback, person_id)
 
+    async def get_photos_for_date_range(
+        self,
+        date_range: DateRange,
+        progress_callback: Callable[[int, int], None] | None = None,
+        person_id: str | None = None,
+    ) -> list[Asset]:
+        """Get regular photo assets (IMAGE, excluding live photos)."""
+        query_person_ids = [person_id] if person_id else None
+        all_assets: list[Asset] = []
+        page = 1
+
+        while True:
+            result = await self.search_metadata(
+                person_ids=query_person_ids,
+                asset_type=AssetType.IMAGE,
+                taken_after=date_range.start,
+                taken_before=date_range.end,
+                page=page,
+                size=100,
+            )
+            for asset in result.all_assets:
+                if not asset.is_live_photo:
+                    all_assets.append(asset)
+            if progress_callback:
+                progress_callback(len(all_assets), None)
+            if not result.next_page:
+                break
+            page += 1
+
+        all_assets.sort(key=lambda a: a.file_created_at)
+        return all_assets
+
     async def iter_videos_for_date_range(
         self,
         date_range: DateRange,

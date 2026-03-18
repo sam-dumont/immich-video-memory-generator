@@ -78,9 +78,11 @@ The spectrogram (Short-Time Fourier Transform) creates a unique frequency finger
 
 Non-overlapping clips (gap > clip duration) are NOT merged — they stay as separate clips.
 
-### Works for any phone
+### Works for any phone with audio
 
-The algorithm uses audio fingerprinting, not Apple metadata. It works for iPhone, Samsung, Google Pixel, or any camera that records audio with video. The only requirement: overlapping clips with shared ambient audio.
+The algorithm uses audio fingerprinting, not Apple metadata. It works for iPhone, Samsung, or any camera that records audio with video. The only requirement: overlapping clips with shared ambient audio.
+
+For devices without audio (like Google Pixel Motion Photos), spectrogram alignment is automatically skipped and clips are kept individual. See the [Device support](#device-support) section for details.
 
 ## Person filtering quirk
 
@@ -109,15 +111,30 @@ immich-memories generate --include-live-photos --period "2024"
 
 ## Device support
 
-Immich normalizes Live Photos across device types using the `livePhotoVideoId` field:
+Immich normalizes Live Photos / Motion Photos across device types using the `livePhotoVideoId` field. immich-memories auto-detects the device from EXIF metadata and adapts its merging strategy:
 
-| Device | Format | Immich support | Tested |
-|--------|--------|:-:|:-:|
-| iPhone | HEVC Live Photo | Yes | Yes (iOS 15-18) |
-| Samsung | Motion Photo (MP4 embedded in JPEG) | Yes | No |
-| Google Pixel | Motion Photo (MP4 embedded) | Yes | No |
+| Feature | Apple iPhone | Samsung Galaxy | Google Pixel |
+|---------|-------------|----------------|--------------|
+| Clip duration | ~3.0s | ~3.5s | 0.7–1.3s |
+| Audio track | AAC | AAC stereo | **None** |
+| FPS | 30 | ~30 | 120 (variable) |
+| Burst overlap | Yes | Yes (massive) | **No** |
+| Spectrogram alignment | Works | Works | Skipped (no audio) |
+| Burst merging | Overlapping clips merged | Overlapping clips merged | Each clip stays individual |
 
-I only have iOS devices, so Samsung and Pixel support is theoretical. It _should_ work since Immich normalizes everything to the same field, and the audio alignment algorithm is phone-agnostic. PRs from Android users welcome.
+### Samsung Galaxy (Motion Photos)
+
+Samsung Motion Photos behave almost identically to Apple Live Photos: ~3.5 second clips with audio, heavy temporal overlap when photos are taken in rapid succession. The spectrogram alignment and burst merging pipeline works directly — Samsung clips are treated the same as Apple clips.
+
+### Google Pixel (Motion Photos)
+
+Google Pixel Motion Photos are fundamentally different: very short clips (0.7–1.3 seconds), no audio track, and no temporal overlap between consecutive shots. immich-memories detects Pixel clips via EXIF and:
+
+1. **Uses a shorter clip duration** (1.5s instead of 3.0s) for overlap detection
+2. **Skips spectrogram alignment** — no audio means no spectral fingerprint to correlate
+3. **Doesn't force-merge rapid bursts** — Pixel clips taken 2+ seconds apart are treated as individual clips, not concatenated into a single burst
+
+This means 4 rapid-fire Pixel photos become 4 individual clips in your memory video, not one merged blob with jarring cuts between unrelated 0.7-second segments.
 
 ## When to enable
 
