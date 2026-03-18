@@ -10,6 +10,12 @@ from immich_memories.photos.filter_expressions import (
 )
 from immich_memories.photos.grouper import PhotoGrouper
 from immich_memories.photos.models import AnimationMode, PhotoClipInfo, PhotoGroup
+from immich_memories.photos.renderer import (
+    KenBurnsParams,
+    render_collage,
+    render_ken_burns,
+    render_slide_in,
+)
 from immich_memories.photos.scoring import score_photo
 
 __all__ = [
@@ -24,4 +30,8 @@ __all__ = [
     "ken_burns_filter",
     "score_photo",
     "split_filter",
+    "KenBurnsParams",
+    "render_ken_burns",
+    "render_slide_in",
+    "render_collage",
 ]
