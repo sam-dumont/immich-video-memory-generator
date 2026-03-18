@@ -32,7 +32,7 @@ class KenBurnsParams:
     # Pan position: (0,0)=top-left, (0.5,0.5)=center, (1,1)=bottom-right
     pan_start: tuple[float, float] = (0.5, 0.5)
     pan_end: tuple[float, float] = (0.5, 0.5)
-    fps: int = 30
+    fps: int = 60
     duration: float = 4.0
 
 
@@ -137,7 +137,7 @@ def render_slide_in(
     vp_h: int,
     direction: str = "right",
     hold_ratio: float = 0.6,
-    fps: int = 30,
+    fps: int = 60,
     duration: float = 4.0,
 ) -> list[np.ndarray]:
     """Render a slide-in effect: photo slides into the frame, holds, then slight zoom.
@@ -279,7 +279,7 @@ def render_collage(
     vp_h: int,
     orientation: str = "horizontal",
     gap: int = 24,
-    fps: int = 30,
+    fps: int = 60,
     duration: float = 5.0,
     slide_in: bool = True,
 ) -> list[np.ndarray]:
