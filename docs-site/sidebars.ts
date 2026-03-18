@@ -60,6 +60,7 @@ const sidebars: SidebarsConfig = {
         'features/duplicate-detection',
         'features/scene-detection',
         'features/live-photos',
+        'features/photo-support',
         'features/llm-analysis',
         'features/title-screens',
         'features/audio-ducking',

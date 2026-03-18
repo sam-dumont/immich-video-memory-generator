@@ -9,6 +9,7 @@ from immich_memories.photos.renderer import (
     render_collage,
     render_ken_burns,
     render_slide_in,
+    render_split,
 )
 from immich_memories.photos.scoring import score_photo
 
@@ -24,4 +25,5 @@ __all__ = [
     "render_ken_burns",
     "render_slide_in",
     "render_collage",
+    "render_split",
 ]

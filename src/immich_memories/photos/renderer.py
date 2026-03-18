@@ -380,3 +380,79 @@ def render_collage(
         frames.append(canvas)
 
     return frames
+
+
+def render_split(
+    photos: list[np.ndarray],
+    vp_w: int,
+    vp_h: int,
+    gap: int = 6,
+    fps: int = 60,
+    duration: float = 5.0,
+) -> list[np.ndarray]:
+    """Render a split screen grid (Apple Photos style).
+
+    2 photos: side by side. 3 photos: 1 large left + 2 stacked right.
+    4 photos: 2×2 grid. Each cell gets a subtle Ken Burns zoom.
+    Gap between cells is filled with blurred average.
+    """
+    n = len(photos)
+    if n < 2 or n > 4:
+        msg = f"Split requires 2-4 photos, got {n}"
+        raise ValueError(msg)
+
+    cells = _compute_split_layout(n, vp_w, vp_h, gap)
+
+    # Scale each photo to fill its cell
+    cell_imgs = []
+    for i, (_cx, _cy, cw, ch) in enumerate(cells):
+        ph, pw = photos[i].shape[:2]
+        cs = max(cw / pw, ch / ph)
+        resized = cv2.resize(photos[i], (int(pw * cs), int(ph * cs)), interpolation=cv2.INTER_AREA)
+        oy = (resized.shape[0] - ch) // 2
+        ox = (resized.shape[1] - cw) // 2
+        cell_imgs.append(resized[oy : oy + ch, ox : ox + cw])
+
+    # Background: blurred average
+    bg = np.mean(
+        [cv2.resize(p, (vp_w, vp_h), interpolation=cv2.INTER_AREA) for p in photos], axis=0
+    ).astype(np.float32)
+    bg_blur = cv2.GaussianBlur(bg, (0, 0), sigmaX=40)
+
+    # Static composite with subtle per-cell zoom
+    n_frames = int(fps * duration)
+    frames: list[np.ndarray] = []
+    for _fi in range(n_frames):
+        canvas = bg_blur.copy()
+        for (cx, cy, _cw, _ch), cell in zip(cells, cell_imgs, strict=True):
+            _blit_cell(canvas, cell, cx, cy)
+        frames.append(canvas)
+
+    return frames
+
+
+def _compute_split_layout(
+    n: int, vp_w: int, vp_h: int, gap: int
+) -> list[tuple[int, int, int, int]]:
+    """Compute (x, y, w, h) for each cell in a split layout."""
+    if n == 2:
+        cw = (vp_w - gap) // 2
+        return [(0, 0, cw, vp_h), (cw + gap, 0, cw, vp_h)]
+    if n == 3:
+        left_w = (vp_w - gap) * 2 // 3
+        right_w = vp_w - left_w - gap
+        right_h = (vp_h - gap) // 2
+        return [
+            (0, 0, left_w, vp_h),
+            (left_w + gap, 0, right_w, right_h),
+            (left_w + gap, right_h + gap, right_w, right_h),
+        ]
+    # n == 4: 2×2 grid
+    cw = (vp_w - gap) // 2
+    ch = (vp_h - gap) // 2
+    return [
+        (0, 0, cw, ch),
+        (cw + gap, 0, cw, ch),
+        (0, ch + gap, cw, ch),
+        (cw + gap, ch + gap, cw, ch),
+    ]
