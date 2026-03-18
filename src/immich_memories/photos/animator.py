@@ -110,12 +110,16 @@ def _convert_heif(source_path: Path, work_dir: Path) -> PreparedPhoto:
     # the gain math produces overbright/wrong-color results. For now, the
     # SDR base with Display P3 ICC profile looks great on all displays.
 
-    icc_profile = img.info.get("icc_profile")
     out_path = work_dir / f"{source_path.stem}_converted.jpg"
-    save_kwargs: dict = {"quality": 95}
-    if icc_profile:
-        save_kwargs["icc_profile"] = icc_profile
-    img.save(out_path, "JPEG", **save_kwargs)
+
+    # WHY: cv2.imread ignores ICC profiles — it reads raw pixel values as sRGB.
+    # If the HEIC is Display P3, P3 reds will appear oversaturated when treated
+    # as sRGB. Convert P3→sRGB here so downstream cv2 reads correct colors.
+    icc_profile = img.info.get("icc_profile")
+    if icc_profile and b"Display P3" in icc_profile:
+        img = _convert_p3_to_srgb(img, icc_profile)  # type: ignore[assignment]
+
+    img.save(out_path, "JPEG", quality=95)
 
     if has_gain_map:
         logger.info(
@@ -227,6 +231,22 @@ def _get_image_dimensions(path: Path) -> tuple[int, int]:
 
     with Image.open(path) as img:
         return img.size
+
+
+def _convert_p3_to_srgb(img: PILImage.Image, icc_profile: bytes) -> PILImage.Image:
+    """Convert a Display P3 image to sRGB using ICC profile transform."""
+    from io import BytesIO
+
+    from PIL import ImageCms
+
+    try:
+        p3_profile = ImageCms.ImageCmsProfile(BytesIO(icc_profile))
+        srgb_profile = ImageCms.createProfile("sRGB")
+        result = ImageCms.profileToProfile(img, p3_profile, srgb_profile, outputMode="RGB")
+        return result  # type: ignore[return-value]
+    except Exception as e:
+        logger.debug(f"P3→sRGB conversion failed, using original: {e}")
+        return img
 
 
 def detect_photo_hdr_type(photo_path: Path) -> str | None:

@@ -45,7 +45,7 @@ class DefaultsConfig(BaseModel):
 
     target_duration_minutes: int = Field(default=10, ge=1, le=60)
     output_orientation: Literal["landscape", "portrait", "square", "auto"] = "auto"
-    scale_mode: Literal["fit", "fill", "smart_crop"] = "smart_crop"
+    scale_mode: Literal["fit", "fill", "smart_crop", "blur"] = "blur"
     transition: Literal["cut", "crossfade", "smart", "none"] = "smart"
     transition_duration: float = Field(default=0.5, ge=0, le=2.0)
     transition_buffer: float = Field(
