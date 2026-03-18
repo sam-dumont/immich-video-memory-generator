@@ -18,6 +18,41 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def enforce_photo_cap(
+    clips: list[ClipWithSegment],
+    max_ratio: float,
+) -> list[ClipWithSegment]:
+    """Drop lowest-scored photos until photo ratio <= max_ratio.
+
+    Videos are never dropped. If only photos exist (no videos),
+    all are kept since the ratio can't be improved by dropping.
+    """
+    from immich_memories.api.models import AssetType
+
+    videos = [c for c in clips if c.clip.asset.type != AssetType.IMAGE]
+    photos = [c for c in clips if c.clip.asset.type == AssetType.IMAGE]
+
+    if not photos or not videos:
+        # No photos to cap, or no videos to establish ratio against
+        return clips
+
+    max_photos = int(len(clips) * max_ratio)
+
+    if len(photos) <= max_photos:
+        return clips
+
+    # Keep highest-scored photos
+    photos.sort(key=lambda c: c.score, reverse=True)
+    kept_photos = photos[:max_photos]
+
+    logger.info(
+        f"Photo cap: {len(photos)} → {len(kept_photos)} photos "
+        f"({max_ratio:.0%} of {len(clips)} total)"
+    )
+
+    return videos + kept_photos
+
+
 class ClipRefiner:
     """Selects, distributes, and refines the final clip selection."""
 
@@ -384,6 +419,10 @@ class ClipRefiner:
                 )
 
                 selected = favorites + non_favorites
+
+        # Enforce photo ratio cap (drop lowest-scored photos if over limit)
+        if self.config.photo_max_ratio < 1.0:
+            selected = enforce_photo_cap(selected, self.config.photo_max_ratio)
 
         selected.sort(key=lambda c: c.clip.asset.file_created_at or datetime.min)
 

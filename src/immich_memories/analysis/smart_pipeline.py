@@ -75,6 +75,9 @@ class PipelineConfig:
     # across overnight stop segments instead of purely by date
     overnight_bases: list | None = None  # list[OvernightBase] from trip detection
 
+    # Photo ratio cap — max fraction of selected clips that can be photos
+    photo_max_ratio: float = 0.50  # 0.50 = at most 50% photos
+
 
 @dataclass
 class PipelineResult:

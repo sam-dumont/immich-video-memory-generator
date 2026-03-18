@@ -6,101 +6,101 @@
       {
         "name": "ClipRefiner::_fill_empty_weeks",
         "complexity": 20,
-        "line_start": 168,
-        "line_end": 211,
+        "line_start": 203,
+        "line_end": 246,
         "line_complexities": [
           {
-            "line": 178,
+            "line": 213,
             "complexity": 0
           },
           {
-            "line": 179,
+            "line": 214,
             "complexity": 1
           },
           {
-            "line": 180,
+            "line": 215,
             "complexity": 0
           },
           {
-            "line": 183,
+            "line": 218,
             "complexity": 0
           },
           {
-            "line": 184,
+            "line": 219,
             "complexity": 1
           },
           {
-            "line": 185,
+            "line": 220,
             "complexity": 0
           },
           {
-            "line": 188,
+            "line": 223,
             "complexity": 0
           },
           {
-            "line": 189,
+            "line": 224,
             "complexity": 0
           },
           {
-            "line": 191,
+            "line": 226,
             "complexity": 0
           },
           {
-            "line": 192,
+            "line": 227,
             "complexity": 0
           },
           {
-            "line": 193,
+            "line": 228,
             "complexity": 1
           },
           {
-            "line": 194,
+            "line": 229,
             "complexity": 0
           },
           {
-            "line": 195,
+            "line": 230,
             "complexity": 2
           },
           {
-            "line": 197,
+            "line": 232,
             "complexity": 0
           },
           {
-            "line": 199,
+            "line": 234,
             "complexity": 0
           },
           {
-            "line": 200,
+            "line": 235,
             "complexity": 1
           },
           {
-            "line": 201,
+            "line": 236,
             "complexity": 2
           },
           {
-            "line": 202,
+            "line": 237,
             "complexity": 0
           },
           {
-            "line": 203,
+            "line": 238,
             "complexity": 3
           },
           {
-            "line": 205,
+            "line": 240,
             "complexity": 4
           },
           {
-            "line": 206,
+            "line": 241,
             "complexity": 5
           },
           {
-            "line": 211,
+            "line": 246,
             "complexity": 0
           }
         ]
       }
     ],
-    "complexity": 73
+    "complexity": 77
   },
   {
     "path": "src/immich_memories/cli/_analyze_export.py",
