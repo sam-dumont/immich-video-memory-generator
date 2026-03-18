@@ -1,5 +1,6 @@
 """Photo support — converts still images to animated video clips."""
 
+from immich_memories.photos.animator import detect_photo_hdr_type
 from immich_memories.photos.filter_expressions import (
     blur_bg_filter,
     collage_filter,
@@ -16,6 +17,7 @@ __all__ = [
     "PhotoClipInfo",
     "PhotoGroup",
     "PhotoGrouper",
+    "detect_photo_hdr_type",
     "blur_bg_filter",
     "collage_filter",
     "face_zoom_filter",

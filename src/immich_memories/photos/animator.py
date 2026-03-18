@@ -12,6 +12,9 @@ outputs HEVC with 10-bit color and BT.2020 metadata.
 from __future__ import annotations
 
 import hashlib
+import json
+import logging
+import subprocess
 from pathlib import Path
 
 from immich_memories.config_models import PhotoConfig
@@ -22,11 +25,52 @@ from immich_memories.photos.filter_expressions import (
 )
 from immich_memories.photos.models import AnimationMode
 
+logger = logging.getLogger(__name__)
+
 # HDR transfer characteristic mapping
 _HDR_COLOR_TRC = {
     "hlg": "arib-std-b67",
     "pq": "smpte2084",
 }
+
+
+def detect_photo_hdr_type(photo_path: Path) -> str | None:
+    """Detect HDR type of a photo file via ffprobe.
+
+    Same logic as hdr_utilities._detect_hdr_type() but accepts image
+    file extensions (jpg, heic, heif, png, webp) without video-only
+    path validation.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=color_transfer",
+                "-of",
+                "json",
+                str(photo_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            streams = data.get("streams", [])
+            if streams:
+                color_trc = streams[0].get("color_transfer", "")
+                if color_trc == "arib-std-b67":
+                    return "hlg"
+                if color_trc in ("smpte2084", "bt2020-10", "bt2020-12"):
+                    return "pq"
+    except Exception as e:
+        logger.debug(f"HDR detection failed for {photo_path}: {e}")
+    return None
 
 
 class PhotoAnimator:
