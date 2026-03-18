@@ -72,7 +72,9 @@ src/immich_memories/
 ├── photos/                     # Photo-to-video animation (converts stills to .mp4 clips)
 │   ├── __init__.py             # Public API re-exports
 │   ├── models.py               # AnimationMode enum, PhotoClipInfo, PhotoGroup
-│   └── filter_expressions.py   # Pure FFmpeg filter strings: ken_burns, face_zoom, blur_bg, collage
+│   ├── filter_expressions.py   # Pure FFmpeg filter strings: ken_burns, face_zoom, blur_bg, collage
+│   ├── grouper.py              # PhotoGrouper: temporal clustering, series detection
+│   └── scoring.py              # Photo scoring: favorites, faces, camera, penalty
 │
 ├── memory_types/               # Memory type presets & factory
 │   ├── __init__.py             # Public API re-exports
