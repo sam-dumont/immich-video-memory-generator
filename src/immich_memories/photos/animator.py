@@ -116,7 +116,7 @@ def _convert_heif(source_path: Path, work_dir: Path) -> PreparedPhoto:
     # If the HEIC is Display P3, P3 reds will appear oversaturated when treated
     # as sRGB. Convert P3→sRGB here so downstream cv2 reads correct colors.
     icc_profile = img.info.get("icc_profile")
-    if icc_profile and b"Display P3" in icc_profile:
+    if icc_profile and _is_display_p3(icc_profile):
         img = _convert_p3_to_srgb(img, icc_profile)  # type: ignore[assignment]
 
     img.save(out_path, "JPEG", quality=95)
@@ -231,6 +231,20 @@ def _get_image_dimensions(path: Path) -> tuple[int, int]:
 
     with Image.open(path) as img:
         return img.size
+
+
+def _is_display_p3(icc_profile: bytes) -> bool:
+    """Check if an ICC profile is Display P3 (not sRGB)."""
+    from io import BytesIO
+
+    from PIL import ImageCms
+
+    try:
+        profile = ImageCms.ImageCmsProfile(BytesIO(icc_profile))
+        desc = ImageCms.getProfileDescription(profile).strip().lower()
+        return "p3" in desc
+    except Exception:
+        return False
 
 
 def _convert_p3_to_srgb(img: PILImage.Image, icc_profile: bytes) -> PILImage.Image:

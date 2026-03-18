@@ -23,6 +23,14 @@ from immich_memories.api.models import Asset
 DEFAULT_CLIP_DURATION = 3.0
 
 
+def estimate_clip_duration(asset: Asset) -> float:
+    """Detect clip duration from EXIF make — Google Pixel clips are much shorter."""
+    make = (asset.exif_info.make or "").lower() if asset.exif_info else ""
+    if "google" in make:
+        return 1.5  # Pixel Motion Photos are 0.7-1.3s; 1.5 is safe upper bound
+    return DEFAULT_CLIP_DURATION
+
+
 @dataclass
 class LivePhotoCluster:
     """A group of temporally adjacent Live Photos with overlap-aware trim points."""
@@ -98,34 +106,65 @@ class LivePhotoCluster:
         return [a.live_photo_video_id for a in self.assets if a.live_photo_video_id]
 
 
+def split_non_overlapping(cluster: LivePhotoCluster) -> list[LivePhotoCluster]:
+    """Break a cluster at gaps where consecutive clips don't temporally overlap.
+
+    If gap between consecutive shutters >= clip_duration, they can't overlap
+    and shouldn't be merged. Returns sub-clusters that each have real overlap.
+    """
+    if cluster.count <= 1:
+        return [cluster]
+
+    sub: list[list[Asset]] = [[cluster.assets[0]]]
+    for i in range(1, cluster.count):
+        gap = (
+            cluster.assets[i].file_created_at - cluster.assets[i - 1].file_created_at
+        ).total_seconds()
+        if gap >= cluster.clip_duration:
+            sub.append([cluster.assets[i]])
+        else:
+            sub[-1].append(cluster.assets[i])
+
+    return [LivePhotoCluster(assets=s, clip_duration=cluster.clip_duration) for s in sub]
+
+
 def cluster_live_photos(
     assets: list[Asset],
     merge_window_seconds: float = 10.0,
-    clip_duration: float = DEFAULT_CLIP_DURATION,
+    clip_duration: float | None = None,
 ) -> list[LivePhotoCluster]:
     """Group Live Photo assets into temporal clusters.
 
     Uses shutter timestamps (file_created_at) to group photos taken within
     merge_window_seconds of each other. Within each cluster, overlap-aware
     trim points ensure no duplicate video frames.
+
+    When clip_duration is None (default), auto-detects per cluster from EXIF.
+    Non-overlapping clips within a cluster are split into sub-clusters.
     """
     if not assets:
         return []
 
     sorted_assets = sorted(assets, key=lambda a: a.file_created_at)
 
-    clusters: list[list[Asset]] = [[sorted_assets[0]]]
+    raw_clusters: list[list[Asset]] = [[sorted_assets[0]]]
 
     for asset in sorted_assets[1:]:
-        prev = clusters[-1][-1]
+        prev = raw_clusters[-1][-1]
         gap = (asset.file_created_at - prev.file_created_at).total_seconds()
 
         if gap <= merge_window_seconds:
-            clusters[-1].append(asset)
+            raw_clusters[-1].append(asset)
         else:
-            clusters.append([asset])
+            raw_clusters.append([asset])
 
-    return [LivePhotoCluster(assets=c, clip_duration=clip_duration) for c in clusters]
+    result: list[LivePhotoCluster] = []
+    for c in raw_clusters:
+        dur = clip_duration if clip_duration is not None else estimate_clip_duration(c[0])
+        cluster = LivePhotoCluster(assets=c, clip_duration=dur)
+        result.extend(split_non_overlapping(cluster))
+
+    return result
 
 
 def probe_clip_has_video(clip_path: Path) -> bool:
