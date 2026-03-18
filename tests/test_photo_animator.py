@@ -154,3 +154,115 @@ class TestPhotoAnimator:
 
         resolved = animator.resolve_auto_mode(width=1080, height=1920, face_bbox=None)
         assert resolved == AnimationMode.BLUR_BG
+
+
+class TestPhotoAnimatorHDR:
+    """Tests for HDR photo support in PhotoAnimator."""
+
+    def test_sdr_default_uses_h264(self, tmp_path):
+        """Without HDR, encoder is libx264 with yuv420p."""
+        config = PhotoConfig(duration=4.0)
+        animator = PhotoAnimator(config, target_w=1920, target_h=1080)
+
+        source = tmp_path / "photo.jpg"
+        source.touch()
+        output = tmp_path / "photo.mp4"
+
+        cmd = animator.build_ffmpeg_command(
+            source_path=source,
+            output_path=output,
+            width=1920,
+            height=1080,
+            mode=AnimationMode.KEN_BURNS,
+        )
+
+        assert "libx264" in cmd
+        assert "yuv420p" in cmd
+
+    def test_hlg_uses_hevc_with_10bit(self, tmp_path):
+        """HLG HDR photo uses libx265 with 10-bit pixel format."""
+        config = PhotoConfig(duration=4.0)
+        animator = PhotoAnimator(config, target_w=1920, target_h=1080)
+
+        source = tmp_path / "photo.heic"
+        source.touch()
+        output = tmp_path / "photo.mp4"
+
+        cmd = animator.build_ffmpeg_command(
+            source_path=source,
+            output_path=output,
+            width=1920,
+            height=1080,
+            mode=AnimationMode.KEN_BURNS,
+            hdr_type="hlg",
+        )
+
+        assert "libx265" in cmd
+        assert "libx264" not in cmd
+        # 10-bit pixel format for HDR
+        assert "yuv420p10le" in cmd
+
+    def test_hlg_includes_color_metadata(self, tmp_path):
+        """HLG HDR output includes BT.2020 color metadata."""
+        config = PhotoConfig(duration=4.0)
+        animator = PhotoAnimator(config, target_w=1920, target_h=1080)
+
+        source = tmp_path / "photo.heic"
+        source.touch()
+        output = tmp_path / "photo.mp4"
+
+        cmd = animator.build_ffmpeg_command(
+            source_path=source,
+            output_path=output,
+            width=1920,
+            height=1080,
+            mode=AnimationMode.KEN_BURNS,
+            hdr_type="hlg",
+        )
+
+        cmd_str = " ".join(cmd)
+        assert "bt2020" in cmd_str
+        assert "arib-std-b67" in cmd_str
+
+    def test_pq_uses_hevc_with_pq_metadata(self, tmp_path):
+        """PQ/HDR10 photo uses libx265 with PQ transfer characteristics."""
+        config = PhotoConfig(duration=4.0)
+        animator = PhotoAnimator(config, target_w=1920, target_h=1080)
+
+        source = tmp_path / "photo.heic"
+        source.touch()
+        output = tmp_path / "photo.mp4"
+
+        cmd = animator.build_ffmpeg_command(
+            source_path=source,
+            output_path=output,
+            width=1920,
+            height=1080,
+            mode=AnimationMode.KEN_BURNS,
+            hdr_type="pq",
+        )
+
+        cmd_str = " ".join(cmd)
+        assert "libx265" in cmd_str
+        assert "smpte2084" in cmd_str
+
+    def test_blur_bg_hdr_uses_hevc(self, tmp_path):
+        """Blur background mode also supports HDR."""
+        config = PhotoConfig(duration=4.0)
+        animator = PhotoAnimator(config, target_w=1920, target_h=1080)
+
+        source = tmp_path / "photo.heic"
+        source.touch()
+        output = tmp_path / "photo.mp4"
+
+        cmd = animator.build_ffmpeg_command(
+            source_path=source,
+            output_path=output,
+            width=1080,
+            height=1920,
+            mode=AnimationMode.BLUR_BG,
+            hdr_type="hlg",
+        )
+
+        assert "libx265" in cmd
+        assert "yuv420p10le" in cmd

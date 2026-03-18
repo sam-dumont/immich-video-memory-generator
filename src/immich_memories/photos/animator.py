@@ -4,6 +4,9 @@ Uses filter expressions from filter_expressions.py to generate FFmpeg
 commands that animate photos with Ken Burns, face zoom, blur background,
 or collage effects. Each photo gets reproducible randomness via a seed
 derived from its asset ID.
+
+Supports HDR photos (HEIF/HEIC from iPhones): when hdr_type is provided,
+outputs HEVC with 10-bit color and BT.2020 metadata.
 """
 
 from __future__ import annotations
@@ -18,6 +21,12 @@ from immich_memories.photos.filter_expressions import (
     ken_burns_filter,
 )
 from immich_memories.photos.models import AnimationMode
+
+# HDR transfer characteristic mapping
+_HDR_COLOR_TRC = {
+    "hlg": "arib-std-b67",
+    "pq": "smpte2084",
+}
 
 
 class PhotoAnimator:
@@ -38,7 +47,6 @@ class PhotoAnimator:
         if face_bbox is not None:
             return AnimationMode.FACE_ZOOM
         if height > width:
-            # Portrait photo in landscape output → blur background
             return AnimationMode.BLUR_BG
         return AnimationMode.KEN_BURNS
 
@@ -51,19 +59,31 @@ class PhotoAnimator:
         mode: AnimationMode,
         face_bbox: tuple[float, float, float, float] | None = None,
         asset_id: str = "",
+        hdr_type: str | None = None,
     ) -> list[str]:
-        """Build FFmpeg command to convert a photo to an animated .mp4 clip."""
+        """Build FFmpeg command to convert a photo to an animated .mp4 clip.
+
+        Args:
+            hdr_type: "hlg", "pq", or None for SDR. When set, outputs HEVC
+                      with 10-bit color and HDR metadata.
+        """
         if mode == AnimationMode.AUTO:
             mode = self.resolve_auto_mode(width, height, face_bbox)
 
         duration = self._config.duration
         fps = 30
         seed = self._seed_from_id(asset_id)
+        encoder_args = self._encoder_args(hdr_type)
 
-        # Build the video filter
         if mode == AnimationMode.BLUR_BG:
-            return self._build_blur_bg_command(
-                source_path, output_path, width, height, duration, fps, seed
+            return self._build_filter_complex_command(
+                source_path,
+                output_path,
+                duration,
+                encoder_args,
+                blur_bg_filter(
+                    width, height, self._target_w, self._target_h, duration, fps, seed=seed
+                ),
             )
 
         if mode == AnimationMode.FACE_ZOOM:
@@ -78,7 +98,6 @@ class PhotoAnimator:
                 seed=seed,
             )
         else:
-            # KEN_BURNS (default)
             vf = ken_burns_filter(
                 width,
                 height,
@@ -90,6 +109,50 @@ class PhotoAnimator:
                 seed=seed,
             )
 
+        return self._build_vf_command(source_path, output_path, duration, encoder_args, vf)
+
+    def _encoder_args(self, hdr_type: str | None) -> list[str]:
+        """Build encoder arguments — HEVC+10bit for HDR, H.264 for SDR."""
+        if hdr_type and hdr_type in _HDR_COLOR_TRC:
+            color_trc = _HDR_COLOR_TRC[hdr_type]
+            return [
+                "-c:v",
+                "libx265",
+                "-preset",
+                "medium",
+                "-crf",
+                "18",
+                "-pix_fmt",
+                "yuv420p10le",
+                "-colorspace",
+                "bt2020nc",
+                "-color_primaries",
+                "bt2020",
+                "-color_trc",
+                color_trc,
+                "-x265-params",
+                f"hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer={color_trc}:colormatrix=bt2020nc",
+            ]
+        return [
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+        ]
+
+    def _build_vf_command(
+        self,
+        source_path: Path,
+        output_path: Path,
+        duration: float,
+        encoder_args: list[str],
+        vf: str,
+    ) -> list[str]:
+        """Build command using -vf (single-stream filter)."""
         return [
             "ffmpeg",
             "-y",
@@ -103,49 +166,26 @@ class PhotoAnimator:
             "anullsrc=r=48000:cl=stereo",
             "-vf",
             vf,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            "18",
+            *encoder_args,
             "-c:a",
             "aac",
             "-b:a",
             "128k",
             "-t",
             str(duration),
-            "-pix_fmt",
-            "yuv420p",
             "-shortest",
             str(output_path),
         ]
 
-    def _build_blur_bg_command(
+    def _build_filter_complex_command(
         self,
         source_path: Path,
         output_path: Path,
-        width: int,
-        height: int,
         duration: float,
-        fps: int,
-        seed: int,
+        encoder_args: list[str],
+        fc: str,
     ) -> list[str]:
-        """Build FFmpeg command for blur background mode.
-
-        Uses filter_complex instead of -vf because blur_bg_filter
-        has multiple streams (split, overlay).
-        """
-        fc = blur_bg_filter(
-            width,
-            height,
-            self._target_w,
-            self._target_h,
-            duration,
-            fps,
-            seed=seed,
-        )
-
+        """Build command using -filter_complex (multi-stream filter like blur_bg)."""
         return [
             "ffmpeg",
             "-y",
@@ -159,20 +199,13 @@ class PhotoAnimator:
             "anullsrc=r=48000:cl=stereo",
             "-filter_complex",
             fc,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            "18",
+            *encoder_args,
             "-c:a",
             "aac",
             "-b:a",
             "128k",
             "-t",
             str(duration),
-            "-pix_fmt",
-            "yuv420p",
             "-shortest",
             str(output_path),
         ]
