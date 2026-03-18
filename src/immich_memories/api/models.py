@@ -163,6 +163,10 @@ class Asset(BaseModel):
     is_archived: bool = Field(default=False, alias="isArchived")
     is_trashed: bool = Field(default=False, alias="isTrashed")
     duration: str | None = None
+    # WHY: width/height from search API — needed for resolution filtering
+    # BEFORE download. Without these, all non-favorites report 0×0 and get dropped.
+    width: int = Field(default=0)
+    height: int = Field(default=0)
     exif_info: ExifInfo | None = Field(default=None, alias="exifInfo")
     people: list[Person] = Field(default_factory=list)
     faces: list[AssetFace] = Field(default_factory=list)

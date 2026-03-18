@@ -789,5 +789,12 @@ def assets_to_clips(assets: list) -> list:
         duration = asset.duration_seconds or 0
         if duration < MIN_CLIP_DURATION:
             continue
-        clips.append(VideoClipInfo(asset=asset, duration_seconds=duration))
+        clips.append(
+            VideoClipInfo(
+                asset=asset,
+                duration_seconds=duration,
+                width=asset.width,
+                height=asset.height,
+            )
+        )
     return clips
