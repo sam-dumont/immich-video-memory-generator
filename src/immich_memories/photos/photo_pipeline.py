@@ -160,9 +160,15 @@ def _stream_render_to_mp4(
 ) -> None:
     """Render Ken Burns frames and stream directly to FFmpeg.
 
-    Never holds more than 1 frame in memory. Each frame is generated,
-    converted to bytes, and written to FFmpeg's stdin pipe immediately.
+    Encodes as HEVC 10-bit HLG/BT.2020 to match iPhone video clips.
+    WHY: If photo clips are H.264 SDR and videos are HEVC HLG, the
+    assembly pipeline applies SDR→HDR zscale which produces red tint.
+    Matching the color space avoids any conversion.
+
+    Streams one frame at a time — O(1) memory.
     """
+    encoder_args = _get_photo_encoder_args()
+
     proc = subprocess.Popen(
         [
             "ffmpeg",
@@ -181,14 +187,7 @@ def _stream_render_to_mp4(
             "lavfi",
             "-i",
             "anullsrc=r=48000:cl=stereo",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            "18",
-            "-pix_fmt",
-            "yuv420p",
+            *encoder_args,
             "-c:a",
             "aac",
             "-b:a",
@@ -203,11 +202,67 @@ def _stream_render_to_mp4(
         stderr=subprocess.DEVNULL,
     )
 
-    # Stream frames one at a time via the generator
-    assert proc.stdin is not None  # Popen with stdin=PIPE always sets this
+    assert proc.stdin is not None
     for frame in render_ken_burns_streaming(img, target_w, target_h, params):
         frame_bytes = (np.clip(frame * 255, 0, 255).astype(np.uint8)).tobytes()
         proc.stdin.write(frame_bytes)
 
     proc.stdin.close()
     proc.wait(timeout=300)
+
+
+def _get_photo_encoder_args() -> list[str]:
+    """Encoder args matching the video pipeline's HDR output (HEVC HLG BT.2020).
+
+    WHY: iPhone videos are HEVC HLG 10-bit BT.2020. Photo clips must
+    match to avoid the assembly pipeline's SDR→HDR zscale conversion
+    which produces red tint on the photos.
+    """
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True, timeout=5
+        )
+        has_vt = "hevc_videotoolbox" in result.stdout
+    except Exception:
+        has_vt = False
+
+    if has_vt:
+        return [
+            "-c:v",
+            "hevc_videotoolbox",
+            "-profile:v",
+            "main10",
+            "-tag:v",
+            "hvc1",
+            "-b:v",
+            "10M",
+            "-colorspace",
+            "bt2020nc",
+            "-color_primaries",
+            "bt2020",
+            "-color_trc",
+            "arib-std-b67",
+            "-pix_fmt",
+            "p010le",
+        ]
+
+    return [
+        "-c:v",
+        "libx265",
+        "-preset",
+        "medium",
+        "-crf",
+        "18",
+        "-tag:v",
+        "hvc1",
+        "-colorspace",
+        "bt2020nc",
+        "-color_primaries",
+        "bt2020",
+        "-color_trc",
+        "arib-std-b67",
+        "-pix_fmt",
+        "yuv420p10le",
+        "-x265-params",
+        "hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
+    ]

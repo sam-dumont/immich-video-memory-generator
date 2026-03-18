@@ -135,6 +135,7 @@ class TestTemporalClustering:
     def test_groups_photos_within_window(self):
         from immich_memories.processing.live_photo_merger import cluster_live_photos
 
+        # Photos 1s apart — overlap with 3s clip duration AND within merge window
         assets = [
             Asset(
                 **_make_asset(
@@ -148,7 +149,7 @@ class TestTemporalClustering:
                 **_make_asset(
                     id="b",
                     type="IMAGE",
-                    fileCreatedAt="2024-07-15T10:30:05Z",
+                    fileCreatedAt="2024-07-15T10:30:01Z",
                     livePhotoVideoId="v2",
                 )
             ),
@@ -156,7 +157,7 @@ class TestTemporalClustering:
                 **_make_asset(
                     id="c",
                     type="IMAGE",
-                    fileCreatedAt="2024-07-15T10:30:08Z",
+                    fileCreatedAt="2024-07-15T10:30:02Z",
                     livePhotoVideoId="v3",
                 )
             ),
@@ -171,6 +172,7 @@ class TestTemporalClustering:
     def test_separates_distant_photos(self):
         from immich_memories.processing.live_photo_merger import cluster_live_photos
 
+        # a,b overlap (1s gap < 3s clip) but c is an hour away
         assets = [
             Asset(
                 **_make_asset(
@@ -184,7 +186,7 @@ class TestTemporalClustering:
                 **_make_asset(
                     id="b",
                     type="IMAGE",
-                    fileCreatedAt="2024-07-15T10:00:05Z",
+                    fileCreatedAt="2024-07-15T10:00:01Z",
                     livePhotoVideoId="v2",
                 )
             ),
@@ -232,12 +234,13 @@ class TestTemporalClustering:
     def test_sorted_by_timestamp_within_cluster(self):
         from immich_memories.processing.live_photo_merger import cluster_live_photos
 
+        # Photos 2s apart (overlap with 3s clip), given out of order
         assets = [
             Asset(
                 **_make_asset(
                     id="c",
                     type="IMAGE",
-                    fileCreatedAt="2024-07-15T10:30:08Z",
+                    fileCreatedAt="2024-07-15T10:30:04Z",
                     livePhotoVideoId="v3",
                 )
             ),
@@ -253,7 +256,7 @@ class TestTemporalClustering:
                 **_make_asset(
                     id="b",
                     type="IMAGE",
-                    fileCreatedAt="2024-07-15T10:30:04Z",
+                    fileCreatedAt="2024-07-15T10:30:02Z",
                     livePhotoVideoId="v2",
                 )
             ),

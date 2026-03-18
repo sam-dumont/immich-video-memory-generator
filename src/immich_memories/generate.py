@@ -410,6 +410,7 @@ def _try_merge_burst(
         align_clips_spectrogram,
         build_merge_command,
         filter_valid_clips,
+        probe_clip_has_audio,
     )
 
     # Pre-validate: filter out clips with no valid video stream
@@ -419,7 +420,10 @@ def _try_merge_burst(
 
     # Spectrogram alignment for sample-accurate audio + frame-accurate video
     audio_trims = None
-    if shutter_timestamps and len(valid_paths) > 1:
+    has_audio = probe_clip_has_audio(valid_paths[0]) if valid_paths else False
+    if not has_audio:
+        logger.info("Burst clips have no audio — skipping spectrogram alignment")
+    if has_audio and shutter_timestamps and len(valid_paths) > 1:
         try:
             import json
 
