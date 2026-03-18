@@ -169,10 +169,16 @@ def _stream_render_to_mp4(
     """
     encoder_args = _get_photo_encoder_args()
 
-    # WHY: setparams tags the video stream with HLG/BT.2020 metadata
-    # BEFORE encoding. hevc_videotoolbox needs this in the filter chain
-    # to embed the color info in the output container.
-    vf = "setparams=colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67"
+    # WHY: The rendered frames are sRGB (gamma 2.2). The video pipeline
+    # outputs HEVC HLG. We must ACTUALLY convert the pixel values from
+    # sRGB to HLG transfer function — not just tag the metadata.
+    # setparams alone would lie about the transfer, causing red tint.
+    vf = (
+        "zscale=transfer=arib-std-b67:transferin=iec61966-2-1"
+        ":primaries=bt2020:primariesin=bt709"
+        ":matrix=bt2020nc:matrixin=bt709"
+        ",format=yuv420p10le"
+    )
 
     proc = subprocess.Popen(
         [
@@ -233,6 +239,8 @@ def _get_photo_encoder_args() -> list[str]:
     except Exception:
         has_vt = False
 
+    # WHY: zscale in the filter already converts to yuv420p10le with
+    # HLG/BT.2020 color. Encoder just needs to preserve the metadata.
     if has_vt:
         return [
             "-c:v",
@@ -249,8 +257,6 @@ def _get_photo_encoder_args() -> list[str]:
             "bt2020",
             "-color_trc",
             "arib-std-b67",
-            "-pix_fmt",
-            "p010le",
         ]
 
     return [
@@ -268,8 +274,6 @@ def _get_photo_encoder_args() -> list[str]:
         "bt2020",
         "-color_trc",
         "arib-std-b67",
-        "-pix_fmt",
-        "yuv420p10le",
         "-x265-params",
         "hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
     ]
