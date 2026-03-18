@@ -30,6 +30,7 @@ from immich_memories.config_models import (
     LLMConfig,
     MusicGenConfig,
     OutputConfig,
+    PhotoConfig,
     ScoringPriorityConfig,
     ServerConfig,
     TitleScreenConfig,
@@ -58,7 +59,7 @@ class Config(BaseSettings):
 
     Config tiers (YAML layout):
       Tier 1 (top level): immich, defaults, output, audio, title_screens,
-                           cache, upload, trips
+                           cache, upload, trips, photos
       Tier 2 (advanced:):  analysis, hardware, llm, musicgen, ace_step,
                            content_analysis, audio_content, server
       Tier 3 (internal):   scheduler, title_llm
@@ -91,6 +92,7 @@ class Config(BaseSettings):
     audio_content: AudioContentConfig = Field(default_factory=AudioContentConfig)
     title_screens: TitleScreenConfig = Field(default_factory=TitleScreenConfig)
     upload: UploadConfig = Field(default_factory=UploadConfig)
+    photos: PhotoConfig = Field(default_factory=PhotoConfig)
     scoring_priority: ScoringPriorityConfig = Field(default_factory=ScoringPriorityConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     trips: TripsConfig = Field(default_factory=TripsConfig)

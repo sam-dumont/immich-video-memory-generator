@@ -726,6 +726,56 @@ class ScoringPriorityConfig(BaseModel):
     moment: Literal["low", "medium", "high"] = "medium"
 
 
+class PhotoConfig(BaseModel):
+    """Photo-to-video animation settings."""
+
+    enabled: bool = Field(default=False, description="Include photos in memory videos")
+    max_ratio: float = Field(
+        default=0.25,
+        ge=0.0,
+        le=1.0,
+        description="Maximum fraction of clips that can be photos (0.25 = 25%)",
+    )
+    duration: float = Field(
+        default=4.0,
+        ge=1.0,
+        le=10.0,
+        description="Duration per single photo clip in seconds",
+    )
+    collage_duration: float = Field(
+        default=6.0,
+        ge=2.0,
+        le=15.0,
+        description="Duration per collage clip in seconds",
+    )
+    animation_mode: Literal["auto", "ken_burns", "face_zoom", "blur_bg"] = Field(
+        default="auto",
+        description="Animation mode (auto selects per photo based on content)",
+    )
+    enable_collage: bool = Field(
+        default=True,
+        description="Enable multi-photo collage for photo series",
+    )
+    series_gap_seconds: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=300.0,
+        description="Max gap between photos to group as a series",
+    )
+    zoom_factor: float = Field(
+        default=1.15,
+        ge=1.0,
+        le=2.0,
+        description="Ken Burns zoom factor (1.15 = 15% zoom)",
+    )
+    score_penalty: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Score reduction for photos vs videos (0.2 = photos score 80% of videos)",
+    )
+
+
 class UploadConfig(BaseModel):
     """Upload generated videos back to Immich."""
 
