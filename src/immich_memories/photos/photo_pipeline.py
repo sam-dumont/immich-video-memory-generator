@@ -50,18 +50,25 @@ def render_photo_clips(
     if not assets:
         return []
 
-    # Score all photos (cheap — no I/O)
+    # Phase 1: Fast metadata scoring (no I/O)
     scored = [(a, score_photo(a, config)) for a in assets]
 
-    # Pre-cap: select top photos with temporal distribution
+    # Pre-cap with temporal distribution
     max_photos = _compute_max_photos(video_clip_count, config.max_ratio)
+    # Shortlist: take 3x what we need for LLM refinement
+    shortlist_size = min(len(scored), max_photos * 3)
+    if len(scored) > shortlist_size:
+        scored = _select_distributed(scored, shortlist_size)
+
+    # Phase 2: LLM scoring on shortlist (downloads photo, sends to VLM)
+    scored = _enhance_with_llm(scored, config, work_dir, download_fn)
+
+    # Final selection: top N after LLM scoring, distributed
     if len(scored) > max_photos:
         scored = _select_distributed(scored, max_photos)
-        logger.info(
-            f"Photo pre-cap: {len(assets)} → {len(scored)} (distributed, {config.max_ratio:.0%} of {video_clip_count} videos)"
-        )
+    logger.info(f"Photo selection: {len(assets)} → {len(scored)} (max {max_photos})")
 
-    # Render each photo (streaming to FFmpeg, O(1) memory)
+    # Phase 3: Render each selected photo
     clips: list[AssemblyClip] = []
     for i, (asset, score) in enumerate(scored):
         logger.info(f"Rendering photo {i + 1}/{len(scored)}: {asset.id[:8]}... (score={score:.2f})")
@@ -114,6 +121,40 @@ def _select_distributed(
             seen.add(best[0].id)
 
     return selected
+
+
+def _enhance_with_llm(
+    scored: list[tuple[Asset, float]],
+    config: PhotoConfig,
+    work_dir: Path,
+    download_fn: Any,
+) -> list[tuple[Asset, float]]:
+    """Download shortlisted photos and re-score with LLM visual analysis."""
+    from immich_memories.photos.scoring import score_photo_with_llm
+
+    enhanced: list[tuple[Asset, float]] = []
+    for asset, meta_score in scored:
+        # Download if not already cached
+        ext = Path(asset.original_file_name).suffix if asset.original_file_name else ".jpg"
+        raw_path = work_dir / f"{asset.id}{ext}"
+        if not raw_path.exists():
+            try:
+                download_fn(asset.id, raw_path)
+            except Exception:
+                enhanced.append((asset, meta_score))
+                continue
+
+        # Prepare (HEIC → JPEG) for LLM analysis
+        try:
+            from immich_memories.photos.animator import prepare_photo_source
+
+            prepared = prepare_photo_source(raw_path, work_dir)
+            llm_score = score_photo_with_llm(prepared.path, meta_score, config)
+            enhanced.append((asset, llm_score))
+        except Exception:
+            enhanced.append((asset, meta_score))
+
+    return enhanced
 
 
 def _render_single_photo(
