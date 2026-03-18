@@ -78,9 +78,11 @@ The spectrogram (Short-Time Fourier Transform) creates a unique frequency finger
 
 Non-overlapping clips (gap > clip duration) are NOT merged — they stay as separate clips.
 
-### Works for any phone
+### Works for any phone with audio
 
-The algorithm uses audio fingerprinting, not Apple metadata. It works for iPhone, Samsung, Google Pixel, or any camera that records audio with video. The only requirement: overlapping clips with shared ambient audio.
+The algorithm uses audio fingerprinting, not Apple metadata. It works for iPhone, Samsung, or any camera that records audio with video. The only requirement: overlapping clips with shared ambient audio.
+
+For devices without audio (like Google Pixel Motion Photos), spectrogram alignment is automatically skipped and clips are kept individual. See the [Device support](#device-support) section for details.
 
 ## Person filtering quirk
 

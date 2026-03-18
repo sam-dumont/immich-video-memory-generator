@@ -169,6 +169,11 @@ def _stream_render_to_mp4(
     """
     encoder_args = _get_photo_encoder_args()
 
+    # WHY: setparams tags the video stream with HLG/BT.2020 metadata
+    # BEFORE encoding. hevc_videotoolbox needs this in the filter chain
+    # to embed the color info in the output container.
+    vf = "setparams=colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67"
+
     proc = subprocess.Popen(
         [
             "ffmpeg",
@@ -187,6 +192,8 @@ def _stream_render_to_mp4(
             "lavfi",
             "-i",
             "anullsrc=r=48000:cl=stereo",
+            "-vf",
+            vf,
             *encoder_args,
             "-c:a",
             "aac",
