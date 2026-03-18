@@ -93,9 +93,6 @@ Run: make test-e2e-ui
 from __future__ import annotations
 
 import logging
-import os
-import signal
-import subprocess
 import time
 
 import httpx
@@ -164,26 +161,39 @@ requires_immich = pytest.mark.skipif(
 _E2E_PORT = 18080  # Avoid conflict with dev server on 8080
 
 
+def _find_free_port() -> int:
+    """Find an available TCP port (avoids hardcoded port conflicts)."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _run_server(port: int) -> None:
+    """Run the NiceGUI app (blocking). Called in child process."""
+    from immich_memories.ui.app import main
+    main(port=port, host="127.0.0.1", reload=False)
+
+
 @pytest.fixture(scope="session")
 def app_server():
-    """Start NiceGUI app as subprocess, wait for /health, yield base URL.
+    """Start NiceGUI app in a child process, wait for /health, yield base URL.
 
-    Uses the CLI entry point: `immich-memories ui --port 18080`
-    The server reads config from ~/.immich-memories/config.yaml (real config).
+    Uses multiprocessing.Process for clean lifecycle management.
+    The child process inherits the parent's filesystem, so it reads
+    ~/.immich-memories/config.yaml (real Immich credentials).
     """
-    base_url = f"http://localhost:{_E2E_PORT}"
+    import multiprocessing
 
-    proc = subprocess.Popen(
-        [
-            "uv", "run", "immich-memories", "ui",
-            "--port", str(_E2E_PORT),
-            "--host", "127.0.0.1",
-            "--no-reload",
-        ],
-        env={**os.environ},
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+    port = _find_free_port()
+    base_url = f"http://127.0.0.1:{port}"
+
+    proc = multiprocessing.Process(
+        target=_run_server,
+        args=(port,),
+        daemon=True,  # auto-kill if parent exits unexpectedly
     )
+    proc.start()
 
     # Poll /health until server is ready (max 30s)
     for attempt in range(60):
@@ -199,22 +209,15 @@ def app_server():
         time.sleep(0.5)
     else:
         proc.kill()
-        stdout = proc.stdout.read().decode() if proc.stdout else ""
-        stderr = proc.stderr.read().decode() if proc.stderr else ""
-        pytest.fail(
-            f"NiceGUI server did not start within 30s.\n"
-            f"stdout: {stdout[-500:]}\nstderr: {stderr[-500:]}"
-        )
+        pytest.fail(f"NiceGUI server did not start within 30s")
 
     yield base_url
 
     # Graceful shutdown
-    proc.send_signal(signal.SIGTERM)
-    try:
-        proc.wait(timeout=10)
-    except subprocess.TimeoutExpired:
+    proc.terminate()
+    proc.join(timeout=5)
+    if proc.is_alive():
         proc.kill()
-        proc.wait()
 
 
 # ---------------------------------------------------------------------------
@@ -237,15 +240,24 @@ def app_page(app_server: str, page: Page) -> Page:
 
 ### Key design notes
 
+- **`multiprocessing.Process`** (not `subprocess.Popen`): NiceGUI's `ui.run()`
+  calls `uvicorn.run()` which blocks. `multiprocessing` provides clean
+  `terminate()`/`kill()` semantics without constructing CLI commands.
+  `daemon=True` ensures cleanup if the parent exits.
+- **Dynamic port** via `_find_free_port()`: Avoids conflicts with dev server
+  on 8080 or other test runs. TOCTOU race is acceptable for local testing.
 - **Session-scoped server**: One server process for the entire test session.
   Starting NiceGUI takes ~3s; session scope avoids repeating this per test.
 - **Function-scoped page**: Each test gets a fresh browser context via
   `pytest-playwright`'s `page` fixture. State resets between tests because
   NiceGUI uses `app.storage.user` tied to browser session.
-- **Real config**: The server reads `~/.immich-memories/config.yaml`. Tests
-  interact with the real Immich server, same as other integration tests.
-- **`--no-reload`**: Disables NiceGUI hot-reload to avoid file watchers.
-- **Port 18080**: Avoids conflicts with a dev server on 8080.
+- **Real config**: The child process inherits the parent's filesystem, so
+  `~/.immich-memories/config.yaml` is read with real Immich credentials.
+- **`reload=False`**: Disables NiceGUI hot-reload to avoid file watchers.
+- **Coverage limitation**: `pytest-cov` in the parent does NOT collect
+  server-side coverage from the child process. E2E coverage only measures
+  test code. Server-side UI coverage requires `coverage.process_startup`
+  in the child (future work).
 
 ---
 
@@ -875,33 +887,29 @@ test-e2e-ui:  ## Run Playwright UI wizard tests (~2min, needs Immich + browser)
 
 ## 8. Coverage Configuration
 
-Once E2E tests are passing and contributing UI coverage, update `pyproject.toml`:
+**Important caveat**: When NiceGUI runs in a child process (subprocess or
+`multiprocessing.Process`), `pytest-cov` in the parent process does **NOT**
+collect server-side coverage. The E2E coverage XML only covers the test code
+itself, not the UI page code executing in the subprocess.
+
+**Therefore: do NOT remove the UI omit from `[tool.coverage.run]` yet.**
+Keep the existing exclusions:
 
 ```toml
 [tool.coverage.run]
 omit = [
-    # Remove these lines once E2E tests cover UI:
-    # "src/immich_memories/ui/pages/*",
-    # "src/immich_memories/ui/theme.py",
-    # "src/immich_memories/ui/components/*",
+    "src/immich_memories/ui/pages/*",    # Still excluded — needs subprocess coverage
+    "src/immich_memories/ui/theme.py",
+    "src/immich_memories/ui/components/*",
 ]
 ```
 
-Also update the `fix-coverage-xml-paths` pre-commit hook glob in
-`.pre-commit-config.yaml` to include `e2e-coverage.xml`:
+The `fix-coverage-xml-paths` pre-commit hook already uses `tests/*-coverage.xml`
+glob — no change needed for `e2e-coverage.xml`.
 
-```yaml
-entry: bash -c 'for f in tests/*-coverage.xml; do ...'
-```
-
-(Already uses `*-coverage.xml` glob — no change needed.)
-
-And update `diff-cover-ci` / `diff-cover-local` Makefile targets to merge the
-new XML:
-
-```makefile
-# Add tests/e2e-coverage.xml to the --merge list
-```
+**Future work**: To get server-side coverage from the child process, use
+`coverage.process_startup` in the child and merge `.coverage` files post-test.
+This is a separate issue — not needed for the initial E2E PR.
 
 ---
 
