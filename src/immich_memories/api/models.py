@@ -84,6 +84,8 @@ class Person(BaseModel):
     thumbnail_path: str | None = Field(default=None, alias="thumbnailPath")
     is_hidden: bool = Field(default=False, alias="isHidden")
     updated_at: datetime | None = Field(default=None, alias="updatedAt")
+    # Nested face bboxes (returned by /api/assets/{id}, not search)
+    faces: list[AssetFace] = Field(default_factory=list)
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -102,6 +104,9 @@ class AssetFace(BaseModel):
     bounding_box_y1: int = Field(default=0, alias="boundingBoxY1")
     bounding_box_x2: int = Field(default=0, alias="boundingBoxX2")
     bounding_box_y2: int = Field(default=0, alias="boundingBoxY2")
+    # Image dimensions the bbox was computed on (thumbnail, not original)
+    image_width: int = Field(default=0, alias="imageWidth")
+    image_height: int = Field(default=0, alias="imageHeight")
 
     model_config = ConfigDict(populate_by_name=True)
 

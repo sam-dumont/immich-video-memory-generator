@@ -1,9 +1,7 @@
-"""LEGACY: FFmpeg filter strings for photo animations.
+"""FFmpeg filter strings for photo animations.
 
-Superseded by renderer.py which generates frames in Python (numpy/cv2)
-for subpixel-precise Ken Burns, HDR support, and no zoompan jitter.
-Keep this module for backward compatibility — new code should use
-render_ken_burns(), render_slide_in(), render_collage() from renderer.py.
+Used internally by PhotoAnimator for simple SDR photo-to-video conversion.
+For HDR, face-aware, and high-quality animations, use renderer.py instead.
 """
 
 from __future__ import annotations

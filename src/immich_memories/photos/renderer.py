@@ -24,26 +24,49 @@ logger = logging.getLogger(__name__)
 
 
 def face_aware_pan(
-    faces: list,
+    people: list,
     src_w: int,
     src_h: int,
 ) -> tuple[float, float]:
-    """Compute Ken Burns pan target from Immich face bounding boxes.
+    """Compute Ken Burns pan target from Immich person/face data.
 
-    Returns normalized (0-1) position of the largest face center,
-    suitable for use as pan_start or pan_end in KenBurnsParams.
+    Immich nests face bboxes under people[].faces[]. The bbox coordinates
+    are relative to a THUMBNAIL resolution (imageWidth/imageHeight), not
+    the original. This function normalizes to 0-1 regardless of source.
+
     Falls back to (0.5, 0.5) if no faces found.
     """
-    if not faces:
+    # Collect all faces from all people
+    all_faces = []
+    for person in people:
+        if hasattr(person, "faces"):
+            all_faces.extend(person.faces)
+
+    if not all_faces:
         return (0.5, 0.5)
 
-    # Pick the largest face (most prominent in the photo)
-    largest = max(faces, key=lambda f: f.area if hasattr(f, "area") else 0)
-    cx, cy = largest.center if hasattr(largest, "center") else (src_w / 2, src_h / 2)
+    # Pick the largest face
+    largest = max(all_faces, key=lambda f: f.area if hasattr(f, "area") else 0)
+    cx, cy = largest.center
+
+    # Normalize using the bbox's own reference dimensions (thumbnail size)
+    # WHY: bbox coords are relative to imageWidth/imageHeight (thumbnail),
+    # not the original photo dimensions. Normalizing by the bbox's own
+    # reference gives correct 0-1 position regardless of resolution.
+    ref_w = (
+        largest.image_width
+        if hasattr(largest, "image_width") and largest.image_width > 0
+        else src_w
+    )
+    ref_h = (
+        largest.image_height
+        if hasattr(largest, "image_height") and largest.image_height > 0
+        else src_h
+    )
 
     return (
-        max(0.0, min(1.0, cx / src_w)),
-        max(0.0, min(1.0, cy / src_h)),
+        max(0.0, min(1.0, cx / ref_w)),
+        max(0.0, min(1.0, cy / ref_h)),
     )
 
 
