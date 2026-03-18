@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-fast mutation benchmark lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
+.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-photos test-fast mutation benchmark lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
 
 # Default target
 help:
@@ -106,6 +106,10 @@ benchmark:
 test-integration-live-photos:  ## Run ONLY live photo merge tests (~30s, needs Immich)
 	uv run pytest tests/integration/live_photos/ -v -m integration --log-cli-level=INFO --tb=short \
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/live-photos-coverage.xml --cov-fail-under=0
+
+test-integration-photos:  ## Run ONLY photo animation tests (~20s, FFmpeg only)
+	uv run pytest tests/integration/photos/ -v -m integration --log-cli-level=INFO --tb=short \
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/photos-coverage.xml --cov-fail-under=0
 
 test-integration-assembly:  ## Run ONLY FFmpeg assembly tests (~10s, no Immich needed)
 	uv run pytest tests/integration/assembly/ -v -m integration --log-cli-level=INFO --tb=short \

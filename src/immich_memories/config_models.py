@@ -731,10 +731,10 @@ class PhotoConfig(BaseModel):
 
     enabled: bool = Field(default=False, description="Include photos in memory videos")
     max_ratio: float = Field(
-        default=0.25,
+        default=0.50,
         ge=0.0,
         le=1.0,
-        description="Maximum fraction of clips that can be photos (0.25 = 25%)",
+        description="Maximum fraction of clips that can be photos (0.50 = 50%)",
     )
     duration: float = Field(
         default=4.0,

@@ -17,7 +17,7 @@ class TestPhotoConfig:
         cfg = PhotoConfig()
         assert cfg.enabled is False
         assert cfg.animation_mode == "auto"
-        assert cfg.max_ratio == 0.25
+        assert cfg.max_ratio == 0.50
         assert cfg.duration == 4.0
         assert cfg.collage_duration == 6.0
         assert cfg.enable_collage is True
@@ -82,7 +82,7 @@ class TestPhotoConfigInConfig:
 
         config = Config()
         assert config.photos.enabled is False
-        assert config.photos.max_ratio == 0.25
+        assert config.photos.max_ratio == 0.50
 
     def test_yaml_roundtrip_with_photos(self, tmp_path):
         """PhotoConfig survives a YAML save → load cycle."""
