@@ -164,8 +164,16 @@ def render_ken_burns_streaming(
         )
 
         if needs_blur and big_blur is not None:
-            fsx, fsy = vp_w / vis_w, vp_h / vis_h
-            m_blur = np.array([[fsx, 0, -x0 * fsx], [0, fsy, -y0 * fsy]], dtype=np.float32)
+            # WHY: use uniform scale (max of x/y) to FILL viewport without stretch.
+            # Different x/y scales would distort the blur. The larger scale ensures
+            # the blur covers the entire viewport; excess is cropped by warpAffine.
+            fs = max(vp_w / vis_w, vp_h / vis_h)
+            # Center the crop on the same region as the sharp photo
+            blur_cx = x0 + vis_w / 2
+            blur_cy = y0 + vis_h / 2
+            blur_x0 = blur_cx - (vp_w / fs) / 2
+            blur_y0 = blur_cy - (vp_h / fs) / 2
+            m_blur = np.array([[fs, 0, -blur_x0 * fs], [0, fs, -blur_y0 * fs]], dtype=np.float32)
             bg = cv2.warpAffine(
                 big_blur,
                 m_blur,

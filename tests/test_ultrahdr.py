@@ -19,6 +19,22 @@ SAMPLE = Path("tests/fixtures/hdr_samples/ultrahdr_colorful_daisies.jpg")
 SAMPLE_GRAY = Path("tests/fixtures/hdr_samples/ultrahdr_gray_chart.jpg")
 
 
+def _lfs_available(path: Path) -> bool:
+    """Check if a git LFS file is the real file (not a pointer)."""
+    if not path.exists():
+        return False
+    # LFS pointers start with "version https://git-lfs.github.com"
+    with path.open("rb") as f:
+        header = f.read(20)
+    return header[:2] == b"\xff\xd8"  # JPEG magic bytes
+
+
+requires_lfs = pytest.mark.skipif(
+    not _lfs_available(SAMPLE), reason="Git LFS files not checked out"
+)
+
+
+@requires_lfs
 class TestIsUltraHdrJpeg:
     """Tests for Ultra HDR detection."""
 
@@ -35,6 +51,7 @@ class TestIsUltraHdrJpeg:
         assert is_ultra_hdr_jpeg(regular) is False
 
 
+@requires_lfs
 class TestExtractGainMap:
     """Tests for MPF gain map extraction."""
 
