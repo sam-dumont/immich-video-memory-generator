@@ -15,7 +15,12 @@ import hashlib
 import json
 import logging
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PIL import Image as PILImage
 
 from immich_memories.config_models import PhotoConfig
 from immich_memories.photos.filter_expressions import (
@@ -32,6 +37,173 @@ _HDR_COLOR_TRC = {
     "hlg": "arib-std-b67",
     "pq": "smpte2084",
 }
+
+# Extensions that FFmpeg can read directly as images
+_FFMPEG_NATIVE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
+
+# Extensions that need pillow-heif conversion
+_HEIF_EXTENSIONS = {".heic", ".heif", ".avif"}
+
+
+@dataclass
+class PreparedPhoto:
+    """Result of preparing a photo for FFmpeg animation."""
+
+    path: Path
+    width: int
+    height: int
+    has_gain_map: bool = False
+
+
+def prepare_photo_source(source_path: Path, work_dir: Path) -> PreparedPhoto:
+    """Convert any image format to an FFmpeg-compatible source.
+
+    HEIC/HEIF/AVIF: decoded via pillow-heif → saved as high-quality JPEG.
+    JPEG/PNG/WebP: used directly (FFmpeg handles these natively).
+
+    Returns PreparedPhoto with the path to the FFmpeg-compatible file,
+    plus dimensions extracted from the image.
+    """
+    ext = source_path.suffix.lower()
+
+    if ext in _HEIF_EXTENSIONS:
+        return _convert_heif(source_path, work_dir)
+
+    if ext in _FFMPEG_NATIVE_EXTENSIONS:
+        w, h = _get_image_dimensions(source_path)
+        return PreparedPhoto(path=source_path, width=w, height=h)
+
+    # Unknown format — try Pillow as fallback
+    return _convert_via_pillow(source_path, work_dir)
+
+
+def _convert_heif(source_path: Path, work_dir: Path) -> PreparedPhoto:
+    """Convert HEIC/HEIF/AVIF via pillow-heif.
+
+    If an Apple HDR gain map is present, applies it to produce a 16-bit
+    PNG with full HDR data (for PQ encoding via FFmpeg zscale). Otherwise
+    saves as high-quality JPEG.
+    """
+    try:
+        import pillow_heif  # type: ignore[import-untyped]
+
+        pillow_heif.register_heif_opener()
+    except ImportError:
+        logger.warning(
+            "pillow-heif not installed — HEIC support unavailable. pip install pillow-heif"
+        )
+        raise
+
+    from PIL import Image
+
+    heif_file = pillow_heif.open_heif(str(source_path))
+    img = Image.open(source_path)
+    w, h = img.size
+
+    # Check for Apple HDR gain map
+    primary = heif_file[0] if len(heif_file) > 0 else heif_file
+    aux_data = primary.info.get("aux", {})
+    gain_map_indices = []
+    for key, indices in aux_data.items():
+        if "hdrgainmap" in key:
+            gain_map_indices = indices
+            break
+
+    if gain_map_indices:
+        return _apply_hdr_gain_map(img, heif_file, gain_map_indices[0], w, h, work_dir, source_path)
+
+    # No gain map — standard JPEG conversion
+    icc_profile = img.info.get("icc_profile")
+    out_path = work_dir / f"{source_path.stem}_converted.jpg"
+    save_kwargs: dict = {"quality": 95}
+    if icc_profile:
+        save_kwargs["icc_profile"] = icc_profile
+    img.save(out_path, "JPEG", **save_kwargs)
+    logger.info(f"Converted {source_path.name} ({w}x{h}) → JPEG (no gain map)")
+
+    return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=False)
+
+
+def _apply_hdr_gain_map(
+    sdr_img: PILImage.Image,
+    heif_file: object,
+    gain_map_index: int,
+    w: int,
+    h: int,
+    work_dir: Path,
+    source_path: Path,
+) -> PreparedPhoto:
+    """Apply Apple HDR gain map to SDR base → 16-bit HDR PNG.
+
+    Apple stores iPhone photos as 8-bit SDR + logarithmic gain map.
+    Formula: HDR_linear = SDR_linear * 2^(gain * headroom)
+    Headroom ≈ 2.3 (log2(1000/203) for ~1000 nit peak).
+    The output 16-bit PNG is consumed by FFmpeg with zscale PQ transfer.
+    """
+    import numpy as np
+    from PIL import Image
+
+    gain_pil = heif_file.get_aux_image(gain_map_index).to_pillow()  # type: ignore[attr-defined]
+    gain_resized = gain_pil.resize((w, h), Image.Resampling.LANCZOS)
+
+    sdr_arr = np.array(sdr_img, dtype=np.float32) / 255.0
+    gain_arr = np.array(gain_resized, dtype=np.float32) / 255.0
+
+    # WHY: headroom=2.3 maps SDR white (203 nits) to ~1000 nit peak
+    # which is the standard HDR10 reference
+    headroom = 2.3
+    hdr_gain = np.power(2.0, gain_arr * headroom)
+    hdr_arr = np.clip(sdr_arr * hdr_gain[:, :, np.newaxis], 0, 1)
+
+    # Save as 16-bit PNG (cv2 handles 16-bit natively)
+    hdr_16 = (hdr_arr * 65535).astype(np.uint16)
+
+    try:
+        import cv2
+
+        hdr_bgr = cv2.cvtColor(hdr_16, cv2.COLOR_RGB2BGR)
+        out_path = work_dir / f"{source_path.stem}_hdr.png"
+        cv2.imwrite(str(out_path), hdr_bgr)
+    except ImportError:
+        # Fallback: save SDR JPEG if cv2 not available
+        logger.warning("cv2 not available — falling back to SDR JPEG (gain map not applied)")
+        out_path = work_dir / f"{source_path.stem}_converted.jpg"
+        sdr_img.save(out_path, "JPEG", quality=95)
+        return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=True)
+
+    logger.info(
+        f"Applied HDR gain map to {source_path.name} ({w}x{h}), "
+        f"gain range {hdr_gain.min():.1f}×–{hdr_gain.max():.1f}×"
+    )
+
+    return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=True)
+
+
+def _convert_via_pillow(source_path: Path, work_dir: Path) -> PreparedPhoto:
+    """Fallback: convert any Pillow-supported format to JPEG."""
+    from PIL import Image
+
+    img: PILImage.Image = Image.open(source_path)  # type: ignore[assignment]
+    if img.mode == "RGBA":
+        img = img.convert("RGB")
+    w, h = img.size
+
+    out_path = work_dir / f"{source_path.stem}_converted.jpg"
+    icc_profile = img.info.get("icc_profile")
+    save_kwargs = {"quality": 95}
+    if icc_profile:
+        save_kwargs["icc_profile"] = icc_profile
+    img.save(out_path, "JPEG", **save_kwargs)
+
+    return PreparedPhoto(path=out_path, width=w, height=h)
+
+
+def _get_image_dimensions(path: Path) -> tuple[int, int]:
+    """Get image dimensions via Pillow (fast — only reads header)."""
+    from PIL import Image
+
+    with Image.open(path) as img:
+        return img.size
 
 
 def detect_photo_hdr_type(photo_path: Path) -> str | None:
@@ -104,12 +276,15 @@ class PhotoAnimator:
         face_bbox: tuple[float, float, float, float] | None = None,
         asset_id: str = "",
         hdr_type: str | None = None,
+        gain_map_hdr: bool = False,
     ) -> list[str]:
         """Build FFmpeg command to convert a photo to an animated .mp4 clip.
 
         Args:
             hdr_type: "hlg", "pq", or None for SDR. When set, outputs HEVC
                       with 10-bit color and HDR metadata.
+            gain_map_hdr: True when the source is a 16-bit gain-mapped PNG
+                          (linear light) that needs zscale PQ transfer.
         """
         if mode == AnimationMode.AUTO:
             mode = self.resolve_auto_mode(width, height, face_bbox)
@@ -117,7 +292,10 @@ class PhotoAnimator:
         duration = self._config.duration
         fps = 30
         seed = self._seed_from_id(asset_id)
-        encoder_args = self._encoder_args(hdr_type)
+
+        # Gain-mapped HDR sources are always PQ output
+        effective_hdr = hdr_type or ("pq" if gain_map_hdr else None)
+        encoder_args = self._encoder_args(effective_hdr)
 
         if mode == AnimationMode.BLUR_BG:
             return self._build_filter_complex_command(
@@ -151,6 +329,15 @@ class PhotoAnimator:
                 fps,
                 zoom_factor=self._config.zoom_factor,
                 seed=seed,
+            )
+
+        # Gain-mapped source is linear light — add zscale PQ conversion
+        if gain_map_hdr:
+            vf += (
+                ",zscale=transfer=smpte2084:transferin=linear"
+                ":primaries=bt2020:primariesin=bt709"
+                ":matrix=bt2020nc:matrixin=bt709"
+                ",format=yuv420p10le"
             )
 
         return self._build_vf_command(source_path, output_path, duration, encoder_args, vf)
