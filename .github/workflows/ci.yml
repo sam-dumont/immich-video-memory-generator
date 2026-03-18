@@ -28,8 +28,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          lfs: true
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -46,7 +44,6 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          lfs: true
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -60,8 +57,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          lfs: true
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -79,8 +74,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          lfs: true
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -95,8 +88,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          lfs: true
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -111,8 +102,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          lfs: true
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -127,8 +116,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          lfs: true
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -143,8 +130,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          lfs: true
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -159,8 +144,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          lfs: true
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -175,8 +158,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          lfs: true
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -191,8 +172,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          lfs: true
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -207,8 +186,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          lfs: true
       - run: make duplication
 
   critique:
@@ -217,8 +194,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          lfs: true
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -239,7 +214,6 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          lfs: true
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -298,6 +272,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          lfs: true
           fetch-depth: 0  # Full history for diff-cover
       - uses: astral-sh/setup-uv@v7
         with:
@@ -396,7 +371,6 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          lfs: true
       - uses: astral-sh/setup-uv@v7
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make build
@@ -422,8 +396,6 @@ jobs:
             platform: linux/arm64
     steps:
       - uses: actions/checkout@v5
-        with:
-          lfs: true
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v7
         with:

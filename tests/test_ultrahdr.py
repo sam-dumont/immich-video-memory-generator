@@ -101,6 +101,7 @@ class TestParseMetadata:
         assert meta.gain_map_max == [1.0]
 
 
+@requires_lfs
 class TestApplyGainMap:
     """Tests for gain map application to reconstruct HDR."""
 
