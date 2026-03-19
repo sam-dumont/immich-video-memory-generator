@@ -246,6 +246,11 @@ def _render_single_photo(
 
         # Stream-render to mp4 (O(1) memory — one frame at a time)
         output_path = work_dir / f"{asset.id}_photo.mp4"
+        # Peak nits comes from gain map normalization:
+        # Apple HEIC: ~1000 nits (headroom=2.3, 2^2.3 * 203 ≈ 1000)
+        # UltraHDR: 2^hdr_capacity_max * 203 (varies per image)
+        # The peak is baked into the 16-bit normalization — npl must match
+        peak_nits = getattr(prepared, "peak_nits", 1000) if prepared.has_gain_map else 203
         _stream_render_to_mp4(
             img,
             params,
@@ -253,6 +258,7 @@ def _render_single_photo(
             target_w,
             target_h,
             gain_map_hdr=prepared.has_gain_map,
+            peak_nits=peak_nits,
         )
 
         if not output_path.exists() or output_path.stat().st_size < 100:
@@ -282,6 +288,7 @@ def _stream_render_to_mp4(
     target_w: int,
     target_h: int,
     gain_map_hdr: bool = False,
+    peak_nits: int = 203,
 ) -> None:
     """Render Ken Burns frames and stream directly to FFmpeg.
 
@@ -297,15 +304,14 @@ def _stream_render_to_mp4(
 
     if gain_map_hdr:
         # Gain-mapped source: 16-bit linear light → HLG
-        # Gain maps normalize peak to 1.0 in uint16; typical iPhone peak ≈ 1000 nits
-        # npl tells zscale what 1.0 represents
+        # npl must match the peak baked into the uint16 normalization
         pix_fmt = "rgb48le"
         vf = (
-            "zscale=t=arib-std-b67:tin=linear"
-            ":p=bt2020:pin=bt709"
-            ":m=bt2020nc:min=bt709"
-            ":npl=1000:agamma=false"
-            ",format=yuv420p10le"
+            f"zscale=t=arib-std-b67:tin=linear"
+            f":p=bt2020:pin=bt709"
+            f":m=bt2020nc:min=bt709"
+            f":npl={peak_nits}:agamma=false"
+            f",format=yuv420p10le"
         )
     else:
         # SDR source: 8-bit sRGB → HLG

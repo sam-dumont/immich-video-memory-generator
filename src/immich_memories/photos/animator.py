@@ -53,6 +53,7 @@ class PreparedPhoto:
     width: int
     height: int
     has_gain_map: bool = False
+    peak_nits: int = 203  # SDR default; gain-mapped HDR sets actual peak
 
 
 def prepare_photo_source(source_path: Path, work_dir: Path) -> PreparedPhoto:
@@ -108,7 +109,16 @@ def _try_ultrahdr_extraction(source_path: Path, work_dir: Path) -> PreparedPhoto
         sdr = np.array(primary_pil, dtype=np.float32) / 255.0
         gm = np.array(gain_map_pil, dtype=np.float32) / 255.0
 
-        hdr_linear = apply_gain_map(sdr, gm, metadata)
+        # apply_gain_map returns gamma-encoded HDR per ISO 21496-1
+        hdr_gamma = apply_gain_map(sdr, gm, metadata)
+
+        # Convert to linear light (inverse sRGB gamma) so both HEIC and
+        # UltraHDR paths output linear 16-bit PNGs for zscale tin=linear
+        hdr_linear = np.where(
+            hdr_gamma <= 0.04045,
+            hdr_gamma / 12.92,
+            np.power((hdr_gamma + 0.055) / 1.055, 2.4),
+        )
 
         # Normalize for uint16: peak maps to 1.0
         peak_linear = 2.0**metadata.hdr_capacity_max
@@ -118,11 +128,14 @@ def _try_ultrahdr_extraction(source_path: Path, work_dir: Path) -> PreparedPhoto
         out_path = work_dir / f"{source_path.stem}_hdr.png"
         cv2.imwrite(str(out_path), cv2.cvtColor(hdr_16, cv2.COLOR_RGB2BGR))
 
+        peak_nits = int(peak_linear * 203)
         logger.info(
             f"Extracted UltraHDR gain map from {source_path.name} ({w}x{h}), "
-            f"peak={peak_linear:.1f}x ({peak_linear * 203:.0f} nits)"
+            f"peak={peak_linear:.1f}x ({peak_nits} nits)"
         )
-        return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=True)
+        return PreparedPhoto(
+            path=out_path, width=w, height=h, has_gain_map=True, peak_nits=peak_nits
+        )
 
     except Exception as e:
         logger.debug(f"UltraHDR extraction failed for {source_path.name}: {e}")
@@ -248,12 +261,13 @@ def _apply_hdr_gain_map(
         sdr_img.save(out_path, "JPEG", quality=95)
         return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=True)
 
+    peak_nits = int(peak_linear * 203)
     logger.info(
         f"Applied HDR gain map to {source_path.name} ({w}x{h}), "
-        f"gain range {hdr_gain.min():.1f}×–{hdr_gain.max():.1f}×"
+        f"gain range {hdr_gain.min():.1f}×–{hdr_gain.max():.1f}×, peak={peak_nits} nits"
     )
 
-    return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=True)
+    return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=True, peak_nits=peak_nits)
 
 
 def _convert_via_pillow(source_path: Path, work_dir: Path) -> PreparedPhoto:
