@@ -94,6 +94,8 @@ If you're connecting from a separate compose stack (not added to Immich's), use 
 | `IMMICH_MEMORIES_STORAGE_SECRET` | No | Session secret for the web UI. Auto-generated if not set. Set this explicitly if you run multiple replicas or restart frequently (avoids session invalidation). |
 | `IMMICH_MEMORIES_LLM__BASE_URL` | No | LLM endpoint for content analysis (any OpenAI-compatible API) |
 | `IMMICH_MEMORIES_LLM__MODEL` | No | LLM model name (e.g., `qwen2.5-vl`) |
+| `IMMICH_MEMORIES_AUTH_USERNAME` | No | Basic auth username. Set with `IMMICH_MEMORIES_AUTH_PASSWORD` to enable auth. |
+| `IMMICH_MEMORIES_AUTH_PASSWORD` | No | Basic auth password. Set with `IMMICH_MEMORIES_AUTH_USERNAME` to enable auth. |
 
 All config options can also be set via env vars with the `IMMICH_MEMORIES_` prefix. Double underscores for nesting: `IMMICH_MEMORIES_ANALYSIS__SCENE_THRESHOLD=25`.
 

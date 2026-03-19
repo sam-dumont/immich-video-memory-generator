@@ -83,6 +83,8 @@ A few common variables are also supported without the full prefix, for convenien
 | `ACE_STEP_ENABLED` | `ace_step.enabled` |
 | `ACE_STEP_MODE` | `ace_step.mode` |
 | `ACE_STEP_API_URL` | `ace_step.api_url` |
+| `IMMICH_MEMORIES_AUTH_USERNAME` | `auth.username` (also sets `auth.enabled=true`, `auth.provider=basic`) |
+| `IMMICH_MEMORIES_AUTH_PASSWORD` | `auth.password` (also sets `auth.enabled=true`, `auth.provider=basic`) |
 
 ## Precedence
 
