@@ -23,10 +23,11 @@ def register_cache_commands(cli_group: click.Group) -> None:
     @cache.command()
     def stats() -> None:
         """Show cache statistics."""
-        from immich_memories.cache.database import VideoAnalysisCache
+        from immich_memories.cache.asset_score_cache import AssetScoreCache
+        from immich_memories.config import get_config
 
-        db = VideoAnalysisCache()
-        s = db.get_cache_stats()
+        score_cache = AssetScoreCache(db_path=get_config().cache.database_path)
+        s = score_cache.get_cache_stats()
 
         table = Table(title="Cache Statistics")
         table.add_column("Metric", style="cyan")
@@ -45,10 +46,11 @@ def register_cache_commands(cli_group: click.Group) -> None:
     @click.argument("output_path", type=click.Path())
     def export(output_path: str) -> None:
         """Export asset scores to JSON (safe, lock-aware)."""
-        from immich_memories.cache.database import VideoAnalysisCache
+        from immich_memories.cache.asset_score_cache import AssetScoreCache
+        from immich_memories.config import get_config
 
-        db = VideoAnalysisCache()
-        with db._get_connection() as conn:
+        score_cache = AssetScoreCache(db_path=get_config().cache.database_path)
+        with score_cache._get_connection() as conn:
             rows = conn.execute("SELECT * FROM asset_scores").fetchall()
             data = [dict(row) for row in rows]
 
@@ -59,14 +61,15 @@ def register_cache_commands(cli_group: click.Group) -> None:
     @click.argument("input_path", type=click.Path(exists=True))
     def import_scores(input_path: str) -> None:
         """Import asset scores from JSON backup."""
-        from immich_memories.cache.database import VideoAnalysisCache
+        from immich_memories.cache.asset_score_cache import AssetScoreCache
+        from immich_memories.config import get_config
 
         data = json.loads(Path(input_path).read_text())
-        db = VideoAnalysisCache()
+        score_cache = AssetScoreCache(db_path=get_config().cache.database_path)
 
         imported = 0
         for row in data:
-            db.save_asset_score(
+            score_cache.save_asset_score(
                 asset_id=row["asset_id"],
                 asset_type=row.get("asset_type", "unknown"),
                 metadata_score=row.get("metadata_score", 0),

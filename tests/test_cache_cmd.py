@@ -12,8 +12,10 @@ from click.testing import CliRunner
 from immich_memories.cli import main
 from immich_memories.config_loader import Config
 
-# WHY: VideoAnalysisCache is the database boundary — all commands import it inline
+# WHY: these are the database boundaries — commands import them inline
 _CACHE_CLS = "immich_memories.cache.database.VideoAnalysisCache"
+_SCORE_CACHE_CLS = "immich_memories.cache.asset_score_cache.AssetScoreCache"
+_GET_CONFIG = "immich_memories.config.get_config"
 
 
 def _invoke(args: list[str]) -> object:
@@ -81,7 +83,7 @@ class TestCacheStats:
         }
         mock_db = _make_mock_db(stats=stats)
 
-        with patch(_CACHE_CLS, return_value=mock_db):
+        with patch(_SCORE_CACHE_CLS, return_value=mock_db), patch(_GET_CONFIG):
             result = _invoke(["cache", "stats"])
 
         assert result.exit_code == 0
@@ -99,7 +101,7 @@ class TestCacheStats:
         }
         mock_db = _make_mock_db(stats=stats)
 
-        with patch(_CACHE_CLS, return_value=mock_db):
+        with patch(_SCORE_CACHE_CLS, return_value=mock_db), patch(_GET_CONFIG):
             result = _invoke(["cache", "stats"])
 
         assert result.exit_code == 0
@@ -116,7 +118,7 @@ class TestCacheExport:
         mock_db = _make_mock_db(rows=rows)
         out_file = tmp_path / "export.json"
 
-        with patch(_CACHE_CLS, return_value=mock_db):
+        with patch(_SCORE_CACHE_CLS, return_value=mock_db), patch(_GET_CONFIG):
             result = _invoke(["cache", "export", str(out_file)])
 
         assert result.exit_code == 0
@@ -129,7 +131,7 @@ class TestCacheExport:
         mock_db = _make_mock_db(rows=[])
         out_file = tmp_path / "empty.json"
 
-        with patch(_CACHE_CLS, return_value=mock_db):
+        with patch(_SCORE_CACHE_CLS, return_value=mock_db), patch(_GET_CONFIG):
             result = _invoke(["cache", "export", str(out_file)])
 
         assert result.exit_code == 0
@@ -164,7 +166,7 @@ class TestCacheImport:
 
         mock_db = MagicMock()
 
-        with patch(_CACHE_CLS, return_value=mock_db):
+        with patch(_SCORE_CACHE_CLS, return_value=mock_db), patch(_GET_CONFIG):
             result = _invoke(["cache", "import", str(in_file)])
 
         assert result.exit_code == 0
@@ -205,7 +207,7 @@ class TestCacheImport:
 
         mock_db = MagicMock()
 
-        with patch(_CACHE_CLS, return_value=mock_db):
+        with patch(_SCORE_CACHE_CLS, return_value=mock_db), patch(_GET_CONFIG):
             result = _invoke(["cache", "import", str(in_file)])
 
         assert result.exit_code == 0

@@ -80,6 +80,9 @@ class CachedVideoAnalysis:
     file_modified_at: datetime | None
     analysis_timestamp: datetime
 
+    # Versioning
+    scoring_version: int = 1
+
     # Hashes
     perceptual_hash: str | None = None
     thumbnail_hash: str | None = None
