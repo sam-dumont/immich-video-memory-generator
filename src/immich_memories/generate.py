@@ -724,8 +724,8 @@ def _apply_music_file(video_path: Path, music_path: Path, volume: float) -> None
         output_path=final_path,
         config=mix_config,
     )
-    video_path.unlink()
-    final_path.rename(video_path)
+    # WHY: replace() is atomic on POSIX — no window where video_path is missing
+    final_path.replace(video_path)
 
 
 def _upload_to_immich(

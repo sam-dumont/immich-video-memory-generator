@@ -26,6 +26,7 @@ class AssetScoreCache:
     def _get_connection(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(
             self.db_path,
+            timeout=5.0,  # busy_timeout=5000ms — retry on concurrent access
             detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
         )
         conn.row_factory = sqlite3.Row

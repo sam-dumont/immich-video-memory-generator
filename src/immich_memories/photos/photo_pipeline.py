@@ -358,7 +358,7 @@ def _stream_render_to_mp4(
         ],
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
     )
 
     assert proc.stdin is not None
@@ -371,6 +371,10 @@ def _stream_render_to_mp4(
 
     proc.stdin.close()
     proc.wait(timeout=300)
+
+    if proc.returncode != 0:
+        stderr_text = proc.stderr.read().decode(errors="replace") if proc.stderr else ""
+        raise RuntimeError(f"Photo FFmpeg encoding failed (exit {proc.returncode}): {stderr_text}")
 
 
 def _get_photo_encoder_args() -> list[str]:

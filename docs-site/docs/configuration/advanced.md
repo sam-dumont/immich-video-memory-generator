@@ -260,6 +260,7 @@ upload:
 scheduler:
   enabled: false
   timezone: "UTC"
+  job_timeout_minutes: 60  # Max time per job before timeout (increase for large libraries)
   schedules:
     - name: "yearly-recap"
       memory_type: "year_in_review"

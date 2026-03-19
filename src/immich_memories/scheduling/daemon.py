@@ -78,12 +78,12 @@ def run_daemon_loop(config: SchedulerConfig) -> None:
                 break
 
             # Execute the job
-            execute_job(next_job)
+            execute_job(next_job, timeout_seconds=config.job_timeout_minutes * 60)
 
     logger.info("Scheduler daemon stopped")
 
 
-def execute_job(job: PendingJob) -> None:
+def execute_job(job: PendingJob, timeout_seconds: int = 3600) -> None:
     """Execute a scheduled job by invoking the CLI as a subprocess."""
     params = resolve_schedule_params(job.schedule, job.fire_time)
     logger.info(f"Executing '{job.schedule.name}': {params}")
@@ -108,9 +108,9 @@ def execute_job(job: PendingJob) -> None:
 
     logger.info(f"Running: {' '.join(cmd)}")
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
-        logger.error(f"Job '{job.schedule.name}' timed out after 30 minutes")
+        logger.error(f"Job '{job.schedule.name}' timed out after {timeout_seconds // 60} minutes")
         return
 
     if result.returncode == 0:

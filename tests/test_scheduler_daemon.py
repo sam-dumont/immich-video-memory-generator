@@ -64,6 +64,58 @@ class TestDaemonLoop:
         assert "--upload-to-immich" in cmd
         assert "--album" in cmd
 
+    def test_default_timeout_is_60_minutes(self):
+        """Default job timeout should be 3600s (60min), not 1800s."""
+        from immich_memories.scheduling.daemon import execute_job
+        from immich_memories.scheduling.engine import PendingJob
+
+        entry = ScheduleEntry(
+            name="yearly",
+            memory_type="year_in_review",
+            cron="0 6 15 1 *",
+        )
+        job = PendingJob(
+            schedule=entry,
+            fire_time=datetime(2026, 1, 15, 6, 0, tzinfo=UTC),
+        )
+
+        with patch("immich_memories.scheduling.daemon.subprocess") as mock_sub:
+            mock_sub.run.return_value = MagicMock(returncode=0)
+            execute_job(job)
+
+        _, kwargs = mock_sub.run.call_args
+        assert kwargs["timeout"] == 3600
+
+    def test_custom_timeout_from_config(self):
+        """SchedulerConfig.job_timeout_minutes overrides the default."""
+        config = SchedulerConfig(
+            enabled=True,
+            job_timeout_minutes=90,
+            schedules=[],
+        )
+        assert config.job_timeout_minutes == 90
+
+    def test_timeout_error_message_shows_minutes(self):
+        """Timeout error should report the configured duration in minutes."""
+        from immich_memories.scheduling.daemon import execute_job
+        from immich_memories.scheduling.engine import PendingJob
+
+        entry = ScheduleEntry(
+            name="yearly",
+            memory_type="year_in_review",
+            cron="0 6 15 1 *",
+        )
+        job = PendingJob(
+            schedule=entry,
+            fire_time=datetime(2026, 1, 15, 6, 0, tzinfo=UTC),
+        )
+
+        with patch("immich_memories.scheduling.daemon.subprocess") as mock_sub:
+            mock_sub.TimeoutExpired = TimeoutError
+            mock_sub.run.side_effect = TimeoutError("timed out")
+            # Should not raise — just logs
+            execute_job(job, timeout_seconds=5400)
+
     def test_daemon_handles_sigint(self):
         """run_daemon_loop should stop gracefully on KeyboardInterrupt."""
         from immich_memories.scheduling.daemon import run_daemon_loop
