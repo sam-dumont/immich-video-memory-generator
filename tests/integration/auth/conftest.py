@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from starlette.applications import Starlette
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse
@@ -16,7 +17,7 @@ from starlette.testclient import TestClient
 
 from immich_memories.config_models_auth import AuthConfig
 from immich_memories.ui.auth import (
-    create_auth_middleware,
+    is_bypass_path,
     set_session,
     verify_credentials,
 )
@@ -32,6 +33,24 @@ if TYPE_CHECKING:
     import werkzeug.serving
 
 logger = logging.getLogger(__name__)
+
+
+def _create_test_auth_middleware(auth_config: AuthConfig) -> type[BaseHTTPMiddleware]:
+    """Starlette middleware for integration tests (NOT used in production).
+
+    WHY: production uses @app.middleware('http') with app.storage.user (NiceGUI).
+    Tests use pure Starlette with request.session. Same logic, different session store.
+    """
+
+    class TestAuthMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            if is_bypass_path(request.url.path):
+                return await call_next(request)
+            if not request.session.get("authenticated"):
+                return RedirectResponse(url="/login", status_code=307)
+            return await call_next(request)
+
+    return TestAuthMiddleware
 
 
 @pytest.fixture(scope="session")
@@ -117,7 +136,6 @@ def _build_basic_auth_routes(auth_config: AuthConfig) -> list[Route]:
             return JSONResponse({"error": "invalid credentials"}, status_code=401)
         return PlainTextResponse("login page")
 
-    # WHY: replaces the /login route from _build_common_routes with one that handles POST too
     return [
         Route("/login", login_handler, methods=["GET", "POST"], name="login"),
     ]
@@ -150,13 +168,12 @@ def make_test_app(auth_config: AuthConfig) -> Starlette:
         routes.extend(_build_oidc_routes(auth_config))
     elif auth_config.provider == "basic":
         basic_routes = _build_basic_auth_routes(auth_config)
-        # Replace the /login route with the basic auth version that handles POST
         basic_paths = {r.path for r in basic_routes}
         routes = [r for r in routes if r.path not in basic_paths]
         routes.extend(basic_routes)
 
     app = Starlette(routes=routes)
-    app.add_middleware(create_auth_middleware(auth_config))
+    app.add_middleware(_create_test_auth_middleware(auth_config))
     # WHY: SessionMiddleware must wrap AuthMiddleware so request.session is available
     app.add_middleware(SessionMiddleware, secret_key="test-secret-key")  # noqa: S106
     return app

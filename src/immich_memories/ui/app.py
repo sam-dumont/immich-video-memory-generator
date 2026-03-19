@@ -25,8 +25,9 @@ from immich_memories import __version__
 from immich_memories.config import get_config, init_config_dir
 from immich_memories.ui.auth import (
     clear_session,
-    create_auth_middleware,
     is_auth_enabled,
+    is_bypass_path,
+    is_trusted_proxy,
     set_session,
 )
 from immich_memories.ui.state import ensure_config, get_app_state
@@ -330,14 +331,44 @@ app.add_api_route("/health", _health_handler, methods=["GET"])
 # ============================================================================
 
 
-def _register_auth_middleware() -> None:
-    """Register auth middleware if authentication is configured."""
+@app.middleware("http")
+async def _auth_middleware(request: Request, call_next):
+    """Provider-agnostic auth check using NiceGUI's app.storage.user.
+
+    WHY @app.middleware('http') not BaseHTTPMiddleware:
+    BaseHTTPMiddleware breaks NiceGUI websockets. NiceGUI's middleware
+    decorator only runs on HTTP requests and has access to app.storage.user.
+    """
     config = get_config()
-    if is_auth_enabled(config.auth):
-        app.add_middleware(create_auth_middleware(config.auth))
+    if not is_auth_enabled(config.auth):
+        return await call_next(request)
 
+    if is_bypass_path(request.url.path):
+        return await call_next(request)
 
-_register_auth_middleware()
+    # Header auth: auto-session from trusted proxy
+    if config.auth.provider == "header":
+        client_ip = request.client.host if request.client else ""
+        if is_trusted_proxy(client_ip, config.auth.trusted_proxies):
+            user = request.headers.get(config.auth.user_header, "")
+            if user and not app.storage.user.get("authenticated"):
+                email = request.headers.get(config.auth.email_header, "")
+                set_session(app.storage.user, username=user, provider="header", email=email)
+
+    if not app.storage.user.get("authenticated"):
+        return RedirectResponse("/login", status_code=307)
+
+    # Session TTL check
+    from datetime import UTC, datetime, timedelta
+
+    authenticated_at_str = app.storage.user.get("authenticated_at")
+    if authenticated_at_str:
+        authenticated_at = datetime.fromisoformat(authenticated_at_str)
+        if datetime.now(UTC) > authenticated_at + timedelta(hours=config.auth.session_ttl_hours):
+            clear_session(app.storage.user)
+            return RedirectResponse("/login", status_code=307)
+
+    return await call_next(request)
 
 
 @ui.page("/login")
@@ -352,16 +383,16 @@ def login_page_route() -> None:
     render_login_page(config.auth)
 
 
-async def _logout_handler(request: Request) -> RedirectResponse:
+async def _logout_handler(request: Request) -> RedirectResponse:  # noqa: ARG001
     """Clear session and redirect to login."""
     from immich_memories.ui.state import remove_session
 
     config = get_config()
-    session_id = request.session.get("session_id")
-    auth_provider = request.session.get("auth_provider")
+    session_id = app.storage.user.get("session_id")
+    auth_provider = app.storage.user.get("auth_provider")
     if session_id:
         remove_session(session_id)
-    clear_session(request.session)
+    clear_session(app.storage.user)
 
     # WHY: OIDC providers may have an end_session_endpoint for full sign-out.
     if auth_provider == config.auth.provider == "oidc":
@@ -395,9 +426,11 @@ async def _oidc_callback(request: Request) -> RedirectResponse:
     from immich_memories.ui.auth_oidc import create_oidc_client, extract_user_from_token
 
     oauth = create_oidc_client(config.auth)
+    # WHY: authlib uses request.session for OIDC state/PKCE internally.
+    # Our auth session goes in app.storage.user (NiceGUI's store).
     token = await oauth.oidc.authorize_access_token(request)
     username, email = extract_user_from_token(token)
-    set_session(request.session, username=username, provider="oidc", email=email)
+    set_session(app.storage.user, username=username, provider="oidc", email=email)
     return RedirectResponse("/")
 
 

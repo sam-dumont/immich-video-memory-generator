@@ -1,4 +1,8 @@
-"""Provider-agnostic authentication middleware and helpers."""
+"""Provider-agnostic authentication helpers.
+
+The actual middleware is registered via @app.middleware('http') in app.py,
+NOT via BaseHTTPMiddleware (which breaks NiceGUI websockets).
+"""
 
 from __future__ import annotations
 
@@ -6,11 +10,7 @@ import ipaddress
 import logging
 import secrets
 from collections.abc import MutableMapping
-from datetime import UTC, datetime, timedelta
-
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import RedirectResponse, Response
+from datetime import UTC, datetime
 
 from immich_memories.config_models_auth import AuthConfig
 
@@ -20,66 +20,11 @@ _BYPASS_PREFIXES = ("/_nicegui/",)
 _BYPASS_EXACT = frozenset({"/health", "/login", "/logout", "/auth/callback", "/auth/authorize"})
 
 
-def _is_bypass_path(path: str) -> bool:
+def is_bypass_path(path: str) -> bool:
+    """Check if a path should bypass authentication."""
     if path in _BYPASS_EXACT:
         return True
     return any(path.startswith(prefix) for prefix in _BYPASS_PREFIXES)
-
-
-def create_auth_middleware(auth_config: AuthConfig) -> type[BaseHTTPMiddleware]:
-    """Return a Starlette middleware class bound to the given auth config.
-
-    The middleware checks request.session for authentication state,
-    bypasses configured public paths, enforces session TTL, and strips
-    forged auth headers from untrusted proxies.
-    """
-
-    class AuthMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request: Request, call_next) -> Response:
-            path = request.url.path
-
-            if _is_bypass_path(path):
-                return await call_next(request)
-
-            # Header auth: auto-create session from trusted proxy, strip from untrusted
-            if auth_config.provider == "header":
-                client_ip = request.client.host if request.client else ""
-                if is_trusted_proxy(client_ip, auth_config.trusted_proxies):
-                    user = request.headers.get(auth_config.user_header, "")
-                    if user:
-                        email = request.headers.get(auth_config.email_header, "")
-                        set_session(
-                            request.session,
-                            username=user,
-                            provider="header",
-                            email=email,
-                        )
-                else:
-                    # Strip forged headers from untrusted sources
-                    user_header_lower = auth_config.user_header.lower().encode()
-                    email_header_lower = auth_config.email_header.lower().encode()
-                    request.scope["headers"] = [
-                        (k, v)
-                        for k, v in request.scope["headers"]
-                        if k not in (user_header_lower, email_header_lower)
-                    ]
-
-            # Check session authentication
-            if not request.session.get("authenticated"):
-                return RedirectResponse(url="/login", status_code=307)
-
-            # Session TTL check
-            authenticated_at_str = request.session.get("authenticated_at")
-            if authenticated_at_str:
-                authenticated_at = datetime.fromisoformat(authenticated_at_str)
-                ttl = timedelta(hours=auth_config.session_ttl_hours)
-                if datetime.now(UTC) > authenticated_at + ttl:
-                    clear_session(request.session)
-                    return RedirectResponse(url="/login", status_code=307)
-
-            return await call_next(request)
-
-    return AuthMiddleware
 
 
 def verify_credentials(username: str, password: str, auth_config: AuthConfig) -> bool:
