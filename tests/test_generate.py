@@ -351,3 +351,65 @@ class TestClipLocationName:
 
     def test_returns_none_for_none_exif(self):
         assert _clip_location_name(None) is None
+
+
+class TestApplyMusicFileAtomic:
+    """_apply_music_file must use atomic replace for crash-safe swap."""
+
+    def test_replaces_video_with_mixed_output(self, tmp_path):
+        """After mixing, video_path has mixed content and no temp file remains."""
+        from immich_memories.generate import _apply_music_file
+
+        video = tmp_path / "output.mp4"
+        music = tmp_path / "music.wav"
+        video.write_bytes(b"original video")
+        music.write_bytes(b"music data")
+
+        # WHY: mock the audio mixer to avoid real FFmpeg — we only test the file swap
+        with patch(
+            "immich_memories.audio.mixer.mix_audio_with_ducking",
+        ) as mock_mix:
+
+            def fake_mix(video_path, music_path, output_path, config):
+                output_path.write_bytes(b"mixed video")
+
+            mock_mix.side_effect = fake_mix
+
+            _apply_music_file(video, music, volume=0.8)
+
+        assert video.read_bytes() == b"mixed video"
+        assert not (tmp_path / "output.with_music.mp4").exists()
+
+    def test_does_not_unlink_original_before_swap(self, tmp_path):
+        """Crash-safety: must not unlink() then rename() — use replace() instead."""
+        from immich_memories.generate import _apply_music_file
+
+        video = tmp_path / "output.mp4"
+        music = tmp_path / "music.wav"
+        video.write_bytes(b"original video")
+        music.write_bytes(b"music data")
+
+        unlink_calls: list[Path] = []
+        original_unlink = Path.unlink
+
+        def tracking_unlink(self, missing_ok=False):
+            unlink_calls.append(self)
+            return original_unlink(self, missing_ok=missing_ok)
+
+        # WHY: mock the audio mixer to avoid real FFmpeg — we only test the swap
+        with (
+            patch("immich_memories.audio.mixer.mix_audio_with_ducking") as mock_mix,
+            patch.object(Path, "unlink", tracking_unlink),
+        ):
+
+            def fake_mix(video_path, music_path, output_path, config):
+                output_path.write_bytes(b"mixed video")
+
+            mock_mix.side_effect = fake_mix
+
+            _apply_music_file(video, music, volume=0.8)
+
+        # The original video path must NOT appear in unlink calls
+        assert video not in unlink_calls, (
+            "Original video was unlinked before swap — use Path.replace() for crash-safety"
+        )

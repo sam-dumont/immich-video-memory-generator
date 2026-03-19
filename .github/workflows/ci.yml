@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  push:
+    branches: [main]  # Codecov needs coverage on main to compare PRs against
   pull_request:
     branches: [main]
   workflow_call:  # Allow this workflow to be called from release.yml
@@ -303,10 +305,9 @@ jobs:
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
         with:
-          # Only upload fresh CI-generated unit test coverage
-          # Integration coverage XMLs are committed locally for diff-cover only —
-          # their timestamps are stale and Codecov rejects files >12h old
-          files: coverage.xml
+          # Auto-discovers coverage.xml (fresh from CI) + tests/*-coverage.xml
+          # (committed integration coverage from local runs).
+          # codecov.yml sets max_report_age: off to accept stale timestamps.
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 

@@ -1,4 +1,4 @@
-"""Tests for privacy/demo mode: blur video + mute speech."""
+"""Tests for privacy/demo mode: heavy blur video + muffle audio."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class TestPrivacyModeConfig:
 
 
 class TestPrivacyVideoBlur:
-    """Video filter includes gaussian blur when privacy mode is on."""
+    """Video filter includes strong gaussian blur when privacy mode is on."""
 
     def _make_filter_builder(self, privacy_mode: bool = False):
         """Create a FilterBuilder with mocked dependencies."""
@@ -51,11 +51,12 @@ class TestPrivacyVideoBlur:
         )
         return fb, ctx
 
-    def test_blur_filter_present_when_privacy_on(self):
+    def test_blur_strong_enough_when_privacy_on(self):
+        """Blur must be heavy enough that faces/people are unrecognizable."""
         fb, ctx = self._make_filter_builder(privacy_mode=True)
         clip = AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0)
         result = fb.build_clip_video_filter(0, clip, ctx)
-        assert "gblur=sigma=30" in result
+        assert "gblur=sigma=80" in result
 
     def test_no_blur_when_privacy_off(self):
         fb, ctx = self._make_filter_builder(privacy_mode=False)
@@ -70,9 +71,17 @@ class TestPrivacyVideoBlur:
         result = fb.build_clip_video_filter(0, clip, ctx)
         assert "gblur" not in result
 
+    def test_skip_privacy_blur_prevents_double_blur(self):
+        """Batch merge must not re-blur already-blurred intermediates."""
+        fb, ctx = self._make_filter_builder(privacy_mode=True)
+        # Intermediate batch clip (already blurred in first pass)
+        clip = AssemblyClip(path=Path("/tmp/batch_000.mp4"), duration=10.0)
+        result = fb.build_clip_video_filter(0, clip, ctx, skip_privacy_blur=True)
+        assert "gblur" not in result
 
-class TestPrivacyAudioMute:
-    """Audio is replaced with silence for speech clips in privacy mode."""
+
+class TestPrivacyAudioMuffle:
+    """Privacy mode muffles ALL audio — keeps cadence but makes speech unintelligible."""
 
     def _make_filter_builder(self, privacy_mode: bool = False):
         settings = AssemblySettings(privacy_mode=privacy_mode)
@@ -81,27 +90,38 @@ class TestPrivacyAudioMute:
         face_center_fn = MagicMock(return_value=None)
         return FilterBuilder(settings, prober, face_center_fn)
 
-    def test_speech_clip_muted_when_privacy_on(self):
+    def test_all_clips_muffled_when_privacy_on(self):
+        """ALL clips get muffled audio in privacy mode, not just speech-detected."""
         fb = self._make_filter_builder(privacy_mode=True)
         clips = [
             AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0, has_speech=True),
         ]
         filter_parts, labels = fb.build_audio_prep_filters(clips)
-        # Should use anullsrc (silence) instead of real audio
-        assert "anullsrc" in filter_parts[0]
-        # Should NOT reference the input audio stream
-        assert "[0:a]" not in filter_parts[0]
+        # Should apply lowpass to make speech unintelligible
+        assert "lowpass" in filter_parts[0]
+        # Should keep the audio stream (not silence) so ducking/ambient works
+        assert "[0:a]" in filter_parts[0]
 
-    def test_non_speech_clip_keeps_audio_when_privacy_on(self):
+    def test_non_speech_clip_also_muffled_when_privacy_on(self):
+        """Privacy mode must muffle ALL audio — speech detection is unreliable."""
         fb = self._make_filter_builder(privacy_mode=True)
         clips = [
             AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0, has_speech=False),
         ]
         filter_parts, labels = fb.build_audio_prep_filters(clips)
-        # Should keep real audio (references input stream)
+        assert "lowpass" in filter_parts[0]
         assert "[0:a]" in filter_parts[0]
 
-    def test_speech_clip_keeps_audio_when_privacy_off(self):
+    def test_title_screens_stay_silent_when_privacy_on(self):
+        """Title screens have no audio source — keep anullsrc."""
+        fb = self._make_filter_builder(privacy_mode=True)
+        clips = [
+            AssemblyClip(path=Path("/tmp/title.mp4"), duration=3.0, is_title_screen=True),
+        ]
+        filter_parts, labels = fb.build_audio_prep_filters(clips)
+        assert "anullsrc" in filter_parts[0]
+
+    def test_normal_audio_when_privacy_off(self):
         fb = self._make_filter_builder(privacy_mode=False)
         clips = [
             AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0, has_speech=True),
@@ -109,3 +129,83 @@ class TestPrivacyAudioMute:
         filter_parts, labels = fb.build_audio_prep_filters(clips)
         # Should keep real audio when privacy is off
         assert "[0:a]" in filter_parts[0]
+        assert "lowpass" not in filter_parts[0]
+
+
+class TestPrivacyGpsAnonymization:
+    """GPS coordinates must be randomized in privacy mode."""
+
+    def test_clip_gps_randomized(self):
+        """AssemblyClip lat/lon must not match original when privacy mode on."""
+        from immich_memories.generate import _anonymize_clips_for_privacy
+
+        clips = [
+            AssemblyClip(
+                path=Path("/tmp/a.mp4"),
+                duration=3.0,
+                latitude=48.8566,
+                longitude=2.3522,
+                location_name="Paris, France",
+            ),
+        ]
+        result = _anonymize_clips_for_privacy(clips)
+        assert result[0].latitude != 48.8566
+        assert result[0].longitude != 2.3522
+        assert result[0].location_name != "Paris, France"
+
+    def test_cluster_preserved_single_offset(self):
+        """All clips must be shifted by the SAME offset (cluster stays together)."""
+        from immich_memories.generate import _anonymize_clips_for_privacy
+
+        clips = [
+            AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0, latitude=50.0, longitude=3.0),
+            AssemblyClip(path=Path("/tmp/b.mp4"), duration=3.0, latitude=50.1, longitude=3.1),
+        ]
+        result = _anonymize_clips_for_privacy(clips)
+        # Relative distance between clips must be preserved
+        orig_delta_lat = 50.1 - 50.0
+        anon_delta_lat = result[1].latitude - result[0].latitude
+        assert abs(orig_delta_lat - anon_delta_lat) < 0.001
+
+    def test_home_gps_anonymized_in_preset(self):
+        """home_lat/home_lon in preset params must also be shifted."""
+        from immich_memories.generate import _anonymize_preset_params
+
+        preset = {"home_lat": 48.85, "home_lon": 2.35, "location_name": "TestCity"}
+        result = _anonymize_preset_params(preset)
+        assert result["home_lat"] != 48.85
+        assert result["home_lon"] != 2.35
+        assert result["location_name"] != "TestCity"
+
+    def test_clip_without_gps_unchanged(self):
+        from immich_memories.generate import _anonymize_clips_for_privacy
+
+        clips = [
+            AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0),
+        ]
+        result = _anonymize_clips_for_privacy(clips)
+        assert result[0].latitude is None
+        assert result[0].longitude is None
+
+
+class TestPrivacyNameAnonymization:
+    """Person names must be replaced with fake names in privacy mode."""
+
+    def test_person_name_anonymized(self):
+        from immich_memories.generate import _anonymize_name
+
+        assert _anonymize_name("TestPerson") != "TestPerson"
+        # Should return a consistent fake name
+        assert _anonymize_name("TestPerson") == _anonymize_name("TestPerson")
+
+    def test_multiple_names_get_different_fakes(self):
+        from immich_memories.generate import _anonymize_name
+
+        fake1 = _anonymize_name("PersonA")
+        fake2 = _anonymize_name("PersonB")
+        assert fake1 != fake2
+
+    def test_none_name_stays_none(self):
+        from immich_memories.generate import _anonymize_name
+
+        assert _anonymize_name(None) is None

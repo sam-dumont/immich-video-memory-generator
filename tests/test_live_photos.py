@@ -624,11 +624,11 @@ class TestBurstMergerCommand:
 class TestLivePhotoConfig:
     """Slice 5: Config options for live photos."""
 
-    def test_default_config_has_live_photos_disabled(self):
+    def test_default_config_has_live_photos_enabled(self):
         from immich_memories.config_models import AnalysisConfig
 
         config = AnalysisConfig()
-        assert not config.include_live_photos
+        assert config.include_live_photos
 
     def test_default_merge_window(self):
         from immich_memories.config_models import AnalysisConfig

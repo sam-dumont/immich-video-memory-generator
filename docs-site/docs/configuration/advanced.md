@@ -49,7 +49,7 @@ analysis:
   analysis_resolution: 480       # Target height for analysis (240-1080)
 
   # Live Photos (iPhone 3s video clips)
-  include_live_photos: false     # Include Live Photo clips (opt-in)
+  include_live_photos: true      # Include Live Photo clips (iPhone 3s video clips)
   live_photo_merge_window_seconds: 10  # Max gap to group as burst (1-60s)
   live_photo_min_burst_count: 3  # Min photos for burst merging (2-20)
 
@@ -260,6 +260,7 @@ upload:
 scheduler:
   enabled: false
   timezone: "UTC"
+  job_timeout_minutes: 60  # Max time per job before timeout (increase for large libraries)
   schedules:
     - name: "yearly-recap"
       memory_type: "year_in_review"

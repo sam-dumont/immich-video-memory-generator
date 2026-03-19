@@ -913,10 +913,10 @@ class SceneScorer:
             try:
                 segments = generate_scene_aware_segments(
                     video_path=video_path,
-                    max_segment_duration=config.analysis.max_segment_duration,
-                    min_segment_duration=config.analysis.min_segment_duration,
-                    scene_threshold=config.analysis.scene_threshold,
-                    min_scene_duration=config.analysis.min_scene_duration,
+                    max_segment_duration=config.max_segment_duration,
+                    min_segment_duration=config.min_segment_duration,
+                    scene_threshold=config.scene_threshold,
+                    min_scene_duration=config.min_scene_duration,
                 )
                 logger.debug(f"Scene detection: {len(segments)} segments from natural boundaries")
                 return segments

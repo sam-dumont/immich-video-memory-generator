@@ -13,9 +13,9 @@ class TestPhotoConfig:
     """Tests for PhotoConfig Pydantic model."""
 
     def test_defaults(self):
-        """Sensible defaults: disabled, auto mode, 25% cap, 4s duration."""
+        """Sensible defaults: enabled, auto mode, 50% cap, 4s duration."""
         cfg = PhotoConfig()
-        assert cfg.enabled is False
+        assert cfg.enabled is True
         assert cfg.animation_mode == "auto"
         assert cfg.max_ratio == 0.50
         assert cfg.duration == 4.0
@@ -81,7 +81,7 @@ class TestPhotoConfigInConfig:
         from immich_memories.config_loader import Config
 
         config = Config()
-        assert config.photos.enabled is False
+        assert config.photos.enabled is True
         assert config.photos.max_ratio == 0.50
 
     def test_yaml_roundtrip_with_photos(self, tmp_path):
