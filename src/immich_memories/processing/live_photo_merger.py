@@ -533,6 +533,7 @@ def _build_trim_filters(
 
     for i, (v_start, v_end) in enumerate(v_trims):
         normalize = ",normalize=smoothing=20:independence=0:strength=0.4"
+        # TODO: use assembly target_fps when available (iPhone live photos are always 30fps)
         fps_filter = ",fps=30" if n > 1 else ""
         parts.append(
             f"[{i}:v]trim=start={v_start}:end={v_end},setpts=PTS-STARTPTS{normalize}{fps_filter}[v{i}]"

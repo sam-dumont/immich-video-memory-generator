@@ -386,9 +386,10 @@ class TitleInserter:
         orientation = self.get_orientation_from_clips(clips)
         resolution_tier = self.get_resolution_tier(clips)
         source_has_hdr = has_any_hdr_clip(clips) if self.settings.preserve_hdr else False
+        detected_fps = float(self.prober.detect_max_framerate(clips))
         logger.info(
             f"Generating title screens ({orientation}, {resolution_tier}, "
-            f"{'HDR' if source_has_hdr else 'SDR'})"
+            f"{'HDR' if source_has_hdr else 'SDR'}, {detected_fps:.0f}fps)"
         )
 
         title_config = TitleScreenConfig(
@@ -402,6 +403,7 @@ class TitleInserter:
             month_divider_threshold=title_settings.month_divider_threshold,
             orientation=orientation,
             resolution=resolution_tier,
+            fps=detected_fps,
             hdr=source_has_hdr,
             title_override=title_settings.title_override,
             subtitle_override=title_settings.subtitle_override,
