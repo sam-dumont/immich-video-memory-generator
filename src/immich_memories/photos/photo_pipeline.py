@@ -214,15 +214,19 @@ def _render_single_photo(
         if not raw_path.exists():
             download_fn(asset.id, raw_path)
 
-        # Prepare (HEIC decode, etc.)
+        # Prepare (HEIC decode, gain map extraction for HDR)
         prepared = prepare_photo_source(raw_path, work_dir)
 
-        # Load image
+        # Load image — 16-bit for gain-mapped HDR, 8-bit for SDR
         img = cv2.imread(str(prepared.path), cv2.IMREAD_UNCHANGED)
         if img is None:
             logger.warning(f"Failed to read {prepared.path}")
             return None
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        if img.dtype == np.uint16:
+            img = img.astype(np.float32) / 65535.0
+        else:
+            img = img.astype(np.float32) / 255.0
 
         # Face-aware pan target
         face_target = face_aware_pan(asset.people, prepared.width, prepared.height)
@@ -242,7 +246,20 @@ def _render_single_photo(
 
         # Stream-render to mp4 (O(1) memory — one frame at a time)
         output_path = work_dir / f"{asset.id}_photo.mp4"
-        _stream_render_to_mp4(img, params, output_path, target_w, target_h)
+        # Peak nits comes from gain map normalization:
+        # Apple HEIC: ~1000 nits (headroom=2.3, 2^2.3 * 203 ≈ 1000)
+        # UltraHDR: 2^hdr_capacity_max * 203 (varies per image)
+        # The peak is baked into the 16-bit normalization — npl must match
+        peak_nits = getattr(prepared, "peak_nits", 1000) if prepared.has_gain_map else 203
+        _stream_render_to_mp4(
+            img,
+            params,
+            output_path,
+            target_w,
+            target_h,
+            gain_map_hdr=prepared.has_gain_map,
+            peak_nits=peak_nits,
+        )
 
         if not output_path.exists() or output_path.stat().st_size < 100:
             logger.warning(f"Encoding failed for {asset.id}")
@@ -270,32 +287,42 @@ def _stream_render_to_mp4(
     output_path: Path,
     target_w: int,
     target_h: int,
+    gain_map_hdr: bool = False,
+    peak_nits: int = 203,
 ) -> None:
     """Render Ken Burns frames and stream directly to FFmpeg.
 
     Encodes as HEVC 10-bit HLG/BT.2020 to match iPhone video clips.
-    WHY: If photo clips are H.264 SDR and videos are HEVC HLG, the
-    assembly pipeline applies SDR→HDR zscale which produces red tint.
-    Matching the color space avoids any conversion.
+
+    For gain-mapped HDR sources (16-bit linear from Apple gain map),
+    pipes rgb48le and uses zscale tin=linear. For SDR sources (8-bit sRGB),
+    pipes rgb24 and uses zscale tin=iec61966-2-1.
 
     Streams one frame at a time — O(1) memory.
     """
     encoder_args = _get_photo_encoder_args()
 
-    # WHY: The rendered frames are sRGB (gamma 2.2). The video pipeline
-    # outputs HEVC HLG. We must ACTUALLY convert the pixel values from
-    # sRGB to HLG transfer function — not just tag the metadata.
-    # setparams alone would lie about the transfer, causing red tint.
-    # WHY: npl=203 sets SDR white to 203 nits (standard reference white)
-    # which matches the brightness iPhone HLG videos display at.
-    # Without it, photos appear dimmer than videos in the assembly.
-    vf = (
-        "zscale=transfer=arib-std-b67:transferin=iec61966-2-1"
-        ":primaries=bt2020:primariesin=bt709"
-        ":matrix=bt2020nc:matrixin=bt709"
-        ":npl=203"
-        ",format=yuv420p10le"
-    )
+    if gain_map_hdr:
+        # Gain-mapped source: 16-bit linear light → HLG
+        # npl must match the peak baked into the uint16 normalization
+        pix_fmt = "rgb48le"
+        vf = (
+            f"zscale=t=arib-std-b67:tin=linear"
+            f":p=bt2020:pin=bt709"
+            f":m=bt2020nc:min=bt709"
+            f":npl={peak_nits}:agamma=false"
+            f",format=yuv420p10le"
+        )
+    else:
+        # SDR source: 8-bit sRGB → HLG
+        pix_fmt = "rgb24"
+        vf = (
+            "zscale=t=arib-std-b67:tin=iec61966-2-1"
+            ":p=bt2020:pin=bt709"
+            ":m=bt2020nc:min=bt709"
+            ":npl=203:agamma=false"
+            ",format=yuv420p10le"
+        )
 
     proc = subprocess.Popen(
         [
@@ -304,7 +331,7 @@ def _stream_render_to_mp4(
             "-f",
             "rawvideo",
             "-pix_fmt",
-            "rgb24",
+            pix_fmt,
             "-s",
             f"{target_w}x{target_h}",
             "-r",
@@ -334,7 +361,10 @@ def _stream_render_to_mp4(
 
     assert proc.stdin is not None
     for frame in render_ken_burns_streaming(img, target_w, target_h, params):
-        frame_bytes = (np.clip(frame * 255, 0, 255).astype(np.uint8)).tobytes()
+        if gain_map_hdr:
+            frame_bytes = (np.clip(frame * 65535, 0, 65535).astype(np.uint16)).tobytes()
+        else:
+            frame_bytes = (np.clip(frame * 255, 0, 255).astype(np.uint8)).tobytes()
         proc.stdin.write(frame_bytes)
 
     proc.stdin.close()

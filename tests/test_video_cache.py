@@ -158,6 +158,49 @@ class TestGetAnalysisVideo:
         mock_client.download_asset.assert_called_once()
 
 
+class TestFindCachedExcludesDownscaled:
+    """_find_cached must never return analysis-downscaled files."""
+
+    def test_skips_480p_files(self, cache, mock_client, mock_asset):
+        """If only a _480p file exists in cache, _find_cached returns None."""
+        asset_id = mock_asset.id
+        subdir = cache.cache_dir / asset_id[:2]
+        subdir.mkdir(parents=True, exist_ok=True)
+
+        # Simulate a leftover analysis downscale file
+        downscaled = subdir / f"{asset_id}_480p.mp4"
+        downscaled.write_bytes(b"low-quality-data" * 100)
+
+        result = cache._find_cached(asset_id)
+        assert result is None, f"Should not return downscaled file: {result}"
+
+    def test_returns_original_when_both_exist(self, cache, mock_client, mock_asset):
+        """When both original and _480p exist, returns the original."""
+        asset_id = mock_asset.id
+        subdir = cache.cache_dir / asset_id[:2]
+        subdir.mkdir(parents=True, exist_ok=True)
+
+        original = subdir / f"{asset_id}.MOV"
+        original.write_bytes(b"original-video-data" * 100)
+        downscaled = subdir / f"{asset_id}_480p.mp4"
+        downscaled.write_bytes(b"low-quality-data" * 100)
+
+        result = cache._find_cached(asset_id)
+        assert result == original
+
+    def test_skips_any_height_downscale(self, cache, mock_client, mock_asset):
+        """Also skips _720p, _360p etc. downscale suffixes."""
+        asset_id = mock_asset.id
+        subdir = cache.cache_dir / asset_id[:2]
+        subdir.mkdir(parents=True, exist_ok=True)
+
+        downscaled = subdir / f"{asset_id}_720p.mp4"
+        downscaled.write_bytes(b"low-quality-data" * 100)
+
+        result = cache._find_cached(asset_id)
+        assert result is None
+
+
 class TestCachedVideo:
     """Tests for CachedVideo dataclass."""
 

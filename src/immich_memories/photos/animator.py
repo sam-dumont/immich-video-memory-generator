@@ -53,21 +53,30 @@ class PreparedPhoto:
     width: int
     height: int
     has_gain_map: bool = False
+    peak_nits: int = 203  # SDR default; gain-mapped HDR sets actual peak
 
 
 def prepare_photo_source(source_path: Path, work_dir: Path) -> PreparedPhoto:
     """Convert any image format to an FFmpeg-compatible source.
 
-    HEIC/HEIF/AVIF: decoded via pillow-heif → saved as high-quality JPEG.
-    JPEG/PNG/WebP: used directly (FFmpeg handles these natively).
+    Extracts HDR gain maps when present:
+    - Apple HEIC: gain map via pillow-heif auxiliary image
+    - UltraHDR JPEG (Android/Pixel/Samsung): gain map via MPF container
+    Both produce 16-bit linear HDR PNG for the streaming renderer.
 
     Returns PreparedPhoto with the path to the FFmpeg-compatible file,
-    plus dimensions extracted from the image.
+    plus dimensions and has_gain_map flag.
     """
     ext = source_path.suffix.lower()
 
     if ext in _HEIF_EXTENSIONS:
         return _convert_heif(source_path, work_dir)
+
+    # Check for UltraHDR JPEG gain map (Android/Pixel/Samsung)
+    if ext in (".jpg", ".jpeg"):
+        result = _try_ultrahdr_extraction(source_path, work_dir)
+        if result is not None:
+            return result
 
     if ext in _FFMPEG_NATIVE_EXTENSIONS:
         w, h = _get_image_dimensions(source_path)
@@ -75,6 +84,62 @@ def prepare_photo_source(source_path: Path, work_dir: Path) -> PreparedPhoto:
 
     # Unknown format — try Pillow as fallback
     return _convert_via_pillow(source_path, work_dir)
+
+
+def _try_ultrahdr_extraction(source_path: Path, work_dir: Path) -> PreparedPhoto | None:
+    """Try to extract UltraHDR gain map from JPEG. Returns None if not UltraHDR."""
+    try:
+        import cv2
+        import numpy as np
+
+        from immich_memories.photos.ultrahdr import (
+            apply_gain_map,
+            extract_gain_map,
+            is_ultra_hdr_jpeg,
+            parse_hdrgm_metadata,
+        )
+
+        if not is_ultra_hdr_jpeg(source_path):
+            return None
+
+        primary_pil, gain_map_pil = extract_gain_map(source_path)
+        metadata = parse_hdrgm_metadata(source_path)
+        w, h = primary_pil.size
+
+        sdr = np.array(primary_pil, dtype=np.float32) / 255.0
+        gm = np.array(gain_map_pil, dtype=np.float32) / 255.0
+
+        # apply_gain_map returns gamma-encoded HDR per ISO 21496-1
+        hdr_gamma = apply_gain_map(sdr, gm, metadata)
+
+        # Convert to linear light (inverse sRGB gamma) so both HEIC and
+        # UltraHDR paths output linear 16-bit PNGs for zscale tin=linear
+        hdr_linear = np.where(
+            hdr_gamma <= 0.04045,
+            hdr_gamma / 12.92,
+            np.power((hdr_gamma + 0.055) / 1.055, 2.4),
+        )
+
+        # Normalize for uint16: peak maps to 1.0
+        peak_linear = 2.0**metadata.hdr_capacity_max
+        hdr_norm = np.clip(hdr_linear / max(peak_linear, 1.001), 0, 1)
+        hdr_16 = (hdr_norm * 65535).astype(np.uint16)
+
+        out_path = work_dir / f"{source_path.stem}_hdr.png"
+        cv2.imwrite(str(out_path), cv2.cvtColor(hdr_16, cv2.COLOR_RGB2BGR))
+
+        peak_nits = int(peak_linear * 203)
+        logger.info(
+            f"Extracted UltraHDR gain map from {source_path.name} ({w}x{h}), "
+            f"peak={peak_linear:.1f}x ({peak_nits} nits)"
+        )
+        return PreparedPhoto(
+            path=out_path, width=w, height=h, has_gain_map=True, peak_nits=peak_nits
+        )
+
+    except Exception as e:
+        logger.debug(f"UltraHDR extraction failed for {source_path.name}: {e}")
+        return None
 
 
 def _convert_heif(source_path: Path, work_dir: Path) -> PreparedPhoto:
@@ -103,12 +168,15 @@ def _convert_heif(source_path: Path, work_dir: Path) -> PreparedPhoto:
     # Check for Apple HDR gain map (present on iPhone 12+ photos)
     primary = heif_file[0] if len(heif_file) > 0 else heif_file
     aux_data = primary.info.get("aux", {})
-    has_gain_map = any("hdrgainmap" in k for k in aux_data)
+    gain_map_key = next((k for k in aux_data if "hdrgainmap" in k), None)
 
-    # TODO: apply gain map for true HDR output once we can parse the
-    # ISO 21496-1 metadata (min/max boost, offsets). Without those params,
-    # the gain math produces overbright/wrong-color results. For now, the
-    # SDR base with Display P3 ICC profile looks great on all displays.
+    if gain_map_key:
+        # aux_data values are lists of item IDs — pass the first item ID
+        gain_map_item_id = aux_data[gain_map_key][0]
+        try:
+            return _apply_hdr_gain_map(img, primary, gain_map_item_id, w, h, work_dir, source_path)
+        except Exception as e:
+            logger.warning(f"Gain map extraction failed, falling back to SDR: {e}")
 
     out_path = work_dir / f"{source_path.stem}_converted.jpg"
 
@@ -120,15 +188,9 @@ def _convert_heif(source_path: Path, work_dir: Path) -> PreparedPhoto:
         img = _convert_p3_to_srgb(img, icc_profile)  # type: ignore[assignment]
 
     img.save(out_path, "JPEG", quality=95)
+    logger.info(f"Converted {source_path.name} ({w}x{h}) → JPEG")
 
-    if has_gain_map:
-        logger.info(
-            f"Converted {source_path.name} ({w}x{h}) → JPEG with Display P3 (gain map present, SDR base used)"
-        )
-    else:
-        logger.info(f"Converted {source_path.name} ({w}x{h}) → JPEG")
-
-    return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=has_gain_map)
+    return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=False)
 
 
 def _apply_hdr_gain_map(
@@ -177,10 +239,11 @@ def _apply_hdr_gain_map(
     hdr_gain = np.power(2.0, gain_arr * headroom)
     hdr_linear = sdr_linear * hdr_gain[:, :, np.newaxis]
 
-    # Normalize: SDR white (1.0 linear) maps to 203/10000 in PQ absolute scale
-    # Scale so that 1.0 = 10000 nits (PQ reference)
-    hdr_pq_scale = hdr_linear * (203.0 / 10000.0)
-    hdr_arr = np.clip(hdr_pq_scale, 0, 1)
+    # Normalize for uint16 storage: map HDR range into 0-1
+    # SDR white (1.0 linear) → 0.2, peak (~5.0 linear) → 1.0
+    # zscale npl must be set to PEAK_LINEAR * 203 = 1015 nits
+    peak_linear = 2**headroom  # ~4.93 (= 1000/203 nits)
+    hdr_arr = np.clip(hdr_linear / peak_linear, 0, 1)
 
     # Save as 16-bit PNG (cv2 handles 16-bit natively)
     hdr_16 = (hdr_arr * 65535).astype(np.uint16)
@@ -198,12 +261,13 @@ def _apply_hdr_gain_map(
         sdr_img.save(out_path, "JPEG", quality=95)
         return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=True)
 
+    peak_nits = int(peak_linear * 203)
     logger.info(
         f"Applied HDR gain map to {source_path.name} ({w}x{h}), "
-        f"gain range {hdr_gain.min():.1f}×–{hdr_gain.max():.1f}×"
+        f"gain range {hdr_gain.min():.1f}×–{hdr_gain.max():.1f}×, peak={peak_nits} nits"
     )
 
-    return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=True)
+    return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=True, peak_nits=peak_nits)
 
 
 def _convert_via_pillow(source_path: Path, work_dir: Path) -> PreparedPhoto:

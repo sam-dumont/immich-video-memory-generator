@@ -180,49 +180,95 @@ class AssemblyEngine:
         output_path: Path,
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> Path:
-        """Assemble clips using scalable transition-only rendering."""
+        """Assemble clips using single-encode filter graph from source files.
+
+        Builds one FFmpeg command that reads source clips, normalizes them
+        (scale, fps, HDR, aspect ratio) and applies transitions — all in a
+        single encode pass.  For large clip counts (> CHUNKED_ASSEMBLY_THRESHOLD),
+        falls back to chunked assembly where each chunk is still single-encode.
+        """
         if len(clips) < 2:
             if len(clips) == 1:
                 return self._assemble_single_clip(clips[0], output_path)
             raise ValueError("No clips to assemble")
 
-        fade = self.settings.transition_duration or 0.5
-        temp_dir = output_path.parent / ".assembly_temps"
-        temp_dir.mkdir(parents=True, exist_ok=True)
-        target_resolution = resolve_target_resolution(self.settings, self.prober, clips)
-        logger.info(
-            f"Scalable assembly: {len(clips)} clips at "
-            f"{target_resolution[0]}x{target_resolution[1]}"
-        )
+        # Resolve target resolution ONCE for all clips — prevents each chunk
+        # from auto-detecting a different resolution/orientation
+        target_w, target_h = resolve_target_resolution(self.settings, self.prober, clips)
+        saved_res = self.settings.target_resolution
+        saved_auto = self.settings.auto_resolution
+        self.settings.target_resolution = (target_w, target_h)
+        self.settings.auto_resolution = False
         try:
-            encoded_clips: list[Path] = []
-            for i, clip in enumerate(clips):
-                if progress_callback:
-                    progress_callback(i / len(clips) * 0.6, f"Encoding clip {i + 1}/{len(clips)}")
-                encoded_path = temp_dir / f"clip_{i:03d}.mp4"
-                self.encoder.encode_single_clip(
-                    clip, encoded_path, target_resolution=target_resolution
-                )
-                encoded_clips.append(encoded_path)
-
-            clip_durations = [self.prober.probe_duration(p, "video") for p in encoded_clips]
-            transitions = self.get_transition_types(clips)
-            transitions = self._validate_fade_transitions(transitions, clip_durations, fade)
-            self._assemble_scalable_chunks(
-                encoded_clips,
-                clip_durations,
-                transitions,
-                fade,
-                output_path,
-                temp_dir,
-                progress_callback,
+            return self._assemble_scalable_inner(
+                clips, output_path, progress_callback, target_w, target_h
             )
-            return output_path
         finally:
-            if not self.settings.debug_preserve_intermediates:
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            else:
-                logger.info(f"Debug mode: preserving temp files in {temp_dir}")
+            self.settings.target_resolution = saved_res
+            self.settings.auto_resolution = saved_auto
+
+    def _assemble_scalable_inner(
+        self,
+        clips: list[AssemblyClip],
+        output_path: Path,
+        progress_callback: Callable[[float, str], None] | None,
+        target_w: int,
+        target_h: int,
+    ) -> Path:
+        if len(clips) > CHUNKED_ASSEMBLY_THRESHOLD:
+            return self.assemble_chunked(clips, output_path, progress_callback)
+
+        transitions = self.get_transition_types(clips)
+        transitions = self._validate_fade_transitions(
+            transitions, [c.duration for c in clips], self.settings.transition_duration or 0.5
+        )
+
+        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
+        logger.info(f"Single-encode assembly: {len(clips)} clips at {target_w}x{target_h}")
+
+        inputs: list[str] = []
+        for clip in clips:
+            inputs.extend(["-i", str(clip.path)])
+
+        filter_parts: list[str] = [
+            self.filter_builder.build_clip_video_filter(i, clip, ctx)
+            for i, clip in enumerate(clips)
+        ]
+
+        audio_filter_parts, audio_labels = self.filter_builder.build_audio_prep_filters(
+            clips, use_amix_fallback=False
+        )
+        filter_parts.extend(audio_filter_parts)
+
+        transition_parts, final_video, final_audio = (
+            self.filter_builder.build_smart_transition_chain(clips, transitions, ctx, audio_labels)
+        )
+        filter_parts.extend(transition_parts)
+
+        filter_complex = ";".join(filter_parts)
+
+        if progress_callback:
+            progress_callback(0.1, "Assembling video...")
+
+        result = self.encoder.run_ffmpeg_assembly(
+            inputs,
+            filter_complex,
+            final_video,
+            final_audio,
+            output_path,
+            clips,
+            ctx,
+            progress_callback,
+        )
+
+        if result.returncode != 0:
+            logger.warning(
+                f"Single-encode assembly failed (code {result.returncode}), "
+                "falling back to chunked assembly."
+            )
+            return self.assemble_chunked(clips, output_path, progress_callback)
+
+        return output_path
 
     def _assemble_single_clip(self, clip: AssemblyClip, output_path: Path) -> Path:
         """Handle single clip: encode through FFmpeg if filters needed, else copy."""
@@ -458,53 +504,6 @@ class AssemblyEngine:
         cuts = sum(1 for t in transitions if t == "cut")
         logger.info(f"Transitions: {fades} fades, {cuts} cuts")
         return transitions
-
-    def _assemble_scalable_chunks(
-        self,
-        encoded_clips: list[Path],
-        clip_durations: list[float],
-        transitions: list[str],
-        fade: float,
-        output_path: Path,
-        temp_dir: Path,
-        progress_callback: Callable[[float, str], None] | None = None,
-    ) -> None:
-        """Assemble encoded clips in chunks with xfade, then concat."""
-        chunk_size = 4
-        if len(encoded_clips) <= chunk_size:
-            if progress_callback:
-                progress_callback(0.7, "Building final assembly...")
-            self.concat.assemble_xfade_chain(
-                encoded_clips, clip_durations, transitions, fade, output_path
-            )
-            return
-        chunks: list[tuple[list[Path], list[float], list[str]]] = []
-        i = 0
-        while i < len(encoded_clips):
-            end = min(i + chunk_size, len(encoded_clips))
-            chunk_trans = transitions[i : end - 1] if end < len(encoded_clips) else transitions[i:]
-            chunks.append((encoded_clips[i:end], clip_durations[i:end], chunk_trans))
-            i = end
-        logger.info(f"Chunked assembly: {len(chunks)} chunks of up to {chunk_size} clips")
-        chunk_outputs: list[Path] = []
-        for ci, (c_clips, c_durs, c_trans) in enumerate(chunks):
-            if progress_callback:
-                progress_callback(
-                    0.6 + (ci / len(chunks)) * 0.3,
-                    f"Assembling chunk {ci + 1}/{len(chunks)}",
-                )
-            if len(c_clips) == 1:
-                chunk_outputs.append(c_clips[0])
-            else:
-                chunk_path = temp_dir / f"chunk_{ci:02d}.mp4"
-                self.concat.assemble_xfade_chain(c_clips, c_durs, c_trans, fade, chunk_path)
-                chunk_outputs.append(chunk_path)
-        if progress_callback:
-            progress_callback(0.95, "Joining chunks...")
-        if len(chunk_outputs) == 1:
-            shutil.copy2(chunk_outputs[0], output_path)
-        else:
-            self.concat.concat_with_copy(chunk_outputs, output_path)
 
     def _make_batch_progress_cb(
         self,

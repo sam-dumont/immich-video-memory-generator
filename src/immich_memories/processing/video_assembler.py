@@ -79,13 +79,19 @@ class VideoAssembler:
         """Check if job cancellation was requested and raise if so."""
         if not self.run_id:
             return
-        if self._run_db is None:
-            self._run_db = RunDatabase()
-        if self._run_db.is_cancel_requested(self.run_id):
-            logger.info(f"Assembly job {self.run_id} cancelled by user request")
-            from immich_memories.processing.assembly_config import JobCancelledException
+        from immich_memories.processing.assembly_config import JobCancelledException
 
-            raise JobCancelledException(f"Job {self.run_id} cancelled")
+        try:
+            if self._run_db is None:
+                self._run_db = RunDatabase()
+            if self._run_db.is_cancel_requested(self.run_id):
+                logger.info(f"Assembly job {self.run_id} cancelled by user request")
+                raise JobCancelledException(f"Job {self.run_id} cancelled")
+        except JobCancelledException:
+            raise
+        except Exception:
+            # active_jobs table may not exist if DB wasn't initialized for job tracking
+            pass
 
     def _get_face_center(self, video_path: Path) -> tuple[float, float] | None:
         if video_path in self._face_cache:

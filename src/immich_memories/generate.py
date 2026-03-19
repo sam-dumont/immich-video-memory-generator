@@ -749,7 +749,7 @@ def _cleanup_temp_dirs(output_dir: Path) -> None:
     """Remove intermediate directories created during generation."""
     import shutil
 
-    for subdir in (".title_screens", "photos"):
+    for subdir in (".title_screens", ".intermediates", ".live_merges", ".assembly_temps", "photos"):
         path = output_dir / subdir
         if path.exists():
             with contextlib.suppress(Exception):
