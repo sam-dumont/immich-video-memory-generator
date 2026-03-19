@@ -482,6 +482,8 @@ DEP002 = [
     "mutmut",                                           # mutation testing (CLI tool)
     "python-semantic-release",                          # CI release tool
     "types-PyYAML", "types-croniter",                   # mypy stubs
+    "authlib",                                          # auth: used in upcoming OIDC client task
+    "oidc-provider-mock",                               # auth: used in upcoming OIDC tests task
 ]
 DEP001 = [
     "cv2", "Quartz", "Vision", "Metal", "CoreImage",   # Platform/alt-name imports
