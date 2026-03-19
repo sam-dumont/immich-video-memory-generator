@@ -1,5 +1,10 @@
 # Claude Code Project Instructions
 
+## Git Safety
+
+- **NEVER use `git add -f` or `--force` to bypass `.gitignore`.** If a file is ignored, it is ignored for a reason. No exceptions.
+- Do not commit to `main` directly — use feature branches.
+
 ## Quick Start
 
 1. **Install dev dependencies first**: `make dev`

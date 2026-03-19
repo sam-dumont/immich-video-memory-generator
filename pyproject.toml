@@ -72,6 +72,10 @@ audio-ml = [
     "torch>=2.0",
     "panns-inference>=0.1",
 ]
+# OIDC authentication (only needed for SSO login)
+auth = [
+    "authlib>=1.3",
+]
 # GPU-accelerated title rendering with Taichi
 # Supports: Metal (macOS), CUDA (NVIDIA), Vulkan, OpenGL, CPU fallback
 gpu = [
@@ -112,6 +116,7 @@ dev = [
     "deptry>=0.20",
     "mutmut>=2.0",
     "diff-cover>=9.0",
+    "oidc-provider-mock>=0.3",
 ]
 
 [project.scripts]
