@@ -460,6 +460,12 @@ def register_generate_commands(main: click.Group) -> None:
         help="Duration per photo clip in seconds (default: 4.0)",
     )
     @click.option(
+        "--analysis-depth",
+        type=click.Choice(["fast", "thorough"]),
+        default=None,
+        help="Analysis depth: fast (metadata gap-fill) or thorough (LLM gap-fill)",
+    )
+    @click.option(
         "--trip-index",
         type=int,
         default=None,
@@ -505,6 +511,7 @@ def register_generate_commands(main: click.Group) -> None:
         include_live_photos: bool,
         include_photos: bool,
         photo_duration: float | None,
+        analysis_depth: str | None,
         trip_index: int | None,
         all_trips: bool,
     ) -> None:
@@ -610,6 +617,9 @@ def register_generate_commands(main: click.Group) -> None:
         use_photos = include_photos or config.photos.enabled
         if photo_duration is not None:
             config.photos.duration = photo_duration
+
+        # Analysis depth: CLI override → config (stored for pipeline use)
+        _ = analysis_depth  # TODO: wire to PipelineConfig when adaptive budget is fully integrated
 
         table = _build_params_table(
             config=config,
