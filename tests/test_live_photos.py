@@ -667,9 +667,16 @@ class TestFilterValidClips:
         clip_paths = [Path("/tmp/ok1.mov"), Path("/tmp/bad.mov"), Path("/tmp/ok2.mov")]
         trim_points = [(0.0, 2.0), (1.5, 3.0), (0.0, 3.0)]
 
-        with patch(
-            "immich_memories.processing.live_photo_merger.probe_clip_has_video",
-            side_effect=[True, False, True],
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_video",
+                side_effect=[True, False, True],
+            ),
+            # WHY: orientation check runs after video filter; both valid clips are landscape
+            patch(
+                "immich_memories.processing.live_photo_merger._probe_clip_orientation",
+                return_value="landscape",
+            ),
         ):
             valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
 
@@ -702,6 +709,82 @@ class TestFilterValidClips:
 
         clip_paths = [Path("/tmp/ok1.mov"), Path("/tmp/ok2.mov")]
         trim_points = [(0.0, 2.0), (1.5, 3.0)]
+
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_video",
+                return_value=True,
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger._probe_clip_orientation",
+                return_value="landscape",
+            ),
+        ):
+            valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
+
+        assert valid_paths == clip_paths
+        assert valid_trims == trim_points
+
+    def test_rejects_mismatched_orientation(self):
+        """Portrait clip in a mostly-landscape burst gets rejected."""
+        from unittest.mock import patch
+
+        from immich_memories.processing.live_photo_merger import filter_valid_clips
+
+        clip_paths = [
+            Path("/tmp/land1.mov"),
+            Path("/tmp/port.mov"),
+            Path("/tmp/land2.mov"),
+        ]
+        trim_points = [(0.0, 2.0), (1.5, 3.0), (0.0, 3.0)]
+
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_video",
+                return_value=True,
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger._probe_clip_orientation",
+                side_effect=["landscape", "portrait", "landscape"],
+            ),
+        ):
+            valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
+
+        assert valid_paths == [Path("/tmp/land1.mov"), Path("/tmp/land2.mov")]
+        assert valid_trims == [(0.0, 2.0), (0.0, 3.0)]
+
+    def test_keeps_all_same_orientation(self):
+        """All portrait clips pass orientation check."""
+        from unittest.mock import patch
+
+        from immich_memories.processing.live_photo_merger import filter_valid_clips
+
+        clip_paths = [Path("/tmp/p1.mov"), Path("/tmp/p2.mov")]
+        trim_points = [(0.0, 2.0), (1.5, 3.0)]
+
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_video",
+                return_value=True,
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger._probe_clip_orientation",
+                return_value="portrait",
+            ),
+        ):
+            valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
+
+        assert valid_paths == clip_paths
+        assert valid_trims == trim_points
+
+    def test_single_clip_skips_orientation_check(self):
+        """Single valid clip returns without orientation filtering."""
+        from unittest.mock import patch
+
+        from immich_memories.processing.live_photo_merger import filter_valid_clips
+
+        clip_paths = [Path("/tmp/solo.mov")]
+        trim_points = [(0.0, 3.0)]
 
         with patch(
             "immich_memories.processing.live_photo_merger.probe_clip_has_video",

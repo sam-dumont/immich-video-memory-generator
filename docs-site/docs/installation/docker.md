@@ -144,6 +144,35 @@ docker inspect --format='{{.State.Health.Status}}' immich-memories
 
 The `/health` endpoint returns JSON with `status`, `immich_reachable`, `last_successful_run`, and `version`.
 
+## Cache persistence
+
+Analysis scores are cached in `~/.immich-memories/cache.db` (SQLite). This avoids re-running LLM analysis on every generation. The config volume already covers it:
+
+```yaml
+volumes:
+  - immich-memories-config:/home/immich/.immich-memories  # includes cache.db
+```
+
+To back up or migrate the cache separately:
+
+```bash
+# Backup
+docker exec immich-memories immich-memories cache backup /output/cache-backup.db
+
+# Export to JSON (portable)
+docker exec immich-memories immich-memories cache export /output/scores.json
+
+# Import on a new instance
+docker exec immich-memories immich-memories cache import /output/scores.json
+
+# Check what's cached
+docker exec immich-memories immich-memories cache stats
+```
+
+:::tip Migration between hosts
+Export to JSON before migrating. The JSON format is portable across SQLite versions and architectures. The binary backup is faster but ties you to the same SQLite version.
+:::
+
 ## Custom music
 
 To use local music files, bind-mount a directory:

@@ -114,6 +114,18 @@ Default PVC sizes:
 
 Adjust in `pvc.yaml` based on how many videos you plan to generate.
 
+The **Cache** PVC holds `cache.db` (analysis scores). This is the most valuable volume — it stores all LLM scoring results. Losing it means re-analyzing your entire library on the next run.
+
+```bash
+# Backup cache from the running pod
+kubectl exec -n immich-memories deployment/immich-memories -- \
+  immich-memories cache backup /output/cache-backup.db
+
+# Or export as portable JSON
+kubectl exec -n immich-memories deployment/immich-memories -- \
+  immich-memories cache export /output/scores.json
+```
+
 ## Sealed Secrets
 
 For production, don't commit plain secrets. Use [sealed-secrets](https://github.com/bitnami-labs/sealed-secrets):

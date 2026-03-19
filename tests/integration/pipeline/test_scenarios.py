@@ -264,6 +264,7 @@ class TestLivePhotoMergeReal:
         from immich_memories.processing.live_photo_merger import (
             build_merge_command,
             cluster_live_photos,
+            filter_valid_clips,
         )
         from immich_memories.timeperiod import DateRange
 
@@ -312,6 +313,11 @@ class TestLivePhotoMergeReal:
 
         # Build merge command and run FFmpeg
         trim_points = merge_cluster.trim_points()[: len(clip_paths)]
+        # Filter out clips with no video stream or mismatched orientation
+        clip_paths, trim_points = filter_valid_clips(clip_paths, trim_points)
+        if len(clip_paths) < 2:
+            pytest.skip("Not enough same-orientation clips after filtering")
+
         merged_path = tmp_path / "merged.mp4"
         cmd = build_merge_command(clip_paths, trim_points, merged_path)
 

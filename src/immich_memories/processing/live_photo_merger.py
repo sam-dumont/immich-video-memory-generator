@@ -194,22 +194,94 @@ def probe_clip_has_video(clip_path: Path) -> bool:
         return False
 
 
+def _extract_rotation(stream: dict) -> int:
+    """Extract rotation angle from ffprobe stream data (tags or display matrix)."""
+    tags = stream.get("tags", {})
+    if "rotate" in tags:
+        return int(tags["rotate"])
+    for sd in stream.get("side_data_list", []):
+        if sd.get("side_data_type") == "Display Matrix" and "rotation" in sd:
+            return abs(int(sd["rotation"]))
+    return 0
+
+
+def _probe_clip_orientation(clip_path: Path) -> str | None:
+    """Probe a clip's displayed orientation: 'landscape', 'portrait', or None on error.
+
+    Uses side_data rotation and stream tags to detect the display orientation,
+    since iPhone MOVs store landscape pixels + rotation metadata.
+    """
+    import contextlib
+    import json
+    import subprocess
+
+    with contextlib.suppress(Exception):
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height:stream_tags=rotate:side_data",
+                "-of",
+                "json",
+                str(clip_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )  # noqa: S603, S607
+        stream = json.loads(result.stdout).get("streams", [{}])[0]
+        w, h = stream.get("width", 0), stream.get("height", 0)
+
+        if _extract_rotation(stream) in (90, 270):
+            w, h = h, w
+
+        if w > 0 and h > 0:
+            return "landscape" if w >= h else "portrait"
+    return None
+
+
 def filter_valid_clips(
     clip_paths: list[Path],
     trim_points: list[tuple[float, float]],
 ) -> tuple[list[Path], list[tuple[float, float]]]:
-    """Remove clips that have no valid video stream.
+    """Remove clips that have no valid video stream or mismatched orientation.
 
-    Probes each clip with ffprobe and filters out those with zero frames.
-    Returns the surviving clip paths and their corresponding trim points.
+    Probes each clip with ffprobe, filters out those with zero frames,
+    then rejects clips whose orientation differs from the majority.
     """
-    valid_paths: list[Path] = []
-    valid_trims: list[tuple[float, float]] = []
+    import logging
 
+    logger = logging.getLogger(__name__)
+
+    # Step 1: filter out clips with no video stream
+    video_paths: list[Path] = []
+    video_trims: list[tuple[float, float]] = []
     for path, trim in zip(clip_paths, trim_points, strict=True):
         if probe_clip_has_video(path):
+            video_paths.append(path)
+            video_trims.append(trim)
+
+    if len(video_paths) <= 1:
+        return video_paths, video_trims
+
+    # Step 2: reject clips with mismatched orientation
+    orientations = [_probe_clip_orientation(p) for p in video_paths]
+    landscape_count = sum(1 for o in orientations if o == "landscape")
+    portrait_count = sum(1 for o in orientations if o == "portrait")
+    majority = "landscape" if landscape_count >= portrait_count else "portrait"
+
+    valid_paths: list[Path] = []
+    valid_trims: list[tuple[float, float]] = []
+    for path, trim, orient in zip(video_paths, video_trims, orientations, strict=True):
+        if orient is None or orient == majority:
             valid_paths.append(path)
             valid_trims.append(trim)
+        else:
+            logger.info(f"Rejecting burst clip {path.name}: {orient} vs majority {majority}")
 
     return valid_paths, valid_trims
 

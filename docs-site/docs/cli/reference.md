@@ -8,6 +8,46 @@ sidebar_label: Reference
 This page is auto-generated from the Click command definitions.
 Run `make docs-cli` to regenerate.
 
+## `cache`
+
+Manage the analysis cache (LLM scores, video metadata).
+
+```bash
+immich-memories cache [COMMAND]
+```
+
+### `cache stats`
+
+Show cache statistics: total scored assets, breakdown by type, oldest/newest entries.
+
+```bash
+immich-memories cache stats
+```
+
+### `cache export`
+
+Export asset scores to JSON. Safe to run while the pipeline is active.
+
+```bash
+immich-memories cache export scores.json
+```
+
+### `cache import`
+
+Import asset scores from a JSON backup. Useful for migrating between hosts.
+
+```bash
+immich-memories cache import scores.json
+```
+
+### `cache backup`
+
+Full SQLite backup using the safe backup API (no corruption risk, even during writes).
+
+```bash
+immich-memories cache backup cache-backup.db
+```
+
 ## `analyze`
 
 Analyze videos and cache metadata.
@@ -90,6 +130,7 @@ immich-memories generate [OPTIONS]
 | `--transition`, `-t` | choice | crossfade | Transition style |
 | `--output`, `-O` | path | - | Output file path |
 | `--music`, `-m` | path | - | Background music file |
+| `--analysis-depth` | choice | fast | Analysis depth: `fast` (LLM for favorites only) or `thorough` (LLM for top candidates) |
 | `--dry-run` | boolean | false | Show what would be done without generating |
 
 ## `hardware`

@@ -448,12 +448,18 @@ class ClipAnalyzer:
             analysis_video, original_video, temp_file = self._download_analysis_video(clip)
             video_duration = clip.duration_seconds or 30
 
+            # Fast mode: only favorites get LLM analysis, gap-fillers use legacy scoring
+            use_llm = config.analysis.use_unified_analysis
+            if self.config.analysis_depth == "fast" and not clip.asset.is_favorite:
+                use_llm = False
+                logger.debug(f"Fast mode: skipping LLM for non-favorite {clip.asset.id[:8]}")
+
             start, end, score, llm_analysis = self._run_analysis_with_fallback(
                 clip,
                 analysis_video,
                 original_video,
                 video_duration,
-                use_unified=config.analysis.use_unified_analysis,
+                use_unified=use_llm,
             )
 
             if start == 0.0 and end > 0.0 and score == 0.0:

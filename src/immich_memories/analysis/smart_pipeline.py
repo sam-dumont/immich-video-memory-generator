@@ -78,6 +78,9 @@ class PipelineConfig:
     # Photo ratio cap — max fraction of selected clips that can be photos
     photo_max_ratio: float = 0.50  # 0.50 = at most 50% photos
 
+    # Analysis depth: "fast" = metadata gap-fill, "thorough" = LLM gap-fill
+    analysis_depth: str = "fast"
+
 
 @dataclass
 class PipelineResult:

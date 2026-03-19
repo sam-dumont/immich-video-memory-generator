@@ -40,6 +40,7 @@ def _run_pipeline_and_generate(
     live_photo_clips: list | None = None,
     photo_assets: list | None = None,
     include_photos: bool = False,
+    analysis_depth: str = "fast",
     client: SyncImmichClient,
     config: Config,
     progress: Progress,
@@ -88,6 +89,7 @@ def _run_pipeline_and_generate(
     pipeline_config = PipelineConfig(
         hdr_only=False,
         prioritize_favorites=True,
+        analysis_depth=analysis_depth,
     )
     target_seconds = duration * 60
     pipeline_config.target_clips = max(
@@ -618,8 +620,8 @@ def register_generate_commands(main: click.Group) -> None:
         if photo_duration is not None:
             config.photos.duration = photo_duration
 
-        # Analysis depth: CLI override → config (stored for pipeline use)
-        _ = analysis_depth  # TODO: wire to PipelineConfig when adaptive budget is fully integrated
+        # Analysis depth: CLI override → stored for PipelineConfig
+        effective_analysis_depth = analysis_depth or "fast"
 
         table = _build_params_table(
             config=config,
@@ -774,6 +776,7 @@ def register_generate_commands(main: click.Group) -> None:
                         live_photo_clips=live_photo_clips,
                         photo_assets=fetched_photos if use_photos else None,
                         include_photos=use_photos and bool(fetched_photos),
+                        analysis_depth=effective_analysis_depth,
                         client=client,
                         config=config,
                         progress=progress,
