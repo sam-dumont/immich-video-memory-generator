@@ -1,0 +1,4 @@
+codecov:
+  # Integration coverage XMLs (tests/*-coverage.xml) are generated locally
+  # and committed — their timestamps are always stale by the time CI uploads.
+  max_report_age: off
