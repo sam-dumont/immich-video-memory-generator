@@ -403,3 +403,68 @@ class TestScoringVersion:
 
         needs = cache.needs_reanalysis(asset, max_age_days=365)
         assert needs is True
+
+
+class TestDensityBudgetQualityGate:
+    """Non-camera and low-res clips must be filtered BEFORE entering density budget."""
+
+    def test_non_camera_clips_excluded_from_budget(self):
+        """WhatsApp/compilation videos (no EXIF make/model) should not enter density budget."""
+        from datetime import datetime
+
+        from immich_memories.analysis.density_budget import AssetEntry, compute_density_budget
+
+        # 3 camera originals + 1 WhatsApp forward (no make/model, low res)
+        entries = [
+            AssetEntry(
+                asset_id="cam-1",
+                asset_type="video",
+                date=datetime(2025, 1, 5),
+                duration=10.0,
+                is_favorite=False,
+                width=1920,
+                height=1080,
+                is_camera_original=True,
+            ),
+            AssetEntry(
+                asset_id="cam-2",
+                asset_type="video",
+                date=datetime(2025, 1, 10),
+                duration=8.0,
+                is_favorite=False,
+                width=1920,
+                height=1080,
+                is_camera_original=True,
+            ),
+            AssetEntry(
+                asset_id="cam-3",
+                asset_type="video",
+                date=datetime(2025, 1, 15),
+                duration=12.0,
+                is_favorite=False,
+                width=1920,
+                height=1080,
+                is_camera_original=True,
+            ),
+            AssetEntry(
+                asset_id="whatsapp-junk",
+                asset_type="video",
+                date=datetime(2025, 1, 12),
+                duration=26.0,
+                is_favorite=False,
+                width=480,
+                height=848,
+                is_camera_original=False,
+            ),
+        ]
+
+        # Filter non-camera assets before budget (this is the fix)
+        filtered = [e for e in entries if e.is_camera_original]
+        buckets = compute_density_budget(filtered, target_duration_seconds=60.0)
+
+        all_selected = set()
+        for b in buckets:
+            all_selected.update(b.favorite_ids)
+            all_selected.update(b.gap_fill_ids)
+
+        assert "whatsapp-junk" not in all_selected

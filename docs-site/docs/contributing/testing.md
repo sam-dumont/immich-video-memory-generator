@@ -52,7 +52,7 @@ Tests skip gracefully if services aren't available — you won't get failures, j
 
 ### How coverage works
 
-CI runs unit tests and generates `coverage.xml`. Integration tests run locally and generate `tests/integration-coverage.xml`. Both files are merged by CI's diff-cover check.
+CI runs unit tests and generates `coverage.xml`. Integration tests run locally and generate per-suite coverage XMLs (`tests/assembly-coverage.xml`, `tests/pipeline-coverage.xml`, etc.). All files are merged by CI's diff-cover check and uploaded to Codecov.
 
 ### Workflow when you change code
 
@@ -61,9 +61,9 @@ CI runs unit tests and generates `coverage.xml`. Integration tests run locally a
 3. If you changed `src/immich_memories/processing/`, `analysis/`, `titles/`, or `generate.py`:
    ```bash
    make test-integration   # Runs real FFmpeg + Immich tests
-   git add tests/integration-coverage.xml tests/integration-junit.xml
+   git add tests/*-coverage.xml tests/integration-junit.xml
    ```
-4. Commit and push — CI merges both coverage files
+4. Commit and push — CI merges all coverage files
 
 ### Check coverage locally before pushing
 
@@ -118,6 +118,9 @@ tests/
 │   ├── test_generate_real.py      # generate_memory() with synthetic clips
 │   ├── test_generate_scenarios.py # Music, trimming, error handling
 │   └── test_cli_generate.py       # Full Immich pipeline + CLI tests
-├── integration-coverage.xml       # Committed — CI merges this
+├── assembly-coverage.xml          # Committed — per-suite integration coverage
+├── pipeline-coverage.xml          # Committed — per-suite integration coverage
+├── photos-coverage.xml            # Committed — per-suite integration coverage
+├── live-photos-coverage.xml       # Committed — per-suite integration coverage
 └── integration-junit.xml          # Committed — Codecov test analytics
 ```

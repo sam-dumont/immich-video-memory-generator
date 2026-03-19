@@ -44,29 +44,14 @@ requires_immich = pytest.mark.skipif(not _has_immich(), reason="Immich not reach
 
 @pytest.fixture(scope="module")
 def immich_short_clips():
-    """Fetch 3 short clips (<30s) from a narrow date range. Module-scoped for speed."""
-    from immich_memories.api.immich import SyncImmichClient
-    from immich_memories.config_loader import Config
-    from immich_memories.generate import assets_to_clips
-    from immich_memories.timeperiod import DateRange
+    """Fetch short clips (≤60s) from Immich. Tries preferred date ranges, falls back progressively."""
+    from tests.integration.immich_fixtures import find_short_clips, make_immich_client
 
-    config = Config.from_yaml(Config.get_default_path())
-    client = SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
-
-    # Narrow range (1 month) to avoid pulling a full year
-    date_range = DateRange(start=date(2025, 1, 1), end=date(2025, 1, 31))
-    assets = client.get_videos_for_date_range(date_range)
-
-    # Fallback: try a wider range if January has nothing
-    if not assets:
-        date_range = DateRange(start=date(2024, 6, 1), end=date(2024, 12, 31))
-        assets = client.get_videos_for_date_range(date_range)
-
-    clips = assets_to_clips(assets)
-    short = [c for c in clips if c.duration_seconds < 30]
+    client, config = make_immich_client()
+    short = find_short_clips(client)
 
     if len(short) < 2:
-        pytest.skip("Need at least 2 short clips (<30s) in Immich")
+        pytest.skip("Need at least 2 short clips (≤60s) in Immich")
 
     return short[:3], config, client
 

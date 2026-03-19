@@ -359,9 +359,12 @@ class SmartPipeline:
                 is_favorite=c.asset.is_favorite,
                 width=c.width,
                 height=c.height,
+                is_camera_original=c.is_camera_original,
             )
             for c in clips
         ]
+
+        entries = self._apply_budget_quality_gate(entries)
 
         # Compute density budget
         target_seconds = self.config.target_clips * self.config.avg_clip_duration
@@ -396,3 +399,24 @@ class SmartPipeline:
         )
 
         return selected
+
+    def _apply_budget_quality_gate(self, entries: list) -> list:
+        """Filter non-camera and low-res clips from density budget entries.
+
+        Favorites always pass. Non-favorites must have camera EXIF and meet
+        the resolution threshold (2/3 of output height, floor 540px).
+        """
+        before = len(entries)
+        min_res = max(540, int(self.config.output_resolution * 0.66))
+        filtered = [
+            e
+            for e in entries
+            if e.is_favorite or (e.is_camera_original and max(e.width, e.height) >= min_res)
+        ]
+        removed = before - len(filtered)
+        if removed > 0:
+            logger.info(
+                f"Quality gate: removed {removed} clips from density budget "
+                f"(non-camera or below {min_res}px for {self.config.output_resolution}p output)"
+            )
+        return filtered

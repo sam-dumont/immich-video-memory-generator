@@ -79,14 +79,14 @@ FFmpeg. They skip gracefully if services aren't available.
 If CI's diff-cover fails because changed lines aren't covered by unit tests:
 
 ```bash
-make test-integration   # Runs real FFmpeg + Immich tests, generates coverage XML
-git add tests/integration-coverage.xml tests/integration-junit.xml
+make test-integration   # Runs real FFmpeg + Immich tests, generates per-suite coverage XMLs
+git add tests/*-coverage.xml tests/integration-junit.xml
 git commit --amend      # Add coverage files to your commit
 git push
 ```
 
-CI merges both `coverage.xml` (unit, from CI) and `tests/integration-coverage.xml`
-(integration, committed locally) when calculating diff-cover at 80% threshold.
+CI merges `coverage.xml` (unit, from CI) with the per-suite `tests/*-coverage.xml`
+files (integration, committed locally) when calculating diff-cover at 80% threshold.
 
 **What integration tests cover that unit tests can't:**
 - FFmpeg filter graph construction and assembly

@@ -123,14 +123,14 @@ test-integration-cli:  ## Run ONLY CLI generate tests (SLOW ~15min, needs Immich
 	uv run pytest tests/integration/cli/ -v -m integration --log-cli-level=INFO --tb=short \
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/cli-coverage.xml --cov-fail-under=0
 
-test-integration:  ## Run ALL integration-marked tests (requires FFmpeg/Immich), saves per-module coverage
-	uv run pytest -v -m integration --log-cli-level=INFO \
-		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/integration-coverage.xml \
-		--junitxml=tests/integration-junit.xml -o junit_family=legacy \
-		--cov-fail-under=0
-	@# Fix absolute paths in coverage XML to relative (portable between local and CI)
-	@sed -i.bak 's|<source>.*src/immich_memories</source>|<source>src/immich_memories</source>|g' tests/integration-coverage.xml \
-		&& rm -f tests/integration-coverage.xml.bak
+test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immich), saves per-suite coverage XMLs
+	$(MAKE) test-integration-assembly
+	$(MAKE) test-integration-photos
+	$(MAKE) test-integration-pipeline
+	$(MAKE) test-integration-live-photos
+	$(MAKE) test-integration-cli
+	@# Quick re-run for junit XML (uses pytest cache, near-instant since tests just passed)
+	@uv run pytest -v -m integration --junitxml=tests/integration-junit.xml -o junit_family=legacy -q 2>/dev/null || true
 	@echo ""
 	@echo "═══════════════════════════════════════════════════"
 	@echo "  INTEGRATION TEST PERFORMANCE REPORT"
@@ -300,11 +300,11 @@ diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merg
 		if [ -f "$$f" ]; then COVERAGE_FILES="$$COVERAGE_FILES $$f"; fi; \
 	done; \
 	uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=80 \
-	|| (echo "" && echo "⚠️  Diff coverage below 80%." && echo "   Run: make test-integration" && echo "   Then: git add tests/integration-coverage.xml tests/integration-junit.xml" && exit 1)
+	|| (echo "" && echo "⚠️  Diff coverage below 80%." && echo "   Run: make test-integration" && echo "   Then: git add tests/*-coverage.xml" && exit 1)
 
 # Diff coverage for PRs — merges CI unit coverage with local integration coverage.
 # If coverage is low, run `make test-integration` locally and commit the updated
-# tests/integration-coverage.xml before pushing.
+# per-suite coverage XMLs (tests/*-coverage.xml) before pushing.
 diff-cover-ci:
 	@SRC_CHANGED=$$(git diff --numstat origin/main...HEAD -- '*.py' 2>/dev/null | grep '^' | grep -v 'tests/' | awk '{s+=$$1+$$2} END {print s+0}'); \
 	echo "Changed source lines (excl tests): $${SRC_CHANGED}"; \

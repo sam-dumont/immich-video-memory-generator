@@ -58,6 +58,7 @@ class AssetEntry:
     score: float = 0.0
     width: int = 0
     height: int = 0
+    is_camera_original: bool = True
 
 
 def compute_density_budget(

@@ -85,6 +85,7 @@ __pycache__/
 build/
 config.yaml
 coverage.xml
+tests/integration-coverage.xml
 develop-eggs/
 dist/
 dmypy.json

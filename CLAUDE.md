@@ -167,7 +167,7 @@ locally, CI will pass too. Use conventional commit message format (see above).
 |------|---------|---------|---------------|-------|
 | Unit | CI + local | `make test` | Pure logic, scoring math, config, helpers | Nothing external |
 | Integration | Local only | `make test-integration` | Real FFmpeg assembly, real Immich reads, real pipeline | FFmpeg + Immich |
-| Coverage merge | CI | `make diff-cover-ci` | Merges unit (CI) + integration (local, committed XML) | `tests/integration-coverage.xml` committed |
+| Coverage merge | CI | `make diff-cover-ci` | Merges unit (CI) + integration (local, per-suite XMLs) | `tests/*-coverage.xml` committed |
 
 **Coverage targets:**
 - Core (non-UI): **60%** — enforced by `fail_under = 55` (unit) + integration XMLs push to 60%+
