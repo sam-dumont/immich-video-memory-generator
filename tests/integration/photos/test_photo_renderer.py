@@ -95,11 +95,11 @@ class TestRenderKenBurns:
         """Landscape photo in landscape viewport → valid mp4."""
         src = _make_test_image(1600, 1200)  # 4:3
         frames = render_ken_burns(src, 1920, 1080, KenBurnsParams(duration=2.0))
-        assert len(frames) == 120  # 60fps * 2s
+        assert len(frames) == 60  # 30fps (default) * 2s
         assert frames[0].shape == (1080, 1920, 3)
 
         output = tmp_path / "kb_ls.mp4"
-        _encode_frames(frames, output)
+        _encode_frames(frames, output)  # both default to 30fps
         probe = ffprobe_json(output)
         assert has_stream(probe, "video")
         assert has_stream(probe, "audio")
