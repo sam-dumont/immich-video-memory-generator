@@ -12,7 +12,7 @@ data:
       api_key: "${IMMICH_API_KEY}"
 
     defaults:
-      target_duration_minutes: 10
+      target_duration_seconds: 600
       output_orientation: "landscape"
       scale_mode: "smart_crop"
       transition: "crossfade"

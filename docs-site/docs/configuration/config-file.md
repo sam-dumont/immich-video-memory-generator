@@ -25,7 +25,7 @@ output:
   resolution: "1080p"            # 720p, 1080p, 4k
 
 defaults:
-  target_duration_minutes: 10    # 1-60 minutes
+  target_duration_seconds: 600   # 10-3600 seconds
   output_orientation: "auto"     # auto, landscape, portrait
 
 # ── AI analysis (any OpenAI-compatible vision model) ──────

@@ -19,7 +19,7 @@ def test_bench_config_from_yaml(benchmark, tmp_path):
         yaml.dump(
             {
                 "immich": {"url": "http://localhost:2283", "api_key": "test-key"},
-                "defaults": {"target_duration_minutes": 10},
+                "defaults": {"target_duration_seconds": 600},
             }
         )
     )

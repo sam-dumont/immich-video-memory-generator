@@ -64,7 +64,7 @@ analysis:
 
 ```yaml
 defaults:
-  target_duration_minutes: 10    # 1-60 minutes
+  target_duration_seconds: 600   # 10-3600 seconds
   output_orientation: "auto"     # auto, landscape, portrait, square
   scale_mode: "smart_crop"       # fit, fill, smart_crop
   transition: "smart"            # cut, crossfade, smart, none

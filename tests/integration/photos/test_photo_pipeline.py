@@ -51,6 +51,7 @@ def immich_photos():
     from immich_memories.api.sync_client import SyncImmichClient
 
     config = Config.from_yaml(Config.get_default_path())
+    config.defaults.target_duration_seconds = 60  # Cap at 60s for test speed
     client = SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
 
     # Broad date range to find any photos

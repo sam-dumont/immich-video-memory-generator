@@ -101,7 +101,7 @@ def _year_in_review(
         person_filter=person_filter,
         scoring=ScoringProfile(),
         title_template="{year}",
-        default_duration_minutes=8,
+        default_duration_seconds=600,  # ~50s per month × 12
     )
 
 
@@ -132,7 +132,7 @@ def _season(
         person_filter=person_filter,
         scoring=ScoringProfile(motion_weight=0.35),
         title_template="{season} {year}",
-        default_duration_minutes=3,
+        default_duration_seconds=135,  # ~45s per month × 3
     )
 
 
@@ -161,7 +161,7 @@ def _person_spotlight(
         scoring=ScoringProfile(face_weight=0.6, motion_weight=0.15),
         title_template="{year}",
         subtitle_template="Your Year with {person}",
-        default_duration_minutes=2,
+        default_duration_seconds=120,
     )
 
 
@@ -193,7 +193,7 @@ def _multi_person(
         scoring=ScoringProfile(face_weight=0.5, motion_weight=0.2),
         title_template="{year}",
         subtitle_template="{persons}",
-        default_duration_minutes=5,
+        default_duration_seconds=300,
     )
 
 
@@ -225,7 +225,7 @@ def _monthly_highlights(
         person_filter=person_filter,
         scoring=ScoringProfile(),
         title_template="{month} {year}",
-        default_duration_minutes=1,
+        default_duration_seconds=60,
     )
 
 
@@ -258,7 +258,7 @@ def _on_this_day(
         scoring=ScoringProfile(),
         title_template="{month} {day}",
         subtitle_template="Through the Years",
-        default_duration_minutes=2,
+        default_duration_seconds=45,  # ~30-45s — it's a single date across years
     )
 
 
@@ -281,9 +281,10 @@ def _trip(
 
     location = location_name or "Unknown Location"
     date_range = build_trip(trip_start, trip_end)
-    # Trips: 1 minute per 3 days of travel, capped at 10
+    # Trips: 35s per day (midpoint of 30-45s density range), min 60s, max 600s
+    # Pipeline can adjust later based on viable clip density per day
     trip_days = (trip_end - trip_start).days + 1
-    duration = max(1, min(10, round(trip_days / 3)))
+    duration = max(60, min(600, trip_days * 35))
     person_filter = PersonFilter()
     if person_names:
         person_filter = PersonFilter(mode="single", person_names=person_names[:1])
@@ -304,5 +305,5 @@ def _trip(
         ),
         title_template="{location}",
         subtitle_template="{start_date} - {end_date}",
-        default_duration_minutes=duration,
+        default_duration_seconds=duration,
     )

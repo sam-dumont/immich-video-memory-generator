@@ -48,6 +48,7 @@ def immich_clips():
     from immich_memories.timeperiod import DateRange
 
     config = Config.from_yaml(Config.get_default_path())
+    config.defaults.target_duration_seconds = 60  # Cap at 60s for test speed
     client = SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
 
     dr = DateRange(start=date(2025, 1, 1), end=date(2025, 12, 31))

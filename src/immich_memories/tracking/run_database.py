@@ -34,7 +34,7 @@ def row_to_run(row: sqlite3.Row) -> RunMetadata:
         date_range_end=(
             date.fromisoformat(row["date_range_end"]) if row["date_range_end"] else None
         ),
-        target_duration_minutes=row["target_duration_minutes"] or 10,
+        target_duration_seconds=(row["target_duration_minutes"] or 10) * 60,
         output_path=row["output_path"],
         output_size_bytes=row["output_size_bytes"] or 0,
         output_duration_seconds=row["output_duration_seconds"] or 0.0,
@@ -136,7 +136,7 @@ class RunDatabase:
                     run.person_id,
                     run.date_range_start.isoformat() if run.date_range_start else None,
                     run.date_range_end.isoformat() if run.date_range_end else None,
-                    run.target_duration_minutes,
+                    run.target_duration_seconds // 60,
                     run.output_path,
                     run.output_size_bytes,
                     run.output_duration_seconds,

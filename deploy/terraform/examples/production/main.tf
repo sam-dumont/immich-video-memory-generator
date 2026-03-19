@@ -87,7 +87,7 @@ module "immich_memories" {
   ollama_model = "llava"
 
   # Application settings
-  target_duration_minutes = 10
+  target_duration_seconds = 600
   output_orientation      = "landscape"
   output_resolution       = "1080p"
   hardware_backend        = "nvidia"

@@ -34,6 +34,25 @@ def _resolve_music_arg(music: str | None) -> str | None:
     return music
 
 
+def _default_duration_for_type(memory_type: str | None, date_range) -> float | None:
+    """Get default duration in seconds for a memory type based on time span."""
+    if not memory_type:
+        return None
+    # Trip: 35s per day (midpoint of 30-45s density range)
+    if memory_type == "trip":
+        days = max(1, (date_range.end - date_range.start).days + 1)
+        return float(max(60, min(600, days * 35)))
+    defaults: dict[str, float] = {
+        "year_in_review": 600,
+        "season": 135,
+        "monthly_highlights": 60,
+        "on_this_day": 45,
+        "person_spotlight": 120,
+        "multi_person": 300,
+    }
+    return defaults.get(memory_type)
+
+
 def _run_pipeline_and_generate(
     *,
     assets: list,
@@ -44,7 +63,7 @@ def _run_pipeline_and_generate(
     client: SyncImmichClient,
     config: Config,
     progress: Progress,
-    duration: int,
+    duration: float,
     transition: str,
     music: str | None,
     music_volume: float = 0.5,
@@ -91,7 +110,7 @@ def _run_pipeline_and_generate(
         prioritize_favorites=True,
         analysis_depth=analysis_depth,
     )
-    target_seconds = duration * 60
+    target_seconds = duration  # Already in seconds
     pipeline_config.target_clips = max(
         10,
         int(target_seconds / pipeline_config.avg_clip_duration),
@@ -246,7 +265,7 @@ def _build_params_table(
     memory_type: str | None,
     date_range: DateRange,
     person_names: list[str],
-    duration: int,
+    duration: float,
     orientation: str,
     scale_mode: str | None,
     transition: str,
@@ -273,7 +292,8 @@ def _build_params_table(
     table.add_row("Time Period", date_range.description)
     table.add_row("Duration", f"{date_range.days} days")
     table.add_row("Person", ", ".join(person_names) if person_names else "All people")
-    table.add_row("Target Duration", f"{duration} minutes")
+    dur_display = f"{duration / 60:.1f} min" if duration >= 60 else f"{duration:.0f}s"
+    table.add_row("Target Duration", dur_display)
     table.add_row("Orientation", orientation)
     table.add_row("Scale Mode", scale_mode or config.defaults.scale_mode)
     table.add_row("Transition", transition)
@@ -356,7 +376,13 @@ def register_generate_commands(main: click.Group) -> None:
         default="north",
         help="Hemisphere for season calculation",
     )
-    @click.option("--duration", "-d", type=int, default=10, help="Target duration in minutes")
+    @click.option(
+        "--duration",
+        "-d",
+        type=int,
+        default=None,
+        help="Target duration in seconds (default: from memory type preset)",
+    )
     @click.option(
         "--orientation",
         "-o",
@@ -492,7 +518,7 @@ def register_generate_commands(main: click.Group) -> None:
         season: str | None,
         month: int | None,
         hemisphere: str,
-        duration: int,
+        duration: float,
         orientation: str,
         scale_mode: str | None,
         transition: str,
@@ -622,6 +648,12 @@ def register_generate_commands(main: click.Group) -> None:
 
         # Analysis depth: CLI override → stored for PipelineConfig
         effective_analysis_depth = analysis_depth or "fast"
+
+        # Resolve duration: CLI --duration > memory type default > config default
+        if duration is None:
+            duration = _default_duration_for_type(memory_type, date_range)
+            if duration is None:
+                duration = config.defaults.target_duration_seconds
 
         table = _build_params_table(
             config=config,

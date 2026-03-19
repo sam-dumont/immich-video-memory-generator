@@ -131,7 +131,7 @@ def generate_memory(params: GenerationParams) -> Path:
     run_tracker.start_run(
         person_name=params.person_name,
         date_range=None,
-        target_duration_minutes=_total_clip_duration(params) // 60,
+        target_duration_seconds=round(_total_clip_duration(params)),
     )
 
     try:

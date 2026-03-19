@@ -43,7 +43,7 @@ class ImmichConfig(BaseModel):
 class DefaultsConfig(BaseModel):
     """Default settings for video generation."""
 
-    target_duration_minutes: int = Field(default=10, ge=1, le=60)
+    target_duration_seconds: int = Field(default=600, ge=10, le=3600)
     output_orientation: Literal["landscape", "portrait", "square", "auto"] = "auto"
     scale_mode: Literal["fit", "fill", "smart_crop", "blur"] = "blur"
     transition: Literal["cut", "crossfade", "smart", "none"] = "smart"

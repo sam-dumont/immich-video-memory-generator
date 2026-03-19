@@ -135,13 +135,13 @@ class TestMemoryPreset:
             scoring=ScoringProfile(),
             title_template="Your {year} in Review",
             subtitle_template="Best moments of {year}",
-            default_duration_minutes=5,
+            default_duration_seconds=300,
         )
         assert preset.memory_type == MemoryType.YEAR_IN_REVIEW
         assert preset.name == "Year in Review 2025"
         assert len(preset.date_ranges) == 1
         assert preset.subtitle_template == "Best moments of {year}"
-        assert preset.default_duration_minutes == 5
+        assert preset.default_duration_seconds == 300
 
     def test_optional_fields_default_to_none(self) -> None:
         date_range = DateRange(
@@ -158,4 +158,4 @@ class TestMemoryPreset:
             title_template="Summer {year}",
         )
         assert preset.subtitle_template is None
-        assert preset.default_duration_minutes is None
+        assert preset.default_duration_seconds is None

@@ -18,11 +18,11 @@ class TestFormatValidationError:
     def test_single_field_error(self):
         """Single field constraint violation is formatted clearly."""
         try:
-            DefaultsConfig(target_duration_minutes=-1)
+            DefaultsConfig(target_duration_seconds=-1)
         except ValidationError as e:
             result = format_validation_error(e)
             assert "Configuration error:" in result
-            assert "target_duration_minutes" in result
+            assert "target_duration_seconds" in result
 
     def test_includes_field_path(self):
         """Error includes the field path."""
@@ -35,7 +35,7 @@ class TestFormatValidationError:
     def test_includes_input_value(self):
         """Error includes the actual value that was provided."""
         try:
-            DefaultsConfig(target_duration_minutes=-1)
+            DefaultsConfig(target_duration_seconds=-1)
         except ValidationError as e:
             result = format_validation_error(e)
             assert "Got:" in result
@@ -86,11 +86,11 @@ class TestCLIConfigErrorIntegration:
         from immich_memories.cli import main
 
         bad_config = tmp_path / "bad.yaml"
-        bad_config.write_text("defaults:\n  target_duration_minutes: -999\n")
+        bad_config.write_text("defaults:\n  target_duration_seconds: -999\n")
 
         runner = CliRunner()
         with patch("immich_memories.cli.init_config_dir"):
             result = runner.invoke(main, ["-c", str(bad_config), "config", "--help"])
 
         assert result.exit_code != 0
-        assert "target_duration_minutes" in result.output or "Configuration error" in result.output
+        assert "target_duration_seconds" in result.output or "Configuration error" in result.output
