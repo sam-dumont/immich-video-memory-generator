@@ -553,36 +553,54 @@ class AssemblyEngine:
         output_path: Path,
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> Path:
-        """Assemble many clips using chunked processing."""
+        """Assemble many clips using chunked processing.
+
+        Skips failed batches instead of aborting — a single bad clip
+        won't kill the whole video.
+        """
         num_clips = len(clips)
         num_batches = math.ceil(num_clips / CHUNK_SIZE)
         logger.info(f"Chunked assembly: {num_clips} clips -> {num_batches} batches")
         intermediates_dir = output_path.parent / ".intermediates"
         intermediates_dir.mkdir(parents=True, exist_ok=True)
         intermediate_clips: list[AssemblyClip] = []
-        try:
-            for batch_idx in range(num_batches):
-                start_idx = batch_idx * CHUNK_SIZE
-                batch = clips[start_idx : min(start_idx + CHUNK_SIZE, num_clips)]
-                if progress_callback:
-                    progress_callback(
-                        (batch_idx / num_batches) * 0.8,
-                        f"Processing batch {batch_idx + 1}/{num_batches} ({len(batch)} clips)...",
-                    )
+        failed_batches = 0
+        for batch_idx in range(num_batches):
+            start_idx = batch_idx * CHUNK_SIZE
+            batch = clips[start_idx : min(start_idx + CHUNK_SIZE, num_clips)]
+            if progress_callback:
+                progress_callback(
+                    (batch_idx / num_batches) * 0.8,
+                    f"Processing batch {batch_idx + 1}/{num_batches} ({len(batch)} clips)...",
+                )
+            try:
                 intermediate_clips.append(
                     self._process_single_batch(
                         batch, batch_idx, num_batches, intermediates_dir, progress_callback
                     )
                 )
-                self.check_cancelled_fn()
-            if progress_callback:
-                progress_callback(0.85, f"Merging {num_batches} batches...")
-            result = self.concat.merge_intermediate_batches(
-                intermediate_clips, output_path, progress_callback
+            except Exception:
+                failed_batches += 1
+                logger.warning(
+                    f"Batch {batch_idx + 1}/{num_batches} failed, skipping "
+                    f"({len(batch)} clips lost)"
+                )
+            self.check_cancelled_fn()
+
+        if not intermediate_clips:
+            raise RuntimeError(f"All {num_batches} batches failed — no video could be assembled")
+
+        if failed_batches:
+            logger.info(
+                f"Assembly continuing with {len(intermediate_clips)}/{num_batches} "
+                f"batches ({failed_batches} skipped)"
             )
-            if not self.settings.debug_preserve_intermediates:
-                shutil.rmtree(intermediates_dir, ignore_errors=True)
-            return result
-        except Exception:
-            logger.error(f"Chunked assembly failed. Intermediates in: {intermediates_dir}")
-            raise
+
+        if progress_callback:
+            progress_callback(0.85, f"Merging {len(intermediate_clips)} batches...")
+        result = self.concat.merge_intermediate_batches(
+            intermediate_clips, output_path, progress_callback
+        )
+        if not self.settings.debug_preserve_intermediates:
+            shutil.rmtree(intermediates_dir, ignore_errors=True)
+        return result
