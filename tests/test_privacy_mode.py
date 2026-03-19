@@ -153,6 +153,30 @@ class TestPrivacyGpsAnonymization:
         assert result[0].longitude != 2.3522
         assert result[0].location_name != "Paris, France"
 
+    def test_cluster_preserved_single_offset(self):
+        """All clips must be shifted by the SAME offset (cluster stays together)."""
+        from immich_memories.generate import _anonymize_clips_for_privacy
+
+        clips = [
+            AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0, latitude=50.0, longitude=3.0),
+            AssemblyClip(path=Path("/tmp/b.mp4"), duration=3.0, latitude=50.1, longitude=3.1),
+        ]
+        result = _anonymize_clips_for_privacy(clips)
+        # Relative distance between clips must be preserved
+        orig_delta_lat = 50.1 - 50.0
+        anon_delta_lat = result[1].latitude - result[0].latitude
+        assert abs(orig_delta_lat - anon_delta_lat) < 0.001
+
+    def test_home_gps_anonymized_in_preset(self):
+        """home_lat/home_lon in preset params must also be shifted."""
+        from immich_memories.generate import _anonymize_preset_params
+
+        preset = {"home_lat": 48.85, "home_lon": 2.35, "location_name": "TestCity"}
+        result = _anonymize_preset_params(preset)
+        assert result["home_lat"] != 48.85
+        assert result["home_lon"] != 2.35
+        assert result["location_name"] != "TestCity"
+
     def test_clip_without_gps_unchanged(self):
         from immich_memories.generate import _anonymize_clips_for_privacy
 

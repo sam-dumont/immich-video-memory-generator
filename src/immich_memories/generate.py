@@ -162,7 +162,12 @@ def generate_memory(params: GenerationParams) -> Path:
             from dataclasses import replace
 
             assembly_clips = _anonymize_clips_for_privacy(assembly_clips)
-            params = replace(params, person_name=_anonymize_name(params.person_name))
+            anon_preset = _anonymize_preset_params(params.memory_preset_params)
+            params = replace(
+                params,
+                person_name=_anonymize_name(params.person_name),
+                memory_preset_params=anon_preset,
+            )
 
         # Phase 2: Assemble
         _report(params, "assemble", 0.7, "Assembling final video...")
@@ -800,15 +805,16 @@ _PRIVACY_FAKE_NAMES = [
     "Kim",
     "Leo",
 ]
+# WHY: real city coordinates so map tiles show a real place, not ocean
 _PRIVACY_FAKE_CITIES = [
-    "Pleasantville",
-    "Lakeside",
-    "Greenfield",
-    "Maplewood",
-    "Riverside",
-    "Hillcrest",
-    "Sunnyvale",
-    "Fairview",
+    ("Paris, France", 48.8566, 2.3522),
+    ("Amsterdam, Netherlands", 52.3676, 4.9041),
+    ("Barcelona, Spain", 41.3874, 2.1686),
+    ("Copenhagen, Denmark", 55.6761, 12.5683),
+    ("Lisbon, Portugal", 38.7223, -9.1393),
+    ("Vienna, Austria", 48.2082, 16.3738),
+    ("Prague, Czech Republic", 50.0755, 14.4378),
+    ("Stockholm, Sweden", 59.3293, 18.0686),
 ]
 
 
@@ -821,25 +827,52 @@ def _anonymize_name(name: str | None) -> str | None:
     return _PRIVACY_FAKE_NAMES[idx]
 
 
+def _pick_fake_city() -> tuple[str, float, float]:
+    """Pick a deterministic fake city (same seed = same city every run)."""
+    import random
+
+    rng = random.Random(42)
+    return _PRIVACY_FAKE_CITIES[rng.randint(0, len(_PRIVACY_FAKE_CITIES) - 1)]
+
+
+def _anonymize_preset_params(preset_params: dict) -> dict:
+    """Anonymize trip-related preset params (home GPS, location name)."""
+    result = preset_params.copy()
+    fake_name, fake_lat, fake_lon = _pick_fake_city()
+
+    # WHY: shift home to the fake city center so map fly starts from there
+    if "home_lat" in result and result["home_lat"] is not None:
+        result["home_lat"] = fake_lat - 1.5  # Offset from city so route is visible
+        result["home_lon"] = fake_lon - 1.0
+    if "location_name" in result:
+        result["location_name"] = fake_name
+
+    return result
+
+
 def _anonymize_clips_for_privacy(
     clips: list[AssemblyClip],
 ) -> list[AssemblyClip]:
-    """Randomize GPS coords and anonymize location names on clips."""
-    import random
+    """Relocate all GPS coords to a fake city (preserves cluster shape)."""
+    fake_name, fake_lat, fake_lon = _pick_fake_city()
 
-    # WHY: seeded RNG for deterministic offsets within a single run
-    rng = random.Random(42)
+    # Find centroid of real GPS coords
+    gps_clips = [(c.latitude, c.longitude) for c in clips if c.latitude and c.longitude]
+    if not gps_clips:
+        return clips
+
+    real_center_lat = sum(lat for lat, _ in gps_clips) / len(gps_clips)
+    real_center_lon = sum(lon for _, lon in gps_clips) / len(gps_clips)
+
+    # WHY: offset = fake city - real centroid, so cluster lands ON the fake city
+    lat_offset = fake_lat - real_center_lat
+    lon_offset = fake_lon - real_center_lon
+
     result = []
     for clip in clips:
         if clip.latitude is not None and clip.longitude is not None:
-            # Offset by ±2-5 degrees — enough to be a different city/country
-            lat_offset = rng.uniform(2.0, 5.0) * rng.choice([-1, 1])
-            lon_offset = rng.uniform(2.0, 5.0) * rng.choice([-1, 1])
             new_lat = max(-90, min(90, clip.latitude + lat_offset))
             new_lon = ((clip.longitude + lon_offset + 180) % 360) - 180
-
-            city_idx = rng.randint(0, len(_PRIVACY_FAKE_CITIES) - 1)
-            new_name = _PRIVACY_FAKE_CITIES[city_idx]
 
             clip = AssemblyClip(
                 path=clip.path,
@@ -850,7 +883,7 @@ def _anonymize_clips_for_privacy(
                 rotation_override=clip.rotation_override,
                 latitude=new_lat,
                 longitude=new_lon,
-                location_name=new_name,
+                location_name=fake_name,
                 has_speech=clip.has_speech,
                 outgoing_transition=clip.outgoing_transition,
             )
