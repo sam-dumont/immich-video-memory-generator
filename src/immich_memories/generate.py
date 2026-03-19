@@ -182,6 +182,8 @@ def generate_memory(params: GenerationParams) -> Path:
         )
 
         _cleanup_temp_clips(assembly_clips)
+        if not params.debug_preserve_intermediates:
+            _cleanup_temp_dirs(run_output_dir)
         return result_path
 
     except GenerationError:
@@ -741,6 +743,17 @@ def _cleanup_temp_clips(assembly_clips: list[AssemblyClip]) -> None:
         with contextlib.suppress(Exception):
             if clip.path.exists() and "tmp" in str(clip.path).lower():
                 clip.path.unlink()
+
+
+def _cleanup_temp_dirs(output_dir: Path) -> None:
+    """Remove intermediate directories created during generation."""
+    import shutil
+
+    for subdir in (".title_screens", "photos"):
+        path = output_dir / subdir
+        if path.exists():
+            with contextlib.suppress(Exception):
+                shutil.rmtree(path)
 
 
 def _clip_location_name(exif) -> str | None:
