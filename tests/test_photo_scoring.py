@@ -250,16 +250,9 @@ class TestCacheFirstScoring:
         """_get_score_cache returns None when dependencies are unavailable."""
         from immich_memories.photos.photo_pipeline import _get_score_cache
 
-        with (
-            patch(
-                "immich_memories.photos.photo_pipeline.VideoAnalysisCache",
-                side_effect=ImportError("no module"),
-                create=True,
-            ),
-            patch(
-                "immich_memories.cache.database.VideoAnalysisCache",
-                side_effect=ImportError("no module"),
-            ),
+        with patch(
+            "immich_memories.cache.asset_score_cache.AssetScoreCache",
+            side_effect=ImportError("no module"),
         ):
             result = _get_score_cache()
 

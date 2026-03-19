@@ -39,6 +39,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def log_top_segments(segments: list[ScoredSegment], top_n: int = 5) -> None:
+    """Log per-factor score breakdown for the top-N segments."""
+    for i, seg in enumerate(segments[:top_n]):
+        has_llm = "LLM" if seg.llm_description else "no-LLM"
+        logger.info(
+            f"  #{i + 1} {seg.start_time:.1f}s-{seg.end_time:.1f}s "
+            f"total={seg.total_score:.3f} ({has_llm}) | "
+            f"face={seg.face_score:.2f} motion={seg.motion_score:.2f} "
+            f"stability={seg.stability_score:.2f} content={seg.content_score:.2f} "
+            f"duration={seg.duration_score:.2f} visual={seg.visual_score:.2f} "
+            f"cut_q={seg.cut_quality:.2f}"
+        )
+
+
 class UnifiedSegmentAnalyzer:
     """Unified video segment analysis with audio-aware boundaries.
 
@@ -410,6 +424,9 @@ class UnifiedSegmentAnalyzer:
 
         self._run_llm_scoring(scored_segments, audio_video)
 
+        if scored_segments:
+            log_top_segments(scored_segments, top_n=min(5, len(scored_segments)))
+
         # Step 5: Fix best segment
         if scored_segments:
             best = scored_segments[0]
@@ -572,16 +589,24 @@ class UnifiedSegmentAnalyzer:
         # Use the SceneScorer to get component scores
         moment = self.scorer.score_scene(video_path, scene, sample_frames=5)
 
+        # Use scorer's own weights for visual sub-components
+        s = self.scorer
+        visual_weights = s.face_weight + s.motion_weight + s.stability_weight + s.audio_weight
+        if visual_weights > 0:
+            total = (
+                moment.face_score * s.face_weight
+                + moment.motion_score * s.motion_weight
+                + moment.stability_score * s.stability_weight
+                + moment.audio_score * s.audio_weight
+            ) / visual_weights
+        else:
+            total = 0.0
+
         return {
             "face": moment.face_score,
             "motion": moment.motion_score,
             "stability": moment.stability_score,
-            "total": (
-                moment.face_score * 0.4
-                + moment.motion_score * 0.25
-                + moment.stability_score * 0.2
-                + 0.5 * 0.15  # Audio placeholder
-            ),
+            "total": total,
         }
 
     def _score_content(
@@ -626,46 +651,50 @@ class UnifiedSegmentAnalyzer:
     def _compute_total_score(self, segment) -> float:
         """Compute the total score for a segment.
 
+        LLM content analysis is additive: it can only boost the base score,
+        never dilute it. A neutral LLM score (0.5) adds nothing. Scores above
+        0.5 add a bonus proportional to content_weight.
+
         Args:
             segment: ScoredSegment with component scores.
 
         Returns:
-            Total score from 0.0 to ~1.15 (includes cut quality bonus).
+            Total score (base 0-1 + bonuses up to ~0.25).
         """
-        # Distribute weights between visual, content, audio, and duration
-        # Total should be 1.0 before bonuses
-        total_weight = 1.0
-        content_w = self.content_weight
+        # Base score: visual + audio + duration always get the full 1.0 budget
+        # LLM content does NOT compete for weight — it's a bonus on top
         audio_w = self.audio_content_weight if self.audio_content_enabled else 0.0
         duration_w = self.duration_weight
-        visual_w = total_weight - content_w - audio_w - duration_w
+        visual_w = 1.0 - audio_w - duration_w
 
-        # Ensure weights are non-negative
         if visual_w < 0:
-            # Reduce other weights proportionally to make room
-            other_total = content_w + audio_w + duration_w
-            if other_total > 0:
-                scale = 1.0 / other_total
-                content_w *= scale
+            total = audio_w + duration_w
+            if total > 0:
+                scale = 1.0 / total
                 audio_w *= scale
                 duration_w *= scale
             visual_w = 0.0
 
         base_score = (
             segment.visual_score * visual_w
-            + segment.content_score * content_w
             + segment.audio_score * audio_w
             + segment.duration_score * duration_w
         )
 
+        # LLM bonus: only scores above neutral (0.5) add signal
+        # content_score=0.5 → +0.0, content_score=1.0 → +content_weight
+        # content_score<0.5 → +0.0 (never penalizes)
+        llm_bonus = 0.0
+        if self.content_weight > 0:
+            llm_bonus = max(0.0, (segment.content_score - 0.5)) * self.content_weight * 2
+
         # Significant bonus for high-quality cut points (max 0.15)
-        # This ensures we prefer clean audio boundaries over mid-speech cuts
         cut_bonus = segment.cut_quality * 0.15
 
         # Extra bonus for segments with laughter (highly desirable for memories)
         laughter_bonus = 0.1 if segment.has_laughter else 0.0
 
-        return base_score + cut_bonus + laughter_bonus
+        return base_score + llm_bonus + cut_bonus + laughter_bonus
 
     def _score_segments_visual_only(
         self,

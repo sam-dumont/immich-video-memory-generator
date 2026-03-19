@@ -26,7 +26,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Current schema version - increment when schema changes
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
+
+# Scoring algorithm version — bump when score computation changes
+# so cached scores from the old algorithm get re-analyzed
+SCORING_VERSION = 2
 
 
 class VideoAnalysisCache:
@@ -91,6 +95,7 @@ class VideoAnalysisCache:
             5: self._migration_v5_add_rotation,
             6: self._migration_v6_add_llm_and_audio,
             7: self._migration_v7_asset_scores,
+            8: self._migration_v8_scoring_version,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):
@@ -330,87 +335,13 @@ class VideoAnalysisCache:
         """)
         logger.info("Created asset_scores table for cache-first scoring")
 
-    # =========================================================================
-    # Asset Score Cache Methods
-    # =========================================================================
-
-    def get_asset_score(self, asset_id: str) -> dict | None:
-        """Look up cached score for an asset. Returns None if not cached."""
-        with self._get_connection() as conn:
-            row = conn.execute(
-                "SELECT * FROM asset_scores WHERE asset_id = ?", (asset_id,)
-            ).fetchone()
-            if row:
-                return dict(row)
-        return None
-
-    def get_asset_scores_batch(self, asset_ids: list[str]) -> dict[str, dict]:
-        """Look up cached scores for multiple assets at once."""
-        if not asset_ids:
-            return {}
-        with self._get_connection() as conn:
-            placeholders = ",".join("?" * len(asset_ids))
-            rows = conn.execute(
-                f"SELECT * FROM asset_scores WHERE asset_id IN ({placeholders})",  # noqa: S608
-                asset_ids,
-            ).fetchall()
-            return {row["asset_id"]: dict(row) for row in rows}
-
-    def save_asset_score(
-        self,
-        asset_id: str,
-        asset_type: str,
-        metadata_score: float,
-        combined_score: float,
-        llm_interest: float | None = None,
-        llm_quality: float | None = None,
-        llm_emotion: str | None = None,
-        llm_description: str | None = None,
-        model_version: str | None = None,
-    ) -> None:
-        """Save or update a cached asset score."""
-        with self._get_connection() as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO asset_scores (
-                    asset_id, asset_type, metadata_score, combined_score,
-                    llm_interest, llm_quality, llm_emotion, llm_description,
-                    analyzed_at, model_version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
-                """,
-                (
-                    asset_id,
-                    asset_type,
-                    metadata_score,
-                    combined_score,
-                    llm_interest,
-                    llm_quality,
-                    llm_emotion,
-                    llm_description,
-                    model_version,
-                ),
-            )
-            conn.commit()
-
-    def get_cache_stats(self) -> dict:
-        """Get cache statistics for the `cache stats` CLI command."""
-        with self._get_connection() as conn:
-            total = conn.execute("SELECT COUNT(*) FROM asset_scores").fetchone()[0]
-            by_type = conn.execute(
-                "SELECT asset_type, COUNT(*) as cnt FROM asset_scores GROUP BY asset_type"
-            ).fetchall()
-            oldest = conn.execute("SELECT MIN(analyzed_at) FROM asset_scores").fetchone()[0]
-            newest = conn.execute("SELECT MAX(analyzed_at) FROM asset_scores").fetchone()[0]
-            with_llm = conn.execute(
-                "SELECT COUNT(*) FROM asset_scores WHERE llm_interest IS NOT NULL"
-            ).fetchone()[0]
-        return {
-            "total": total,
-            "by_type": {row["asset_type"]: row["cnt"] for row in by_type},
-            "with_llm": with_llm,
-            "oldest": oldest,
-            "newest": newest,
-        }
+    def _migration_v8_scoring_version(self, conn: sqlite3.Connection) -> None:
+        """Add scoring_version column to track scoring algorithm changes."""
+        conn.execute("""
+            ALTER TABLE video_analysis
+            ADD COLUMN scoring_version INTEGER NOT NULL DEFAULT 1
+        """)
+        logger.info("Added scoring_version column to video_analysis")
 
     # =========================================================================
     # Quick Video Metadata Methods
@@ -534,14 +465,14 @@ class VideoAnalysisCache:
                 """
                 INSERT OR REPLACE INTO video_analysis (
                     asset_id, checksum, file_modified_at, analysis_timestamp,
-                    analysis_version, perceptual_hash, thumbnail_hash,
+                    analysis_version, scoring_version, perceptual_hash, thumbnail_hash,
                     duration_seconds, width, height, bitrate, fps, codec,
                     color_space, color_transfer, color_primaries, bit_depth,
                     best_face_score, best_motion_score, best_stability_score,
                     best_audio_score, best_total_score,
                     motion_summary, audio_levels, file_created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          ?, ?, ?, ?, ?, ?, ?, ?)
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     asset.id,
@@ -549,6 +480,7 @@ class VideoAnalysisCache:
                     (asset.file_modified_at.isoformat() if asset.file_modified_at else None),
                     now,
                     SCHEMA_VERSION,
+                    SCORING_VERSION,
                     perceptual_hash,
                     thumbnail_hash,
                     (video_info.duration_seconds if video_info else asset.duration_seconds),
@@ -734,6 +666,14 @@ class VideoAnalysisCache:
 
             return analysis
 
+    @staticmethod
+    def _get_row_value(row: sqlite3.Row, key: str, default: int) -> int:
+        """Safely get a value from a sqlite3.Row, with fallback for missing columns."""
+        try:
+            return row[key]
+        except (IndexError, KeyError):
+            return default
+
     def _row_to_analysis(self, row: sqlite3.Row) -> CachedVideoAnalysis:
         return CachedVideoAnalysis(
             asset_id=row["asset_id"],
@@ -742,6 +682,7 @@ class VideoAnalysisCache:
                 datetime.fromisoformat(row["file_modified_at"]) if row["file_modified_at"] else None
             ),
             analysis_timestamp=datetime.fromisoformat(row["analysis_timestamp"]),
+            scoring_version=self._get_row_value(row, "scoring_version", 1),
             perceptual_hash=row["perceptual_hash"],
             thumbnail_hash=row["thumbnail_hash"],
             duration_seconds=row["duration_seconds"],
@@ -847,7 +788,7 @@ class VideoAnalysisCache:
             row = conn.execute(
                 """
                 SELECT checksum, file_modified_at, analysis_timestamp,
-                       analysis_version
+                       analysis_version, scoring_version
                 FROM video_analysis
                 WHERE asset_id = ?
             """,
@@ -857,6 +798,8 @@ class VideoAnalysisCache:
             if not row:
                 return True
             if row["analysis_version"] != SCHEMA_VERSION:
+                return True
+            if row["scoring_version"] != SCORING_VERSION:
                 return True
             if self._row_is_stale(row, asset):
                 return True

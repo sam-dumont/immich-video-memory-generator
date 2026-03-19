@@ -187,13 +187,13 @@ def _llm_score_photo(
 
 
 def _get_score_cache():
-    """Get the analysis cache for score lookups."""
+    """Get the asset score cache for score lookups."""
     try:
-        from immich_memories.cache.database import VideoAnalysisCache
+        from immich_memories.cache.asset_score_cache import AssetScoreCache
         from immich_memories.config_loader import get_config
 
         config = get_config()
-        return VideoAnalysisCache(db_path=config.cache.database_path)
+        return AssetScoreCache(db_path=config.cache.database_path)
     except Exception:
         return None
 

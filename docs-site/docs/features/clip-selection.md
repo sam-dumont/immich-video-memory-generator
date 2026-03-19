@@ -28,15 +28,17 @@ Each asset gets a score from 0.0 to 1.0 that determines whether it makes the cut
 
 ### Video Scoring
 
-Videos are scored by analyzing their content:
+Videos are scored by analyzing their content. The base visual factors always sum to 1.0:
 
 | Factor | Weight | How |
 |--------|--------|-----|
-| Face detection | 0.40 | Apple Vision or OpenCV face detection |
-| Motion quality | 0.25 | Stable, intentional camera movement |
-| Visual stability | 0.20 | Not shaky or blurry |
+| Face detection | 0.35 | Apple Vision or OpenCV face detection |
+| Motion quality | 0.20 | Stable, intentional camera movement |
+| Visual stability | 0.15 | Not shaky or blurry |
 | Audio content | 0.15 | Laughter, speech, music detected |
-| LLM analysis | 0.35 | VLM rates interest + quality (when enabled) |
+| Duration fit | 0.15 | Clips near the optimal 5s duration score higher |
+
+**LLM analysis** (when enabled) adds a **bonus on top** of the base score — it never reduces it. A content score above 0.5 (neutral) adds up to `content_analysis.weight` (default 0.35) as extra signal. This means LLM analysis can only improve clip selection, not hurt it.
 
 ### Photo Scoring
 
@@ -91,7 +93,7 @@ GUI: "Analyze all videos" button for full override.
 
 LLM analysis results are cached in the local SQLite database (`~/.immich-memories/cache.db`). First run analyzes everything (slow). Subsequent runs hit the cache (instant).
 
-Only new or changed assets get re-analyzed. The cache persists across runs — back it up with your Docker volumes or Kubernetes PVCs.
+Only new or changed assets get re-analyzed. The cache also tracks the **scoring algorithm version** — when the scoring formula changes (e.g., after an update), old cached scores are automatically invalidated and clips get re-analyzed with the new algorithm. The cache persists across runs — back it up with your Docker volumes or Kubernetes PVCs.
 
 ## Configuration
 

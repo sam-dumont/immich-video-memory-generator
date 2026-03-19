@@ -330,7 +330,7 @@ class TestUnifiedSegmentAnalyzer:
         assert abs(score - 0.95) < 0.01
 
     def test_compute_total_score_with_content(self, analyzer):
-        """With content, score should blend visual and content."""
+        """With content above neutral, LLM adds a bonus on top of base score."""
         segment = ScoredSegment(
             start_time=0.0,
             end_time=5.0,
@@ -343,8 +343,11 @@ class TestUnifiedSegmentAnalyzer:
 
         score = analyzer._compute_total_score(segment)
 
-        # 0.8 * 0.8 + 0.6 * 0.2 + 1.0 * 0.15 (cut bonus) = 0.64 + 0.12 + 0.15 = 0.91
-        assert abs(score - 0.91) < 0.01
+        # base = visual*1.0 = 0.8 (duration_weight=0.0 in fixture)
+        # llm_bonus = max(0, (0.6-0.5)) * 0.2 * 2 = 0.04
+        # cut_bonus = 1.0 * 0.15 = 0.15
+        # total ≈ 0.99
+        assert abs(score - 0.99) < 0.01
 
 
 class TestUnifiedAnalyzerIntegration:

@@ -303,7 +303,10 @@ jobs:
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
         with:
-          files: coverage.xml,tests/integration-coverage.xml
+          # Fresh unit coverage (root) + all committed per-suite integration XMLs (tests/)
+          # Uses directory search so new integration suites are picked up automatically
+          files: coverage.xml
+          directory: tests
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 

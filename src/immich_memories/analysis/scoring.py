@@ -539,9 +539,9 @@ class SceneScorer:
 
     def __init__(
         self,
-        face_weight: float = 0.4,
-        motion_weight: float = 0.25,
-        stability_weight: float = 0.2,
+        face_weight: float = 0.35,
+        motion_weight: float = 0.20,
+        stability_weight: float = 0.15,
         audio_weight: float = 0.15,
         content_weight: float = 0.0,
         duration_weight: float = 0.15,
@@ -554,6 +554,24 @@ class SceneScorer:
         analysis_config: AnalysisConfig | None = None,
     ):
         """Initialize the scorer with component weights and duration settings."""
+        # Auto-normalize weights to sum to 1.0
+        raw_total = (
+            face_weight
+            + motion_weight
+            + stability_weight
+            + audio_weight
+            + content_weight
+            + duration_weight
+        )
+        if raw_total > 0 and abs(raw_total - 1.0) > 0.001:
+            scale = 1.0 / raw_total
+            face_weight *= scale
+            motion_weight *= scale
+            stability_weight *= scale
+            audio_weight *= scale
+            content_weight *= scale
+            duration_weight *= scale
+
         self.face_weight = face_weight
         self.motion_weight = motion_weight
         self.stability_weight = stability_weight
