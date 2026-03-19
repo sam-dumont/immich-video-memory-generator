@@ -120,7 +120,7 @@ src/immich_memories/
 ├── processing/                 # Video processing & assembly
 │   ├── video_assembler.py      # VideoAssembler (composes 6 services)
 │   ├── assembly_engine.py      # AssemblyEngine (composes ConcatService)
-│   ├── ffmpeg_filter_graph.py  # ConcatService: concat/xfade/batch ops
+│   ├── ffmpeg_filter_graph.py  # ConcatService: batch merge/direct assembly
 │   ├── assembly_config.py      # Dataclasses: AssemblySettings, AssemblyClip, etc.
 │   ├── assembly_context_builder.py # Standalone: resolve_target_resolution(), create_assembly_context()
 │   ├── ffmpeg_prober.py        # FFmpegProber: ffprobe-based duration/resolution

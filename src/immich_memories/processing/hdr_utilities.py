@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 def _detect_hdr_type(video_path: Path) -> str | None:
     """Detect the HDR type of a video file.
 
+    Cross-checks BOTH transfer function AND color primaries to avoid
+    misdetecting Apple Shared Album videos (which carry bt2020nc tags
+    but contain SDR content) as HDR.
+
     Returns:
         "hlg" for HLG (iPhone Dolby Vision 8.4)
         "pq" for HDR10/HDR10+ (Samsung, Pixel, etc.)
@@ -40,7 +44,7 @@ def _detect_hdr_type(video_path: Path) -> str | None:
                 "-select_streams",
                 "v:0",
                 "-show_entries",
-                "stream=color_transfer",
+                "stream=color_transfer,color_primaries",
                 "-of",
                 "json",
                 str(video_path),
@@ -56,12 +60,18 @@ def _detect_hdr_type(video_path: Path) -> str | None:
             streams = data.get("streams", [])
             if streams:
                 color_trc = streams[0].get("color_transfer", "")
+                primaries = streams[0].get("color_primaries", "")
+
+                # HDR requires wide-gamut primaries — bt709 primaries
+                # means the content is SDR even if transfer says otherwise
+                # (common in Apple Shared Album re-encodes)
+                if primaries != "bt2020":
+                    return None
+
                 if color_trc == "arib-std-b67":
-                    return "hlg"  # iPhone HLG / Dolby Vision 8.4
-                elif color_trc == "smpte2084":
-                    return "pq"  # HDR10 / HDR10+ (Samsung, Pixel)
-                elif color_trc in ("bt2020-10", "bt2020-12"):
-                    return "pq"  # Assume PQ for BT.2020
+                    return "hlg"
+                elif color_trc in ("smpte2084", "bt2020-10", "bt2020-12"):
+                    return "pq"
     except Exception as e:
         logger.debug(f"HDR detection failed for {video_path}: {e}")
     return None
@@ -182,7 +192,11 @@ def _get_sdr_to_hdr_filter(
     source_primaries: str | None,
     has_zscale: bool,
 ) -> str:
-    """Return zscale filter string for SDR-to-HDR upscale, or empty string."""
+    """Return zscale filter string for SDR-to-HDR upscale, or empty string.
+
+    Uses npl=203 (SDR reference white per BT.2408), explicit TV range,
+    and agamma=false for accurate gamma — prevents red/warm color cast.
+    """
     if not has_zscale:
         logger.warning("zscale not available - SDR to HDR conversion may look washed out")
         return ""
@@ -191,14 +205,16 @@ def _get_sdr_to_hdr_filter(
     if target_type == "hlg":
         logger.debug(f"Converting SDR ({src_pri}) -> HLG")
         return (
-            f",zscale=transfer=arib-std-b67:transferin=bt709"
-            f":primaries=bt2020:primariesin={src_pri}:matrix=bt2020nc:matrixin={src_matrix}"
+            f",zscale=tin=bt709:t=arib-std-b67"
+            f":pin={src_pri}:p=bt2020:min={src_matrix}:m=bt2020nc"
+            f":rin=tv:r=tv:npl=203:agamma=false"
         )
     if target_type == "pq":
         logger.debug(f"Converting SDR ({src_pri}) -> PQ/HDR10")
         return (
-            f",zscale=transfer=smpte2084:transferin=bt709"
-            f":primaries=bt2020:primariesin={src_pri}:matrix=bt2020nc:matrixin={src_matrix}"
+            f",zscale=tin=bt709:t=smpte2084"
+            f":pin={src_pri}:p=bt2020:min={src_matrix}:m=bt2020nc"
+            f":rin=tv:r=tv:npl=203:agamma=false"
         )
     return ""
 
@@ -209,9 +225,17 @@ def _get_hdr_to_hdr_filter(source_type: str, target_type: str, has_zscale: bool)
         logger.warning("zscale not available - HDR conversion may not be accurate")
         return ""
     if source_type == "hlg" and target_type == "pq":
-        return ",zscale=transfer=smpte2084:transferin=arib-std-b67:primaries=bt2020:primariesin=bt2020:matrix=bt2020nc:matrixin=bt2020nc"
+        return (
+            ",zscale=tin=arib-std-b67:t=smpte2084"
+            ":pin=bt2020:p=bt2020:min=bt2020nc:m=bt2020nc"
+            ":npl=203:agamma=false"
+        )
     if source_type == "pq" and target_type == "hlg":
-        return ",zscale=transfer=arib-std-b67:transferin=smpte2084:primaries=bt2020:primariesin=bt2020:matrix=bt2020nc:matrixin=bt2020nc"
+        return (
+            ",zscale=tin=smpte2084:t=arib-std-b67"
+            ":pin=bt2020:p=bt2020:min=bt2020nc:m=bt2020nc"
+            ":npl=203:agamma=false"
+        )
     return ""
 
 

@@ -140,10 +140,12 @@ class FilterBuilder:
     ) -> tuple[list[str], list[str]]:
         """Build audio preparation filter parts and labels for all clips."""
         audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
+        loudnorm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if self.settings.normalize_clip_audio else ""
         filter_parts: list[str] = []
         audio_labels: list[str] = []
 
         for i, clip in enumerate(clips):
+            clip_loudnorm = loudnorm if not clip.is_title_screen else ""
             if clip.is_title_screen or (self.settings.privacy_mode and clip.has_speech):
                 filter_parts.append(
                     f"anullsrc=r=48000:cl=stereo,atrim=0:{clip.duration},{audio_format}[a{i}prep]"
@@ -151,13 +153,13 @@ class FilterBuilder:
             elif use_amix_fallback:
                 filter_parts.append(
                     f"anullsrc=r=48000:cl=stereo,atrim=0:{clip.duration}[a{i}silence];"
-                    f"[{i}:a]{audio_format},asetpts=PTS-STARTPTS[a{i}src];"
+                    f"[{i}:a]{audio_format},asetpts=PTS-STARTPTS{clip_loudnorm}[a{i}src];"
                     f"[a{i}silence][a{i}src]amix=inputs=2:duration=first:weights='0 1'[a{i}mixed];"
                     f"[a{i}mixed]atrim=0:{clip.duration},asetpts=PTS-STARTPTS[a{i}prep]"
                 )
             else:
                 filter_parts.append(
-                    f"[{i}:a]{audio_format},aresample=async=1,asetpts=PTS-STARTPTS,"
+                    f"[{i}:a]{audio_format},aresample=async=1,asetpts=PTS-STARTPTS{clip_loudnorm},"
                     f"apad=whole_dur={clip.duration},atrim=0:{clip.duration}[a{i}prep]"
                 )
             audio_labels.append(f"[a{i}prep]")

@@ -290,10 +290,10 @@ def _stream_render_to_mp4(
     # which matches the brightness iPhone HLG videos display at.
     # Without it, photos appear dimmer than videos in the assembly.
     vf = (
-        "zscale=transfer=arib-std-b67:transferin=iec61966-2-1"
-        ":primaries=bt2020:primariesin=bt709"
-        ":matrix=bt2020nc:matrixin=bt709"
-        ":npl=203"
+        "zscale=t=arib-std-b67:tin=iec61966-2-1"
+        ":p=bt2020:pin=bt709"
+        ":m=bt2020nc:min=bt709"
+        ":npl=203:agamma=false"
         ",format=yuv420p10le"
     )
 
