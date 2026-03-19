@@ -165,3 +165,22 @@ Quicksand — Andrew Paglinawan
 
 All fonts licensed under SIL Open Font License 1.1
 Served via Fontsource CDN (https://fontsource.org/, MIT license)
+
+
+Test Fixtures (tests/fixtures/hdr_samples/)
+-------------------------------------------
+
+Awesome-Gain-Maps (UltraHDR JPEG gain map test images)
+  License: MIT
+  Copyright: Nathan Moroney
+  URL: https://github.com/NMoroney/Awesome-Gain-Maps
+
+Jellyfin Test Videos (HDR10 + Dolby Vision test clips)
+  License: CC BY-SA
+  Copyright: Jellyfin Contributors
+  URL: https://repo.jellyfin.org/test-videos/
+
+FFmpeg FATE Suite (HDR10+, HDR Vivid, Dolby Vision bitstreams)
+  License: Permissive (test data)
+  Copyright: FFmpeg project
+  URL: http://fate-suite.ffmpeg.org/hevc/
