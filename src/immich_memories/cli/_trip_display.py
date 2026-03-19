@@ -48,11 +48,13 @@ def select_trips(
     trips: list[DetectedTrip],
     trip_index: int | None = None,
     all_trips: bool = False,
+    month: int | None = None,
 ) -> list[DetectedTrip]:
     """Select trips based on CLI flags.
 
     - trip_index: 1-based index to select a single trip
     - all_trips: select all detected trips
+    - month: auto-select trip closest to this month (1-12)
     - Neither: return empty list (discovery mode, just show the table)
     """
     if all_trips:
@@ -63,6 +65,20 @@ def select_trips(
             msg = f"Trip index {trip_index} out of range (1-{len(trips)})"
             raise ValueError(msg)
         return [trips[trip_index - 1]]
+
+    if month is not None and trips:
+        # WHY: pick the trip whose midpoint is closest to the 15th of the given month
+        from datetime import date as date_cls
+
+        target_year = trips[0].start_date.year
+        target_day = date_cls(target_year, month, 15)
+
+        def distance_to_month(trip: DetectedTrip) -> int:
+            midpoint = trip.start_date + (trip.end_date - trip.start_date) / 2
+            return abs((midpoint - target_day).days)
+
+        closest = min(trips, key=distance_to_month)
+        return [closest]
 
     return []
 
