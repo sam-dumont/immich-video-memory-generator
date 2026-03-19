@@ -303,10 +303,10 @@ jobs:
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
         with:
-          # Fresh unit coverage (root) + all committed per-suite integration XMLs (tests/)
-          # Uses directory search so new integration suites are picked up automatically
+          # Only upload fresh CI-generated unit test coverage
+          # Integration coverage XMLs are committed locally for diff-cover only —
+          # their timestamps are stale and Codecov rejects files >12h old
           files: coverage.xml
-          directory: tests
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
