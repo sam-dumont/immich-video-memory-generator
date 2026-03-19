@@ -130,3 +130,58 @@ class TestPrivacyAudioMuffle:
         # Should keep real audio when privacy is off
         assert "[0:a]" in filter_parts[0]
         assert "lowpass" not in filter_parts[0]
+
+
+class TestPrivacyGpsAnonymization:
+    """GPS coordinates must be randomized in privacy mode."""
+
+    def test_clip_gps_randomized(self):
+        """AssemblyClip lat/lon must not match original when privacy mode on."""
+        from immich_memories.generate import _anonymize_clips_for_privacy
+
+        clips = [
+            AssemblyClip(
+                path=Path("/tmp/a.mp4"),
+                duration=3.0,
+                latitude=48.8566,
+                longitude=2.3522,
+                location_name="Paris, France",
+            ),
+        ]
+        result = _anonymize_clips_for_privacy(clips)
+        assert result[0].latitude != 48.8566
+        assert result[0].longitude != 2.3522
+        assert result[0].location_name != "Paris, France"
+
+    def test_clip_without_gps_unchanged(self):
+        from immich_memories.generate import _anonymize_clips_for_privacy
+
+        clips = [
+            AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0),
+        ]
+        result = _anonymize_clips_for_privacy(clips)
+        assert result[0].latitude is None
+        assert result[0].longitude is None
+
+
+class TestPrivacyNameAnonymization:
+    """Person names must be replaced with fake names in privacy mode."""
+
+    def test_person_name_anonymized(self):
+        from immich_memories.generate import _anonymize_name
+
+        assert _anonymize_name("TestPerson") != "TestPerson"
+        # Should return a consistent fake name
+        assert _anonymize_name("TestPerson") == _anonymize_name("TestPerson")
+
+    def test_multiple_names_get_different_fakes(self):
+        from immich_memories.generate import _anonymize_name
+
+        fake1 = _anonymize_name("PersonA")
+        fake2 = _anonymize_name("PersonB")
+        assert fake1 != fake2
+
+    def test_none_name_stays_none(self):
+        from immich_memories.generate import _anonymize_name
+
+        assert _anonymize_name(None) is None

@@ -180,7 +180,9 @@ def render_sidebar(current_step: int) -> None:
             ui.element("div").classes("mb-3").style(
                 "height: 1px; background: var(--im-border-light)"
             )
-            _render_demo_toggle(state)
+            config = get_config()
+            if config.server.enable_demo_mode:
+                _render_demo_toggle(state)
             render_theme_toggle()
             _render_auth_controls()
 

@@ -157,6 +157,13 @@ def generate_memory(params: GenerationParams) -> Path:
         if not assembly_clips:
             raise GenerationError("No clips could be processed")
 
+        # Privacy mode: anonymize GPS + names before title/assembly
+        if params.privacy_mode:
+            from dataclasses import replace
+
+            assembly_clips = _anonymize_clips_for_privacy(assembly_clips)
+            params = replace(params, person_name=_anonymize_name(params.person_name))
+
         # Phase 2: Assemble
         _report(params, "assemble", 0.7, "Assembling final video...")
         run_tracker.start_phase("assembly", len(assembly_clips))
@@ -777,6 +784,78 @@ def _extract_trip_locations(assembly_clips: list[AssemblyClip]) -> list[tuple[fl
                 seen.add(key)
                 locations.append((clip.latitude, clip.longitude))
     return locations
+
+
+_PRIVACY_FAKE_NAMES = [
+    "Alice",
+    "Bob",
+    "Charlie",
+    "Diana",
+    "Eve",
+    "Frank",
+    "Grace",
+    "Hank",
+    "Iris",
+    "Jack",
+    "Kim",
+    "Leo",
+]
+_PRIVACY_FAKE_CITIES = [
+    "Pleasantville",
+    "Lakeside",
+    "Greenfield",
+    "Maplewood",
+    "Riverside",
+    "Hillcrest",
+    "Sunnyvale",
+    "Fairview",
+]
+
+
+def _anonymize_name(name: str | None) -> str | None:
+    """Replace a real name with a consistent fake name."""
+    if name is None:
+        return None
+    # WHY: deterministic mapping — same input always gets same fake name
+    idx = hash(name) % len(_PRIVACY_FAKE_NAMES)
+    return _PRIVACY_FAKE_NAMES[idx]
+
+
+def _anonymize_clips_for_privacy(
+    clips: list[AssemblyClip],
+) -> list[AssemblyClip]:
+    """Randomize GPS coords and anonymize location names on clips."""
+    import random
+
+    # WHY: seeded RNG for deterministic offsets within a single run
+    rng = random.Random(42)
+    result = []
+    for clip in clips:
+        if clip.latitude is not None and clip.longitude is not None:
+            # Offset by ±2-5 degrees — enough to be a different city/country
+            lat_offset = rng.uniform(2.0, 5.0) * rng.choice([-1, 1])
+            lon_offset = rng.uniform(2.0, 5.0) * rng.choice([-1, 1])
+            new_lat = max(-90, min(90, clip.latitude + lat_offset))
+            new_lon = ((clip.longitude + lon_offset + 180) % 360) - 180
+
+            city_idx = rng.randint(0, len(_PRIVACY_FAKE_CITIES) - 1)
+            new_name = _PRIVACY_FAKE_CITIES[city_idx]
+
+            clip = AssemblyClip(
+                path=clip.path,
+                duration=clip.duration,
+                date=clip.date,
+                asset_id=clip.asset_id,
+                is_title_screen=clip.is_title_screen,
+                rotation_override=clip.rotation_override,
+                latitude=new_lat,
+                longitude=new_lon,
+                location_name=new_name,
+                has_speech=clip.has_speech,
+                outgoing_transition=clip.outgoing_transition,
+            )
+        result.append(clip)
+    return result
 
 
 def _generate_trip_title_text(preset_params: dict) -> str | None:
