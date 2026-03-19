@@ -147,9 +147,9 @@ class FilterBuilder:
         filter_parts: list[str] = []
         audio_labels: list[str] = []
 
-        # WHY: lowpass at 400Hz keeps bass rumble/cadence but cuts consonants
-        # that make speech intelligible — sounds like voices through a wall
-        privacy_muffle = ",lowpass=f=400" if self.settings.privacy_mode else ""
+        # WHY: lowpass at 200Hz keeps only deep bass rumble — all speech
+        # intelligibility is above 300Hz so this makes words fully unintelligible
+        privacy_muffle = ",lowpass=f=200" if self.settings.privacy_mode else ""
 
         for i, clip in enumerate(clips):
             clip_loudnorm = loudnorm if not clip.is_title_screen else ""
