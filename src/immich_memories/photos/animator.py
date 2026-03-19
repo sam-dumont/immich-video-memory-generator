@@ -398,6 +398,7 @@ class PhotoAnimator:
         asset_id: str = "",
         hdr_type: str | None = None,
         gain_map_hdr: bool = False,
+        fps: int = 30,
     ) -> list[str]:
         """Build FFmpeg command to convert a photo to an animated .mp4 clip.
 
@@ -406,12 +407,12 @@ class PhotoAnimator:
                       with 10-bit color and HDR metadata.
             gain_map_hdr: True when the source is a 16-bit gain-mapped PNG
                           (linear light) that needs zscale PQ transfer.
+            fps: Output frame rate. Matches assembly target fps to avoid re-encoding.
         """
         if mode == AnimationMode.AUTO:
             mode = self.resolve_auto_mode(width, height, face_bbox)
 
         duration = self._config.duration
-        fps = 30
         seed = self._seed_from_id(asset_id)
 
         # Gain-mapped HDR sources are always PQ output

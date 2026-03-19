@@ -54,7 +54,7 @@ class AssemblyContext:
     clip_hdr_types: list[str | None]
     clip_primaries: list[str | None]
     colorspace_filter: str
-    target_fps: int = 60
+    target_fps: int = 30
     fade_duration: float = 0.5
 
 

@@ -79,7 +79,7 @@ class TitleScreenConfig:
     # Output orientation and resolution
     orientation: str = "landscape"  # "landscape", "portrait", or "square"
     resolution: str = "1080p"  # "720p", "1080p", or "4k"
-    fps: float = 60.0  # 60fps for smooth animations (downsample later if needed)
+    fps: float = 30.0  # Matched to assembly target fps by caller; 30 is safe default
 
     # HDR: match source clips. True = HLG bt2020, False = SDR yuv420p.
     hdr: bool = True

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from immich_memories.ui.state import AppState, get_app_state, reset_app_state
+from unittest.mock import MagicMock, patch
+
+from immich_memories.ui.state import AppState, _sessions, get_app_state, reset_app_state
 from tests.conftest import make_clip
 
 
@@ -115,20 +117,32 @@ class TestAppStateGetSelectedClips:
 
 
 class TestAppStateSingleton:
-    """Test global state management."""
+    """Test per-session state management."""
+
+    def setup_method(self):
+        _sessions.clear()
+
+    def teardown_method(self):
+        _sessions.clear()
 
     def test_get_returns_same_instance(self):
         """get_app_state() returns the same instance on repeated calls."""
-        reset_app_state()
-        s1 = get_app_state()
-        s2 = get_app_state()
+        mock_app = MagicMock()
+        mock_app.storage.user = {}
+        with patch("nicegui.app", mock_app):  # WHY: no real NiceGUI server in unit tests
+            reset_app_state()
+            s1 = get_app_state()
+            s2 = get_app_state()
         assert s1 is s2
 
     def test_reset_creates_new_instance(self):
         """reset_app_state() creates a fresh AppState."""
-        s1 = get_app_state()
-        s1.step = 3
-        s2 = reset_app_state()
+        mock_app = MagicMock()
+        mock_app.storage.user = {}
+        with patch("nicegui.app", mock_app):  # WHY: no real NiceGUI server in unit tests
+            s1 = get_app_state()
+            s1.step = 3
+            s2 = reset_app_state()
         assert s2.step == 1
         assert s1 is not s2
 

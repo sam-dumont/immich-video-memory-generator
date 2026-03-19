@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import os
@@ -18,11 +19,18 @@ configure_logging()
 import httpx
 from nicegui import app, ui
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 
 from immich_memories import __version__
 from immich_memories.config import get_config, init_config_dir
-from immich_memories.ui.state import get_app_state
+from immich_memories.ui.auth import (
+    clear_session,
+    is_auth_enabled,
+    is_bypass_path,
+    is_trusted_proxy,
+    set_session,
+)
+from immich_memories.ui.state import ensure_config, get_app_state
 from immich_memories.ui.theme import apply_theme, render_theme_toggle
 
 logger = logging.getLogger(__name__)
@@ -84,6 +92,23 @@ def _render_demo_toggle(state) -> None:
         ui.label("Demo mode").classes("text-xs").style("color: var(--im-text-secondary)")
 
 
+def _render_auth_controls() -> None:
+    """Render username badge and sign-out button when auth is enabled."""
+    config = get_config()
+    if not is_auth_enabled(config.auth):
+        return
+    username = app.storage.user.get("username", "")
+    if username:
+        with ui.row().classes("items-center gap-2 mt-2"):
+            ui.icon("person").classes("text-sm").style("color: var(--im-text-secondary)")
+            ui.label(username).classes("text-xs").style("color: var(--im-text-secondary)")
+    ui.button(
+        "Sign out",
+        icon="logout",
+        on_click=lambda: ui.navigate.to("/logout"),
+    ).props("flat dense no-caps size=sm").classes("w-full").style("color: var(--im-text-secondary)")
+
+
 def render_step_indicator(current_step: int) -> None:  # noqa: ARG001
     """Step indicator — removed in favor of sidebar navigation.
 
@@ -95,6 +120,9 @@ def render_step_indicator(current_step: int) -> None:  # noqa: ARG001
 def render_sidebar(current_step: int) -> None:
     """Render Immich-style sidebar navigation."""
     state = get_app_state()
+    # WHY: ensure_config lazily loads config into per-session state on first page load.
+    # Doing it here means every page gets it automatically.
+    ensure_config(state)
 
     with ui.left_drawer(value=True).classes("p-0"):
         # Branding
@@ -154,6 +182,7 @@ def render_sidebar(current_step: int) -> None:
             )
             _render_demo_toggle(state)
             render_theme_toggle()
+            _render_auth_controls()
 
 
 def page_header(title: str, step: int) -> None:
@@ -298,23 +327,149 @@ app.add_api_route("/health", _health_handler, methods=["GET"])
 
 
 # ============================================================================
+# Auth: Middleware + Routes
+# ============================================================================
+
+
+@app.middleware("http")
+async def _auth_middleware(request: Request, call_next):
+    """Provider-agnostic auth check using NiceGUI's app.storage.user.
+
+    WHY @app.middleware('http') not BaseHTTPMiddleware:
+    BaseHTTPMiddleware breaks NiceGUI websockets. NiceGUI's middleware
+    decorator only runs on HTTP requests and has access to app.storage.user.
+    """
+    config = get_config()
+    if not is_auth_enabled(config.auth):
+        return await call_next(request)
+
+    if is_bypass_path(request.url.path):
+        return await call_next(request)
+
+    # Header auth: auto-session from trusted proxy
+    if config.auth.provider == "header":
+        client_ip = request.client.host if request.client else ""
+        if is_trusted_proxy(client_ip, config.auth.trusted_proxies):
+            user = request.headers.get(config.auth.user_header, "")
+            if user and not app.storage.user.get("authenticated"):
+                email = request.headers.get(config.auth.email_header, "")
+                set_session(app.storage.user, username=user, provider="header", email=email)
+
+    if not app.storage.user.get("authenticated"):
+        return RedirectResponse("/login", status_code=307)
+
+    # Session TTL check
+    from datetime import UTC, datetime, timedelta
+
+    authenticated_at_str = app.storage.user.get("authenticated_at")
+    if authenticated_at_str:
+        authenticated_at = datetime.fromisoformat(authenticated_at_str)
+        if datetime.now(UTC) > authenticated_at + timedelta(hours=config.auth.session_ttl_hours):
+            clear_session(app.storage.user)
+            return RedirectResponse("/login", status_code=307)
+
+    return await call_next(request)
+
+
+@ui.page("/login")
+def login_page_route() -> None:
+    """Login page."""
+    from immich_memories.ui.pages.login import render_login_page
+
+    config = get_config()
+    if config.auth.enabled and config.auth.provider == "oidc" and config.auth.auto_launch:
+        ui.navigate.to("/auth/authorize")
+        return
+    render_login_page(config.auth)
+
+
+async def _logout_handler(request: Request) -> RedirectResponse:  # noqa: ARG001
+    """Clear session and redirect to login."""
+    from immich_memories.ui.state import remove_session
+
+    config = get_config()
+    session_id = app.storage.user.get("session_id")
+    auth_provider = app.storage.user.get("auth_provider")
+    if session_id:
+        remove_session(session_id)
+    clear_session(app.storage.user)
+
+    # WHY: OIDC providers may have an end_session_endpoint for full sign-out.
+    if auth_provider == config.auth.provider == "oidc":
+        from immich_memories.ui.auth_oidc import get_end_session_url
+
+        end_session = get_end_session_url(config.auth)
+        if end_session:
+            return RedirectResponse(end_session)
+
+    return RedirectResponse("/login", status_code=307)
+
+
+app.add_api_route("/logout", _logout_handler, methods=["GET"])
+
+
+async def _oidc_authorize(request: Request) -> RedirectResponse:
+    """Redirect to OIDC provider's authorization endpoint."""
+    config = get_config()
+    if config.auth.provider != "oidc":
+        return RedirectResponse("/login")
+    from immich_memories.ui.auth_oidc import create_oidc_client
+
+    oauth = create_oidc_client(config.auth)
+    redirect_uri = str(request.url_for("_oidc_callback"))
+    return await oauth.oidc.authorize_redirect(request, redirect_uri)  # type: ignore[return-value]
+
+
+async def _oidc_callback(request: Request) -> RedirectResponse:
+    """Handle OIDC callback — exchange code for tokens and create session."""
+    config = get_config()
+    from immich_memories.ui.auth_oidc import create_oidc_client, extract_user_from_token
+
+    oauth = create_oidc_client(config.auth)
+    # WHY: authlib uses request.session for OIDC state/PKCE internally.
+    # Our auth session goes in app.storage.user (NiceGUI's store).
+    token = await oauth.oidc.authorize_access_token(request)
+    username, email = extract_user_from_token(token)
+    set_session(app.storage.user, username=username, provider="oidc", email=email)
+    return RedirectResponse("/")
+
+
+app.add_api_route("/auth/authorize", _oidc_authorize, methods=["GET"])
+app.add_api_route("/auth/callback", _oidc_callback, methods=["GET"])
+
+
+# ============================================================================
 # App Startup / Shutdown
 # ============================================================================
 
 
 def initialize_app() -> None:
-    """Initialize the application on startup."""
+    """Initialize shared resources on startup."""
     init_config_dir()
-    state = get_app_state()
     config = get_config(reload=True)
-    state.config = config
-    state.immich_url = config.immich.url
-    state.immich_api_key = config.immich.api_key
-    state.include_live_photos = config.analysis.include_live_photos
-    logger.info("Application initialized")
+    logger.info(
+        "Application initialized (auth=%s)",
+        "enabled" if config.auth.enabled else "disabled",
+    )
 
 
 app.on_startup(initialize_app)
+
+
+async def _session_cleanup_loop() -> None:
+    """Periodically clean up stale sessions."""
+    from immich_memories.ui.state import cleanup_stale_sessions
+
+    while True:
+        await asyncio.sleep(900)  # 15 minutes
+        cleanup_stale_sessions()
+
+
+def _start_cleanup_task() -> None:
+    asyncio.ensure_future(_session_cleanup_loop())
+
+
+app.on_startup(_start_cleanup_task)
 
 
 def _shutdown_app() -> None:

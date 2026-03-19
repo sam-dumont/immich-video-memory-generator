@@ -93,7 +93,7 @@ def create_assembly_context(
         if settings.preserve_hdr
         else "yuv420p"
     )
-    target_fps = 60
+    target_fps = prober.detect_max_framerate(clips)
     hdr_type = _get_dominant_hdr_type(clips) if settings.preserve_hdr else "hlg"
 
     clip_hdr_types = _get_clip_hdr_types(clips) if settings.preserve_hdr else [None] * len(clips)
@@ -295,12 +295,7 @@ class AssemblyEngine:
             raise ValueError("No clips to assemble")
         target_w, target_h = resolve_target_resolution(self.settings, self.prober, clips)
         ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
-        if self.settings.target_framerate:
-            out_fps = self.settings.target_framerate
-        elif self.settings.preserve_framerate:
-            out_fps = self.prober.detect_max_framerate(clips)
-        else:
-            out_fps = 30
+        out_fps = self.settings.target_framerate or self.prober.detect_max_framerate(clips)
         logger.info(f"Cuts assembly: {len(clips)} clips, {target_w}x{target_h} @ {out_fps}fps")
         input_args: list[str] = []
         for clip in clips:

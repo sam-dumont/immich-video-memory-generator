@@ -218,11 +218,14 @@ src/immich_memories/
 │
 ├── ui/                         # NiceGUI web interface
 │   ├── app.py                  # App setup & routing
+│   ├── auth.py                 # Auth middleware, credential verification, session helpers
+│   ├── auth_oidc.py            # OIDC client (authlib starlette integration, singleton)
 │   ├── state.py                # Shared UI state
 │   ├── theme.py                # UI theme
 │   ├── components.py           # Shared UI components
 │   ├── filename_builder.py     # Output filename generation
 │   └── pages/
+│       ├── login.py                # Login page (basic form + OIDC SSO button)
 │       ├── step1_config.py         # Connection & time period config
 │       ├── step1_cache.py          # Cache management UI
 │       ├── step1_presets.py        # Memory preset selection

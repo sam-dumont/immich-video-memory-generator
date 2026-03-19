@@ -37,6 +37,7 @@ from immich_memories.config_models import (
     TripsConfig,
     UploadConfig,
 )
+from immich_memories.config_models_auth import AuthConfig
 from immich_memories.scheduling.models import SchedulerConfig
 
 # Tier 2 sections — grouped under `advanced:` in YAML, flat on Config at runtime.
@@ -50,6 +51,7 @@ _TIER2_SECTIONS = frozenset(
         "content_analysis",
         "audio_content",
         "server",
+        "auth",
     }
 )
 
@@ -96,6 +98,7 @@ class Config(BaseSettings):
     scoring_priority: ScoringPriorityConfig = Field(default_factory=ScoringPriorityConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     trips: TripsConfig = Field(default_factory=TripsConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
 
     @classmethod
     def from_yaml(cls, path: Path) -> Config:
@@ -173,6 +176,15 @@ def _apply_env_overrides(config: Config) -> None:
         config.ace_step.mode = ace_step_mode  # type: ignore[assignment]
     if ace_step_url := os.environ.get("ACE_STEP_API_URL"):
         config.ace_step.api_url = ace_step_url
+
+    # Auth shortcut: set both USERNAME + PASSWORD to auto-enable basic auth
+    if (auth_user := os.environ.get("IMMICH_MEMORIES_AUTH_USERNAME")) and (
+        auth_pass := os.environ.get("IMMICH_MEMORIES_AUTH_PASSWORD")
+    ):
+        config.auth.enabled = True
+        config.auth.provider = "basic"
+        config.auth.username = auth_user
+        config.auth.password = auth_pass
 
 
 def get_config(reload: bool = False) -> Config:

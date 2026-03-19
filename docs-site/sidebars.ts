@@ -49,6 +49,7 @@ const sidebars: SidebarsConfig = {
         'configuration/config-file',
         'configuration/env-variables',
         'configuration/time-periods',
+        'configuration/authentication',
       ],
     },
     {

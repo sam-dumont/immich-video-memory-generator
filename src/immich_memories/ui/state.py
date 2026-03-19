@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from immich_memories.api.models import Person, VideoClipInfo
@@ -107,6 +108,9 @@ class AppState:
     # Duplicate tracking
     _duplicates_processed: bool = False
 
+    # Session tracking
+    last_accessed: datetime | None = None
+
     # Caches (initialized at runtime)
     thumbnail_cache: ThumbnailCache | None = None
     analysis_cache: Any = None  # AnalysisCache
@@ -126,21 +130,64 @@ class AppState:
         return [c for c in self.clips if c.asset.id in self.selected_clip_ids]
 
 
-# Global state instance - shared across all pages
-# This is created once when the app starts
-_app_state: AppState | None = None
+# Session store: maps session_id → AppState
+_sessions: dict[str, AppState] = {}
+_MAX_SESSIONS = 20
+_SESSION_TIMEOUT_HOURS = 2
 
 
 def get_app_state() -> AppState:
-    """Get the global application state instance."""
-    global _app_state
-    if _app_state is None:
-        _app_state = AppState()
-    return _app_state
+    """Get the AppState for the current browser session."""
+    from nicegui import app
+
+    session_id = app.storage.user.get("session_id")
+    if session_id and session_id in _sessions:
+        _sessions[session_id].last_accessed = datetime.now()
+        return _sessions[session_id]
+
+    session_id = str(uuid4())
+    app.storage.user["session_id"] = session_id
+    state = AppState()
+    state.last_accessed = datetime.now()
+    _sessions[session_id] = state
+    return state
+
+
+def cleanup_stale_sessions(max_age_hours: int = _SESSION_TIMEOUT_HOURS) -> None:
+    """Remove sessions idle for longer than max_age_hours. Cap at _MAX_SESSIONS."""
+    cutoff = datetime.now() - timedelta(hours=max_age_hours)
+    stale = [sid for sid, s in _sessions.items() if s.last_accessed and s.last_accessed < cutoff]
+    for sid in stale:
+        del _sessions[sid]
+
+    if len(_sessions) > _MAX_SESSIONS:
+        by_age = sorted(_sessions.items(), key=lambda x: x[1].last_accessed or datetime.min)
+        for sid, _ in by_age[: len(_sessions) - _MAX_SESSIONS]:
+            del _sessions[sid]
+
+
+def remove_session(session_id: str) -> None:
+    """Remove a specific session (used by logout)."""
+    _sessions.pop(session_id, None)
 
 
 def reset_app_state() -> AppState:
-    """Reset the global application state to defaults."""
-    global _app_state
-    _app_state = AppState()
-    return _app_state
+    """Reset the current session's AppState."""
+    from nicegui import app
+
+    session_id = app.storage.user.get("session_id")
+    if session_id:
+        _sessions.pop(session_id, None)
+    return get_app_state()
+
+
+def ensure_config(state: AppState) -> None:
+    """Lazy-load config into state on first access per session."""
+    if state.config is None:
+        from immich_memories.config_loader import get_config
+
+        config = get_config()
+        state.config = config
+        state.immich_url = config.immich.url
+        state.immich_api_key = config.immich.api_key
+        state.include_live_photos = config.analysis.include_live_photos

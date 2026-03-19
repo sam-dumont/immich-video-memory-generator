@@ -40,6 +40,7 @@ def render_photo_clips(
     work_dir: Path,
     download_fn: Any,
     video_clip_count: int = 0,
+    fps: int = 30,
 ) -> list[AssemblyClip]:
     """Convert photo assets to animated video clips for assembly.
 
@@ -72,7 +73,7 @@ def render_photo_clips(
     clips: list[AssemblyClip] = []
     for i, (asset, score) in enumerate(scored):
         logger.info(f"Rendering photo {i + 1}/{len(scored)}: {asset.id[:8]}... (score={score:.2f})")
-        clip = _render_single_photo(asset, config, target_w, target_h, work_dir, download_fn)
+        clip = _render_single_photo(asset, config, target_w, target_h, work_dir, download_fn, fps)
         if clip:
             clips.append(clip)
 
@@ -205,6 +206,7 @@ def _render_single_photo(
     target_h: int,
     work_dir: Path,
     download_fn: Any,
+    fps: int = 30,
 ) -> AssemblyClip | None:
     """Download, prepare, render (streaming), and encode a single photo."""
     try:
@@ -240,7 +242,7 @@ def _render_single_photo(
             zoom_end=1.0 + rng.uniform(0.05, 0.12),
             pan_start=(rng.uniform(0.3, 0.7), rng.uniform(0.3, 0.7)),
             pan_end=face_target,
-            fps=60,
+            fps=fps,
             duration=config.duration,
         )
 
