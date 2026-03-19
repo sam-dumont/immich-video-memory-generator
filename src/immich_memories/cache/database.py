@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Current schema version - increment when schema changes
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 class VideoAnalysisCache:
@@ -90,6 +90,7 @@ class VideoAnalysisCache:
             4: self._migration_v4_run_tracking,
             5: self._migration_v5_add_rotation,
             6: self._migration_v6_add_llm_and_audio,
+            7: self._migration_v7_asset_scores,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):
@@ -305,6 +306,111 @@ class VideoAnalysisCache:
                 f"ALTER TABLE video_segments ADD COLUMN {col_name} {col_type}"
             )  # nosemgrep: sqlalchemy-execute-raw-query — col_name/col_type are hardcoded above
         logger.info("Added LLM and audio_categories columns to video_segments")
+
+    def _migration_v7_asset_scores(self, conn: sqlite3.Connection) -> None:
+        """Add asset_scores table for cache-first LLM scoring."""
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS asset_scores (
+                asset_id TEXT PRIMARY KEY,
+                asset_type TEXT NOT NULL,
+                llm_interest REAL,
+                llm_quality REAL,
+                llm_emotion TEXT,
+                llm_description TEXT,
+                metadata_score REAL NOT NULL,
+                combined_score REAL NOT NULL,
+                analyzed_at TEXT NOT NULL DEFAULT (datetime('now')),
+                model_version TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_asset_scores_type
+                ON asset_scores(asset_type);
+            CREATE INDEX IF NOT EXISTS idx_asset_scores_combined
+                ON asset_scores(combined_score DESC);
+        """)
+        logger.info("Created asset_scores table for cache-first scoring")
+
+    # =========================================================================
+    # Asset Score Cache Methods
+    # =========================================================================
+
+    def get_asset_score(self, asset_id: str) -> dict | None:
+        """Look up cached score for an asset. Returns None if not cached."""
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM asset_scores WHERE asset_id = ?", (asset_id,)
+            ).fetchone()
+            if row:
+                return dict(row)
+        return None
+
+    def get_asset_scores_batch(self, asset_ids: list[str]) -> dict[str, dict]:
+        """Look up cached scores for multiple assets at once."""
+        if not asset_ids:
+            return {}
+        with self._get_connection() as conn:
+            placeholders = ",".join("?" * len(asset_ids))
+            rows = conn.execute(
+                f"SELECT * FROM asset_scores WHERE asset_id IN ({placeholders})",  # noqa: S608
+                asset_ids,
+            ).fetchall()
+            return {row["asset_id"]: dict(row) for row in rows}
+
+    def save_asset_score(
+        self,
+        asset_id: str,
+        asset_type: str,
+        metadata_score: float,
+        combined_score: float,
+        llm_interest: float | None = None,
+        llm_quality: float | None = None,
+        llm_emotion: str | None = None,
+        llm_description: str | None = None,
+        model_version: str | None = None,
+    ) -> None:
+        """Save or update a cached asset score."""
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO asset_scores (
+                    asset_id, asset_type, metadata_score, combined_score,
+                    llm_interest, llm_quality, llm_emotion, llm_description,
+                    analyzed_at, model_version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+                """,
+                (
+                    asset_id,
+                    asset_type,
+                    metadata_score,
+                    combined_score,
+                    llm_interest,
+                    llm_quality,
+                    llm_emotion,
+                    llm_description,
+                    model_version,
+                ),
+            )
+            conn.commit()
+
+    def get_cache_stats(self) -> dict:
+        """Get cache statistics for the `cache stats` CLI command."""
+        with self._get_connection() as conn:
+            total = conn.execute("SELECT COUNT(*) FROM asset_scores").fetchone()[0]
+            by_type = conn.execute(
+                "SELECT asset_type, COUNT(*) as cnt FROM asset_scores GROUP BY asset_type"
+            ).fetchall()
+            oldest = conn.execute("SELECT MIN(analyzed_at) FROM asset_scores").fetchone()[0]
+            newest = conn.execute("SELECT MAX(analyzed_at) FROM asset_scores").fetchone()[0]
+            with_llm = conn.execute(
+                "SELECT COUNT(*) FROM asset_scores WHERE llm_interest IS NOT NULL"
+            ).fetchone()[0]
+        return {
+            "total": total,
+            "by_type": {row["asset_type"]: row["cnt"] for row in by_type},
+            "with_llm": with_llm,
+            "oldest": oldest,
+            "newest": newest,
+        }
 
     # =========================================================================
     # Quick Video Metadata Methods
