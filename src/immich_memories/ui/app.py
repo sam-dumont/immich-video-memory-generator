@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import os
@@ -18,11 +19,17 @@ configure_logging()
 import httpx
 from nicegui import app, ui
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 
 from immich_memories import __version__
 from immich_memories.config import get_config, init_config_dir
-from immich_memories.ui.state import get_app_state
+from immich_memories.ui.auth import (
+    clear_session,
+    create_auth_middleware,
+    is_auth_enabled,
+    set_session,
+)
+from immich_memories.ui.state import ensure_config, get_app_state
 from immich_memories.ui.theme import apply_theme, render_theme_toggle
 
 logger = logging.getLogger(__name__)
@@ -84,6 +91,23 @@ def _render_demo_toggle(state) -> None:
         ui.label("Demo mode").classes("text-xs").style("color: var(--im-text-secondary)")
 
 
+def _render_auth_controls() -> None:
+    """Render username badge and sign-out button when auth is enabled."""
+    config = get_config()
+    if not is_auth_enabled(config.auth):
+        return
+    username = app.storage.user.get("username", "")
+    if username:
+        with ui.row().classes("items-center gap-2 mt-2"):
+            ui.icon("person").classes("text-sm").style("color: var(--im-text-secondary)")
+            ui.label(username).classes("text-xs").style("color: var(--im-text-secondary)")
+    ui.button(
+        "Sign out",
+        icon="logout",
+        on_click=lambda: ui.navigate.to("/logout"),
+    ).props("flat dense no-caps size=sm").classes("w-full").style("color: var(--im-text-secondary)")
+
+
 def render_step_indicator(current_step: int) -> None:  # noqa: ARG001
     """Step indicator — removed in favor of sidebar navigation.
 
@@ -95,6 +119,9 @@ def render_step_indicator(current_step: int) -> None:  # noqa: ARG001
 def render_sidebar(current_step: int) -> None:
     """Render Immich-style sidebar navigation."""
     state = get_app_state()
+    # WHY: ensure_config lazily loads config into per-session state on first page load.
+    # Doing it here means every page gets it automatically.
+    ensure_config(state)
 
     with ui.left_drawer(value=True).classes("p-0"):
         # Branding
@@ -154,6 +181,7 @@ def render_sidebar(current_step: int) -> None:
             )
             _render_demo_toggle(state)
             render_theme_toggle()
+            _render_auth_controls()
 
 
 def page_header(title: str, step: int) -> None:
@@ -298,23 +326,117 @@ app.add_api_route("/health", _health_handler, methods=["GET"])
 
 
 # ============================================================================
+# Auth: Middleware + Routes
+# ============================================================================
+
+
+def _register_auth_middleware() -> None:
+    """Register auth middleware if authentication is configured."""
+    config = get_config()
+    if is_auth_enabled(config.auth):
+        app.add_middleware(create_auth_middleware(config.auth))
+
+
+_register_auth_middleware()
+
+
+@ui.page("/login")
+def login_page_route() -> None:
+    """Login page."""
+    from immich_memories.ui.pages.login import render_login_page
+
+    config = get_config()
+    if config.auth.enabled and config.auth.provider == "oidc" and config.auth.auto_launch:
+        ui.navigate.to("/auth/authorize")
+        return
+    render_login_page(config.auth)
+
+
+async def _logout_handler(request: Request) -> RedirectResponse:
+    """Clear session and redirect to login."""
+    from immich_memories.ui.state import remove_session
+
+    config = get_config()
+    session_id = request.session.get("session_id")
+    auth_provider = request.session.get("auth_provider")
+    if session_id:
+        remove_session(session_id)
+    clear_session(request.session)
+
+    # WHY: OIDC providers may have an end_session_endpoint for full sign-out.
+    if auth_provider == config.auth.provider == "oidc":
+        from immich_memories.ui.auth_oidc import get_end_session_url
+
+        end_session = get_end_session_url(config.auth)
+        if end_session:
+            return RedirectResponse(end_session)
+
+    return RedirectResponse("/login", status_code=307)
+
+
+app.add_api_route("/logout", _logout_handler, methods=["GET"])
+
+
+async def _oidc_authorize(request: Request) -> RedirectResponse:
+    """Redirect to OIDC provider's authorization endpoint."""
+    config = get_config()
+    if config.auth.provider != "oidc":
+        return RedirectResponse("/login")
+    from immich_memories.ui.auth_oidc import create_oidc_client
+
+    oauth = create_oidc_client(config.auth)
+    redirect_uri = str(request.url_for("_oidc_callback"))
+    return await oauth.oidc.authorize_redirect(request, redirect_uri)  # type: ignore[return-value]
+
+
+async def _oidc_callback(request: Request) -> RedirectResponse:
+    """Handle OIDC callback — exchange code for tokens and create session."""
+    config = get_config()
+    from immich_memories.ui.auth_oidc import create_oidc_client, extract_user_from_token
+
+    oauth = create_oidc_client(config.auth)
+    token = await oauth.oidc.authorize_access_token(request)
+    username, email = extract_user_from_token(token)
+    set_session(request.session, username=username, provider="oidc", email=email)
+    return RedirectResponse("/")
+
+
+app.add_api_route("/auth/authorize", _oidc_authorize, methods=["GET"])
+app.add_api_route("/auth/callback", _oidc_callback, methods=["GET"])
+
+
+# ============================================================================
 # App Startup / Shutdown
 # ============================================================================
 
 
 def initialize_app() -> None:
-    """Initialize the application on startup."""
+    """Initialize shared resources on startup."""
     init_config_dir()
-    state = get_app_state()
     config = get_config(reload=True)
-    state.config = config
-    state.immich_url = config.immich.url
-    state.immich_api_key = config.immich.api_key
-    state.include_live_photos = config.analysis.include_live_photos
-    logger.info("Application initialized")
+    logger.info(
+        "Application initialized (auth=%s)",
+        "enabled" if config.auth.enabled else "disabled",
+    )
 
 
 app.on_startup(initialize_app)
+
+
+async def _session_cleanup_loop() -> None:
+    """Periodically clean up stale sessions."""
+    from immich_memories.ui.state import cleanup_stale_sessions
+
+    while True:
+        await asyncio.sleep(900)  # 15 minutes
+        cleanup_stale_sessions()
+
+
+def _start_cleanup_task() -> None:
+    asyncio.ensure_future(_session_cleanup_loop())
+
+
+app.on_startup(_start_cleanup_task)
 
 
 def _shutdown_app() -> None:
