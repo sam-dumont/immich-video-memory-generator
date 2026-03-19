@@ -109,6 +109,32 @@ class TestAsset:
         assert asset.year == 2024
         assert asset.month == 6
 
+    def test_null_dimensions_coerced_to_zero(self):
+        """Immich returns null for width/height on some live photo video components."""
+        asset = Asset(
+            id="live-photo-vid",
+            type=AssetType.VIDEO,
+            width=None,
+            height=None,
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+        assert asset.width == 0
+        assert asset.height == 0
+
+    def test_missing_dimensions_default_to_zero(self):
+        """Missing width/height should also default to 0."""
+        asset = Asset(
+            id="no-dims",
+            type=AssetType.VIDEO,
+            fileCreatedAt=datetime.now(),
+            fileModifiedAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+        assert asset.width == 0
+        assert asset.height == 0
+
 
 class TestAssetFace:
     """Tests for AssetFace model."""

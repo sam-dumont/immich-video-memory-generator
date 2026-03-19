@@ -55,6 +55,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Features',
       items: [
+        'features/clip-selection',
         'features/smart-clip-selection',
         'features/face-aware-cropping',
         'features/duplicate-detection',

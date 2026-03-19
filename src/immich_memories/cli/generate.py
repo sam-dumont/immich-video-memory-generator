@@ -40,6 +40,7 @@ def _run_pipeline_and_generate(
     live_photo_clips: list | None = None,
     photo_assets: list | None = None,
     include_photos: bool = False,
+    analysis_depth: str = "fast",
     client: SyncImmichClient,
     config: Config,
     progress: Progress,
@@ -88,6 +89,7 @@ def _run_pipeline_and_generate(
     pipeline_config = PipelineConfig(
         hdr_only=False,
         prioritize_favorites=True,
+        analysis_depth=analysis_depth,
     )
     target_seconds = duration * 60
     pipeline_config.target_clips = max(
@@ -460,6 +462,12 @@ def register_generate_commands(main: click.Group) -> None:
         help="Duration per photo clip in seconds (default: 4.0)",
     )
     @click.option(
+        "--analysis-depth",
+        type=click.Choice(["fast", "thorough"]),
+        default=None,
+        help="Analysis depth: fast (metadata gap-fill) or thorough (LLM gap-fill)",
+    )
+    @click.option(
         "--trip-index",
         type=int,
         default=None,
@@ -505,6 +513,7 @@ def register_generate_commands(main: click.Group) -> None:
         include_live_photos: bool,
         include_photos: bool,
         photo_duration: float | None,
+        analysis_depth: str | None,
         trip_index: int | None,
         all_trips: bool,
     ) -> None:
@@ -610,6 +619,9 @@ def register_generate_commands(main: click.Group) -> None:
         use_photos = include_photos or config.photos.enabled
         if photo_duration is not None:
             config.photos.duration = photo_duration
+
+        # Analysis depth: CLI override → stored for PipelineConfig
+        effective_analysis_depth = analysis_depth or "fast"
 
         table = _build_params_table(
             config=config,
@@ -764,6 +776,7 @@ def register_generate_commands(main: click.Group) -> None:
                         live_photo_clips=live_photo_clips,
                         photo_assets=fetched_photos if use_photos else None,
                         include_photos=use_photos and bool(fetched_photos),
+                        analysis_depth=effective_analysis_depth,
                         client=client,
                         config=config,
                         progress=progress,

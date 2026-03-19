@@ -683,9 +683,17 @@ class TestLivePhotoFullPipeline:
             pytest.skip("Could not download enough burst video components")
 
         # Merge and verify
-        from immich_memories.processing.live_photo_merger import build_merge_command
+        from immich_memories.processing.live_photo_merger import (
+            build_merge_command,
+            filter_valid_clips,
+        )
 
         trim_points = merge_cluster.trim_points()[: len(clip_paths)]
+        # Filter out clips with no video stream or mismatched orientation
+        clip_paths, trim_points = filter_valid_clips(clip_paths, trim_points)
+        if len(clip_paths) < 2:
+            pytest.skip("Not enough same-orientation clips after filtering")
+
         merged_path = tmp_path / "merged_burst.mp4"
         cmd = build_merge_command(clip_paths, trim_points, merged_path)
 

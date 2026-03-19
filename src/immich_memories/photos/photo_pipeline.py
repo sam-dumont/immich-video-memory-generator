@@ -129,32 +129,73 @@ def _enhance_with_llm(
     work_dir: Path,
     download_fn: Any,
 ) -> list[tuple[Asset, float]]:
-    """Download shortlisted photos and re-score with LLM visual analysis."""
-    from immich_memories.photos.scoring import score_photo_with_llm
+    """Check cache first, then LLM-score uncached photos."""
 
+    cache = _get_score_cache()
+    asset_ids = [a.id for a, _ in scored]
+    cached = cache.get_asset_scores_batch(asset_ids) if cache else {}
+
+    cache_hits = 0
     enhanced: list[tuple[Asset, float]] = []
     for asset, meta_score in scored:
-        # Download if not already cached
-        ext = Path(asset.original_file_name).suffix if asset.original_file_name else ".jpg"
-        raw_path = work_dir / f"{asset.id}{ext}"
-        if not raw_path.exists():
-            try:
-                download_fn(asset.id, raw_path)
-            except Exception:
-                enhanced.append((asset, meta_score))
-                continue
+        # Cache hit — use stored score
+        if asset.id in cached:
+            enhanced.append((asset, cached[asset.id]["combined_score"]))
+            cache_hits += 1
+            continue
 
-        # Prepare (HEIC → JPEG) for LLM analysis
-        try:
-            from immich_memories.photos.animator import prepare_photo_source
+        # Cache miss — download + LLM
+        llm_score = _llm_score_photo(asset, meta_score, config, work_dir, download_fn)
+        enhanced.append((asset, llm_score))
 
-            prepared = prepare_photo_source(raw_path, work_dir)
-            llm_score = score_photo_with_llm(prepared.path, meta_score, config)
-            enhanced.append((asset, llm_score))
-        except Exception:
-            enhanced.append((asset, meta_score))
+        # Store in cache
+        if cache:
+            cache.save_asset_score(
+                asset_id=asset.id,
+                asset_type="photo",
+                metadata_score=meta_score,
+                combined_score=llm_score,
+            )
+
+    if cache_hits:
+        logger.info(f"Photo score cache: {cache_hits} hits, {len(scored) - cache_hits} misses")
 
     return enhanced
+
+
+def _llm_score_photo(
+    asset: Asset, meta_score: float, config: PhotoConfig, work_dir: Path, download_fn: Any
+) -> float:
+    """Download, prepare, and LLM-score a single photo."""
+    from immich_memories.photos.scoring import score_photo_with_llm
+
+    ext = Path(asset.original_file_name).suffix if asset.original_file_name else ".jpg"
+    raw_path = work_dir / f"{asset.id}{ext}"
+    if not raw_path.exists():
+        try:
+            download_fn(asset.id, raw_path)
+        except Exception:
+            return meta_score
+
+    try:
+        from immich_memories.photos.animator import prepare_photo_source
+
+        prepared = prepare_photo_source(raw_path, work_dir)
+        return score_photo_with_llm(prepared.path, meta_score, config)
+    except Exception:
+        return meta_score
+
+
+def _get_score_cache():
+    """Get the analysis cache for score lookups."""
+    try:
+        from immich_memories.cache.database import VideoAnalysisCache
+        from immich_memories.config_loader import get_config
+
+        config = get_config()
+        return VideoAnalysisCache(db_path=config.cache.database_path)
+    except Exception:
+        return None
 
 
 def _render_single_photo(

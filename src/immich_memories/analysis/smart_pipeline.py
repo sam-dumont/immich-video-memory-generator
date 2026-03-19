@@ -78,6 +78,9 @@ class PipelineConfig:
     # Photo ratio cap — max fraction of selected clips that can be photos
     photo_max_ratio: float = 0.50  # 0.50 = at most 50% photos
 
+    # Analysis depth: "fast" = metadata gap-fill, "thorough" = LLM gap-fill
+    analysis_depth: str = "fast"
+
 
 @dataclass
 class PipelineResult:
@@ -306,13 +309,20 @@ class SmartPipeline:
         return gap_fillers
 
     def _phase_filter(self, clips: list[VideoClipInfo]) -> list[VideoClipInfo]:
-        """Phase 2: Prepare clips for analysis.
+        """Phase 2: Select clips for analysis using density-proportional budget.
 
-        Favorites-first pipeline: ALL favorites get analyzed, filters only
-        apply to non-favorites, non-favorites kept for gap-filling.
+        Uses density budget to distribute raw footage quotas across time
+        buckets. Favorites fill first, gap-fillers fill remaining quotas.
+        Analyze-all mode bypasses the budget entirely.
         """
+        from immich_memories.analysis.density_budget import (
+            AssetEntry,
+            compute_density_budget,
+            log_budget_summary,
+        )
+
         self.tracker.start_phase(PipelinePhase.FILTERING, 1)
-        self.tracker.start_item("Preparing analysis candidates")
+        self.tracker.start_item("Computing density budget")
 
         a_config = self._analysis_config
         if a_config is None:
@@ -331,7 +341,7 @@ class SmartPipeline:
                 f"{min_duration:.1f}s minimum"
             )
 
-        # Analyze-all mode: skip smart filtering, send all clips to analysis
+        # Analyze-all mode: skip budget, send everything
         if self.config.analyze_all:
             self._available_non_favorites = []
             self.tracker.complete_item("filters")
@@ -339,41 +349,50 @@ class SmartPipeline:
             logger.info(f"Phase 2: Analyze-all mode — sending all {len(clips)} clips to analysis")
             return clips
 
-        all_favorites = [c for c in clips if c.asset.is_favorite]
-        all_non_favorites = [c for c in clips if not c.asset.is_favorite]
-        logger.info(
-            f"Initial split: {len(all_favorites)} favorites, {len(all_non_favorites)} non-favorites"
+        # Build asset entries for density budget
+        entries = [
+            AssetEntry(
+                asset_id=c.asset.id,
+                asset_type="video",
+                date=c.asset.file_created_at,
+                duration=c.duration_seconds or 5.0,
+                is_favorite=c.asset.is_favorite,
+                width=c.width,
+                height=c.height,
+            )
+            for c in clips
+        ]
+
+        # Compute density budget
+        target_seconds = self.config.target_clips * self.config.avg_clip_duration
+        buckets = compute_density_budget(
+            assets=entries,
+            target_duration_seconds=target_seconds,
         )
 
-        # Apply quality filters to non-favorites only
-        filtered_non_favorites = self._apply_non_favorite_filters(all_non_favorites, all_favorites)
+        raw_budget = (target_seconds - 50) * 2.0
+        log_budget_summary(buckets, raw_budget)
 
-        # Select gap fillers from weeks without favorites
-        gap_fillers = self._select_gap_fillers(all_favorites, filtered_non_favorites)
-
-        # Build final list: ALL favorites + gap fillers
-        selected: list[VideoClipInfo] = []
+        # Collect selected asset IDs from budget
         selected_ids: set[str] = set()
+        for bucket in buckets:
+            selected_ids.update(bucket.favorite_ids)
+            selected_ids.update(bucket.gap_fill_ids)
 
-        for clip in all_favorites:
-            selected.append(clip)
-            selected_ids.add(clip.asset.id)
+        # Build clip lists
+        clip_map = {c.asset.id: c for c in clips}
+        selected = [clip_map[aid] for aid in selected_ids if aid in clip_map]
+        self._available_non_favorites = [c for c in clips if c.asset.id not in selected_ids]
 
-        for clip in gap_fillers:
-            if clip.asset.id not in selected_ids:
-                selected.append(clip)
-                selected_ids.add(clip.asset.id)
-
-        self._available_non_favorites = [
-            c for c in filtered_non_favorites if c.asset.id not in selected_ids
-        ]
+        fav_count = sum(1 for c in selected if c.asset.is_favorite)
+        gap_count = len(selected) - fav_count
 
         self.tracker.complete_item("filters")
         self.tracker.complete_phase()
 
         logger.info(
-            f"Phase 2: Analyzing {len(selected)} clips "
-            f"(ALL {len(all_favorites)} favorites + {len(gap_fillers)} gap-fillers)"
+            f"Phase 2: Density budget selected {len(selected)} clips "
+            f"({fav_count} favorites + {gap_count} gap-fillers)"
         )
 
         return selected

@@ -180,6 +180,16 @@ class Asset(BaseModel):
     def is_live_photo(self) -> bool:
         return self.live_photo_video_id is not None
 
+    # WHY: Immich returns null for width/height on some assets (live photo
+    # video components). Pydantic rejects None for int fields — coerce to 0.
+    @field_validator("width", "height", mode="before")
+    @classmethod
+    def coerce_null_dimensions(cls, v: Any) -> int:
+        """Coerce None dimensions to 0."""
+        if v is None:
+            return 0
+        return int(v)
+
     @field_validator("type", mode="before")
     @classmethod
     def parse_type(cls, v: Any) -> AssetType:
