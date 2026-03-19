@@ -796,6 +796,87 @@ class TestFilterValidClips:
         assert valid_trims == trim_points
 
 
+class TestExtractRotation:
+    """Unit tests for _extract_rotation — parses rotation from ffprobe stream data."""
+
+    def test_returns_rotation_from_tags(self):
+        from immich_memories.processing.live_photo_merger import _extract_rotation
+
+        stream = {"tags": {"rotate": "90"}}
+        assert _extract_rotation(stream) == 90
+
+    def test_returns_rotation_from_display_matrix_side_data(self):
+        from immich_memories.processing.live_photo_merger import _extract_rotation
+
+        stream = {
+            "side_data_list": [
+                {"side_data_type": "Display Matrix", "rotation": -90},
+            ],
+        }
+        assert _extract_rotation(stream) == 90
+
+    def test_returns_zero_when_no_rotation_data(self):
+        from immich_memories.processing.live_photo_merger import _extract_rotation
+
+        assert _extract_rotation({}) == 0
+        assert _extract_rotation({"tags": {}}) == 0
+        assert _extract_rotation({"side_data_list": []}) == 0
+
+
+class TestProbeClipOrientation:
+    """Unit tests for _probe_clip_orientation — probes displayed orientation via ffprobe."""
+
+    def test_landscape_video(self):
+        """1920x1080 with no rotation → landscape."""
+        import json
+        from unittest.mock import patch
+
+        from immich_memories.processing.live_photo_merger import _probe_clip_orientation
+
+        ffprobe_output = json.dumps({"streams": [{"width": 1920, "height": 1080}]})
+        mock_result = type("Result", (), {"stdout": ffprobe_output})()
+
+        # WHY: ffprobe is external binary
+        with patch("subprocess.run", return_value=mock_result):
+            assert _probe_clip_orientation(Path("/tmp/clip.mov")) == "landscape"
+
+    def test_portrait_video_with_90_rotation(self):
+        """1920x1080 stored pixels + 90° rotation → portrait (1080x1920 displayed)."""
+        import json
+        from unittest.mock import patch
+
+        from immich_memories.processing.live_photo_merger import _probe_clip_orientation
+
+        ffprobe_output = json.dumps(
+            {
+                "streams": [
+                    {
+                        "width": 1920,
+                        "height": 1080,
+                        "side_data_list": [
+                            {"side_data_type": "Display Matrix", "rotation": -90},
+                        ],
+                    }
+                ]
+            }
+        )
+        mock_result = type("Result", (), {"stdout": ffprobe_output})()
+
+        # WHY: ffprobe is external binary
+        with patch("subprocess.run", return_value=mock_result):
+            assert _probe_clip_orientation(Path("/tmp/clip.mov")) == "portrait"
+
+    def test_returns_none_when_ffprobe_fails(self):
+        """Should return None when ffprobe raises an exception."""
+        from unittest.mock import patch
+
+        from immich_memories.processing.live_photo_merger import _probe_clip_orientation
+
+        # WHY: ffprobe is external binary
+        with patch("subprocess.run", side_effect=FileNotFoundError("ffprobe not found")):
+            assert _probe_clip_orientation(Path("/tmp/clip.mov")) is None
+
+
 class TestEstimateClipDuration:
     """Detect device-specific clip durations from EXIF make."""
 
