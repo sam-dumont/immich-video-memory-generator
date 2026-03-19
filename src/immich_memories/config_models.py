@@ -154,8 +154,8 @@ class AnalysisConfig(BaseModel):
 
     # Live Photo settings
     include_live_photos: bool = Field(
-        default=False,
-        description="Include Live Photo video clips (opt-in, fetches 3s clips from iPhone Live Photos)",
+        default=True,
+        description="Include Live Photo video clips (3s clips from iPhone Live Photos)",
     )
     live_photo_merge_window_seconds: float = Field(
         default=10.0,
@@ -732,7 +732,7 @@ class ScoringPriorityConfig(BaseModel):
 class PhotoConfig(BaseModel):
     """Photo-to-video animation settings."""
 
-    enabled: bool = Field(default=False, description="Include photos in memory videos")
+    enabled: bool = Field(default=True, description="Include photos in memory videos")
     max_ratio: float = Field(
         default=0.50,
         ge=0.0,
