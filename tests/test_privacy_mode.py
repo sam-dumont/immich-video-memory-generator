@@ -1,4 +1,4 @@
-"""Tests for privacy/demo mode: blur video + mute speech."""
+"""Tests for privacy/demo mode: heavy blur video + muffle audio."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class TestPrivacyModeConfig:
 
 
 class TestPrivacyVideoBlur:
-    """Video filter includes gaussian blur when privacy mode is on."""
+    """Video filter includes strong gaussian blur when privacy mode is on."""
 
     def _make_filter_builder(self, privacy_mode: bool = False):
         """Create a FilterBuilder with mocked dependencies."""
@@ -51,11 +51,12 @@ class TestPrivacyVideoBlur:
         )
         return fb, ctx
 
-    def test_blur_filter_present_when_privacy_on(self):
+    def test_blur_strong_enough_when_privacy_on(self):
+        """Blur must be heavy enough that faces/people are unrecognizable."""
         fb, ctx = self._make_filter_builder(privacy_mode=True)
         clip = AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0)
         result = fb.build_clip_video_filter(0, clip, ctx)
-        assert "gblur=sigma=30" in result
+        assert "gblur=sigma=80" in result
 
     def test_no_blur_when_privacy_off(self):
         fb, ctx = self._make_filter_builder(privacy_mode=False)
@@ -70,9 +71,17 @@ class TestPrivacyVideoBlur:
         result = fb.build_clip_video_filter(0, clip, ctx)
         assert "gblur" not in result
 
+    def test_skip_privacy_blur_prevents_double_blur(self):
+        """Batch merge must not re-blur already-blurred intermediates."""
+        fb, ctx = self._make_filter_builder(privacy_mode=True)
+        # Intermediate batch clip (already blurred in first pass)
+        clip = AssemblyClip(path=Path("/tmp/batch_000.mp4"), duration=10.0)
+        result = fb.build_clip_video_filter(0, clip, ctx, skip_privacy_blur=True)
+        assert "gblur" not in result
 
-class TestPrivacyAudioMute:
-    """Audio is replaced with silence for speech clips in privacy mode."""
+
+class TestPrivacyAudioMuffle:
+    """Privacy mode muffles ALL audio — keeps cadence but makes speech unintelligible."""
 
     def _make_filter_builder(self, privacy_mode: bool = False):
         settings = AssemblySettings(privacy_mode=privacy_mode)
@@ -81,27 +90,38 @@ class TestPrivacyAudioMute:
         face_center_fn = MagicMock(return_value=None)
         return FilterBuilder(settings, prober, face_center_fn)
 
-    def test_speech_clip_muted_when_privacy_on(self):
+    def test_all_clips_muffled_when_privacy_on(self):
+        """ALL clips get muffled audio in privacy mode, not just speech-detected."""
         fb = self._make_filter_builder(privacy_mode=True)
         clips = [
             AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0, has_speech=True),
         ]
         filter_parts, labels = fb.build_audio_prep_filters(clips)
-        # Should use anullsrc (silence) instead of real audio
-        assert "anullsrc" in filter_parts[0]
-        # Should NOT reference the input audio stream
-        assert "[0:a]" not in filter_parts[0]
+        # Should apply lowpass to make speech unintelligible
+        assert "lowpass" in filter_parts[0]
+        # Should keep the audio stream (not silence) so ducking/ambient works
+        assert "[0:a]" in filter_parts[0]
 
-    def test_non_speech_clip_keeps_audio_when_privacy_on(self):
+    def test_non_speech_clip_also_muffled_when_privacy_on(self):
+        """Privacy mode must muffle ALL audio — speech detection is unreliable."""
         fb = self._make_filter_builder(privacy_mode=True)
         clips = [
             AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0, has_speech=False),
         ]
         filter_parts, labels = fb.build_audio_prep_filters(clips)
-        # Should keep real audio (references input stream)
+        assert "lowpass" in filter_parts[0]
         assert "[0:a]" in filter_parts[0]
 
-    def test_speech_clip_keeps_audio_when_privacy_off(self):
+    def test_title_screens_stay_silent_when_privacy_on(self):
+        """Title screens have no audio source — keep anullsrc."""
+        fb = self._make_filter_builder(privacy_mode=True)
+        clips = [
+            AssemblyClip(path=Path("/tmp/title.mp4"), duration=3.0, is_title_screen=True),
+        ]
+        filter_parts, labels = fb.build_audio_prep_filters(clips)
+        assert "anullsrc" in filter_parts[0]
+
+    def test_normal_audio_when_privacy_off(self):
         fb = self._make_filter_builder(privacy_mode=False)
         clips = [
             AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0, has_speech=True),
@@ -109,3 +129,4 @@ class TestPrivacyAudioMute:
         filter_parts, labels = fb.build_audio_prep_filters(clips)
         # Should keep real audio when privacy is off
         assert "[0:a]" in filter_parts[0]
+        assert "lowpass" not in filter_parts[0]

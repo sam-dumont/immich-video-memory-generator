@@ -40,14 +40,16 @@ class FilterBuilder:
         self.prober = prober
         self.face_center_fn = face_center_fn
 
-    def _build_rotation_prefix(self, i: int, clip: AssemblyClip) -> str:
+    def _build_rotation_prefix(
+        self, i: int, clip: AssemblyClip, skip_privacy_blur: bool = False
+    ) -> str:
         """Build rotation and privacy blur filter prefix."""
         rotation_filter = ""
         if clip.rotation_override is not None and clip.rotation_override != 0:
             rotation_filter = _get_rotation_filter(clip.rotation_override) + ","
             logger.info(f"Applying {clip.rotation_override} rotation to clip {i}")
-        if self.settings.privacy_mode and not clip.is_title_screen:
-            rotation_filter += "gblur=sigma=30,"
+        if self.settings.privacy_mode and not clip.is_title_screen and not skip_privacy_blur:
+            rotation_filter += "gblur=sigma=80,"
         return rotation_filter
 
     def _build_hdr_conversion(self, i: int, ctx: AssemblyContext) -> str:
@@ -111,9 +113,10 @@ class FilterBuilder:
         ctx: AssemblyContext,
         output_suffix: str = "scaled",
         use_aspect_ratio_handling: bool = True,
+        skip_privacy_blur: bool = False,
     ) -> str:
         """Build the video filter chain for a single clip."""
-        rotation_filter = self._build_rotation_prefix(i, clip)
+        rotation_filter = self._build_rotation_prefix(i, clip, skip_privacy_blur=skip_privacy_blur)
         hdr_conversion = self._build_hdr_conversion(i, ctx)
 
         if use_aspect_ratio_handling and not clip.is_title_screen:
@@ -144,22 +147,26 @@ class FilterBuilder:
         filter_parts: list[str] = []
         audio_labels: list[str] = []
 
+        # WHY: lowpass at 400Hz keeps bass rumble/cadence but cuts consonants
+        # that make speech intelligible — sounds like voices through a wall
+        privacy_muffle = ",lowpass=f=400" if self.settings.privacy_mode else ""
+
         for i, clip in enumerate(clips):
             clip_loudnorm = loudnorm if not clip.is_title_screen else ""
-            if clip.is_title_screen or (self.settings.privacy_mode and clip.has_speech):
+            if clip.is_title_screen:
                 filter_parts.append(
                     f"anullsrc=r=48000:cl=stereo,atrim=0:{clip.duration},{audio_format}[a{i}prep]"
                 )
             elif use_amix_fallback:
                 filter_parts.append(
                     f"anullsrc=r=48000:cl=stereo,atrim=0:{clip.duration}[a{i}silence];"
-                    f"[{i}:a]{audio_format},asetpts=PTS-STARTPTS{clip_loudnorm}[a{i}src];"
+                    f"[{i}:a]{audio_format},asetpts=PTS-STARTPTS{clip_loudnorm}{privacy_muffle}[a{i}src];"
                     f"[a{i}silence][a{i}src]amix=inputs=2:duration=first:weights='0 1'[a{i}mixed];"
                     f"[a{i}mixed]atrim=0:{clip.duration},asetpts=PTS-STARTPTS[a{i}prep]"
                 )
             else:
                 filter_parts.append(
-                    f"[{i}:a]{audio_format},aresample=async=1,asetpts=PTS-STARTPTS{clip_loudnorm},"
+                    f"[{i}:a]{audio_format},aresample=async=1,asetpts=PTS-STARTPTS{clip_loudnorm}{privacy_muffle},"
                     f"apad=whole_dur={clip.duration},atrim=0:{clip.duration}[a{i}prep]"
                 )
             audio_labels.append(f"[a{i}prep]")

@@ -73,9 +73,10 @@ class ConcatService:
         for batch in batches:
             inputs.extend(["-i", str(batch.path)])
 
+        # WHY: skip_privacy_blur=True — batch intermediates already have blur baked in
         filter_parts: list[str] = [
             self.filter_builder.build_clip_video_filter(
-                i, batch, ctx, use_aspect_ratio_handling=False
+                i, batch, ctx, use_aspect_ratio_handling=False, skip_privacy_blur=True
             )
             for i, batch in enumerate(batches)
         ]
