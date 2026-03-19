@@ -190,10 +190,10 @@ variable "ollama_model" {
 }
 
 # Application Configuration
-variable "target_duration_minutes" {
-  description = "Default video duration in minutes"
+variable "target_duration_seconds" {
+  description = "Default video duration in seconds"
   type        = number
-  default     = 10
+  default     = 600
 }
 
 variable "output_orientation" {

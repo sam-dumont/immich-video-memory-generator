@@ -136,7 +136,7 @@ class RunMetadata:
     person_id: str | None = None
     date_range_start: date | None = None
     date_range_end: date | None = None
-    target_duration_minutes: int = 10
+    target_duration_seconds: int = 600
 
     # Output info
     output_path: str | None = None
@@ -174,7 +174,7 @@ class RunMetadata:
                 self.date_range_start.isoformat() if self.date_range_start else None
             ),
             "date_range_end": (self.date_range_end.isoformat() if self.date_range_end else None),
-            "target_duration_minutes": self.target_duration_minutes,
+            "target_duration_seconds": self.target_duration_seconds,
             "output_path": self.output_path,
             "output_size_bytes": self.output_size_bytes,
             "output_duration_seconds": self.output_duration_seconds,
@@ -206,7 +206,10 @@ class RunMetadata:
             date_range_end=(
                 date.fromisoformat(data["date_range_end"]) if data.get("date_range_end") else None
             ),
-            target_duration_minutes=data.get("target_duration_minutes", 10),
+            target_duration_seconds=data.get(
+                "target_duration_seconds",
+                data.get("target_duration_minutes", 10) * 60,
+            ),
             output_path=data.get("output_path"),
             output_size_bytes=data.get("output_size_bytes", 0),
             output_duration_seconds=data.get("output_duration_seconds", 0.0),

@@ -483,8 +483,8 @@ def _apply_preset_to_state(memory_type: MemoryType) -> None:
         preset = create_preset(memory_type, **params)
         if preset.date_ranges:
             state.date_range = preset.date_ranges[0]
-        if preset.default_duration_minutes:
-            state.target_duration = preset.default_duration_minutes
+        if preset.default_duration_seconds:
+            state.target_duration = int(preset.default_duration_seconds / 60)
         elif preset.date_ranges:
             # Auto-compute duration from date range: ~1 min/month, ~8 min/year
             days = preset.date_ranges[0].days

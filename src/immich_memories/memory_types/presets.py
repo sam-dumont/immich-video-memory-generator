@@ -78,4 +78,4 @@ class MemoryPreset:
     scoring: ScoringProfile
     title_template: str
     subtitle_template: str | None = None
-    default_duration_minutes: int | None = None
+    default_duration_seconds: float | None = None

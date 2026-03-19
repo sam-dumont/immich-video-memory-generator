@@ -108,7 +108,7 @@ module "immich_memories" {
 
 | Name | Description | Type | Default |
 |------|-------------|------|---------|
-| `target_duration_minutes` | Default video duration | `number` | `10` |
+| `target_duration_seconds` | Default video duration in seconds | `number` | `600` |
 | `output_orientation` | Video orientation (landscape, portrait, square) | `string` | `"landscape"` |
 | `output_resolution` | Video resolution (720p, 1080p, 4k) | `string` | `"1080p"` |
 | `hardware_backend` | HW acceleration backend (nvidia, auto, none) | `string` | `"nvidia"` |

@@ -28,11 +28,37 @@ def pytest_runtest_setup(item):
 
 @pytest.hookimpl(trylast=True)
 def pytest_runtest_teardown(item):
-    """Log test duration after completion."""
+    """Log test duration and clean up large temp files."""
     start = _test_start_times.pop(item.nodeid, None)
     if start is not None:
         duration = time.monotonic() - start
         logger.info(f"TIMING: {item.nodeid} — {duration:.1f}s")
+
+    # Clean up large output files from tmp_path to prevent disk bloat
+    # (4K video outputs can be 500MB+ each)
+    tmp_path = item.funcargs.get("tmp_path")
+    if tmp_path and tmp_path.exists():
+        _cleanup_large_files(tmp_path)
+
+
+# Threshold for cleanup: delete files > 10MB after each test
+_CLEANUP_THRESHOLD_BYTES = 10 * 1024 * 1024
+
+
+def _cleanup_large_files(directory: Path) -> None:
+    """Delete files larger than threshold in a directory tree."""
+    cleaned = 0
+    freed = 0
+    for f in directory.rglob("*"):
+        if f.is_file() and f.stat().st_size > _CLEANUP_THRESHOLD_BYTES:
+            size = f.stat().st_size
+            f.unlink()
+            cleaned += 1
+            freed += size
+    if cleaned:
+        logger.info(
+            f"CLEANUP: deleted {cleaned} files ({freed / 1024 / 1024:.0f}MB) from {directory.name}"
+        )
 
 
 def _has_ffmpeg() -> bool:

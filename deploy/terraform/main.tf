@@ -22,7 +22,7 @@ locals {
       api_key = "$${IMMICH_API_KEY}"
     }
     defaults = {
-      target_duration_minutes = var.target_duration_minutes
+      target_duration_seconds = var.target_duration_seconds
       output_orientation      = var.output_orientation
       scale_mode              = "smart_crop"
       transition              = "crossfade"

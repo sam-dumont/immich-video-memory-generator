@@ -130,14 +130,20 @@ def _find_densest_cluster(clips, max_days: int):
     return best
 
 
-def make_immich_client():
-    """Create a SyncImmichClient from the user's config, or skip."""
+def make_immich_client(target_duration_seconds: float = 60.0):
+    """Create a SyncImmichClient + config from user's config, or skip.
+
+    Caps target_duration_seconds to keep integration tests fast (default 60s).
+    """
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.config_loader import Config
 
     config = Config.from_yaml(Config.get_default_path())
     if not config.immich.url or not config.immich.api_key:
         pytest.skip("Immich not configured")
+
+    # Cap duration so tests don't generate 3+ minute videos
+    config.defaults.target_duration_seconds = target_duration_seconds
 
     client = SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
 

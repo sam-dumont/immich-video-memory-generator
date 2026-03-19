@@ -52,7 +52,7 @@ class RunTracker:
         person_name: str | None = None,
         person_id: str | None = None,
         date_range: DateRange | None = None,
-        target_duration_minutes: int = 10,
+        target_duration_seconds: int = 600,
     ) -> str:
         """Start tracking a new run.
 
@@ -60,7 +60,7 @@ class RunTracker:
             person_name: Name of person (if filtering by person).
             person_id: ID of person (if filtering by person).
             date_range: Date range for the run.
-            target_duration_minutes: Target video duration.
+            target_duration_seconds: Target video duration in seconds.
 
         Returns:
             The run ID.
@@ -80,7 +80,7 @@ class RunTracker:
             person_id=person_id,
             date_range_start=date_range.start.date() if date_range else None,
             date_range_end=date_range.end.date() if date_range else None,
-            target_duration_minutes=target_duration_minutes,
+            target_duration_seconds=target_duration_seconds,
             system_info=system_info,
         )
 

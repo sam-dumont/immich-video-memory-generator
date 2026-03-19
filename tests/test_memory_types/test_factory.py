@@ -132,7 +132,7 @@ class TestCreatePresetMonthlyHighlights:
 
     def test_shorter_default_duration(self) -> None:
         preset = create_preset(MemoryType.MONTHLY_HIGHLIGHTS, year=2024, month=7)
-        assert preset.default_duration_minutes == 1
+        assert preset.default_duration_seconds == 60
 
     def test_requires_month(self) -> None:
         with pytest.raises((ValueError, TypeError)):
@@ -164,7 +164,7 @@ class TestCreatePresetOnThisDay:
             MemoryType.ON_THIS_DAY,
             target_date=date(2024, 3, 12),
         )
-        assert preset.default_duration_minutes == 2
+        assert preset.default_duration_seconds == 45
 
 
 class TestListMemoryTypes:
