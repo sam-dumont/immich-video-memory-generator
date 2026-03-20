@@ -9,6 +9,7 @@ Extends the proven photo pipeline pattern (photos/renderer.py + photo_pipeline.p
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import subprocess
 from collections.abc import Iterator
@@ -83,3 +84,85 @@ class FrameDecoder:
             proc.stdout.close()
             proc.terminate()
             proc.wait(timeout=5)
+
+
+class StreamingEncoder:
+    """Encode raw frames to video via FFmpeg stdin pipe.
+
+    Uses ndarray.data (memoryview) for zero-copy writes — saves ~25 MB
+    per frame at 4K vs .tobytes().
+    """
+
+    def __init__(
+        self,
+        output_path: Path,
+        width: int,
+        height: int,
+        fps: int,
+        crf: int = 18,
+        pix_fmt: str = "yuv420p",
+        codec: str = "libx264",
+    ) -> None:
+        self._output_path = output_path
+        self._width = width
+        self._height = height
+        self._fps = fps
+        self._crf = crf
+        self._pix_fmt = pix_fmt
+        self._codec = codec
+        self._proc: subprocess.Popen[bytes] | None = None
+
+    def start(self) -> None:
+        """Start the FFmpeg encode process."""
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-s",
+            f"{self._width}x{self._height}",
+            "-r",
+            str(self._fps),
+            "-i",
+            "pipe:0",
+            "-c:v",
+            self._codec,
+            "-preset",
+            "medium",
+            "-crf",
+            str(self._crf),
+            "-pix_fmt",
+            self._pix_fmt,
+            "-movflags",
+            "+faststart",
+            str(self._output_path),
+        ]
+        self._proc = subprocess.Popen(  # noqa: S603, S607
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+
+    def write_frame(self, frame: np.ndarray) -> None:
+        """Write one frame to the encoder. Uses memoryview for zero-copy."""
+        assert self._proc is not None and self._proc.stdin is not None  # noqa: S101
+        # WHY: ndarray.data is a memoryview — avoids copying ~25 MB per 4K frame
+        # that .tobytes() would allocate
+        self._proc.stdin.write(frame.data)
+
+    def finish(self) -> None:
+        """Close stdin pipe and wait for FFmpeg to finish."""
+        if self._proc is None:
+            return
+        assert self._proc.stdin is not None  # noqa: S101
+        with contextlib.suppress(BrokenPipeError):
+            self._proc.stdin.close()
+        self._proc.wait(timeout=300)
+        if self._proc.returncode != 0:
+            stderr = self._proc.stderr.read().decode(errors="replace") if self._proc.stderr else ""
+            raise RuntimeError(
+                f"Streaming encode failed (exit {self._proc.returncode}): {stderr[-500:]}"
+            )

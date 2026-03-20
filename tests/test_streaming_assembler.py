@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 
 import numpy as np
@@ -57,3 +58,50 @@ class TestFrameDecoder:
         for frame in frames:
             assert frame.shape == (240, 320, 3)
             assert frame.dtype == np.uint8
+
+
+@requires_ffmpeg
+class TestStreamingEncoder:
+    def test_encodes_frames_to_valid_mp4(self, tmp_path: object) -> None:
+        """StreamingEncoder should produce a valid MP4 from numpy frames."""
+        from pathlib import Path
+
+        from immich_memories.processing.streaming_assembler import StreamingEncoder
+
+        tmp = Path(str(tmp_path))
+        output = tmp / "test_output.mp4"
+        width, height, fps = 320, 240, 10
+        n_frames = 10
+
+        encoder = StreamingEncoder(output, width, height, fps, crf=28)
+        encoder.start()
+        for i in range(n_frames):
+            # Gradient frame — different each frame for visual verification
+            frame = np.full((height, width, 3), fill_value=i * 25, dtype=np.uint8)
+            encoder.write_frame(frame)
+        encoder.finish()
+
+        assert output.exists()
+        assert output.stat().st_size > 0
+
+        # Verify with ffprobe
+        probe = json.loads(
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-print_format",
+                    "json",
+                    "-show_format",
+                    "-show_streams",
+                    str(output),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout
+        )
+        video_streams = [s for s in probe["streams"] if s["codec_type"] == "video"]
+        assert len(video_streams) == 1
+        assert float(probe["format"]["duration"]) > 0.5
