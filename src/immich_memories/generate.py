@@ -822,8 +822,10 @@ def _anonymize_name(name: str | None) -> str | None:
     """Replace a real name with a consistent fake name."""
     if name is None:
         return None
-    # WHY: deterministic mapping — same input always gets same fake name
-    idx = hash(name) % len(_PRIVACY_FAKE_NAMES)
+    # WHY: hashlib is deterministic across processes (hash() is not — PYTHONHASHSEED)
+    import hashlib
+
+    idx = int(hashlib.sha256(name.encode()).hexdigest(), 16) % len(_PRIVACY_FAKE_NAMES)
     return _PRIVACY_FAKE_NAMES[idx]
 
 
