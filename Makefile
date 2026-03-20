@@ -138,7 +138,8 @@ test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immic
 	$(MAKE) test-integration-photos
 	$(MAKE) test-integration-pipeline
 	$(MAKE) test-integration-live-photos
-	$(MAKE) test-integration-cli
+	@# CLI tests excluded — they re-run the full pipeline (~41 min) which is
+	@# already covered by test-integration-pipeline. Run separately: make test-integration-cli
 	@# Quick re-run for junit XML (uses pytest cache, near-instant since tests just passed)
 	@uv run pytest -v -m integration --junitxml=tests/integration-junit.xml -o junit_family=legacy -q 2>/dev/null || true
 	@echo ""
