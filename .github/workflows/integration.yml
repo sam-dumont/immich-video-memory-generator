@@ -101,6 +101,9 @@ jobs:
           echo "IMMICH_MEMORIES_CACHE__DIRECTORY=/tmp/immich-cache" >> "$GITHUB_ENV"
           echo "IMMICH_MEMORIES_CACHE__DATABASE=/tmp/immich-cache/cache.db" >> "$GITHUB_ENV"
           echo "IMMICH_MEMORIES_OUTPUT__DIRECTORY=/tmp/immich-output" >> "$GITHUB_ENV"
+          # Disable external music services — we test the mixing pipeline, not the APIs
+          echo "MUSICGEN_ENABLED=false" >> "$GITHUB_ENV"
+          echo "ACE_STEP_ENABLED=false" >> "$GITHUB_ENV"
 
       - name: Environment info
         run: |
