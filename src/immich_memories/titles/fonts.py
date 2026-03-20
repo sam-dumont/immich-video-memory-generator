@@ -1,13 +1,15 @@
-"""Persistent font cache for title screens.
+"""Font management for title screens.
 
-Downloads OFL-licensed fonts from Fontsource CDN on first use
-and caches them in ~/.immich-memories/fonts/ for future use.
+Fonts are bundled in the package (bundled_fonts/) — no CDN download needed.
+Falls back to Fontsource CDN download if a font isn't bundled.
+All fonts are OFL-1.1 licensed (see bundled_fonts/LICENSE).
 
 Supported fonts:
 - Outfit (modern geometric)
 - Raleway (elegant minimal)
 - JosefinSans (vintage elegant)
 - Quicksand (friendly rounded)
+- Montserrat (geometric humanist)
 """
 
 from __future__ import annotations
@@ -20,6 +22,8 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+# Bundled fonts ship with the package — no network needed
+BUNDLED_FONTS_DIR = Path(__file__).parent / "bundled_fonts"
 
 # Font metadata with Fontsource CDN download URLs
 # URL pattern: https://cdn.jsdelivr.net/fontsource/fonts/{slug}@latest/latin-{weight}-normal.ttf
@@ -114,9 +118,17 @@ def get_font_path(
 
     # Normalize font family name (remove spaces for directory name)
     dir_name = font_family.replace(" ", "")
-    font_dir = fonts_dir / dir_name
 
-    # Check multiple naming conventions
+    # 1. Check bundled fonts first (no network, always available)
+    if dir_name in FONT_DEFINITIONS:
+        slug = FONT_DEFINITIONS[dir_name]["fontsource_slug"]
+        weight_num = FONT_DEFINITIONS[dir_name]["weights"].get(weight, 400)
+        bundled = BUNDLED_FONTS_DIR / slug / f"latin-{weight_num}-normal.ttf"
+        if bundled.exists():
+            return bundled
+
+    # 2. Check user cache
+    font_dir = fonts_dir / dir_name
     possible_names = [
         f"{dir_name}-{weight}.ttf",
         f"{font_family}-{weight}.ttf",
@@ -128,7 +140,7 @@ def get_font_path(
         if font_path.exists():
             return font_path
 
-    # Font not cached, try to download
+    # 3. Download from CDN as last resort
     if ensure_font_available(font_family, fonts_dir):
         for name in possible_names:
             font_path = font_dir / name

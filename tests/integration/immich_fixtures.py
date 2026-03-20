@@ -32,7 +32,7 @@ _TRIP_HINT_RANGES = [
     (date(2024, 1, 1), date(2025, 12, 31)),  # Full range — last resort
 ]
 
-MAX_CLIP_DURATION = 60  # 1 minute max — keeps tests fast
+MAX_CLIP_DURATION = 15  # 15s max — keeps downloads small and tests fast
 MIN_CLIPS_NEEDED = 2
 
 
@@ -55,6 +55,8 @@ def find_short_clips(
 
         clips = assets_to_clips(assets)
         short = [c for c in clips if (c.duration_seconds or 0) <= max_duration]
+        # Sort by duration (shortest first) to avoid downloading 250MB 4K clips
+        short.sort(key=lambda c: c.duration_seconds or 0)
 
         if len(short) >= min_count:
             logger.info(f"Found {len(short)} short clips (≤{max_duration}s) in {start} → {end}")

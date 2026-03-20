@@ -151,10 +151,11 @@ class TestDensityBudgetRealData:
 
         pipeline = SmartPipeline(
             client=client,
-            analysis_cache=VideoAnalysisCache(),
-            thumbnail_cache=ThumbnailCache(),
+            analysis_cache=VideoAnalysisCache(db_path=config.cache.database_path),
+            thumbnail_cache=ThumbnailCache(cache_dir=config.cache.cache_path / "thumbnails"),
             config=pipeline_config,
             analysis_config=config.analysis,
+            app_config=config,
         )
 
         result = pipeline.run(clips[:50])  # Limit to 50 clips for speed

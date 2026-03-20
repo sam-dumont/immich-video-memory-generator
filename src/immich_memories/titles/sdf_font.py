@@ -17,6 +17,7 @@ The implementation is split across helper modules:
 - sdf_font_rendering.py: GPU kernel compilation, text layout, rendering
 """
 
+import contextlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -87,6 +88,8 @@ class SDFFontAtlas:
 
 # Common font paths by platform
 FONT_SEARCH_PATHS = [
+    # Bundled fonts (ship with the package, always available)
+    Path(__file__).parent / "bundled_fonts",
     # App-managed font cache (downloaded OFL fonts)
     Path.home() / ".immich-memories" / "fonts",
     # macOS
@@ -157,7 +160,7 @@ def _search_font_paths(candidates: list[str]) -> Path | None:
     return None
 
 
-def find_font(family: str, weight: str = "regular") -> Path | None:
+def find_font(family: str, weight: str = "regular", _seen: set[str] | None = None) -> Path | None:
     """Find a font file for the given family and weight.
 
     Args:
@@ -167,15 +170,37 @@ def find_font(family: str, weight: str = "regular") -> Path | None:
     Returns:
         Path to font file, or None if not found.
     """
+    if _seen is None:
+        _seen = set()
+    if family in _seen:
+        return None
+    _seen.add(family)
+
     candidates = _build_font_candidates(family, weight)
     result = _search_font_paths(candidates)
     if result:
         return result
 
+    # Try CDN download before system fallback (headless Linux has no system fonts)
+    with contextlib.suppress(Exception):
+        from immich_memories.titles.fonts import get_font_path
+
+        weight_map = {
+            "light": "Light",
+            "regular": "Regular",
+            "medium": "Medium",
+            "semibold": "SemiBold",
+            "bold": "Bold",
+        }
+        cdn_weight = weight_map.get(weight, "Regular")
+        cdn_result = get_font_path(family, cdn_weight)  # type: ignore[arg-type]
+        if cdn_result:
+            return cdn_result
+
     # System fallback
     for fallback in ("Helvetica", "Arial", "SF Pro"):
         if fallback != family:
-            result = find_font(fallback, weight)
+            result = find_font(fallback, weight, _seen)
             if result:
                 logger.warning(f"Font '{family}' not found, using fallback: {result}")
                 return result

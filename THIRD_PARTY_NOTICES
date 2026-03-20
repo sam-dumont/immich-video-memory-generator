@@ -145,8 +145,10 @@ FFmpeg
   URL: https://ffmpeg.org/
 
 
-Fonts (downloaded at runtime, SIL Open Font License)
-----------------------------------------------------
+Bundled Fonts (SIL Open Font License 1.1)
+-----------------------------------------
+Bundled in src/immich_memories/titles/bundled_fonts/
+No runtime download needed. See bundled_fonts/LICENSE for details.
 
 Montserrat — Julieta Ulanovsky
   URL: https://github.com/JulietaUla/montserrat
@@ -164,7 +166,8 @@ Quicksand — Andrew Paglinawan
   URL: https://github.com/googlefonts/Quicksand
 
 All fonts licensed under SIL Open Font License 1.1
-Served via Fontsource CDN (https://fontsource.org/, MIT license)
+Originally sourced via Fontsource CDN (https://fontsource.org/, MIT license)
+Now bundled in the package — CDN download only used as fallback for custom fonts
 
 
 Test Fixtures (tests/fixtures/hdr_samples/)

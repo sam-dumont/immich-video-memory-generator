@@ -28,7 +28,9 @@ def pytest_runtest_setup(item):
 
 @pytest.hookimpl(trylast=True)
 def pytest_runtest_teardown(item):
-    """Log test duration and clean up large temp files."""
+    """Log test duration, clean up large temp files, and release memory."""
+    import gc
+
     start = _test_start_times.pop(item.nodeid, None)
     if start is not None:
         duration = time.monotonic() - start
@@ -39,6 +41,10 @@ def pytest_runtest_teardown(item):
     tmp_path = item.funcargs.get("tmp_path")
     if tmp_path and tmp_path.exists():
         _cleanup_large_files(tmp_path)
+
+    # WHY: FFmpeg/OpenCV/Taichi hold large buffers. Force gc between tests
+    # to prevent OOMKilled on memory-constrained K8s runners.
+    gc.collect()
 
 
 # Threshold for cleanup: delete files > 10MB after each test

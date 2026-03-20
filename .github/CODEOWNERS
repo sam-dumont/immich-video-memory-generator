@@ -1,0 +1,4 @@
+# Workflow files — require owner approval for ANY change to CI/CD
+# Prevents merging modified workflows without explicit review
+.github/workflows/ @sam-dumont
+.github/CODEOWNERS @sam-dumont
