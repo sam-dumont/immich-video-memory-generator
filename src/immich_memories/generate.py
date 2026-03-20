@@ -303,6 +303,7 @@ def _render_photos(
 
     target_res = params.config.output.resolution_tuple
     download_fn = params.client.download_asset if params.client else None
+    thumbnail_fn = params.client.get_asset_thumbnail if params.client else None
     if not download_fn:
         logger.warning("No Immich client — cannot download photos")
         return []
@@ -315,6 +316,7 @@ def _render_photos(
         work_dir=photo_dir,
         download_fn=download_fn,
         video_clip_count=video_clip_count,
+        thumbnail_fn=thumbnail_fn,
     )
 
 
