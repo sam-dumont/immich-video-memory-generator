@@ -172,7 +172,8 @@ def _init_face_detector() -> object | None:
         from immich_memories.analysis.apple_vision import VisionFaceDetector
 
         return VisionFaceDetector()
-    except ImportError:
+    except (ImportError, RuntimeError):
+        # ImportError: pyobjc not installed; RuntimeError: not on macOS
         import cv2  # noqa: F401
 
         return None  # Will use OpenCV directly

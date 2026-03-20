@@ -83,14 +83,14 @@ def mix_audio_with_stem_ducking(
 
     # Prepare video audio
     if config.normalize_audio:
-        filter_parts.append("[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[va]")
+        filter_parts.append("[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[vidaud]")
     else:
-        filter_parts.append("[0:a]acopy[va]")
+        filter_parts.append("[0:a]acopy[vidaud]")
 
     # Apply sidechain compression ONLY to vocals/melody
     # When there's speech, vocals get ducked while accompaniment stays full
     sidechain_filter = (
-        f"[vocals_prepared][va]sidechaincompress="
+        f"[vocals_prepared][vidaud]sidechaincompress="
         f"threshold={ducking.threshold}:"
         f"ratio={ducking.ratio}:"
         f"attack={ducking.attack_ms}:"
@@ -101,7 +101,7 @@ def mix_audio_with_stem_ducking(
     filter_parts.extend(
         (
             sidechain_filter,
-            "[va][accompaniment][ducked_vocals]amix=inputs=3:duration=first:dropout_transition=2[mixed]",
+            "[vidaud][accompaniment][ducked_vocals]amix=inputs=3:duration=first:dropout_transition=2[mixed]",
         )
     )
 
@@ -225,9 +225,9 @@ def mix_audio_with_4stem_ducking(
 
     # Prepare video audio
     if config.normalize_audio:
-        filter_parts.append("[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[va]")
+        filter_parts.append("[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[vidaud]")
     else:
-        filter_parts.append("[0:a]acopy[va]")
+        filter_parts.append("[0:a]acopy[vidaud]")
 
     # Apply sidechain compression to stems that should duck during speech.
     # Drums: NO ducking — constant level keeps rhythmic energy.
@@ -235,7 +235,7 @@ def mix_audio_with_4stem_ducking(
     filter_parts.extend(
         (
             "[drums_prepared]acopy[final_drums]",
-            f"[bass_prepared][va]sidechaincompress="
+            f"[bass_prepared][vidaud]sidechaincompress="
             f"threshold={ducking.threshold}:ratio={ducking.ratio * 0.7}:"
             f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
             f"makeup=1.0[ducked_bass]",
@@ -246,15 +246,15 @@ def mix_audio_with_4stem_ducking(
     # Mix all 5 audio streams: video + 4 stems (drums constant, others ducked)
     filter_parts.extend(
         (
-            f"[vocals_prepared][va]sidechaincompress="
+            f"[vocals_prepared][vidaud]sidechaincompress="
             f"threshold={ducking.threshold}:ratio={ducking.ratio}:"
             f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
             f"makeup=1.0[ducked_vocals]",
-            f"[other_prepared][va]sidechaincompress="
+            f"[other_prepared][vidaud]sidechaincompress="
             f"threshold={ducking.threshold}:ratio={ducking.ratio * 0.8}:"
             f"attack={ducking.attack_ms}:release={ducking.release_ms}:"
             f"makeup=1.0[ducked_other]",
-            "[va][final_drums][ducked_bass][ducked_vocals][ducked_other]"
+            "[vidaud][final_drums][ducked_bass][ducked_vocals][ducked_other]"
             "amix=inputs=5:duration=first:dropout_transition=2[mixed]",
         )
     )

@@ -306,13 +306,13 @@ def _build_ducking_filter(
     # WHY: label "va" instead of "video_audio" — FFmpeg 6.x on Linux
     # parses underscores in labels as stream specifier separators (type_index)
     if config.normalize_audio:
-        filter_parts.append("[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[va]")
+        filter_parts.append("[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[vidaud]")
     else:
-        filter_parts.append("[0:a]acopy[va]")
+        filter_parts.append("[0:a]acopy[vidaud]")
 
     # Apply sidechain compression: duck music when video audio is present
     sidechain_filter = (
-        f"[music][va]sidechaincompress="
+        f"[music][vidaud]sidechaincompress="
         f"threshold={ducking.threshold}:"
         f"ratio={ducking.ratio}:"
         f"attack={ducking.attack_ms}:"
@@ -323,7 +323,7 @@ def _build_ducking_filter(
     filter_parts.extend(
         (
             sidechain_filter,
-            "[va][ducked_music]amix=inputs=2:duration=first:dropout_transition=2[mixed]",
+            "[vidaud][ducked_music]amix=inputs=2:duration=first:dropout_transition=2[mixed]",
         )
     )
 
