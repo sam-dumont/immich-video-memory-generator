@@ -98,7 +98,7 @@ preflight:
 # =============================================================================
 
 test:
-	uv run pytest -v
+	uv run pytest -v -n auto --dist loadgroup
 
 benchmark:
 	uv run pytest tests/benchmarks/ -v --benchmark-only
@@ -166,7 +166,7 @@ test-cov:
 	@echo "Coverage report: htmlcov/index.html"
 
 test-cov-xml:  ## Run tests with XML coverage + JUnit results (for CI upload)
-	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -v
+	uv run pytest --cov=src/immich_memories --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -v -n auto --dist loadgroup
 
 test-fast:
 	uv run pytest -v -m "not slow"
