@@ -1,0 +1,23 @@
+# Mirror to private repo for GPU integration tests
+#
+# Self-hosted runners can't safely run on public repos (fork abuse).
+# This pushes to a private mirror where ARC GPU runners are scoped.
+
+name: Mirror to CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Push mirror
+        run: |
+          git remote add mirror https://x-access-token:${{ secrets.CI_MIRROR_TOKEN }}@github.com/sam-dumont/immich-memories-ci.git
+          git push mirror --force --all
+          git push mirror --force --tags

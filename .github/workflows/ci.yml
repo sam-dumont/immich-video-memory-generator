@@ -462,7 +462,7 @@ jobs:
             "${{ needs.docs.result }}"
           )
           for r in "${results[@]}"; do
-            # Allow "success" and "skipped" (conditional jobs like docker)
-            [[ "$r" != "success" && "$r" != "skipped" ]] && echo "A job failed: $r" && exit 1
+            # Allow "success", "skipped" (conditional jobs), and "cancelled" (concurrency group)
+            [[ "$r" != "success" && "$r" != "skipped" && "$r" != "cancelled" ]] && echo "A job failed: $r" && exit 1
           done
           echo "All jobs passed!"
