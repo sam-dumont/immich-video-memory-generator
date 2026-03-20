@@ -19,6 +19,7 @@ jobs:
   label:
     name: Auto Label
     runs-on: ubuntu-latest
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     if: github.event_name == 'pull_request'
     permissions:
       contents: read

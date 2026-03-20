@@ -31,6 +31,7 @@ jobs:
   analyze:
     name: Analyze Commits & Branches
     runs-on: ubuntu-latest
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     outputs:
       should_release: ${{ steps.analyze.outputs.should_release }}
       next_version: ${{ steps.analyze.outputs.next_version }}

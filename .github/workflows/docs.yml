@@ -30,6 +30,7 @@ jobs:
   build:
     name: Build Docs
     runs-on: ubuntu-latest
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     steps:
       - uses: actions/checkout@v5
         with:
