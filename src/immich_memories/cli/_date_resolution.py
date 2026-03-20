@@ -1,4 +1,4 @@
-"""Date range resolution for CLI commands."""
+"""Date range resolution and duration scaling for CLI commands."""
 
 from __future__ import annotations
 
@@ -111,3 +111,41 @@ def _resolve_memory_type_dates(
     if not year:
         raise click.UsageError(f"--year is required with --memory-type {memory_type}")
     return calendar_year(year)
+
+
+def duration_from_date_range(date_range: DateRange) -> float:
+    """Scale duration by date range: 1 month = 60s, 1 year = 600s.
+
+    Quadratic curve fitted through (1mo, 60s), (6mo, 360s), (12mo, 600s).
+    Linear ~60s/month for the first half, then decelerates toward 600s.
+    """
+    months = max(1, (date_range.end - date_range.start).days + 1) / 30.0
+    duration = (-20 * months**2 + 800 * months - 120) / 11
+    return float(max(30, min(600, duration)))
+
+
+def default_duration_for_type(
+    memory_type: str | None, date_range: DateRange | None
+) -> float | None:
+    """Get default duration in seconds for a memory type.
+
+    Date-range based types scale with span (1 month = 60s, 1 year = 600s).
+    Fixed types: on_this_day (45s), trip (35s/day), person without range (120s).
+    """
+    if not memory_type:
+        return None
+
+    if memory_type == "on_this_day":
+        return 45.0
+    if memory_type == "trip" and date_range is not None:
+        days = max(1, (date_range.end - date_range.start).days + 1)
+        return float(max(60, min(600, days * 35)))
+    if memory_type in ("person_spotlight", "multi_person"):
+        if date_range is None:
+            return 120.0
+        return duration_from_date_range(date_range)
+
+    # Everything else: scale by date range
+    if date_range is not None:
+        return duration_from_date_range(date_range)
+    return None

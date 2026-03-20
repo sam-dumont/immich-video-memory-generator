@@ -240,7 +240,7 @@ class StreamingEncoder:
         assert self._proc.stdin is not None  # noqa: S101
         with contextlib.suppress(BrokenPipeError):
             self._proc.stdin.close()
-        self._proc.wait(timeout=300)
+        self._proc.wait(timeout=3600)
         if self._proc.returncode != 0:
             stderr = self._proc.stderr.read().decode(errors="replace") if self._proc.stderr else ""
             raise RuntimeError(

@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING
 import click
 from rich.table import Table
 
-from immich_memories.cli._date_resolution import resolve_date_range
+from immich_memories.cli._date_resolution import (
+    default_duration_for_type,
+    duration_from_date_range,
+    resolve_date_range,
+)
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
 from immich_memories.timeperiod import DateRange
 
@@ -32,25 +36,6 @@ def _resolve_music_arg(music: str | None) -> str | None:
         print_error(f"Music file not found: {music}")
         sys.exit(1)
     return music
-
-
-def _default_duration_for_type(memory_type: str | None, date_range) -> float | None:
-    """Get default duration in seconds for a memory type based on time span."""
-    if not memory_type:
-        return None
-    # Trip: 35s per day (midpoint of 30-45s density range)
-    if memory_type == "trip":
-        days = max(1, (date_range.end - date_range.start).days + 1)
-        return float(max(60, min(600, days * 35)))
-    defaults: dict[str, float] = {
-        "year_in_review": 600,
-        "season": 135,
-        "monthly_highlights": 60,
-        "on_this_day": 45,
-        "person_spotlight": 120,
-        "multi_person": 300,
-    }
-    return defaults.get(memory_type)
 
 
 def _handle_trip_generation(
@@ -794,11 +779,15 @@ def register_generate_commands(main: click.Group) -> None:
         # Analysis depth: CLI override → stored for PipelineConfig
         effective_analysis_depth = analysis_depth or "fast"
 
-        # Resolve duration: CLI --duration > memory type default > config default
+        # Infer memory type from context when not explicitly set
+        if memory_type is None and person_names:
+            memory_type = "person_spotlight" if len(person_names) == 1 else "multi_person"
+
+        # Resolve duration: CLI --duration > memory type default > date-range scaling
         if duration is None:
-            duration = _default_duration_for_type(memory_type, date_range)
+            duration = default_duration_for_type(memory_type, date_range)
             if duration is None:
-                duration = config.defaults.target_duration_seconds
+                duration = duration_from_date_range(date_range)
 
         table = _build_params_table(
             config=config,
