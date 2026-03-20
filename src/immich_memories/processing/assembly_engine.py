@@ -1,6 +1,6 @@
 """Core assembly engine for multi-clip video assembly.
 
-Orchestrates scalable, strategy-based, and chunked assembly pipelines.
+Orchestrates scalable and strategy-based assembly pipelines.
 Includes assembly context building (resolution, HDR, colorspace resolution).
 Concat/xfade/batch operations are in ffmpeg_filter_graph.py.
 """
@@ -8,15 +8,12 @@ Concat/xfade/batch operations are in ffmpeg_filter_graph.py.
 from __future__ import annotations
 
 import logging
-import math
 import shutil
 import sys
 from collections.abc import Callable
 from pathlib import Path
 
 from immich_memories.processing.assembly_config import (
-    CHUNK_SIZE,
-    CHUNKED_ASSEMBLY_THRESHOLD,
     AssemblyClip,
     AssemblySettings,
     TransitionType,
@@ -32,6 +29,7 @@ from immich_memories.processing.hdr_utilities import (
     _get_colorspace_filter,
     _get_dominant_hdr_type,
 )
+from immich_memories.processing.streaming_assembler import streaming_assemble_full
 
 logger = logging.getLogger(__name__)
 
@@ -182,12 +180,11 @@ class AssemblyEngine:
         output_path: Path,
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> Path:
-        """Assemble clips using single-encode filter graph from source files.
+        """Assemble clips via streaming frame blender. Constant memory.
 
-        Builds one FFmpeg command that reads source clips, normalizes them
-        (scale, fps, HDR, aspect ratio) and applies transitions — all in a
-        single encode pass.  For large clip counts (> CHUNKED_ASSEMBLY_THRESHOLD),
-        falls back to chunked assembly where each chunk is still single-encode.
+        Decodes one clip at a time, blends crossfade transitions with numpy,
+        and pipes frames to a single FFmpeg encode process. Memory stays
+        constant regardless of clip count (~550 MB at 4K).
         """
         if len(clips) < 2:
             if len(clips) == 1:
@@ -217,59 +214,38 @@ class AssemblyEngine:
         target_w: int,
         target_h: int,
     ) -> Path:
-        if len(clips) > CHUNKED_ASSEMBLY_THRESHOLD:
-            return self.assemble_chunked(clips, output_path, progress_callback)
-
         transitions = self.get_transition_types(clips)
         transitions = self._validate_fade_transitions(
             transitions, [c.duration for c in clips], self.settings.transition_duration or 0.5
         )
 
-        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
-        logger.info(f"Single-encode assembly: {len(clips)} clips at {target_w}x{target_h}")
+        target_fps = self.prober.detect_max_framerate(clips)
+        fade_duration = self.settings.transition_duration or 0.5
+        crf = self.settings.output_crf or 18
 
-        inputs: list[str] = []
-        for clip in clips:
-            inputs.extend(["-i", str(clip.path)])
+        # WHY: Streaming assembler uses rgb24/libx264/yuv420p. HDR (10-bit HEVC,
+        # BT.2020) will be added in a follow-up by parameterizing the encoder.
+        if self.settings.preserve_hdr:
+            has_hdr = any(clip_hdr is not None for clip_hdr in _get_clip_hdr_types(clips))
+            if has_hdr:
+                logger.warning(
+                    "HDR content detected but streaming assembler uses SDR (rgb24/libx264). "
+                    "HDR metadata will not be preserved. HDR streaming support is planned."
+                )
 
-        filter_parts: list[str] = [
-            self.filter_builder.build_clip_video_filter(i, clip, ctx)
-            for i, clip in enumerate(clips)
-        ]
+        logger.info(f"Streaming assembly: {len(clips)} clips at {target_w}x{target_h}")
 
-        audio_filter_parts, audio_labels = self.filter_builder.build_audio_prep_filters(
-            clips, use_amix_fallback=False
+        streaming_assemble_full(
+            clips=clips,
+            transitions=transitions,
+            output_path=output_path,
+            width=target_w,
+            height=target_h,
+            fps=target_fps,
+            fade_duration=fade_duration,
+            crf=crf,
+            progress_callback=progress_callback,
         )
-        filter_parts.extend(audio_filter_parts)
-
-        transition_parts, final_video, final_audio = (
-            self.filter_builder.build_smart_transition_chain(clips, transitions, ctx, audio_labels)
-        )
-        filter_parts.extend(transition_parts)
-
-        filter_complex = ";".join(filter_parts)
-
-        if progress_callback:
-            progress_callback(0.1, "Assembling video...")
-
-        result = self.encoder.run_ffmpeg_assembly(
-            inputs,
-            filter_complex,
-            final_video,
-            final_audio,
-            output_path,
-            clips,
-            ctx,
-            progress_callback,
-        )
-
-        if result.returncode != 0:
-            logger.warning(
-                f"Single-encode assembly failed (code {result.returncode}), "
-                "falling back to chunked assembly."
-            )
-            return self.assemble_chunked(clips, output_path, progress_callback)
-
         return output_path
 
     def _assemble_single_clip(self, clip: AssemblyClip, output_path: Path) -> Path:
@@ -346,8 +322,6 @@ class AssemblyEngine:
         """Assemble clips with crossfade transitions."""
         if len(clips) < 2:
             raise ValueError("Need at least 2 clips for crossfade")
-        if len(clips) > CHUNKED_ASSEMBLY_THRESHOLD:
-            return self.assemble_chunked(clips, output_path, progress_callback)
         target_w, target_h = resolve_target_resolution(self.settings, self.prober, clips)
         ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
         inputs: list[str] = []
@@ -390,8 +364,6 @@ class AssemblyEngine:
         """Assemble clips with a mix of crossfades and cuts."""
         if len(clips) < 2:
             raise ValueError("Need at least 2 clips for smart transitions")
-        if len(clips) > CHUNKED_ASSEMBLY_THRESHOLD:
-            return self.assemble_chunked(clips, output_path, progress_callback)
         transitions = self.decide_transitions(clips)
         target_w, target_h = resolve_target_resolution(self.settings, self.prober, clips)
         ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
@@ -501,108 +473,3 @@ class AssemblyEngine:
         cuts = sum(1 for t in transitions if t == "cut")
         logger.info(f"Transitions: {fades} fades, {cuts} cuts")
         return transitions
-
-    def _make_batch_progress_cb(
-        self,
-        base: float,
-        range_: float,
-        idx: int,
-        total: int,
-        progress_callback: Callable[[float, str], None],
-    ) -> Callable[[float, str], None]:
-        def batch_cb(pct: float, msg: str) -> None:
-            progress_callback(base + pct * range_, f"Batch {idx + 1}/{total}: {msg}")
-
-        return batch_cb
-
-    def _process_single_batch(
-        self,
-        batch: list[AssemblyClip],
-        batch_idx: int,
-        num_batches: int,
-        intermediates_dir: Path,
-        progress_callback: Callable[[float, str], None] | None,
-    ) -> AssemblyClip:
-        """Process one batch: encode or copy, return an AssemblyClip."""
-        intermediate_path = intermediates_dir / f"batch_{batch_idx:03d}.mp4"
-        if len(batch) == 1:
-            shutil.copy2(batch[0].path, intermediate_path)
-            batch_duration = batch[0].duration
-        else:
-            base = (batch_idx / num_batches) * 0.8
-            range_ = (1 / num_batches) * 0.8
-            cb = (
-                self._make_batch_progress_cb(
-                    base, range_, batch_idx, num_batches, progress_callback
-                )
-                if progress_callback
-                else None
-            )
-            self.concat.assemble_batch_direct(batch, intermediate_path, cb)
-            batch_duration = sum(c.duration for c in batch)
-            batch_duration -= (self.settings.transition_duration or 0.5) * (len(batch) - 1)
-        return AssemblyClip(
-            path=intermediate_path,
-            duration=batch_duration,
-            date=None,
-            asset_id=f"batch_{batch_idx}",
-            is_title_screen=batch[-1].is_title_screen if batch else False,
-        )
-
-    def assemble_chunked(
-        self,
-        clips: list[AssemblyClip],
-        output_path: Path,
-        progress_callback: Callable[[float, str], None] | None = None,
-    ) -> Path:
-        """Assemble many clips using chunked processing.
-
-        Skips failed batches instead of aborting — a single bad clip
-        won't kill the whole video.
-        """
-        num_clips = len(clips)
-        num_batches = math.ceil(num_clips / CHUNK_SIZE)
-        logger.info(f"Chunked assembly: {num_clips} clips -> {num_batches} batches")
-        intermediates_dir = output_path.parent / ".intermediates"
-        intermediates_dir.mkdir(parents=True, exist_ok=True)
-        intermediate_clips: list[AssemblyClip] = []
-        failed_batches = 0
-        for batch_idx in range(num_batches):
-            start_idx = batch_idx * CHUNK_SIZE
-            batch = clips[start_idx : min(start_idx + CHUNK_SIZE, num_clips)]
-            if progress_callback:
-                progress_callback(
-                    (batch_idx / num_batches) * 0.8,
-                    f"Processing batch {batch_idx + 1}/{num_batches} ({len(batch)} clips)...",
-                )
-            try:
-                intermediate_clips.append(
-                    self._process_single_batch(
-                        batch, batch_idx, num_batches, intermediates_dir, progress_callback
-                    )
-                )
-            except Exception:
-                failed_batches += 1
-                logger.warning(
-                    f"Batch {batch_idx + 1}/{num_batches} failed, skipping "
-                    f"({len(batch)} clips lost)"
-                )
-            self.check_cancelled_fn()
-
-        if not intermediate_clips:
-            raise RuntimeError(f"All {num_batches} batches failed — no video could be assembled")
-
-        if failed_batches:
-            logger.info(
-                f"Assembly continuing with {len(intermediate_clips)}/{num_batches} "
-                f"batches ({failed_batches} skipped)"
-            )
-
-        if progress_callback:
-            progress_callback(0.85, f"Merging {len(intermediate_clips)} batches...")
-        result = self.concat.merge_intermediate_batches(
-            intermediate_clips, output_path, progress_callback
-        )
-        if not self.settings.debug_preserve_intermediates:
-            shutil.rmtree(intermediates_dir, ignore_errors=True)
-        return result
