@@ -389,6 +389,8 @@ def generate_scene_aware_segments(
     min_segment_duration: float,
     scene_threshold: float,
     min_scene_duration: float,
+    *,
+    analysis_config: AnalysisConfig,
 ) -> list[Scene]:
     """Generate segments using scene detection with subdivision for long scenes.
 
@@ -398,6 +400,7 @@ def generate_scene_aware_segments(
         min_segment_duration: Minimum segment duration (filter out shorter).
         scene_threshold: Threshold for scene detection.
         min_scene_duration: Minimum scene duration for detection.
+        analysis_config: Analysis config for scene detector.
 
     Returns:
         List of Scene objects representing segments.
@@ -409,6 +412,7 @@ def generate_scene_aware_segments(
         threshold=scene_threshold,
         min_scene_duration=min_scene_duration,
         adaptive_threshold=True,
+        analysis_config=analysis_config,
     ).detect(
         video_path,
         extract_keyframes=False,  # Skip for performance
@@ -550,8 +554,9 @@ class SceneScorer:
         max_optimal_duration: float = 10.0,
         target_extraction_ratio: float = 0.15,
         min_duration: float = 2.0,
-        content_analysis_config: ContentAnalysisConfig | None = None,
-        analysis_config: AnalysisConfig | None = None,
+        *,
+        content_analysis_config: ContentAnalysisConfig,
+        analysis_config: AnalysisConfig,
     ):
         """Initialize the scorer with component weights and duration settings."""
         # Auto-normalize weights to sum to 1.0
@@ -731,10 +736,6 @@ class SceneScorer:
 
         try:
             ca_config = self._content_analysis_config
-            if ca_config is None:
-                from immich_memories.config import get_config
-
-                ca_config = get_config().content_analysis
             analysis = self._content_analyzer.analyze_segment(
                 video_path,
                 scene.start_time,
@@ -851,10 +852,6 @@ class SceneScorer:
             raise FileNotFoundError(f"Video not found: {video_path}")
 
         a_config = self._analysis_config
-        if a_config is None:
-            from immich_memories.config import get_config
-
-            a_config = get_config().analysis
 
         should_use_scene_detection = (
             use_scene_detection if use_scene_detection is not None else a_config.use_scene_detection
@@ -917,6 +914,7 @@ class SceneScorer:
                     min_segment_duration=config.min_segment_duration,
                     scene_threshold=config.scene_threshold,
                     min_scene_duration=config.min_scene_duration,
+                    analysis_config=config,
                 )
                 logger.debug(f"Scene detection: {len(segments)} segments from natural boundaries")
                 return segments

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -110,10 +110,5 @@ def tmp_output_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def sample_config() -> Config:
-    """Provide a Config with safe defaults and monkeypatch get_config."""
-    config = Config()
-    with (
-        patch("immich_memories.config.get_config", return_value=config),
-        patch("immich_memories.config_loader.get_config", return_value=config),
-    ):
-        yield config
+    """Provide a Config with safe defaults for testing."""
+    return Config()

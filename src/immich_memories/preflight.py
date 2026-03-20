@@ -32,20 +32,15 @@ class CheckResult:
     details: str | None = None
 
 
-def check_immich(config: Config | None = None) -> CheckResult:
+def check_immich(config: Config) -> CheckResult:
     """Check Immich server connection and API key validity.
 
     Args:
-        config: Configuration to use (defaults to global config).
+        config: Configuration to use.
 
     Returns:
         CheckResult with status and details.
     """
-    if config is None:
-        from immich_memories.config import get_config
-
-        config = get_config()
-
     if not config.immich.url:
         return CheckResult(
             name="Immich",
@@ -198,7 +193,7 @@ def _check_openai_compatible(base_url: str, model: str, api_key: str) -> CheckRe
         )
 
 
-def check_llm(config: Config | None = None) -> CheckResult:
+def check_llm(config: Config) -> CheckResult:
     """Check LLM provider availability.
 
     Dispatches to the appropriate check based on config.llm.provider:
@@ -206,16 +201,11 @@ def check_llm(config: Config | None = None) -> CheckResult:
     - "openai-compatible": POST /chat/completions with minimal payload
 
     Args:
-        config: Configuration to use (defaults to global config).
+        config: Configuration to use.
 
     Returns:
         CheckResult with status and details.
     """
-    if config is None:
-        from immich_memories.config import get_config
-
-        config = get_config()
-
     provider = config.llm.provider
     base_url = config.llm.base_url
     model = config.llm.model
@@ -286,20 +276,15 @@ def check_hardware() -> CheckResult:
         )
 
 
-def run_preflight_checks(config: Config | None = None) -> list[CheckResult]:
+def run_preflight_checks(config: Config) -> list[CheckResult]:
     """Run all preflight checks.
 
     Args:
-        config: Configuration to use (defaults to global config).
+        config: Configuration to use.
 
     Returns:
         List of check results.
     """
-    if config is None:
-        from immich_memories.config import get_config
-
-        config = get_config()
-
     return [
         check_immich(config),
         check_llm(config),

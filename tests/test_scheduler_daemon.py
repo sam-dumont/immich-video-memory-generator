@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from immich_memories.scheduling.models import ScheduleEntry, SchedulerConfig
@@ -138,4 +139,4 @@ class TestDaemonLoop:
             patch("immich_memories.tracking.run_database.RunDatabase", return_value=mock_db),
         ):
             # Should not raise — graceful shutdown
-            run_daemon_loop(config)
+            run_daemon_loop(config, db_path=Path("/tmp/test_daemon.db"))

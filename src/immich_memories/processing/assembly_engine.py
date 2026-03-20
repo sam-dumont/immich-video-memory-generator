@@ -53,13 +53,15 @@ def resolve_target_resolution(
         target_w, target_h = _swap_if_portrait(prober, clips, target_w, target_h)
     elif settings.auto_resolution:
         target_w, target_h = prober.detect_best_resolution(clips)
-    else:
-        from immich_memories.config import get_config
-
-        config = get_config()
-        target_w, target_h = config.output.resolution_tuple
+    elif settings.default_resolution:
+        target_w, target_h = settings.default_resolution
         logger.info(f"Using config resolution {target_w}x{target_h}")
         target_w, target_h = _swap_if_portrait(prober, clips, target_w, target_h)
+    else:
+        raise ValueError(
+            "No resolution configured: set target_resolution, enable auto_resolution, "
+            "or provide default_resolution on AssemblySettings"
+        )
     return target_w, target_h
 
 

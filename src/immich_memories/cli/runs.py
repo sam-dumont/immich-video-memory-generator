@@ -150,9 +150,12 @@ def register_runs_commands(main: click.Group) -> None:
         # Show only failed runs
         immich-memories runs list --status failed
         """
+        from immich_memories.config import get_config
         from immich_memories.tracking import RunDatabase, format_duration
 
-        runs_data = RunDatabase().list_runs(limit=limit, person_name=person, status=status)
+        runs_data = RunDatabase(db_path=get_config().cache.database_path).list_runs(
+            limit=limit, person_name=person, status=status
+        )
 
         if not runs_data:
             print_info("No runs found")
@@ -199,9 +202,10 @@ def register_runs_commands(main: click.Group) -> None:
         Example:
             immich-memories runs show 20260105_143052_a7b3
         """
+        from immich_memories.config import get_config
         from immich_memories.tracking import RunDatabase, format_duration
 
-        db = RunDatabase()
+        db = RunDatabase(db_path=get_config().cache.database_path)
         run = db.get_run(run_id)
 
         if not run:
@@ -233,9 +237,10 @@ def register_runs_commands(main: click.Group) -> None:
     @runs.command("stats")
     def runs_stats() -> None:
         """Show aggregate statistics across all runs."""
+        from immich_memories.config import get_config
         from immich_memories.tracking import RunDatabase, format_duration
 
-        stats = RunDatabase().get_aggregate_stats()
+        stats = RunDatabase(db_path=get_config().cache.database_path).get_aggregate_stats()
 
         console.print()
         console.print("[bold]Aggregate Statistics[/bold]")
@@ -275,9 +280,10 @@ def register_runs_commands(main: click.Group) -> None:
         # Delete run but keep the video
         immich-memories runs delete 20260105_143052_a7b3 --keep-output
         """
+        from immich_memories.config import get_config
         from immich_memories.tracking import RunDatabase
 
-        db = RunDatabase()
+        db = RunDatabase(db_path=get_config().cache.database_path)
         run = db.get_run(run_id)
 
         if not run:

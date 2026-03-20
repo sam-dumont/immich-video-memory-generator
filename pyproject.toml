@@ -102,6 +102,7 @@ dev = [
     "pytest-cov>=4.0",
     "pytest-asyncio>=0.21",
     "pytest-benchmark>=5.2.3",
+    "pytest-xdist>=3.5",
     "mypy>=1.0",
     "ruff>=0.1",
     "pre-commit>=3.0",
@@ -473,7 +474,7 @@ DEP002 = [
     "torch",                                            # PANNs inference backend
     "freetype-py",                                      # imported as freetype
     "pytest", "pytest-cov", "pytest-asyncio",           # dev tools (CLI usage)
-    "pytest-benchmark", "mypy", "ruff",                 # dev tools
+    "pytest-benchmark", "pytest-xdist", "mypy", "ruff",  # dev tools
     "pre-commit", "commitizen",                         # dev tools
     "types-pyyaml",                                     # mypy stub
     "grimp",                                            # import-linter backend

@@ -153,7 +153,7 @@ def fetch_live_photo_clips(
     person_id: str | None = None,
     person_ids: list[str] | None = None,
     *,
-    config: Config | None = None,
+    config: Config,
 ) -> tuple[list[VideoClipInfo], set[str]]:
     """Fetch Live Photo assets and convert to VideoClipInfo clips.
 
@@ -161,11 +161,6 @@ def fetch_live_photo_clips(
         Tuple of (live_photo_clips, live_video_ids).
     """
     from immich_memories.processing.live_photo_merger import cluster_live_photos
-
-    if config is None:
-        from immich_memories.config import get_config
-
-        config = get_config()
 
     merge_window = config.analysis.live_photo_merge_window_seconds
 

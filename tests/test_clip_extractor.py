@@ -13,6 +13,10 @@ from immich_memories.processing.clips import (
     _build_clip_output_path,
 )
 
+# WHY: ClipExtractor requires a Config for hardware/encoder settings during re-encode.
+# Tests don't exercise real encoding, so a mock is sufficient.
+_MOCK_CONFIG = MagicMock()
+
 
 class TestClipSegment:
     """Tests for ClipSegment dataclass."""
@@ -57,13 +61,13 @@ class TestClipExtractorInit:
     def test_creates_output_dir(self, tmp_path):
         """Output dir is created if it doesn't exist."""
         out = tmp_path / "clips"
-        extractor = ClipExtractor(output_dir=out)
+        extractor = ClipExtractor(output_dir=out, config=_MOCK_CONFIG)
         assert out.exists()
         assert extractor.output_dir == out
 
     def test_default_output_dir(self):
         """Default output dir uses tempdir."""
-        extractor = ClipExtractor()
+        extractor = ClipExtractor(config=_MOCK_CONFIG)
         assert "immich_memories" in str(extractor.output_dir)
 
 
@@ -72,7 +76,7 @@ class TestClipExtractorCleanup:
 
     def test_cleanup_removes_old_files(self, tmp_path):
         """Clips older than threshold are removed."""
-        extractor = ClipExtractor(output_dir=tmp_path)
+        extractor = ClipExtractor(output_dir=tmp_path, config=_MOCK_CONFIG)
         old_file = tmp_path / "old.mp4"
         old_file.write_bytes(b"\x00" * 10)
         # Set mtime to 2 days ago
@@ -87,7 +91,7 @@ class TestClipExtractorCleanup:
 
     def test_cleanup_keeps_recent_files(self, tmp_path):
         """Recent clips are not removed."""
-        extractor = ClipExtractor(output_dir=tmp_path)
+        extractor = ClipExtractor(output_dir=tmp_path, config=_MOCK_CONFIG)
         recent = tmp_path / "recent.mp4"
         recent.write_bytes(b"\x00" * 10)
 
@@ -97,7 +101,7 @@ class TestClipExtractorCleanup:
 
     def test_cleanup_ignores_non_mp4(self, tmp_path):
         """Only .mp4 files are cleaned up."""
-        extractor = ClipExtractor(output_dir=tmp_path)
+        extractor = ClipExtractor(output_dir=tmp_path, config=_MOCK_CONFIG)
         txt = tmp_path / "notes.txt"
         txt.write_text("keep me")
         import os
@@ -111,7 +115,7 @@ class TestClipExtractorCleanup:
 
     def test_cleanup_nonexistent_dir_returns_zero(self, tmp_path):
         """Non-existent output_dir returns 0."""
-        extractor = ClipExtractor(output_dir=tmp_path / "gone")
+        extractor = ClipExtractor(output_dir=tmp_path / "gone", config=_MOCK_CONFIG)
         extractor.output_dir = tmp_path / "gone"  # bypass mkdir
         assert extractor.cleanup_old_clips() == 0
 
@@ -121,7 +125,7 @@ class TestClipExtractorExtract:
 
     def test_missing_source_raises(self, tmp_path):
         """FileNotFoundError for non-existent source."""
-        extractor = ClipExtractor(output_dir=tmp_path)
+        extractor = ClipExtractor(output_dir=tmp_path, config=_MOCK_CONFIG)
         seg = ClipSegment(
             source_path=Path("/nonexistent/video.mp4"),
             start_time=0,
@@ -133,7 +137,7 @@ class TestClipExtractorExtract:
 
     def test_cached_clip_returned(self, tmp_path):
         """Existing output file is returned without re-extraction."""
-        extractor = ClipExtractor(output_dir=tmp_path)
+        extractor = ClipExtractor(output_dir=tmp_path, config=_MOCK_CONFIG)
         source = tmp_path / "source.mp4"
         source.write_bytes(b"\x00" * 100)
 
@@ -150,7 +154,7 @@ class TestClipExtractorExtract:
     @patch("immich_memories.processing.clips.ClipExtractor._extract_copy")
     def test_extract_calls_copy_by_default(self, mock_copy, tmp_path):
         """Default extraction uses stream copy."""
-        extractor = ClipExtractor(output_dir=tmp_path)
+        extractor = ClipExtractor(output_dir=tmp_path, config=_MOCK_CONFIG)
         source = tmp_path / "source.mp4"
         source.write_bytes(b"\x00" * 100)
 
@@ -162,7 +166,7 @@ class TestClipExtractorExtract:
     @patch("immich_memories.processing.clips.ClipExtractor._extract_with_reencode")
     def test_extract_with_reencode(self, mock_reencode, tmp_path):
         """reencode=True uses re-encode path."""
-        extractor = ClipExtractor(output_dir=tmp_path)
+        extractor = ClipExtractor(output_dir=tmp_path, config=_MOCK_CONFIG)
         source = tmp_path / "source.mp4"
         source.write_bytes(b"\x00" * 100)
 
@@ -180,7 +184,7 @@ class TestClipExtractorBatchExtract:
     @patch("immich_memories.processing.clips.ClipExtractor.cleanup_old_clips")
     def test_batch_returns_all_successes(self, mock_cleanup, mock_extract, tmp_path):
         """All successful extracts are returned."""
-        extractor = ClipExtractor(output_dir=tmp_path)
+        extractor = ClipExtractor(output_dir=tmp_path, config=_MOCK_CONFIG)
         source = tmp_path / "src.mp4"
         source.write_bytes(b"\x00")
 
@@ -201,7 +205,7 @@ class TestClipExtractorBatchExtract:
     @patch("immich_memories.processing.clips.ClipExtractor.cleanup_old_clips")
     def test_batch_continues_on_failure(self, mock_cleanup, mock_extract, tmp_path):
         """Failures are logged and skipped; successes returned."""
-        extractor = ClipExtractor(output_dir=tmp_path)
+        extractor = ClipExtractor(output_dir=tmp_path, config=_MOCK_CONFIG)
         source = tmp_path / "src.mp4"
         source.write_bytes(b"\x00")
 
@@ -222,7 +226,7 @@ class TestClipExtractorBatchExtract:
     @patch("immich_memories.processing.clips.ClipExtractor.cleanup_old_clips")
     def test_batch_all_failures_returns_empty(self, mock_cleanup, mock_extract, tmp_path):
         """All failures returns empty list."""
-        extractor = ClipExtractor(output_dir=tmp_path)
+        extractor = ClipExtractor(output_dir=tmp_path, config=_MOCK_CONFIG)
         source = tmp_path / "src.mp4"
         source.write_bytes(b"\x00")
 
@@ -239,7 +243,7 @@ class TestClipExtractorBatchExtract:
     @patch("immich_memories.processing.clips.ClipExtractor.cleanup_old_clips")
     def test_batch_progress_callback(self, mock_cleanup, mock_extract, tmp_path):
         """Progress callback called with (current, total)."""
-        extractor = ClipExtractor(output_dir=tmp_path)
+        extractor = ClipExtractor(output_dir=tmp_path, config=_MOCK_CONFIG)
         source = tmp_path / "src.mp4"
         source.write_bytes(b"\x00")
 

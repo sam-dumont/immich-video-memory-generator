@@ -13,6 +13,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
+from immich_memories.config_models import HardwareAccelConfig
 from immich_memories.processing.transforms_ffmpeg import (
     CropRegion,
     apply_crop_transform,
@@ -92,7 +93,10 @@ class AspectRatioTransformer:
         self,
         target_orientation: Orientation = Orientation.LANDSCAPE,
         scale_mode: ScaleMode = ScaleMode.FIT,
-        target_resolution: tuple[int, int] | None = None,
+        *,
+        target_resolution: tuple[int, int],
+        hardware_config: HardwareAccelConfig,
+        output_crf: int,
     ):
         """Initialize the transformer.
 
@@ -100,16 +104,14 @@ class AspectRatioTransformer:
             target_orientation: Target aspect ratio.
             scale_mode: How to handle aspect ratio mismatch.
             target_resolution: Target resolution (width, height).
+            hardware_config: Hardware acceleration settings.
+            output_crf: CRF quality value for encoding.
         """
         self.target_orientation = target_orientation
         self.scale_mode = scale_mode
-
-        if target_resolution is None:
-            from immich_memories.config import get_config
-
-            self.target_resolution = get_config().output.resolution_tuple
-        else:
-            self.target_resolution = target_resolution
+        self.target_resolution = target_resolution
+        self.hardware_config = hardware_config
+        self.output_crf = output_crf
 
         # Adjust resolution for orientation
         w, h = self.target_resolution
@@ -159,9 +161,21 @@ class AspectRatioTransformer:
             output_path = output_dir / f"transformed_{input_path.stem}.mp4"
 
         if self.scale_mode == ScaleMode.FIT:
-            return transform_fit(input_path, output_path, self.target_resolution)
+            return transform_fit(
+                input_path,
+                output_path,
+                self.target_resolution,
+                self.hardware_config,
+                self.output_crf,
+            )
         elif self.scale_mode == ScaleMode.FILL:
-            return transform_fill(input_path, output_path, self.target_resolution)
+            return transform_fill(
+                input_path,
+                output_path,
+                self.target_resolution,
+                self.hardware_config,
+                self.output_crf,
+            )
         elif self.scale_mode == ScaleMode.SMART_CROP:
             return transform_smart_crop(
                 input_path,
@@ -171,8 +185,16 @@ class AspectRatioTransformer:
                 self._use_vision,
                 self._vision_detector,
                 self._face_cascade,
+                hardware_config=self.hardware_config,
+                output_crf=self.output_crf,
             )
-        return transform_fit(input_path, output_path, self.target_resolution)
+        return transform_fit(
+            input_path,
+            output_path,
+            self.target_resolution,
+            self.hardware_config,
+            self.output_crf,
+        )
 
     # Keep legacy private helpers as thin delegates so subclasses still work.
 
@@ -181,16 +203,40 @@ class AspectRatioTransformer:
         return get_video_dimensions(video_path)
 
     def _transform_fit(self, input_path: Path, output_path: Path) -> Path:
-        return transform_fit(input_path, output_path, self.target_resolution)
+        return transform_fit(
+            input_path,
+            output_path,
+            self.target_resolution,
+            self.hardware_config,
+            self.output_crf,
+        )
 
     def _transform_fit_software(self, input_path: Path, output_path: Path) -> Path:
-        return transform_fit(input_path, output_path, self.target_resolution)
+        return transform_fit(
+            input_path,
+            output_path,
+            self.target_resolution,
+            self.hardware_config,
+            self.output_crf,
+        )
 
     def _transform_fill(self, input_path: Path, output_path: Path) -> Path:
-        return transform_fill(input_path, output_path, self.target_resolution)
+        return transform_fill(
+            input_path,
+            output_path,
+            self.target_resolution,
+            self.hardware_config,
+            self.output_crf,
+        )
 
     def _transform_fill_software(self, input_path: Path, output_path: Path) -> Path:
-        return transform_fill(input_path, output_path, self.target_resolution)
+        return transform_fill(
+            input_path,
+            output_path,
+            self.target_resolution,
+            self.hardware_config,
+            self.output_crf,
+        )
 
     def _transform_smart_crop(
         self,
@@ -206,6 +252,8 @@ class AspectRatioTransformer:
             self._use_vision,
             self._vision_detector,
             self._face_cascade,
+            hardware_config=self.hardware_config,
+            output_crf=self.output_crf,
         )
 
     def _detect_faces_in_video(
@@ -235,7 +283,14 @@ class AspectRatioTransformer:
         output_path: Path,
         crop: CropRegion,
     ) -> Path:
-        return apply_crop_transform(input_path, output_path, crop, self.target_resolution)
+        return apply_crop_transform(
+            input_path,
+            output_path,
+            crop,
+            self.target_resolution,
+            self.hardware_config,
+            self.output_crf,
+        )
 
     def _apply_crop_transform_software(
         self,
@@ -243,7 +298,14 @@ class AspectRatioTransformer:
         output_path: Path,
         crop: CropRegion,
     ) -> Path:
-        return apply_crop_transform(input_path, output_path, crop, self.target_resolution)
+        return apply_crop_transform(
+            input_path,
+            output_path,
+            crop,
+            self.target_resolution,
+            self.hardware_config,
+            self.output_crf,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +318,10 @@ def apply_aspect_ratio_transform(
     output_path: Path | None = None,
     orientation: Literal["landscape", "portrait", "square"] = "landscape",
     scale_mode: Literal["fit", "fill", "smart_crop"] = "fit",
-    resolution: tuple[int, int] | None = None,
+    *,
+    resolution: tuple[int, int],
+    hardware_config: HardwareAccelConfig,
+    output_crf: int,
 ) -> Path:
     """Convenience function to transform a video's aspect ratio.
 
@@ -266,6 +331,8 @@ def apply_aspect_ratio_transform(
         orientation: Target orientation.
         scale_mode: Scaling mode.
         resolution: Target resolution.
+        hardware_config: Hardware acceleration settings.
+        output_crf: CRF quality value for encoding.
 
     Returns:
         Path to transformed video.
@@ -274,6 +341,8 @@ def apply_aspect_ratio_transform(
         target_orientation=Orientation(orientation),
         scale_mode=ScaleMode(scale_mode),
         target_resolution=resolution,
+        hardware_config=hardware_config,
+        output_crf=output_crf,
     ).transform(input_path, output_path)
 
 
@@ -281,6 +350,7 @@ def add_date_overlay(
     input_path: Path,
     output_path: Path,
     date_text: str,
+    output_crf: int,
     position: Literal["bottom-left", "bottom-right", "top-left", "top-right"] = "bottom-right",
     font_size: int = 24,
     opacity: float = 0.7,
@@ -291,6 +361,7 @@ def add_date_overlay(
         input_path: Path to input video.
         output_path: Path for output video.
         date_text: Text to display.
+        output_crf: CRF quality value for encoding.
         position: Corner position.
         font_size: Font size in points.
         opacity: Text opacity (0-1).
@@ -298,4 +369,6 @@ def add_date_overlay(
     Returns:
         Path to output video.
     """
-    return _add_date_overlay(input_path, output_path, date_text, position, font_size, opacity)
+    return _add_date_overlay(
+        input_path, output_path, date_text, output_crf, position, font_size, opacity
+    )

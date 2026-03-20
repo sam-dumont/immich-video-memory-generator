@@ -34,12 +34,8 @@ def _check_cuda_available() -> bool:
     return _cuda_available
 
 
-def _use_cuda_for_analysis(hardware_config: HardwareAccelConfig | None = None) -> bool:
+def _use_cuda_for_analysis(hardware_config: HardwareAccelConfig) -> bool:
     """Check if we should use CUDA for analysis."""
-    if hardware_config is None:
-        from immich_memories.config import get_config
-
-        hardware_config = get_config().hardware
     return hardware_config.enabled and hardware_config.gpu_analysis and _check_cuda_available()
 
 
@@ -87,7 +83,9 @@ class SceneDetector:
         threshold: float | None = None,
         min_scene_duration: float | None = None,
         adaptive_threshold: bool = True,
-        analysis_config: AnalysisConfig | None = None,
+        *,
+        analysis_config: AnalysisConfig,
+        hardware_config: HardwareAccelConfig | None = None,
     ):
         """Initialize the scene detector.
 
@@ -95,15 +93,13 @@ class SceneDetector:
             threshold: Detection threshold (lower = more sensitive).
             min_scene_duration: Minimum scene duration in seconds.
             adaptive_threshold: Use adaptive threshold detection.
-            analysis_config: Analysis config for defaults. Falls back to get_config().
+            analysis_config: Analysis config for defaults.
+            hardware_config: Hardware config for CUDA fallback detection.
         """
-        if analysis_config is None:
-            from immich_memories.config import get_config
-
-            analysis_config = get_config().analysis
         self.threshold = threshold or analysis_config.scene_threshold
         self.min_scene_duration = min_scene_duration or analysis_config.min_scene_duration
         self.adaptive_threshold = adaptive_threshold
+        self._hardware_config = hardware_config
 
     def detect(
         self,
@@ -207,7 +203,9 @@ class SceneDetector:
         Returns:
             List of detected scenes.
         """
-        use_cuda = _use_cuda_for_analysis()
+        use_cuda = self._hardware_config is not None and _use_cuda_for_analysis(
+            self._hardware_config
+        )
         if use_cuda:
             logger.info("Using CUDA-accelerated scene detection")
             return self._fallback_detect_cuda(video_path, extract_keyframes, keyframe_output_dir)
@@ -414,6 +412,8 @@ def detect_scenes(
     min_duration: float | None = None,
     extract_keyframes: bool = True,
     keyframe_output_dir: str | Path | None = None,
+    *,
+    analysis_config: AnalysisConfig,
 ) -> list[Scene]:
     """Convenience function to detect scenes in a video.
 
@@ -423,6 +423,7 @@ def detect_scenes(
         min_duration: Minimum scene duration.
         extract_keyframes: Whether to extract keyframes.
         keyframe_output_dir: Directory to save keyframes.
+        analysis_config: Analysis config for scene detector defaults.
 
     Returns:
         List of detected scenes.
@@ -430,6 +431,7 @@ def detect_scenes(
     return SceneDetector(
         threshold=threshold,
         min_scene_duration=min_duration,
+        analysis_config=analysis_config,
     ).detect(
         video_path,
         extract_keyframes=extract_keyframes,

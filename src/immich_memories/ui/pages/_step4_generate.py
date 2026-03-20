@@ -128,9 +128,13 @@ async def run_generation(
         run_id_label.set_text(f"Output: {result_path.parent.name}")
 
         # Phase 3: Music (UI-specific — supports AI generation + 4-stem ducking)
+        from immich_memories.config import get_config
         from immich_memories.tracking import RunTracker, generate_run_id
 
-        run_tracker = RunTracker(generate_run_id())
+        run_tracker = RunTracker(
+            generate_run_id(),
+            db_path=get_config().cache.database_path,
+        )
         await _apply_music(
             state,
             state.config,

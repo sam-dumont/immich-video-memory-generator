@@ -10,12 +10,15 @@ import pytest
 
 from immich_memories.api.immich import ImmichClient, SyncImmichClient
 
+_TEST_URL = "https://immich.example.com"
+_TEST_KEY = "test-api-key"
+
 
 @pytest.fixture()
 def _mock_config():
     cfg = MagicMock()
-    cfg.immich.url = "https://immich.example.com"
-    cfg.immich.api_key = "test-api-key"
+    cfg.immich.url = _TEST_URL
+    cfg.immich.api_key = _TEST_KEY
     with patch("immich_memories.config.get_config", return_value=cfg):
         yield cfg
 
@@ -36,7 +39,7 @@ class TestUploadAsset:
         video_file = tmp_path / "memory.mp4"
         video_file.write_bytes(b"fake video content")
 
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         client._client.request = AsyncMock(
@@ -52,7 +55,7 @@ class TestUploadAsset:
     @pytest.mark.asyncio
     async def test_upload_asset_file_not_found(self, _mock_config):
         """upload_asset raises FileNotFoundError for missing file."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         with pytest.raises(FileNotFoundError):
             await client.upload_asset(Path("/nonexistent/video.mp4"))
 
@@ -60,7 +63,7 @@ class TestUploadAsset:
 class TestCreateAlbum:
     @pytest.mark.asyncio
     async def test_create_album_returns_id(self, _mock_config):
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         client._client.request = AsyncMock(
@@ -76,7 +79,7 @@ class TestCreateAlbum:
 
     @pytest.mark.asyncio
     async def test_create_album_no_description(self, _mock_config):
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         client._client.request = AsyncMock(return_value=_json_response({"id": "album-789"}))
@@ -88,7 +91,7 @@ class TestCreateAlbum:
 class TestAddAssetsToAlbum:
     @pytest.mark.asyncio
     async def test_add_assets_sends_ids(self, _mock_config):
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         client._client.request = AsyncMock(
@@ -104,7 +107,7 @@ class TestAddAssetsToAlbum:
 class TestGetAlbums:
     @pytest.mark.asyncio
     async def test_get_albums(self, _mock_config):
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         client._client.request = AsyncMock(
@@ -122,7 +125,7 @@ class TestGetAlbums:
 
     @pytest.mark.asyncio
     async def test_find_album_by_name_found(self, _mock_config):
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         client._client.request = AsyncMock(
@@ -139,7 +142,7 @@ class TestGetAlbums:
 
     @pytest.mark.asyncio
     async def test_find_album_by_name_not_found(self, _mock_config):
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         client._client.request = AsyncMock(
@@ -161,7 +164,7 @@ class TestUploadMemory:
         video = tmp_path / "memory.mp4"
         video.write_bytes(b"video data")
 
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         # WHY: mock at service level — upload_memory lives on AlbumService
         client.albums.upload_asset = AsyncMock(return_value="asset-999")
         client.albums.find_album_by_name = AsyncMock(return_value=None)
@@ -182,7 +185,7 @@ class TestUploadMemory:
         video = tmp_path / "memory.mp4"
         video.write_bytes(b"video data")
 
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         # WHY: mock at service level — upload_memory lives on AlbumService
         client.albums.upload_asset = AsyncMock(return_value="asset-999")
         client.albums.find_album_by_name = AsyncMock(return_value="album-existing")
@@ -200,7 +203,7 @@ class TestUploadMemory:
         video = tmp_path / "memory.mp4"
         video.write_bytes(b"video data")
 
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         # WHY: mock at service level — upload_memory lives on AlbumService
         client.albums.upload_asset = AsyncMock(return_value="asset-999")
 
@@ -215,7 +218,7 @@ class TestSyncUploadWrappers:
         video = tmp_path / "memory.mp4"
         video.write_bytes(b"video data")
 
-        client = SyncImmichClient()
+        client = SyncImmichClient(_TEST_URL, _TEST_KEY)
         # WHY: mock at service level — upload_memory delegates to albums service
         client._async_client.albums.upload_asset = AsyncMock(return_value="asset-123")
         client._async_client.albums.find_album_by_name = AsyncMock(return_value=None)

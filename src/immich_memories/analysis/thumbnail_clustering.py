@@ -179,6 +179,8 @@ def cluster_thumbnails(
     thumbnail_cache: ThumbnailCache,
     threshold: int | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
+    *,
+    duplicate_hash_threshold: int,
 ) -> list[ThumbnailCluster]:
     """Cluster clips by thumbnail similarity.
 
@@ -190,6 +192,7 @@ def cluster_thumbnails(
         thumbnail_cache: Cache containing thumbnails.
         threshold: Hamming distance threshold for similarity.
         progress_callback: Optional callback(current, total) for progress.
+        duplicate_hash_threshold: Default threshold from config.
 
     Returns:
         List of thumbnail clusters.
@@ -197,9 +200,7 @@ def cluster_thumbnails(
     from .duplicates import _union_find_groups
 
     if threshold is None:
-        from immich_memories.config import get_config
-
-        threshold = get_config().analysis.duplicate_hash_threshold
+        threshold = duplicate_hash_threshold
 
     hashes = _compute_thumbnail_hashes(clips, thumbnail_cache, progress_callback)
 
@@ -223,6 +224,8 @@ def deduplicate_by_thumbnails(
     thumbnail_cache: ThumbnailCache,
     threshold: int | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
+    *,
+    duplicate_hash_threshold: int,
 ) -> list[VideoClipInfo]:
     """Remove duplicate clips based on thumbnail similarity.
 
@@ -234,6 +237,7 @@ def deduplicate_by_thumbnails(
         thumbnail_cache: Cache containing thumbnails.
         threshold: Hamming distance threshold for similarity.
         progress_callback: Optional callback(current, total) for progress.
+        duplicate_hash_threshold: Default threshold from config.
 
     Returns:
         Deduplicated list of clips.
@@ -243,6 +247,7 @@ def deduplicate_by_thumbnails(
         thumbnail_cache=thumbnail_cache,
         threshold=threshold,
         progress_callback=progress_callback,
+        duplicate_hash_threshold=duplicate_hash_threshold,
     )
 
     # Create clip lookup

@@ -14,6 +14,7 @@ from immich_memories.audio.mood_analyzer import (
     MoodAnalyzer,
     VideoMood,
 )
+from immich_memories.config_models import LLMConfig
 
 logger = logging.getLogger(__name__)
 
@@ -257,10 +258,13 @@ async def get_mood_analyzer(
     raise RuntimeError(f"Unknown LLM provider: {provider}")
 
 
-async def get_mood_analyzer_from_config() -> MoodAnalyzer:
+async def get_mood_analyzer_from_config(llm_config: LLMConfig) -> MoodAnalyzer:
     """Get a mood analyzer using settings from config.
 
-    Uses the shared LLM settings from config.llm for provider selection.
+    Uses the shared LLM settings for provider selection.
+
+    Args:
+        llm_config: LLM configuration with provider, base_url, model, api_key.
 
     Returns:
         MoodAnalyzer instance
@@ -268,13 +272,9 @@ async def get_mood_analyzer_from_config() -> MoodAnalyzer:
     Raises:
         RuntimeError: If no analyzer is available
     """
-    from immich_memories.config import get_config
-
-    config = get_config()
-    llm = config.llm
     return await get_mood_analyzer(
-        provider=llm.provider,
-        base_url=llm.base_url,
-        model=llm.model,
-        api_key=llm.api_key,
+        provider=llm_config.provider,
+        base_url=llm_config.base_url,
+        model=llm_config.model,
+        api_key=llm_config.api_key,
     )

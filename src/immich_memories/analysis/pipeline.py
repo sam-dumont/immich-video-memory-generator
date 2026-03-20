@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.cache.database import CachedVideoAnalysis, VideoAnalysisCache
     from immich_memories.cache.video_cache import VideoDownloadCache
-    from immich_memories.config_models import CacheConfig
+    from immich_memories.config_models import AnalysisConfig, CacheConfig, ContentAnalysisConfig
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,10 @@ class VideoAnalyzer:
         client: SyncImmichClient,
         cache: VideoAnalysisCache,
         video_cache: VideoDownloadCache | None = None,
-        cache_config: CacheConfig | None = None,
+        *,
+        cache_config: CacheConfig,
+        analysis_config: AnalysisConfig,
+        content_analysis_config: ContentAnalysisConfig,
     ):
         """Initialize the analyzer.
 
@@ -55,18 +58,18 @@ class VideoAnalyzer:
             client: Immich API client for downloading videos.
             cache: Cache for storing analysis results.
             video_cache: Optional video file cache to avoid re-downloads.
-            cache_config: Cache config for video cache setup. Falls back to get_config().
+            cache_config: Cache config for video cache setup.
+            analysis_config: Analysis config for scoring.
+            content_analysis_config: Content analysis config for scoring.
         """
         self.client = client
         self.cache = cache
+        self._analysis_config = analysis_config
+        self._content_analysis_config = content_analysis_config
         self.video_cache: VideoDownloadCache | None = None
 
         # Initialize video cache if enabled
         if video_cache is None:
-            if cache_config is None:
-                from immich_memories.config import get_config
-
-                cache_config = get_config().cache
             if cache_config.video_cache_enabled:
                 from immich_memories.cache.video_cache import VideoDownloadCache
 
@@ -234,7 +237,10 @@ class VideoAnalyzer:
                 video_hash = None
 
             logger.info(f"Scoring segments for {clip.asset.id}...")
-            scorer = SceneScorer()
+            scorer = SceneScorer(
+                content_analysis_config=self._content_analysis_config,
+                analysis_config=self._analysis_config,
+            )
             moments = scorer.sample_and_score_video(
                 video_path, segment_duration=segment_duration, overlap=0.5, sample_frames=5
             )

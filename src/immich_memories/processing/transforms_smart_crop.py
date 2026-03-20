@@ -13,6 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from immich_memories.config_models import HardwareAccelConfig
 from immich_memories.processing.transforms_ffmpeg import (
     CropRegion,
     apply_crop_transform,
@@ -219,6 +220,9 @@ def transform_smart_crop(
     use_vision: bool,
     vision_detector: object | None,
     face_cascade: object | None,
+    *,
+    hardware_config: HardwareAccelConfig,
+    output_crf: int,
 ) -> Path:
     """Transform using smart crop that keeps faces centred.
 
@@ -230,6 +234,8 @@ def transform_smart_crop(
         use_vision: Whether to use Apple Vision.
         vision_detector: Vision face detector instance.
         face_cascade: OpenCV cascade classifier instance.
+        hardware_config: Hardware acceleration settings.
+        output_crf: CRF quality value for encoding.
 
     Returns:
         Path to transformed video.
@@ -240,12 +246,31 @@ def transform_smart_crop(
         )
 
     if not face_positions:
-        return transform_fill(input_path, output_path, target_resolution)
+        return transform_fill(
+            input_path,
+            output_path,
+            target_resolution,
+            hardware_config,
+            output_crf,
+        )
 
     src_w, src_h = get_video_dimensions(input_path)
     if 0 in (src_w, src_h):
-        return transform_fill(input_path, output_path, target_resolution)
+        return transform_fill(
+            input_path,
+            output_path,
+            target_resolution,
+            hardware_config,
+            output_crf,
+        )
 
     crop_region = calculate_smart_crop(src_w, src_h, target_resolution, face_positions)
 
-    return apply_crop_transform(input_path, output_path, crop_region, target_resolution)
+    return apply_crop_transform(
+        input_path,
+        output_path,
+        crop_region,
+        target_resolution,
+        hardware_config,
+        output_crf,
+    )

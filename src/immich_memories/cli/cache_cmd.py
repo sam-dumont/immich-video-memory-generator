@@ -89,8 +89,9 @@ def register_cache_commands(cli_group: click.Group) -> None:
     def backup(output_path: str) -> None:
         """Backup the entire cache DB (safe SQLite backup API)."""
         from immich_memories.cache.database import VideoAnalysisCache
+        from immich_memories.config import get_config
 
-        db = VideoAnalysisCache()
+        db = VideoAnalysisCache(db_path=get_config().cache.database_path)
         with db._get_connection() as src_conn:
             dst = sqlite3.connect(output_path)
             src_conn.backup(dst)

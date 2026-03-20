@@ -12,11 +12,7 @@ logger = logging.getLogger(__name__)
 class ThumbnailCache:
     """Simple file-based cache for Immich thumbnails."""
 
-    def __init__(self, cache_dir: Path | None = None) -> None:
-        if cache_dir is None:
-            from immich_memories.config import get_config
-
-            cache_dir = get_config().cache.cache_path / "thumbnails"
+    def __init__(self, cache_dir: Path) -> None:
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 

@@ -70,11 +70,7 @@ class ClipSegment:
 class ClipExtractor:
     """Extract and process video clips."""
 
-    def __init__(self, output_dir: Path | None = None, config: Config | None = None):
-        if config is None:
-            from immich_memories.config import get_config
-
-            config = get_config()
+    def __init__(self, output_dir: Path | None = None, *, config: Config):
         self._config = config
 
         if output_dir is None:
@@ -470,6 +466,8 @@ def extract_clip(
     buffer_start: bool = False,
     buffer_end: bool = False,
     buffer_seconds: float = TRANSITION_BUFFER,
+    *,
+    config: Config,
 ) -> Path:
     """Convenience function to extract a single clip.
 
@@ -482,6 +480,7 @@ def extract_clip(
         buffer_start: If True, add buffer at start for incoming crossfade.
         buffer_end: If True, add buffer at end for outgoing crossfade.
         buffer_seconds: Amount of buffer to add (default 0.5s).
+        config: Application configuration.
 
     Returns:
         Path to extracted clip.
@@ -502,7 +501,7 @@ def extract_clip(
         asset_id="temp",
     )
 
-    extractor = ClipExtractor(output_path.parent)
+    extractor = ClipExtractor(output_path.parent, config=config)
     segment.output_path = output_path
 
     if output_path.exists():

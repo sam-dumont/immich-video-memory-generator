@@ -34,7 +34,8 @@ class ClipAnalyzer:
         client: SyncImmichClient,
         analysis_cache: VideoAnalysisCache,
         preview_builder: PreviewBuilder,
-        app_config: Config | None = None,
+        *,
+        app_config: Config,
     ):
         self.config = config
         self.client = client
@@ -43,14 +44,6 @@ class ClipAnalyzer:
         self._app_config = app_config
         self._cached_content_analyzer: ContentAnalyzer | None = None
         self._cached_audio_analyzer: AudioContentAnalyzer | None = None
-
-    def _get_app_config(self) -> Config:
-        """Get the app config, falling back to get_config() if not injected."""
-        if self._app_config is None:
-            from immich_memories.config import get_config
-
-            self._app_config = get_config()
-        return self._app_config
 
     def phase_analyze(
         self,
@@ -196,7 +189,7 @@ class ClipAnalyzer:
 
         from immich_memories.cache.video_cache import VideoDownloadCache
 
-        config = self._get_app_config()
+        config = self._app_config
         temp_file: Path | None = None
 
         if config.cache.video_cache_enabled:
@@ -236,7 +229,7 @@ class ClipAnalyzer:
 
     def _init_content_analyzer(self) -> tuple[object | None, float]:
         """Get or create cached LLM content analyzer."""
-        config = self._get_app_config()
+        config = self._app_config
         if not config.content_analysis.enabled:
             return None, 0.0
 
@@ -271,7 +264,7 @@ class ClipAnalyzer:
 
     def _get_cached_audio_analyzer(self) -> object | None:
         """Get or create a pipeline-level cached AudioContentAnalyzer."""
-        config = self._get_app_config()
+        config = self._app_config
         if not config.audio_content.enabled:
             return None
 
@@ -333,12 +326,15 @@ class ClipAnalyzer:
         from immich_memories.analysis.scoring import SceneScorer
         from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
 
-        config = self._get_app_config()
+        config = self._app_config
         content_analyzer, content_weight = self._init_content_analyzer()
         audio_analyzer = self._get_cached_audio_analyzer()
 
         unified_analyzer = UnifiedSegmentAnalyzer(
-            scorer=SceneScorer(),
+            scorer=SceneScorer(
+                content_analysis_config=config.content_analysis,
+                analysis_config=config.analysis,
+            ),
             content_analyzer=content_analyzer,
             min_segment_duration=config.analysis.min_segment_duration,
             max_segment_duration=config.analysis.max_segment_duration,
@@ -348,6 +344,8 @@ class ClipAnalyzer:
             audio_content_enabled=config.audio_content.enabled,
             audio_content_weight=config.audio_content.weight,
             audio_analyzer=audio_analyzer,
+            audio_content_config=config.audio_content,
+            analysis_config=config.analysis,
         )
 
         try:
@@ -439,7 +437,7 @@ class ClipAnalyzer:
         if cached_result is not None:
             return cached_result
 
-        config = self._get_app_config()
+        config = self._app_config
         analysis_video: Path | None = None
         original_video: Path | None = None
         temp_file: Path | None = None

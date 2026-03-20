@@ -1,0 +1,76 @@
+# Mirror to private repo → triggers GPU integration tests → status callback
+#
+# Flow:
+#   1. Push branch to private mirror
+#   2. Trigger integration workflow via repository_dispatch
+#   3. Post "pending" commit status on this repo
+#   4. Private repo runs FFmpeg + GPU tests
+#   5. Private repo posts "success"/"failure" status back here
+#
+# The integration result shows as a separate PR check: "Integration (GPU)"
+
+name: Mirror to CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  mirror:
+    name: Mirror & Trigger GPU Tests
+    runs-on: ubuntu-latest
+    # Don't run on the private mirror repo
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          # WHY: pull_request checks out a merge commit by default.
+          # We need the actual branch head for mirroring.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Push to private mirror
+        env:
+          SSH_KEY: ${{ secrets.MIRROR_SSH_KEY }}
+        run: |
+          BRANCH="${{ github.head_ref || github.ref_name }}"
+          # SSH deploy key — more reliable than PAT for cross-repo push
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/mirror_key
+          chmod 600 ~/.ssh/mirror_key
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/mirror_key -o IdentitiesOnly=yes"
+          git remote add mirror git@github.com:sam-dumont/immich-memories-ci.git
+          git push mirror --force "HEAD:refs/heads/${BRANCH}"
+          git push mirror --force --tags 2>/dev/null || true
+          rm -f ~/.ssh/mirror_key
+
+      - name: Set pending status
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: token ${{ secrets.CI_MIRROR_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha || github.sha }}" \
+            -d '{
+              "state": "pending",
+              "context": "Integration (GPU)",
+              "description": "Waiting for GPU runner...",
+              "target_url": "https://github.com/sam-dumont/immich-memories-ci/actions"
+            }'
+
+      - name: Trigger integration tests
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: token ${{ secrets.CI_MIRROR_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/sam-dumont/immich-memories-ci/dispatches" \
+            -d '{
+              "event_type": "integration-test",
+              "client_payload": {
+                "sha": "${{ github.event.pull_request.head.sha || github.sha }}",
+                "branch": "${{ github.head_ref || github.ref_name }}",
+                "public_repo": "${{ github.repository }}"
+              }
+            }'

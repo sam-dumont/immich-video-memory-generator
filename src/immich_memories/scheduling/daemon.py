@@ -12,6 +12,7 @@ import signal
 import subprocess
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 
 from immich_memories.scheduling.engine import PendingJob, Scheduler
 from immich_memories.scheduling.executor import resolve_schedule_params
@@ -30,7 +31,7 @@ def _handle_signal(signum, frame):
     logger.info(f"Received signal {signum}, shutting down...")
 
 
-def run_daemon_loop(config: SchedulerConfig) -> None:
+def run_daemon_loop(config: SchedulerConfig, *, db_path: Path) -> None:
     """Run the scheduler daemon in the foreground.
 
     Sleeps until the next job fires, executes it via CLI subprocess,
@@ -44,7 +45,7 @@ def run_daemon_loop(config: SchedulerConfig) -> None:
     # Clean up any runs left in 'running' state from a previous crash
     from immich_memories.tracking.run_database import RunDatabase
 
-    db = RunDatabase()
+    db = RunDatabase(db_path=db_path)
     db.mark_stale_runs_as_interrupted()
 
     scheduler = Scheduler(config)

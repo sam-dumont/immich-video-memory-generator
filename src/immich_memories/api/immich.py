@@ -26,7 +26,6 @@ from immich_memories.api.models import (
 )
 from immich_memories.api.person_service import PersonService
 from immich_memories.api.search_service import SearchService
-from immich_memories.config import Config
 
 if TYPE_CHECKING:
     from immich_memories.timeperiod import DateRange
@@ -68,18 +67,12 @@ class ImmichClient:
 
     def __init__(
         self,
-        base_url: str | None = None,
-        api_key: str | None = None,
-        config: Config | None = None,
+        base_url: str,
+        api_key: str,
         timeout: float = 30.0,
     ):
-        if config is None:
-            from immich_memories.config import get_config
-
-            config = get_config()
-
-        self.base_url = (base_url or config.immich.url).rstrip("/")
-        self.api_key = api_key or config.immich.api_key
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
         self.timeout = timeout
 
         if not self.base_url:

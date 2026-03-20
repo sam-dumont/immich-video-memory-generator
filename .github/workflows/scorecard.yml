@@ -13,6 +13,7 @@ jobs:
   analysis:
     name: Scorecard analysis
     runs-on: ubuntu-latest
+    if: github.repository == 'sam-dumont/immich-video-memory-generator'
     permissions:
       security-events: write
       id-token: write

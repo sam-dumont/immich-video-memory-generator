@@ -6,7 +6,6 @@ All UI interaction is replaced by a progress callback.
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import io
 import logging
@@ -17,6 +16,15 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.generate_music import apply_music_file, resolve_music_file
+from immich_memories.generate_privacy import (
+    anonymize_clips_for_privacy,
+    anonymize_name,
+    anonymize_preset_params,
+    clip_location_name,
+    extract_trip_locations,
+    generate_trip_title_text,
+)
 from immich_memories.processing.assembly_config import (
     AssemblyClip,
     AssemblySettings,
@@ -179,7 +187,7 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
 
     set_current_run_id(run_id)
 
-    run_tracker = RunTracker(run_id)
+    run_tracker = RunTracker(run_id, db_path=params.config.cache.database_path)
 
     # Create output directory structure
     dir_slug = params.output_path.stem
@@ -226,11 +234,11 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         if params.privacy_mode:
             from dataclasses import replace
 
-            assembly_clips = _anonymize_clips_for_privacy(assembly_clips)
-            anon_preset = _anonymize_preset_params(params.memory_preset_params)
+            assembly_clips = anonymize_clips_for_privacy(assembly_clips)
+            anon_preset = anonymize_preset_params(params.memory_preset_params)
             params = replace(
                 params,
-                person_name=_anonymize_name(params.person_name),
+                person_name=anonymize_name(params.person_name),
                 memory_preset_params=anon_preset,
             )
 
@@ -239,7 +247,7 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         run_tracker.start_phase("assembly", len(assembly_clips))
 
         settings = _build_assembly_settings(params, assembly_clips)
-        assembler = _create_assembler(settings, run_id)
+        assembler = _create_assembler(settings, run_id, params.config)
         result_path = assembler.assemble_with_titles(assembly_clips, result_output_path)
         run_tracker.complete_phase(items_processed=len(assembly_clips))
 
@@ -346,7 +354,9 @@ def _extract_clips(
             )
 
             _report(params, "extract", progress, f"Extracting segment: {clip_name}")
-            segment_path = extract_clip(video_path, start_time=start_time, end_time=end_time)
+            segment_path = extract_clip(
+                video_path, start_time=start_time, end_time=end_time, config=params.config
+            )
 
             exif = clip.asset.exif_info
             assembly_clips.append(
@@ -359,7 +369,7 @@ def _extract_clips(
                     llm_emotion=clip.llm_emotion,
                     latitude=exif.latitude if exif else None,
                     longitude=exif.longitude if exif else None,
-                    location_name=_clip_location_name(exif),
+                    location_name=clip_location_name(exif),
                 )
             )
         except Exception as e:
@@ -627,8 +637,8 @@ def _build_title_settings(
     trip_locations = None
     trip_title_text = None
     if params.memory_type == "trip":
-        trip_locations = _extract_trip_locations(assembly_clips)
-        trip_title_text = _generate_trip_title_text(params.memory_preset_params)
+        trip_locations = extract_trip_locations(assembly_clips)
+        trip_title_text = generate_trip_title_text(params.memory_preset_params)
 
     settings = TitleScreenSettings(
         enabled=True,
@@ -659,27 +669,18 @@ def _build_title_settings(
     return settings
 
 
-def _create_assembler(settings: AssemblySettings, run_id: str):
+def _create_assembler(settings: AssemblySettings, run_id: str, config: Config):
     """Create a VideoAssembler with the given settings."""
     from immich_memories.processing.video_assembler import VideoAssembler
 
-    return VideoAssembler(settings, run_id=run_id)
-
-
-def _resolve_music_file(
-    params: GenerationParams,
-    assembly_clips: list[AssemblyClip],
-    run_output_dir: Path,
-) -> Path | None:
-    """Determine the music file to use: provided path, auto-generated, or None."""
-    if params.no_music:
-        return None
-    if params.music_path and params.music_path.exists():
-        return params.music_path
-    if not params.music_path and _music_config_available(params.config):
-        _report(params, "music", 0.85, "Generating AI music...")
-        return _auto_generate_music(params, assembly_clips, run_output_dir)
-    return None
+    return VideoAssembler(
+        settings,
+        run_id=run_id,
+        output_crf=config.output.crf,
+        default_transition_duration=config.defaults.transition_duration,
+        default_resolution=config.output.resolution_tuple,
+        db_path=Path(config.cache.database).expanduser(),
+    )
 
 
 def _run_music_phase(
@@ -690,121 +691,25 @@ def _run_music_phase(
     run_tracker: RunTracker,
 ) -> None:
     """Resolve and apply music to the assembled video."""
-    music_file = _resolve_music_file(params, assembly_clips, run_output_dir)
+
+    def _report_fn(phase: str, progress: float, msg: str) -> None:
+        _report(params, phase, progress, msg)
+
+    music_file = resolve_music_file(
+        config=params.config,
+        music_path=params.music_path,
+        no_music=params.no_music,
+        assembly_clips=assembly_clips,
+        run_output_dir=run_output_dir,
+        memory_type=params.memory_type,
+        report_fn=_report_fn,
+    )
     if not music_file:
         return
     _report(params, "music", 0.9, "Mixing music...")
     run_tracker.start_phase("music", 1)
-    _apply_music_file(result_path, music_file, params.music_volume)
+    apply_music_file(result_path, music_file, params.music_volume)
     run_tracker.complete_phase(items_processed=1)
-
-
-def _music_config_available(config: Config) -> bool:
-    """Check if any AI music generation backend is configured and enabled."""
-    ace = getattr(config, "ace_step", None)
-    mg = getattr(config, "musicgen", None)
-    return bool((ace and ace.enabled) or (mg and mg.enabled))
-
-
-def _auto_generate_music(
-    params: GenerationParams,
-    assembly_clips: list[AssemblyClip],
-    run_output_dir: Path,
-) -> Path | None:
-    """Auto-generate music using configured AI backends.
-
-    Returns the path to the generated music file, or None if generation
-    fails or no backend is available.
-    """
-    if not _music_config_available(params.config):
-        return None
-
-    try:
-        from immich_memories.audio.music_generator import generate_music_for_video
-        from immich_memories.audio.music_generator_client import MusicGenClientConfig
-        from immich_memories.audio.music_generator_models import VideoTimeline
-
-        clip_data: list[tuple[float, str, int | None]] = [
-            (
-                clip.duration,
-                clip.llm_emotion or "calm",
-                _clip_month_from_date(clip.date),
-            )
-            for clip in assembly_clips
-        ]
-
-        config = params.config
-        timeline = VideoTimeline.from_clips(
-            clips=clip_data,
-            title_duration=(
-                config.title_screens.title_duration if config.title_screens.enabled else 0
-            ),
-            ending_duration=(
-                config.title_screens.ending_duration if config.title_screens.enabled else 0
-            ),
-        )
-
-        musicgen_config = MusicGenClientConfig.from_app_config(config.musicgen)
-        musicgen_config.num_versions = 1  # CLI: just generate one, accept it
-
-        music_dir = run_output_dir / "music"
-        music_dir.mkdir(parents=True, exist_ok=True)
-
-        def music_progress(version_idx: int, status: str, progress: float, detail: object) -> None:
-            _report(params, "music", 0.85 + (progress / 100.0) * 0.05, f"Music: {status}")
-
-        result = asyncio.run(
-            generate_music_for_video(
-                timeline=timeline,
-                output_dir=music_dir,
-                config=musicgen_config,
-                progress_callback=music_progress,
-                app_config=config,
-                memory_type=params.memory_type,
-            )
-        )
-
-        if result and result.versions:
-            result.selected_version = 0
-            selected = result.selected
-            if selected and selected.full_mix and selected.full_mix.exists():
-                logger.info(f"Auto-generated music: {selected.full_mix}")
-                return selected.full_mix
-
-    except Exception:
-        logger.warning("Auto music generation failed, continuing without music", exc_info=True)
-
-    return None
-
-
-def _clip_month_from_date(date_str: str | None) -> int | None:
-    """Extract month from a YYYY-MM-DD date string."""
-    if not date_str:
-        return None
-    try:
-        return int(date_str.split("-")[1])
-    except (IndexError, ValueError):
-        return None
-
-
-def _apply_music_file(video_path: Path, music_path: Path, volume: float) -> None:
-    """Mix a music file into the assembled video."""
-    from immich_memories.audio.mixer import DuckingConfig, MixConfig, mix_audio_with_ducking
-
-    final_path = video_path.with_suffix(".with_music.mp4")
-    mix_config = MixConfig(
-        ducking=DuckingConfig(
-            music_volume_db=-20 + (volume * 20),
-        ),
-    )
-    mix_audio_with_ducking(
-        video_path=video_path,
-        music_path=music_path,
-        output_path=final_path,
-        config=mix_config,
-    )
-    # WHY: replace() is atomic on POSIX — no window where video_path is missing
-    final_path.replace(video_path)
 
 
 def _upload_to_immich(
@@ -833,145 +738,6 @@ def _cleanup_temp_dirs(output_dir: Path) -> None:
         if path.exists():
             with contextlib.suppress(Exception):
                 shutil.rmtree(path)
-
-
-def _clip_location_name(exif) -> str | None:
-    if not exif:
-        return None
-    city = exif.city
-    country = exif.country
-    if city and country:
-        return f"{city}, {country}"
-    return country or city
-
-
-def _extract_trip_locations(assembly_clips: list[AssemblyClip]) -> list[tuple[float, float]]:
-    """Extract unique GPS locations from assembly clips for map pins."""
-    seen: set[tuple[float, float]] = set()
-    locations: list[tuple[float, float]] = []
-    for clip in assembly_clips:
-        if clip.latitude is not None and clip.longitude is not None:
-            key = (round(clip.latitude, 2), round(clip.longitude, 2))
-            if key not in seen:
-                seen.add(key)
-                locations.append((clip.latitude, clip.longitude))
-    return locations
-
-
-_PRIVACY_FAKE_NAMES = [
-    "Alice",
-    "Bob",
-    "Charlie",
-    "Diana",
-    "Eve",
-    "Frank",
-    "Grace",
-    "Hank",
-    "Iris",
-    "Jack",
-    "Kim",
-    "Leo",
-]
-# WHY: real city coordinates so map tiles show a real place, not ocean
-_PRIVACY_FAKE_CITIES = [
-    ("Paris, France", 48.8566, 2.3522),
-    ("Amsterdam, Netherlands", 52.3676, 4.9041),
-    ("Barcelona, Spain", 41.3874, 2.1686),
-    ("Copenhagen, Denmark", 55.6761, 12.5683),
-    ("Lisbon, Portugal", 38.7223, -9.1393),
-    ("Vienna, Austria", 48.2082, 16.3738),
-    ("Prague, Czech Republic", 50.0755, 14.4378),
-    ("Stockholm, Sweden", 59.3293, 18.0686),
-]
-
-
-def _anonymize_name(name: str | None) -> str | None:
-    """Replace a real name with a consistent fake name."""
-    if name is None:
-        return None
-    # WHY: hashlib is deterministic across processes (hash() is not — PYTHONHASHSEED)
-    import hashlib
-
-    idx = int(hashlib.sha256(name.encode()).hexdigest(), 16) % len(_PRIVACY_FAKE_NAMES)
-    return _PRIVACY_FAKE_NAMES[idx]
-
-
-def _pick_fake_city() -> tuple[str, float, float]:
-    """Pick a deterministic fake city (same seed = same city every run)."""
-    import random
-
-    rng = random.Random(42)
-    return _PRIVACY_FAKE_CITIES[rng.randint(0, len(_PRIVACY_FAKE_CITIES) - 1)]
-
-
-def _anonymize_preset_params(preset_params: dict) -> dict:
-    """Anonymize trip-related preset params (home GPS, location name)."""
-    result = preset_params.copy()
-    fake_name, fake_lat, fake_lon = _pick_fake_city()
-
-    # WHY: shift home to the fake city center so map fly starts from there
-    if "home_lat" in result and result["home_lat"] is not None:
-        result["home_lat"] = fake_lat - 1.5  # Offset from city so route is visible
-        result["home_lon"] = fake_lon - 1.0
-    if "location_name" in result:
-        result["location_name"] = fake_name
-
-    return result
-
-
-def _anonymize_clips_for_privacy(
-    clips: list[AssemblyClip],
-) -> list[AssemblyClip]:
-    """Relocate all GPS coords to a fake city (preserves cluster shape)."""
-    fake_name, fake_lat, fake_lon = _pick_fake_city()
-
-    # Find centroid of real GPS coords
-    gps_clips = [(c.latitude, c.longitude) for c in clips if c.latitude and c.longitude]
-    if not gps_clips:
-        return clips
-
-    real_center_lat = sum(lat for lat, _ in gps_clips) / len(gps_clips)
-    real_center_lon = sum(lon for _, lon in gps_clips) / len(gps_clips)
-
-    # WHY: offset = fake city - real centroid, so cluster lands ON the fake city
-    lat_offset = fake_lat - real_center_lat
-    lon_offset = fake_lon - real_center_lon
-
-    result = []
-    for clip in clips:
-        if clip.latitude is not None and clip.longitude is not None:
-            new_lat = max(-90, min(90, clip.latitude + lat_offset))
-            new_lon = ((clip.longitude + lon_offset + 180) % 360) - 180
-
-            clip = AssemblyClip(
-                path=clip.path,
-                duration=clip.duration,
-                date=clip.date,
-                asset_id=clip.asset_id,
-                is_title_screen=clip.is_title_screen,
-                rotation_override=clip.rotation_override,
-                latitude=new_lat,
-                longitude=new_lon,
-                location_name=fake_name,
-                has_speech=clip.has_speech,
-                outgoing_transition=clip.outgoing_transition,
-            )
-        result.append(clip)
-    return result
-
-
-def _generate_trip_title_text(preset_params: dict) -> str | None:
-    """Generate trip title text from preset params."""
-    from immich_memories.titles._trip_titles import generate_trip_title
-
-    location_name = preset_params.get("location_name")
-    trip_start = preset_params.get("trip_start")
-    trip_end = preset_params.get("trip_end")
-
-    if not location_name or not trip_start or not trip_end:
-        return None
-
-    return generate_trip_title(location_name, trip_start, trip_end)
 
 
 def assets_to_clips(assets: list) -> list:
