@@ -26,6 +26,9 @@ class PerfResult:
     wall_seconds: float
     cpu_user_seconds: float
     cpu_sys_seconds: float
+    # WHY: FFmpeg runs as a subprocess — tracemalloc can't see it.
+    # ru_maxrss from RUSAGE_CHILDREN captures child process peak RSS.
+    child_peak_rss_mb: float = 0.0
     output_size_mb: float = 0.0
     clip_count: int = 0
     resolution: str = ""
@@ -35,6 +38,7 @@ class PerfResult:
         return (
             f"PERF: scenario={self.scenario} "
             f"python_peak_mb={self.python_peak_mb:.0f} "
+            f"child_peak_rss_mb={self.child_peak_rss_mb:.0f} "
             f"wall_s={self.wall_seconds:.1f} "
             f"cpu_user_s={self.cpu_user_seconds:.1f} "
             f"cpu_sys_s={self.cpu_sys_seconds:.1f}"
@@ -81,6 +85,15 @@ def measure_resources(
         result.wall_seconds = end_wall - start_wall
         result.cpu_user_seconds = end_usage.ru_utime - start_usage.ru_utime
         result.cpu_sys_seconds = end_usage.ru_stime - start_usage.ru_stime
+
+        # WHY: ru_maxrss is the HIGH WATERMARK of child process RSS.
+        # On macOS it's in bytes, on Linux in KB. This captures FFmpeg's
+        # memory usage which tracemalloc can't see.
+        rss_raw = end_usage.ru_maxrss
+        if platform.system() == "Darwin":
+            result.child_peak_rss_mb = rss_raw / (1024 * 1024)
+        else:
+            result.child_peak_rss_mb = rss_raw / 1024
 
 
 def save_results(results: list[PerfResult], output_path: Path) -> None:

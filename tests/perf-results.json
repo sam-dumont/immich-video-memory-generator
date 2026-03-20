@@ -1,35 +1,38 @@
 {
-  "timestamp": "2026-03-20T15:13:23",
+  "timestamp": "2026-03-20T15:15:55",
   "platform": "macOS-26.3-arm64-arm-64bit-Mach-O",
   "python": "3.13.11",
   "results": [
     {
       "scenario": "minimal",
-      "python_peak_mb": 0.09621334075927734,
-      "wall_seconds": 1.3973205419897567,
-      "cpu_user_seconds": 1.202164,
-      "cpu_sys_seconds": 0.23328499999999996,
+      "python_peak_mb": 0.09618282318115234,
+      "wall_seconds": 1.3487156250048429,
+      "cpu_user_seconds": 1.194109,
+      "cpu_sys_seconds": 0.20524199999999998,
+      "child_peak_rss_mb": 245.40625,
       "output_size_mb": 0.3054189682006836,
       "clip_count": 2,
       "resolution": "720p"
     },
     {
       "scenario": "typical",
-      "python_peak_mb": 0.10133075714111328,
-      "wall_seconds": 7.363216083991574,
-      "cpu_user_seconds": 8.385335999999999,
-      "cpu_sys_seconds": 0.754646,
+      "python_peak_mb": 0.10155582427978516,
+      "wall_seconds": 7.284180291986559,
+      "cpu_user_seconds": 8.323741000000002,
+      "cpu_sys_seconds": 0.6553819999999999,
+      "child_peak_rss_mb": 876.8125,
       "output_size_mb": 1.9200820922851562,
       "clip_count": 5,
       "resolution": "1080p"
     },
     {
       "scenario": "heavy",
-      "python_peak_mb": 0.10772323608398438,
-      "wall_seconds": 15.726896832988132,
-      "cpu_user_seconds": 17.676156,
-      "cpu_sys_seconds": 0.9698140000000002,
-      "output_size_mb": 1.5257062911987305,
+      "python_peak_mb": 0.10727310180664062,
+      "wall_seconds": 15.651875333016505,
+      "cpu_user_seconds": 17.608759000000003,
+      "cpu_sys_seconds": 0.911119,
+      "child_peak_rss_mb": 1053.65625,
+      "output_size_mb": 1.525660514831543,
       "clip_count": 8,
       "resolution": "1080p"
     }

@@ -32,8 +32,10 @@ class TestMeasureResources:
             wall_seconds=5.2,
             cpu_user_seconds=3.1,
             cpu_sys_seconds=1.0,
+            child_peak_rss_mb=500.0,
         )
         line = r.summary_line
         assert "scenario=test" in line
         assert "python_peak_mb=100" in line
+        assert "child_peak_rss_mb=500" in line
         assert "wall_s=5.2" in line
