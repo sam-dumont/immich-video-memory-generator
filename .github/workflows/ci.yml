@@ -42,7 +42,7 @@ jobs:
   commitlint:
     name: Commit Messages
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.repository == 'sam-dumont/immich-video-memory-generator' && github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v5
         with:
