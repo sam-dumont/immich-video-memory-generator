@@ -545,6 +545,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "integration: requires FFmpeg (deselect with '-m not integration')",
+    "perf: performance benchmarks (run with: make benchmark-perf)",
 ]
 addopts = "-m 'not integration'"
 
