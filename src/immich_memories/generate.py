@@ -120,6 +120,12 @@ def generate_memory(params: GenerationParams) -> Path:
         raise GenerationError("No clips provided for generation")
 
     run_id = generate_run_id()
+
+    # Tag all log lines with run_id for correlation
+    from immich_memories.logging_config import set_current_run_id
+
+    set_current_run_id(run_id)
+
     run_tracker = RunTracker(run_id)
 
     # Create output directory structure
@@ -204,6 +210,8 @@ def generate_memory(params: GenerationParams) -> Path:
         logger.exception("Video generation failed")
         safe_msg = sanitize_error_message(str(e))
         raise GenerationError(f"Generation failed: {safe_msg}") from e
+    finally:
+        set_current_run_id(None)
 
 
 def _total_clip_duration(params: GenerationParams) -> int:
