@@ -217,6 +217,9 @@ class TaichiTitleRenderer:
         self.frame_buffer = np.zeros((h, w, 3), dtype=np.float32)
         self.temp_buffer = np.zeros((h, w, 3), dtype=np.float32)
         self.bokeh_buffer = np.zeros((h, w, 4), dtype=np.float32)
+        # WHY: reusable output buffer avoids allocating 25MB per frame at 4K.
+        # render_frame() converts float32→uint8 in-place into this buffer.
+        self._output_buffer = np.zeros((h, w, 3), dtype=np.uint8)
 
         self.blur_kernel = _create_gaussian_kernel(self.config.blur_radius)
 
@@ -318,7 +321,12 @@ class TaichiTitleRenderer:
         # 7. Render text
         self._render_text(t, progress, cfg, title, subtitle)
 
-        return (np.clip(self.frame_buffer, 0, 1) * 255).astype(np.uint8)
+        # WHY: in-place conversion avoids 3 temporary arrays per frame (75MB at 4K).
+        # np.clip + multiply + astype each allocate a full copy.
+        np.clip(self.frame_buffer, 0, 1, out=self.frame_buffer)
+        np.multiply(self.frame_buffer, 255, out=self.frame_buffer)
+        self._output_buffer[:] = self.frame_buffer  # float32→uint8 copy into reused buffer
+        return self._output_buffer
 
     def _render_gradient(self, t: float, progress: float, cfg: TaichiTitleConfig):
         """Render the background gradient."""
