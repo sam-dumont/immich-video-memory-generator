@@ -28,6 +28,7 @@ from immich_memories.processing.hdr_utilities import (
     _get_clip_hdr_types,
     _get_colorspace_filter,
     _get_dominant_hdr_type,
+    _get_gpu_encoder_args,
 )
 from immich_memories.processing.streaming_assembler import streaming_assemble_full
 
@@ -219,19 +220,20 @@ class AssemblyEngine:
             transitions, [c.duration for c in clips], self.settings.transition_duration or 0.5
         )
 
-        target_fps = self.prober.detect_max_framerate(clips)
+        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
         fade_duration = self.settings.transition_duration or 0.5
         crf = self.settings.output_crf or 18
 
-        # WHY: Streaming assembler uses rgb24/libx264/yuv420p. HDR (10-bit HEVC,
-        # BT.2020) will be added in a follow-up by parameterizing the encoder.
+        # GPU encoder + HDR — same _get_gpu_encoder_args the old filter graph used
+        encoder_args = _get_gpu_encoder_args(
+            crf=crf,
+            preserve_hdr=self.settings.preserve_hdr,
+            hdr_type=ctx.hdr_type,
+        )
         if self.settings.preserve_hdr:
-            has_hdr = any(clip_hdr is not None for clip_hdr in _get_clip_hdr_types(clips))
-            if has_hdr:
-                logger.warning(
-                    "HDR content detected but streaming assembler uses SDR (rgb24/libx264). "
-                    "HDR metadata will not be preserved. HDR streaming support is planned."
-                )
+            logger.info(f"Streaming assembly with {ctx.hdr_type.upper()} HDR preservation")
+        else:
+            logger.info("Streaming assembly with GPU-accelerated encoding")
 
         logger.info(f"Streaming assembly: {len(clips)} clips at {target_w}x{target_h}")
 
@@ -241,9 +243,12 @@ class AssemblyEngine:
             output_path=output_path,
             width=target_w,
             height=target_h,
-            fps=target_fps,
+            fps=ctx.target_fps,
             fade_duration=fade_duration,
-            crf=crf,
+            encoder_args=encoder_args,
+            ctx=ctx,
+            normalize_audio=self.settings.normalize_clip_audio,
+            privacy_mode=self.settings.privacy_mode,
             progress_callback=progress_callback,
         )
         return output_path

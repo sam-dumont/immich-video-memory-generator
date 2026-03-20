@@ -73,7 +73,22 @@ class TestStreamingEncoder:
         width, height, fps = 320, 240, 10
         n_frames = 10
 
-        encoder = StreamingEncoder(output, width, height, fps, crf=28)
+        encoder = StreamingEncoder(
+            output,
+            width,
+            height,
+            fps,
+            encoder_args=[
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "28",
+                "-pix_fmt",
+                "yuv420p",
+            ],
+        )
         encoder.start()
         for i in range(n_frames):
             # Gradient frame — different each frame for visual verification
@@ -202,7 +217,16 @@ class TestStreamingAssemble:
             height=240,
             fps=10,
             fade_duration=0.3,
-            crf=28,
+            encoder_args=[
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "28",
+                "-pix_fmt",
+                "yuv420p",
+            ],
         )
 
         assert output.exists()
@@ -267,7 +291,16 @@ class TestStreamingAssemble:
             height=240,
             fps=10,
             fade_duration=0.3,
-            crf=28,
+            encoder_args=[
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "28",
+                "-pix_fmt",
+                "yuv420p",
+            ],
         )
 
         assert output.exists()
@@ -420,7 +453,16 @@ class TestFullStreamingPipeline:
             height=240,
             fps=10,
             fade_duration=0.3,
-            crf=28,
+            encoder_args=[
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "28",
+                "-pix_fmt",
+                "yuv420p",
+            ],
         )
 
         assert output.exists()
