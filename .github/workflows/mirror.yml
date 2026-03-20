@@ -27,12 +27,16 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          # WHY: pull_request checks out a merge commit by default.
+          # We need the actual branch head for mirroring.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Push to private mirror
         run: |
+          BRANCH="${{ github.head_ref || github.ref_name }}"
           git remote add mirror https://x-access-token:${{ secrets.CI_MIRROR_TOKEN }}@github.com/sam-dumont/immich-memories-ci.git
-          git push mirror --force "HEAD:refs/heads/${{ github.head_ref || github.ref_name }}"
-          git push mirror --force --tags
+          git push mirror --force "HEAD:refs/heads/${BRANCH}"
+          git push mirror --force --tags 2>/dev/null || true
 
       - name: Set pending status
         run: |
