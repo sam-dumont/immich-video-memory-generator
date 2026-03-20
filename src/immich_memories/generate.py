@@ -22,6 +22,7 @@ from immich_memories.processing.assembly_config import (
     TitleScreenSettings,
     TransitionType,
 )
+from immich_memories.processing.clip_validation import validate_clips
 from immich_memories.security import sanitize_error_message
 
 if TYPE_CHECKING:
@@ -198,6 +199,9 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
             _report(params, "photos", 0.5, "Rendering photo animations...")
             photo_clips = _render_photos(params, run_output_dir, len(assembly_clips))
             assembly_clips = _merge_by_date(assembly_clips, photo_clips)
+
+        # Pre-assembly validation: skip clips with missing/empty files
+        assembly_clips, skipped = validate_clips(assembly_clips)
 
         if not assembly_clips:
             raise GenerationError("No clips could be processed")
