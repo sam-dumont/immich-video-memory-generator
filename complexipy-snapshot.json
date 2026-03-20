@@ -1342,40 +1342,28 @@
       {
         "name": "_search_font_paths",
         "complexity": 20,
-        "line_start": 143,
-        "line_end": 157,
+        "line_start": 146,
+        "line_end": 160,
         "line_complexities": [
           {
-            "line": 145,
+            "line": 148,
             "complexity": 1
           },
           {
-            "line": 146,
-            "complexity": 2
-          },
-          {
-            "line": 148,
-            "complexity": 2
-          },
-          {
             "line": 149,
-            "complexity": 0
-          },
-          {
-            "line": 150,
-            "complexity": 3
+            "complexity": 2
           },
           {
             "line": 151,
-            "complexity": 0
+            "complexity": 2
           },
           {
             "line": 152,
-            "complexity": 3
+            "complexity": 0
           },
           {
             "line": 153,
-            "complexity": 4
+            "complexity": 3
           },
           {
             "line": 154,
@@ -1383,20 +1371,32 @@
           },
           {
             "line": 155,
-            "complexity": 5
+            "complexity": 3
           },
           {
             "line": 156,
-            "complexity": 0
+            "complexity": 4
           },
           {
             "line": 157,
+            "complexity": 0
+          },
+          {
+            "line": 158,
+            "complexity": 5
+          },
+          {
+            "line": 159,
+            "complexity": 0
+          },
+          {
+            "line": 160,
             "complexity": 0
           }
         ]
       }
     ],
-    "complexity": 32
+    "complexity": 36
   },
   {
     "path": "src/immich_memories/titles/sdf_font_rendering.py",

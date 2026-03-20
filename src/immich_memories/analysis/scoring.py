@@ -172,7 +172,7 @@ def _compute_face_score_opencv(
         minSize=(30, 30),
     )
 
-    if not faces:
+    if len(faces) == 0:  # noqa: FURB115 — `not faces` crashes on numpy arrays (Linux OpenCV)
         return 0.0, []
 
     total_face_area = 0
