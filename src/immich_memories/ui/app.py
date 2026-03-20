@@ -294,7 +294,7 @@ def _get_last_successful_run() -> str | None:
     """Return ISO timestamp of last completed run, or None."""
     from immich_memories.tracking.run_database import RunDatabase
 
-    db = RunDatabase()
+    db = RunDatabase(db_path=get_config().cache.database_path)
     runs = db.list_runs(limit=1, status="completed")
     if runs and runs[0].completed_at:
         return runs[0].completed_at.isoformat()

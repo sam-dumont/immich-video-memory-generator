@@ -90,29 +90,20 @@ def get_content_analyzer(
 
 
 def get_content_analyzer_from_config(
-    content_analysis_config: ContentAnalysisConfig | None = None,
-    llm_config: LLMConfig | None = None,
+    content_analysis_config: ContentAnalysisConfig,
+    llm_config: LLMConfig,
 ) -> ContentAnalyzer | None:
     """Get a content analyzer using settings from config.
 
     Uses the shared LLM settings from config.llm for provider selection.
 
     Args:
-        content_analysis_config: ContentAnalysisConfig instance. Falls back to get_config().
-        llm_config: LLMConfig instance. Falls back to get_config().
+        content_analysis_config: ContentAnalysisConfig instance.
+        llm_config: LLMConfig instance.
 
     Returns:
         ContentAnalyzer instance or None if no analyzer available.
     """
-    if content_analysis_config is None or llm_config is None:
-        from immich_memories.config import get_config
-
-        config = get_config()
-        if content_analysis_config is None:
-            content_analysis_config = config.content_analysis
-        if llm_config is None:
-            llm_config = config.llm
-
     if not content_analysis_config.enabled:
         logger.info("Content analysis is disabled in config")
         return None

@@ -136,6 +136,9 @@ class AssemblySettings:
     scale_mode: str = "blur"
     # Privacy/demo mode: blur video + mute speech for showcase videos
     privacy_mode: bool = False
+    # Fallback resolution when auto_resolution is False and target_resolution is None
+    # Set by the caller from config.output.resolution_tuple
+    default_resolution: tuple[int, int] | None = None
 
 
 @dataclass

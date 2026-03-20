@@ -82,10 +82,13 @@ class ClipEncoder:
         settings: AssemblySettings,
         prober: FFmpegProber,
         face_center_fn: Callable[[Path], tuple[float, float] | None],
+        *,
+        default_resolution: tuple[int, int] = (1920, 1080),
     ) -> None:
         self.settings = settings
         self.prober = prober
         self.face_center_fn = face_center_fn
+        self.default_resolution = default_resolution
 
     def resolve_encode_resolution(
         self, target_resolution: tuple[int, int] | None
@@ -94,9 +97,7 @@ class ClipEncoder:
             return target_resolution
         if self.settings.target_resolution:
             return self.settings.target_resolution
-        from immich_memories.config import get_config
-
-        return get_config().output.resolution_tuple
+        return self.default_resolution
 
     def resolve_encode_hdr(self, clip: AssemblyClip) -> tuple[str, str]:
         hdr_type = "hlg"

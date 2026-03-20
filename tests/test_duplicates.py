@@ -206,13 +206,13 @@ class TestFindDuplicateGroups:
     def test_no_video_paths_returns_singles(self, sample_config):
         """Without video_paths, every video is its own group."""
         clips = [make_clip("v1"), make_clip("v2")]
-        groups = find_duplicate_groups(clips)
+        groups = find_duplicate_groups(clips, duplicate_hash_threshold=10)
         assert len(groups) == 2
         assert all(len(g.videos) == 1 for g in groups)
 
     def test_empty_videos_returns_empty(self, sample_config):
         """Empty input returns empty list."""
-        groups = find_duplicate_groups([])
+        groups = find_duplicate_groups([], duplicate_hash_threshold=10)
         assert not groups
 
     # WHY: compute_video_hash reads video frames via OpenCV — provide deterministic hashes
@@ -231,6 +231,7 @@ class TestFindDuplicateGroups:
             [c1, c2],
             threshold=5,
             video_paths={"v1": p1, "v2": p2},
+            duplicate_hash_threshold=10,
         )
         # Both should be in same group
         multi_groups = [g for g in groups if len(g.videos) > 1]
@@ -254,6 +255,7 @@ class TestFindDuplicateGroups:
             [c1, c2],
             threshold=2,
             video_paths={"v1": p1, "v2": p2},
+            duplicate_hash_threshold=10,
         )
         assert all(len(g.videos) == 1 for g in groups)
 
@@ -271,6 +273,7 @@ class TestFindDuplicateGroups:
             [c1, c2],
             threshold=5,
             video_paths={"v1": p1},  # v2 missing
+            duplicate_hash_threshold=10,
         )
         # v2 should appear as ungrouped single
         ids_in_groups = [v.asset.id for g in groups for v in g.videos]

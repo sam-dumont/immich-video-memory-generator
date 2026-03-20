@@ -16,13 +16,16 @@ from immich_memories.api.immich import (
 )
 from immich_memories.api.models import MetadataSearchResult
 
+_TEST_URL = "https://immich.example.com"
+_TEST_KEY = "test-api-key"
+
 
 @pytest.fixture()
 def _mock_config():
-    """Patch get_config so ImmichClient can be constructed without real config."""
+    """Patch get_config so older test code that references config still works."""
     cfg = MagicMock()
-    cfg.immich.url = "https://immich.example.com"
-    cfg.immich.api_key = "test-api-key"
+    cfg.immich.url = _TEST_URL
+    cfg.immich.api_key = _TEST_KEY
     with patch("immich_memories.config.get_config", return_value=cfg):
         yield cfg
 
@@ -32,33 +35,21 @@ class TestImmichClientInit:
 
     def test_missing_url_raises(self):
         """Empty URL raises ValueError."""
-        cfg = MagicMock()
-        cfg.immich.url = ""
-        cfg.immich.api_key = "key"
         with pytest.raises(ValueError, match="URL not configured"):
-            ImmichClient(config=cfg)
+            ImmichClient(base_url="", api_key="key")
 
     def test_missing_api_key_raises(self):
         """Empty API key raises ValueError."""
-        cfg = MagicMock()
-        cfg.immich.url = "https://x.com"
-        cfg.immich.api_key = ""
         with pytest.raises(ValueError, match="API key not configured"):
-            ImmichClient(config=cfg)
+            ImmichClient(base_url="https://x.com", api_key="")
 
-    def test_strips_trailing_slash(self, _mock_config):
+    def test_strips_trailing_slash(self):
         """Trailing slash is removed from base_url."""
         client = ImmichClient(base_url="https://x.com/", api_key="key")
         assert client.base_url == "https://x.com"
 
-    def test_config_fallback(self, _mock_config):
-        """Falls back to config when no explicit args."""
-        client = ImmichClient()
-        assert client.base_url == "https://immich.example.com"
-        assert client.api_key == "test-api-key"
-
-    def test_explicit_args_override_config(self, _mock_config):
-        """Explicit args take precedence over config."""
+    def test_explicit_args(self):
+        """Explicit args set base_url and api_key."""
         client = ImmichClient(base_url="https://other.com", api_key="other-key")
         assert client.base_url == "https://other.com"
         assert client.api_key == "other-key"
@@ -70,7 +61,7 @@ class TestImmichClientRequest:
     @pytest.mark.asyncio
     async def test_401_raises_auth_error(self, _mock_config):
         """401 status maps to ImmichAuthError."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         mock_response = httpx.Response(401, request=httpx.Request("GET", "/test"))
         client._client = AsyncMock()
         client._client.is_closed = False
@@ -82,7 +73,7 @@ class TestImmichClientRequest:
     @pytest.mark.asyncio
     async def test_404_raises_not_found(self, _mock_config):
         """404 status maps to ImmichNotFoundError."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         mock_response = httpx.Response(404, request=httpx.Request("GET", "/test"))
         client._client = AsyncMock()
         client._client.is_closed = False
@@ -94,7 +85,7 @@ class TestImmichClientRequest:
     @pytest.mark.asyncio
     async def test_500_raises_api_error(self, _mock_config):
         """5xx status maps to ImmichAPIError with status code."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         mock_response = httpx.Response(
             500,
             request=httpx.Request("GET", "/test"),
@@ -115,7 +106,7 @@ class TestImmichClientRequest:
     @pytest.mark.asyncio
     async def test_timeout_raises_api_error(self, _mock_config):
         """Timeout wraps as ImmichAPIError."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         client._client.request = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
@@ -130,7 +121,7 @@ class TestImmichClientRequest:
     @pytest.mark.asyncio
     async def test_request_error_raises_api_error(self, _mock_config):
         """Connection error wraps as ImmichAPIError."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         client._client.request = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
@@ -145,7 +136,7 @@ class TestImmichClientRequest:
     @pytest.mark.asyncio
     async def test_json_response_parsed(self, _mock_config):
         """JSON content-type returns parsed dict."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         mock_response = httpx.Response(
             200,
             request=httpx.Request("GET", "/test"),
@@ -162,7 +153,7 @@ class TestImmichClientRequest:
     @pytest.mark.asyncio
     async def test_binary_response_returned(self, _mock_config):
         """Non-JSON content-type returns bytes."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         mock_response = httpx.Response(
             200,
             request=httpx.Request("GET", "/test"),
@@ -179,7 +170,7 @@ class TestImmichClientRequest:
     @pytest.mark.asyncio
     async def test_error_json_body_extracted(self, _mock_config):
         """Error responses with JSON body extract 'message' field."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         mock_response = httpx.Response(
             400,
             request=httpx.Request("POST", "/test"),
@@ -200,14 +191,14 @@ class TestImmichClientLifecycle:
     @pytest.mark.asyncio
     async def test_context_manager_closes(self, _mock_config):
         """Async context manager calls close on exit."""
-        async with ImmichClient() as client:
+        async with ImmichClient(_TEST_URL, _TEST_KEY) as client:
             assert client.base_url == "https://immich.example.com"
         assert client._client is None
 
     @pytest.mark.asyncio
     async def test_client_property_creates_lazily(self, _mock_config):
         """client property lazily creates httpx.AsyncClient."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         assert client._client is None
         http_client = client.client
         assert isinstance(http_client, httpx.AsyncClient)
@@ -216,7 +207,7 @@ class TestImmichClientLifecycle:
     @pytest.mark.asyncio
     async def test_close_idempotent(self, _mock_config):
         """Calling close() twice is safe."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         _ = client.client  # Force creation
         await client.close()
         await client.close()  # Should not raise
@@ -227,12 +218,12 @@ class TestSyncImmichClient:
 
     def test_sync_context_manager(self, _mock_config):
         """Sync context manager works."""
-        with SyncImmichClient() as client:
+        with SyncImmichClient(_TEST_URL, _TEST_KEY) as client:
             assert client.base_url == "https://immich.example.com"
 
     def test_sync_properties(self, _mock_config):
         """Properties delegate to async client."""
-        client = SyncImmichClient()
+        client = SyncImmichClient(_TEST_URL, _TEST_KEY)
         assert client.base_url == "https://immich.example.com"
         assert client.api_key == "test-api-key"
         assert client.timeout == 30.0
@@ -245,7 +236,7 @@ class TestSearchPagination:
     @pytest.mark.asyncio
     async def test_single_page_result(self, _mock_config):
         """Single page result returns all assets."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         mock_result = MetadataSearchResult(
             assets={"total": 1, "items": [], "nextPage": None},
         )
@@ -261,7 +252,7 @@ class TestSearchPagination:
         """Multi-page results accumulate all assets."""
         from tests.conftest import make_asset
 
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         a1 = make_asset("a1")
         a2 = make_asset("a2")
 
@@ -281,7 +272,7 @@ class TestSearchPagination:
     @pytest.mark.asyncio
     async def test_progress_callback_invoked(self, _mock_config):
         """Progress callback receives accumulated count."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         mock_result = MetadataSearchResult(
             assets={"total": 0, "items": [], "nextPage": None},
         )
@@ -295,7 +286,7 @@ class TestSearchPagination:
     @pytest.mark.asyncio
     async def test_empty_year_returns_empty(self, _mock_config):
         """Year with no videos returns empty list."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         mock_result = MetadataSearchResult(
             assets={"total": 0, "items": [], "nextPage": None},
         )
@@ -312,7 +303,7 @@ class TestPersonMethods:
     @pytest.mark.asyncio
     async def test_get_all_people_dict_format(self, _mock_config):
         """Handles {'people': [...]} response format."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         mock_response = httpx.Response(
@@ -330,7 +321,7 @@ class TestPersonMethods:
     @pytest.mark.asyncio
     async def test_get_all_people_list_format(self, _mock_config):
         """Handles direct list response format."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         mock_response = httpx.Response(
@@ -348,7 +339,7 @@ class TestPersonMethods:
     @pytest.mark.asyncio
     async def test_get_person_by_name_case_insensitive(self, _mock_config):
         """Name search is case-insensitive."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         mock_response = httpx.Response(
@@ -366,7 +357,7 @@ class TestPersonMethods:
     @pytest.mark.asyncio
     async def test_get_person_by_name_not_found(self, _mock_config):
         """Returns None when name not found."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         mock_response = httpx.Response(
@@ -387,7 +378,7 @@ class TestAvailableYears:
     @pytest.mark.asyncio
     async def test_parses_years_from_buckets(self, _mock_config):
         """Extracts years from time bucket ISO strings."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         mock_response = httpx.Response(
@@ -408,7 +399,7 @@ class TestAvailableYears:
     @pytest.mark.asyncio
     async def test_invalid_bucket_skipped(self, _mock_config):
         """Invalid ISO strings are silently skipped."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         mock_response = httpx.Response(
@@ -428,7 +419,7 @@ class TestAvailableYears:
     @pytest.mark.asyncio
     async def test_empty_buckets(self, _mock_config):
         """No buckets returns empty list."""
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         client._client = AsyncMock()
         client._client.is_closed = False
         mock_response = httpx.Response(
@@ -454,7 +445,7 @@ class TestGetVideosForAnyPerson:
         from immich_memories.timeperiod import DateRange
         from tests.conftest import make_asset
 
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         a1 = make_asset("a1", file_created_at=datetime(2024, 3, 1, tzinfo=UTC))
         a2 = make_asset("a2", file_created_at=datetime(2024, 6, 1, tzinfo=UTC))
         date_range = DateRange(start=datetime(2024, 1, 1), end=datetime(2024, 12, 31, 23, 59, 59))
@@ -475,7 +466,7 @@ class TestGetVideosForAnyPerson:
         from immich_memories.timeperiod import DateRange
         from tests.conftest import make_asset
 
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         shared = make_asset("shared", file_created_at=datetime(2024, 2, 1, tzinfo=UTC))
         only_a = make_asset("only-a", file_created_at=datetime(2024, 1, 1, tzinfo=UTC))
         only_b = make_asset("only-b", file_created_at=datetime(2024, 3, 1, tzinfo=UTC))
@@ -501,7 +492,7 @@ class TestGetVideosForAnyPerson:
 
         from immich_memories.timeperiod import DateRange
 
-        client = ImmichClient()
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
         date_range = DateRange(start=datetime(2024, 1, 1), end=datetime(2024, 12, 31, 23, 59, 59))
         # WHY: mock at service level — delegates to search service
         client.search.get_videos_for_person_and_date_range = AsyncMock()

@@ -79,10 +79,12 @@ def render_cache_management() -> None:
                     VideoAnalysisCache,
                     VideoDownloadCache,
                 )
+                from immich_memories.config import get_config
 
-                analysis = VideoAnalysisCache()
-                video = VideoDownloadCache()
-                thumbnail = ThumbnailCache()
+                _cfg = get_config()
+                analysis = VideoAnalysisCache(db_path=_cfg.cache.database_path)
+                video = VideoDownloadCache(cache_dir=_cfg.cache.video_cache_path)
+                thumbnail = ThumbnailCache(cache_dir=_cfg.cache.cache_path / "thumbnails")
                 return {
                     "analysis": analysis.get_stats(),
                     "video": video.get_stats(),
@@ -99,8 +101,12 @@ def render_cache_management() -> None:
 
                 async def clear_analysis():
                     from immich_memories.cache import VideoAnalysisCache
+                    from immich_memories.config import get_config
 
-                    count = await run.io_bound(VideoAnalysisCache().clear_all)
+                    _cfg = get_config()
+                    count = await run.io_bound(
+                        VideoAnalysisCache(db_path=_cfg.cache.database_path).clear_all
+                    )
                     ui.notify(f"Cleared {count} analysis entries", type="positive")
                     await refresh_stats()
 
@@ -115,8 +121,12 @@ def render_cache_management() -> None:
 
                 async def clear_video():
                     from immich_memories.cache import VideoDownloadCache
+                    from immich_memories.config import get_config
 
-                    count = await run.io_bound(VideoDownloadCache().clear)
+                    _cfg = get_config()
+                    count = await run.io_bound(
+                        VideoDownloadCache(cache_dir=_cfg.cache.video_cache_path).clear
+                    )
                     ui.notify(f"Cleared {count} cached videos", type="positive")
                     await refresh_stats()
 
@@ -131,8 +141,12 @@ def render_cache_management() -> None:
 
                 async def clear_thumbnail():
                     from immich_memories.cache import ThumbnailCache
+                    from immich_memories.config import get_config
 
-                    count = await run.io_bound(ThumbnailCache().clear)
+                    _cfg = get_config()
+                    count = await run.io_bound(
+                        ThumbnailCache(cache_dir=_cfg.cache.cache_path / "thumbnails").clear
+                    )
                     ui.notify(f"Cleared {count} cached thumbnails", type="positive")
                     await refresh_stats()
 
@@ -160,9 +174,12 @@ def render_cache_management() -> None:
                     )
 
                     def _do_clear_all():
-                        a = VideoAnalysisCache().clear_all()
-                        v = VideoDownloadCache().clear()
-                        t = ThumbnailCache().clear()
+                        from immich_memories.config import get_config
+
+                        _cfg = get_config()
+                        a = VideoAnalysisCache(db_path=_cfg.cache.database_path).clear_all()
+                        v = VideoDownloadCache(cache_dir=_cfg.cache.video_cache_path).clear()
+                        t = ThumbnailCache(cache_dir=_cfg.cache.cache_path / "thumbnails").clear()
                         p = _clear_preview_cache()
                         return a + v + t + p
 

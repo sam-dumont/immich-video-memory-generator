@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.cache.database import VideoAnalysisCache
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
+    from immich_memories.config_loader import Config
     from immich_memories.config_models import AnalysisConfig
 
 logger = logging.getLogger(__name__)
@@ -125,7 +126,9 @@ class SmartPipeline:
         thumbnail_cache: ThumbnailCache,
         config: PipelineConfig | None = None,
         run_id: str | None = None,
-        analysis_config: AnalysisConfig | None = None,
+        *,
+        analysis_config: AnalysisConfig,
+        app_config: Config,
     ):
         self.client = client
         self.analysis_cache = analysis_cache
@@ -135,10 +138,18 @@ class SmartPipeline:
         self.run_id = run_id
         self._run_db: RunDatabase | None = None
         self._analysis_config = analysis_config
+        self._app_config = app_config
 
         # Wire composed services
-        self.previewer = PreviewBuilder(client)
-        self.analyzer = ClipAnalyzer(self.config, client, analysis_cache, self.previewer)
+        self.previewer = PreviewBuilder(
+            client,
+            cache_config=app_config.cache,
+            analysis_config=analysis_config,
+            content_analysis_config=app_config.content_analysis,
+        )
+        self.analyzer = ClipAnalyzer(
+            self.config, client, analysis_cache, self.previewer, app_config=app_config
+        )
         self.scaler = ClipScaler()
         self.refiner = ClipRefiner(self.config, self.scaler)
 
@@ -147,7 +158,7 @@ class SmartPipeline:
         if not self.run_id:
             return
         if self._run_db is None:
-            self._run_db = RunDatabase()
+            self._run_db = RunDatabase(db_path=self._app_config.cache.database_path)
         if self._run_db.is_cancel_requested(self.run_id):
             logger.info(f"Job {self.run_id} cancelled by user request")
             raise JobCancelledException(f"Job {self.run_id} cancelled")
@@ -212,6 +223,7 @@ class SmartPipeline:
             thumbnail_cache=self.thumbnail_cache,
             threshold=self.config.cluster_threshold,
             progress_callback=progress,
+            duplicate_hash_threshold=self._analysis_config.duplicate_hash_threshold,
         )
 
         self.tracker.complete_phase()
@@ -325,10 +337,6 @@ class SmartPipeline:
         self.tracker.start_item("Computing density budget")
 
         a_config = self._analysis_config
-        if a_config is None:
-            from immich_memories.config import get_config
-
-            a_config = get_config().analysis
         min_duration = a_config.min_segment_duration
 
         # Filter too-short clips (applies to ALL clips)

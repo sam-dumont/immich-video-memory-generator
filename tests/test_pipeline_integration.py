@@ -18,6 +18,8 @@ from immich_memories.analysis.smart_pipeline import (
     PipelineResult,
     SmartPipeline,
 )
+from immich_memories.config_loader import Config
+from immich_memories.config_models import AnalysisConfig
 from tests.conftest import make_clip
 
 
@@ -75,6 +77,8 @@ class TestSmartPipelineIntegration:
             analysis_cache=mock_analysis_cache,
             thumbnail_cache=mock_thumbnail_cache,
             config=config or PipelineConfig(target_clips=10, avg_clip_duration=5.0),
+            analysis_config=AnalysisConfig(),
+            app_config=Config(),
         )
 
     def _setup_cache_for_clips(self, mock_cache: MagicMock, clips: list) -> None:

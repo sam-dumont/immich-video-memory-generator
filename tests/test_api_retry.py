@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -13,21 +13,19 @@ from immich_memories.api.immich import (
     ImmichClient,
 )
 
+_TEST_URL = "https://immich.example.com"
+_TEST_KEY = "test-api-key"
+
 
 @pytest.fixture()
 def _mock_config():
-    """Patch get_config so ImmichClient can be constructed without real config."""
-    cfg = MagicMock()
-    cfg.immich.url = "https://immich.example.com"
-    cfg.immich.api_key = "test-api-key"
-    # WHY: ImmichClient.__init__ calls get_config() for default URL/key
-    with patch("immich_memories.config.get_config", return_value=cfg):
-        yield cfg
+    """Fixture kept for test method signatures that reference it."""
+    yield
 
 
 def _make_client() -> ImmichClient:
     """Create an ImmichClient with a mocked httpx client."""
-    client = ImmichClient()
+    client = ImmichClient(_TEST_URL, _TEST_KEY)
     client._client = AsyncMock()
     client._client.is_closed = False
     return client

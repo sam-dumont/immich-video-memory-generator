@@ -64,13 +64,8 @@ class TestCreateScorerFromConfig:
         assert scorer.content_weight == 0.0
         assert scorer.face_weight == 0.35
 
-    def test_none_config_uses_get_config(self):
+    def test_explicit_config_required(self):
+        """create_scorer_from_config requires a Config object (no fallback)."""
         config = Config()
-        # WHY: mock get_config to avoid global config state
-        with patch(
-            "immich_memories.config.get_config",
-            return_value=config,
-        ):
-            scorer = create_scorer_from_config(None)
-
+        scorer = create_scorer_from_config(config)
         assert scorer.face_weight == 0.35

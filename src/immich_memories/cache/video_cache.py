@@ -33,15 +33,10 @@ class VideoDownloadCache:
 
     def __init__(
         self,
-        cache_dir: Path | None = None,
+        cache_dir: Path,
         max_size_gb: float = 10.0,
         max_age_days: int = 7,
     ) -> None:
-        if cache_dir is None:
-            from immich_memories.config import get_config
-
-            config = get_config()
-            cache_dir = config.cache.video_cache_path
         self.cache_dir = cache_dir
         self.max_size_gb = max_size_gb
         self.max_age_days = max_age_days

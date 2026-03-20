@@ -13,12 +13,12 @@ from immich_memories.generate import (
     GenerationError,
     GenerationParams,
     _build_assembly_settings,
-    _clip_location_name,
-    _music_config_available,
     _report,
     _total_clip_duration,
     assets_to_clips,
 )
+from immich_memories.generate_music import music_config_available
+from immich_memories.generate_privacy import clip_location_name
 from tests.conftest import make_asset, make_clip
 
 
@@ -148,7 +148,7 @@ class TestTotalClipDuration:
 class TestTripLocations:
     def test_extract_trip_locations_deduplicates(self):
         """Clips with GPS data produce unique location list."""
-        from immich_memories.generate import _extract_trip_locations
+        from immich_memories.generate_privacy import extract_trip_locations
         from immich_memories.processing.assembly_config import AssemblyClip
 
         clips = [
@@ -162,13 +162,13 @@ class TestTripLocations:
                 path=Path("/fake/c.mp4"), duration=3.0, latitude=51.5074, longitude=-0.1278
             ),
         ]
-        locations = _extract_trip_locations(clips)
+        locations = extract_trip_locations(clips)
         assert len(locations) == 2
 
-    def test_generate_trip_title_text(self):
-        from immich_memories.generate import _generate_trip_title_text
+    def testgenerate_trip_title_text(self):
+        from immich_memories.generate_privacy import generate_trip_title_text
 
-        result = _generate_trip_title_text(
+        result = generate_trip_title_text(
             {
                 "location_name": "Barcelona",
                 "trip_start": date(2025, 7, 1),
@@ -179,9 +179,9 @@ class TestTripLocations:
         assert "barcelona" in result.lower()
 
     def test_generate_trip_title_returns_none_without_params(self):
-        from immich_memories.generate import _generate_trip_title_text
+        from immich_memories.generate_privacy import generate_trip_title_text
 
-        assert _generate_trip_title_text({}) is None
+        assert generate_trip_title_text({}) is None
 
 
 class TestTitleOverride:
@@ -205,23 +205,23 @@ class TestTitleOverride:
 class TestMusicConfigAvailable:
     def test_returns_false_when_nothing_configured(self):
         config = Config()
-        assert _music_config_available(config) is False
+        assert music_config_available(config) is False
 
     def test_returns_true_when_musicgen_enabled(self):
         config = Config()
         config.musicgen.enabled = True
-        assert _music_config_available(config) is True
+        assert music_config_available(config) is True
 
     def test_returns_true_when_ace_step_enabled(self):
         config = Config()
         config.ace_step.enabled = True
-        assert _music_config_available(config) is True
+        assert music_config_available(config) is True
 
     def test_returns_false_when_both_disabled(self):
         config = Config()
         config.musicgen.enabled = False
         config.ace_step.enabled = False
-        assert _music_config_available(config) is False
+        assert music_config_available(config) is False
 
 
 class TestAutoMusicGeneration:
@@ -247,7 +247,7 @@ class TestAutoMusicGeneration:
 
     def test_auto_music_called_when_config_available(self, tmp_path):
         """When no music_path and config has music backends, auto-generate is called."""
-        from immich_memories.generate import _auto_generate_music
+        from immich_memories.generate_music import auto_generate_music
         from immich_memories.processing.assembly_config import AssemblyClip
 
         config = Config()
@@ -264,7 +264,7 @@ class TestAutoMusicGeneration:
 
         # WHY: mock the async music generation to avoid real API calls
         with patch(
-            "immich_memories.generate.asyncio.run",
+            "immich_memories.generate_music.asyncio.run",
         ) as mock_run:
             from immich_memories.audio.music_generator_models import (
                 GeneratedMusic,
@@ -288,13 +288,15 @@ class TestAutoMusicGeneration:
                 mood="happy",
             )
 
-            result = _auto_generate_music(params, assembly_clips, tmp_path / "run_output")
+            result = auto_generate_music(
+                params.config, assembly_clips, tmp_path / "run_output", params.memory_type
+            )
             assert result is not None
             assert result == fake_music_path
 
     def test_auto_music_returns_none_when_no_config(self, tmp_path):
         """When no music backend is configured, auto-generate returns None."""
-        from immich_memories.generate import _auto_generate_music
+        from immich_memories.generate_music import auto_generate_music
         from immich_memories.processing.assembly_config import AssemblyClip
 
         config = Config()
@@ -307,12 +309,14 @@ class TestAutoMusicGeneration:
             output_path=tmp_path / "out.mp4",
             config=config,
         )
-        result = _auto_generate_music(params, assembly_clips, tmp_path / "run_output")
+        result = auto_generate_music(
+            params.config, assembly_clips, tmp_path / "run_output", params.memory_type
+        )
         assert result is None
 
     def test_auto_music_returns_none_on_failure(self, tmp_path):
         """If music generation fails, return None instead of crashing."""
-        from immich_memories.generate import _auto_generate_music
+        from immich_memories.generate_music import auto_generate_music
         from immich_memories.processing.assembly_config import AssemblyClip
 
         config = Config()
@@ -329,28 +333,30 @@ class TestAutoMusicGeneration:
 
         # WHY: mock to simulate API failure
         with patch(
-            "immich_memories.generate.asyncio.run",
+            "immich_memories.generate_music.asyncio.run",
             side_effect=RuntimeError("API unreachable"),
         ):
-            result = _auto_generate_music(params, assembly_clips, tmp_path / "run_output")
+            result = auto_generate_music(
+                params.config, assembly_clips, tmp_path / "run_output", params.memory_type
+            )
             assert result is None
 
 
 class TestClipLocationName:
     def test_returns_city_and_country(self):
         exif = type("Exif", (), {"city": "Paris", "country": "France"})()
-        assert _clip_location_name(exif) == "Paris, France"
+        assert clip_location_name(exif) == "Paris, France"
 
     def test_returns_country_if_no_city(self):
         exif = type("Exif", (), {"city": None, "country": "US"})()
-        assert _clip_location_name(exif) == "US"
+        assert clip_location_name(exif) == "US"
 
     def test_returns_none_if_no_location(self):
         exif = type("Exif", (), {"city": None, "country": None})()
-        assert _clip_location_name(exif) is None
+        assert clip_location_name(exif) is None
 
     def test_returns_none_for_none_exif(self):
-        assert _clip_location_name(None) is None
+        assert clip_location_name(None) is None
 
 
 class TestApplyMusicFileAtomic:
@@ -358,7 +364,7 @@ class TestApplyMusicFileAtomic:
 
     def test_replaces_video_with_mixed_output(self, tmp_path):
         """After mixing, video_path has mixed content and no temp file remains."""
-        from immich_memories.generate import _apply_music_file
+        from immich_memories.generate_music import apply_music_file
 
         video = tmp_path / "output.mp4"
         music = tmp_path / "music.wav"
@@ -375,14 +381,14 @@ class TestApplyMusicFileAtomic:
 
             mock_mix.side_effect = fake_mix
 
-            _apply_music_file(video, music, volume=0.8)
+            apply_music_file(video, music, volume=0.8)
 
         assert video.read_bytes() == b"mixed video"
         assert not (tmp_path / "output.with_music.mp4").exists()
 
     def test_does_not_unlink_original_before_swap(self, tmp_path):
         """Crash-safety: must not unlink() then rename() — use replace() instead."""
-        from immich_memories.generate import _apply_music_file
+        from immich_memories.generate_music import apply_music_file
 
         video = tmp_path / "output.mp4"
         music = tmp_path / "music.wav"
@@ -407,7 +413,7 @@ class TestApplyMusicFileAtomic:
 
             mock_mix.side_effect = fake_mix
 
-            _apply_music_file(video, music, volume=0.8)
+            apply_music_file(video, music, volume=0.8)
 
         # The original video path must NOT appear in unlink calls
         assert video not in unlink_calls, (

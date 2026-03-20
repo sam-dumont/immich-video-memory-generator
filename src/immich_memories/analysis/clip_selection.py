@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from immich_memories.api.models import VideoClipInfo
+    from immich_memories.config_models import AnalysisConfig, ContentAnalysisConfig
 
 logger = logging.getLogger(__name__)
 
@@ -268,6 +269,9 @@ def analyze_clip_for_highlight(
     min_duration: float = 3.0,
     max_duration: float = 15.0,
     target_duration: float = 5.0,
+    *,
+    content_analysis_config: ContentAnalysisConfig,
+    analysis_config: AnalysisConfig,
 ) -> tuple[float, float, float]:
     """Analyze a single clip to find the best highlight segment.
 
@@ -278,13 +282,18 @@ def analyze_clip_for_highlight(
         min_duration: Minimum segment duration.
         max_duration: Maximum segment duration.
         target_duration: Target segment duration.
+        content_analysis_config: Content analysis config.
+        analysis_config: Analysis config.
 
     Returns:
         Tuple of (start_time, end_time, score).
     """
     from immich_memories.analysis.scoring import SceneScorer
 
-    moments = SceneScorer().sample_and_score_video(
+    moments = SceneScorer(
+        content_analysis_config=content_analysis_config,
+        analysis_config=analysis_config,
+    ).sample_and_score_video(
         video_path,
         segment_duration=3.0,
         overlap=0.5,

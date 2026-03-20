@@ -10,13 +10,16 @@ import pytest
 from immich_memories.analysis.analyzer_models import ScoredSegment
 from immich_memories.analysis.scoring import SceneScorer
 from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
+from immich_memories.config_models import AnalysisConfig, AudioContentConfig, ContentAnalysisConfig
 
 
 class TestWeightNormalization:
     """SceneScorer weights must always sum to 1.0."""
 
     def test_default_weights_sum_to_one(self):
-        scorer = SceneScorer()
+        scorer = SceneScorer(
+            content_analysis_config=ContentAnalysisConfig(), analysis_config=AnalysisConfig()
+        )
         total = (
             scorer.face_weight
             + scorer.motion_weight
@@ -36,6 +39,8 @@ class TestWeightNormalization:
             audio_weight=0.15,
             content_weight=0.0,
             duration_weight=0.15,
+            content_analysis_config=ContentAnalysisConfig(),
+            analysis_config=AnalysisConfig(),
         )
         total = (
             scorer.face_weight
@@ -56,13 +61,17 @@ class TestWeightNormalization:
             audio_weight=0.15,
             content_weight=0.0,
             duration_weight=0.15,
+            content_analysis_config=ContentAnalysisConfig(),
+            analysis_config=AnalysisConfig(),
         )
         # face should be 2x motion after normalization (0.6/0.3 = 2)
         assert scorer.face_weight == pytest.approx(scorer.motion_weight * 2, abs=0.001)
 
     def test_score_scene_total_within_zero_one(self):
         """A scorer with normalized weights should produce total_score in [0, 1]."""
-        scorer = SceneScorer()
+        scorer = SceneScorer(
+            content_analysis_config=ContentAnalysisConfig(), analysis_config=AnalysisConfig()
+        )
         # Simulate: all factor scores at maximum (1.0 except audio which defaults to 0.5)
         # The weighted sum should not exceed 1.0
         max_possible = (
@@ -100,8 +109,13 @@ class TestLLMScoringIsAdditive:
 
     def _make_analyzer(self, content_weight: float = 0.35) -> UnifiedSegmentAnalyzer:
         return UnifiedSegmentAnalyzer(
+            scorer=SceneScorer(
+                content_analysis_config=ContentAnalysisConfig(), analysis_config=AnalysisConfig()
+            ),
             content_weight=content_weight,
             audio_content_enabled=False,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
         )
 
     def test_neutral_llm_same_as_no_llm(self):
@@ -170,8 +184,14 @@ class TestVisualScoreNotHardcoded:
             audio_weight=0.0,
             content_weight=0.0,
             duration_weight=0.15,
+            content_analysis_config=ContentAnalysisConfig(),
+            analysis_config=AnalysisConfig(),
         )
-        analyzer = UnifiedSegmentAnalyzer(scorer=scorer)
+        analyzer = UnifiedSegmentAnalyzer(
+            scorer=scorer,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
 
         # Compute what the scorer's weights would give for known component scores
         face, motion, stability = 0.8, 0.6, 0.9
@@ -201,7 +221,9 @@ class TestAudioScoreNotHardcoded:
 
     def test_no_audio_analysis_gives_neutral_score(self):
         """Without audio analysis, audio_score should be 0.0, not 0.5."""
-        scorer = SceneScorer()
+        scorer = SceneScorer(
+            content_analysis_config=ContentAnalysisConfig(), analysis_config=AnalysisConfig()
+        )
         # When audio is not analyzed, the weight should effectively be zero
         # or the score should be neutral in a way that doesn't inflate totals
         # The key invariant: audio placeholder shouldn't push total above
@@ -299,8 +321,24 @@ class TestLLMNeverLowersScore:
     @pytest.mark.parametrize("visual", VISUAL_PROFILES, ids=["low_vis", "mid_vis", "high_vis"])
     def test_llm_never_lowers_total(self, visual, content_score):
         """For any content_score and visual profile, LLM total >= no-LLM total."""
-        analyzer_llm = UnifiedSegmentAnalyzer(content_weight=0.35, audio_content_enabled=False)
-        analyzer_no_llm = UnifiedSegmentAnalyzer(content_weight=0.0, audio_content_enabled=False)
+        analyzer_llm = UnifiedSegmentAnalyzer(
+            scorer=SceneScorer(
+                content_analysis_config=ContentAnalysisConfig(), analysis_config=AnalysisConfig()
+            ),
+            content_weight=0.35,
+            audio_content_enabled=False,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
+        analyzer_no_llm = UnifiedSegmentAnalyzer(
+            scorer=SceneScorer(
+                content_analysis_config=ContentAnalysisConfig(), analysis_config=AnalysisConfig()
+            ),
+            content_weight=0.0,
+            audio_content_enabled=False,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
 
         seg_llm = _make_segment(content_score=content_score, **visual)
         seg_no_llm = _make_segment(content_score=0.5, **visual)
@@ -315,8 +353,24 @@ class TestLLMNeverLowersScore:
 
     def test_average_llm_scores_above_average_no_llm(self):
         """On average across typical content scores, LLM should boost totals."""
-        analyzer_llm = UnifiedSegmentAnalyzer(content_weight=0.35, audio_content_enabled=False)
-        analyzer_no_llm = UnifiedSegmentAnalyzer(content_weight=0.0, audio_content_enabled=False)
+        analyzer_llm = UnifiedSegmentAnalyzer(
+            scorer=SceneScorer(
+                content_analysis_config=ContentAnalysisConfig(), analysis_config=AnalysisConfig()
+            ),
+            content_weight=0.35,
+            audio_content_enabled=False,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
+        analyzer_no_llm = UnifiedSegmentAnalyzer(
+            scorer=SceneScorer(
+                content_analysis_config=ContentAnalysisConfig(), analysis_config=AnalysisConfig()
+            ),
+            content_weight=0.0,
+            audio_content_enabled=False,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
 
         # Simulate a batch of clips with realistic content scores
         content_scores = [0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]

@@ -26,14 +26,15 @@ class RunTracker:
     def __init__(
         self,
         run_id: str | None = None,
-        db_path: Path | None = None,
+        *,
+        db_path: Path,
         capture_system: bool = True,
     ):
         """Initialize a run tracker.
 
         Args:
             run_id: Optional run ID. Generated if not provided.
-            db_path: Optional database path.
+            db_path: Database path for run storage.
             capture_system: Whether to capture system info on start.
         """
         self.run_id = run_id or generate_run_id()

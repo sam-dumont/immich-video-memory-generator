@@ -11,6 +11,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from immich_memories.config_models import HardwareAccelConfig
 from immich_memories.processing.hardware import (
     HWAccelBackend,
     HWAccelCapabilities,
@@ -38,35 +39,36 @@ def _get_hw_caps() -> HWAccelCapabilities:
 
 def _build_encode_args(
     hw_caps: HWAccelCapabilities | None,
-    config,
+    hardware_config: HardwareAccelConfig,
+    output_crf: int,
     codec: str = "h264",
 ) -> list[str]:
     """Build FFmpeg encoding arguments, using hardware acceleration when available."""
     args: list[str] = []
 
-    if hw_caps and hw_caps.has_encoding and config.hardware.enabled:
+    if hw_caps and hw_caps.has_encoding and hardware_config.enabled:
         encoder, encoder_args = get_ffmpeg_encoder(
             hw_caps,
             codec=codec,
-            preset=config.hardware.encoder_preset,
+            preset=hardware_config.encoder_preset,
         )
         args.extend(["-c:v", encoder])
         args.extend(encoder_args)
 
         # Quality parameter varies by encoder
         if "nvenc" in encoder:
-            args.extend(["-cq", str(config.output.crf)])
+            args.extend(["-cq", str(output_crf)])
         elif "videotoolbox" not in encoder:
             if "vaapi" in encoder or "qsv" in encoder:
-                args.extend(["-global_quality", str(config.output.crf)])
+                args.extend(["-global_quality", str(output_crf)])
             else:
-                args.extend(["-crf", str(config.output.crf)])
+                args.extend(["-crf", str(output_crf)])
 
         logger.debug(f"Using hardware encoder: {encoder}")
     else:
         args.extend(["-c:v", "libx264"])
         args.extend(["-preset", "medium"])
-        args.extend(["-crf", str(config.output.crf)])
+        args.extend(["-crf", str(output_crf)])
 
     args.extend(["-c:a", "aac", "-b:a", "128k"])
     args.extend(["-movflags", "+faststart"])
@@ -135,20 +137,19 @@ def transform_fit(
     input_path: Path,
     output_path: Path,
     target_resolution: tuple[int, int],
+    hardware_config: HardwareAccelConfig,
+    output_crf: int,
 ) -> Path:
     """Transform using letterbox/pillarbox with blurred background.
 
     Uses hardware acceleration for encoding when available.
     """
-    from immich_memories.config import get_config
-
     target_w, target_h = target_resolution
-    config = get_config()
-    hw_caps = _get_hw_caps() if config.hardware.enabled else None
+    hw_caps = _get_hw_caps() if hardware_config.enabled else None
 
     cmd = ["ffmpeg", "-y"]
 
-    if hw_caps and hw_caps.has_decoding and config.hardware.gpu_decode:
+    if hw_caps and hw_caps.has_decoding and hardware_config.gpu_decode:
         hwaccel_args = get_ffmpeg_hwaccel_args(hw_caps, operation="decode")
         cmd.extend(hwaccel_args)
 
@@ -163,7 +164,7 @@ def transform_fit(
 
     cmd.extend(["-filter_complex", filter_complex])
 
-    encode_args = _build_encode_args(hw_caps, config)
+    encode_args = _build_encode_args(hw_caps, hardware_config, output_crf)
     cmd.extend(encode_args)
     cmd.append(str(output_path))
 
@@ -173,7 +174,7 @@ def transform_fit(
     if result.returncode != 0:
         if hw_caps and hw_caps.has_encoding:
             logger.warning("Hardware encoding failed, falling back to software")
-            return _transform_fit_software(input_path, output_path, target_resolution)
+            return _transform_fit_software(input_path, output_path, target_resolution, output_crf)
         logger.error(f"FFmpeg error: {result.stderr}")
         raise RuntimeError(f"Failed to transform video: {result.stderr}")
 
@@ -184,12 +185,10 @@ def _transform_fit_software(
     input_path: Path,
     output_path: Path,
     target_resolution: tuple[int, int],
+    output_crf: int,
 ) -> Path:
     """Software-only fallback for letterbox/pillarbox."""
-    from immich_memories.config import get_config
-
     target_w, target_h = target_resolution
-    config = get_config()
 
     filter_complex = (
         f"[0:v]scale={target_w}:{target_h}:force_original_aspect_ratio=increase,"
@@ -210,7 +209,7 @@ def _transform_fit_software(
         "-preset",
         "medium",
         "-crf",
-        str(config.output.crf),
+        str(output_crf),
         "-c:a",
         "aac",
         "-b:a",
@@ -235,20 +234,19 @@ def transform_fill(
     input_path: Path,
     output_path: Path,
     target_resolution: tuple[int, int],
+    hardware_config: HardwareAccelConfig,
+    output_crf: int,
 ) -> Path:
     """Transform using center crop to fill frame.
 
     Uses hardware acceleration when available.
     """
-    from immich_memories.config import get_config
-
     target_w, target_h = target_resolution
-    config = get_config()
-    hw_caps = _get_hw_caps() if config.hardware.enabled else None
+    hw_caps = _get_hw_caps() if hardware_config.enabled else None
 
     cmd = ["ffmpeg", "-y"]
 
-    if hw_caps and hw_caps.has_decoding and config.hardware.gpu_decode:
+    if hw_caps and hw_caps.has_decoding and hardware_config.gpu_decode:
         hwaccel_args = get_ffmpeg_hwaccel_args(hw_caps, operation="decode")
         cmd.extend(hwaccel_args)
 
@@ -269,7 +267,7 @@ def transform_fill(
 
     cmd.extend(["-vf", filter_str])
 
-    encode_args = _build_encode_args(hw_caps, config)
+    encode_args = _build_encode_args(hw_caps, hardware_config, output_crf)
     cmd.extend(encode_args)
     cmd.append(str(output_path))
 
@@ -278,7 +276,7 @@ def transform_fill(
     if result.returncode != 0:
         if hw_caps and (hw_caps.has_encoding or hw_caps.supports_scaling):
             logger.warning("Hardware processing failed, falling back to software")
-            return _transform_fill_software(input_path, output_path, target_resolution)
+            return _transform_fill_software(input_path, output_path, target_resolution, output_crf)
         raise RuntimeError(f"Failed to transform video: {result.stderr}")
 
     return output_path
@@ -288,12 +286,10 @@ def _transform_fill_software(
     input_path: Path,
     output_path: Path,
     target_resolution: tuple[int, int],
+    output_crf: int,
 ) -> Path:
     """Software-only fallback for fill mode."""
-    from immich_memories.config import get_config
-
     target_w, target_h = target_resolution
-    config = get_config()
 
     filter_str = (
         f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase,"
@@ -312,7 +308,7 @@ def _transform_fill_software(
         "-preset",
         "medium",
         "-crf",
-        str(config.output.crf),
+        str(output_crf),
         "-c:a",
         "aac",
         "-b:a",
@@ -338,20 +334,19 @@ def apply_crop_transform(
     output_path: Path,
     crop: CropRegion,
     target_resolution: tuple[int, int],
+    hardware_config: HardwareAccelConfig,
+    output_crf: int,
 ) -> Path:
     """Apply crop and scale to target resolution.
 
     Uses hardware acceleration when available.
     """
-    from immich_memories.config import get_config
-
     target_w, target_h = target_resolution
-    config = get_config()
-    hw_caps = _get_hw_caps() if config.hardware.enabled else None
+    hw_caps = _get_hw_caps() if hardware_config.enabled else None
 
     cmd = ["ffmpeg", "-y"]
 
-    if hw_caps and hw_caps.has_decoding and config.hardware.gpu_decode:
+    if hw_caps and hw_caps.has_decoding and hardware_config.gpu_decode:
         hwaccel_args = get_ffmpeg_hwaccel_args(hw_caps, operation="decode")
         cmd.extend(hwaccel_args)
 
@@ -361,7 +356,7 @@ def apply_crop_transform(
 
     cmd.extend(["-vf", filter_str])
 
-    encode_args = _build_encode_args(hw_caps, config)
+    encode_args = _build_encode_args(hw_caps, hardware_config, output_crf)
     cmd.extend(encode_args)
     cmd.append(str(output_path))
 
@@ -370,7 +365,9 @@ def apply_crop_transform(
     if result.returncode != 0:
         if hw_caps and hw_caps.has_encoding:
             logger.warning("Hardware encoding failed, falling back to software")
-            return _apply_crop_transform_software(input_path, output_path, crop, target_resolution)
+            return _apply_crop_transform_software(
+                input_path, output_path, crop, target_resolution, output_crf
+            )
         raise RuntimeError(f"Failed to transform video: {result.stderr}")
 
     return output_path
@@ -381,12 +378,10 @@ def _apply_crop_transform_software(
     output_path: Path,
     crop: CropRegion,
     target_resolution: tuple[int, int],
+    output_crf: int,
 ) -> Path:
     """Software-only fallback for crop transform."""
-    from immich_memories.config import get_config
-
     target_w, target_h = target_resolution
-    config = get_config()
 
     filter_str = f"crop={crop.width}:{crop.height}:{crop.x}:{crop.y},scale={target_w}:{target_h}"
 
@@ -402,7 +397,7 @@ def _apply_crop_transform_software(
         "-preset",
         "medium",
         "-crf",
-        str(config.output.crf),
+        str(output_crf),
         "-c:a",
         "aac",
         "-b:a",
@@ -427,16 +422,13 @@ def add_date_overlay(
     input_path: Path,
     output_path: Path,
     date_text: str,
+    output_crf: int,
     position: str = "bottom-right",
     font_size: int = 24,
     opacity: float = 0.7,
 ) -> Path:
     """Add a date text overlay to a video with shadow for readability."""
     input_path = validate_video_path(input_path, must_exist=True)
-
-    from immich_memories.config import get_config
-
-    config = get_config()
 
     positions = {
         "bottom-left": "x=20:y=h-th-20",
@@ -467,7 +459,7 @@ def add_date_overlay(
         "-preset",
         "medium",
         "-crf",
-        str(config.output.crf),
+        str(output_crf),
         "-c:a",
         "copy",
         "-movflags",

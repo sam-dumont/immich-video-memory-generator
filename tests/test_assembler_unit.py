@@ -1,8 +1,8 @@
 """Unit tests for the VideoAssembler.
 
 Tests the assembler through its public API (assemble()) by mocking at
-external boundaries (FFmpeg subprocess, get_config) rather than internal
-methods. Renaming internal methods should not break these tests.
+external boundaries (FFmpeg subprocess) rather than internal methods.
+Renaming internal methods should not break these tests.
 
 For real FFmpeg integration tests, see tests/integration/test_assembly_real.py.
 """
@@ -31,12 +31,10 @@ def _make_assembly_clip(
 
 
 def _make_assembler(settings: AssemblySettings | None = None):
-    """Create a VideoAssembler with mocked get_config."""
+    """Create a VideoAssembler with explicit defaults (no config singleton needed)."""
     from immich_memories.processing.video_assembler import VideoAssembler
 
-    # WHY: mock get_config — assembler reads global config at init, tests shouldn't need a config file
-    with patch("immich_memories.config.get_config", return_value=MagicMock()):
-        return VideoAssembler(settings or AssemblySettings())
+    return VideoAssembler(settings or AssemblySettings())
 
 
 class TestVideoAssemblerIntegration:
@@ -100,17 +98,14 @@ class TestVideoAssemblerIntegration:
         result = assembler.assemble([clip], output)
         assert isinstance(result, Path)
 
-    def test_default_settings_from_config(self):
-        """Assembler picks up defaults from global config."""
-        # WHY: mock get_config — verify assembler reads specific config values at init
-        mock_config = MagicMock()
-        mock_config.output.crf = 23
-        mock_config.defaults.transition_duration = 0.8
-
+    def test_default_settings_from_constructor_params(self):
+        """Assembler picks up defaults from constructor keyword arguments."""
         from immich_memories.processing.video_assembler import VideoAssembler
 
-        with patch("immich_memories.config.get_config", return_value=mock_config):
-            assembler = VideoAssembler()
+        assembler = VideoAssembler(
+            output_crf=23,
+            default_transition_duration=0.8,
+        )
 
         assert assembler.settings.output_crf == 23
         assert assembler.settings.transition_duration == 0.8

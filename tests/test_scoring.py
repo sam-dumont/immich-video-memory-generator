@@ -24,6 +24,7 @@ from immich_memories.analysis.scoring import (
     compute_face_score,
     compute_motion_metrics,
 )
+from immich_memories.config_models import AnalysisConfig, ContentAnalysisConfig
 
 # ---------------------------------------------------------------------------
 # TestComputeDurationScore — Gaussian curve
@@ -255,14 +256,18 @@ class TestSceneScorerDeterministicTiebreaker:
 
     def test_sort_key_is_deterministic(self):
         """Same inputs should always produce same sort key."""
-        scorer = SceneScorer()
+        scorer = SceneScorer(
+            content_analysis_config=ContentAnalysisConfig(), analysis_config=AnalysisConfig()
+        )
         moment = MomentScore(start_time=1.0, end_time=4.0, total_score=0.7)
         key_a = scorer._compute_sort_key(moment, video_duration=30.0)
         key_b = scorer._compute_sort_key(moment, video_duration=30.0)
         assert key_a == key_b
 
     def test_sort_key_differs_for_different_moments(self):
-        scorer = SceneScorer()
+        scorer = SceneScorer(
+            content_analysis_config=ContentAnalysisConfig(), analysis_config=AnalysisConfig()
+        )
         m1 = MomentScore(start_time=1.0, end_time=4.0, total_score=0.7)
         m2 = MomentScore(start_time=5.0, end_time=9.0, total_score=0.7)
         key1 = scorer._compute_sort_key(m1, video_duration=30.0)
@@ -334,7 +339,11 @@ class TestSceneScorerIntegration:
 
         # content_weight=0.0 + no content_analyzer → _run_content_analysis
         # short-circuits, so no config/LLM needed
-        scorer = SceneScorer(content_weight=0.0)
+        scorer = SceneScorer(
+            content_weight=0.0,
+            content_analysis_config=ContentAnalysisConfig(),
+            analysis_config=AnalysisConfig(),
+        )
         scene = Scene(
             start_time=0.0,
             end_time=3.0,
@@ -354,7 +363,11 @@ class TestSceneScorerIntegration:
         """testsrc2 has animated counters, so motion should be detected."""
         from immich_memories.analysis.scenes import Scene
 
-        scorer = SceneScorer(content_weight=0.0)
+        scorer = SceneScorer(
+            content_weight=0.0,
+            content_analysis_config=ContentAnalysisConfig(),
+            analysis_config=AnalysisConfig(),
+        )
         scene = Scene(
             start_time=0.0,
             end_time=3.0,
@@ -370,7 +383,11 @@ class TestSceneScorerIntegration:
         """find_best_moments → _find_best_segment should use cached VideoCapture."""
         from immich_memories.analysis.scenes import Scene
 
-        scorer = SceneScorer(content_weight=0.0)
+        scorer = SceneScorer(
+            content_weight=0.0,
+            content_analysis_config=ContentAnalysisConfig(),
+            analysis_config=AnalysisConfig(),
+        )
         # Scene longer than max_duration (2.0) triggers _find_best_segment
         scenes = [Scene(start_time=0.0, end_time=3.0, start_frame=0, end_frame=90)]
         moments = scorer.find_best_moments(

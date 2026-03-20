@@ -34,7 +34,7 @@ from immich_memories.analysis.segment_generation import (
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
     from immich_memories.audio.audio_models import AudioAnalysisResult
-    from immich_memories.config_models import AudioContentConfig
+    from immich_memories.config_models import AnalysisConfig, AudioContentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class UnifiedSegmentAnalyzer:
 
     def __init__(
         self,
-        scorer: SceneScorer | None = None,
+        scorer: SceneScorer,
         content_analyzer: ContentAnalyzer | None = None,
         min_segment_duration: float = 2.0,
         max_segment_duration: float = 15.0,
@@ -86,7 +86,9 @@ class UnifiedSegmentAnalyzer:
         target_extraction_ratio: float = 0.15,
         duration_weight: float = 0.15,
         audio_analyzer: object | None = None,
-        audio_content_config: AudioContentConfig | None = None,
+        *,
+        audio_content_config: AudioContentConfig,
+        analysis_config: AnalysisConfig,
     ):
         """Initialize the unified analyzer.
 
@@ -106,9 +108,8 @@ class UnifiedSegmentAnalyzer:
             target_extraction_ratio: Target ratio of clip to source (default 0.15).
             duration_weight: Weight for duration preference score (default 0.15).
             audio_content_config: AudioContentConfig for lazy audio analyzer init.
-                                  Falls back to get_config().
         """
-        self.scorer = scorer or SceneScorer()
+        self.scorer = scorer
         self.content_analyzer = content_analyzer
         self.min_segment_duration = min_segment_duration
         self.max_segment_duration = max_segment_duration
@@ -123,8 +124,9 @@ class UnifiedSegmentAnalyzer:
         self.target_extraction_ratio = target_extraction_ratio
         self.duration_weight = duration_weight
         self._audio_content_config = audio_content_config
+        self._analysis_config = analysis_config
 
-        self._scene_detector = SceneDetector()
+        self._scene_detector = SceneDetector(analysis_config=analysis_config)
         self._audio_analyzer = audio_analyzer  # Injected or lazy-created
         self._audio_analysis_cache: dict[str, AudioAnalysisResult] = {}
 
@@ -495,10 +497,6 @@ class UnifiedSegmentAnalyzer:
 
             if self._audio_analyzer is None:
                 ac_config = self._audio_content_config
-                if ac_config is None:
-                    from immich_memories.config import get_config
-
-                    ac_config = get_config().audio_content
                 self._audio_analyzer = AudioContentAnalyzer(
                     use_panns=ac_config.use_panns,
                     min_confidence=ac_config.min_confidence,

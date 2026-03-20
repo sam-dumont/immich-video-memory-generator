@@ -166,11 +166,16 @@ def _run_pipeline_blocking(
             base_url=state.immich_url,
             api_key=state.immich_api_key,
         ) as client:
+            from immich_memories.config import get_config
+
+            app_config = get_config()
             pipeline = SmartPipeline(
                 client=client,
                 analysis_cache=state.analysis_cache,
                 thumbnail_cache=tc,
                 config=config,
+                analysis_config=app_config.analysis,
+                app_config=app_config,
             )
             result = pipeline.run(
                 clips=clips,

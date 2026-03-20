@@ -162,19 +162,19 @@ class TestVideoAnalysisCache:
 
     def test_needs_reanalysis_not_cached(self, cache, mock_asset):
         """Uncached asset should need reanalysis."""
-        assert cache.needs_reanalysis(mock_asset)
+        assert cache.needs_reanalysis(mock_asset, max_age_days=30)
 
     def test_needs_reanalysis_cached(self, cache, mock_asset, mock_video_info):
         """Cached asset with same checksum should not need reanalysis."""
         cache.save_analysis(asset=mock_asset, video_info=mock_video_info)
-        assert not cache.needs_reanalysis(mock_asset)
+        assert not cache.needs_reanalysis(mock_asset, max_age_days=30)
 
     def test_needs_reanalysis_checksum_changed(self, cache, mock_asset, mock_video_info):
         """Cached asset with different checksum should need reanalysis."""
         cache.save_analysis(asset=mock_asset, video_info=mock_video_info)
 
         mock_asset.checksum = "different-checksum"
-        assert cache.needs_reanalysis(mock_asset)
+        assert cache.needs_reanalysis(mock_asset, max_age_days=30)
 
     def test_find_similar_videos(self, cache, mock_asset, mock_video_info):
         """Should find videos with similar hashes."""

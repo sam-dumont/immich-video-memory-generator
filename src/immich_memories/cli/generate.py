@@ -258,13 +258,15 @@ def _run_pipeline_and_generate(
         int(target_seconds / pipeline_config.avg_clip_duration),
     )
 
-    analysis_cache = VideoAnalysisCache()
-    thumbnail_cache = ThumbnailCache()
+    analysis_cache = VideoAnalysisCache(db_path=config.cache.database_path)
+    thumbnail_cache = ThumbnailCache(cache_dir=config.cache.cache_path / "thumbnails")
     pipeline = SmartPipeline(
         client=client,
         analysis_cache=analysis_cache,
         thumbnail_cache=thumbnail_cache,
         config=pipeline_config,
+        analysis_config=config.analysis,
+        app_config=config,
     )
 
     def pipeline_progress(status: dict) -> None:
@@ -469,9 +471,9 @@ def _build_params_table(
 
 def _has_music_backends(config: Config) -> bool:
     """Check if any music generation backend is enabled in config."""
-    from immich_memories.generate import _music_config_available
+    from immich_memories.generate_music import music_config_available
 
-    return _music_config_available(config)
+    return music_config_available(config)
 
 
 def register_generate_commands(main: click.Group) -> None:

@@ -22,6 +22,8 @@ def score_scene(
     video_path: str | Path,
     scene: Scene,
     sample_frames: int = 10,
+    *,
+    config: Config,
 ) -> MomentScore:
     """Convenience function to score a single scene.
 
@@ -29,13 +31,17 @@ def score_scene(
         video_path: Path to the video file.
         scene: Scene to score.
         sample_frames: Number of frames to sample.
+        config: App config.
 
     Returns:
         MomentScore with component scores.
     """
     from immich_memories.analysis.scoring import SceneScorer
 
-    return SceneScorer().score_scene(video_path, scene, sample_frames)
+    return SceneScorer(
+        content_analysis_config=config.content_analysis,
+        analysis_config=config.analysis,
+    ).score_scene(video_path, scene, sample_frames)
 
 
 def select_top_moments(
@@ -43,6 +49,8 @@ def select_top_moments(
     scenes: list[Scene],
     target_count: int = 5,
     target_duration: float = 5.0,
+    *,
+    config: Config,
 ) -> list[MomentScore]:
     """Select the top N moments from a video.
 
@@ -51,17 +59,21 @@ def select_top_moments(
         scenes: List of detected scenes.
         target_count: Number of moments to select.
         target_duration: Target duration per moment.
+        config: App config.
 
     Returns:
         List of top scored moments.
     """
     from immich_memories.analysis.scoring import SceneScorer
 
-    moments = SceneScorer().find_best_moments(video_path, scenes, target_duration)
+    moments = SceneScorer(
+        content_analysis_config=config.content_analysis,
+        analysis_config=config.analysis,
+    ).find_best_moments(video_path, scenes, target_duration)
     return moments[:target_count]
 
 
-def create_scorer_from_config(config: Config | None = None) -> SceneScorer:
+def create_scorer_from_config(config: Config) -> SceneScorer:
     """Create a SceneScorer with content analysis configured from config.
 
     This factory function creates a SceneScorer that respects the
@@ -69,17 +81,12 @@ def create_scorer_from_config(config: Config | None = None) -> SceneScorer:
     if enabled.
 
     Args:
-        config: App config. Falls back to get_config().
+        config: App config.
 
     Returns:
         SceneScorer instance configured from current config.
     """
     from immich_memories.analysis.scoring import SceneScorer
-
-    if config is None:
-        from immich_memories.config import get_config
-
-        config = get_config()
 
     # Base weights (sum to 1.0 without content analysis)
     # Duration weight gives preference to ~5 second clips
@@ -138,6 +145,8 @@ def create_scorer_from_config(config: Config | None = None) -> SceneScorer:
             max_optimal_duration=max_optimal_duration,
             target_extraction_ratio=target_extraction_ratio,
             min_duration=min_duration,
+            content_analysis_config=config.content_analysis,
+            analysis_config=config.analysis,
         )
 
     return SceneScorer(
@@ -150,6 +159,8 @@ def create_scorer_from_config(config: Config | None = None) -> SceneScorer:
         max_optimal_duration=max_optimal_duration,
         target_extraction_ratio=target_extraction_ratio,
         min_duration=min_duration,
+        content_analysis_config=config.content_analysis,
+        analysis_config=config.analysis,
     )
 
 
@@ -159,6 +170,8 @@ def sample_video(
     overlap: float = 0.5,
     sample_frames: int = 5,
     use_scene_detection: bool | None = None,
+    *,
+    config: Config,
 ) -> list[MomentScore]:
     """Convenience function to sample and score a video.
 
@@ -174,11 +187,12 @@ def sample_video(
         overlap: Overlap fraction between segments (0-1).
         sample_frames: Number of frames to sample per segment.
         use_scene_detection: Override config default. None = use config.
+        config: App config.
 
     Returns:
         List of MomentScore objects sorted by score (best first).
     """
-    return create_scorer_from_config().sample_and_score_video(
+    return create_scorer_from_config(config).sample_and_score_video(
         video_path,
         segment_duration=segment_duration,
         overlap=overlap,

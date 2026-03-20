@@ -16,21 +16,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def create_unified_analyzer_from_config(config: Config | None = None):
+def create_unified_analyzer_from_config(config: Config):
     """Create a UnifiedSegmentAnalyzer from current configuration.
 
     Args:
-        config: App config. Falls back to get_config().
+        config: App config.
 
     Returns:
         Configured UnifiedSegmentAnalyzer instance.
     """
     from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
-
-    if config is None:
-        from immich_memories.config import get_config
-
-        config = get_config()
 
     # Get content analyzer if enabled
     content_analyzer = None
@@ -62,7 +57,10 @@ def create_unified_analyzer_from_config(config: Config | None = None):
     )
 
     return UnifiedSegmentAnalyzer(
-        scorer=SceneScorer(),
+        scorer=SceneScorer(
+            content_analysis_config=config.content_analysis,
+            analysis_config=config.analysis,
+        ),
         content_analyzer=content_analyzer,
         min_segment_duration=config.analysis.min_segment_duration,
         max_segment_duration=config.analysis.max_segment_duration,
@@ -76,4 +74,6 @@ def create_unified_analyzer_from_config(config: Config | None = None):
         max_optimal_duration=config.analysis.max_optimal_duration,
         target_extraction_ratio=config.analysis.target_extraction_ratio,
         duration_weight=config.analysis.duration_weight,
+        audio_content_config=config.audio_content,
+        analysis_config=config.analysis,
     )

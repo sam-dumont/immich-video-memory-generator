@@ -111,7 +111,13 @@ class TestCacheFirstScoring:
                 "immich_memories.photos.photo_pipeline._llm_score_photo",
             ) as mock_llm,
         ):
-            result = _enhance_with_llm(scored, PhotoConfig(), Path("/tmp"), lambda *_args: None)
+            result = _enhance_with_llm(
+                scored,
+                PhotoConfig(),
+                Path("/tmp"),
+                lambda *_args: None,
+                db_path=Path("/tmp/scores.db"),
+            )
 
         assert len(result) == 1
         assert result[0][1] == 0.88
@@ -138,7 +144,13 @@ class TestCacheFirstScoring:
                 return_value=0.75,
             ) as mock_llm,
         ):
-            result = _enhance_with_llm(scored, PhotoConfig(), Path("/tmp"), lambda *_args: None)
+            result = _enhance_with_llm(
+                scored,
+                PhotoConfig(),
+                Path("/tmp"),
+                lambda *_args: None,
+                db_path=Path("/tmp/scores.db"),
+            )
 
         assert result[0][1] == 0.75
         mock_llm.assert_called_once()
@@ -177,7 +189,13 @@ class TestCacheFirstScoring:
                 return_value=0.55,
             ) as mock_llm,
         ):
-            result = _enhance_with_llm(scored, PhotoConfig(), Path("/tmp"), lambda *_args: None)
+            result = _enhance_with_llm(
+                scored,
+                PhotoConfig(),
+                Path("/tmp"),
+                lambda *_args: None,
+                db_path=Path("/tmp/scores.db"),
+            )
 
         assert len(result) == 3
         assert result[0][1] == 0.91  # cached
@@ -206,7 +224,13 @@ class TestCacheFirstScoring:
                 return_value=0.7,
             ) as mock_llm,
         ):
-            result = _enhance_with_llm(scored, PhotoConfig(), Path("/tmp"), lambda *_args: None)
+            result = _enhance_with_llm(
+                scored,
+                PhotoConfig(),
+                Path("/tmp"),
+                lambda *_args: None,
+                db_path=Path("/tmp/scores.db"),
+            )
 
         assert result[0][1] == 0.7
         mock_llm.assert_called_once()
@@ -222,7 +246,9 @@ class TestCacheFirstScoring:
             msg = "network error"
             raise ConnectionError(msg)
 
-        result = _llm_score_photo(asset, meta_score, PhotoConfig(), tmp_path, download_explodes)
+        result = _llm_score_photo(
+            asset, meta_score, PhotoConfig(), tmp_path, download_explodes, None
+        )
         assert result == meta_score
 
     def test_llm_prepare_failure_falls_back(self, tmp_path: Path):
@@ -241,7 +267,12 @@ class TestCacheFirstScoring:
             side_effect=RuntimeError("decode failed"),
         ):
             result = _llm_score_photo(
-                asset, meta_score, PhotoConfig(), tmp_path, lambda *_args: None
+                asset,
+                meta_score,
+                PhotoConfig(),
+                tmp_path,
+                lambda *_args: None,
+                None,
             )
 
         assert result == meta_score
@@ -254,6 +285,6 @@ class TestCacheFirstScoring:
             "immich_memories.cache.asset_score_cache.AssetScoreCache",
             side_effect=ImportError("no module"),
         ):
-            result = _get_score_cache()
+            result = _get_score_cache(Path("/tmp/scores.db"))
 
         assert result is None

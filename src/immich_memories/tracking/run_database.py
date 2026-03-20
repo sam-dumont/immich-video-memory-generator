@@ -81,18 +81,7 @@ def _compute_avg_run_seconds(conn: sqlite3.Connection, completed_runs: int) -> f
 class RunDatabase:
     """Database operations for pipeline run history."""
 
-    def __init__(self, db_path: Path | None = None):
-        """Initialize the run database.
-
-        Args:
-            db_path: Path to SQLite database. Uses config default if not specified.
-        """
-        if db_path is None:
-            from immich_memories.config import get_config
-
-            config = get_config()
-            db_path = config.cache.database_path
-
+    def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
 
         # Ensure migrations are run (this will create the tables if needed)

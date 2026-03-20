@@ -82,10 +82,12 @@ def _detect_thumbnail_duplicates(
 
     try:
         from immich_memories.analysis.thumbnail_clustering import cluster_thumbnails
+        from immich_memories.config import get_config
 
         clusters = cluster_thumbnails(
             clips=clips,
             thumbnail_cache=thumbnail_cache,
+            duplicate_hash_threshold=get_config().analysis.duplicate_hash_threshold,
         )
 
         for cluster in clusters:

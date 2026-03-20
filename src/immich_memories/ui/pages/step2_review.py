@@ -66,13 +66,17 @@ def _render_step2_header(state) -> bool:
     # Initialize caches if not done
     if state.analysis_cache is None:
         from immich_memories.cache import VideoAnalysisCache
+        from immich_memories.config import get_config
 
-        state.analysis_cache = VideoAnalysisCache()
+        _cfg = get_config()
+        state.analysis_cache = VideoAnalysisCache(db_path=_cfg.cache.database_path)
 
     if state.thumbnail_cache is None:
         from immich_memories.cache.thumbnail_cache import ThumbnailCache
+        from immich_memories.config import get_config
 
-        state.thumbnail_cache = ThumbnailCache()
+        _cfg = get_config()
+        state.thumbnail_cache = ThumbnailCache(cache_dir=_cfg.cache.cache_path / "thumbnails")
 
     # Load clips if not already loaded
     if not state.clips:

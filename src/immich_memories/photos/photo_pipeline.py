@@ -41,6 +41,8 @@ def render_photo_clips(
     download_fn: Any,
     video_clip_count: int = 0,
     fps: int = 30,
+    db_path: Path | None = None,
+    app_config: Any = None,
 ) -> list[AssemblyClip]:
     """Convert photo assets to animated video clips for assembly.
 
@@ -62,7 +64,9 @@ def render_photo_clips(
         scored = _select_distributed(scored, shortlist_size)
 
     # Phase 2: LLM scoring on shortlist (downloads photo, sends to VLM)
-    scored = _enhance_with_llm(scored, config, work_dir, download_fn)
+    scored = _enhance_with_llm(
+        scored, config, work_dir, download_fn, db_path=db_path, app_config=app_config
+    )
 
     # Final selection: top N after LLM scoring, distributed
     if len(scored) > max_photos:
@@ -129,10 +133,12 @@ def _enhance_with_llm(
     config: PhotoConfig,
     work_dir: Path,
     download_fn: Any,
+    db_path: Path | None = None,
+    app_config: Any = None,
 ) -> list[tuple[Asset, float]]:
     """Check cache first, then LLM-score uncached photos."""
 
-    cache = _get_score_cache()
+    cache = _get_score_cache(db_path) if db_path else None
     asset_ids = [a.id for a, _ in scored]
     cached = cache.get_asset_scores_batch(asset_ids) if cache else {}
 
@@ -146,7 +152,7 @@ def _enhance_with_llm(
             continue
 
         # Cache miss — download + LLM
-        llm_score = _llm_score_photo(asset, meta_score, config, work_dir, download_fn)
+        llm_score = _llm_score_photo(asset, meta_score, config, work_dir, download_fn, app_config)
         enhanced.append((asset, llm_score))
 
         # Store in cache
@@ -165,7 +171,12 @@ def _enhance_with_llm(
 
 
 def _llm_score_photo(
-    asset: Asset, meta_score: float, config: PhotoConfig, work_dir: Path, download_fn: Any
+    asset: Asset,
+    meta_score: float,
+    config: PhotoConfig,
+    work_dir: Path,
+    download_fn: Any,
+    app_config: Any,
 ) -> float:
     """Download, prepare, and LLM-score a single photo."""
     from immich_memories.photos.scoring import score_photo_with_llm
@@ -182,19 +193,17 @@ def _llm_score_photo(
         from immich_memories.photos.animator import prepare_photo_source
 
         prepared = prepare_photo_source(raw_path, work_dir)
-        return score_photo_with_llm(prepared.path, meta_score, config)
+        return score_photo_with_llm(prepared.path, meta_score, config, app_config)
     except Exception:
         return meta_score
 
 
-def _get_score_cache():
+def _get_score_cache(db_path: Path):
     """Get the asset score cache for score lookups."""
     try:
         from immich_memories.cache.asset_score_cache import AssetScoreCache
-        from immich_memories.config_loader import get_config
 
-        config = get_config()
-        return AssetScoreCache(db_path=config.cache.database_path)
+        return AssetScoreCache(db_path=db_path)
     except Exception:
         return None
 

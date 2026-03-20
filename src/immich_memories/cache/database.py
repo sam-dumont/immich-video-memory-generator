@@ -36,14 +36,7 @@ SCORING_VERSION = 2
 class VideoAnalysisCache:
     """SQLite-based cache for video analysis results."""
 
-    def __init__(self, db_path: Path | None = None):
-        """Uses config default if db_path not specified."""
-        if db_path is None:
-            from immich_memories.config import get_config
-
-            config = get_config()
-            db_path = config.cache.database_path
-
+    def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
         self._ensure_db_exists()
         self._run_migrations()
@@ -778,13 +771,8 @@ class VideoAnalysisCache:
     def needs_reanalysis(
         self,
         asset: Asset,
-        max_age_days: int | None = None,
+        max_age_days: int,
     ) -> bool:
-        if max_age_days is None:
-            from immich_memories.config import get_config
-
-            max_age_days = get_config().cache.max_age_days
-
         with self._get_connection() as conn:
             row = conn.execute(
                 """

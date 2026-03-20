@@ -15,6 +15,7 @@ import logging
 from pathlib import Path
 
 from immich_memories.api.models import Asset
+from immich_memories.config import Config
 from immich_memories.config_models import PhotoConfig
 
 logger = logging.getLogger(__name__)
@@ -55,15 +56,13 @@ def score_photo_with_llm(
     photo_path: Path,
     metadata_score: float,
     config: PhotoConfig,
+    app_config: Config,
 ) -> float:
     """Enhance photo score with LLM visual analysis.
 
     Sends the photo to the configured VLM (same as video content analysis)
     and gets an interest + quality rating. Blends with metadata score.
     """
-    from immich_memories.config_loader import get_config
-
-    app_config = get_config()
     if not app_config.content_analysis.enabled:
         return metadata_score
 
