@@ -305,9 +305,10 @@ jobs:
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
         with:
-          # Auto-discovers coverage.xml (fresh from CI) + tests/*-coverage.xml
-          # (committed integration coverage from local runs).
-          # codecov.yml sets max_report_age: off to accept stale timestamps.
+          # Only upload the fresh CI-generated coverage.xml.
+          # tests/*-coverage.xml are committed integration coverage from local runs
+          # and their stale timestamps cause Codecov to reject them (>12h).
+          files: coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
