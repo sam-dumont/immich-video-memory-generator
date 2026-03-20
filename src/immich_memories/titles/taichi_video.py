@@ -72,9 +72,8 @@ def create_title_video_taichi(
 
     # Fade FROM white at the start (only for intro title, not month dividers)
     fade_in_frames = int(0.8 * cfg.fps) if fade_from_white else 0
-    white_frame = (
-        np.full((cfg.height, cfg.width, 3), 255, dtype=np.uint8) if fade_from_white else None
-    )
+    # WHY: reusable blend buffer avoids 50MB of temporaries per fade frame at 4K
+    blend_buffer = np.zeros((cfg.height, cfg.width, 3), dtype=np.uint8) if fade_from_white else None
 
     with contextlib.suppress(BrokenPipeError):  # FFmpeg closed pipe early — check returncode below
         for frame_num in range(renderer.total_frames):
@@ -82,11 +81,15 @@ def create_title_video_taichi(
 
             if fade_from_white and frame_num < fade_in_frames:
                 fade_in_progress = frame_num / fade_in_frames
-                blend_alpha = 1.0 - (1.0 - fade_in_progress) ** 2
-                assert white_frame is not None
-                frame = (white_frame * (1 - blend_alpha) + frame * blend_alpha).astype(np.uint8)
-
-            process.stdin.write(frame.tobytes())
+                alpha = 1.0 - (1.0 - fade_in_progress) ** 2
+                # In-place blend: blend_buffer = white*(1-alpha) + frame*alpha
+                assert blend_buffer is not None
+                np.multiply(255 * (1 - alpha), 1.0, out=blend_buffer, casting="unsafe")
+                np.add(blend_buffer, frame * alpha, out=blend_buffer, casting="unsafe")
+                # WHY: write buffer directly — .tobytes() would copy 25MB per frame
+                process.stdin.write(blend_buffer.data)  # type: ignore[union-attr]
+            else:
+                process.stdin.write(frame.data)  # type: ignore[union-attr]
 
         process.stdin.close()
 
