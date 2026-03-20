@@ -332,6 +332,47 @@ def _build_audio_filter_graph(
     return ";".join(filter_parts)
 
 
+def _probe_max_audio_bitrate(clips: list) -> str:
+    """Probe clips for highest audio bitrate. Returns e.g. "256k".
+
+    Falls back to 192k if probing fails (reasonable for iPhone/modern cameras).
+    """
+    max_bitrate = 0
+    for clip in clips:
+        try:
+            result = subprocess.run(  # noqa: S603, S607
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-select_streams",
+                    "a:0",
+                    "-show_entries",
+                    "stream=bit_rate",
+                    "-of",
+                    "csv=p=0",
+                    str(clip.path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                bitrate = int(result.stdout.strip())
+                max_bitrate = max(max_bitrate, bitrate)
+        except (ValueError, subprocess.TimeoutExpired):
+            continue
+
+    if max_bitrate <= 0:
+        return "192k"
+    # Round up to nearest standard AAC bitrate
+    kbps = max_bitrate // 1000
+    for standard in (96, 128, 160, 192, 256, 320):
+        if kbps <= standard:
+            return f"{standard}k"
+    return "320k"
+
+
 def extract_and_mix_audio(
     clips: list,
     transitions: list[str],
@@ -342,7 +383,13 @@ def extract_and_mix_audio(
 
     Runs a single FFmpeg command with audio-only inputs and acrossfade filters.
     Memory usage is negligible (audio is tiny compared to video frames).
+    Output bitrate matches the highest source bitrate (no quality downgrade).
     """
+    # WHY: Use the highest source bitrate so we never downgrade audio quality.
+    # iPhone clips are typically 256k AAC; re-encoding at 128k loses quality.
+    audio_bitrate = _probe_max_audio_bitrate(clips)
+    logger.info(f"Audio output bitrate: {audio_bitrate} (matched to source max)")
+
     if len(clips) == 1:
         result = subprocess.run(  # noqa: S603, S607
             [
@@ -354,7 +401,7 @@ def extract_and_mix_audio(
                 "-c:a",
                 "aac",
                 "-b:a",
-                "128k",
+                audio_bitrate,
                 str(output_path),
             ],
             capture_output=True,
@@ -382,7 +429,7 @@ def extract_and_mix_audio(
         "-c:a",
         "aac",
         "-b:a",
-        "128k",
+        audio_bitrate,
         str(output_path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603
