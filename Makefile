@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-fast mutation benchmark lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
+.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-fast mutation benchmark benchmark-perf lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
 
 # Default target
 help:
@@ -20,6 +20,7 @@ help:
 	@echo "  test-cov     Run tests with coverage report"
 	@echo "  test-fast    Run tests without slow integration tests"
 	@echo "  benchmark    Run performance benchmarks"
+	@echo "  benchmark-perf Run assembly performance benchmarks (requires FFmpeg)"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  lint         Run ruff linter"
@@ -102,6 +103,10 @@ test:
 
 benchmark:
 	uv run pytest tests/benchmarks/ -v --benchmark-only
+
+benchmark-perf:  ## Run assembly performance benchmarks (requires FFmpeg)
+	uv run pytest tests/integration/assembly/test_perf_assembly.py -v -m integration \
+		--log-cli-level=INFO --tb=short
 
 test-integration-live-photos:  ## Run ONLY live photo merge tests (~30s, needs Immich)
 	uv run pytest tests/integration/live_photos/ -v -m integration --log-cli-level=INFO --tb=short \
