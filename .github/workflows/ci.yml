@@ -322,6 +322,9 @@ jobs:
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
         with:
+          # Unit test coverage + committed Mac integration XMLs
+          # Linux integration coverage uploaded separately with flag integration-linux
+          flags: unittests,integration-mac
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 

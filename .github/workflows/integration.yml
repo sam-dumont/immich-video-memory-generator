@@ -128,7 +128,7 @@ jobs:
         if: always()
         with:
           files: tests/assembly-coverage.xml,tests/photos-coverage.xml,tests/pipeline-coverage.xml,tests/live-photos-coverage.xml,tests/auth-coverage.xml
-          flags: integration
+          flags: integration-linux
           override_commit: ${{ steps.params.outputs.sha }}
           override_branch: ${{ steps.params.outputs.branch }}
           slug: ${{ steps.params.outputs.public_repo }}
