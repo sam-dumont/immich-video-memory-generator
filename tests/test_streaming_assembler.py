@@ -556,8 +556,12 @@ class TestFrameDecoderFilterChain:
         vf = decoder._build_vf()
         assert "gblur=sigma=80" in vf
 
-    def test_hdr_conversion_included(self) -> None:
-        """HDR conversion filters must be passed through to the filter chain."""
+    def test_hdr_not_in_decoder(self) -> None:
+        """HDR conversion must NOT be in the decoder — it happens on the encoder side.
+
+        Applying format=p010le in the decoder would do HLG→p010le→rgb24
+        (lossy tone-map), then the encoder tags SDR data as HLG = yellow tint.
+        """
         from pathlib import Path
 
         from immich_memories.processing.streaming_assembler import FrameDecoder
@@ -573,9 +577,10 @@ class TestFrameDecoderFilterChain:
         )
         vf = decoder._build_vf()
 
-        assert "format=p010le" in vf
-        assert "zscale=t=arib-std-b67" in vf
-        assert "setparams=colorspace=bt2020nc" in vf
+        # HDR filters must NOT be in the decoder filter chain
+        assert "format=p010le" not in vf
+        assert "zscale" not in vf
+        assert "setparams" not in vf
 
     def test_no_rotation_when_zero(self) -> None:
         """rotation=0 should NOT add any transpose filter."""

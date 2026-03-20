@@ -249,6 +249,8 @@ class AssemblyEngine:
             ctx=ctx,
             normalize_audio=self.settings.normalize_clip_audio,
             privacy_mode=self.settings.privacy_mode,
+            hdr_type=ctx.hdr_type if self.settings.preserve_hdr else None,
+            scale_mode=self.settings.scale_mode,
             progress_callback=progress_callback,
         )
         return output_path

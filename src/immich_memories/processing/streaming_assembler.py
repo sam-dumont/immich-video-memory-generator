@@ -65,6 +65,7 @@ class FrameDecoder:
         hdr_conversion: str = "",
         colorspace_filter: str = "",
         output_pix_fmt: str = "",
+        scale_mode: str = "black",
     ) -> None:
         self._clip_path = clip_path
         self._width = width
@@ -77,6 +78,7 @@ class FrameDecoder:
         self._hdr_conversion = hdr_conversion
         self._colorspace_filter = colorspace_filter
         self._output_pix_fmt = output_pix_fmt
+        self._scale_mode = scale_mode
 
     def _build_vf(self) -> str:
         """Build the -vf filter chain matching filter_builder.build_clip_video_filter."""
@@ -97,34 +99,49 @@ class FrameDecoder:
         # PTS reset — critical for multi-clip concat
         parts.append("setpts=PTS-STARTPTS")
 
-        # Scale + pad to target resolution
-        parts.extend(
-            (
-                f"scale={self._width}:{self._height}:force_original_aspect_ratio=decrease:flags=lanczos",
-                f"pad={self._width}:{self._height}:(ow-iw)/2:(oh-ih)/2:black",
+        # Scale + fill to target resolution
+        if self._scale_mode == "blur":
+            # WHY: Blur background fills the entire frame with a blurred, zoomed version
+            # of the source, then overlays the sharp scaled version centered on top.
+            # Uses split to avoid re-reading the source.
+            parts.extend(
+                (
+                    "split[_bg][_fg]",
+                    f"[_bg]scale={self._width}:{self._height}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={self._width}:{self._height},gblur=sigma=30[_blurred]",
+                    f"[_fg]scale={self._width}:{self._height}:force_original_aspect_ratio=decrease:flags=lanczos[_sharp]",
+                    "[_blurred][_sharp]overlay=(W-w)/2:(H-h)/2",
+                )
             )
-        )
+            self._use_filter_complex = True
+        else:
+            parts.extend(
+                (
+                    f"scale={self._width}:{self._height}:force_original_aspect_ratio=decrease:flags=lanczos",
+                    f"pad={self._width}:{self._height}:(ow-iw)/2:(oh-ih)/2:black",
+                )
+            )
+            self._use_filter_complex = False
 
-        # FPS + timebase reset
-        parts.append(f"fps={self._fps},settb=1/{self._fps}")
-
-        # Pixel format conversion (yuv420p for SDR, p010le for HDR)
-        if self._output_pix_fmt:
-            parts.append(f"format={self._output_pix_fmt}")
-
-        # HDR conversion (PQ→HLG, HLG→PQ etc.) + colorspace
-        if self._hdr_conversion:
-            parts.append(self._hdr_conversion.lstrip(","))
-        if self._colorspace_filter:
-            parts.append(self._colorspace_filter.lstrip(","))
-
-        # Square pixels
-        parts.append("setsar=1")
+        # FPS + timebase reset + square pixels
+        # WHY: Do NOT apply HDR/colorspace/format here. The decoder outputs rgb24
+        # which is 8-bit sRGB. HDR conversion happens on the ENCODER side via
+        # zscale (same pattern as photos/photo_pipeline.py _stream_render_to_mp4).
+        parts.extend((f"fps={self._fps},settb=1/{self._fps}", "setsar=1"))
 
         return ",".join(parts)
 
     def __iter__(self) -> Iterator[np.ndarray]:
         """Yield decoded frames one at a time."""
+        vf = self._build_vf()
+        use_fc = getattr(self, "_use_filter_complex", False)
+
+        if use_fc:
+            # WHY: Blur background uses split which requires -filter_complex
+            filter_args = ["-filter_complex", f"[0:v]{vf}[out]", "-map", "[out]"]
+        else:
+            filter_args = ["-vf", vf]
+
         cmd = [
             "ffmpeg",
             "-i",
@@ -133,8 +150,7 @@ class FrameDecoder:
             "rawvideo",
             "-pix_fmt",
             self._pix_fmt,
-            "-vf",
-            self._build_vf(),
+            *filter_args,
             "-s",
             f"{self._width}x{self._height}",
             "-r",
@@ -179,14 +195,12 @@ class StreamingEncoder:
         height: int,
         fps: int,
         encoder_args: list[str] | None = None,
+        hdr_type: str | None = None,
     ) -> None:
         self._output_path = output_path
         self._width = width
         self._height = height
         self._fps = fps
-        # WHY: encoder_args comes from _get_gpu_encoder_args() which handles
-        # GPU detection, HDR metadata, and platform-specific encoder selection.
-        # Default to libx264 for tests that don't pass encoder_args.
         self._encoder_args = encoder_args or [
             "-c:v",
             "libx264",
@@ -197,10 +211,35 @@ class StreamingEncoder:
             "-pix_fmt",
             "yuv420p",
         ]
+        # WHY: Frames arrive as rgb24 (sRGB). For HDR output, zscale converts
+        # sRGB → HLG/PQ on the encoder side. Same pattern as photo pipeline.
+        self._hdr_type = hdr_type
         self._proc: subprocess.Popen[bytes] | None = None
 
     def start(self) -> None:
         """Start the FFmpeg encode process."""
+        # WHY: For HDR, zscale converts sRGB input → HLG/PQ. Without this,
+        # raw sRGB data tagged as HLG produces yellow tint on HDR displays.
+        vf_args: list[str] = []
+        if self._hdr_type == "hlg":
+            vf_args = [
+                "-vf",
+                "zscale=t=arib-std-b67:tin=iec61966-2-1"
+                ":p=bt2020:pin=bt709"
+                ":m=bt2020nc:min=bt709"
+                ":npl=203:agamma=false"
+                ",format=yuv420p10le",
+            ]
+        elif self._hdr_type == "pq":
+            vf_args = [
+                "-vf",
+                "zscale=t=smpte2084:tin=iec61966-2-1"
+                ":p=bt2020:pin=bt709"
+                ":m=bt2020nc:min=bt709"
+                ":npl=203:agamma=false"
+                ",format=yuv420p10le",
+            ]
+
         cmd = [
             "ffmpeg",
             "-y",
@@ -214,6 +253,7 @@ class StreamingEncoder:
             str(self._fps),
             "-i",
             "pipe:0",
+            *vf_args,
             *self._encoder_args,
             "-movflags",
             "+faststart",
@@ -297,6 +337,7 @@ def _make_decoder(
     fps: int,
     ctx: Any | None = None,
     privacy_mode: bool = False,
+    scale_mode: str = "black",
 ) -> FrameDecoder:
     """Create a FrameDecoder with per-clip normalization filters.
 
@@ -340,6 +381,7 @@ def _make_decoder(
         hdr_conversion=hdr_conversion,
         colorspace_filter=colorspace_filter,
         output_pix_fmt=output_pix_fmt,
+        scale_mode=scale_mode,
     )
 
 
@@ -352,8 +394,10 @@ def assemble_streaming(
     fps: int,
     fade_duration: float = 0.5,
     encoder_args: list[str] | None = None,
-    ctx: object | None = None,
+    ctx: Any | None = None,
     privacy_mode: bool = False,
+    hdr_type: str | None = None,
+    scale_mode: str = "blur",
 ) -> None:
     """Assemble clips via streaming frame blending. Constant memory.
 
@@ -369,7 +413,9 @@ def assemble_streaming(
         raise ValueError(f"Expected {len(clips) - 1} transitions, got {len(transitions)}")
 
     fade_frames = int(fade_duration * fps)
-    encoder = StreamingEncoder(output_path, width, height, fps, encoder_args=encoder_args)
+    encoder = StreamingEncoder(
+        output_path, width, height, fps, encoder_args=encoder_args, hdr_type=hdr_type
+    )
     encoder.start()
 
     blend_buf = np.zeros((height, width, 3), dtype=np.uint8)
@@ -381,7 +427,9 @@ def assemble_streaming(
     try:
         for clip_idx, clip in enumerate(clips):
             if active_iter is None:
-                decoder = _make_decoder(clip, clip_idx, width, height, fps, ctx, privacy_mode)
+                decoder = _make_decoder(
+                    clip, clip_idx, width, height, fps, ctx, privacy_mode, scale_mode
+                )
                 active_iter = iter(decoder)
 
             clip_frames = int(clip.duration * fps)
@@ -392,7 +440,14 @@ def assemble_streaming(
 
             if has_fade_out and clip_idx + 1 < len(clips):
                 next_decoder = _make_decoder(
-                    clips[clip_idx + 1], clip_idx + 1, width, height, fps, ctx, privacy_mode
+                    clips[clip_idx + 1],
+                    clip_idx + 1,
+                    width,
+                    height,
+                    fps,
+                    ctx,
+                    privacy_mode,
+                    scale_mode,
                 )
                 next_iter = iter(next_decoder)
                 _emit_crossfade(
@@ -584,12 +639,28 @@ def extract_and_mix_audio(
         raise RuntimeError(f"Audio mixing failed: {result.stderr[-500:]}")
 
 
+def _probe_duration(path: Path) -> float:
+    """Get actual duration of a media file via ffprobe."""
+    result = subprocess.run(  # noqa: S603, S607
+        ["ffprobe", "-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return float(result.stdout.strip()) if result.returncode == 0 else 0.0
+
+
 def mux_video_audio(
     video_path: Path,
     audio_path: Path,
     output_path: Path,
 ) -> None:
-    """Mux video and audio streams into final output. No re-encoding."""
+    """Mux video and audio streams into final output.
+
+    Trims audio to match video duration to prevent desync from
+    frame count rounding differences between video and audio passes.
+    """
+    video_dur = _probe_duration(video_path)
     cmd = [
         "ffmpeg",
         "-y",
@@ -600,12 +671,19 @@ def mux_video_audio(
         "-c:v",
         "copy",
         "-c:a",
-        "copy",
+        "aac",
+        "-b:a",
+        "320k",
+        # WHY: Trim audio to match exact video duration. The video and audio
+        # passes calculate durations independently — frame count rounding causes
+        # drift that accumulates across clips (0.1s per clip × 26 clips = 2.6s).
+        "-t",
+        str(video_dur),
         "-movflags",
         "+faststart",
         str(output_path),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603, S607
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)  # noqa: S603, S607
     if result.returncode != 0:
         raise RuntimeError(f"Muxing failed: {result.stderr[-500:]}")
 
@@ -619,9 +697,11 @@ def streaming_assemble_full(
     fps: int,
     fade_duration: float = 0.5,
     encoder_args: list[str] | None = None,
-    ctx: object | None = None,
+    ctx: Any | None = None,
     normalize_audio: bool = True,
     privacy_mode: bool = False,
+    hdr_type: str | None = None,
+    scale_mode: str = "blur",
     progress_callback: Callable[[float, str], None] | None = None,
 ) -> Path:
     """Full streaming assembly: video + audio → final MP4.
@@ -629,7 +709,7 @@ def streaming_assemble_full(
     Three phases:
     1. Streaming video encode (frame-by-frame, constant memory)
     2. Audio extraction + mixing (separate FFmpeg pass, lightweight)
-    3. Mux video + audio (copy streams, no re-encode)
+    3. Mux video + audio (trim audio to video duration for sync)
 
     Supports GPU encoding, HDR preservation, rotation, loudnorm, and
     privacy mode — full parity with the old filter graph pipeline.
@@ -655,6 +735,8 @@ def streaming_assemble_full(
             encoder_args=encoder_args,
             ctx=ctx,
             privacy_mode=privacy_mode,
+            hdr_type=hdr_type,
+            scale_mode=scale_mode,
         )
 
         if progress_callback:
