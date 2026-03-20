@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 import io
 import logging
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
@@ -133,6 +134,18 @@ class PipelineLock:
             self._fd = None
 
 
+# Minimum free disk space before starting generation
+_MIN_FREE_BYTES = 1024 * 1024 * 1024  # 1 GB
+
+
+def check_disk_space(output_dir: Path) -> None:
+    """Abort early if disk space is critically low."""
+    usage = shutil.disk_usage(output_dir)
+    if usage.free < _MIN_FREE_BYTES:
+        free_gb = usage.free / (1024**3)
+        raise GenerationError(f"Insufficient disk space: {free_gb:.1f} GB free, need at least 1 GB")
+
+
 def _report(params: GenerationParams, phase: str, progress: float, msg: str) -> None:
     if params.progress_callback:
         params.progress_callback(phase, progress, msg)
@@ -172,6 +185,9 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
     dir_slug = params.output_path.stem
     run_output_dir = params.output_path.parent / f"{dir_slug}_{run_id}"
     run_output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Preflight: abort early if disk is critically low
+    check_disk_space(run_output_dir)
     result_output_path = run_output_dir / sanitize_filename(params.output_path.name)
 
     run_tracker.start_run(
