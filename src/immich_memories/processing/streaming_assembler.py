@@ -20,6 +20,26 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+def blend_crossfade(
+    frame_a: np.ndarray,
+    frame_b: np.ndarray,
+    alpha: float,
+    out: np.ndarray,
+    temp: np.ndarray,
+) -> None:
+    """Blend two frames for crossfade transition. Fully in-place — zero allocation.
+
+    alpha=0.0 → frame_a, alpha=1.0 → frame_b.
+    Both `out` and `temp` must be pre-allocated with the same shape as the frames.
+    """
+    # WHY: Two pre-allocated buffers avoid ALL temporaries during the blend.
+    # At 4K (3840*2160*3 = 25 MB), even one temporary doubles memory per frame.
+    inv_alpha = 1.0 - alpha
+    np.multiply(frame_a, inv_alpha, out=out, casting="unsafe")
+    np.multiply(frame_b, alpha, out=temp, casting="unsafe")
+    np.add(out, temp, out=out, casting="unsafe")
+
+
 class FrameDecoder:
     """Decode a video clip to raw frames via FFmpeg stdout pipe.
 

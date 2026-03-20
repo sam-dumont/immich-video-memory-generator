@@ -105,3 +105,43 @@ class TestStreamingEncoder:
         video_streams = [s for s in probe["streams"] if s["codec_type"] == "video"]
         assert len(video_streams) == 1
         assert float(probe["format"]["duration"]) > 0.5
+
+
+class TestFrameBlender:
+    def test_crossfade_blend_produces_interpolated_frames(self) -> None:
+        """Blending two frames at alpha=0.5 should average pixel values."""
+        from immich_memories.processing.streaming_assembler import blend_crossfade
+
+        frame_a = np.full((4, 4, 3), 100, dtype=np.uint8)
+        frame_b = np.full((4, 4, 3), 200, dtype=np.uint8)
+        out = np.zeros_like(frame_a)
+        temp = np.zeros_like(frame_a)
+
+        blend_crossfade(frame_a, frame_b, alpha=0.5, out=out, temp=temp)
+
+        # (100 * 0.5 + 200 * 0.5) = 150
+        assert np.all(out == 150)
+
+    def test_crossfade_alpha_zero_is_frame_a(self) -> None:
+        """Alpha=0 should return frame_a unchanged."""
+        from immich_memories.processing.streaming_assembler import blend_crossfade
+
+        frame_a = np.full((4, 4, 3), 100, dtype=np.uint8)
+        frame_b = np.full((4, 4, 3), 200, dtype=np.uint8)
+        out = np.zeros_like(frame_a)
+        temp = np.zeros_like(frame_a)
+
+        blend_crossfade(frame_a, frame_b, alpha=0.0, out=out, temp=temp)
+        assert np.all(out == 100)
+
+    def test_crossfade_alpha_one_is_frame_b(self) -> None:
+        """Alpha=1 should return frame_b unchanged."""
+        from immich_memories.processing.streaming_assembler import blend_crossfade
+
+        frame_a = np.full((4, 4, 3), 100, dtype=np.uint8)
+        frame_b = np.full((4, 4, 3), 200, dtype=np.uint8)
+        out = np.zeros_like(frame_a)
+        temp = np.zeros_like(frame_a)
+
+        blend_crossfade(frame_a, frame_b, alpha=1.0, out=out, temp=temp)
+        assert np.all(out == 200)
