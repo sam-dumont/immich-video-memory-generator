@@ -72,7 +72,13 @@ class FrameDecoder:
         self._height = height
         self._fps = fps
         self._pix_fmt = pix_fmt
-        self._frame_size = width * height * 3  # rgb24 = 3 bytes/pixel
+        # WHY: yuv420p10le = W*H*3 bytes (Y=W*H*2 + U=W*H/2 + V=W*H/2).
+        # rgb24 = W*H*3 bytes. Same total size, but yuv420p10le preserves
+        # HDR data without any color conversion (no tone-mapping).
+        if pix_fmt == "yuv420p10le":
+            self._frame_size = width * height * 3  # 10-bit planar YUV 4:2:0
+        else:
+            self._frame_size = width * height * 3  # rgb24 interleaved
         self._rotation = rotation
         self._privacy_blur = privacy_blur
         self._hdr_conversion = hdr_conversion
@@ -170,7 +176,13 @@ class FrameDecoder:
                 raw = proc.stdout.read(self._frame_size)
                 if len(raw) < self._frame_size:
                     break
-                frame = np.frombuffer(raw, dtype=np.uint8).reshape(self._height, self._width, 3)
+                frame: np.ndarray
+                if self._pix_fmt == "yuv420p10le":
+                    # WHY: Keep as flat uint16 — YUV planar can't reshape to (H,W,3).
+                    # Crossfade blends each sample independently which works for all planes.
+                    frame = np.frombuffer(raw, dtype=np.uint16).copy()
+                else:
+                    frame = np.frombuffer(raw, dtype=np.uint8).reshape(self._height, self._width, 3)
                 yield frame
         finally:
             proc.stdout.close()
@@ -218,27 +230,37 @@ class StreamingEncoder:
 
     def start(self) -> None:
         """Start the FFmpeg encode process."""
-        # WHY: For HDR, zscale converts sRGB input → HLG/PQ. Without this,
-        # raw sRGB data tagged as HLG produces yellow tint on HDR displays.
+        # WHY: For HDR, data arrives as yuv420p10le (native format, zero conversion).
+        # The rawvideo pipe STRIPS color range metadata — without explicit flags,
+        # the encoder assumes full range (0-1023) when data is tv range (64-940)
+        # = washed out colors. Must tag input with color metadata.
         vf_args: list[str] = []
+        input_color_args: list[str] = []
         if self._hdr_type == "hlg":
-            vf_args = [
-                "-vf",
-                "zscale=t=arib-std-b67:tin=iec61966-2-1"
-                ":p=bt2020:pin=bt709"
-                ":m=bt2020nc:min=bt709"
-                ":npl=203:agamma=false"
-                ",format=yuv420p10le",
+            input_color_args = [
+                "-color_range",
+                "tv",
+                "-color_trc",
+                "arib-std-b67",
+                "-color_primaries",
+                "bt2020",
+                "-colorspace",
+                "bt2020nc",
             ]
         elif self._hdr_type == "pq":
-            vf_args = [
-                "-vf",
-                "zscale=t=smpte2084:tin=iec61966-2-1"
-                ":p=bt2020:pin=bt709"
-                ":m=bt2020nc:min=bt709"
-                ":npl=203:agamma=false"
-                ",format=yuv420p10le",
+            input_color_args = [
+                "-color_range",
+                "tv",
+                "-color_trc",
+                "smpte2084",
+                "-color_primaries",
+                "bt2020",
+                "-colorspace",
+                "bt2020nc",
             ]
+
+        # WHY: yuv420p10le for HDR (native format, zero conversion), rgb24 for SDR
+        input_pix_fmt = "yuv420p10le" if self._hdr_type else "rgb24"
 
         cmd = [
             "ffmpeg",
@@ -246,11 +268,12 @@ class StreamingEncoder:
             "-f",
             "rawvideo",
             "-pix_fmt",
-            "rgb24",
+            input_pix_fmt,
             "-s",
             f"{self._width}x{self._height}",
             "-r",
             str(self._fps),
+            *input_color_args,
             "-i",
             "pipe:0",
             *vf_args,
@@ -312,7 +335,7 @@ def _emit_crossfade(
     width: int,
 ) -> None:
     """Blend fade_frames from two iterators and write to encoder."""
-    black = np.zeros((height, width, 3), dtype=np.uint8)
+    black = np.zeros((height, width, 3), dtype=blend_buf.dtype)
     for fade_idx in range(fade_frames):
         frame_a = next(active_iter, None)
         frame_b = next(next_iter, None)
@@ -338,6 +361,7 @@ def _make_decoder(
     ctx: Any | None = None,
     privacy_mode: bool = False,
     scale_mode: str = "black",
+    hdr_type: str | None = None,
 ) -> FrameDecoder:
     """Create a FrameDecoder with per-clip normalization filters.
 
@@ -371,11 +395,17 @@ def _make_decoder(
                 clip_hdr_types[clip_idx], dominant_hdr, source_primaries=source_pri
             )
 
+    # WHY: yuv420p10le keeps video in NATIVE format — zero color conversion.
+    # Any RGB conversion (even 16-bit rgb48le) loses HDR characteristics
+    # because FFmpeg's swscale applies tone-mapping during the conversion.
+    pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
+
     return FrameDecoder(
         clip_path=clip.path,
         width=width,
         height=height,
         fps=fps,
+        pix_fmt=pix_fmt,
         rotation=rotation,
         privacy_blur=privacy_mode and not is_title,
         hdr_conversion=hdr_conversion,
@@ -418,8 +448,14 @@ def assemble_streaming(
     )
     encoder.start()
 
-    blend_buf = np.zeros((height, width, 3), dtype=np.uint8)
-    temp_buf = np.zeros((height, width, 3), dtype=np.uint8)
+    if hdr_type:
+        # WHY: yuv420p10le is flat uint16 — W*H*3 bytes = W*H*3/2 uint16 samples
+        n_samples = width * height * 3 // 2
+        blend_buf = np.zeros(n_samples, dtype=np.uint16)
+        temp_buf = np.zeros(n_samples, dtype=np.uint16)
+    else:
+        blend_buf = np.zeros((height, width, 3), dtype=np.uint8)
+        temp_buf = np.zeros((height, width, 3), dtype=np.uint8)
 
     active_iter: Iterator[np.ndarray] | None = None
     skip_frames = 0
@@ -428,7 +464,7 @@ def assemble_streaming(
         for clip_idx, clip in enumerate(clips):
             if active_iter is None:
                 decoder = _make_decoder(
-                    clip, clip_idx, width, height, fps, ctx, privacy_mode, scale_mode
+                    clip, clip_idx, width, height, fps, ctx, privacy_mode, scale_mode, hdr_type
                 )
                 active_iter = iter(decoder)
 
@@ -448,6 +484,7 @@ def assemble_streaming(
                     ctx,
                     privacy_mode,
                     scale_mode,
+                    hdr_type,
                 )
                 next_iter = iter(next_decoder)
                 _emit_crossfade(
