@@ -1,42 +1,56 @@
 # Mirror to private repo → triggers GPU integration tests → status callback
 #
+# SECURITY: Self-hosted GPU runners can't safely run on public repos (fork abuse).
+# This workflow mirrors code to a private repo where ARC GPU runners are scoped.
+#
+# Triggers:
+#   - push to main: automatic (post-merge integration regression check)
+#   - workflow_dispatch: manual (test a specific branch before merging)
+#
+# NEVER add pull_request trigger — any fork could push malicious code
+# (crypto miners, exfiltration) to the GPU runner. PRs only get unit tests
+# on GitHub-hosted runners.
+#
 # Flow:
-#   1. Push branch to private mirror
+#   1. Push branch to private mirror (SSH deploy key)
 #   2. Trigger integration workflow via repository_dispatch
 #   3. Post "pending" commit status on this repo
-#   4. Private repo runs FFmpeg + GPU tests
+#   4. Private repo runs FFmpeg + GPU tests on ARC K8s runner
 #   5. Private repo posts "success"/"failure" status back here
-#
-# The integration result shows as a separate PR check: "Integration (GPU)"
 
 name: Mirror to CI
 
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to test (defaults to current)"
+        required: false
+        type: string
 
 jobs:
   mirror:
     name: Mirror & Trigger GPU Tests
     runs-on: ubuntu-latest
-    # Don't run on the private mirror repo
     if: github.repository == 'sam-dumont/immich-video-memory-generator'
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          # WHY: pull_request checks out a merge commit by default.
-          # We need the actual branch head for mirroring.
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.branch || github.sha }}
 
       - name: Push to private mirror
         env:
           SSH_KEY: ${{ secrets.MIRROR_SSH_KEY }}
         run: |
-          BRANCH="${{ github.head_ref || github.ref_name }}"
-          # SSH deploy key — more reliable than PAT for cross-repo push
+          BRANCH="${{ inputs.branch || github.ref_name }}"
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/mirror_key
           chmod 600 ~/.ssh/mirror_key
@@ -52,7 +66,7 @@ jobs:
           curl -sS -X POST \
             -H "Authorization: token ${{ secrets.CI_MIRROR_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha || github.sha }}" \
+            "https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.sha }}" \
             -d '{
               "state": "pending",
               "context": "Integration (GPU)",
@@ -69,8 +83,8 @@ jobs:
             -d '{
               "event_type": "integration-test",
               "client_payload": {
-                "sha": "${{ github.event.pull_request.head.sha || github.sha }}",
-                "branch": "${{ github.head_ref || github.ref_name }}",
+                "sha": "${{ github.sha }}",
+                "branch": "${{ inputs.branch || github.ref_name }}",
                 "public_repo": "${{ github.repository }}"
               }
             }'
