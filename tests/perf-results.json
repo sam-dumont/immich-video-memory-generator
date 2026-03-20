@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-03-20T15:03:18",
+  "platform": "macOS-26.3-arm64-arm-64bit-Mach-O",
+  "python": "3.13.11",
+  "results": [
+    {
+      "scenario": "minimal",
+      "python_peak_mb": 0.09612655639648438,
+      "wall_seconds": 1.2857617079862393,
+      "cpu_user_seconds": 1.2006700000000001,
+      "cpu_sys_seconds": 0.20675199999999996,
+      "output_size_mb": 0.3054189682006836,
+      "clip_count": 2,
+      "resolution": "720p"
+    },
+    {
+      "scenario": "typical",
+      "python_peak_mb": 0.10130023956298828,
+      "wall_seconds": 7.326232166989939,
+      "cpu_user_seconds": 8.324384,
+      "cpu_sys_seconds": 0.6986609999999999,
+      "output_size_mb": 1.9200820922851562,
+      "clip_count": 5,
+      "resolution": "1080p"
+    },
+    {
+      "scenario": "heavy",
+      "python_peak_mb": 0.10744190216064453,
+      "wall_seconds": 16.000334249984007,
+      "cpu_user_seconds": 17.832856,
+      "cpu_sys_seconds": 1.082614,
+      "output_size_mb": 1.5256872177124023,
+      "clip_count": 8,
+      "resolution": "1080p"
+    }
+  ]
+}
