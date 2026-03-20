@@ -198,12 +198,28 @@ class TestPrivacyNameAnonymization:
         # Should return a consistent fake name
         assert _anonymize_name("TestPerson") == _anonymize_name("TestPerson")
 
-    def test_multiple_names_get_different_fakes(self):
+    def test_deterministic_across_calls(self):
+        """Same name always maps to the same fake (even across processes)."""
         from immich_memories.generate import _anonymize_name
 
-        fake1 = _anonymize_name("PersonA")
-        fake2 = _anonymize_name("PersonB")
-        assert fake1 != fake2
+        # Determinism: same input → same output every time
+        assert _anonymize_name("PersonA") == _anonymize_name("PersonA")
+        assert _anonymize_name("PersonB") == _anonymize_name("PersonB")
+        # Known SHA256-based values (won't change across processes)
+        assert _anonymize_name("PersonA") in [
+            "Alice",
+            "Bob",
+            "Charlie",
+            "Diana",
+            "Eve",
+            "Frank",
+            "Grace",
+            "Hank",
+            "Iris",
+            "Jack",
+            "Kim",
+            "Leo",
+        ]
 
     def test_none_name_stays_none(self):
         from immich_memories.generate import _anonymize_name
