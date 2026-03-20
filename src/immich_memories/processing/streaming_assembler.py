@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import shutil
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import numpy as np
@@ -435,3 +436,93 @@ def extract_and_mix_audio(
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603
     if result.returncode != 0:
         raise RuntimeError(f"Audio mixing failed: {result.stderr[-500:]}")
+
+
+def mux_video_audio(
+    video_path: Path,
+    audio_path: Path,
+    output_path: Path,
+) -> None:
+    """Mux video and audio streams into final output. No re-encoding."""
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video_path),
+        "-i",
+        str(audio_path),
+        "-c:v",
+        "copy",
+        "-c:a",
+        "copy",
+        "-movflags",
+        "+faststart",
+        str(output_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603, S607
+    if result.returncode != 0:
+        raise RuntimeError(f"Muxing failed: {result.stderr[-500:]}")
+
+
+def streaming_assemble_full(
+    clips: list,
+    transitions: list[str],
+    output_path: Path,
+    width: int,
+    height: int,
+    fps: int,
+    fade_duration: float = 0.5,
+    crf: int = 18,
+    codec: str = "libx264",
+    pix_fmt: str = "yuv420p",
+    progress_callback: Callable[[float, str], None] | None = None,
+) -> Path:
+    """Full streaming assembly: video + audio → final MP4.
+
+    Three phases:
+    1. Streaming video encode (frame-by-frame, constant memory)
+    2. Audio extraction + mixing (separate FFmpeg pass, lightweight)
+    3. Mux video + audio (copy streams, no re-encode)
+    """
+    work_dir = output_path.parent / ".streaming_work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    video_only = work_dir / "video.mp4"
+    audio_only = work_dir / "audio.m4a"
+
+    try:
+        if progress_callback:
+            progress_callback(0.05, "Streaming video assembly...")
+
+        assemble_streaming(
+            clips=clips,
+            transitions=transitions,
+            output_path=video_only,
+            width=width,
+            height=height,
+            fps=fps,
+            fade_duration=fade_duration,
+            crf=crf,
+            codec=codec,
+            pix_fmt=pix_fmt,
+        )
+
+        if progress_callback:
+            progress_callback(0.85, "Mixing audio...")
+
+        extract_and_mix_audio(
+            clips=clips,
+            transitions=transitions,
+            output_path=audio_only,
+            fade_duration=fade_duration,
+        )
+
+        if progress_callback:
+            progress_callback(0.95, "Muxing final output...")
+
+        mux_video_audio(video_only, audio_only, output_path)
+
+        logger.info(f"Full streaming assembly complete: {len(clips)} clips → {output_path.name}")
+        return output_path
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)

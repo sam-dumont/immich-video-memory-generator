@@ -364,3 +364,85 @@ class TestAudioHandling:
         )
         audio_streams = [s for s in probe["streams"] if s["codec_type"] == "audio"]
         assert len(audio_streams) >= 1
+
+
+@requires_ffmpeg
+class TestFullStreamingPipeline:
+    def test_full_pipeline_produces_video_with_audio(self, tmp_path: object) -> None:
+        """Full streaming pipeline should produce MP4 with both video and audio."""
+        from pathlib import Path
+
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import streaming_assemble_full
+
+        tmp = Path(str(tmp_path))
+
+        clips = []
+        for i in range(3):
+            p = tmp / f"clip_{i}.mp4"
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    f"testsrc2=size=320x240:rate=10:duration=2:alpha={60 + i * 60}",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    f"sine=frequency={330 + i * 110}:duration=2",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "ultrafast",
+                    "-crf",
+                    "28",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "64k",
+                    "-shortest",
+                    str(p),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=10,
+            )
+            clips.append(AssemblyClip(path=p, duration=2.0, asset_id=f"test-{i}"))
+
+        output = tmp / "final.mp4"
+        streaming_assemble_full(
+            clips=clips,
+            transitions=["fade", "cut"],
+            output_path=output,
+            width=320,
+            height=240,
+            fps=10,
+            fade_duration=0.3,
+            crf=28,
+        )
+
+        assert output.exists()
+        probe = json.loads(
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-print_format",
+                    "json",
+                    "-show_format",
+                    "-show_streams",
+                    str(output),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout
+        )
+
+        stream_types = {s["codec_type"] for s in probe["streams"]}
+        assert "video" in stream_types
+        assert "audio" in stream_types
+        assert float(probe["format"]["duration"]) > 3.0
