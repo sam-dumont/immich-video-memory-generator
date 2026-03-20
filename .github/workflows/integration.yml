@@ -1,0 +1,164 @@
+# GPU Integration Tests — triggered by public repo mirror
+#
+# This is a PRIVATE mirror of sam-dumont/immich-video-memory-generator.
+# Self-hosted runners are safe here.
+#
+# Flow: public repo pushes branch + dispatches → we run tests → post status back
+
+name: Integration (GPU)
+
+on:
+  repository_dispatch:
+    types: [integration-test]
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Test suite to run"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - assembly
+          - photos
+          - pipeline
+          - live-photos
+          - cli
+
+concurrency:
+  group: integration-${{ github.event.client_payload.branch || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  # uv cache stays on PVC (mounted at /home/runner/.cache/uv by ARC)
+  UV_CACHE_DIR: /home/runner/.cache/uv
+  UV_LINK_MODE: copy
+
+jobs:
+  integration:
+    name: "GPU Tests"
+    runs-on: gpu
+    # Only runs on the private mirror — never on the public repo
+    if: github.repository == 'sam-dumont/immich-memories-ci'
+    timeout-minutes: 45
+    steps:
+      - name: Resolve params
+        id: params
+        run: |
+          # repository_dispatch vs workflow_dispatch
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "sha=${{ github.event.client_payload.sha }}" >> "$GITHUB_OUTPUT"
+            echo "branch=${{ github.event.client_payload.branch }}" >> "$GITHUB_OUTPUT"
+            echo "public_repo=${{ github.event.client_payload.public_repo }}" >> "$GITHUB_OUTPUT"
+            echo "suite=all" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "public_repo=sam-dumont/immich-video-memory-generator" >> "$GITHUB_OUTPUT"
+            echo "suite=${{ inputs.suite || 'all' }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git-lfs ffmpeg make build-essential cmake pkg-config
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.params.outputs.branch }}
+          lfs: true
+
+      - name: Post "in_progress" status
+        if: github.event_name == 'repository_dispatch'
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: token ${{ secrets.PUBLIC_REPO_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ steps.params.outputs.public_repo }}/statuses/${{ steps.params.outputs.sha }}" \
+            -d '{
+              "state": "pending",
+              "context": "Integration (GPU)",
+              "description": "Running FFmpeg + GPU tests...",
+              "target_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }'
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - run: make dev
+
+      - name: Restore config
+        env:
+          CONFIG_B64: ${{ secrets.IMMICH_MEMORIES_CONFIG }}
+        run: |
+          mkdir -p /tmp/runner-home/.immich-memories
+          echo "$CONFIG_B64" | base64 -d > /tmp/runner-home/.immich-memories/config.yaml
+          chmod 600 /tmp/runner-home/.immich-memories/config.yaml
+          # Override paths via env vars (pydantic-settings: IMMICH_MEMORIES_ prefix, __ nesting)
+          echo "HOME=/tmp/runner-home" >> "$GITHUB_ENV"
+          echo "IMMICH_MEMORIES_CACHE__DIRECTORY=/tmp/immich-cache" >> "$GITHUB_ENV"
+          echo "IMMICH_MEMORIES_CACHE__DATABASE=/tmp/immich-cache/cache.db" >> "$GITHUB_ENV"
+          echo "IMMICH_MEMORIES_OUTPUT__DIRECTORY=/tmp/immich-output" >> "$GITHUB_ENV"
+
+      - name: Environment info
+        run: |
+          echo "=== FFmpeg ==="
+          ffmpeg -version | head -3
+          ffmpeg -filters 2>&1 | grep -q zscale && echo "zscale: OK" || echo "zscale: MISSING"
+          echo "=== GPU ==="
+          nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo "No NVIDIA GPU"
+
+      - name: Run integration tests
+        id: tests
+        run: |
+          SUITE="${{ steps.params.outputs.suite }}"
+          case "$SUITE" in
+            all)         make test-integration ;;
+            assembly)    make test-integration-assembly ;;
+            photos)      make test-integration-photos ;;
+            pipeline)    make test-integration-pipeline ;;
+            live-photos) make test-integration-live-photos ;;
+            cli)         make test-integration-cli ;;
+          esac
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        if: always()
+        with:
+          files: tests/assembly-coverage.xml,tests/photos-coverage.xml,tests/pipeline-coverage.xml,tests/live-photos-coverage.xml,tests/auth-coverage.xml
+          flags: integration
+          override_commit: ${{ steps.params.outputs.sha }}
+          override_branch: ${{ steps.params.outputs.branch }}
+          slug: ${{ steps.params.outputs.public_repo }}
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+      - name: Post success status
+        if: success() && github.event_name == 'repository_dispatch'
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: token ${{ secrets.PUBLIC_REPO_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ steps.params.outputs.public_repo }}/statuses/${{ steps.params.outputs.sha }}" \
+            -d '{
+              "state": "success",
+              "context": "Integration (GPU)",
+              "description": "All GPU tests passed",
+              "target_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }'
+
+      - name: Post failure status
+        if: failure() && github.event_name == 'repository_dispatch'
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: token ${{ secrets.PUBLIC_REPO_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ steps.params.outputs.public_repo }}/statuses/${{ steps.params.outputs.sha }}" \
+            -d '{
+              "state": "failure",
+              "context": "Integration (GPU)",
+              "description": "GPU tests failed — click for details",
+              "target_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }'
