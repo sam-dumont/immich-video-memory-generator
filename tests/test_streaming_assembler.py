@@ -290,3 +290,77 @@ class TestStreamingAssemble:
         duration = float(probe["format"]["duration"])
         # Two 1s clips with cut = ~2s (no overlap)
         assert 1.5 < duration < 2.5
+
+
+@requires_ffmpeg
+class TestAudioHandling:
+    def test_extract_and_mix_audio(self, tmp_path: object) -> None:
+        """extract_and_mix_audio should produce a valid audio file with crossfade."""
+        from pathlib import Path
+
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import extract_and_mix_audio
+
+        tmp = Path(str(tmp_path))
+
+        # Create clips with audio
+        clips = []
+        for i in range(2):
+            p = tmp / f"clip_{i}.mp4"
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc2=size=320x240:rate=10:duration=2",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    f"sine=frequency={440 + i * 220}:duration=2",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "ultrafast",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "64k",
+                    "-shortest",
+                    str(p),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=10,
+            )
+            clips.append(AssemblyClip(path=p, duration=2.0, asset_id=f"test-{i}"))
+
+        audio_out = tmp / "mixed_audio.m4a"
+        extract_and_mix_audio(
+            clips=clips,
+            transitions=["fade"],
+            output_path=audio_out,
+            fade_duration=0.3,
+        )
+
+        assert audio_out.exists()
+        probe = json.loads(
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-print_format",
+                    "json",
+                    "-show_format",
+                    "-show_streams",
+                    str(audio_out),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout
+        )
+        audio_streams = [s for s in probe["streams"] if s["codec_type"] == "audio"]
+        assert len(audio_streams) >= 1

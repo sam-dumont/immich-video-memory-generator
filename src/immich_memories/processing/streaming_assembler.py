@@ -302,3 +302,89 @@ def assemble_streaming(
     except Exception:
         encoder.finish()
         raise
+
+
+def _build_audio_filter_graph(
+    clips: list,
+    transitions: list[str],
+    fade_duration: float,
+) -> str:
+    """Build FFmpeg filter_complex string for audio crossfade/concat chain."""
+    filter_parts: list[str] = [
+        f"[{i}:a]aformat=sample_rates=48000:channel_layouts=stereo,"
+        f"atrim=0:{clip.duration},asetpts=PTS-STARTPTS[a{i}]"
+        for i, clip in enumerate(clips)
+    ]
+
+    current_label = "a0"
+    for i, transition in enumerate(transitions):
+        next_label = f"a{i + 1}"
+        out_label = f"mix{i}" if i < len(transitions) - 1 else "aout"
+        if transition == "fade":
+            filter_parts.append(
+                f"[{current_label}][{next_label}]"
+                f"acrossfade=d={fade_duration}:c1=tri:c2=tri[{out_label}]"
+            )
+        else:
+            filter_parts.append(f"[{current_label}][{next_label}]concat=n=2:v=0:a=1[{out_label}]")
+        current_label = out_label
+
+    return ";".join(filter_parts)
+
+
+def extract_and_mix_audio(
+    clips: list,
+    transitions: list[str],
+    output_path: Path,
+    fade_duration: float = 0.5,
+) -> None:
+    """Extract audio from clips and mix with crossfade transitions.
+
+    Runs a single FFmpeg command with audio-only inputs and acrossfade filters.
+    Memory usage is negligible (audio is tiny compared to video frames).
+    """
+    if len(clips) == 1:
+        result = subprocess.run(  # noqa: S603, S607
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(clips[0].path),
+                "-vn",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                str(output_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Audio extraction failed: {result.stderr[-500:]}")
+        return
+
+    inputs: list[str] = []
+    for clip in clips:
+        inputs.extend(["-i", str(clip.path)])
+
+    filter_complex = _build_audio_filter_graph(clips, transitions, fade_duration)
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        *inputs,
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "[aout]",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        str(output_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603
+    if result.returncode != 0:
+        raise RuntimeError(f"Audio mixing failed: {result.stderr[-500:]}")
