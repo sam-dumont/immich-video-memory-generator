@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -488,3 +489,200 @@ class TestFullStreamingPipeline:
         assert "video" in stream_types
         assert "audio" in stream_types
         assert float(probe["format"]["duration"]) > 3.0
+
+
+# ---------------------------------------------------------------------------
+# Regression tests — verify feature parity with old filter graph pipeline.
+# These would have caught the gaps in the initial streaming migration.
+# ---------------------------------------------------------------------------
+
+
+class TestFrameDecoderFilterChain:
+    """Verify FrameDecoder builds the correct FFmpeg filter chain."""
+
+    def test_default_filter_includes_pts_and_timebase(self) -> None:
+        """PTS reset and timebase are critical for multi-clip concat."""
+        from pathlib import Path
+
+        from immich_memories.processing.streaming_assembler import FrameDecoder
+
+        decoder = FrameDecoder(Path("/fake.mp4"), width=1920, height=1080, fps=30)
+        vf = decoder._build_vf()
+
+        assert "setpts=PTS-STARTPTS" in vf
+        assert "settb=1/30" in vf
+        assert "setsar=1" in vf
+
+    def test_rotation_90_includes_transpose(self) -> None:
+        """90° rotation must apply transpose=1 before scale."""
+        from pathlib import Path
+
+        from immich_memories.processing.streaming_assembler import FrameDecoder
+
+        decoder = FrameDecoder(Path("/fake.mp4"), width=1920, height=1080, fps=30, rotation=90)
+        vf = decoder._build_vf()
+
+        assert "transpose=1" in vf
+        # Transpose must come before scale
+        assert vf.index("transpose=1") < vf.index("scale=")
+
+    def test_rotation_180_includes_hflip_vflip(self) -> None:
+        from pathlib import Path
+
+        from immich_memories.processing.streaming_assembler import FrameDecoder
+
+        decoder = FrameDecoder(Path("/fake.mp4"), width=1920, height=1080, fps=30, rotation=180)
+        vf = decoder._build_vf()
+        assert "hflip,vflip" in vf
+
+    def test_rotation_270_includes_transpose_2(self) -> None:
+        from pathlib import Path
+
+        from immich_memories.processing.streaming_assembler import FrameDecoder
+
+        decoder = FrameDecoder(Path("/fake.mp4"), width=1920, height=1080, fps=30, rotation=270)
+        vf = decoder._build_vf()
+        assert "transpose=2" in vf
+
+    def test_privacy_blur_includes_gblur(self) -> None:
+        """Privacy mode must apply heavy gaussian blur."""
+        from pathlib import Path
+
+        from immich_memories.processing.streaming_assembler import FrameDecoder
+
+        decoder = FrameDecoder(
+            Path("/fake.mp4"), width=1920, height=1080, fps=30, privacy_blur=True
+        )
+        vf = decoder._build_vf()
+        assert "gblur=sigma=80" in vf
+
+    def test_hdr_conversion_included(self) -> None:
+        """HDR conversion filters must be passed through to the filter chain."""
+        from pathlib import Path
+
+        from immich_memories.processing.streaming_assembler import FrameDecoder
+
+        decoder = FrameDecoder(
+            Path("/fake.mp4"),
+            width=1920,
+            height=1080,
+            fps=30,
+            hdr_conversion="zscale=t=arib-std-b67:tin=smpte2084",
+            colorspace_filter=",setparams=colorspace=bt2020nc",
+            output_pix_fmt="p010le",
+        )
+        vf = decoder._build_vf()
+
+        assert "format=p010le" in vf
+        assert "zscale=t=arib-std-b67" in vf
+        assert "setparams=colorspace=bt2020nc" in vf
+
+    def test_no_rotation_when_zero(self) -> None:
+        """rotation=0 should NOT add any transpose filter."""
+        from pathlib import Path
+
+        from immich_memories.processing.streaming_assembler import FrameDecoder
+
+        decoder = FrameDecoder(Path("/fake.mp4"), width=1920, height=1080, fps=30, rotation=0)
+        vf = decoder._build_vf()
+        assert "transpose" not in vf
+        assert "hflip" not in vf
+
+
+class TestAudioFilterChain:
+    """Verify audio filter graph includes loudnorm and privacy muffle."""
+
+    def test_loudnorm_included_when_normalize_true(self) -> None:
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import _build_audio_filter_graph
+
+        clips = [
+            AssemblyClip(path=Path("/a.mp4"), duration=3.0),
+            AssemblyClip(path=Path("/b.mp4"), duration=3.0),
+        ]
+        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, normalize_audio=True)
+        assert "loudnorm=I=-16:TP=-1.5:LRA=11" in graph
+
+    def test_loudnorm_excluded_when_normalize_false(self) -> None:
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import _build_audio_filter_graph
+
+        clips = [
+            AssemblyClip(path=Path("/a.mp4"), duration=3.0),
+            AssemblyClip(path=Path("/b.mp4"), duration=3.0),
+        ]
+        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, normalize_audio=False)
+        assert "loudnorm" not in graph
+
+    def test_privacy_muffle_included(self) -> None:
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import _build_audio_filter_graph
+
+        clips = [
+            AssemblyClip(path=Path("/a.mp4"), duration=3.0),
+            AssemblyClip(path=Path("/b.mp4"), duration=3.0),
+        ]
+        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, privacy_mode=True)
+        assert "lowpass=f=200" in graph
+
+    def test_title_screen_gets_null_audio(self) -> None:
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import _build_audio_filter_graph
+
+        clips = [
+            AssemblyClip(path=Path("/title.mp4"), duration=3.0, is_title_screen=True),
+            AssemblyClip(path=Path("/b.mp4"), duration=3.0),
+        ]
+        graph = _build_audio_filter_graph(clips, ["fade"], 0.5)
+        assert "anullsrc" in graph
+
+    def test_loudnorm_not_applied_to_title_screens(self) -> None:
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import _build_audio_filter_graph
+
+        clips = [
+            AssemblyClip(path=Path("/title.mp4"), duration=3.0, is_title_screen=True),
+            AssemblyClip(path=Path("/b.mp4"), duration=3.0),
+        ]
+        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, normalize_audio=True)
+        # Title screen (a0) should use anullsrc, not loudnorm
+        # Content clip (a1) should have loudnorm
+        parts = graph.split(";")
+        title_part = [p for p in parts if "[a0]" in p][0]
+        content_part = [p for p in parts if "[a1]" in p][0]
+        assert "loudnorm" not in title_part
+        assert "loudnorm" in content_part
+
+
+class TestMakeDecoderIntegration:
+    """Verify _make_decoder wires clip metadata to FrameDecoder correctly."""
+
+    def test_rotation_override_passed_through(self) -> None:
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import _make_decoder
+
+        clip = AssemblyClip(path=Path("/clip.mp4"), duration=5.0, rotation_override=90)
+        decoder = _make_decoder(clip, 0, 1920, 1080, 30)
+
+        assert decoder._rotation == 90
+        assert "transpose=1" in decoder._build_vf()
+
+    def test_privacy_mode_applied_to_non_title(self) -> None:
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import _make_decoder
+
+        clip = AssemblyClip(path=Path("/clip.mp4"), duration=5.0)
+        decoder = _make_decoder(clip, 0, 1920, 1080, 30, privacy_mode=True)
+
+        assert decoder._privacy_blur is True
+        assert "gblur=sigma=80" in decoder._build_vf()
+
+    def test_privacy_mode_not_applied_to_title_screen(self) -> None:
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import _make_decoder
+
+        clip = AssemblyClip(path=Path("/title.mp4"), duration=3.0, is_title_screen=True)
+        decoder = _make_decoder(clip, 0, 1920, 1080, 30, privacy_mode=True)
+
+        assert decoder._privacy_blur is False
+        assert "gblur" not in decoder._build_vf()
