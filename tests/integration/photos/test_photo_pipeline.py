@@ -54,9 +54,9 @@ def immich_photos():
     config.defaults.target_duration_seconds = 60  # Cap at 60s for test speed
     client = SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
 
-    # Broad date range to find any photos
+    # Narrow range — one month is enough to verify the pipeline works
     photos = client.get_photos_for_date_range(
-        DateRange(start=date(2024, 1, 1), end=date(2026, 6, 30))
+        DateRange(start=date(2025, 1, 1), end=date(2025, 1, 31))
     )
 
     if not photos:
