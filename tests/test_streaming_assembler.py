@@ -145,3 +145,148 @@ class TestFrameBlender:
 
         blend_crossfade(frame_a, frame_b, alpha=1.0, out=out, temp=temp)
         assert np.all(out == 200)
+
+
+@requires_ffmpeg
+class TestStreamingAssemble:
+    def test_assembles_two_clips_with_crossfade(self, tmp_path: object) -> None:
+        """assemble_streaming should produce valid output from two clips."""
+        from pathlib import Path
+
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import assemble_streaming
+
+        tmp = Path(str(tmp_path))
+
+        # Generate two tiny test clips with audio
+        clips = []
+        for i in range(2):
+            p = tmp / f"clip_{i}.mp4"
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    f"testsrc2=size=320x240:rate=10:duration=2:alpha={80 + i * 80}",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    f"sine=frequency={440 + i * 220}:duration=2",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "ultrafast",
+                    "-crf",
+                    "28",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "64k",
+                    "-shortest",
+                    str(p),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=10,
+            )
+            clips.append(AssemblyClip(path=p, duration=2.0, asset_id=f"test-{i}"))
+
+        output = tmp / "output.mp4"
+        assemble_streaming(
+            clips=clips,
+            transitions=["fade"],
+            output_path=output,
+            width=320,
+            height=240,
+            fps=10,
+            fade_duration=0.3,
+            crf=28,
+        )
+
+        assert output.exists()
+        # Duration should be ~3.7s (2+2-0.3 crossfade)
+        probe = json.loads(
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-print_format",
+                    "json",
+                    "-show_format",
+                    str(output),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout
+        )
+        duration = float(probe["format"]["duration"])
+        assert 3.0 < duration < 4.5
+
+    def test_assembles_with_cut_transition(self, tmp_path: object) -> None:
+        """Cut transitions should concatenate without blending."""
+        from pathlib import Path
+
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import assemble_streaming
+
+        tmp = Path(str(tmp_path))
+
+        clips = []
+        for i in range(2):
+            p = tmp / f"clip_{i}.mp4"
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc2=size=320x240:rate=10:duration=1",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "ultrafast",
+                    str(p),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=10,
+            )
+            clips.append(AssemblyClip(path=p, duration=1.0, asset_id=f"test-{i}"))
+
+        output = tmp / "output_cut.mp4"
+        assemble_streaming(
+            clips=clips,
+            transitions=["cut"],
+            output_path=output,
+            width=320,
+            height=240,
+            fps=10,
+            fade_duration=0.3,
+            crf=28,
+        )
+
+        assert output.exists()
+        probe = json.loads(
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-print_format",
+                    "json",
+                    "-show_format",
+                    str(output),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout
+        )
+        duration = float(probe["format"]["duration"])
+        # Two 1s clips with cut = ~2s (no overlap)
+        assert 1.5 < duration < 2.5

@@ -186,3 +186,119 @@ class StreamingEncoder:
             raise RuntimeError(
                 f"Streaming encode failed (exit {self._proc.returncode}): {stderr[-500:]}"
             )
+
+
+def _emit_body_frames(
+    active_iter: Iterator[np.ndarray],
+    count: int,
+    encoder: StreamingEncoder,
+) -> None:
+    """Write body frames (straight passthrough, no blending) to the encoder."""
+    for _ in range(max(count, 0)):
+        frame = next(active_iter, None)
+        if frame is None:
+            break
+        encoder.write_frame(frame)
+
+
+def _emit_crossfade(
+    active_iter: Iterator[np.ndarray],
+    next_iter: Iterator[np.ndarray],
+    fade_frames: int,
+    encoder: StreamingEncoder,
+    blend_buf: np.ndarray,
+    temp_buf: np.ndarray,
+    height: int,
+    width: int,
+) -> None:
+    """Blend fade_frames from two iterators and write to encoder."""
+    black = np.zeros((height, width, 3), dtype=np.uint8)
+    for fade_idx in range(fade_frames):
+        frame_a = next(active_iter, None)
+        frame_b = next(next_iter, None)
+
+        if frame_a is None is frame_b:
+            break
+        if frame_a is None:
+            frame_a = black
+        if frame_b is None:
+            frame_b = black
+
+        alpha = (fade_idx + 1) / fade_frames
+        blend_crossfade(frame_a, frame_b, alpha, out=blend_buf, temp=temp_buf)
+        encoder.write_frame(blend_buf)
+
+
+def assemble_streaming(
+    clips: list,  # list[AssemblyClip]
+    transitions: list[str],
+    output_path: Path,
+    width: int,
+    height: int,
+    fps: int,
+    fade_duration: float = 0.5,
+    crf: int = 18,
+    codec: str = "libx264",
+    pix_fmt: str = "yuv420p",
+) -> None:
+    """Assemble clips via streaming frame blending. Constant memory.
+
+    Decodes one clip at a time (two during crossfade zones), blends
+    frames with numpy, and pipes to a single FFmpeg encode process.
+
+    Does NOT mutate the input clips list. Carries decoder state
+    forward between iterations to handle crossfade overlap.
+    """
+    if len(transitions) != len(clips) - 1:
+        raise ValueError(f"Expected {len(clips) - 1} transitions, got {len(transitions)}")
+
+    fade_frames = int(fade_duration * fps)
+    encoder = StreamingEncoder(
+        output_path, width, height, fps, crf=crf, pix_fmt=pix_fmt, codec=codec
+    )
+    encoder.start()
+
+    blend_buf = np.zeros((height, width, 3), dtype=np.uint8)
+    temp_buf = np.zeros((height, width, 3), dtype=np.uint8)
+
+    # WHY: When clip A crossfades into clip B, the decoder for B has already
+    # yielded fade_frames. We carry the iterator forward instead of creating
+    # a new decoder (which would re-decode those frames).
+    active_iter: Iterator[np.ndarray] | None = None
+    skip_frames = 0
+
+    try:
+        for clip_idx, clip in enumerate(clips):
+            if active_iter is None:
+                active_iter = iter(FrameDecoder(clip.path, width, height, fps))
+
+            clip_frames = int(clip.duration * fps)
+            has_fade_out = clip_idx < len(transitions) and transitions[clip_idx] == "fade"
+            body_frames = clip_frames - skip_frames - (fade_frames if has_fade_out else 0)
+
+            _emit_body_frames(active_iter, body_frames, encoder)
+
+            if has_fade_out and clip_idx + 1 < len(clips):
+                next_iter = iter(FrameDecoder(clips[clip_idx + 1].path, width, height, fps))
+                _emit_crossfade(
+                    active_iter,
+                    next_iter,
+                    fade_frames,
+                    encoder,
+                    blend_buf,
+                    temp_buf,
+                    height,
+                    width,
+                )
+                # Carry next clip's iterator — it already yielded fade_frames
+                active_iter = next_iter
+                skip_frames = fade_frames
+            else:
+                active_iter = None
+                skip_frames = 0
+
+        encoder.finish()
+        logger.info(f"Streaming assembly complete: {len(clips)} clips → {output_path.name}")
+    except Exception:
+        encoder.finish()
+        raise
