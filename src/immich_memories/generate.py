@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import io
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -96,6 +97,41 @@ class GenerationError(Exception):
     """Raised when video generation fails."""
 
 
+class PipelineLock:
+    """File-based lock preventing concurrent pipeline runs.
+
+    Uses fcntl.flock() for cross-process exclusion. Non-blocking —
+    raises GenerationError immediately if another instance holds the lock.
+    """
+
+    def __init__(self, lock_path: Path) -> None:
+        self._lock_path = lock_path
+        self._fd: io.TextIOWrapper | None = None
+
+    def __enter__(self) -> PipelineLock:
+        import fcntl
+
+        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self._fd = self._lock_path.open("w")
+        try:
+            fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            self._fd.close()
+            self._fd = None
+            raise GenerationError(
+                f"Another instance is already running. Lock file: {self._lock_path}"
+            )
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        import fcntl
+
+        if self._fd is not None:
+            fcntl.flock(self._fd, fcntl.LOCK_UN)
+            self._fd.close()
+            self._fd = None
+
+
 def _report(params: GenerationParams, phase: str, progress: float, msg: str) -> None:
     if params.progress_callback:
         params.progress_callback(phase, progress, msg)
@@ -104,20 +140,23 @@ def _report(params: GenerationParams, phase: str, progress: float, msg: str) -> 
 def generate_memory(params: GenerationParams) -> Path:
     """Run the full video generation pipeline synchronously.
 
-    Phases:
-    1. Download + extract clip segments
-    2. Assemble video with transitions and titles
-    3. Apply music (if music_path provided)
-    4. Upload to Immich (if upload_enabled)
-
-    Returns the path to the final video file.
+    Acquires a file lock to prevent concurrent runs, then executes
+    the full pipeline: extract → assemble → music → upload.
     """
+    if not params.clips:
+        raise GenerationError("No clips provided for generation")
+
+    # Single-instance lock: prevent concurrent pipeline runs from corrupting state
+    lock_path = Path.home() / ".immich-memories" / ".lock"
+    with PipelineLock(lock_path):
+        return _generate_memory_inner(params)
+
+
+def _generate_memory_inner(params: GenerationParams) -> Path:
+    """Inner pipeline — runs under PipelineLock."""
     from immich_memories.cache.video_cache import VideoDownloadCache
     from immich_memories.security import sanitize_filename
     from immich_memories.tracking import RunTracker, generate_run_id
-
-    if not params.clips:
-        raise GenerationError("No clips provided for generation")
 
     run_id = generate_run_id()
     run_tracker = RunTracker(run_id)
