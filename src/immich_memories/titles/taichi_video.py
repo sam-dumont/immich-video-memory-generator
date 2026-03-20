@@ -87,9 +87,9 @@ def create_title_video_taichi(
                 np.multiply(255 * (1 - alpha), 1.0, out=blend_buffer, casting="unsafe")
                 np.add(blend_buffer, frame * alpha, out=blend_buffer, casting="unsafe")
                 # WHY: write buffer directly — .tobytes() would copy 25MB per frame
-                process.stdin.write(memoryview(blend_buffer))
+                process.stdin.write(blend_buffer.data)  # type: ignore[union-attr]
             else:
-                process.stdin.write(memoryview(frame))
+                process.stdin.write(frame.data)  # type: ignore[union-attr]
 
         process.stdin.close()
 
