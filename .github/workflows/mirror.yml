@@ -32,11 +32,20 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Push to private mirror
+        env:
+          SSH_KEY: ${{ secrets.MIRROR_SSH_KEY }}
         run: |
           BRANCH="${{ github.head_ref || github.ref_name }}"
-          git remote add mirror https://x-access-token:${{ secrets.CI_MIRROR_TOKEN }}@github.com/sam-dumont/immich-memories-ci.git
+          # SSH deploy key — more reliable than PAT for cross-repo push
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/mirror_key
+          chmod 600 ~/.ssh/mirror_key
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/mirror_key -o IdentitiesOnly=yes"
+          git remote add mirror git@github.com:sam-dumont/immich-memories-ci.git
           git push mirror --force "HEAD:refs/heads/${BRANCH}"
           git push mirror --force --tags 2>/dev/null || true
+          rm -f ~/.ssh/mirror_key
 
       - name: Set pending status
         run: |
