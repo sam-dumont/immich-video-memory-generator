@@ -66,10 +66,12 @@ class TestGenerateMemoryPipeline:
     """End-to-end generate_memory() with real Immich + FFmpeg."""
 
     def test_two_clips_crossfade(self, immich_short_clips, tmp_path):
-        """2 clips → crossfade → valid video output. Captures phase timings."""
+        """2 clips → crossfade → valid video output. Captures full performance metrics."""
+        import logging
         import time
 
         from immich_memories.generate import GenerationParams, generate_memory
+        from tests.integration.assembly.perf_utils import measure_resources
 
         clips, config, client = immich_short_clips
         config.title_screens.enabled = False
@@ -79,16 +81,13 @@ class TestGenerateMemoryPipeline:
 
         def timing_callback(phase: str, _pct: float, _msg: str) -> None:
             now = time.monotonic()
-            # Close previous phase
             for p, start in list(phase_starts.items()):
                 if p != phase:
                     timings[p] = now - start
                     del phase_starts[p]
-            # Start new phase
             if phase not in phase_starts:
                 phase_starts[phase] = now
 
-        t0 = time.monotonic()
         params = GenerationParams(
             clips=clips[:2],
             output_path=output,
@@ -103,8 +102,8 @@ class TestGenerateMemoryPipeline:
             progress_callback=timing_callback,
         )
 
-        result = generate_memory(params)
-        total_time = time.monotonic() - t0
+        with measure_resources("cli_2clip_crossfade", clip_count=2) as perf:
+            result = generate_memory(params)
 
         # Close any remaining phase
         now = time.monotonic()
@@ -119,21 +118,19 @@ class TestGenerateMemoryPipeline:
         assert has_stream(probe, "video")
         duration = get_duration(probe)
         assert duration > 0
+        perf.output_size_mb = result.stat().st_size / (1024 * 1024)
 
-        # Report timings + metrics
-        import logging
+        vs = next((s for s in probe.get("streams", []) if s["codec_type"] == "video"), {})
+        perf.resolution = f"{vs.get('width', '?')}x{vs.get('height', '?')}"
 
         logger = logging.getLogger("test.timings")
         logger.info("=" * 60)
         logger.info("PIPELINE PERFORMANCE REPORT")
         logger.info("=" * 60)
         logger.info(f"  Clips: {len(clips[:2])}")
-        logger.info(f"  Output duration: {duration:.1f}s")
-        logger.info(f"  Output size: {result.stat().st_size / 1024:.0f} KB")
-        logger.info(
-            f"  Resolution: {probe.get('streams', [{}])[0].get('width', '?')}x{probe.get('streams', [{}])[0].get('height', '?')}"
-        )
-        logger.info(f"  Total time: {total_time:.1f}s")
+        logger.info(f"  Output: {duration:.1f}s, {perf.output_size_mb:.1f} MB, {perf.resolution}")
+        logger.info(f"  Codec: {vs.get('codec_name', '?')}, pix_fmt: {vs.get('pix_fmt', '?')}")
+        logger.info(perf.summary_line)
         for phase, t in sorted(timings.items()):
             logger.info(f"  Phase '{phase}': {t:.1f}s")
         logger.info("=" * 60)
@@ -224,38 +221,57 @@ class TestCLIGenerate:
     """Test the actual CLI command with real Immich."""
 
     def test_cli_generate_produces_video(self, tmp_path):
-        """CLI generate with short custom range → real video file."""
+        """CLI generate with short custom range → real video file. Full perf metrics."""
+        import logging
+
         from click.testing import CliRunner
 
         from immich_memories.cli import main
+        from tests.integration.assembly.perf_utils import measure_resources
 
         output = tmp_path / "cli_output.mp4"
+        logger = logging.getLogger("test.timings")
 
-        # Use a 1-month custom range for speed (not a full year)
         runner = CliRunner()
-        result = runner.invoke(
-            main,
-            [
-                "generate",
-                "--start",
-                "2025-01-01",
-                "--end",
-                "2025-01-31",
-                "--output",
-                str(output),
-            ],
-            catch_exceptions=False,
-        )
+        with measure_resources("cli_full_generate") as perf:
+            result = runner.invoke(
+                main,
+                [
+                    "generate",
+                    "--start",
+                    "2025-01-01",
+                    "--end",
+                    "2025-01-31",
+                    "--output",
+                    str(output),
+                ],
+                catch_exceptions=False,
+            )
 
         # 0=success (video produced), 1=no clips found (fine for test env)
         assert result.exit_code in (0, 1), (
             f"Unexpected exit code {result.exit_code}: {result.output}"
         )
         if result.exit_code == 0:
-            # Output may be in a run_id subdirectory
             mp4s = list(tmp_path.rglob("*.mp4"))
             assert len(mp4s) > 0, f"No .mp4 files found in {tmp_path}"
-            assert mp4s[0].stat().st_size > 1000
+            video = mp4s[0]
+            assert video.stat().st_size > 1000
+            perf.output_size_mb = video.stat().st_size / (1024 * 1024)
+
+            from tests.integration.conftest import ffprobe_json
+
+            probe = ffprobe_json(video)
+            vs = next((s for s in probe.get("streams", []) if s["codec_type"] == "video"), {})
+            perf.resolution = f"{vs.get('width', '?')}x{vs.get('height', '?')}"
+
+            logger.info("=" * 60)
+            logger.info("CLI GENERATE PERFORMANCE REPORT")
+            logger.info("=" * 60)
+            logger.info(f"  Output: {perf.output_size_mb:.1f} MB, {perf.resolution}")
+            logger.info(f"  Codec: {vs.get('codec_name', '?')}, pix_fmt: {vs.get('pix_fmt', '?')}")
+            logger.info(perf.summary_line)
+            logger.info("=" * 60)
 
     def test_cli_generate_nonexistent_person(self, tmp_path):
         """CLI with fake person name should fail gracefully."""
