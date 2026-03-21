@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Page
 
-from tests.e2e.conftest import set_theme
+from tests.e2e.conftest import enable_demo_mode, set_theme
 from tests.e2e.redaction import redact_page, redact_person_names
 
 pytestmark = pytest.mark.e2e
@@ -40,6 +40,7 @@ def _save(page: Page, screenshot_dir: Path, name: str) -> None:
 def _wait_for_ready(page: Page) -> None:
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(1500)
+    enable_demo_mode(page)
 
 
 @pytest.mark.parametrize("theme", _THEMES)
@@ -54,7 +55,7 @@ def test_capture_all_screenshots(
     One function per theme to preserve navigation state across steps.
     This mirrors the structure of take-screenshots.ts.
     """
-    # -- Set theme --
+    # -- Set theme + enable demo mode for privacy --
     page.goto(app_url)
     _wait_for_ready(page)
     set_theme(page, theme)
@@ -62,6 +63,7 @@ def test_capture_all_screenshots(
     # ── Step 1: Configuration ──
     page.goto(app_url)
     _wait_for_ready(page)
+    enable_demo_mode(page)
     redact_page(page)
     _save(page, screenshot_dir, _name("step1-config-connected", theme))
 
@@ -152,8 +154,10 @@ def test_capture_all_screenshots(
         _save(page, screenshot_dir, _name("step2-refine-moments", theme))
 
     # ── Step 3: Generation Options ──
+    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+    page.wait_for_timeout(300)
     continue_btn = page.get_by_role("button", name="Continue to Generation")
-    if continue_btn.is_visible():
+    if continue_btn.is_visible(timeout=5000):
         continue_btn.scroll_into_view_if_needed()
         continue_btn.click()
         page.wait_for_url("**/step3", timeout=30_000)
@@ -162,7 +166,8 @@ def test_capture_all_screenshots(
 
     # ── Step 4: Preview & Export ──
     next4_btn = page.get_by_role("button", name="Next: Preview & Export")
-    if next4_btn.is_visible():
+    if next4_btn.is_visible(timeout=5000):
+        next4_btn.scroll_into_view_if_needed()
         next4_btn.click()
         page.wait_for_url("**/step4", timeout=30_000)
         _wait_for_ready(page)

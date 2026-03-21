@@ -2,10 +2,15 @@
 
 Run locally with: make e2e  (or make screenshots for screenshot capture only)
 Requires either a running UI server on :8099 or auto-starts one.
+
+When auto-starting, auth is disabled via IMMICH_MEMORIES_AUTH__ENABLED=false.
+This works because env vars properly override YAML config values (pydantic-settings
+source priority: env > yaml > defaults).
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from collections.abc import Generator
@@ -25,23 +30,45 @@ def app_url() -> Generator[str, None, None]:
     """Yield the base URL of a running UI server.
 
     Reuses an existing server if one is already listening on :8099,
-    otherwise starts one as a subprocess and tears it down after the session.
+    otherwise starts one as a subprocess (with auth disabled) and tears
+    it down after the session.
     """
     if _server_is_ready():
         yield _BASE_URL
         return
 
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("NICEGUI_") and k != "PYTEST_CURRENT_TEST"
+    }
+    env["IMMICH_MEMORIES_AUTH__ENABLED"] = "false"
+    env["IMMICH_MEMORIES_SERVER__ENABLE_DEMO_MODE"] = "true"
     proc = subprocess.Popen(
-        ["uv", "run", "immich-memories", "ui", "--port", str(_BASE_PORT)],
+        [
+            "uv",
+            "run",
+            "immich-memories",
+            "ui",
+            "--port",
+            str(_BASE_PORT),
+            "--host",
+            "localhost",
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
     try:
         _wait_for_server(proc)
         yield _BASE_URL
     finally:
         proc.terminate()
-        proc.wait(timeout=10)
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
 
 
 @pytest.fixture(scope="session")
@@ -60,17 +87,21 @@ def screenshot_dir() -> Path:
 
 
 def set_theme(page: Page, theme: str) -> None:
-    """Switch the NiceGUI app to the given theme ('light' or 'dark').
-
-    Clicks the theme toggle button in the sidebar and waits for the page
-    reload that NiceGUI triggers on theme change.
-    """
+    """Switch the NiceGUI app to the given theme ('light' or 'dark')."""
     icon = "light_mode" if theme == "light" else "dark_mode"
     btn = page.locator(f'button:has(i:text("{icon}"))')
     if btn.is_visible(timeout=3000):
         btn.click()
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(1500)
+        # Move mouse away from the button to clear hover state
+        page.mouse.move(640, 450)
+        page.wait_for_timeout(200)
+
+
+def enable_demo_mode(page: Page) -> None:
+    """Activate demo mode (CSS blur on all media) for privacy."""
+    page.evaluate("document.body.classList.add('demo-mode')")
 
 
 # -- helpers ------------------------------------------------------------------
@@ -89,7 +120,7 @@ def _wait_for_server(proc: subprocess.Popen) -> None:  # type: ignore[type-arg]
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             stderr = (proc.stderr.read() if proc.stderr else b"").decode(errors="replace")
-            pytest.skip(f"UI server exited early: {stderr[:500]}")
+            pytest.skip(f"UI server exited early: {stderr[-2000:]}")
         if _server_is_ready():
             return
         time.sleep(0.5)
