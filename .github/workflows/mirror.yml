@@ -45,6 +45,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ inputs.branch || github.sha }}
+          lfs: true
 
       - name: Push to private mirror
         env:
@@ -64,6 +65,9 @@ jobs:
           # Then push the target branch
           git push mirror --force "HEAD:refs/heads/${BRANCH}"
           git push mirror --force --tags 2>/dev/null || true
+          # WHY: git push doesn't auto-push LFS to non-origin remotes.
+          # Without this, LFS pointers land but blobs are missing = CI fails.
+          git lfs push mirror --all 2>/dev/null || true
           rm -f ~/.ssh/mirror_key
 
       - name: Set pending status
