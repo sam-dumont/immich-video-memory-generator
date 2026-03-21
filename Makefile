@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-fast mutation benchmark benchmark-perf lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video
+.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-fast mutation benchmark benchmark-perf lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e screenshots
 
 # Default target
 help:
@@ -55,6 +55,11 @@ help:
 	@echo "  docs-dev     Start docs dev server"
 	@echo "  docs-build   Build docs site for production"
 	@echo "  docs-check   Validate docs build (used in CI)"
+	@echo ""
+	@echo "E2E Tests (Playwright):"
+	@echo "  playwright-install  Install Playwright browsers"
+	@echo "  e2e                 Run Playwright E2E tests"
+	@echo "  screenshots         Capture UI screenshots (light + dark)"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  clean        Remove build artifacts"
@@ -175,6 +180,23 @@ test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immic
 	print('  All tests:'); \
 	[print(f'    {float(t.get(\"time\",0)):>7.1f}s  {t.get(\"classname\").split(\".\")[-1]}::{t.get(\"name\")}') for t in tests]; \
 	print('═══════════════════════════════════════════════════')"
+
+# =============================================================================
+# E2E Tests (Playwright)
+# =============================================================================
+
+playwright-install:  ## Install Playwright browsers for E2E tests
+	uv run playwright install chromium
+
+e2e:  ## Run Playwright E2E tests (auto-starts UI if needed, needs local config)
+	uv run pytest tests/e2e/ -v -m e2e --log-cli-level=INFO --tb=short \
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/e2e-coverage.xml --cov-fail-under=0 \
+		--junitxml=tests/e2e-junit.xml
+
+screenshots:  ## Capture UI screenshots in light + dark mode
+	uv run pytest tests/e2e/test_screenshots.py -v -m e2e --log-cli-level=INFO --tb=short \
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/e2e-coverage.xml --cov-fail-under=0 \
+		--junitxml=tests/e2e-junit.xml
 
 mutation:  ## Run mutation testing (slow — weekly CI or local deep validation)
 	uv run mutmut run --max-children 4
