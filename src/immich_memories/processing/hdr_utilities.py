@@ -17,6 +17,7 @@ __all__ = [
     "_get_hdr_conversion_filter",
     "_get_clip_hdr_types",
     "_get_gpu_encoder_args",
+    "quality_to_crf",
 ]
 
 logger = logging.getLogger(__name__)
@@ -288,9 +289,29 @@ def _hdr_color_args(color_trc: str) -> list[str]:
     return ["-colorspace", "bt2020nc", "-color_primaries", "bt2020", "-color_trc", color_trc]
 
 
+def quality_to_crf(quality: str) -> int:
+    """Map quality preset to CRF value.
+
+    Lower CRF = higher quality = bigger file.
+    These values are calibrated for near-transparent quality at "high".
+    """
+    return {"high": 12, "medium": 18, "low": 28}.get(quality, 12)
+
+
+def _crf_to_vt_quality(crf: int) -> int:
+    """Map CRF to VideoToolbox -q:v (1-100, higher = better).
+
+    WHY: The old formula (100 - crf*3) gave q:v 31 for CRF 23 — far too
+    compressed. Apple apps use ~65-80 for high quality. This mapping
+    is calibrated against real iPhone HEVC output.
+    """
+    # CRF 12 → q:v 78 (archival), CRF 18 → q:v 62, CRF 28 → q:v 38
+    return max(20, min(90, 90 - crf * 2))
+
+
 def _encoder_args_macos(crf: int, preserve_hdr: bool, color_trc: str) -> list[str]:
     """VideoToolbox encoder args for macOS."""
-    vt_quality = max(10, min(90, 100 - (crf * 3)))
+    vt_quality = _crf_to_vt_quality(crf)
     base = ["-c:v", "hevc_videotoolbox", "-q:v", str(vt_quality), "-tag:v", "hvc1"]
     if preserve_hdr:
         return base + ["-pix_fmt", "p010le"] + _hdr_color_args(color_trc)

@@ -30,6 +30,10 @@ from immich_memories.security import validate_video_path
 
 logger = logging.getLogger(__name__)
 
+# WHY: Intermediates must be near-lossless to avoid double compression.
+# The user's quality preset only applies to the final assembly output.
+_INTERMEDIATE_CRF = 8
+
 # Cache hardware capabilities
 _hw_caps: HWAccelCapabilities | None = None
 
@@ -336,12 +340,12 @@ class ClipExtractor:
             )
             cmd.extend(["-c:v", encoder])
             cmd.extend(encoder_args)
-            self._append_quality_args(cmd, encoder, config.output.crf)
+            self._append_quality_args(cmd, encoder, _INTERMEDIATE_CRF)
             logger.info(f"Using hardware encoder: {encoder}")
         else:
             cmd.extend(["-c:v", "libx264"])
             cmd.extend(["-preset", "medium"])
-            cmd.extend(["-crf", str(config.output.crf)])
+            cmd.extend(["-crf", str(_INTERMEDIATE_CRF)])
             logger.info("Using software encoder: libx264")
 
     @staticmethod

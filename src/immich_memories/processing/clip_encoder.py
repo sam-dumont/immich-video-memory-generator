@@ -163,7 +163,7 @@ class ClipEncoder:
         )
 
         video_codec_args = _get_gpu_encoder_args(
-            crf=self.settings.output_crf or 18,
+            crf=8,  # WHY: near-lossless for intermediates, final quality set in assembly
             preserve_hdr=self.settings.preserve_hdr,
             hdr_type=hdr_type,
         )
@@ -287,7 +287,7 @@ class ClipEncoder:
         validate_video_path(input_path, must_exist=True)
 
         video_codec_args = _get_gpu_encoder_args(
-            crf=self.settings.output_crf or 18,
+            crf=8,  # WHY: near-lossless for intermediates, final quality set in assembly
             preserve_hdr=self.settings.preserve_hdr,
         )
 
@@ -372,7 +372,7 @@ class ClipEncoder:
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> subprocess.CompletedProcess:
         video_codec_args = _get_gpu_encoder_args(
-            crf=self.settings.output_crf or 18,
+            crf=8,  # WHY: near-lossless for intermediates, final quality set in assembly
             preserve_hdr=self.settings.preserve_hdr,
             hdr_type=ctx.hdr_type,
         )
