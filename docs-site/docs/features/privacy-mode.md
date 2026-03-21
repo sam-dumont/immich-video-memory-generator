@@ -5,7 +5,7 @@ title: Privacy Mode
 
 # Privacy Mode
 
-Privacy mode (also called demo mode) blurs all video content and mutes speech in the final output. It's for situations where you want to demo the app or share a screen recording without showing your actual footage.
+Privacy mode (also called demo mode) blurs all video content, muffles audio, and anonymizes locations and names in the final output. It's for situations where you want to demo the app or share a screen recording without showing your actual footage.
 
 ![Privacy mode toggle](../screenshots/privacy-toggle.png)
 
@@ -14,8 +14,10 @@ Privacy mode (also called demo mode) blurs all video content and mutes speech in
 When privacy mode is on:
 
 - All video clips get a heavy blur filter applied via FFmpeg before assembly
-- Clips with detected speech get their audio muted
-- Title screens stay unblurred — the generated text, map animations, and location cards are unaffected
+- All clip audio gets a lowpass filter (200 Hz cutoff) that makes speech unintelligible while keeping bass/rhythm
+- GPS coordinates are relocated to a fake city (preserving cluster shape so the map animation still looks real)
+- Person names are replaced with deterministic fake names (same real name always maps to the same fake name)
+- Title screens stay unblurred — the generated text, map animations, and location cards are unaffected (but show the fake locations/names)
 
 The result is a video that demonstrates the timing, transitions, music, and structure of the memory without revealing any personal content.
 
@@ -44,7 +46,3 @@ Title screens are always rendered clean:
 - The ending screen
 
 Only the actual video clips get the blur treatment.
-
-## Notes
-
-Speech detection relies on the audio analysis phase having run. If a clip's audio hasn't been analyzed, it won't be muted — but it will still be blurred. You can run analysis first with `make analyze` or let it happen automatically as part of the generation pipeline.
