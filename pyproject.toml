@@ -76,6 +76,24 @@ audio-ml = [
 auth = [
     "authlib>=1.3",
 ]
+# Local Demucs stem separation (in-process, no API server needed)
+# Model cache: ~/.cache/torch/hub/ (~80MB for htdemucs)
+demucs = [
+    "demucs>=4.0",
+]
+# Local ACE-Step music generation (in-process, no API server needed)
+# ⚠️  Requires Python ≤3.12 (spacy 3.8.4 has no 3.13 wheels)
+# Model cache: ~/.cache/huggingface/hub/ (~2-10GB depending on lm_model_size)
+ace-step = [
+    "ace-step @ git+https://github.com/ace-step/ACE-Step.git ; python_version < '3.13'",
+    "torchcodec>=0.1 ; python_version < '3.13'",
+]
+# Full local audio pipeline: ACE-Step generation + Demucs stem separation
+# ⚠️  Requires Python ≤3.12 (ACE-Step dependency)
+local-audio = [
+    "immich-memories[demucs]",
+    "immich-memories[ace-step]",
+]
 # GPU-accelerated title rendering with Taichi
 # Supports: Metal (macOS), CUDA (NVIDIA), Vulkan, OpenGL, CPU fallback
 gpu = [
@@ -87,6 +105,7 @@ all = [
     "immich-memories[face]",
     "immich-memories[audio]",
     "immich-memories[audio-ml]",
+    "immich-memories[demucs]",
     "immich-memories[gpu]",
 ]
 # All features for macOS (includes Apple Vision framework)
@@ -94,6 +113,7 @@ all-mac = [
     "immich-memories[face]",
     "immich-memories[audio]",
     "immich-memories[audio-ml]",
+    "immich-memories[demucs]",
     "immich-memories[mac]",
     "immich-memories[gpu]",
 ]
@@ -129,6 +149,9 @@ Documentation = "https://sam-dumont.github.io/immich-video-memory-generator/"
 Repository = "https://github.com/sam-dumont/immich-video-memory-generator"
 Issues = "https://github.com/sam-dumont/immich-video-memory-generator/issues"
 Changelog = "https://github.com/sam-dumont/immich-video-memory-generator/releases"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.version]
 source = "vcs"
@@ -485,10 +508,14 @@ DEP002 = [
     "types-PyYAML", "types-croniter",                   # mypy stubs
     "authlib",                                          # auth: used in upcoming OIDC client task
     "oidc-provider-mock",                               # auth: used in upcoming OIDC tests task
+    "demucs",                                           # optional: local stem separation
+    "ace-step",                                         # optional: local music generation
+    "torchcodec",                                       # optional: ACE-Step audio saving
 ]
 DEP001 = [
     "cv2", "Quartz", "Vision", "Metal", "CoreImage",   # Platform/alt-name imports
     "yaml", "acestep", "soundfile", "scipy",            # Optional deps imported conditionally
+    "torchaudio", "demucs",                             # Optional: local audio pipeline
     "PIL", "av", "freetype", "streamlit",               # Alt package names (Pillow→PIL, pyav→av)
     "starlette",                                        # Transitive via nicegui→fastapi→starlette
 ]

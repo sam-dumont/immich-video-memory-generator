@@ -161,11 +161,12 @@ src/immich_memories/
 │   ├── music_sources.py        # Music source providers (local library)
 │   ├── music_pipeline.py       # Multi-provider pipeline (ACE-Step -> MusicGen fallback)
 │   └── generators/             # Music generation backends
-│       ├── base.py             # Abstract MusicGenerator interface
+│       ├── base.py             # MusicGenerator ABC + StemSeparator Protocol
 │       ├── factory.py          # Generator factory
-│       ├── musicgen_backend.py # MusicGen API (generation + Demucs stems)
-│       ├── ace_step_backend.py # ACE-Step REST API (generation)
-│       └── ace_step_captions.py # Dense caption templates
+│       ├── musicgen_backend.py # MusicGen API (generation + remote Demucs stems)
+│       ├── ace_step_backend.py # ACE-Step lib/API (generation)
+│       ├── ace_step_captions.py # Dense caption templates
+│       └── demucs_local.py     # Local Demucs stem separation (in-process)
 │
 ├── titles/                     # Title screen generation
 │   ├── generator.py            # TitleScreenGenerator (composes 3 services)

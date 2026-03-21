@@ -5,7 +5,7 @@ title: MusicGen
 
 # MusicGen
 
-Meta's MusicGen handles two jobs: text-to-music generation and Demucs stem separation. Even when ACE-Step is your primary generator, MusicGen's Demucs endpoint is what splits tracks into stems for audio ducking.
+Meta's MusicGen handles text-to-music generation and Demucs stem separation via a remote API server. If you're running everything locally with ACE-Step + local Demucs, you don't need MusicGen at all — see [AI Music Overview](./overview.md) for the fully local setup.
 
 ## Deploy
 
@@ -30,15 +30,20 @@ musicgen:
   hemisphere: "north"            # seasonal prompt hints
 ```
 
-## When to Use MusicGen Alone
+## When to Use MusicGen
 
-MusicGen works fine as a standalone generator if you don't want to set up ACE-Step. Set `music_source: "musicgen"` in your audio config and you're done. The quality is decent: it just doesn't support explicit musical parameters like BPM and key the way ACE-Step does.
+MusicGen is useful in two scenarios:
+
+1. **Standalone generator**: If you don't want ACE-Step, set `music_source: "musicgen"`. The quality is decent but doesn't support explicit musical parameters like BPM and key.
+2. **Remote Demucs**: If you can't install the `demucs` Python package locally (e.g., no GPU, Docker-only setup), MusicGen's `/separate` endpoint provides Demucs stem separation over HTTP.
 
 ## Demucs Stem Separation
 
-This is the real reason to keep MusicGen running even if ACE-Step handles generation. Demucs splits the generated track into:
+MusicGen's API includes a Demucs endpoint that splits audio into stems for audio ducking. However, you can now run Demucs locally without MusicGen — just `pip install 'immich-memories[demucs]'` and the pipeline auto-detects it.
 
-- **Accompaniment stem**: the instrumental background
-- **Vocal stem**: isolated vocals (usually empty for instrumental tracks, but the separation still helps)
+The stems are:
 
-The assembler uses these stems to duck the music volume when your video clips contain speech or laughter. Without stems, ducking still works but is less precise.
+- **Vocals**: isolated vocal content (usually empty for instrumental tracks)
+- **Drums, Bass, Other**: granular instrumental stems (4-stem mode)
+
+The assembler uses these to duck the music volume when your video clips contain speech or laughter.

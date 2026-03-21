@@ -191,6 +191,7 @@ locally, CI will pass too. Use conventional commit message format (see above).
 ```
 tests/integration/
 ├── assembly/     make test-integration-assembly     (~1min, FFmpeg only)
+├── audio/        make test-integration-audio        (~2min, demucs/acestep packages)
 ├── photos/       make test-integration-photos       (~20s, FFmpeg only)
 ├── pipeline/     make test-integration-pipeline     (~7min, FFmpeg + Immich)
 ├── cli/          make test-integration-cli          (~15min, full pipeline)
