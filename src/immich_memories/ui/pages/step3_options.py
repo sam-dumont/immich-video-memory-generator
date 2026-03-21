@@ -71,6 +71,26 @@ def _render_ai_music_options(options: dict) -> None:
     render_music_preview_section(options)
 
 
+def _render_photo_status(state) -> None:
+    """Show photo inclusion status and duration control in Step 3."""
+    if not state.include_photos:
+        return
+    with ui.row().classes("items-center gap-2"):
+        ui.icon("photo_library").style("color: var(--im-success)")
+        photos_count = len(state.photo_assets) if state.photo_assets else 0
+        ui.label(f"Photos enabled ({photos_count} found)").classes("text-sm").style(
+            "color: var(--im-success)"
+        )
+
+    ui.number(
+        "Photo duration (seconds)",
+        value=state.photo_duration,
+        min=1.0,
+        max=10.0,
+        step=0.5,
+    ).classes("w-48").bind_value(state, "photo_duration")
+
+
 def render_step3() -> None:
     """Render Step 3: Generation Options."""
     state = get_app_state()
@@ -129,6 +149,7 @@ def render_step3() -> None:
                         "Smart Crop (keep faces)",
                         "Fill (crop)",
                         "Fit (letterbox)",
+                        "Blur (blurred background)",
                     ],
                     label="Scaling Mode",
                     value=options.get("scale_mode", "Smart Crop (keep faces)"),
@@ -197,16 +218,7 @@ def render_step3() -> None:
 
                 debug_checkbox.on_value_change(on_debug_change)
 
-                # Photo support
-                photo_checkbox = ui.checkbox(
-                    "Include photos (animated Ken Burns)",
-                    value=options.get("include_photos", False),
-                )
-
-                def on_photo_change(e):
-                    options["include_photos"] = e.value
-
-                photo_checkbox.on_value_change(on_photo_change)
+                _render_photo_status(state)
 
     im_separator()
 

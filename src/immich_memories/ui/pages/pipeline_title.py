@@ -17,6 +17,88 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Month names for template titles (avoids locale dependency)
+_MONTH_NAMES = [
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+]
+
+# Season detection from month ranges
+_SEASON_MAP = {
+    (12, 1, 2): "Winter",
+    (3, 4, 5): "Spring",
+    (6, 7, 8): "Summer",
+    (9, 10, 11): "Fall",
+}
+
+
+def _detect_season(start_month: int) -> str:
+    """Return season name from start month."""
+    for months, name in _SEASON_MAP.items():
+        if start_month in months:
+            return name
+    return "Memories"
+
+
+def generate_template_title(
+    memory_type: str | None,
+    start_date: str,
+    end_date: str,
+    person_names: list[str] | None = None,
+) -> tuple[str, str | None]:
+    """Generate a template-based title from memory type and date range.
+
+    Returns (title, subtitle). Used as fallback when LLM is unavailable.
+    """
+    from datetime import date as date_cls
+
+    start = date_cls.fromisoformat(start_date)
+    end = date_cls.fromisoformat(end_date)
+    year = start.year
+
+    if memory_type in ("year_in_review", "year"):
+        return f"Year in Review {year}", None
+
+    if memory_type == "season":
+        season = _detect_season(start.month)
+        return f"{season} {year}", f"{_MONTH_NAMES[start.month]} \u2013 {_MONTH_NAMES[end.month]}"
+
+    if memory_type == "person_spotlight" and person_names:
+        return f"{person_names[0]} \u2014 {year}", None
+
+    if memory_type == "multi_person" and person_names:
+        names = " & ".join(person_names)
+        return f"{names} \u2014 {year}", None
+
+    if memory_type == "monthly_highlights":
+        return f"{_MONTH_NAMES[start.month]} {year}", None
+
+    if memory_type == "trip":
+        return f"{_MONTH_NAMES[start.month]} {year} Trip", f"{start_date} \u2013 {end_date}"
+
+    if memory_type == "on_this_day":
+        return f"On This Day \u2014 {_MONTH_NAMES[start.month]} {start.day}", None
+
+    # Fallback for unknown types
+    span_months = (end.year - start.year) * 12 + (end.month - start.month)
+    if span_months >= 10:
+        return f"Memories {year}", None
+    return (
+        f"{_MONTH_NAMES[start.month]} \u2013 {_MONTH_NAMES[end.month]} {year}",
+        None,
+    )
+
 
 @dataclass
 class _TripContext:
@@ -137,18 +219,14 @@ def _apply_suggestion(state: AppState, suggestion) -> None:
 
 
 async def generate_title_after_pipeline(state: AppState) -> None:
-    """Generate an LLM title suggestion and store it in AppState.
+    """Generate a title suggestion and store it in AppState.
 
-    Best-effort: skips if LLM is unconfigured; logs and continues on failure.
+    First applies a template-based fallback title, then attempts LLM
+    generation. LLM result overwrites template on success.
     """
     config = state.config
     if config is None:
         logger.debug("Config not initialized — skipping title generation")
-        return
-
-    llm_cfg = config.title_llm if config.title_llm and config.title_llm.model else config.llm
-    if not llm_cfg.model:
-        logger.debug("LLM model not configured — skipping title generation")
         return
 
     date_range = state.date_range
@@ -158,6 +236,23 @@ async def generate_title_after_pipeline(state: AppState) -> None:
 
     start_date = date_range.start.date()
     end_date = date_range.end.date()
+
+    # Step 1: Apply template fallback (always runs)
+    person_names = _gather_person_names(state) or None
+    template_title, template_subtitle = generate_template_title(
+        memory_type=state.memory_type,
+        start_date=str(start_date),
+        end_date=str(end_date),
+        person_names=person_names,
+    )
+    state.title_suggestion_title = template_title
+    state.title_suggestion_subtitle = template_subtitle
+
+    # Step 2: Try LLM (overwrites template on success)
+    llm_cfg = config.title_llm if config.title_llm and config.title_llm.model else config.llm
+    if not llm_cfg.model:
+        logger.debug("LLM model not configured — using template title")
+        return
 
     trip = _gather_trip_context(state)
     locale = config.title_screens.locale if config.title_screens else "en"
@@ -171,13 +266,14 @@ async def generate_title_after_pipeline(state: AppState) -> None:
             duration_days=(end_date - start_date).days,
             daily_locations=trip.daily_locations,
             country=trip.country,
-            person_names=_gather_person_names(state) or None,
+            person_names=person_names,
             clip_descriptions=_collect_clip_descriptions(state) or None,
             llm_config=llm_cfg,
         )
     except Exception:
-        logger.warning("LLM title generation failed", exc_info=True)
+        logger.warning("LLM title generation failed — keeping template title", exc_info=True)
         return
 
-    if suggestion:
+    # Only overwrite if LLM produced a non-empty title
+    if suggestion and suggestion.title and suggestion.title.strip():
         _apply_suggestion(state, suggestion)

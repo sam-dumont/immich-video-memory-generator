@@ -66,6 +66,13 @@ def _build_clips(assets: list) -> tuple[list[VideoClipInfo], int]:
     return clips, skipped
 
 
+def _fetch_photos(state, date_range) -> list:
+    """Fetch photo assets (blocking)."""
+    person_id = state.selected_person.id if state.selected_person else None
+    with SyncImmichClient(state.immich_url, state.immich_api_key) as client:
+        return client.get_photos_for_date_range(date_range, person_id=person_id)
+
+
 def _fetch_live_photos(state, date_range) -> tuple[list[VideoClipInfo], set[str]]:
     """Fetch live photo clips (blocking)."""
     lp_person_id = state.selected_person.id if state.selected_person else None
@@ -159,6 +166,13 @@ def _load_clips() -> None:
                     _fetch_live_photos, state, date_range
                 )
                 clips = _merge_live_photos(clips, live_clips, live_video_ids)
+
+            if state.include_photos:
+                status_label.set_text("Fetching photos...")
+                photo_assets = await run.io_bound(_fetch_photos, state, date_range)
+                state.photo_assets = photo_assets
+                if photo_assets:
+                    logger.info(f"Found {len(photo_assets)} photos")
 
             clips.sort(key=lambda c: c.asset.file_created_at)
             state.clips = clips

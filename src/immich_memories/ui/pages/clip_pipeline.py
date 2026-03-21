@@ -230,6 +230,7 @@ def _build_pipeline_config(state: Any) -> Any:
         max_non_favorite_ratio=config_dict.get("max_non_favorite_ratio", 0.25),
         analyze_all=config_dict.get("analyze_all", False),
         overnight_bases=overnight_bases,
+        analysis_depth=getattr(state, "analysis_depth", "fast"),
     )
 
 

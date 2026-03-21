@@ -12,6 +12,85 @@ from immich_memories.ui.state import AppState
 from tests.conftest import make_clip
 
 
+class TestTemplateFallbackTitle:
+    """Template-based fallback titles when LLM is unavailable or fails."""
+
+    def test_year_in_review_template(self):
+        from immich_memories.ui.pages.pipeline_title import generate_template_title
+
+        title, subtitle = generate_template_title(
+            memory_type="year_in_review",
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+        )
+        assert "2024" in title
+        assert title  # non-empty
+
+    def test_season_template(self):
+        from immich_memories.ui.pages.pipeline_title import generate_template_title
+
+        title, subtitle = generate_template_title(
+            memory_type="season",
+            start_date="2024-06-01",
+            end_date="2024-08-31",
+        )
+        assert "Summer" in title
+        assert "2024" in title
+
+    def test_person_spotlight_template(self):
+        from immich_memories.ui.pages.pipeline_title import generate_template_title
+
+        title, subtitle = generate_template_title(
+            memory_type="person_spotlight",
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            person_names=["Alice"],
+        )
+        assert "Alice" in title
+
+    def test_monthly_highlights_template(self):
+        from immich_memories.ui.pages.pipeline_title import generate_template_title
+
+        title, subtitle = generate_template_title(
+            memory_type="monthly_highlights",
+            start_date="2024-03-01",
+            end_date="2024-03-31",
+        )
+        assert "March" in title
+        assert "2024" in title
+
+    def test_trip_template(self):
+        from immich_memories.ui.pages.pipeline_title import generate_template_title
+
+        title, subtitle = generate_template_title(
+            memory_type="trip",
+            start_date="2024-07-10",
+            end_date="2024-07-20",
+        )
+        assert "July" in title or "Trip" in title
+
+    def test_fallback_for_unknown_type(self):
+        from immich_memories.ui.pages.pipeline_title import generate_template_title
+
+        title, subtitle = generate_template_title(
+            memory_type="unknown_type",
+            start_date="2024-06-01",
+            end_date="2024-08-31",
+        )
+        assert title  # should still produce something
+
+    def test_multi_person_template(self):
+        from immich_memories.ui.pages.pipeline_title import generate_template_title
+
+        title, subtitle = generate_template_title(
+            memory_type="multi_person",
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            person_names=["Alice", "Bob"],
+        )
+        assert "Alice" in title and "Bob" in title
+
+
 def _make_date_range(
     start: datetime = datetime(2024, 7, 1, tzinfo=UTC),
     end: datetime = datetime(2024, 7, 14, tzinfo=UTC),
@@ -26,6 +105,103 @@ def _make_config(**overrides) -> MagicMock:
     cfg.llm.model = overrides.get("llm_model", "")
     cfg.title_screens.locale = overrides.get("locale", "en")
     return cfg
+
+
+class TestTitleFallbackIntegration:
+    """Template fallback is applied before LLM, LLM overwrites on success."""
+
+    @pytest.mark.asyncio
+    async def test_template_applied_before_llm(self):
+        """Template title is set even when LLM is not configured."""
+        from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
+
+        state = AppState()
+        state.date_range = _make_date_range(
+            datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC)
+        )
+        state.memory_type = "year_in_review"
+        state.config = _make_config(llm_model="")  # No LLM
+
+        await generate_title_after_pipeline(state)
+
+        assert state.title_suggestion_title is not None
+        assert "2024" in state.title_suggestion_title
+
+    @pytest.mark.asyncio
+    async def test_llm_overwrites_template(self):
+        """LLM title replaces the template fallback."""
+        from immich_memories.titles.llm_titles import TitleSuggestion
+        from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
+
+        state = AppState()
+        state.date_range = _make_date_range(
+            datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC)
+        )
+        state.memory_type = "year_in_review"
+        state.analysis_cache = None
+        state.config = _make_config(llm_model="omlx")
+
+        suggestion = TitleSuggestion(title="The Best Year")
+
+        with patch(
+            "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
+            new_callable=AsyncMock,
+            return_value=suggestion,
+        ):
+            await generate_title_after_pipeline(state)
+
+        assert state.title_suggestion_title == "The Best Year"
+
+    @pytest.mark.asyncio
+    async def test_whitespace_llm_result_keeps_template(self):
+        """Empty/whitespace LLM result is treated as failure; template stays."""
+        from immich_memories.titles.llm_titles import TitleSuggestion
+        from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
+
+        state = AppState()
+        state.date_range = _make_date_range(
+            datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC)
+        )
+        state.memory_type = "year_in_review"
+        state.analysis_cache = None
+        state.config = _make_config(llm_model="omlx")
+
+        # LLM returns a suggestion with whitespace-only title
+        suggestion = TitleSuggestion(title="   ")
+
+        with patch(
+            "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
+            new_callable=AsyncMock,
+            return_value=suggestion,
+        ):
+            await generate_title_after_pipeline(state)
+
+        # Template should still be in place
+        assert state.title_suggestion_title is not None
+        assert "2024" in state.title_suggestion_title
+
+    @pytest.mark.asyncio
+    async def test_llm_failure_keeps_template(self):
+        """When LLM raises, template title remains."""
+        from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
+
+        state = AppState()
+        state.date_range = _make_date_range(
+            datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 12, 31, tzinfo=UTC)
+        )
+        state.memory_type = "year_in_review"
+        state.analysis_cache = None
+        state.config = _make_config(llm_model="omlx")
+
+        with patch(
+            "immich_memories.ui.pages.pipeline_title.generate_title_with_llm",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("LLM down"),
+        ):
+            await generate_title_after_pipeline(state)
+
+        assert state.title_suggestion_title is not None
+        assert "2024" in state.title_suggestion_title
 
 
 class TestCollectClipDescriptions:
@@ -85,7 +261,7 @@ class TestGenerateTitleAfterPipeline:
     """Wire generate_title_with_llm into AppState."""
 
     @pytest.mark.asyncio
-    async def test_skips_when_no_llm_model(self):
+    async def test_skips_llm_when_no_model_but_sets_template(self):
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         state = AppState()
@@ -99,7 +275,8 @@ class TestGenerateTitleAfterPipeline:
             await generate_title_after_pipeline(state)
 
         mock_llm.assert_not_called()
-        assert state.title_suggestion_title is None
+        # Template fallback should still be applied
+        assert state.title_suggestion_title is not None
 
     @pytest.mark.asyncio
     async def test_skips_when_no_date_range(self):
@@ -148,8 +325,8 @@ class TestGenerateTitleAfterPipeline:
         assert state.title_suggestion_map_mode is None
 
     @pytest.mark.asyncio
-    async def test_graceful_on_llm_failure(self):
-        """State stays None if LLM raises unexpectedly."""
+    async def test_graceful_on_llm_failure_keeps_template(self):
+        """Template title stays when LLM raises unexpectedly."""
         from immich_memories.ui.pages.pipeline_title import generate_title_after_pipeline
 
         state = AppState()
@@ -166,7 +343,8 @@ class TestGenerateTitleAfterPipeline:
             # Must not raise
             await generate_title_after_pipeline(state)
 
-        assert state.title_suggestion_title is None
+        # Template fallback should be set
+        assert state.title_suggestion_title is not None
 
     @pytest.mark.asyncio
     async def test_person_names_from_selected_person(self):

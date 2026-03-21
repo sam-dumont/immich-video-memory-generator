@@ -293,6 +293,23 @@ def _render_options_section(state) -> None:
                     "color: var(--im-text-secondary)"
                 )
 
+            # Include photos
+            with ui.row().classes("items-center gap-3 w-full"):
+                ui.switch("Include Photos").bind_value(state, "include_photos").props(
+                    "color=primary"
+                )
+                ui.label("Include photos as animated Ken Burns clips").classes("text-sm").style(
+                    "color: var(--im-text-secondary)"
+                )
+
+            # Analysis depth
+            with ui.row().classes("items-center gap-3 w-full"):
+                ui.select(
+                    options={"fast": "Fast (metadata only)", "thorough": "Thorough (LLM analysis)"},
+                    label="Analysis Depth",
+                    value=state.analysis_depth,
+                ).classes("w-64").bind_value(state, "analysis_depth")
+
             # Prioritize favorites
             with ui.row().classes("items-center gap-3 w-full"):
                 ui.switch("Prioritize Favorites").bind_value(state, "prioritize_favorites").props(
