@@ -280,8 +280,21 @@ jobs:
 
       - uses: actions/checkout@v5
         with:
-          lfs: true
           fetch-depth: 0  # Full history for diff-cover
+
+      # WHY: LFS bandwidth is metered — caching avoids re-downloading 13MB of
+      # fixtures on every CI run (~9 LFS checkouts/push was burning 1GB/month).
+      - name: Create LFS cache key
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+      - name: Cache LFS objects
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+          restore-keys: lfs-
+      - name: Pull LFS files
+        run: git lfs pull
+
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -351,8 +364,16 @@ jobs:
             extras: "dev,mac,audio,audio-ml,face,gpu"
     steps:
       - uses: actions/checkout@v5
+      - name: Create LFS cache key
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+      - name: Cache LFS objects
+        uses: actions/cache@v4
         with:
-          lfs: true
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+          restore-keys: lfs-
+      - name: Pull LFS files
+        run: git lfs pull
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -432,8 +453,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Create LFS cache key
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+      - name: Cache LFS objects
+        uses: actions/cache@v4
         with:
-          lfs: true
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+          restore-keys: lfs-
+      - name: Pull LFS files
+        run: git lfs pull
       - uses: actions/setup-node@v5
         with:
           node-version: '22'

@@ -45,7 +45,16 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ inputs.branch || github.sha }}
-          lfs: true
+      - name: Create LFS cache key
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+      - name: Cache LFS objects
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+          restore-keys: lfs-
+      - name: Pull LFS files
+        run: git lfs pull
 
       - name: Push to private mirror
         env:

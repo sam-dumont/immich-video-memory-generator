@@ -33,8 +33,16 @@ jobs:
     if: github.repository == 'sam-dumont/immich-video-memory-generator'
     steps:
       - uses: actions/checkout@v5
+      - name: Create LFS cache key
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+      - name: Cache LFS objects
+        uses: actions/cache@v4
         with:
-          lfs: true
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+          restore-keys: lfs-
+      - name: Pull LFS files
+        run: git lfs pull
 
       - uses: actions/setup-node@v5
         with:
