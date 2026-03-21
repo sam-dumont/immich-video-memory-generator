@@ -66,25 +66,24 @@ class FrameDecoder:
         colorspace_filter: str = "",
         output_pix_fmt: str = "",
         scale_mode: str = "black",
+        sdr_to_hdr_filter: str = "",
     ) -> None:
         self._clip_path = clip_path
         self._width = width
         self._height = height
         self._fps = fps
         self._pix_fmt = pix_fmt
-        # WHY: yuv420p10le = W*H*3 bytes (Y=W*H*2 + U=W*H/2 + V=W*H/2).
-        # rgb24 = W*H*3 bytes. Same total size, but yuv420p10le preserves
-        # HDR data without any color conversion (no tone-mapping).
-        if pix_fmt == "yuv420p10le":
-            self._frame_size = width * height * 3  # 10-bit planar YUV 4:2:0
-        else:
-            self._frame_size = width * height * 3  # rgb24 interleaved
+        self._frame_size = width * height * 3  # Same for yuv420p10le and rgb24
         self._rotation = rotation
         self._privacy_blur = privacy_blur
         self._hdr_conversion = hdr_conversion
         self._colorspace_filter = colorspace_filter
         self._output_pix_fmt = output_pix_fmt
         self._scale_mode = scale_mode
+        # WHY: SDR clips in HDR output need zscale to convert sRGB→HLG/PQ.
+        # Without this, SDR full-range data piped as yuv420p10le gets
+        # interpreted as TV-range HLG = red/wrong tint.
+        self._sdr_to_hdr_filter = sdr_to_hdr_filter
 
     def _build_vf(self) -> str:
         """Build the -vf filter chain matching filter_builder.build_clip_video_filter."""
@@ -129,11 +128,15 @@ class FrameDecoder:
             )
             self._use_filter_complex = False
 
-        # FPS + timebase reset + square pixels
-        # WHY: Do NOT apply HDR/colorspace/format here. The decoder outputs rgb24
-        # which is 8-bit sRGB. HDR conversion happens on the ENCODER side via
-        # zscale (same pattern as photos/photo_pipeline.py _stream_render_to_mp4).
-        parts.extend((f"fps={self._fps},settb=1/{self._fps}", "setsar=1"))
+        # FPS + timebase reset
+        parts.append(f"fps={self._fps},settb=1/{self._fps}")
+
+        # SDR→HDR conversion (only for SDR clips in HDR output)
+        if self._sdr_to_hdr_filter:
+            parts.append(self._sdr_to_hdr_filter)
+
+        # Square pixels
+        parts.append("setsar=1")
 
         return ",".join(parts)
 
@@ -352,6 +355,51 @@ def _emit_crossfade(
         encoder.write_frame(blend_buf)
 
 
+def _resolve_clip_hdr(
+    clip_idx: int, ctx: Any | None, hdr_type: str | None
+) -> tuple[str, str, str, str, bool]:
+    """Resolve per-clip HDR settings from AssemblyContext.
+
+    Returns (hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, clip_is_hdr).
+    """
+    hdr_conversion = ""
+    colorspace_filter = ""
+    output_pix_fmt = ""
+    clip_is_hdr = False
+
+    if ctx is not None:
+        output_pix_fmt = getattr(ctx, "pix_fmt", "")
+        colorspace_filter = getattr(ctx, "colorspace_filter", "")
+        clip_hdr_types = getattr(ctx, "clip_hdr_types", [])
+        clip_primaries = getattr(ctx, "clip_primaries", [])
+        dominant_hdr = getattr(ctx, "hdr_type", "")
+
+        if clip_idx < len(clip_hdr_types):
+            clip_is_hdr = clip_hdr_types[clip_idx] is not None
+            if clip_hdr_types[clip_idx] != dominant_hdr:
+                from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
+
+                source_pri = clip_primaries[clip_idx] if clip_idx < len(clip_primaries) else None
+                hdr_conversion = _get_hdr_conversion_filter(
+                    clip_hdr_types[clip_idx], dominant_hdr, source_primaries=source_pri
+                )
+
+    # WHY: SDR clip in HDR output needs zscale sRGB→HLG/PQ conversion.
+    # Without this, SDR full-range data tagged as TV-range HLG = red tint.
+    sdr_to_hdr_filter = ""
+    if hdr_type and not clip_is_hdr:
+        trc = "arib-std-b67" if hdr_type == "hlg" else "smpte2084"
+        sdr_to_hdr_filter = (
+            f"zscale=t={trc}:tin=iec61966-2-1"
+            ":p=bt2020:pin=bt709"
+            ":m=bt2020nc:min=bt709"
+            ":npl=203:agamma=false"
+            ",format=yuv420p10le"
+        )
+
+    return hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, clip_is_hdr
+
+
 def _make_decoder(
     clip: Any,
     clip_idx: int,
@@ -363,41 +411,17 @@ def _make_decoder(
     scale_mode: str = "black",
     hdr_type: str | None = None,
 ) -> FrameDecoder:
-    """Create a FrameDecoder with per-clip normalization filters.
-
-    Reads rotation, HDR type, and colorspace from clip + AssemblyContext
-    to match the old filter_builder.build_clip_video_filter() behavior.
-    """
+    """Create a FrameDecoder with per-clip normalization filters."""
     rotation = 0
-    hdr_conversion = ""
-    colorspace_filter = ""
-    output_pix_fmt = ""
     is_title = getattr(clip, "is_title_screen", False)
 
     rotation_override = getattr(clip, "rotation_override", None)
     if rotation_override is not None and rotation_override != 0:
         rotation = rotation_override
 
-    if ctx is not None:
-        output_pix_fmt = getattr(ctx, "pix_fmt", "")
-        colorspace_filter = getattr(ctx, "colorspace_filter", "")
-
-        # Per-clip HDR conversion (PQ→HLG, HLG→PQ etc.)
-        clip_hdr_types = getattr(ctx, "clip_hdr_types", [])
-        clip_primaries = getattr(ctx, "clip_primaries", [])
-        dominant_hdr = getattr(ctx, "hdr_type", "")
-
-        if clip_idx < len(clip_hdr_types) and clip_hdr_types[clip_idx] != dominant_hdr:
-            from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
-
-            source_pri = clip_primaries[clip_idx] if clip_idx < len(clip_primaries) else None
-            hdr_conversion = _get_hdr_conversion_filter(
-                clip_hdr_types[clip_idx], dominant_hdr, source_primaries=source_pri
-            )
-
-    # WHY: yuv420p10le keeps video in NATIVE format — zero color conversion.
-    # Any RGB conversion (even 16-bit rgb48le) loses HDR characteristics
-    # because FFmpeg's swscale applies tone-mapping during the conversion.
+    hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, _ = _resolve_clip_hdr(
+        clip_idx, ctx, hdr_type
+    )
     pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
 
     return FrameDecoder(
@@ -412,6 +436,7 @@ def _make_decoder(
         colorspace_filter=colorspace_filter,
         output_pix_fmt=output_pix_fmt,
         scale_mode=scale_mode,
+        sdr_to_hdr_filter=sdr_to_hdr_filter,
     )
 
 
