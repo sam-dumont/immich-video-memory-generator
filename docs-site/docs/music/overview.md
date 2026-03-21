@@ -49,14 +49,12 @@ musicgen:
 Install the packages:
 
 ```bash
-pip install 'immich-memories[local-audio]'
-```
+# Demucs (stem separation)
+pip install 'immich-memories[demucs]'
 
-Or separately:
-
-```bash
-pip install 'immich-memories[demucs]'       # Stem separation only
-pip install 'immich-memories[ace-step]'      # Music generation only
+# ACE-Step (music generation) — not on PyPI, install from GitHub
+pip install 'ace-step @ git+https://github.com/ace-step/ACE-Step.git'
+pip install 'torchcodec>=0.1'
 ```
 
 That's it. No Docker, no API servers. The pipeline auto-detects local Demucs for stem separation.
