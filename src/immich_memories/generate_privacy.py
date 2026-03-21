@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import random
+from dataclasses import replace
 
 from immich_memories.processing.assembly_config import AssemblyClip
 
@@ -96,19 +97,7 @@ def anonymize_clips_for_privacy(
             new_lat = max(-90, min(90, clip.latitude + lat_offset))
             new_lon = ((clip.longitude + lon_offset + 180) % 360) - 180
 
-            clip = AssemblyClip(
-                path=clip.path,
-                duration=clip.duration,
-                date=clip.date,
-                asset_id=clip.asset_id,
-                is_title_screen=clip.is_title_screen,
-                rotation_override=clip.rotation_override,
-                latitude=new_lat,
-                longitude=new_lon,
-                location_name=fake_name,
-                has_speech=clip.has_speech,
-                outgoing_transition=clip.outgoing_transition,
-            )
+            clip = replace(clip, latitude=new_lat, longitude=new_lon, location_name=fake_name)
         result.append(clip)
     return result
 
