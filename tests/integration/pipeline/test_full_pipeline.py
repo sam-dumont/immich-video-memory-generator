@@ -23,6 +23,7 @@ from tests.integration.conftest import (
     has_stream,
     requires_ffmpeg,
 )
+from tests.integration.immich_fixtures import requires_immich
 
 pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
@@ -81,28 +82,6 @@ def _make_test_clip(path: Path, asset_id: str = "test", **kwargs) -> object:
     clip = make_clip(asset_id, duration=3.0, width=1280, height=720, **kwargs)
     clip.local_path = str(path)
     return clip
-
-
-def _has_immich() -> bool:
-    try:
-        from immich_memories.config_loader import Config
-
-        config = Config.from_yaml(Config.get_default_path())
-        if not config.immich.url or not config.immich.api_key:
-            return False
-        import httpx
-
-        resp = httpx.get(
-            f"{config.immich.url.rstrip('/')}/api/server/ping",
-            headers={"x-api-key": config.immich.api_key},
-            timeout=5.0,
-        )
-        return resp.status_code == 200
-    except Exception:
-        return False
-
-
-requires_immich = pytest.mark.skipif(not _has_immich(), reason="Immich not reachable")
 
 
 # ---------------------------------------------------------------------------
@@ -274,18 +253,7 @@ def _extract_frame_brightness(video_path: Path, timestamp: float) -> float:
     return 0.0
 
 
-@pytest.fixture(scope="module")
-def immich_short_clips():
-    """Fetch short clips (≤60s) from Immich. Tries preferred date ranges, falls back progressively."""
-    from tests.integration.immich_fixtures import find_short_clips, make_immich_client
-
-    client, config = make_immich_client()
-    short = find_short_clips(client)
-
-    if len(short) < 2:
-        pytest.skip("Need at least 2 short clips (≤60s) in Immich")
-
-    return short[:3], config, client
+# immich_short_clips: session-scoped, from pipeline/conftest.py
 
 
 # ---------------------------------------------------------------------------
