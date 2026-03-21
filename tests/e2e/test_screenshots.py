@@ -40,7 +40,11 @@ def _save(page: Page, screenshot_dir: Path, name: str) -> None:
 def _wait_for_ready(page: Page) -> None:
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(1500)
+
+
+def _before_screenshot(page: Page) -> None:
     enable_demo_mode(page)
+    redact_page(page)
 
 
 @pytest.mark.parametrize("theme", _THEMES)
@@ -63,8 +67,7 @@ def test_capture_all_screenshots(
     # ── Step 1: Configuration ──
     page.goto(app_url)
     _wait_for_ready(page)
-    enable_demo_mode(page)
-    redact_page(page)
+    _before_screenshot(page)
     _save(page, screenshot_dir, _name("step1-config-connected", theme))
 
     # Preset cards (scroll down to show them)
@@ -72,13 +75,13 @@ def test_capture_all_screenshots(
     if year_preset.is_visible():
         year_preset.scroll_into_view_if_needed()
         page.wait_for_timeout(300)
-        redact_page(page)
+        _before_screenshot(page)
         _save(page, screenshot_dir, _name("step1-preset-cards", theme))
 
         # Click to show selected state
         year_preset.click()
         page.wait_for_timeout(500)
-        redact_page(page)
+        _before_screenshot(page)
         _save(page, screenshot_dir, _name("step1-preset-selected", theme))
 
     # Person dropdown
@@ -86,6 +89,7 @@ def test_capture_all_screenshots(
     if person_combo.is_visible():
         person_combo.click()
         page.wait_for_timeout(500)
+        enable_demo_mode(page)
         redact_person_names(page)
         _save(page, screenshot_dir, _name("step1-person-dropdown", theme))
 
@@ -103,9 +107,9 @@ def test_capture_all_screenshots(
         cache_button.scroll_into_view_if_needed()
         cache_button.click()
         page.wait_for_timeout(500)
-        redact_page(page)
         page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
         page.wait_for_timeout(300)
+        _before_screenshot(page)
         _save(page, screenshot_dir, _name("step1-cache-panel", theme))
 
     # ── Step 2: Clip Review ──
@@ -134,6 +138,7 @@ def test_capture_all_screenshots(
         page.wait_for_selector('button:has-text("clips")', timeout=30_000)
     except Exception:
         pass  # May not have clips, screenshot anyway
+    _before_screenshot(page)
     _save(page, screenshot_dir, _name("step2-clip-review", theme))
 
     # Expand first month
@@ -143,6 +148,7 @@ def test_capture_all_screenshots(
         month_button.click()
         page.wait_for_timeout(1000)
         month_button.scroll_into_view_if_needed()
+        _before_screenshot(page)
         _save(page, screenshot_dir, _name("step2-clip-grid", theme))
 
     # Refine Moments
@@ -151,17 +157,20 @@ def test_capture_all_screenshots(
         refine_btn.scroll_into_view_if_needed()
         refine_btn.click()
         _wait_for_ready(page)
+        _before_screenshot(page)
         _save(page, screenshot_dir, _name("step2-refine-moments", theme))
 
     # ── Step 3: Generation Options ──
-    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-    page.wait_for_timeout(300)
+    page.evaluate("window.scrollTo(0, 0)")
+    page.wait_for_timeout(500)
     continue_btn = page.get_by_role("button", name="Continue to Generation")
-    if continue_btn.is_visible(timeout=5000):
+    if continue_btn.is_visible(timeout=10_000):
         continue_btn.scroll_into_view_if_needed()
+        page.wait_for_timeout(300)
         continue_btn.click()
         page.wait_for_url("**/step3", timeout=30_000)
         _wait_for_ready(page)
+        _before_screenshot(page)
         _save(page, screenshot_dir, _name("step3-options", theme))
 
     # ── Step 4: Preview & Export ──
@@ -171,5 +180,5 @@ def test_capture_all_screenshots(
         next4_btn.click()
         page.wait_for_url("**/step4", timeout=30_000)
         _wait_for_ready(page)
-        redact_page(page)
+        _before_screenshot(page)
         _save(page, screenshot_dir, _name("step4-preview-export", theme))
