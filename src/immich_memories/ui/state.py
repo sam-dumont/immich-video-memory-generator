@@ -105,6 +105,9 @@ class AppState:
     # Demo/privacy mode: blur thumbnails + video, mute speech
     demo_mode: bool = False
 
+    # Step 2 view mode: "list" (detailed cards) or "grid" (compact thumbnails)
+    clip_view_mode: str = "list"
+
     # Duplicate tracking
     _duplicates_processed: bool = False
 

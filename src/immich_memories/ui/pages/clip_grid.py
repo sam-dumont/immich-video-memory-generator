@@ -276,6 +276,119 @@ def _render_clip_card(
         checkbox.on_value_change(make_toggle_handler(clip.asset.id))
 
 
+def _build_clip_tooltip(clip: VideoClipInfo) -> str:
+    """Build hover tooltip text for compact grid view."""
+    parts = []
+    if clip.duration_seconds:
+        parts.append(format_duration(clip.duration_seconds))
+    parts.append(clip.asset.file_created_at.strftime("%b %d, %Y %H:%M"))
+    if clip.asset.people:
+        parts.append(clip.asset.people[0].name)
+    return " | ".join(parts)
+
+
+def _render_compact_thumbnail(
+    clip: VideoClipInfo,
+    state,
+    all_clips: list[VideoClipInfo],
+    summary_container: ui.element,
+) -> None:
+    """Render a single compact thumbnail cell with selection overlay."""
+    is_selected = clip.asset.id in state.selected_clip_ids
+    tooltip = _build_clip_tooltip(clip)
+
+    def make_click_handler(asset_id: str):
+        def toggle():
+            if asset_id in state.selected_clip_ids:
+                state.selected_clip_ids.discard(asset_id)
+            else:
+                state.selected_clip_ids.add(asset_id)
+            _update_duration_summary(all_clips, summary_container)
+            ui.navigate.to("/step2")
+
+        return toggle
+
+    border = "2px solid var(--im-primary)" if is_selected else "1px solid var(--im-border)"
+    with (
+        ui.element("div")
+        .classes("relative cursor-pointer aspect-video rounded-lg overflow-hidden")
+        .style(f"border: {border}")
+        .tooltip(tooltip)
+        .on("click", make_click_handler(clip.asset.id))
+    ):
+        thumb = get_thumbnail(clip.asset.id)
+        if thumb:
+            b64 = base64.b64encode(thumb).decode()
+            ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-full object-cover")
+        else:
+            ui.element("div").classes("w-full h-full flex items-center justify-center").style(
+                "background-color: var(--im-bg-surface)"
+            )
+
+        if is_selected:
+            # Selection overlay: semi-transparent tint + check icon
+            ui.element("div").classes("absolute inset-0").style(
+                "background: rgba(66, 80, 175, 0.25)"
+            )
+            ui.icon("check_circle", color="white", size="20px").classes(
+                "absolute top-1 right-1"
+            ).style("filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5))")
+
+
+def _render_compact_grid(
+    clips: list[VideoClipInfo],
+    summary_container: ui.element,
+) -> None:
+    """Render a responsive compact thumbnail grid."""
+    state = get_app_state()
+    all_clips = state.clips
+
+    with ui.element("div").classes("grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 gap-2"):
+        for clip in clips:
+            _render_compact_thumbnail(clip, state, all_clips, summary_container)
+
+
+def _render_compact_grid_paginated(
+    clips: list[VideoClipInfo],
+    summary_container: ui.element,
+    page_size: int = CLIPS_PER_PAGE,
+) -> None:
+    """Render a paginated compact thumbnail grid."""
+    if len(clips) <= page_size:
+        _render_compact_grid(clips, summary_container)
+        return
+
+    grid_container = ui.column().classes("w-full")
+    with grid_container:
+        _render_compact_grid(clips[:page_size], summary_container)
+
+    remaining = clips[page_size:]
+    if remaining:
+        btn_container = ui.row().classes("w-full justify-center mt-2")
+        with btn_container:
+
+            def load_more(
+                remaining_clips=remaining,
+                parent=grid_container,
+                btn_ctr=btn_container,
+            ):
+                btn_ctr.clear()
+                with parent:
+                    _render_compact_grid(remaining_clips[:page_size], summary_container)
+                still_remaining = remaining_clips[page_size:]
+                if still_remaining:
+                    with btn_ctr:
+                        ui.button(
+                            f"Show more ({len(still_remaining)} remaining)",
+                            on_click=lambda sr=still_remaining: load_more(sr, parent, btn_ctr),
+                        ).props("outline")
+
+            ui.button(
+                f"Show more ({len(remaining)} remaining)",
+                on_click=load_more,
+            ).props("outline")
+
+
 def _render_clip_grid(
     clips: list[VideoClipInfo],
     duplicate_ids: set[str],
