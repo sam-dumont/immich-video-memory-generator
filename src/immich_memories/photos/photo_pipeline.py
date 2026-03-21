@@ -392,7 +392,7 @@ def _stream_render_to_mp4(
             f"zscale=t=arib-std-b67:tin=linear"
             f":p=bt2020:pin=bt709"
             f":m=bt2020nc:min=bt709"
-            f":npl={peak_nits}:agamma=false"
+            f":npl={peak_nits}"
             f",format=yuv420p10le"
         )
     else:
@@ -402,7 +402,7 @@ def _stream_render_to_mp4(
             "zscale=t=arib-std-b67:tin=iec61966-2-1"
             ":p=bt2020:pin=bt709"
             ":m=bt2020nc:min=bt709"
-            ":npl=203:agamma=false"
+            ":npl=203"
             ",format=yuv420p10le"
         )
 

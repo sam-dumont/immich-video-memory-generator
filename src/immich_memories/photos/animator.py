@@ -83,24 +83,30 @@ def _parse_makernote_headroom(mn: bytes) -> float | None:
     except struct.error:
         return None
 
+    pos = _find_ifd_tag(mn, entry_count, _HDR_HEADROOM_TAG, _SRATIONAL_TYPE)
+    if pos is None:
+        return None
+
+    offset = struct.unpack(">I", mn[pos + 8 : pos + 12])[0]
+    if offset + 8 > len(mn):
+        return None
+    num, den = struct.unpack(">ii", mn[offset : offset + 8])
+    # WHY: SRATIONAL allows negative — reject nonsensical headroom
+    if den == 0 or num / den <= 0:
+        return None
+    return num / den
+
+
+def _find_ifd_tag(mn: bytes, entry_count: int, tag_id: int, expected_type: int) -> int | None:
+    """Find an IFD entry by tag ID, returning its byte position or None."""
     ifd_start = 16
     for i in range(entry_count):
         pos = ifd_start + i * 12
         if pos + 12 > len(mn):
             return None
         tag, dtype, count = struct.unpack(">HHI", mn[pos : pos + 8])
-        if tag != _HDR_HEADROOM_TAG:
-            continue
-        if dtype != _SRATIONAL_TYPE or count != 1:
-            return None
-        offset = struct.unpack(">I", mn[pos + 8 : pos + 12])[0]
-        if offset + 8 > len(mn):
-            return None
-        num, den = struct.unpack(">ii", mn[offset : offset + 8])
-        if den == 0:
-            return None
-        return num / den
-
+        if tag == tag_id and dtype == expected_type and count == 1:
+            return pos
     return None
 
 

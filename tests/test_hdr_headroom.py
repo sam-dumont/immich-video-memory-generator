@@ -69,6 +69,12 @@ class TestExtractAppleHeadroom:
         result = _extract_apple_headroom(mn, tmp_path / "test.heic")
         assert result == 2.3
 
+    def test_negative_headroom_returns_default(self, tmp_path):
+        """Negative SRATIONAL headroom is rejected."""
+        mn = _build_makernote(-1058986, 1048501)
+        result = _extract_apple_headroom(mn, tmp_path / "test.heic")
+        assert result == 2.3
+
     def test_makernote_without_tag_0x0021_falls_back_to_exiftool(self, tmp_path):
         """MakerNote missing tag 0x0021 tries exiftool fallback."""
         header = b"Apple iOS\x00\x00\x01MM"
