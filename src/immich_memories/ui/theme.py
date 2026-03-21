@@ -2,14 +2,42 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from nicegui import app, ui
+
+# ---------------------------------------------------------------------------
+# Serve bundled static assets (fonts, etc.) — no external CDN requests
+# ---------------------------------------------------------------------------
+_STATIC_DIR = Path(__file__).parent / "static"
+app.add_static_files("/static", str(_STATIC_DIR))
 
 # ---------------------------------------------------------------------------
 # Color tokens — derived from Immich's actual design language
 # ---------------------------------------------------------------------------
 
 _THEME_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url(/static/fonts/inter-latin-ext.woff2) format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
+        U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+        U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+        U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url(/static/fonts/inter-latin.woff2) format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+        U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC,
+        U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 :root {
     --im-primary: #4250af;
@@ -80,6 +108,9 @@ body {
     border: 1px solid var(--im-border-light) !important;
     border-radius: 10px !important;
 }
+.q-field, .q-menu {
+    border-radius: 10px !important;
+}
 .q-field__control {
     color: var(--im-text) !important;
 }
@@ -102,6 +133,26 @@ body {
 .q-checkbox__inner--truthy .q-checkbox__bg {
     background: var(--im-primary) !important;
     border-color: var(--im-primary) !important;
+}
+
+/* Card shadow — light mode only, dark mode relies on border contrast */
+.im-card { box-shadow: var(--im-shadow); }
+.body--dark .im-card { box-shadow: none; }
+
+/* Button hover micro-interaction */
+.q-btn--unelevated:hover {
+    transform: translateY(-1px);
+    filter: brightness(0.92);
+}
+.q-btn--outline:hover {
+    border-color: var(--im-primary) !important;
+    background: var(--im-primary-light) !important;
+}
+
+/* Quasar default transition is 0.3s — tighten to feel snappier.
+   Excludes q-drawer (manages own show/hide) and q-menu (positioning). */
+.q-btn, .q-field, .q-card, .q-tab {
+    transition: all 0.15s ease !important;
 }
 
 /* Sidebar nav — Immich style: light bg, colored active state */
@@ -145,10 +196,10 @@ body {
 .im-alert-warning { background-color: rgba(217, 119, 6, 0.10); }
 .im-alert-success { background-color: rgba(5, 150, 105, 0.10); }
 .im-alert-error { background-color: rgba(220, 38, 38, 0.10); }
-.body--dark .im-alert-info { background-color: rgba(107, 143, 232, 0.10); }
-.body--dark .im-alert-warning { background-color: rgba(245, 124, 0, 0.08); }
-.body--dark .im-alert-success { background-color: rgba(129, 199, 132, 0.08); }
-.body--dark .im-alert-error { background-color: rgba(229, 115, 115, 0.08); }
+.body--dark .im-alert-info { background-color: rgba(107, 143, 232, 0.10); color: #b8ccf5; }
+.body--dark .im-alert-warning { background-color: rgba(245, 124, 0, 0.08); color: #f5c17a; }
+.body--dark .im-alert-success { background-color: rgba(129, 199, 132, 0.08); color: #a5d6a7; }
+.body--dark .im-alert-error { background-color: rgba(229, 115, 115, 0.08); color: #ef9a9a; }
 
 /* Demo/privacy mode: blur all thumbnails and video elements */
 body.demo-mode img:not(.no-blur),
