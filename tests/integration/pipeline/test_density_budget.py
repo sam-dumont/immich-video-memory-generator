@@ -7,59 +7,15 @@ respects favorite priority, and handles real-world asset distributions.
 from __future__ import annotations
 
 import logging
-from datetime import date
 
 import pytest
 
 from tests.integration.conftest import requires_ffmpeg
+from tests.integration.immich_fixtures import requires_immich
 
 logger = logging.getLogger(__name__)
 
-
-def _has_immich() -> bool:
-    try:
-        from immich_memories.config_loader import Config
-
-        config = Config.from_yaml(Config.get_default_path())
-        if not config.immich.url or not config.immich.api_key:
-            return False
-        import httpx
-
-        resp = httpx.get(
-            f"{config.immich.url.rstrip('/')}/api/server/ping",
-            headers={"x-api-key": config.immich.api_key},
-            timeout=5.0,
-        )
-        return resp.status_code == 200
-    except Exception:
-        return False
-
-
-requires_immich = pytest.mark.skipif(not _has_immich(), reason="Immich not reachable")
 pytestmark = [pytest.mark.integration, requires_ffmpeg, requires_immich]
-
-
-@pytest.fixture(scope="module")
-def immich_clips():
-    """Fetch real clips from Immich and convert to VideoClipInfo."""
-    from immich_memories.api.sync_client import SyncImmichClient
-    from immich_memories.config_loader import Config
-    from immich_memories.generate import assets_to_clips
-    from immich_memories.timeperiod import DateRange
-
-    config = Config.from_yaml(Config.get_default_path())
-    config.defaults.target_duration_seconds = 60  # Cap at 60s for test speed
-    client = SyncImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
-
-    dr = DateRange(start=date(2025, 1, 1), end=date(2025, 12, 31))
-    assets = client.get_videos_for_date_range(dr)
-
-    if len(assets) < 10:
-        pytest.skip("Need at least 10 videos in Immich for density budget test")
-
-    clips = assets_to_clips(assets)
-    logger.info(f"Loaded {len(clips)} clips from Immich (2025)")
-    return clips, config, client
 
 
 class TestDensityBudgetRealData:

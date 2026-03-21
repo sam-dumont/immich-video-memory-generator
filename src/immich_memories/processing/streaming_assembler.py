@@ -719,10 +719,13 @@ def mux_video_audio(
 ) -> None:
     """Mux video and audio streams into final output.
 
-    Trims audio to match video duration to prevent desync from
+    Pads or trims audio to match video duration to prevent desync from
     frame count rounding differences between video and audio passes.
     """
     video_dur = _probe_duration(video_path)
+    # WHY: Audio and video passes produce slightly different durations due to
+    # frame count rounding. Use apad+atrim to force audio to exact video length.
+    # apad extends if audio is shorter, atrim trims if longer.
     cmd = [
         "ffmpeg",
         "-y",
@@ -732,15 +735,12 @@ def mux_video_audio(
         str(audio_path),
         "-c:v",
         "copy",
+        "-af",
+        f"apad=whole_dur={video_dur},atrim=0:{video_dur}",
         "-c:a",
         "aac",
         "-b:a",
         "320k",
-        # WHY: Trim audio to match exact video duration. The video and audio
-        # passes calculate durations independently — frame count rounding causes
-        # drift that accumulates across clips (0.1s per clip × 26 clips = 2.6s).
-        "-t",
-        str(video_dur),
         "-movflags",
         "+faststart",
         str(output_path),

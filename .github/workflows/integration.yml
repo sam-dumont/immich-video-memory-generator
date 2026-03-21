@@ -31,7 +31,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.13"
-  # uv cache stays on PVC (mounted at /home/runner/.cache/uv by ARC)
+  # Caches stay on PVC (mount /home/runner/.cache/ in ARC)
   UV_CACHE_DIR: /home/runner/.cache/uv
   UV_LINK_MODE: copy
 
@@ -98,8 +98,12 @@ jobs:
           chmod 600 /tmp/runner-home/.immich-memories/config.yaml
           # Override paths via env vars (pydantic-settings: IMMICH_MEMORIES_ prefix, __ nesting)
           echo "HOME=/tmp/runner-home" >> "$GITHUB_ENV"
-          echo "IMMICH_MEMORIES_CACHE__DIRECTORY=/tmp/immich-cache" >> "$GITHUB_ENV"
-          echo "IMMICH_MEMORIES_CACHE__DATABASE=/tmp/immich-cache/cache.db" >> "$GITHUB_ENV"
+          # WHY: cache on PVC so analysis results persist between CI runs.
+          # The ARC PVC must be mounted at /home/runner/.cache/ (not just .cache/uv).
+          CACHE_DIR="/home/runner/.cache/immich-memories"
+          mkdir -p "$CACHE_DIR"
+          echo "IMMICH_MEMORIES_CACHE__DIRECTORY=$CACHE_DIR" >> "$GITHUB_ENV"
+          echo "IMMICH_MEMORIES_CACHE__DATABASE=$CACHE_DIR/cache.db" >> "$GITHUB_ENV"
           echo "IMMICH_MEMORIES_OUTPUT__DIRECTORY=/tmp/immich-output" >> "$GITHUB_ENV"
           # Disable external music services — we test the mixing pipeline, not the APIs
           echo "MUSICGEN_ENABLED=false" >> "$GITHUB_ENV"

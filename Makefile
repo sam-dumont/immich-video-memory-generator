@@ -110,27 +110,33 @@ benchmark-perf:  ## Run assembly performance benchmarks (requires FFmpeg)
 
 test-integration-live-photos:  ## Run ONLY live photo merge tests (~30s, needs Immich)
 	uv run pytest tests/integration/live_photos/ -v -m integration --log-cli-level=INFO --tb=short \
-		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/live-photos-coverage.xml --cov-fail-under=0
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/live-photos-coverage.xml --cov-fail-under=0 \
+		--junitxml=tests/live-photos-junit.xml
 
 test-integration-photos:  ## Run ONLY photo animation tests (~20s, FFmpeg only)
 	uv run pytest tests/integration/photos/ -v -m integration --log-cli-level=INFO --tb=short \
-		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/photos-coverage.xml --cov-fail-under=0
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/photos-coverage.xml --cov-fail-under=0 \
+		--junitxml=tests/photos-junit.xml
 
 test-integration-assembly:  ## Run ONLY FFmpeg assembly tests (~10s, no Immich needed)
 	uv run pytest tests/integration/assembly/ -v -m integration --log-cli-level=INFO --tb=short \
-		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/assembly-coverage.xml --cov-fail-under=0
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/assembly-coverage.xml --cov-fail-under=0 \
+		--junitxml=tests/assembly-junit.xml
 
 test-integration-pipeline:  ## Run ONLY pipeline tests (~60s, needs Immich + FFmpeg)
 	uv run pytest tests/integration/pipeline/ -v -m integration --log-cli-level=INFO --tb=short \
-		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/pipeline-coverage.xml --cov-fail-under=0
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/pipeline-coverage.xml --cov-fail-under=0 \
+		--junitxml=tests/pipeline-junit.xml
 
 test-integration-cli:  ## Run ONLY CLI generate tests (SLOW ~15min, needs Immich + full pipeline)
 	uv run pytest tests/integration/cli/ -v -m integration --log-cli-level=INFO --tb=short \
-		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/cli-coverage.xml --cov-fail-under=0
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/cli-coverage.xml --cov-fail-under=0 \
+		--junitxml=tests/cli-junit.xml
 
 test-integration-auth:  ## Run ONLY auth integration tests (~10s, no external deps)
 	uv run pytest tests/integration/auth/ -v -m integration --log-cli-level=INFO --tb=short \
-		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/auth-coverage.xml --cov-fail-under=0
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/auth-coverage.xml --cov-fail-under=0 \
+		--junitxml=tests/auth-junit.xml
 
 test-integration-audio:  ## Run ONLY audio ML tests (~2min, needs demucs/acestep packages)
 	uv run pytest tests/integration/audio/ -v -m integration --log-cli-level=INFO --tb=short \
@@ -144,8 +150,10 @@ test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immic
 	$(MAKE) test-integration-live-photos
 	@# CLI tests excluded — they re-run the full pipeline (~41 min) which is
 	@# already covered by test-integration-pipeline. Run separately: make test-integration-cli
-	@# Quick re-run for junit XML (uses pytest cache, near-instant since tests just passed)
-	@uv run pytest -v -m integration --junitxml=tests/integration-junit.xml -o junit_family=legacy -q 2>/dev/null || true
+	@# Merge per-suite JUnit XMLs into one (no re-run needed)
+	@python3 scripts/merge_junit_xml.py tests/integration-junit.xml \
+		tests/auth-junit.xml tests/assembly-junit.xml tests/photos-junit.xml \
+		tests/pipeline-junit.xml tests/live-photos-junit.xml 2>/dev/null || true
 	@echo ""
 	@echo "═══════════════════════════════════════════════════"
 	@echo "  INTEGRATION TEST PERFORMANCE REPORT"

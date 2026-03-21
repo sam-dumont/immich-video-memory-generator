@@ -14,6 +14,29 @@ import pytest
 
 logger = logging.getLogger(__name__)
 
+
+def has_immich() -> bool:
+    """Check if Immich is reachable using the real config."""
+    try:
+        from immich_memories.config_loader import Config
+
+        config = Config.from_yaml(Config.get_default_path())
+        if not config.immich.url or not config.immich.api_key:
+            return False
+        import httpx
+
+        resp = httpx.get(
+            f"{config.immich.url.rstrip('/')}/api/server/ping",
+            headers={"x-api-key": config.immich.api_key},
+            timeout=5.0,
+        )
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+requires_immich = pytest.mark.skipif(not has_immich(), reason="Immich not reachable")
+
 # Preferred date ranges, tried in order. The first match wins.
 # Rationale: Jan 2025 = quiet month (static-ish data for Sam),
 # but any user's library will have SOMETHING in these windows.

@@ -86,6 +86,8 @@ build/
 config.yaml
 coverage.xml
 tests/integration-coverage.xml
+tests/*-junit.xml
+tests/integration-junit.xml
 develop-eggs/
 dist/
 dmypy.json

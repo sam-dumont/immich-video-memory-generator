@@ -15,6 +15,7 @@ import pytest
 
 from tests.conftest import make_clip
 from tests.integration.conftest import requires_ffmpeg
+from tests.integration.immich_fixtures import requires_immich
 
 pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
@@ -168,28 +169,6 @@ class TestMusicApplication:
 # ---------------------------------------------------------------------------
 # Scenario 3: Live photo burst merge (real Immich)
 # ---------------------------------------------------------------------------
-
-
-def _has_immich() -> bool:
-    try:
-        from immich_memories.config_loader import Config
-
-        config = Config.from_yaml(Config.get_default_path())
-        if not config.immich.url or not config.immich.api_key:
-            return False
-        import httpx
-
-        resp = httpx.get(
-            f"{config.immich.url.rstrip('/')}/api/server/ping",
-            headers={"x-api-key": config.immich.api_key},
-            timeout=5.0,
-        )
-        return resp.status_code == 200
-    except Exception:
-        return False
-
-
-requires_immich = pytest.mark.skipif(not _has_immich(), reason="Immich not reachable")
 
 
 @requires_immich
