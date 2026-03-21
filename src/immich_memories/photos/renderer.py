@@ -80,7 +80,7 @@ class KenBurnsParams:
     # Pan position: (0,0)=top-left, (0.5,0.5)=center, (1,1)=bottom-right
     pan_start: tuple[float, float] = (0.5, 0.5)
     pan_end: tuple[float, float] = (0.5, 0.5)
-    fps: int = 30
+    fps: int = 60
     duration: float = 4.0
 
 

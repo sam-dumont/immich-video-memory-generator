@@ -16,8 +16,6 @@ from immich_memories.processing.clips import ClipSegment
 __all__ = [
     "AssemblyClip",
     "AssemblySettings",
-    "CHUNK_SIZE",
-    "CHUNKED_ASSEMBLY_THRESHOLD",
     "JobCancelledException",
     "MAX_FACE_CACHE_SIZE",
     "TitleScreenSettings",
@@ -32,10 +30,6 @@ class JobCancelledException(Exception):
     pass
 
 
-# Memory optimization: Chunked assembly thresholds
-# When clip count exceeds threshold, process in batches to avoid OOM
-CHUNKED_ASSEMBLY_THRESHOLD = 8  # Use chunking if > 8 clips
-CHUNK_SIZE = 4  # Process 4 clips per batch (keeps FFmpeg memory ~1GB per batch at 4K)
 MAX_FACE_CACHE_SIZE = 50  # Max entries in face detection cache to prevent unbounded growth
 
 

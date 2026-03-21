@@ -24,7 +24,7 @@ pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
 
 def _encode_frames(
-    frames: list[np.ndarray], output_path, tw: int = 1920, th: int = 1080, fps: int = 30
+    frames: list[np.ndarray], output_path, tw: int = 1920, th: int = 1080, fps: int = 60
 ):
     """Encode frames to H.264 mp4 (SDR, fast, for testing)."""
     raw = b"".join((np.clip(f * 255, 0, 255).astype(np.uint8)).tobytes() for f in frames)
@@ -95,7 +95,7 @@ class TestRenderKenBurns:
         """Landscape photo in landscape viewport → valid mp4."""
         src = _make_test_image(1600, 1200)  # 4:3
         frames = render_ken_burns(src, 1920, 1080, KenBurnsParams(duration=2.0))
-        assert len(frames) == 60  # 30fps (default) * 2s
+        assert len(frames) == 120  # 60fps (default) * 2s
         assert frames[0].shape == (1080, 1920, 3)
 
         output = tmp_path / "kb_ls.mp4"
@@ -190,7 +190,7 @@ class TestRenderSlideIn:
         src = _make_test_image(800, 1200)
         frames = render_slide_in(src, 1920, 1080, fps=30, duration=2.0)
         output = tmp_path / "slide.mp4"
-        _encode_frames(frames, output)
+        _encode_frames(frames, output, fps=30)
         probe = ffprobe_json(output)
         assert has_stream(probe, "video")
 
@@ -243,7 +243,7 @@ class TestRenderCollage:
         photos = [_make_test_image(800, 1200) for _ in range(3)]
         frames = render_collage(photos, 1920, 1080, fps=30, duration=2.0)
         output = tmp_path / "collage.mp4"
-        _encode_frames(frames, output)
+        _encode_frames(frames, output, fps=30)
         probe = ffprobe_json(output)
         assert has_stream(probe, "video")
         assert 1.5 < get_duration(probe) < 2.5

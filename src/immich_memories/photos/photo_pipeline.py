@@ -43,6 +43,7 @@ def render_photo_clips(
     fps: int = 30,
     db_path: Path | None = None,
     app_config: Any = None,
+    thumbnail_fn: Any = None,
 ) -> list[AssemblyClip]:
     """Convert photo assets to animated video clips for assembly.
 
@@ -63,9 +64,15 @@ def render_photo_clips(
     if len(scored) > shortlist_size:
         scored = _select_distributed(scored, shortlist_size)
 
-    # Phase 2: LLM scoring on shortlist (downloads photo, sends to VLM)
+    # Phase 2: LLM scoring on shortlist (uses thumbnails, not full downloads)
     scored = _enhance_with_llm(
-        scored, config, work_dir, download_fn, db_path=db_path, app_config=app_config
+        scored,
+        config,
+        work_dir,
+        download_fn,
+        db_path=db_path,
+        app_config=app_config,
+        thumbnail_fn=thumbnail_fn,
     )
 
     # Final selection: top N after LLM scoring, distributed
@@ -135,6 +142,7 @@ def _enhance_with_llm(
     download_fn: Any,
     db_path: Path | None = None,
     app_config: Any = None,
+    thumbnail_fn: Any = None,
 ) -> list[tuple[Asset, float]]:
     """Check cache first, then LLM-score uncached photos."""
 
@@ -152,7 +160,15 @@ def _enhance_with_llm(
             continue
 
         # Cache miss — download + LLM
-        llm_score = _llm_score_photo(asset, meta_score, config, work_dir, download_fn, app_config)
+        llm_score = _llm_score_photo(
+            asset,
+            meta_score,
+            config,
+            work_dir,
+            download_fn,
+            app_config,
+            thumbnail_fn=thumbnail_fn,
+        )
         enhanced.append((asset, llm_score))
 
         # Store in cache
@@ -177,10 +193,33 @@ def _llm_score_photo(
     work_dir: Path,
     download_fn: Any,
     app_config: Any,
+    thumbnail_fn: Any = None,
 ) -> float:
-    """Download, prepare, and LLM-score a single photo."""
+    """Score a photo with VLM using a lightweight thumbnail.
+
+    Uses Immich thumbnail API (~100 KB) instead of downloading the full
+    HEIC (5-15 MB). Falls back to full download if no thumbnail_fn.
+    """
     from immich_memories.photos.scoring import score_photo_with_llm
 
+    thumb_path = work_dir / f"{asset.id}_thumb.jpg"
+
+    # WHY: Thumbnails are ~100 KB vs 5-15 MB for full HEICs. The VLM
+    # doesn't need HDR gain maps or 4K resolution to score a photo.
+    if thumbnail_fn and not thumb_path.exists():
+        try:
+            thumb_bytes = thumbnail_fn(asset.id, size="preview")
+            thumb_path.write_bytes(thumb_bytes)
+        except Exception:
+            thumbnail_fn = None  # Fall back to full download
+
+    if thumb_path.exists():
+        try:
+            return score_photo_with_llm(thumb_path, meta_score, config, app_config)
+        except Exception:
+            return meta_score
+
+    # Fallback: download full file (old behavior)
     ext = Path(asset.original_file_name).suffix if asset.original_file_name else ".jpg"
     raw_path = work_dir / f"{asset.id}{ext}"
     if not raw_path.exists():

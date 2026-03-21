@@ -1052,8 +1052,10 @@ class TestAssemblyEngineMethods:
         engine.assemble_scalable(clips, output, progress_callback=on_progress)
 
         assert len(progress_calls) > 0
-        # Should have encoding progress and assembly progress
-        assert any("Encoding" in msg for _, msg in progress_calls)
+        # Should have streaming assembly progress messages
+        assert any(
+            "Streaming" in msg or "Mixing" in msg or "Muxing" in msg for _, msg in progress_calls
+        )
 
 
 # ===================================================================
