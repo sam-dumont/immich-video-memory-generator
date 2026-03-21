@@ -1,8 +1,7 @@
-"""Abstract base for music generation backends.
+"""Abstract base for music generation backends and stem separation.
 
-Defines the interface that all music generation backends must implement.
-This allows swapping between MusicGen, ACE-Step, or future backends
-without changing the rest of the application.
+Defines the interface that all music generation backends must implement,
+plus a Protocol for stem separation (Demucs local or MusicGen API).
 """
 
 from __future__ import annotations
@@ -12,7 +11,9 @@ import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
+
+from immich_memories.audio.music_generator_models import MusicStems
 
 logger = logging.getLogger(__name__)
 
@@ -118,3 +119,24 @@ class MusicGenerator(ABC):
 
     async def __aexit__(self, *args):  # noqa: B027
         pass
+
+
+@runtime_checkable
+class StemSeparator(Protocol):
+    """Protocol for audio stem separation backends.
+
+    Implemented by DemucsLocalBackend (in-process) and MusicGenBackend (API).
+    The pipeline uses this to decouple stem separation from generation.
+    """
+
+    @property
+    def name(self) -> str: ...
+
+    async def is_available(self) -> bool: ...
+
+    async def separate_stems(
+        self,
+        audio_path: Path,
+        output_dir: Path,
+        progress_callback: Any | None = None,
+    ) -> MusicStems: ...

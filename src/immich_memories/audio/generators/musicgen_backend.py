@@ -7,6 +7,7 @@ This backend communicates with an external MusicGen API server.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from immich_memories.audio.generators.base import (
@@ -14,6 +15,7 @@ from immich_memories.audio.generators.base import (
     GenerationResult,
     MusicGenerator,
 )
+from immich_memories.audio.music_generator_models import MusicStems
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +126,25 @@ class MusicGenBackend(MusicGenerator):
         )
 
         return result, stems
+
+    async def separate_stems(
+        self,
+        audio_path: Path,
+        output_dir: Path,
+        progress_callback: Any | None = None,
+    ) -> MusicStems:
+        """Separate audio stems via MusicGen API's Demucs endpoint.
+
+        Satisfies the StemSeparator protocol so MusicGenBackend can be used
+        as a stem separator in the pipeline alongside DemucsLocalBackend.
+        """
+        if self._client is None:
+            raise RuntimeError("Backend not initialized. Use 'async with' context.")
+        return await self._client.separate_stems(
+            audio_path,
+            output_dir=output_dir,
+            progress_callback=progress_callback,
+        )
 
     async def health_check(self) -> dict[str, Any]:
         """Get detailed MusicGen API health info."""

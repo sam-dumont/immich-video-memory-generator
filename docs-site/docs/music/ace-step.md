@@ -7,30 +7,46 @@ title: ACE-Step
 
 ACE-Step 1.5 generates higher-quality instrumental tracks than MusicGen. It supports explicit musical parameters (BPM, key, time signature) passed as structured API fields rather than crammed into a text prompt.
 
-About ~20 seconds per 30-second track on an 8GB GPU.
+## Modes
+
+ACE-Step runs in two modes:
+
+| Mode | How it works | When to use |
+|------|-------------|-------------|
+| `lib` | Direct Python import, in-process | Apple Silicon / CUDA desktop, no Docker needed |
+| `api` | Remote REST API server | Headless servers, Docker deployments, Python 3.13 |
 
 ## Model Variants
 
-| Variant | Steps | Speed (30s track) | Quality |
-|---------|-------|-------------------|---------|
-| `turbo` | 8 | ~20s on 8GB GPU | Fast but MIDI-sounding, synthetic timbres |
-| `base` | 50 | ~2min on 8GB GPU | More realistic instruments, natural dynamics |
+| Variant | Steps | Speed (60s track, M5 Max) | Quality |
+|---------|-------|--------------------------|---------|
+| `turbo` | 8 | ~8s | Fast preview, synthetic timbres |
+| `base` | 60 | ~40s | Production quality, natural instruments |
 
-**Recommendation**: Use `base` for final exports (better audio quality). Use `turbo` for quick previews during editing.
+**Recommendation**: Use `base` for final exports. Use `turbo` for quick previews.
 
-The recommended fork is [sam-dumont/ace-step-1.5-turbo](https://github.com/sam-dumont/ace-step-1.5-turbo), which ships both variants.
+## Local Setup (lib mode)
 
-## Language Model Sizes
+```bash
+pip install 'immich-memories[ace-step]'
+```
 
-The `lm_model_size` setting controls how much VRAM the language model uses for "thinking mode":
+```yaml
+ace_step:
+  enabled: true
+  mode: "lib"
+  model_variant: "base"      # or "turbo" for fast previews
+  bf16: true
+  num_versions: 1
+```
 
-| Size | VRAM Required | Notes |
-|------|--------------|-------|
-| `0.6B` | ~8GB | Fits on budget GPUs |
-| `1.7B` | ~12GB | Good balance |
-| `4B` | ~16GB+ | Best quality, needs serious hardware |
+First run downloads the model (~3.5GB) to `~/.cache/ace-step/checkpoints/`.
 
-## Deploy
+:::warning Python ≤ 3.12 required
+Local mode requires Python ≤ 3.12 because ACE-Step depends on `spacy==3.8.4` which has no Python 3.13 wheels. Use `uv venv .venv --python 3.12` if needed. API mode works on any Python version.
+:::
+
+## API Setup
 
 Run the ACE-Step API server with Docker Compose:
 
@@ -38,28 +54,38 @@ Run the ACE-Step API server with Docker Compose:
 docker compose -f deploy/ace-step/docker-compose.yaml up -d
 ```
 
-## Config
-
 ```yaml
 ace_step:
   enabled: true
-  mode: "api"                    # "api" for remote server, "lib" for local
+  mode: "api"
   api_url: "http://localhost:8000"
-  model_variant: "turbo"         # "turbo" (8 steps) or "base" (50 steps)
-  lm_model_size: "0.6B"          # "0.6B", "1.7B", or "4B"
-  use_lm: true                   # disable to save memory/time
-  bf16: true                     # set false for Pascal/older GPUs
-  num_versions: 3                # how many variations to generate
-  hemisphere: "north"            # for seasonal prompt hints
+  model_variant: "turbo"
+  num_versions: 3
+  hemisphere: "north"
 ```
+
+## Memory Usage
+
+| Config | Peak RAM | Notes |
+|--------|---------|-------|
+| `turbo` + bf16 | ~8 GB | Budget GPU / 16GB Mac |
+| `base` + bf16 | ~16-20 GB | M-series Mac with 32GB+ |
+
+## Model Cache
+
+| Component | Location | Size |
+|-----------|----------|------|
+| ACE-Step v1 3.5B | `~/.cache/ace-step/checkpoints/` | ~3.5 GB |
+
+The model downloads automatically from HuggingFace on first generation.
 
 ## How It Works
 
 The pipeline converts your video's detected mood into ACE-Step's structured format:
 
-- **Caption**: Descriptive natural-language prompt (e.g., "Gentle acoustic folk instrumental with fingerpicked guitar, soft brushed percussion..."). Descriptive sentences work better than comma-separated tag lists.
+- **Caption**: Dense natural-language prompt (e.g., "Gentle acoustic folk instrumental with fingerpicked guitar, soft brushed percussion..."). Full sentences with instrument descriptions work best.
 - **Lyrics**: Section-tagged instrumental markers (`[Intro]\n[Instrumental]\n[Verse]\n[Instrumental]`)
 - **BPM, key, time signature**: Sent as explicit API fields (not embedded in the caption text)
-- **Instrumental flag**: Explicitly set to prevent the model from generating vocals
+- **Instrumental flag**: Reinforced in every caption to prevent vocals
 
 The pipeline detects each clip's mood and maps it to a genre template (lo-fi, acoustic, cinematic, etc.), so different video moods produce different music styles.

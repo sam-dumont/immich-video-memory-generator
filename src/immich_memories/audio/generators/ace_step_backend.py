@@ -43,7 +43,7 @@ def _is_ace_step_importable() -> bool:
     try:
         import importlib.util
 
-        return importlib.util.find_spec("acestep") is not None
+        return importlib.util.find_spec("acestep.pipeline_ace_step") is not None
     except (ImportError, ModuleNotFoundError):
         return False
 
@@ -160,37 +160,32 @@ class ACEStepBackend(MusicGenerator):
         """Initialize the ACE-Step pipeline for library mode.
 
         This lazy-loads the model to avoid memory usage until generation
-        is actually requested.
+        is actually requested. The model (~3.5GB) is downloaded from
+        HuggingFace on first use and cached at ~/.cache/ace-step/checkpoints.
         """
         if self._pipeline is not None:
             return
 
         try:
-            from acestep.pipeline import ACEStepPipeline  # type: ignore[import-not-found]
+            # Official ACE-Step package uses pipeline_ace_step module
+            from acestep.pipeline_ace_step import ACEStepPipeline  # type: ignore[import-not-found]
 
             logger.info("Initializing ACE-Step pipeline...")
 
-            # Set environment for Apple Silicon compatibility
             import platform
 
             if platform.system() == "Darwin":
                 os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
-                os.environ.setdefault("ACESTEP_LM_BACKEND", "mlx")
 
-            # Configure bf16 for Pascal GPU compatibility
-            if not self.config.bf16:
-                os.environ["ACESTEP_BF16"] = "false"
+            dtype = "bfloat16" if self.config.bf16 else "float32"
 
             self._pipeline = ACEStepPipeline(
-                model_variant=self.config.model_variant,
-                lm_model_size=self.config.lm_model_size,
-                use_lm=self.config.use_lm,
+                dtype=dtype,
+                cpu_offload=not self.config.disable_offload
+                and self.config.extra_args.get("cpu_offload", False),
             )
 
-            logger.info(
-                f"ACE-Step pipeline initialized: variant={self.config.model_variant}, "
-                f"lm={self.config.lm_model_size if self.config.use_lm else 'disabled'}"
-            )
+            logger.info(f"ACE-Step pipeline initialized: dtype={dtype}")
         except Exception as e:
             logger.error(f"Failed to initialize ACE-Step pipeline: {e}")
             raise
@@ -216,67 +211,86 @@ class ACEStepBackend(MusicGenerator):
         request: GenerationRequest,
         progress_callback: Any | None = None,
     ) -> GenerationResult:
-        """Generate music using local ACE-Step library."""
+        """Generate music using local ACE-Step library.
+
+        Uses the official ACE-Step __call__ API which handles model loading,
+        diffusion, decoding, and saving in one call. Uses structured captions
+        with dense instrument descriptions for best quality.
+        """
         import asyncio
 
         self._init_pipeline()
 
         request.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Build prompt from scenes or use direct prompt
+        # Build structured prompt (same rich captions as API mode)
         if request.is_multi_scene:
             scene_moods = [s.get("mood", "upbeat") for s in request.scenes]
             primary_mood = scene_moods[0] if scene_moods else "upbeat"
-            tags, lyrics = _mood_to_ace_prompt(primary_mood, request.prompt)
+            caption_result = _mood_to_structured_prompt(
+                primary_mood, scene_moods=scene_moods, memory_type=request.memory_type
+            )
             duration = sum(s.get("duration", 30) for s in request.scenes)
         else:
-            tags, lyrics = _mood_to_ace_prompt(request.prompt)
+            caption_result = _mood_to_structured_prompt(
+                request.prompt, memory_type=request.memory_type
+            )
             duration = request.duration_seconds
 
-        if progress_callback:
-            progress_callback("generating", 0, {"tags": tags, "duration": duration})
+        duration = min(duration, 300)  # Cap at 5 minutes
+        output_path = request.output_dir / f"ace_step_v{request.variation_index}.wav"
 
-        # Run pipeline in executor to avoid blocking the event loop
+        if progress_callback:
+            progress_callback(
+                "generating", 0, {"caption": caption_result.caption, "duration": duration}
+            )
+
+        # base = 60 steps (high quality), turbo = 8 steps (fast preview)
+        infer_step = 60 if self.config.model_variant == "base" else 8
+
         def _run_pipeline():
             assert self._pipeline is not None
-            return self._pipeline.generate(
-                tags=tags,
-                lyrics=lyrics,
-                duration=min(duration, 300),  # Cap at 5 minutes
+            return self._pipeline(
+                audio_duration=float(duration),
+                prompt=caption_result.caption,
+                lyrics=caption_result.lyrics,
+                infer_step=infer_step,
+                guidance_scale=15.0,
+                scheduler_type="euler",
+                cfg_type="apg",
+                omega_scale=10.0,
+                use_erg_tag=True,
+                use_erg_lyric=True,
+                use_erg_diffusion=True,
                 batch_size=1,
-                **self.config.extra_args,
+                save_path=str(output_path),
+                format="wav",
             )
 
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, _run_pipeline)
+        await loop.run_in_executor(None, _run_pipeline)
 
-        # Save output
-        output_path = request.output_dir / f"ace_step_v{request.variation_index}.wav"
-
-        # ACE-Step returns audio as numpy array or saves to file
-        if isinstance(result, Path) or (isinstance(result, str) and Path(result).exists()):
-            # Pipeline returned a file path
-            import shutil
-
-            shutil.copy2(str(result), str(output_path))
-        elif hasattr(result, "audio"):
-            # Pipeline returned an object with audio attribute
-            self._save_audio(result.audio, result.sample_rate, output_path)
-        else:
-            # Assume numpy array with default sample rate
-            self._save_audio(result, 48000, output_path)
+        if not output_path.exists():
+            raise RuntimeError(f"ACE-Step did not produce output at {output_path}")
 
         if progress_callback:
             progress_callback("completed", 100, {})
 
-        logger.info(f"ACE-Step generated: {output_path} ({duration}s)")
+        logger.info(f"ACE-Step generated: {output_path} ({duration}s, {infer_step} steps)")
 
         return GenerationResult(
             audio_path=output_path,
             duration_seconds=float(duration),
-            prompt=f"[tags: {tags}] [lyrics: {lyrics}]",
+            prompt=caption_result.caption,
             backend_name=self.name,
-            metadata={"tags": tags, "lyrics": lyrics, "model_variant": self.config.model_variant},
+            metadata={
+                "caption": caption_result.caption,
+                "lyrics": caption_result.lyrics,
+                "bpm": caption_result.bpm,
+                "key_scale": caption_result.key_scale,
+                "infer_step": infer_step,
+                "model_variant": self.config.model_variant,
+            },
         )
 
     async def _generate_api(
