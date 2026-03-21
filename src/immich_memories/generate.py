@@ -12,7 +12,7 @@ import logging
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -98,6 +98,9 @@ class GenerationParams:
     # Photo support
     include_photos: bool = False
     photo_assets: list | None = None  # Pre-fetched photo assets (IMAGE type)
+
+    # Duration budget for unified photo+video selection
+    target_duration_seconds: float | None = None
 
     # Progress callback: (phase, progress_fraction, status_message)
     progress_callback: Callable[[str, float, str], None] | None = None
@@ -218,11 +221,8 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         assembly_clips = _extract_clips(params, video_cache, run_output_dir)
         run_tracker.complete_phase(items_processed=len(assembly_clips))
 
-        # Phase 1b: Render photo clips (if enabled)
-        if params.include_photos and params.photo_assets:
-            _report(params, "photos", 0.5, "Rendering photo animations...")
-            photo_clips = _render_photos(params, run_output_dir, len(assembly_clips))
-            assembly_clips = _merge_by_date(assembly_clips, photo_clips)
+        # Phase 1b: Unified budget selection + render selected photos
+        assembly_clips = _add_photos_if_enabled(assembly_clips, params, run_output_dir)
 
         # Pre-assembly validation: skip clips with missing/empty files
         assembly_clips, skipped = validate_clips(assembly_clips)
@@ -292,6 +292,42 @@ def _total_clip_duration(params: GenerationParams) -> int:
     return int(total)
 
 
+def _add_photos_if_enabled(
+    assembly_clips: list[AssemblyClip],
+    params: GenerationParams,
+    run_output_dir: Path,
+) -> list[AssemblyClip]:
+    """Add photo clips to assembly if photo support is enabled."""
+    if not params.include_photos or not params.photo_assets:
+        return assembly_clips
+
+    _report(params, "photos", 0.5, "Selecting and rendering photos...")
+
+    if params.target_duration_seconds:
+        video_clips, photo_clips = _apply_unified_budget(assembly_clips, params, run_output_dir)
+    else:
+        video_clips = assembly_clips
+        photo_clips = _render_photos(params, run_output_dir, len(assembly_clips))
+
+    return _merge_by_date(video_clips, photo_clips)
+
+
+def _detect_photo_resolution(params: GenerationParams) -> tuple[int, int]:
+    """Detect the correct resolution for photo rendering.
+
+    WHY: config.output.resolution_tuple always returns landscape (1920x1080).
+    But if the majority of video clips are portrait, the assembly pipeline
+    will swap to portrait (1080x1920). Photos must match or they get
+    double-blur-backgrounded — once by the renderer, once by the assembler.
+    """
+    target_w, target_h = params.config.output.resolution_tuple
+    portrait_count = sum(1 for c in params.clips if c.height > c.width)
+    if portrait_count > len(params.clips) // 2 and target_w > target_h:
+        target_w, target_h = target_h, target_w
+        logger.info(f"Photos: detected portrait orientation, rendering to {target_w}x{target_h}")
+    return target_w, target_h
+
+
 def _render_photos(
     params: GenerationParams, output_dir: Path, video_clip_count: int
 ) -> list[AssemblyClip]:
@@ -301,7 +337,7 @@ def _render_photos(
     photo_dir = output_dir / "photos"
     photo_dir.mkdir(exist_ok=True)
 
-    target_res = params.config.output.resolution_tuple
+    target_w, target_h = _detect_photo_resolution(params)
     download_fn = params.client.download_asset if params.client else None
     thumbnail_fn = params.client.get_asset_thumbnail if params.client else None
     if not download_fn:
@@ -311,12 +347,155 @@ def _render_photos(
     return render_photo_clips(
         assets=params.photo_assets or [],
         config=params.config.photos,
-        target_w=target_res[0],
-        target_h=target_res[1],
+        target_w=target_w,
+        target_h=target_h,
         work_dir=photo_dir,
         download_fn=download_fn,
         video_clip_count=video_clip_count,
         thumbnail_fn=thumbnail_fn,
+    )
+
+
+def _apply_unified_budget(
+    assembly_clips: list[AssemblyClip],
+    params: GenerationParams,
+    output_dir: Path,
+) -> tuple[list[AssemblyClip], list[AssemblyClip]]:
+    """Apply unified budget: score photos, select within budget, render selected.
+
+    Returns (filtered_video_clips, rendered_photo_clips).
+    """
+    from immich_memories.analysis.unified_budget import (
+        BudgetCandidate,
+        estimate_title_overhead,
+        select_within_budget,
+    )
+    from immich_memories.photos.photo_pipeline import render_photo_clips, score_photos
+
+    assert params.target_duration_seconds is not None
+    photo_dir = output_dir / "photos"
+    photo_dir.mkdir(exist_ok=True)
+
+    download_fn = params.client.download_asset if params.client else None
+    thumbnail_fn = params.client.get_asset_thumbnail if params.client else None
+    if not download_fn:
+        logger.warning("No Immich client — cannot download photos")
+        return assembly_clips, []
+
+    # Score photos (no rendering yet)
+    scored_photos = score_photos(
+        assets=params.photo_assets or [],
+        config=params.config.photos,
+        video_clip_count=len(assembly_clips),
+        work_dir=photo_dir,
+        download_fn=download_fn,
+        thumbnail_fn=thumbnail_fn,
+    )
+
+    # Build budget candidates
+    video_candidates = [
+        BudgetCandidate(
+            asset_id=c.asset_id,
+            duration=c.duration,
+            score=0.5,  # Videos already selected by SmartPipeline — uniform base
+            candidate_type="video",
+            date=_parse_clip_date(c.date),
+            is_favorite=False,
+        )
+        for c in assembly_clips
+    ]
+    photo_candidates = [
+        BudgetCandidate(
+            asset_id=asset.id,
+            duration=params.config.photos.duration,
+            score=score,
+            candidate_type="photo",
+            date=asset.file_created_at,
+            is_favorite=asset.is_favorite,
+        )
+        for asset, score in scored_photos
+    ]
+
+    # Estimate title overhead (with crossfade compensation)
+    clip_dates = [c.date or "" for c in assembly_clips]
+    title_settings = _build_title_settings_for_overhead(params)
+    transition_dur = params.transition_duration
+    overhead = estimate_title_overhead(
+        clip_dates=clip_dates,
+        title_settings=title_settings,
+        target_duration=params.target_duration_seconds,
+        memory_type=params.memory_type,
+        num_clips=len(assembly_clips),
+        transition_duration=transition_dur,
+    )
+    content_budget = params.target_duration_seconds - overhead
+
+    logger.info(
+        f"Unified budget: target={params.target_duration_seconds:.0f}s, "
+        f"overhead={overhead:.1f}s, content_budget={content_budget:.1f}s"
+    )
+
+    # Select within budget (min 10% photos, max from config)
+    selection = select_within_budget(
+        video_candidates,
+        photo_candidates,
+        content_budget=content_budget,
+        max_photo_ratio=params.config.photos.max_ratio,
+        min_photo_ratio=0.10,
+    )
+
+    # Filter video clips to kept set
+    filtered_videos = [c for c in assembly_clips if (c.asset_id) in selection.kept_video_ids]
+
+    # Render only selected photos
+    selected_photo_ids = set(selection.selected_photo_ids)
+    selected_assets = [asset for asset, _ in scored_photos if asset.id in selected_photo_ids]
+
+    target_w, target_h = _detect_photo_resolution(params)
+    photo_clips = render_photo_clips(
+        assets=selected_assets,
+        config=params.config.photos,
+        target_w=target_w,
+        target_h=target_h,
+        work_dir=photo_dir,
+        download_fn=download_fn,
+        video_clip_count=len(filtered_videos),
+        thumbnail_fn=thumbnail_fn,
+    )
+
+    logger.info(
+        f"Unified selection: {len(filtered_videos)} videos + "
+        f"{len(photo_clips)} photos = {selection.content_duration:.0f}s content"
+    )
+
+    return filtered_videos, photo_clips
+
+
+def _parse_clip_date(date_str: str | None) -> datetime:
+    """Parse a date string from AssemblyClip into datetime."""
+    from datetime import UTC
+
+    if not date_str:
+        return datetime(2000, 1, 1, tzinfo=UTC)
+    try:
+        return datetime.fromisoformat(date_str).replace(tzinfo=UTC)
+    except (ValueError, TypeError):
+        return datetime(2000, 1, 1, tzinfo=UTC)
+
+
+def _build_title_settings_for_overhead(params: GenerationParams):
+    """Build minimal TitleScreenSettings for overhead estimation."""
+    from immich_memories.processing.assembly_config import TitleScreenSettings
+
+    if not params.config.title_screens.enabled:
+        return None
+    return TitleScreenSettings(
+        enabled=True,
+        title_duration=params.config.title_screens.title_duration,
+        month_divider_duration=params.config.title_screens.month_divider_duration,
+        ending_duration=params.config.title_screens.ending_duration,
+        show_month_dividers=params.config.title_screens.show_month_dividers,
+        month_divider_threshold=params.config.title_screens.month_divider_threshold,
     )
 
 

@@ -99,6 +99,7 @@ src/immich_memories/
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
 │   ├── trip_scoring.py         # Location diversity scoring for trip clips
 │   ├── unified_analyzer.py     # UnifiedSegmentAnalyzer (all methods merged, no mixins)
+│   ├── unified_budget.py       # Unified photo+video budget selection (merge-then-fit)
 │   ├── segment_generation.py   # Boundary detection, candidate segment generation
 │   ├── content_analyzer.py     # LLM-based content analysis
 │   ├── llm_response_parser.py  # Content analysis response parsing
