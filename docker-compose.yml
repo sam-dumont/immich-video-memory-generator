@@ -7,7 +7,7 @@
 #   Analysis:  2-4GB RAM, 2+ cores (downloads + scores clips)
 #   Encoding:  4-8GB RAM, 4+ cores (FFmpeg assembly, depends on resolution)
 #
-# For GPU-accelerated title rendering or 4K output, increase limits
+# For GPU-accelerated title rendering or 4K output, increase limits.
 # For GPU acceleration, see the hardware docs.
 #
 # For LLM-based clip analysis, set LLM env vars below.
@@ -19,19 +19,40 @@ services:
       - "8080:8080"
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
-      - ./output:/output
+      - ./output:/app/output
     environment:
       IMMICH_URL: "${IMMICH_URL:-http://immich-server:2283}"
       IMMICH_API_KEY: "${IMMICH_API_KEY}"
+      # Optional: session secret (auto-generated if not set, set for multi-replica/K8s)
+      # IMMICH_MEMORIES_STORAGE_SECRET: "${IMMICH_MEMORIES_STORAGE_SECRET}"
       # Optional: LLM for clip content analysis (any OpenAI-compatible API)
       # IMMICH_MEMORIES_LLM__BASE_URL: "http://your-llm:8080/v1"
       # IMMICH_MEMORIES_LLM__MODEL: "qwen2.5-vl"
+      # Optional: basic auth
+      # IMMICH_MEMORIES_AUTH_USERNAME: "${IMMICH_MEMORIES_AUTH_USERNAME}"
+      # IMMICH_MEMORIES_AUTH_PASSWORD: "${IMMICH_MEMORIES_AUTH_PASSWORD}"
     restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: 4G
           cpus: "4"
+
+    # ── Security hardening (uncomment for production) ──────────────────
+    # Prevents privilege escalation, drops all capabilities, and makes
+    # the root filesystem read-only. Writes go to tmpfs and volumes.
+    #
+    # security_opt:
+    #   - no-new-privileges:true
+    # cap_drop:
+    #   - ALL
+    # read_only: true
+    # tmpfs:
+    #   - /tmp:size=2G
+    #   - /home/immich/.cache:size=1G
+    #
+    # For 4K encoding, increase /tmp to 8G or remove the tmpfs entry
+    # and let the container write to disk.
 
 volumes:
   immich-memories-config:

@@ -52,7 +52,7 @@ docker run -d \
   -e IMMICH_URL=https://photos.example.com \
   -e IMMICH_API_KEY=your-api-key-here \
   -v immich-memories-config:/home/immich/.immich-memories \
-  -v ./output:/output \
+  -v ./output:/app/output \
   ghcr.io/sam-dumont/immich-video-memory-generator:latest
 ```
 
@@ -71,7 +71,7 @@ services:
       - IMMICH_API_KEY=${IMMICH_API_KEY}
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
-      - ./output:/output
+      - ./output:/app/output
     networks:
       - default
     depends_on:
@@ -129,7 +129,7 @@ services:
           cpus: "4"
 ```
 
-The `docker/docker-compose.yml` in the repo has all of this enabled by default. It's the "hardened" version: use it as a reference.
+The root `docker-compose.yml` has these options as a commented section — uncomment to enable.
 
 :::caution tmpfs size for 4K
 The default tmpfs is 2 GB. If you're generating 4K videos, FFmpeg intermediates can exceed that. Either increase to 8 GB (`/tmp:size=8G`) or remove the tmpfs entry and let the container write to disk.
