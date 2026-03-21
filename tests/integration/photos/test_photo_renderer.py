@@ -190,7 +190,7 @@ class TestRenderSlideIn:
         src = _make_test_image(800, 1200)
         frames = render_slide_in(src, 1920, 1080, fps=30, duration=2.0)
         output = tmp_path / "slide.mp4"
-        _encode_frames(frames, output)
+        _encode_frames(frames, output, fps=30)
         probe = ffprobe_json(output)
         assert has_stream(probe, "video")
 
@@ -243,7 +243,7 @@ class TestRenderCollage:
         photos = [_make_test_image(800, 1200) for _ in range(3)]
         frames = render_collage(photos, 1920, 1080, fps=30, duration=2.0)
         output = tmp_path / "collage.mp4"
-        _encode_frames(frames, output)
+        _encode_frames(frames, output, fps=30)
         probe = ffprobe_json(output)
         assert has_stream(probe, "video")
         assert 1.5 < get_duration(probe) < 2.5
