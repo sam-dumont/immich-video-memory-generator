@@ -125,12 +125,14 @@ class TestBuildDuckingFilter:
         joined = ";".join(parts)
         assert "loudnorm" in joined
 
-    def test_no_normalize_uses_acopy(self):
+    def test_no_normalize_uses_asplit(self):
+        """Without loudnorm, audio still needs asplit for sidechaincompress + amix."""
         ducking = DuckingConfig()
         config = MixConfig(ducking=ducking, normalize_audio=False)
         parts = _build_ducking_filter(config, ducking, video_duration=30.0)
         joined = ";".join(parts)
-        assert "acopy" in joined
+        assert "asplit=2" in joined
+        assert "loudnorm" not in joined
 
     def test_output_is_mixed(self):
         ducking = DuckingConfig()

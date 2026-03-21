@@ -393,7 +393,7 @@ def _resolve_clip_hdr(
             f"zscale=t={trc}:tin=iec61966-2-1"
             ":p=bt2020:pin=bt709"
             ":m=bt2020nc:min=bt709"
-            ":npl=203:agamma=false"
+            ":npl=203"
             ",format=yuv420p10le"
         )
 
