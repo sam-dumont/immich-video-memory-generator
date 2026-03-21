@@ -314,6 +314,7 @@ def _run_pipeline_and_generate(
         date_end=date_range.end,
         include_photos=include_photos,
         photo_assets=photo_assets,
+        target_duration_seconds=duration,
         progress_callback=gen_progress,
         memory_preset_params=memory_preset_params or {},
     )

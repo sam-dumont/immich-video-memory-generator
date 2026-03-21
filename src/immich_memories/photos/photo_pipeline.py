@@ -32,6 +32,47 @@ from immich_memories.processing.assembly_config import AssemblyClip
 logger = logging.getLogger(__name__)
 
 
+def score_photos(
+    assets: list[Asset],
+    config: PhotoConfig,
+    video_clip_count: int,
+    work_dir: Path,
+    download_fn: Any,
+    db_path: Path | None = None,
+    app_config: Any = None,
+    thumbnail_fn: Any = None,
+) -> list[tuple[Asset, float]]:
+    """Score photos (metadata + LLM) without rendering.
+
+    Runs Phases 1 (metadata scoring) and 2 (LLM enhancement) only.
+    Pre-caps shortlist to avoid excessive LLM calls.
+    """
+    if not assets:
+        return []
+
+    # Phase 1: Fast metadata scoring (no I/O)
+    scored = [(a, score_photo(a, config)) for a in assets]
+
+    # Pre-cap with temporal distribution
+    max_photos = _compute_max_photos(video_clip_count, config.max_ratio)
+    shortlist_size = min(len(scored), max_photos * 3)
+    if len(scored) > shortlist_size:
+        scored = _select_distributed(scored, shortlist_size)
+
+    # Phase 2: LLM scoring on shortlist (uses thumbnails, not full downloads)
+    scored = _enhance_with_llm(
+        scored,
+        config,
+        work_dir,
+        download_fn,
+        db_path=db_path,
+        app_config=app_config,
+        thumbnail_fn=thumbnail_fn,
+    )
+
+    return scored
+
+
 def render_photo_clips(
     assets: list[Asset],
     config: PhotoConfig,
@@ -54,28 +95,21 @@ def render_photo_clips(
     if not assets:
         return []
 
-    # Phase 1: Fast metadata scoring (no I/O)
-    scored = [(a, score_photo(a, config)) for a in assets]
-
-    # Pre-cap with temporal distribution
-    max_photos = _compute_max_photos(video_clip_count, config.max_ratio)
-    # Shortlist: take 3x what we need for LLM refinement
-    shortlist_size = min(len(scored), max_photos * 3)
-    if len(scored) > shortlist_size:
-        scored = _select_distributed(scored, shortlist_size)
-
-    # Phase 2: LLM scoring on shortlist (uses thumbnails, not full downloads)
-    scored = _enhance_with_llm(
-        scored,
+    scored = score_photos(
+        assets,
         config,
+        video_clip_count,
         work_dir,
         download_fn,
         db_path=db_path,
         app_config=app_config,
         thumbnail_fn=thumbnail_fn,
     )
+    if not scored:
+        return []
 
     # Final selection: top N after LLM scoring, distributed
+    max_photos = _compute_max_photos(video_clip_count, config.max_ratio)
     if len(scored) > max_photos:
         scored = _select_distributed(scored, max_photos)
     logger.info(f"Photo selection: {len(assets)} → {len(scored)} (max {max_photos})")
