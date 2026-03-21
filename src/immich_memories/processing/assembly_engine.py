@@ -249,7 +249,12 @@ class AssemblyEngine:
             ctx=ctx,
             normalize_audio=self.settings.normalize_clip_audio,
             privacy_mode=self.settings.privacy_mode,
-            hdr_type=ctx.hdr_type if self.settings.preserve_hdr else None,
+            # WHY: Only use HDR pipe when clips actually contain HDR content.
+            # When all clips are SDR, _get_dominant_hdr_type defaults to "hlg"
+            # but piping SDR as yuv420p10le causes shape mismatches on Linux.
+            hdr_type=ctx.hdr_type
+            if self.settings.preserve_hdr and any(t is not None for t in ctx.clip_hdr_types)
+            else None,
             scale_mode=self.settings.scale_mode,
             progress_callback=progress_callback,
         )
