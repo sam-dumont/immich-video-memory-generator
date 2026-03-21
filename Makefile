@@ -140,7 +140,8 @@ test-integration-auth:  ## Run ONLY auth integration tests (~10s, no external de
 
 test-integration-audio:  ## Run ONLY audio ML tests (~2min, needs demucs/acestep packages)
 	uv run pytest tests/integration/audio/ -v -m integration --log-cli-level=INFO --tb=short \
-		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/audio-coverage.xml --cov-fail-under=0
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/audio-coverage.xml --cov-fail-under=0 \
+		--junitxml=tests/audio-junit.xml
 
 test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immich), saves per-suite coverage XMLs
 	$(MAKE) test-integration-auth
@@ -153,7 +154,7 @@ test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immic
 	@# Merge per-suite JUnit XMLs into one (no re-run needed)
 	@python3 scripts/merge_junit_xml.py tests/integration-junit.xml \
 		tests/auth-junit.xml tests/assembly-junit.xml tests/photos-junit.xml \
-		tests/pipeline-junit.xml tests/live-photos-junit.xml 2>/dev/null || true
+		tests/pipeline-junit.xml tests/live-photos-junit.xml tests/audio-junit.xml 2>/dev/null || true
 	@echo ""
 	@echo "═══════════════════════════════════════════════════"
 	@echo "  INTEGRATION TEST PERFORMANCE REPORT"
