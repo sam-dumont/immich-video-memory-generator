@@ -43,10 +43,15 @@ iPhone photos include an HDR gain map stored as an auxiliary image in the HEIF c
 
 - Base image: 8-bit SDR with Display P3 color space
 - Gain map: grayscale map indicating per-pixel brightness boost
-- Formula: `HDR = SDR_linear × (1 + (headroom - 1) × gainmap_linear)`
+- Headroom is extracted per-photo from EXIF MakerNote metadata (tag 0x0021)
+- Formula: `HDR_linear = SDR_linear × 2^(gain × headroom)`
 - Output: HEVC 10-bit PQ/BT.2020 (HDR10)
 
-Processed via the `apple-hdr-heic` library with `colour-science` for accurate colorimetry.
+The headroom value varies per photo depending on scene brightness (e.g. 0.74 for low-light, 1.69 for direct sunlight). This ensures accurate HDR brightness matching the original HEIC.
+
+:::tip Optional: exiftool fallback
+If the EXIF MakerNote parsing fails, the system falls back to [exiftool](https://exiftool.org/) for headroom extraction. exiftool is not required — it's only used as a safety net. Install it via `brew install exiftool` (macOS) or `apt install libimage-exiftool-perl` (Debian/Ubuntu).
+:::
 
 ### Ultra HDR (Android/Pixel)
 Android Ultra HDR JPEGs (ISO 21496-1) embed a gain map as an MPF secondary image with `hdrgm` XMP metadata. The reconstruction formula supports per-channel gamma, display-adaptive weight, and configurable offsets.

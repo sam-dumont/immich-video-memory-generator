@@ -144,6 +144,13 @@ FFmpeg
   Copyright: FFmpeg developers
   URL: https://ffmpeg.org/
 
+ExifTool (optional — HDR headroom fallback)
+  License: Perl Artistic License / GPL-1.0+
+  Copyright: Phil Harvey
+  URL: https://exiftool.org/
+  Note: Only invoked as subprocess when built-in MakerNote parser fails.
+        Not bundled or required.
+
 
 Bundled Fonts (SIL Open Font License 1.1)
 -----------------------------------------
