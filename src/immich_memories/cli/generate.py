@@ -643,6 +643,7 @@ def register_generate_commands(main: click.Group) -> None:
         default=False,
         help="Generate a video for every detected trip (use with --memory-type trip)",
     )
+    @click.option("--quiet", is_flag=True, help="Suppress interactive progress, emit log lines")
     @click.pass_context
     def generate(
         ctx: click.Context,
@@ -681,6 +682,7 @@ def register_generate_commands(main: click.Group) -> None:
         analysis_depth: str | None,
         trip_index: int | None,
         all_trips: bool,
+        quiet: bool,
     ) -> None:
         """Generate a video compilation.
 
@@ -826,8 +828,10 @@ def register_generate_commands(main: click.Group) -> None:
             music_volume=music_volume,
             no_music=no_music,
         )
-        console.print(table)
-        console.print()
+        show_interactive = not quiet and sys.stdout.isatty()
+        if show_interactive:
+            console.print(table)
+            console.print()
 
         if dry_run:
             print_info("Dry run - no video will be generated")

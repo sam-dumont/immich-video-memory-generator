@@ -359,6 +359,91 @@ class TestClipLocationName:
         assert clip_location_name(None) is None
 
 
+class TestPhaseAllocation:
+    """Dynamic phase allocation scales assembly progress into the extract→music range."""
+
+    def test_make_assembly_callback_scales_progress(self):
+        """Assembly callback should map 0.0-1.0 into the assembly phase range."""
+        from immich_memories.generate import _make_assembly_callback
+
+        calls: list[tuple[str, float, str]] = []
+
+        def on_progress(phase: str, pct: float, msg: str) -> None:
+            calls.append((phase, pct, msg))
+
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/out.mp4"),
+            config=Config(),
+            progress_callback=on_progress,
+        )
+        clip_count = 10
+        cb = _make_assembly_callback(params, clip_count)
+        assert cb is not None
+
+        # Simulate assembly progress at 0%, 50%, 100%
+        cb(0.0, "Starting")
+        cb(0.5, "Halfway")
+        cb(1.0, "Done")
+
+        # All calls should be in the "assemble" phase
+        assert all(phase == "assemble" for phase, _, _ in calls)
+        # Progress values: start > 0 (after extraction) and end < 1 (before music)
+        assert calls[0][1] > 0.0
+        assert calls[-1][1] < 1.0
+        # At 0% assembly progress, should be at the extraction→assembly boundary
+        # At 100%, should be at the assembly→music boundary
+        assert calls[0][1] < calls[-1][1]
+        # Should be monotonically increasing
+        pcts = [pct for _, pct, _ in calls]
+        assert pcts == sorted(pcts)
+
+    def test_make_assembly_callback_returns_none_without_progress(self):
+        """If no progress_callback on params, assembly callback should be None."""
+        from immich_memories.generate import _make_assembly_callback
+
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/out.mp4"),
+            config=Config(),
+        )
+        assert _make_assembly_callback(params, 5) is None
+
+
+class TestQuietModeProgressCallback:
+    """Quiet mode should produce structured log lines instead of Rich progress."""
+
+    def test_quiet_progress_emits_structured_logs(self):
+        """Quiet-mode callback emits structured key=value log lines."""
+        from immich_memories.cli._progress import make_quiet_progress_callback
+
+        log_lines: list[str] = []
+        cb = make_quiet_progress_callback(log_fn=log_lines.append)
+
+        cb("extract", 0.3, "Downloading clip_001.mp4")
+        cb("assemble", 0.7, "Encoding (1:30 / 3:00) — 50%")
+
+        assert len(log_lines) == 2
+        assert "phase=extract" in log_lines[0]
+        assert "pct=30" in log_lines[0]
+        assert "phase=assemble" in log_lines[1]
+        assert "pct=70" in log_lines[1]
+
+    def test_quiet_progress_throttles_updates(self):
+        """Quiet callback throttles to avoid spamming logs."""
+        from immich_memories.cli._progress import make_quiet_progress_callback
+
+        log_lines: list[str] = []
+        cb = make_quiet_progress_callback(log_fn=log_lines.append, min_interval=10.0)
+
+        # Rapid fire — only first should go through due to throttle
+        for i in range(100):
+            cb("assemble", i / 100, f"Frame {i}")
+
+        # Should have at most a few lines, not 100
+        assert len(log_lines) < 10
+
+
 class TestApplyMusicFileAtomic:
     """_apply_music_file must use atomic replace for crash-safe swap."""
 

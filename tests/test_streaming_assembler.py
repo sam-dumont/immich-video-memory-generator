@@ -691,3 +691,125 @@ class TestMakeDecoderIntegration:
 
         assert decoder._privacy_blur is False
         assert "gblur" not in decoder._build_vf()
+
+
+@requires_ffmpeg
+class TestStreamingProgressCallback:
+    """Verify streaming assembly reports per-frame progress during encoding."""
+
+    def test_assemble_streaming_fires_progress(self, tmp_path: object) -> None:
+        """assemble_streaming should call progress_callback with frame-level progress."""
+        tmp = Path(str(tmp_path))
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import assemble_streaming
+
+        clip_path = tmp / "clip.mp4"
+        subprocess.run(  # noqa: S603, S607
+            [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=320x240:rate=10:duration=2",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                str(clip_path),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=10,
+        )
+        clips = [AssemblyClip(path=clip_path, duration=2.0, asset_id="test-0")]
+        progress_calls: list[tuple[int, int]] = []
+
+        output = tmp / "output.mp4"
+        assemble_streaming(
+            clips=clips,
+            transitions=[],
+            output_path=output,
+            width=320,
+            height=240,
+            fps=10,
+            encoder_args=[
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "28",
+                "-pix_fmt",
+                "yuv420p",
+            ],
+            progress_callback=lambda f, t: progress_calls.append((f, t)),
+        )
+        assert output.exists()
+        assert len(progress_calls) > 0
+        assert all(frame >= 0 for frame, _ in progress_calls)
+
+    def test_full_fires_granular_progress(self, tmp_path: object) -> None:
+        """streaming_assemble_full should fire more than 3 discrete events."""
+        tmp = Path(str(tmp_path))
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import streaming_assemble_full
+
+        clips = []
+        for i in range(2):
+            p = tmp / f"clip_{i}.mp4"
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc2=size=320x240:rate=10:duration=2",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    f"sine=frequency={440 + i * 220}:duration=2",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "ultrafast",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "64k",
+                    "-shortest",
+                    str(p),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=10,
+            )
+            clips.append(AssemblyClip(path=p, duration=2.0, asset_id=f"test-{i}"))
+
+        progress_calls: list[tuple[float, str]] = []
+        output = tmp / "final.mp4"
+        streaming_assemble_full(
+            clips=clips,
+            transitions=["fade"],
+            output_path=output,
+            width=320,
+            height=240,
+            fps=10,
+            fade_duration=0.3,
+            encoder_args=[
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "28",
+                "-pix_fmt",
+                "yuv420p",
+            ],
+            progress_callback=lambda p, m: progress_calls.append((p, m)),
+        )
+        assert output.exists()
+        assert len(progress_calls) > 3
+        intermediate = [pct for pct, _ in progress_calls if 0.05 < pct < 0.85]
+        assert len(intermediate) > 0
