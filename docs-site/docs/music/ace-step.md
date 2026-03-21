@@ -28,7 +28,9 @@ ACE-Step runs in two modes:
 ## Local Setup (lib mode)
 
 ```bash
-pip install 'immich-memories[ace-step]'
+# ACE-Step is not on PyPI — install directly from GitHub
+pip install 'ace-step @ git+https://github.com/ace-step/ACE-Step.git'
+pip install 'torchcodec>=0.1'
 ```
 
 ```yaml
