@@ -267,7 +267,17 @@ class OutputConfig(BaseModel):
     format: Literal["mp4", "mov"] = "mp4"
     resolution: Literal["720p", "1080p", "4k"] = "1080p"
     codec: Literal["h264", "h265", "prores"] = "h264"
-    crf: int = Field(default=18, ge=0, le=51)
+    quality: Literal["high", "medium", "low"] = "high"
+    crf: int | None = Field(default=None, ge=0, le=51)
+
+    @property
+    def effective_crf(self) -> int:
+        """CRF derived from quality preset, or explicit override if set."""
+        if self.crf is not None:
+            return self.crf
+        from immich_memories.processing.hdr_utilities import quality_to_crf
+
+        return quality_to_crf(self.quality)
 
     @property
     def output_path(self) -> Path:

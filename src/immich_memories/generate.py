@@ -776,7 +776,7 @@ def _build_assembly_settings(
     return AssemblySettings(
         transition=transition_type,
         transition_duration=params.transition_duration,
-        output_crf=params.output_crf or config.output.crf,
+        output_crf=params.output_crf or config.output.effective_crf,
         auto_resolution=auto_resolution,
         target_resolution=target_resolution,
         title_screens=title_screen_settings,
@@ -857,7 +857,7 @@ def _create_assembler(settings: AssemblySettings, run_id: str, config: Config):
     return VideoAssembler(
         settings,
         run_id=run_id,
-        output_crf=config.output.crf,
+        output_crf=config.output.effective_crf,
         default_transition_duration=config.defaults.transition_duration,
         default_resolution=config.output.resolution_tuple,
         db_path=Path(config.cache.database).expanduser(),

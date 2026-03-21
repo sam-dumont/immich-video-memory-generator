@@ -555,6 +555,13 @@ def register_generate_commands(main: click.Group) -> None:
         default="mp4",
         help="Output format",
     )
+    @click.option(
+        "--quality",
+        "-q",
+        type=click.Choice(["high", "medium", "low"]),
+        default=None,
+        help="Output quality (default: from config, typically high)",
+    )
     @click.option("--output", "-O", type=click.Path(), help="Output file path")
     @click.option(
         "--music",
@@ -656,6 +663,7 @@ def register_generate_commands(main: click.Group) -> None:
         resolution: str,
         music_volume: float,
         output_format: str,
+        quality: str | None,
         output: str | None,
         music: str | None,
         no_music: bool,
@@ -694,6 +702,12 @@ def register_generate_commands(main: click.Group) -> None:
         from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
         config = ctx.obj["config"]
+
+        # CLI quality flag overrides config
+        if quality:
+            config.output.quality = quality
+            config.output.crf = None  # Let quality preset determine CRF
+
         person_names = list(person) if person else []
 
         if not config.immich.url or not config.immich.api_key:
