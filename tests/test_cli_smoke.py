@@ -202,6 +202,26 @@ class TestCLIMemoryTypeResolve:
         assert result.exit_code != 0
 
 
+class TestQuietFlag:
+    """Test --quiet flag appears and is accepted."""
+
+    def test_quiet_in_help(self):
+        """generate --help shows --quiet flag."""
+        result = _invoke(["generate", "--help"])
+        assert "--quiet" in result.output
+
+    def test_quiet_dry_run(self):
+        """--quiet flag accepted with dry run."""
+        config = Config()
+        config.immich.url = "http://immich:2283"
+        config.immich.api_key = "test-key"
+        result = _invoke(
+            ["generate", "--year", "2024", "--dry-run", "--quiet"],
+            config=config,
+        )
+        assert result.exit_code == 0
+
+
 class TestPreflightCommand:
     """Test preflight command with real checks (no mocks)."""
 

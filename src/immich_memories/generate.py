@@ -162,6 +162,33 @@ def _report(params: GenerationParams, phase: str, progress: float, msg: str) -> 
         params.progress_callback(phase, progress, msg)
 
 
+def _make_assembly_callback(
+    params: GenerationParams, clip_count: int
+) -> Callable[[float, str], None] | None:
+    """Create a 2-arg callback that scales assembly progress into the overall pipeline range.
+
+    The assembly phase occupies the range between extraction and music phases.
+    Uses workload-based estimates to calculate phase boundaries.
+    """
+    if not params.progress_callback:
+        return None
+
+    # WHY: Estimate relative time for each phase to allocate proportional progress
+    est_download = clip_count * 3.0
+    est_assembly = clip_count * 8.0
+    est_music = 120.0
+    total_est = est_download + est_assembly + est_music
+
+    phase_start = est_download / total_est
+    phase_end = (est_download + est_assembly) / total_est
+
+    def assembly_cb(pct: float, msg: str) -> None:
+        scaled = phase_start + pct * (phase_end - phase_start)
+        _report(params, "assemble", scaled, msg)
+
+    return assembly_cb
+
+
 def generate_memory(params: GenerationParams) -> Path:
     """Run the full video generation pipeline synchronously.
 
@@ -243,12 +270,18 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
             )
 
         # Phase 2: Assemble
-        _report(params, "assemble", 0.7, "Assembling final video...")
+        assembly_cb = _make_assembly_callback(params, len(assembly_clips))
+        if assembly_cb:
+            assembly_cb(0.0, "Assembling final video...")
+        else:
+            _report(params, "assemble", 0.7, "Assembling final video...")
         run_tracker.start_phase("assembly", len(assembly_clips))
 
         settings = _build_assembly_settings(params, assembly_clips)
         assembler = _create_assembler(settings, run_id, params.config)
-        result_path = assembler.assemble_with_titles(assembly_clips, result_output_path)
+        result_path = assembler.assemble_with_titles(
+            assembly_clips, result_output_path, assembly_cb
+        )
         run_tracker.complete_phase(items_processed=len(assembly_clips))
 
         # Phase 3: Music

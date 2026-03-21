@@ -318,13 +318,24 @@ def _emit_body_frames(
     active_iter: Iterator[np.ndarray],
     count: int,
     encoder: StreamingEncoder,
-) -> None:
-    """Write body frames (straight passthrough, no blending) to the encoder."""
+    progress_callback: Callable[[int, int], None] | None = None,
+    frames_written: int = 0,
+    total_frames: int = 0,
+    report_interval: int = 1,
+) -> int:
+    """Write body frames to the encoder, optionally reporting progress.
+
+    Returns the updated frames_written count.
+    """
     for _ in range(max(count, 0)):
         frame = next(active_iter, None)
         if frame is None:
             break
         encoder.write_frame(frame)
+        frames_written += 1
+        if progress_callback and frames_written % report_interval == 0:
+            progress_callback(frames_written, total_frames)
+    return frames_written
 
 
 def _emit_crossfade(
@@ -440,6 +451,29 @@ def _make_decoder(
     )
 
 
+def _estimate_total_frames(
+    clips: list, transitions: list[str], fps: int, fade_duration: float
+) -> int:
+    """Estimate total output frames accounting for crossfade overlap."""
+    fade_frames = int(fade_duration * fps)
+    total = sum(int(c.duration * fps) for c in clips)
+    fade_count = sum(1 for t in transitions if t == "fade")
+    return max(1, total - fade_count * fade_frames)
+
+
+def _alloc_blend_bufs(
+    width: int, height: int, hdr_type: str | None
+) -> tuple[np.ndarray, np.ndarray]:
+    """Allocate blend and temp buffers for crossfade blending."""
+    if hdr_type:
+        # WHY: yuv420p10le is flat uint16 — W*H*3 bytes = W*H*3/2 uint16 samples
+        n = width * height * 3 // 2
+        return np.zeros(n, dtype=np.uint16), np.zeros(n, dtype=np.uint16)
+    return np.zeros((height, width, 3), dtype=np.uint8), np.zeros(
+        (height, width, 3), dtype=np.uint8
+    )
+
+
 def assemble_streaming(
     clips: list,
     transitions: list[str],
@@ -453,6 +487,7 @@ def assemble_streaming(
     privacy_mode: bool = False,
     hdr_type: str | None = None,
     scale_mode: str = "blur",
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> None:
     """Assemble clips via streaming frame blending. Constant memory.
 
@@ -468,71 +503,120 @@ def assemble_streaming(
         raise ValueError(f"Expected {len(clips) - 1} transitions, got {len(transitions)}")
 
     fade_frames = int(fade_duration * fps)
+    total_frames = _estimate_total_frames(clips, transitions, fps, fade_duration)
     encoder = StreamingEncoder(
         output_path, width, height, fps, encoder_args=encoder_args, hdr_type=hdr_type
     )
     encoder.start()
-
-    if hdr_type:
-        # WHY: yuv420p10le is flat uint16 — W*H*3 bytes = W*H*3/2 uint16 samples
-        n_samples = width * height * 3 // 2
-        blend_buf = np.zeros(n_samples, dtype=np.uint16)
-        temp_buf = np.zeros(n_samples, dtype=np.uint16)
-    else:
-        blend_buf = np.zeros((height, width, 3), dtype=np.uint8)
-        temp_buf = np.zeros((height, width, 3), dtype=np.uint8)
-
-    active_iter: Iterator[np.ndarray] | None = None
-    skip_frames = 0
+    blend_buf, temp_buf = _alloc_blend_bufs(width, height, hdr_type)
+    # WHY: Throttle callbacks to every ~0.5s worth of frames to avoid UI overhead
+    report_interval = max(1, fps // 2)
 
     try:
-        for clip_idx, clip in enumerate(clips):
-            if active_iter is None:
-                decoder = _make_decoder(
-                    clip, clip_idx, width, height, fps, ctx, privacy_mode, scale_mode, hdr_type
-                )
-                active_iter = iter(decoder)
-
-            clip_frames = int(clip.duration * fps)
-            has_fade_out = clip_idx < len(transitions) and transitions[clip_idx] == "fade"
-            body_frames = clip_frames - skip_frames - (fade_frames if has_fade_out else 0)
-
-            _emit_body_frames(active_iter, body_frames, encoder)
-
-            if has_fade_out and clip_idx + 1 < len(clips):
-                next_decoder = _make_decoder(
-                    clips[clip_idx + 1],
-                    clip_idx + 1,
-                    width,
-                    height,
-                    fps,
-                    ctx,
-                    privacy_mode,
-                    scale_mode,
-                    hdr_type,
-                )
-                next_iter = iter(next_decoder)
-                _emit_crossfade(
-                    active_iter,
-                    next_iter,
-                    fade_frames,
-                    encoder,
-                    blend_buf,
-                    temp_buf,
-                    height,
-                    width,
-                )
-                active_iter = next_iter
-                skip_frames = fade_frames
-            else:
-                active_iter = None
-                skip_frames = 0
-
+        _encode_clip_sequence(
+            clips,
+            transitions,
+            encoder,
+            fade_frames,
+            total_frames,
+            report_interval,
+            blend_buf,
+            temp_buf,
+            width,
+            height,
+            fps,
+            ctx,
+            privacy_mode,
+            scale_mode,
+            hdr_type,
+            progress_callback,
+        )
         encoder.finish()
+        if progress_callback:
+            progress_callback(total_frames, total_frames)
         logger.info(f"Streaming assembly complete: {len(clips)} clips → {output_path.name}")
     except Exception:
         encoder.finish()
         raise
+
+
+def _encode_clip_sequence(
+    clips: list,
+    transitions: list[str],
+    encoder: StreamingEncoder,
+    fade_frames: int,
+    total_frames: int,
+    report_interval: int,
+    blend_buf: np.ndarray,
+    temp_buf: np.ndarray,
+    width: int,
+    height: int,
+    fps: int,
+    ctx: Any | None,
+    privacy_mode: bool,
+    scale_mode: str,
+    hdr_type: str | None,
+    progress_callback: Callable[[int, int], None] | None,
+) -> int:
+    """Encode all clips with transitions, tracking frame count for progress."""
+    active_iter: Iterator[np.ndarray] | None = None
+    skip_frames = 0
+    frames_written = 0
+
+    for clip_idx, clip in enumerate(clips):
+        if active_iter is None:
+            decoder = _make_decoder(
+                clip, clip_idx, width, height, fps, ctx, privacy_mode, scale_mode, hdr_type
+            )
+            active_iter = iter(decoder)
+
+        clip_frames = int(clip.duration * fps)
+        has_fade_out = clip_idx < len(transitions) and transitions[clip_idx] == "fade"
+        body_frames = clip_frames - skip_frames - (fade_frames if has_fade_out else 0)
+
+        frames_written = _emit_body_frames(
+            active_iter,
+            body_frames,
+            encoder,
+            progress_callback,
+            frames_written,
+            total_frames,
+            report_interval,
+        )
+
+        if has_fade_out and clip_idx + 1 < len(clips):
+            next_decoder = _make_decoder(
+                clips[clip_idx + 1],
+                clip_idx + 1,
+                width,
+                height,
+                fps,
+                ctx,
+                privacy_mode,
+                scale_mode,
+                hdr_type,
+            )
+            next_iter = iter(next_decoder)
+            _emit_crossfade(
+                active_iter,
+                next_iter,
+                fade_frames,
+                encoder,
+                blend_buf,
+                temp_buf,
+                height,
+                width,
+            )
+            frames_written += fade_frames
+            if progress_callback:
+                progress_callback(frames_written, total_frames)
+            active_iter = next_iter
+            skip_frames = fade_frames
+        else:
+            active_iter = None
+            skip_frames = 0
+
+    return frames_written
 
 
 def _build_audio_filter_graph(
@@ -786,6 +870,21 @@ def streaming_assemble_full(
         if progress_callback:
             progress_callback(0.05, "Streaming video assembly...")
 
+        # WHY: Scale frame-level progress into [0.05, 0.85) range so the caller
+        # sees continuous updates during the heavy encode phase.
+        def _frame_progress(frames_done: int, frames_total: int) -> None:
+            if progress_callback and frames_total > 0:
+                frac = frames_done / frames_total
+                scaled = 0.05 + frac * 0.80
+                total_secs = frames_total / fps if fps > 0 else 0
+                done_secs = frames_done / fps if fps > 0 else 0
+                time_done = f"{int(done_secs // 60)}:{int(done_secs % 60):02d}"
+                time_total = f"{int(total_secs // 60)}:{int(total_secs % 60):02d}"
+                progress_callback(
+                    scaled,
+                    f"Encoding ({time_done} / {time_total}) — {frac * 100:.0f}%",
+                )
+
         assemble_streaming(
             clips=clips,
             transitions=transitions,
@@ -799,6 +898,7 @@ def streaming_assemble_full(
             privacy_mode=privacy_mode,
             hdr_type=hdr_type,
             scale_mode=scale_mode,
+            progress_callback=_frame_progress,
         )
 
         if progress_callback:
