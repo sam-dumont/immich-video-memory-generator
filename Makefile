@@ -188,14 +188,12 @@ test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immic
 playwright-install:  ## Install Playwright browsers for E2E tests
 	uv run playwright install chromium
 
-e2e:  ## Run Playwright E2E tests (auto-starts UI if needed, needs local config)
+e2e:  ## Run Playwright E2E tests (auto-starts UI under coverage, needs local config)
 	uv run pytest tests/e2e/ -v -m e2e --log-cli-level=INFO --tb=short \
-		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/e2e-coverage.xml --cov-fail-under=0 \
 		--junitxml=tests/e2e-junit.xml
 
-screenshots:  ## Capture UI screenshots in light + dark mode
+screenshots:  ## Capture UI screenshots in light + dark mode (coverage from server subprocess)
 	uv run pytest tests/e2e/test_screenshots.py -v -m e2e --log-cli-level=INFO --tb=short \
-		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/e2e-coverage.xml --cov-fail-under=0 \
 		--junitxml=tests/e2e-junit.xml
 
 mutation:  ## Run mutation testing (slow — weekly CI or local deep validation)

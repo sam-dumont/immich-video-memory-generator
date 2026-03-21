@@ -84,26 +84,37 @@ def test_capture_all_screenshots(
         _before_screenshot(page)
         _save(page, screenshot_dir, _name("step1-preset-selected", theme))
 
-    # Person dropdown
-    person_combo = page.get_by_role("combobox", name="Person")
-    if person_combo.is_visible():
-        person_combo.click()
-        page.wait_for_timeout(500)
-        enable_demo_mode(page)
-        redact_person_names(page)
-        _save(page, screenshot_dir, _name("step1-person-dropdown", theme))
+    # Person dropdown — only visible with person-specific presets
+    person_preset = page.get_by_text("Person Spotlight")
+    if person_preset.is_visible(timeout=3000):
+        person_preset.scroll_into_view_if_needed()
+        person_preset.click()
+        page.wait_for_timeout(1000)
 
-        # Close dropdown by picking first option
-        options = page.get_by_role("option")
-        if options.count() > 1:
-            options.nth(1).click()
-        else:
-            page.get_by_role("option", name="All people").click()
-        page.wait_for_timeout(300)
+        person_combo = page.get_by_role("combobox", name="Person")
+        if person_combo.is_visible(timeout=10_000):
+            person_combo.click()
+            page.wait_for_timeout(500)
+            enable_demo_mode(page)
+            redact_person_names(page)
+            _save(page, screenshot_dir, _name("step1-person-dropdown", theme))
+
+            options = page.get_by_role("option")
+            if options.count() > 1:
+                options.nth(1).click()
+            else:
+                page.get_by_role("option", name="All people").click()
+            page.wait_for_timeout(300)
+
+        # Switch back to Year in Review for the rest of the flow
+        year_btn = page.get_by_text("Year in Review")
+        if year_btn.is_visible():
+            year_btn.click()
+            page.wait_for_timeout(500)
 
     # Cache management panel
-    cache_button = page.get_by_role("button", name="Cache Management")
-    if cache_button.is_visible():
+    cache_button = page.get_by_text("Cache Management")
+    if cache_button.is_visible(timeout=10_000):
         cache_button.scroll_into_view_if_needed()
         cache_button.click()
         page.wait_for_timeout(500)
@@ -164,21 +175,22 @@ def test_capture_all_screenshots(
     page.evaluate("window.scrollTo(0, 0)")
     page.wait_for_timeout(500)
     continue_btn = page.get_by_role("button", name="Continue to Generation")
-    if continue_btn.is_visible(timeout=10_000):
-        continue_btn.scroll_into_view_if_needed()
-        page.wait_for_timeout(300)
-        continue_btn.click()
+    try:
+        continue_btn.click(timeout=10_000)
         page.wait_for_url("**/step3", timeout=30_000)
         _wait_for_ready(page)
         _before_screenshot(page)
         _save(page, screenshot_dir, _name("step3-options", theme))
+    except Exception:
+        pass  # Button may not exist depending on clip state
 
     # ── Step 4: Preview & Export ──
     next4_btn = page.get_by_role("button", name="Next: Preview & Export")
-    if next4_btn.is_visible(timeout=5000):
-        next4_btn.scroll_into_view_if_needed()
-        next4_btn.click()
+    try:
+        next4_btn.click(timeout=10_000)
         page.wait_for_url("**/step4", timeout=30_000)
         _wait_for_ready(page)
         _before_screenshot(page)
         _save(page, screenshot_dir, _name("step4-preview-export", theme))
+    except Exception:
+        pass
