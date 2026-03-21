@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import struct
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +44,90 @@ _FFMPEG_NATIVE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", "
 
 # Extensions that need pillow-heif conversion
 _HEIF_EXTENSIONS = {".heic", ".heif", ".avif"}
+
+
+_DEFAULT_HEADROOM = 2.3
+_APPLE_MAKERNOTE_HEADER = b"Apple iOS"
+_HDR_HEADROOM_TAG = 0x0021
+_SRATIONAL_TYPE = 10
+
+
+def _extract_apple_headroom(makernote: bytes | None, source_path: Path) -> float:
+    """Extract HDR headroom from Apple EXIF MakerNote, with exiftool fallback.
+
+    Apple stores per-photo headroom in MakerNote tag 0x0021 (SRATIONAL).
+    This value varies by scene (not device) — e.g. 0.74 for low-light,
+    1.69 for bright sunlight. Falls back to exiftool, then to 2.3.
+    """
+    if makernote and makernote.startswith(_APPLE_MAKERNOTE_HEADER):
+        result = _parse_makernote_headroom(makernote)
+        if result is not None:
+            return result
+
+    return _exiftool_headroom(source_path)
+
+
+def _parse_makernote_headroom(mn: bytes) -> float | None:
+    """Parse HDRHeadroom (tag 0x0021) from Apple MakerNote TIFF IFD.
+
+    Apple MakerNote layout:
+      - 14-byte header: 'Apple iOS\\x00\\x00\\x01MM'
+      - Standard big-endian TIFF IFD (entry count + 12-byte entries)
+      - Value offsets are relative to byte 0 of the MakerNote blob
+    """
+    if len(mn) < 16:
+        return None
+
+    try:
+        entry_count = struct.unpack(">H", mn[14:16])[0]
+    except struct.error:
+        return None
+
+    pos = _find_ifd_tag(mn, entry_count, _HDR_HEADROOM_TAG, _SRATIONAL_TYPE)
+    if pos is None:
+        return None
+
+    offset = struct.unpack(">I", mn[pos + 8 : pos + 12])[0]
+    if offset + 8 > len(mn):
+        return None
+    num, den = struct.unpack(">ii", mn[offset : offset + 8])
+    # WHY: SRATIONAL allows negative — reject nonsensical headroom
+    if den == 0 or num / den <= 0:
+        return None
+    return num / den
+
+
+def _find_ifd_tag(mn: bytes, entry_count: int, tag_id: int, expected_type: int) -> int | None:
+    """Find an IFD entry by tag ID, returning its byte position or None."""
+    ifd_start = 16
+    for i in range(entry_count):
+        pos = ifd_start + i * 12
+        if pos + 12 > len(mn):
+            return None
+        tag, dtype, count = struct.unpack(">HHI", mn[pos : pos + 8])
+        if tag == tag_id and dtype == expected_type and count == 1:
+            return pos
+    return None
+
+
+def _exiftool_headroom(source_path: Path) -> float:
+    """Fallback: extract HDRHeadroom via exiftool subprocess."""
+    try:
+        result = subprocess.run(
+            ["exiftool", "-Apple:HDRHeadroom", "-n", str(source_path)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and "HDR Headroom" in result.stdout:
+            value_str = result.stdout.split(":")[-1].strip()
+            headroom = float(value_str)
+            logger.info(f"exiftool headroom for {source_path.name}: {headroom:.2f}")
+            return headroom
+    except (FileNotFoundError, ValueError, subprocess.TimeoutExpired):
+        pass
+
+    return _DEFAULT_HEADROOM
 
 
 @dataclass
@@ -173,8 +258,14 @@ def _convert_heif(source_path: Path, work_dir: Path) -> PreparedPhoto:
     if gain_map_key:
         # aux_data values are lists of item IDs — pass the first item ID
         gain_map_item_id = aux_data[gain_map_key][0]
+
+        # Extract per-photo headroom from Apple MakerNote
+        makernote = img.getexif().get_ifd(0x8769).get(0x927C)
+        headroom = _extract_apple_headroom(makernote, source_path)
         try:
-            return _apply_hdr_gain_map(img, primary, gain_map_item_id, w, h, work_dir, source_path)
+            return _apply_hdr_gain_map(
+                img, primary, gain_map_item_id, w, h, work_dir, source_path, headroom
+            )
         except Exception as e:
             logger.warning(f"Gain map extraction failed, falling back to SDR: {e}")
 
@@ -201,19 +292,13 @@ def _apply_hdr_gain_map(
     h: int,
     work_dir: Path,
     source_path: Path,
+    headroom: float = _DEFAULT_HEADROOM,
 ) -> PreparedPhoto:
     """Apply Apple HDR gain map to SDR base → 16-bit linear HDR PNG.
 
     Apple stores iPhone photos as 8-bit SDR (gamma-encoded) + logarithmic
     gain map. The gain must be applied in LINEAR light, not gamma space.
-
-    Steps:
-    1. Inverse sRGB gamma → linear SDR
-    2. Apply gain: HDR_linear = SDR_linear * 2^(gain * headroom)
-    3. Save as 16-bit PNG (linear values)
-    4. FFmpeg zscale transferin=linear → PQ is then correct
-
-    Headroom ≈ 2.3 (log2(1000/203) for ~1000 nit peak).
+    Headroom is extracted per-photo from the EXIF MakerNote (tag 0x0021).
     """
     import numpy as np
     from PIL import Image
@@ -234,15 +319,12 @@ def _apply_hdr_gain_map(
     )
 
     # Step 2: apply gain in linear space
-    # WHY: headroom=2.3 maps SDR white (203 nits) to ~1000 nit peak
-    headroom = 2.3
     hdr_gain = np.power(2.0, gain_arr * headroom)
     hdr_linear = sdr_linear * hdr_gain[:, :, np.newaxis]
 
     # Normalize for uint16 storage: map HDR range into 0-1
-    # SDR white (1.0 linear) → 0.2, peak (~5.0 linear) → 1.0
-    # zscale npl must be set to PEAK_LINEAR * 203 = 1015 nits
-    peak_linear = 2**headroom  # ~4.93 (= 1000/203 nits)
+    # WHY: peak_linear = 2^headroom; npl = peak_linear * 203 nits
+    peak_linear = 2**headroom
     hdr_arr = np.clip(hdr_linear / peak_linear, 0, 1)
 
     # Save as 16-bit PNG (cv2 handles 16-bit natively)
@@ -264,7 +346,7 @@ def _apply_hdr_gain_map(
     peak_nits = int(peak_linear * 203)
     logger.info(
         f"Applied HDR gain map to {source_path.name} ({w}x{h}), "
-        f"gain range {hdr_gain.min():.1f}×–{hdr_gain.max():.1f}×, peak={peak_nits} nits"
+        f"headroom={headroom:.2f}, peak={peak_nits} nits"
     )
 
     return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=True, peak_nits=peak_nits)

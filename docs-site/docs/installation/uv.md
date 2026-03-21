@@ -52,6 +52,16 @@ uv sync --extra all
 uv sync --extra all-mac
 ```
 
+## Optional System Dependencies
+
+These are **not required** but improve specific features:
+
+| Tool | What it does | Install |
+|------|-------------|---------|
+| [exiftool](https://exiftool.org/) | Fallback for HDR headroom extraction from Apple HEIC photos | `brew install exiftool` (macOS) / `apt install libimage-exiftool-perl` (Debian) |
+
+The primary HDR headroom parser is pure Python — exiftool is only called if the built-in parser fails on an unusual HEIC file.
+
 ## Install uv
 
 If you don't have uv yet:

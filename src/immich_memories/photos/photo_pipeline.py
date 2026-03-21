@@ -330,10 +330,8 @@ def _render_single_photo(
 
         # Stream-render to mp4 (O(1) memory — one frame at a time)
         output_path = work_dir / f"{asset.id}_photo.mp4"
-        # Peak nits comes from gain map normalization:
-        # Apple HEIC: ~1000 nits (headroom=2.3, 2^2.3 * 203 ≈ 1000)
-        # UltraHDR: 2^hdr_capacity_max * 203 (varies per image)
-        # The peak is baked into the 16-bit normalization — npl must match
+        # WHY: peak_nits = 2^headroom * 203 — varies per photo, baked into
+        # the 16-bit normalization. zscale npl must match.
         peak_nits = getattr(prepared, "peak_nits", 1000) if prepared.has_gain_map else 203
         _stream_render_to_mp4(
             img,
@@ -394,7 +392,7 @@ def _stream_render_to_mp4(
             f"zscale=t=arib-std-b67:tin=linear"
             f":p=bt2020:pin=bt709"
             f":m=bt2020nc:min=bt709"
-            f":npl={peak_nits}:agamma=false"
+            f":npl={peak_nits}"
             f",format=yuv420p10le"
         )
     else:
@@ -404,7 +402,7 @@ def _stream_render_to_mp4(
             "zscale=t=arib-std-b67:tin=iec61966-2-1"
             ":p=bt2020:pin=bt709"
             ":m=bt2020nc:min=bt709"
-            ":npl=203:agamma=false"
+            ":npl=203"
             ",format=yuv420p10le"
         )
 
