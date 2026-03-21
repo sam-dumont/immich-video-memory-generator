@@ -82,6 +82,7 @@ class VideoDownloadCache:
         try:
             client.download_asset(download_id, dest)
             if dest.exists() and dest.stat().st_size > 0:
+                self.evict_if_over_limit()
                 return dest
             logger.warning("Downloaded file empty or missing: %s", dest)
             dest.unlink(missing_ok=True)
@@ -212,4 +213,33 @@ class VideoDownloadCache:
             if f.is_file() and f.stat().st_mtime < cutoff:
                 f.unlink(missing_ok=True)
                 count += 1
+        return count
+
+    def evict_if_over_limit(self) -> int:
+        """Remove oldest files until cache is under max_size_gb. Returns count removed."""
+        if not self.cache_dir.exists():
+            return 0
+
+        max_bytes = self.max_size_gb * 1_073_741_824  # 1 GB in bytes
+        files = [f for f in self.cache_dir.rglob("*") if f.is_file()]
+        total_size = sum(f.stat().st_size for f in files)
+
+        if total_size <= max_bytes:
+            return 0
+
+        # WHY: evict oldest first (LRU by mtime) to keep recently-used files
+        files.sort(key=lambda f: f.stat().st_mtime)
+        count = 0
+        for f in files:
+            if total_size <= max_bytes:
+                break
+            fsize = f.stat().st_size
+            f.unlink(missing_ok=True)
+            total_size -= fsize
+            count += 1
+
+        if count:
+            logger.info(
+                "Cache eviction: removed %d files to stay under %.1f GB", count, self.max_size_gb
+            )
         return count

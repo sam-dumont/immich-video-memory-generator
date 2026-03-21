@@ -187,6 +187,38 @@ class TestPrivacyGpsAnonymization:
         assert result[0].latitude is None
         assert result[0].longitude is None
 
+    def test_anonymize_preserves_all_fields(self):
+        """Anonymization must preserve llm_emotion, original_segment, is_photo."""
+        from immich_memories.generate_privacy import anonymize_clips_for_privacy
+        from immich_memories.processing.clips import ClipSegment
+
+        segment = ClipSegment(
+            source_path=Path("/tmp/src.mp4"),
+            start_time=1.0,
+            end_time=4.0,
+            asset_id="test-id",
+        )
+        clips = [
+            AssemblyClip(
+                path=Path("/tmp/a.mp4"),
+                duration=3.0,
+                latitude=48.8566,
+                longitude=2.3522,
+                location_name="Paris, France",
+                llm_emotion="joyful",
+                original_segment=segment,
+                is_photo=True,
+                has_speech=True,
+                outgoing_transition="fade",
+            ),
+        ]
+        result = anonymize_clips_for_privacy(clips)
+        assert result[0].llm_emotion == "joyful"
+        assert result[0].original_segment is segment
+        assert result[0].is_photo is True
+        assert result[0].has_speech is True
+        assert result[0].outgoing_transition == "fade"
+
 
 class TestPrivacyNameAnonymization:
     """Person names must be replaced with fake names in privacy mode."""
