@@ -206,3 +206,4 @@ def ensure_config(state: AppState) -> None:
         state.immich_url = config.immich.url
         state.immich_api_key = config.immich.api_key
         state.include_live_photos = config.analysis.include_live_photos
+        state.include_photos = config.photos.enabled
