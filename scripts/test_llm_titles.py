@@ -15,16 +15,15 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from immich_memories.analysis.llm_query import query_llm  # noqa: E402
 from immich_memories.analysis.trip_detection import (  # noqa: E402
     OvernightBase,
     detect_overnight_stops,
     detect_trips,
 )
 from immich_memories.config_models import LLMConfig  # noqa: E402
-from immich_memories.analysis.llm_query import query_llm  # noqa: E402
 from immich_memories.titles.llm_titles import (  # noqa: E402
     build_title_prompt,
-    generate_title_with_llm,
     parse_title_response,
 )
 
@@ -73,7 +72,7 @@ def fetch_assets(year: int) -> list[dict]:
 
 def api_to_asset(raw: dict):
     """Convert raw API dict to Asset model."""
-    from datetime import UTC, datetime
+    from datetime import datetime
 
     from immich_memories.api.models import Asset, AssetType, ExifInfo
 
@@ -113,9 +112,7 @@ def get_country(bases: list[OvernightBase], assets) -> str | None:
     """Get dominant country from assets."""
     from collections import Counter
 
-    countries = Counter(
-        a.exif_info.country for a in assets if a.exif_info and a.exif_info.country
-    )
+    countries = Counter(a.exif_info.country for a in assets if a.exif_info and a.exif_info.country)
     if countries:
         return countries.most_common(1)[0][0]
     return None
@@ -124,7 +121,7 @@ def get_country(bases: list[OvernightBase], assets) -> str | None:
 async def test_trip(trip_name: str, assets, bases: list[OvernightBase]) -> None:
     """Run title generation at multiple temperatures for one trip."""
     if not bases:
-        print(f"  No bases detected, skipping")
+        print("  No bases detected, skipping")
         return
 
     start = bases[0].start_date
@@ -147,17 +144,21 @@ async def test_trip(trip_name: str, assets, bases: list[OvernightBase]) -> None:
         try:
             await asyncio.sleep(1)  # avoid hammering the LLM server
             prompt = build_title_prompt(
-                memory_type="trip", locale=LOCALE,
-                start_date=str(start), end_date=str(end),
-                duration_days=duration, locations=locations,
-                country=country, overnight_summary=summary,
+                memory_type="trip",
+                locale=LOCALE,
+                start_date=str(start),
+                end_date=str(end),
+                duration_days=duration,
+                locations=locations,
+                country=country,
+                overnight_summary=summary,
             )
             raw = await query_llm(prompt, LLM_CFG, temperature=temp)
             result = parse_title_response(raw)
             if result:
                 mode = f" [{result.trip_type}/{result.map_mode}]" if result.trip_type else ""
                 sub = f' / "{result.subtitle}"' if result.subtitle else ""
-                print(f"  T={temp:.1f}: \"{result.title}\"{sub}{mode}")
+                print(f'  T={temp:.1f}: "{result.title}"{sub}{mode}')
                 if result.map_mode_reason:
                     print(f"         reason: {result.map_mode_reason}")
             else:
@@ -169,20 +170,27 @@ async def test_trip(trip_name: str, assets, bases: list[OvernightBase]) -> None:
 async def test_person_memory() -> None:
     """Test a person memory title."""
     print(f"\n{'=' * 70}")
-    print(f"  PERSON MEMORY: Alice & Emile")
+    print("  PERSON MEMORY: Alice & Emile")
     print(f"{'=' * 70}")
 
     for temp in TEMPERATURES:
         try:
             prompt = build_title_prompt(
-                memory_type="person", locale=LOCALE,
-                start_date="2019-01-01", end_date="2025-12-31",
-                duration_days=2556, person_names=["Alice", "Emile"],
+                memory_type="person",
+                locale=LOCALE,
+                start_date="2019-01-01",
+                end_date="2025-12-31",
+                duration_days=2556,
+                person_names=["Alice", "Emile"],
             )
             raw = await query_llm(prompt, LLM_CFG, temperature=temp)
             result = parse_title_response(raw)
             sub = f' / "{result.subtitle}"' if result and result.subtitle else ""
-            print(f"  T={temp:.1f}: \"{result.title}\"{sub}" if result else f"  T={temp:.1f}: PARSE FAIL — {raw[:100] if raw else 'None'}")
+            print(
+                f'  T={temp:.1f}: "{result.title}"{sub}'
+                if result
+                else f"  T={temp:.1f}: PARSE FAIL — {raw[:100] if raw else 'None'}"
+            )
         except Exception as e:
             print(f"  T={temp:.1f}: ERROR — {e}")
 
@@ -190,23 +198,32 @@ async def test_person_memory() -> None:
 async def test_year_memory() -> None:
     """Test a year memory title."""
     print(f"\n{'=' * 70}")
-    print(f"  YEAR MEMORY: 2024")
+    print("  YEAR MEMORY: 2024")
     print(f"{'=' * 70}")
 
     for temp in TEMPERATURES:
         try:
             prompt = build_title_prompt(
-                memory_type="year", locale=LOCALE,
-                start_date="2024-01-01", end_date="2024-12-31",
-                duration_days=366, clip_descriptions=[
-                    "family at the beach", "hiking in mountains",
-                    "birthday party with candles", "sunset over the sea",
+                memory_type="year",
+                locale=LOCALE,
+                start_date="2024-01-01",
+                end_date="2024-12-31",
+                duration_days=366,
+                clip_descriptions=[
+                    "family at the beach",
+                    "hiking in mountains",
+                    "birthday party with candles",
+                    "sunset over the sea",
                 ],
             )
             raw = await query_llm(prompt, LLM_CFG, temperature=temp)
             result = parse_title_response(raw)
             sub = f' / "{result.subtitle}"' if result and result.subtitle else ""
-            print(f"  T={temp:.1f}: \"{result.title}\"{sub}" if result else f"  T={temp:.1f}: PARSE FAIL — {raw[:100] if raw else 'None'}")
+            print(
+                f'  T={temp:.1f}: "{result.title}"{sub}'
+                if result
+                else f"  T={temp:.1f}: PARSE FAIL — {raw[:100] if raw else 'None'}"
+            )
         except Exception as e:
             print(f"  T={temp:.1f}: ERROR — {e}")
 

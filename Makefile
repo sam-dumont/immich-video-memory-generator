@@ -133,6 +133,11 @@ test-integration-cli:  ## Run ONLY CLI generate tests (SLOW ~15min, needs Immich
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/cli-coverage.xml --cov-fail-under=0 \
 		--junitxml=tests/cli-junit.xml
 
+test-integration-automation:  ## Run ONLY automation suggest tests (~30s, needs Immich)
+	uv run pytest tests/integration/automation/ -v -m integration --log-cli-level=INFO --tb=short \
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/automation-coverage.xml --cov-fail-under=0 \
+		--junitxml=tests/automation-junit.xml
+
 test-integration-auth:  ## Run ONLY auth integration tests (~10s, no external deps)
 	uv run pytest tests/integration/auth/ -v -m integration --log-cli-level=INFO --tb=short \
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/auth-coverage.xml --cov-fail-under=0 \
@@ -145,6 +150,7 @@ test-integration-audio:  ## Run ONLY audio ML tests (~2min, needs demucs/acestep
 
 test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immich), saves per-suite coverage XMLs
 	$(MAKE) test-integration-auth
+	$(MAKE) test-integration-automation
 	$(MAKE) test-integration-assembly
 	$(MAKE) test-integration-photos
 	$(MAKE) test-integration-pipeline
