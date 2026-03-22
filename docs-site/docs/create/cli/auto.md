@@ -5,7 +5,77 @@ title: auto
 
 # auto
 
-Smart automation that figures out what memory to generate next. Scans your Immich library, detects trips, birthdays, activity bursts, and ranks everything by priority. Run it once, it picks the best candidate and generates it.
+Scans your Immich library, detects what's worth turning into a memory video, and generates it. Trips, birthdays, monthly highlights, person spotlights: it figures out what matters and picks the best one.
+
+## How selection works
+
+The system runs 8 detectors against your library, each producing candidates with a score between 0 and 1. The top candidate gets generated.
+
+Here's what a real library (50K+ assets, 20 years, 500 tagged people) produces:
+
+```
+ #  Type                 Period                  Score  Reason
+ 1  monthly_highlights   Feb 2026                0.776  683 assets, most recent month
+ 2  person_spotlight     2025 (Lucas)            0.700  Birthday (2 years old), 16464 assets
+ 3  year_in_review       2025                    0.672  13151 assets, never generated
+ 4  monthly_highlights   Jan 2026                0.642  684 assets, never generated
+ 5  monthly_highlights   Dec 2025                0.523  1384 assets, never generated
+ 6  multi_person         2025 (Lucas & Alex)      0.514  ~2564 shared moments
+ 7  multi_person         2025 (Alice & Lucas)    0.514  ~2007 shared moments
+ 8  trip                 Jul 26 - Aug 10 2025    0.449  16-day trip to Charente-Maritime, 960 assets
+ 9  year_in_review       2024                    0.384  18562 assets, never generated
+10  on_this_day          Mar 22                  0.349  Memories across 20 years (2005-2025)
+11  person_spotlight     2025 (Alex)              0.291  2nd most featured, 8549 assets
+12  person_spotlight     2025 (Alice)            0.228  3rd most featured, 6690 assets
+13  trip                 May 1-4 2025            0.123  4-day trip to Pas-de-Calais, 339 assets
+14  trip                 May 29 - Jun 1 2025     0.121  4-day trip to Ostend, Belgium, 258 assets
+```
+
+Notice the variety: 3 monthly max, 3 person spotlights, 3 trips, 2 multi-person pairs, 1 on-this-day. The per-type caps prevent any single detector from flooding the list.
+
+### What happens over a week of daily runs
+
+Say you set up `auto install` and it runs every morning at 9am:
+
+**Monday**: Feb 2026 monthly highlights gets generated (score 0.776, top candidate).
+
+**Tuesday**: All `monthly_highlights` candidates get a 0.3x penalty for 7 days. Lucas's birthday spotlight (0.700) is now #1. That gets generated.
+
+**Wednesday**: `person_spotlight` also gets a 7-day penalty. Year-in-review 2025 (0.672) takes over.
+
+**Thursday**: `year_in_review` penalized. The Charente-Maritime trip rises to #1. Multi-person pairs are close behind.
+
+**Friday**: Trip penalized. Lucas & Alex together (multi_person) gets generated.
+
+**Next Monday** (day 8): The 7-day penalty on monthlies lifts. But Feb 2026 was already generated (deduped), so Jan 2026 takes the monthly slot.
+
+After a few weeks, the system has generated: 3 monthlies, a birthday video, a year-in-review, a 16-day trip, a couple together video, and a few person spotlights. Each run automatically picks whatever is most valuable at that moment.
+
+### Birthday timing
+
+Birthdays get special treatment. Two rules make sure the timing is right:
+
+1. **Sync buffer**: the detector only fires 2+ days after the birthday. Photos from the birthday party need time to sync to Immich before we pull clips.
+
+2. **Lookahead suppression**: if someone's birthday is within the next 7 days, the PersonSpotlightDetector skips them entirely. This prevents generating a generic "most featured person" video for someone whose birthday video would be much better timed a few days later.
+
+### Trip detection
+
+Trips are detected from GPS data: any cluster of photos 50+ km from your homebase, spanning 2+ days, with no gap larger than 2 days. The detector only fires 7+ days after returning home (same sync buffer logic as birthdays).
+
+You need homebase coordinates in your config:
+
+```yaml
+trips:
+  homebase_latitude: 48.8566    # your home coordinates
+  homebase_longitude: 2.3522
+```
+
+### Multi-person pairs
+
+The system takes your top 10 people by asset count and generates all 45 possible pairs. For each pair, it estimates shared content as 30% of the smaller count (a rough co-occurrence proxy). Pairs with fewer than 50 estimated shared assets get filtered out.
+
+Real example: if Person A has 16,464 assets and Person B has 8,549, the estimated shared content is `min(16464, 8549) * 0.3 = 2,564`. That's enough for a "together through the years" video.
 
 ## auto suggest
 
@@ -13,17 +83,15 @@ Smart automation that figures out what memory to generate next. Scans your Immic
 immich-memories auto suggest [OPTIONS]
 ```
 
-Shows what the system thinks you should generate, ranked by score.
-
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--json` | flag | `false` | Machine-readable JSON output |
 | `--limit` | int | `10` | Max candidates to show |
 | `--type` | string | all | Filter by memory type |
 
-The system connects to Immich, fetches your library stats and people, runs 7 detectors, scores everything, and shows a ranked table. Takes about 30 seconds (most of it is fetching GPS data for trip detection).
+Connects to Immich, fetches library stats + people + GPS assets, runs all detectors, scores and ranks. Takes about 30 seconds (GPS fetch for trip detection is the slow part).
 
-### What gets detected
+### Detectors
 
 | Detector | What it finds | Score range |
 |----------|---------------|-------------|
@@ -34,22 +102,18 @@ The system connects to Immich, fetches your library stats and people, runs 7 det
 | **TripDetector** | GPS-detected trips from the past year | 0.1-0.5 |
 | **ActivityBurstDetector** | Months with >2x the rolling average (last 12 months) | 0.4-0.7 |
 | **OnThisDayDetector** | Dates with content across 5+ years | 0.2-0.35 |
-| **MultiPersonDetector** | Pairs of people who appear together frequently | 0.3-0.55 |
+| **MultiPersonDetector** | Pairs who appear together frequently | 0.3-0.55 |
 
-### Scoring and balancing
+### Scoring adjustments
 
-Each detector assigns a raw score. The scorer then applies:
+After detectors assign raw scores, the scorer applies:
 
-- **Never-generated boost**: memories that haven't been created yet score 1.2x higher
-- **Recency**: recent content scores higher than old content (linear decay over 365 days)
-- **Content richness**: more assets = higher score (log scale, so 10K assets isn't 10x better than 1K)
-- **Same-type cooldown**: generated a monthly_highlights yesterday? All other monthlies get penalized for a week
-- **Per-type caps**: max 3 per type (1 for on_this_day, 2 for multi_person) so the list stays diverse
-- **Dedup**: if both BirthdayDetector and PersonSpotlightDetector propose the same person, the higher-scoring one wins
-
-### Birthday lookahead
-
-If someone's birthday is coming up in the next 7 days, the PersonSpotlightDetector skips them. This way, the BirthdayDetector fires at the right time (2+ days after the birthday, once photos have synced) instead of wasting a generic spotlight early.
+- **Never-generated boost**: 1.2x for memories that don't exist yet
+- **Recency**: recent content scores higher (linear decay over 365 days, floor 0.5x)
+- **Content richness**: more assets = higher score (log scale)
+- **Same-type cooldown**: 0.3x for 7 days, 0.7x for 30 days after generating the same type
+- **Per-type caps**: max 3 per type, except on_this_day (1) and multi_person (2)
+- **Dedup by memory key**: if two detectors propose the same memory, the higher-scoring one wins
 
 ## auto run
 
@@ -57,7 +121,7 @@ If someone's birthday is coming up in the next 7 days, the PersonSpotlightDetect
 immich-memories auto run [OPTIONS]
 ```
 
-Picks the #1 candidate from `suggest` and generates it. One memory per invocation, then exits. This is what launchd/systemd/cron calls.
+Picks the #1 candidate from `suggest` and generates it. One memory per invocation, then exits.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -67,15 +131,13 @@ Picks the #1 candidate from `suggest` and generates it. One memory per invocatio
 | `--upload` | flag | `false` | Upload result to Immich |
 | `--quiet` | flag | `false` | Machine-friendly output (just the path) |
 
-With daily runs, the balancing works like this: Day 1 generates a monthly_highlights, Day 2 the same-type cooldown pushes monthly down so a birthday or trip takes over, Day 3 another type surfaces. After 7 days the monthly cooldown lifts but the previously generated one is deduped, so the next monthly appears.
-
 ## auto install
 
 ```bash
 immich-memories auto install [OPTIONS]
 ```
 
-Sets up your OS scheduler so `auto run` fires automatically. Detects your platform and generates the right config.
+Sets up your OS scheduler. Detects the platform and generates the right config file.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -85,15 +147,13 @@ Sets up your OS scheduler so `auto run` fires automatically. Detects your platfo
 | `--uninstall` | flag | `false` | Remove installed scheduler |
 | `--show` | flag | `false` | Print config without installing |
 
-### Platform support
-
-| Platform | What gets created | Activate command |
+| Platform | What gets created | How to activate |
 |----------|-------------------|-----------------|
 | **macOS** | `~/Library/LaunchAgents/com.immich-memories.auto.plist` | `launchctl load <path>` |
 | **Linux** | systemd user service + timer in `~/.config/systemd/user/` | `systemctl --user enable --now immich-memories-auto.timer` |
-| **Other** | Prints a crontab entry you can add manually | `crontab -e` |
+| **Other** | Prints a crontab entry | `crontab -e` |
 
-On macOS, launchd wakes the machine if it's sleeping, runs the command, and goes back to sleep. No daemon needed.
+On macOS, launchd wakes the machine from sleep, runs the command, and goes back to sleep.
 
 ## auto history
 
@@ -101,7 +161,7 @@ On macOS, launchd wakes the machine if it's sleeping, runs the command, and goes
 immich-memories auto history [--limit N]
 ```
 
-Shows recent auto-generated memories with date, type, and output path.
+Shows recent auto-generated memories: date, type, date range, output file.
 
 ## auto test-notification
 
@@ -109,11 +169,11 @@ Shows recent auto-generated memories with date, type, and output path.
 immich-memories auto test-notification
 ```
 
-Sends a test notification through your configured Apprise URLs. Requires `notifications.enabled: true` and at least one URL in `notifications.urls` in your config.
+Sends a test notification through your Apprise URLs. Requires `notifications.enabled: true` and at least one URL configured.
 
 ## Configuration
 
-These go under `advanced:` in your `config.yaml`:
+Under `advanced:` in `config.yaml`:
 
 ```yaml
 advanced:
@@ -130,17 +190,7 @@ advanced:
 
   notifications:
     enabled: false
-    urls: []                        # Apprise URLs: ntfy://ntfy.sh/my-topic, discord:///id/token
+    urls: []                        # ntfy://ntfy.sh/my-topic, discord:///id/token, etc.
     on_success: true
     on_failure: true
-```
-
-Trip detection requires your homebase coordinates:
-
-```yaml
-trips:
-  homebase_latitude: 50.8468
-  homebase_longitude: 4.3525
-  min_distance_km: 50
-  min_duration_days: 2
 ```
