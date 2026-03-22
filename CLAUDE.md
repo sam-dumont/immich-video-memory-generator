@@ -216,12 +216,14 @@ tests/integration/
   **you MUST update the corresponding Docusaurus page** in `docs-site/docs/`.
 - Run `make docs-build` after any docs change to verify the build passes.
 - The mapping of code → docs pages:
-  - CLI commands/flags → `docs-site/docs/cli/`
-  - UI wizard changes → `docs-site/docs/ui-walkthrough/`
-  - Config options → `docs-site/docs/configuration/`
-  - Hardware support → `docs-site/docs/hardware/`
-  - Music/audio → `docs-site/docs/music/`
-  - New features → `docs-site/docs/features/` (create new page if needed)
+  - CLI commands/flags → `docs-site/docs/create/cli/`
+  - UI wizard changes → `docs-site/docs/create/web-ui/`
+  - Config options → `docs-site/docs/deploy/configuration/`
+  - Hardware support → `docs-site/docs/deploy/hardware/`
+  - Audio/music → `docs-site/docs/create/pipeline/audio-and-music.md`
+  - Pipeline features → `docs-site/docs/create/pipeline/`
+  - Deployment guides → `docs-site/docs/deploy/`
+  - Reference (all flags/config) → `docs-site/docs/reference/`
 - After structural changes, also update `docs-site/sidebars.ts` if new pages were added.
 
 ### Makefile Is The Single Source of Truth
