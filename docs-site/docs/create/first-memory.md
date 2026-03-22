@@ -1,0 +1,135 @@
+---
+sidebar_label: "Your First Memory"
+sidebar_position: 1
+---
+
+# Your First Memory
+
+This walks you through creating a video from start to finish. Takes about 15 minutes total: 5 to set up, 10 for the generation.
+
+## Prerequisites
+
+Before you start:
+
+- **Immich running** with an API key (Account Settings > API Keys > New API Key)
+- **Docker** or **Python 3.11+** installed
+- **~2 GB free disk** for the video cache (downloaded clips get cached locally)
+- At least 20-30 videos in your Immich library for the time period you want
+
+## Step 1: Launch
+
+**Docker** (recommended):
+
+```bash
+# Create a .env file
+cat > .env << 'EOF'
+IMMICH_URL=https://photos.example.com
+IMMICH_API_KEY=your-api-key-here
+EOF
+
+# Download and start
+curl -O https://raw.githubusercontent.com/sam-dumont/immich-video-memory-generator/main/docker-compose.yml
+docker compose up -d
+```
+
+**Or native install:**
+
+```bash
+uvx immich-memories ui
+```
+
+Open [http://localhost:8080](http://localhost:8080) in your browser.
+
+:::info Screenshot needed
+**What to capture:** The login/landing page with the Immich URL and API key fields visible
+**Viewport:** 1280x800
+**State:** Dark mode, empty fields, fresh install state
+**Target file:** `static/screenshots/first-login.png`
+:::
+
+## Step 2: Connect to Immich
+
+Enter your Immich server URL and API key in the Configuration tab. Click connect. You should see a green checkmark confirming the connection.
+
+:::info Screenshot needed
+**What to capture:** Step 1 Configuration page with Immich URL filled in and connection confirmed
+**Viewport:** 1280x800
+**State:** Green checkmark visible next to Immich URL, dark mode
+**Target file:** `static/screenshots/first-step1-connect.png`
+:::
+
+## Step 3: Pick "Year in Review"
+
+Select the **Year in Review** preset card. Pick the year you want (the one with the most videos works best for a first try). This preset covers an entire calendar year and creates monthly title dividers in the output.
+
+:::info Screenshot needed
+**What to capture:** Step 1 with the Year in Review preset card highlighted/selected
+**Viewport:** 1280x800
+**State:** Year in Review card selected (blue highlight), year picker showing 2025
+**Target file:** `static/screenshots/first-step1-preset.png`
+:::
+
+## Step 4: Review clips
+
+Navigate to Step 2 (Clip Review). The pipeline will fetch your videos, analyze them, and score each clip. This takes 1-3 minutes depending on how many videos you have.
+
+Once done, you'll see a grid of clips sorted by score. The best ones are pre-selected. You can deselect clips you don't want or re-include ones the AI skipped.
+
+:::info Screenshot needed
+**What to capture:** Step 2 clip grid with 12+ clips displayed, some selected
+**Viewport:** 1280x800
+**State:** Grid view, 3+ clips selected (blue highlight), month headers visible, scores shown
+**Target file:** `static/screenshots/first-step2-clips.png`
+:::
+
+## Step 5: Set options
+
+Move to Step 3 (Generation Options). The defaults work well for a first video:
+
+- **Resolution:** 1080p (the default)
+- **Transition:** Smart (mixes cuts and crossfades based on clip content)
+- **Music:** Auto-generated if you have a music backend configured, or upload your own
+
+You can leave everything at defaults. The only setting worth changing on your first run: if you have a specific MP3 you want as background music, upload it here.
+
+## Step 6: Generate
+
+Hit Generate in Step 4. The progress bar shows four phases:
+
+1. **Downloading clips** from Immich (cached for next time)
+2. **Assembling** the video with transitions and title screens
+3. **Mixing music** (if configured)
+4. **Done**: video ready to watch
+
+:::info Screenshot needed
+**What to capture:** Step 4 mid-generation with progress bar at ~60%
+**Viewport:** 1280x800
+**State:** Progress bar visible, "Assembling final video..." status text
+**Target file:** `static/screenshots/first-step4-progress.png`
+:::
+
+30 clips at 1080p takes about 8 minutes on an M2 Pro, 15 minutes on a NAS-grade Celeron. 4K roughly doubles the time.
+
+## Step 7: Watch
+
+When it's done, the built-in video player shows your result. You can download the MP4 directly or (if configured) upload it back to an Immich album.
+
+:::info Screenshot needed
+**What to capture:** Step 4 complete state with video player showing the finished video
+**Viewport:** 1280x800
+**State:** Video player visible with play button, download button, success message
+**Target file:** `static/screenshots/first-step4-done.png`
+:::
+
+## What just happened?
+
+The pipeline ran four phases: **fetch** (downloaded videos from Immich via its API, read-only), **analyze** (scored each clip on motion, faces, audio, and optionally LLM content understanding), **select** (picked the best segments and distributed them across the time period), **assemble** (encoded everything with FFmpeg using the streaming assembler, which keeps memory under 550 MB even at 4K).
+
+The analysis results are cached in a local SQLite database. Next time you generate a video for the same time period, analysis is instant because the scores are already stored.
+
+## Next steps
+
+- Try other memory types: [Trip Memories](./memory-types/trip-memories.md) (needs GPS data), [Person Spotlight](./memory-types/monthly-person-season.md) (needs face recognition in Immich)
+- Set up [LLM content analysis](./pipeline/llm-content-analysis.md) for smarter clip scoring
+- Automate it: [Scheduled generation](./cli/scheduler.md) via cron
+- Explore [all CLI options](./cli/generate.md) for fine-grained control

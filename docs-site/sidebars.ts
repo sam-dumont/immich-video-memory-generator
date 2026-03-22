@@ -8,6 +8,7 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         'welcome/overview',
+        'welcome/why-immich-memories',
         'welcome/quick-start',
       ],
     },
@@ -16,6 +17,7 @@ const sidebars: SidebarsConfig = {
       label: 'Create Memories',
       collapsed: false,
       items: [
+        'create/first-memory',
         {
           type: 'category',
           label: 'Using the Web UI',
@@ -35,6 +37,15 @@ const sidebars: SidebarsConfig = {
             'create/cli/titles',
             'create/cli/scheduler',
             'create/cli/runs',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Memory Types',
+          items: [
+            'create/memory-types/year-in-review',
+            'create/memory-types/monthly-person-season',
+            'create/memory-types/trip-memories',
           ],
         },
         {
@@ -100,6 +111,24 @@ const sidebars: SidebarsConfig = {
             'deploy/hardware/cpu-only',
           ],
         },
+        {
+          type: 'category',
+          label: 'Common Setups',
+          items: [
+            'deploy/common-setups/nas-only',
+            'deploy/common-setups/mac-local-llm',
+            'deploy/common-setups/linux-nvidia',
+            'deploy/common-setups/kubernetes-gpu',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Monitoring & Maintenance',
+          items: [
+            'deploy/maintenance/health-logs-cache',
+            'deploy/maintenance/upgrading',
+          ],
+        },
       ],
     },
     {
@@ -118,6 +147,8 @@ const sidebars: SidebarsConfig = {
       label: 'Contribute',
       items: [
         'contribute/testing',
+        'contribute/development-setup',
+        'contribute/code-of-conduct',
       ],
     },
   ],

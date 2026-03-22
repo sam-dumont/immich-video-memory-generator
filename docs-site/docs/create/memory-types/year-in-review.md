@@ -1,0 +1,53 @@
+---
+sidebar_label: "Year in Review"
+---
+
+# Year in Review
+
+The flagship memory type. Covers an entire calendar year and creates a video with monthly title dividers, giving you a chronological highlight reel of the best moments from each month.
+
+## What it does
+
+Fetches all videos (and optionally photos) from a calendar year, scores every clip using motion analysis, face detection, favorites, and optionally LLM content analysis, then selects the best segments distributed proportionally across months. Months with more content get more clips. The default target duration is 10 minutes (~50 seconds per month).
+
+## CLI
+
+```bash
+immich-memories generate --memory-type year_in_review --year 2025
+```
+
+With person filter:
+
+```bash
+immich-memories generate --memory-type year_in_review --year 2025 --person "Alice"
+```
+
+With photos included:
+
+```bash
+immich-memories generate --memory-type year_in_review --year 2025 --include-photos
+```
+
+## Web UI
+
+Select the **Year in Review** card in Step 1, pick the year from the dropdown.
+
+:::info Screenshot needed
+**What to capture:** Step 1 with Year in Review preset card selected, year picker visible
+**Viewport:** 1280x800
+**State:** Year in Review card highlighted, year dropdown showing 2025
+**Target file:** `static/screenshots/type-year-review.png`
+:::
+
+## What makes it special
+
+- **Monthly title dividers**: each month gets a divider screen (e.g., "January", "February") that separates the video into sections. Months with fewer than 2 clips skip the divider.
+- **Density-based clip budget**: months with 50 videos get more clips than months with 5. The algorithm distributes clips proportionally to content density.
+- **Full year coverage**: the date range is exactly January 1 through December 31. Birthday-based years are supported too: `--birthday 02/07` shifts the year to start on February 7th.
+
+## Tips
+
+- Works best with **50+ videos** spread across the year. If you only have clips from a summer trip, a [Season](./monthly-person-season.md) or [Trip](./trip-memories.md) memory will be a better fit.
+- Enable LLM content analysis (`--analysis-depth thorough`) for smarter scoring. Without it, the pipeline uses motion, faces, favorites, and audio signals.
+- The default 10-minute duration works well for most libraries. For smaller collections (under 100 videos), try `--duration 300` for a tighter 5-minute edit.
+- Combining `--person` with Year in Review creates a "Your Year With Alice" style video: only clips containing that person, but still with monthly structure.

@@ -1,0 +1,79 @@
+---
+sidebar_label: "Monthly, Person & Season"
+---
+
+# Monthly, Person, Season & On This Day
+
+Four memory types that share a similar structure: pick a time range, optionally filter by person, generate. They differ in scope and scoring emphasis.
+
+## Monthly Highlights
+
+Best moments from a single month. Good for regular check-ins or when one month had a lot going on.
+
+```bash
+immich-memories generate --memory-type monthly_highlights --month 7 --year 2025
+```
+
+Default duration: 60 seconds. The title screen shows the month and year (e.g., "July 2025"). No monthly dividers since it's already a single month.
+
+**Best for:** months with 10+ videos. If you shot a lot in one month (vacation, birthday party, holiday), this gives you a tight one-minute highlight.
+
+## Person Spotlight
+
+A year focused on one person. Filters clips to only those containing the named person (requires face recognition enabled in Immich). Scoring weights faces higher than usual (60% face weight vs the default 30%).
+
+```bash
+immich-memories generate --memory-type person_spotlight --person "Alice" --year 2025
+```
+
+Default duration: 120 seconds. Title screen shows "Your Year with Alice" as the subtitle.
+
+**Best for:** parent-child compilations, partner videos, or any relationship where you want to see just that person's moments. Needs Immich face recognition to be set up and the person tagged.
+
+:::info Screenshot needed
+**What to capture:** Step 1 with Person Spotlight selected and person name entered
+**Viewport:** 1280x800
+**State:** Person Spotlight card selected, person picker showing a name
+**Target file:** `static/screenshots/type-person.png`
+:::
+
+## Multi-Person
+
+Moments featuring multiple people together. By default, requires co-occurrence: clips must contain all named people in the same frame.
+
+```bash
+immich-memories generate --memory-type multi_person --person "Alice" --person "Bob" --year 2025
+```
+
+Default duration: 300 seconds. Title screen shows "Alice & Bob" as the subtitle.
+
+**Best for:** couples, families, friend groups. The co-occurrence filter means you'll get clips where they're actually together, not separate appearances.
+
+## Season
+
+Highlights from a specific season (spring, summer, fall, winter). Scoring emphasizes motion slightly more (35% motion weight) to favor outdoor activities.
+
+```bash
+immich-memories generate --memory-type season --season summer --year 2025
+```
+
+Default duration: 135 seconds (~45 seconds per month of the season). The hemisphere flag controls which calendar months map to which season:
+
+```bash
+# Southern hemisphere: summer = December-February
+immich-memories generate --memory-type season --season summer --year 2025 --hemisphere south
+```
+
+**Best for:** when the best content clusters in a season rather than spread across the year. Summer vacations, winter holidays, fall foliage trips.
+
+## On This Day
+
+Looks back across previous years for content near today's date. Creates date ranges spanning a week around the current date for each of the last 5 years.
+
+```bash
+immich-memories generate --memory-type on_this_day
+```
+
+Default duration: 45 seconds. No `--year` needed: it automatically looks back from today's date.
+
+**Best for:** daily nostalgia, "what were we doing last year" moments. Works best if you've been shooting video for 3+ years. Can be combined with the scheduler for an automatic daily memory.
