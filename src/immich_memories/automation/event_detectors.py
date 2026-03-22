@@ -147,7 +147,7 @@ class ActivityBurstDetector:
             if month_key < cutoff_key:
                 continue
 
-            window = sorted_months[max(0, i - 12):i]
+            window = sorted_months[max(0, i - 12) : i]
             if not window:
                 continue
 
@@ -156,7 +156,11 @@ class ActivityBurstDetector:
                 continue
 
             candidate = _check_burst(
-                month_key, avg, assets_by_month[month_key], threshold, generated_keys,
+                month_key,
+                avg,
+                assets_by_month[month_key],
+                threshold,
+                generated_keys,
             )
             if candidate:
                 candidates.append(candidate)
