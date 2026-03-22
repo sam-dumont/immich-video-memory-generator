@@ -27,10 +27,19 @@ These aren't decoration. They catch real bugs that Claude introduces confidently
 
 ## The numbers
 
-- 1900+ tests across unit and integration tiers
-- 17 CI gates, all enforced on every commit
-- 80+ source files, all under 800 lines
-- Composition over inheritance everywhere: zero mixins
-- ~50 development sessions over 3 months
+| What | Count |
+|------|-------|
+| Development time | ~84 days (Dec 28, 2025 to launch) |
+| Development sessions | ~50 |
+| Commits | 139+ |
+| PRs merged | 64 |
+| Source code | ~57,000 lines across 207 files |
+| Test code | ~33,000 lines across 140 files |
+| Tests | 1,900+ (unit + integration) |
+| CI gates | 17, all enforced on every commit |
+| Max file length | 800 lines (enforced) |
+| Mixins / multiple inheritance | zero |
+
+That's roughly 1,000 lines of production code per day, plus 400 lines of tests. The velocity is the whole point: one person making decisions, AI writing the code, quality gates catching the mistakes.
 
 I'm planning a series of blog posts about the development process: the research conversations, the debugging odyssey, and the architectural decisions. Links will go here when they're published.
