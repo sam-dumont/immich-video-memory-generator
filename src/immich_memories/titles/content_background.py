@@ -150,11 +150,12 @@ def extract_content_background(
 
 
 class SlowmoBackgroundReader:
-    """Reads slow-motion blurred frames from an FFmpeg pipe.
+    """Generates smooth slow-motion frames via linear interpolation.
 
-    FFmpeg extracts source_seconds of video, slows it down to fill
-    the title duration, scales, blurs, and darkens — all in one pipeline.
-    Frames are read one at a time via the pipe (constant memory usage).
+    Pre-reads all source frames (typically 15 at 0.5s/30fps), then
+    generates interpolated intermediate frames on demand. Linear blending
+    creates motion-blur-like ghosting that merges with the Taichi
+    renderer's heavy Gaussian blur — no optical flow needed.
     """
 
     def __init__(
@@ -167,57 +168,29 @@ class SlowmoBackgroundReader:
         source_seconds: float = 0.5,
         hdr: bool = False,
     ):
-        self.width = width
-        self.height = height
-        self.hdr = False
-        self.bytes_per_pixel = 3
-        self.frame_size = width * height * 3
-        self._process: subprocess.Popen | None = None  # type: ignore[type-arg]
-        self._last_frame: np.ndarray | None = None
+        self._source_frames: list[np.ndarray] = []
+        self._output_index = 0
+        self._total_output_frames = int(title_duration * fps)
 
         if not shutil.which("ffmpeg"):
             return
 
         clip_duration = _probe_duration(clip_path)
-        # WHY: clamp source_seconds to available duration
         actual_source = min(source_seconds, clip_duration * 0.8)
         if actual_source < 0.1:
             return
 
-        slowdown = title_duration / actual_source
-
-        # WHY: FFmpeg ONLY handles slow-mo + frame interpolation here.
-        # Blur and darken are done per-frame in the Taichi renderer, which:
-        #   1. Preserves HDR (no 8-bit format conversion needed)
-        #   2. Enables animated deblur (blur ramps heavy→zero)
-        #   3. Enables animated darken (dark→normal)
-        # minterpolate with blend mode generates smooth intermediate frames.
-        # WHY: rgb48le for HDR preserves full 10-bit+ precision (no SDR truncation).
-        # The earlier scanline artifacts were from minterpolate (now removed),
-        # not from rgb48le byte reading.
         pix_fmt = "rgb48le" if hdr else "rgb24"
-        self.bytes_per_pixel = 6 if hdr else 3
-        self.frame_size = width * height * self.bytes_per_pixel
-        self.hdr = hdr
+        bpp = 6 if hdr else 3
+        frame_size = width * height * bpp
 
-        # WHY: minterpolate is 8-bit only (silently downgrades HDR).
-        # tmix preserves rgb48le natively, is slice-threaded (fast),
-        # and creates smooth temporal averaging across duplicated frames.
-        # Ghosting from tmix is invisible under heavy Taichi blur.
-        # Gaussian-weighted center keeps current frame dominant.
-        tmix_n = max(3, int(slowdown))
-        weights = " ".join(str(i + 1) for i in range(tmix_n // 2 + 1))
-        weights += " " + " ".join(str(tmix_n // 2 - i) for i in range(tmix_n // 2))
-        vf = f"setpts={slowdown}*PTS,fps={fps},tmix=frames={tmix_n}:weights='{weights}'"
-
+        # WHY: extract source frames at native fps — no slowdown in FFmpeg.
+        # Interpolation happens in Python for smooth blending.
         cmd = [
             "ffmpeg",
             "-ss", "0",
             "-t", str(actual_source),
             "-i", str(clip_path),
-            "-vf", vf,
-            "-r", str(fps),
-            "-t", str(title_duration),
             "-f", "rawvideo",
             "-pix_fmt", pix_fmt,
             "-an",
@@ -225,45 +198,77 @@ class SlowmoBackgroundReader:
         ]  # fmt: skip
 
         try:
-            self._process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            result = subprocess.run(cmd, capture_output=True, timeout=30)
         except Exception:
-            logger.debug(f"Failed to start slowmo pipe for {clip_path}", exc_info=True)
+            logger.debug(f"Failed to extract frames from {clip_path}", exc_info=True)
+            return
+
+        if result.returncode != 0:
+            return
+
+        # Read all source frames into memory (~150MB for 15 frames at 4K 16-bit)
+        data = result.stdout
+        offset = 0
+        while offset + frame_size <= len(data):
+            chunk = data[offset : offset + frame_size]
+            if hdr:
+                raw = np.frombuffer(chunk, dtype=np.uint16)
+                frame = raw.reshape((height, width, 3)).astype(np.float32) / 65535.0
+            else:
+                raw = np.frombuffer(chunk, dtype=np.uint8)
+                frame = raw.reshape((height, width, 3)).astype(np.float32) / 255.0
+            self._source_frames.append(frame)
+            offset += frame_size
+
+        logger.info(
+            f"Loaded {len(self._source_frames)} source frames for "
+            f"{self._total_output_frames} output frames ({title_duration}s)"
+        )
 
     @property
     def is_active(self) -> bool:
-        return self._process is not None and self._process.stdout is not None
+        return len(self._source_frames) >= 2
 
     def read_frame(self) -> np.ndarray | None:
-        """Read the next frame from the pipe. Returns float32 (H, W, 3) [0, 1].
+        """Generate the next interpolated frame.
 
-        If the pipe runs out of frames, returns the last good frame instead
-        of None — this prevents fallback to the dark gradient background.
+        Maps output frame index to a fractional position in the source
+        frames, then linearly blends the two adjacent source frames.
         """
         if not self.is_active:
-            return self._last_frame
+            return None
+        if self._output_index >= self._total_output_frames:
+            return self._source_frames[-1]
 
-        assert self._process is not None and self._process.stdout is not None
+        # Map output position to source position
+        n_src = len(self._source_frames)
+        progress = self._output_index / max(1, self._total_output_frames - 1)
+        src_pos = progress * (n_src - 1)
 
-        data = self._process.stdout.read(self.frame_size)
-        if len(data) < self.frame_size:
-            return self._last_frame
+        idx = min(int(src_pos), n_src - 2)
+        t = src_pos - idx  # fractional position [0, 1)
 
-        if self.hdr:
-            raw = np.frombuffer(data, dtype=np.uint16)
-            frame = raw.reshape((self.height, self.width, 3)).astype(np.float32) / 65535.0
-        else:
-            raw = np.frombuffer(data, dtype=np.uint8)
-            frame = raw.reshape((self.height, self.width, 3)).astype(np.float32) / 255.0
+        # WHY: Catmull-Rom cubic interpolation uses 4 frames instead of 2.
+        # This eliminates the "pop" at frame pair boundaries that linear
+        # interpolation creates (C1 continuity vs C0).
+        p0 = self._source_frames[max(0, idx - 1)]
+        p1 = self._source_frames[idx]
+        p2 = self._source_frames[min(idx + 1, n_src - 1)]
+        p3 = self._source_frames[min(idx + 2, n_src - 1)]
 
-        self._last_frame = frame
+        frame = 0.5 * (
+            2.0 * p1
+            + (-p0 + p2) * t
+            + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * (t * t)
+            + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * (t * t * t)
+        )
+        np.clip(frame, 0.0, 1.0, out=frame)
+
+        self._output_index += 1
         return frame
 
     def close(self) -> None:
-        if self._process is not None:
-            self._process.stdout.close() if self._process.stdout else None
-            self._process.stderr.close() if self._process.stderr else None
-            self._process.wait()
-            self._process = None
+        self._source_frames.clear()
 
     def __del__(self) -> None:
         self.close()
