@@ -208,7 +208,7 @@ def test_capture_all_screenshots(
     _before_screenshot(page)
     _save(page, screenshot_dir, _name("settings-cache", theme))
 
-    # ── Feature: Trip Preset Selected ──
+    # ── Feature: Trip Preset + Detection Dropdown ──
     page.goto(app_url)
     _wait_for_ready(page)
     trip_preset = page.get_by_text("Trip", exact=True)
@@ -219,12 +219,42 @@ def test_capture_all_screenshots(
         _before_screenshot(page)
         _save(page, screenshot_dir, _name("trip-preset", theme))
 
-    # ── Feature: Privacy/Demo Mode Toggle ──
-    demo_switch = page.get_by_text("Demo mode")
-    if demo_switch.is_visible(timeout=3000):
-        demo_switch.scroll_into_view_if_needed()
-        page.wait_for_timeout(200)
-        _save(page, screenshot_dir, _name("privacy-toggle", theme))
+        # Wait for trip detection to complete (async, hits Immich API)
+        trip_found = page.get_by_text("Found")
+        try:
+            trip_found.wait_for(timeout=30_000)
+            page.wait_for_timeout(500)
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            page.wait_for_timeout(300)
+            _before_screenshot(page)
+            _save(page, screenshot_dir, _name("trip-detection", theme))
+        except Exception:
+            pass
+
+    # ── Feature: LLM Title Fields (visible on step3) ──
+    # We already captured step3-options earlier. The LLM title fields
+    # (Title, Subtitle, Regenerate) are on the same page. Re-navigate
+    # to step3 via direct URL if we were on it before.
+    try:
+        page.goto(f"{app_url}/step3", timeout=15_000)
+        page.wait_for_load_state("domcontentloaded")
+        page.wait_for_timeout(2000)
+
+        title_input = page.get_by_label("Title")
+        if title_input.is_visible(timeout=5000):
+            title_input.scroll_into_view_if_needed()
+            _before_screenshot(page)
+            _save(page, screenshot_dir, _name("llm-title-step3", theme))
+
+        regen_btn = page.get_by_role("button", name="Regenerate")
+        if regen_btn.is_visible(timeout=3000):
+            regen_btn.scroll_into_view_if_needed()
+            _before_screenshot(page)
+            _save(page, screenshot_dir, _name("llm-title-regenerate", theme))
+    except Exception:
+        pass
+
+    # Demo mode toggle is intentionally hidden from screenshots — internal dev tool
 
 
 @pytest.mark.parametrize("theme", _THEMES)
@@ -234,21 +264,26 @@ def test_capture_login_page(
     screenshot_dir: Path,
     theme: str,
 ) -> None:
-    """Capture the login page (basic auth variant).
+    """Capture the login page.
 
-    The login page is at /login even when auth is disabled — it just
-    redirects. We navigate directly and capture if it renders.
+    When auth is disabled, /login may redirect — the test gracefully
+    skips if no login form renders.
     """
-    page.goto(f"{app_url}/login")
+    try:
+        page.goto(f"{app_url}/login", timeout=10_000)
+    except Exception:
+        return
     _wait_for_ready(page)
 
-    # Only capture if a login form actually rendered (auth may be disabled)
     sign_in_btn = page.get_by_role("button", name="Sign in")
     sso_btn = page.get_by_text("Sign in with SSO")
     if not sign_in_btn.is_visible(timeout=2000) and not sso_btn.is_visible(timeout=1000):
         return
 
     set_theme(page, theme)
-    page.goto(f"{app_url}/login")
+    try:
+        page.goto(f"{app_url}/login", timeout=10_000)
+    except Exception:
+        return
     _wait_for_ready(page)
     _save(page, screenshot_dir, _name("login", theme))

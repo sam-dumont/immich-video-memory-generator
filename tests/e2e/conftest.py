@@ -53,7 +53,7 @@ def app_url() -> Generator[str, None, None]:
         [
             str(venv_bin / "coverage"),
             "run",
-            "--source=src/immich_memories",
+            "--source=immich_memories",
             "--branch",
             str(venv_bin / "immich-memories"),
             "ui",
@@ -70,8 +70,10 @@ def app_url() -> Generator[str, None, None]:
         _wait_for_server(proc)
         yield _BASE_URL
     finally:
-        # SIGTERM lets coverage write its data file before exit
-        proc.send_signal(signal.SIGTERM)
+        # WHY: SIGINT (not SIGTERM) — uvicorn handles SIGINT gracefully and
+        # runs atexit hooks, which is how coverage writes its data file.
+        # SIGTERM skips atexit in uvicorn.
+        proc.send_signal(signal.SIGINT)
         try:
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
