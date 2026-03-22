@@ -64,6 +64,9 @@ class AppState:
     music_preview_result: Any | None = None  # MusicGenerationResult
     music_generating: bool = False
 
+    # Cancel support
+    cancel_requested: bool = False
+
     # Pipeline state
     auto_analyze_pending: bool = False
     review_selected_mode: bool = False
@@ -80,6 +83,12 @@ class AppState:
     max_non_favorite_pct: int = 25
     max_non_favorite_ratio: float = 0.25
     include_live_photos: bool = False
+    include_photos: bool = False
+    photo_assets: list[Any] = field(default_factory=list)
+    photo_duration: float = 4.0
+
+    # Analysis depth (fast or thorough)
+    analysis_depth: str = "fast"
 
     # Connection
     connected_user: str | None = None
@@ -124,6 +133,9 @@ class AppState:
         self.pipeline_result = None
         self.review_selected_mode = False
         self._duplicates_processed = False
+        self.title_suggestion_title = None
+        self.title_suggestion_subtitle = None
+        self.cancel_requested = False
 
     def get_selected_clips(self) -> list[VideoClipInfo]:
         """Get the list of currently selected clips."""

@@ -85,6 +85,27 @@ class TestAppStateResetClips:
         state.reset_clips()
         assert not state.clip_rotations
 
+    def test_reset_clears_title_suggestions(self):
+        """reset_clips() clears LLM-generated title fields."""
+        state = AppState()
+        state.title_suggestion_title = "Summer 2024"
+        state.title_suggestion_subtitle = "June - August"
+        state.reset_clips()
+        assert state.title_suggestion_title is None
+        assert state.title_suggestion_subtitle is None
+
+
+class TestAppStateIncludePhotos:
+    """Test include_photos state field."""
+
+    def test_default_include_photos_false(self):
+        state = AppState()
+        assert not state.include_photos
+
+    def test_photo_assets_starts_empty(self):
+        state = AppState()
+        assert state.photo_assets == []
+
 
 class TestAppStateGetSelectedClips:
     """Test get_selected_clips() method."""
@@ -147,6 +168,21 @@ class TestAppStateSingleton:
         assert s1 is not s2
 
 
+class TestScaleModeMap:
+    """Test the scale mode map includes blur."""
+
+    def test_blur_mode_mapped(self):
+        from immich_memories.ui.pages._step4_generate import _SCALE_MODE_MAP
+
+        assert "Blur (blurred background)" in _SCALE_MODE_MAP
+        assert _SCALE_MODE_MAP["Blur (blurred background)"] == "blur"
+
+    def test_all_four_modes_present(self):
+        from immich_memories.ui.pages._step4_generate import _SCALE_MODE_MAP
+
+        assert len(_SCALE_MODE_MAP) == 4
+
+
 class TestFormatDuration:
     """Test format_duration() helper."""
 
@@ -173,6 +209,51 @@ class TestFormatDuration:
         from immich_memories.ui.pages.step2_helpers import format_duration
 
         assert format_duration(3600) == "60:00"
+
+
+class TestAppStatePhotoDuration:
+    """Test photo_duration state field."""
+
+    def test_default_photo_duration_is_4(self):
+        state = AppState()
+        assert state.photo_duration == 4.0
+
+    def test_photo_duration_can_be_set(self):
+        state = AppState()
+        state.photo_duration = 6.0
+        assert state.photo_duration == 6.0
+
+
+class TestAppStateAnalysisDepth:
+    """Test analysis_depth state field."""
+
+    def test_default_analysis_depth_is_fast(self):
+        state = AppState()
+        assert state.analysis_depth == "fast"
+
+    def test_analysis_depth_can_be_set(self):
+        state = AppState()
+        state.analysis_depth = "thorough"
+        assert state.analysis_depth == "thorough"
+
+
+class TestAppStateCancelRequested:
+    """Test cancel_requested state field."""
+
+    def test_default_cancel_not_requested(self):
+        state = AppState()
+        assert not state.cancel_requested
+
+    def test_cancel_requested_can_be_set(self):
+        state = AppState()
+        state.cancel_requested = True
+        assert state.cancel_requested
+
+    def test_reset_clips_clears_cancel(self):
+        state = AppState()
+        state.cancel_requested = True
+        state.reset_clips()
+        assert not state.cancel_requested
 
 
 class TestAppStateTransitions:

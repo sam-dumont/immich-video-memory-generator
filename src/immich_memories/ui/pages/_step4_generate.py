@@ -21,6 +21,16 @@ from immich_memories.ui.components import (
 
 logger = logging.getLogger(__name__)
 
+
+def _request_cancel(state, cancel_btn: ui.button | None, status_label) -> None:
+    """Request cancellation of the running generation."""
+    state.cancel_requested = True
+    if cancel_btn is not None:
+        cancel_btn.set_text("Cancelling...")
+        cancel_btn.disable()
+    status_label.set_text("Cancel requested — stopping after current phase...")
+
+
 # Maps UI labels from step3_options → GenerationParams values
 _TRANSITION_MAP = {
     "Smart (mix of fades & cuts)": "smart",
@@ -40,6 +50,7 @@ _SCALE_MODE_MAP = {
     "Smart Crop (keep faces)": "smart_crop",
     "Fill (crop)": "fill",
     "Fit (letterbox)": "fit",
+    "Blur (blurred background)": "blur",
 }
 
 _FORMAT_MAP = {
@@ -56,6 +67,10 @@ def _build_generation_params(state, selected_clips, output_path):
     gen_options = state.generation_options
     person = state.selected_person
     date_range = state.date_range
+
+    # Apply photo duration from UI to config
+    if state.include_photos and state.config:
+        state.config.photos.duration = state.photo_duration
 
     client = SyncImmichClient(base_url=state.immich_url, api_key=state.immich_api_key)
 
@@ -84,6 +99,8 @@ def _build_generation_params(state, selected_clips, output_path):
         subtitle=state.title_suggestion_subtitle,
         clip_segments=state.clip_segments,
         clip_rotations=state.clip_rotations,
+        include_photos=state.include_photos and bool(state.photo_assets),
+        photo_assets=state.photo_assets if state.include_photos else None,
         # Music and upload handled separately by UI (AI gen, 4-stem ducking, NiceGUI progress)
         music_path=None,
         upload_enabled=False,
@@ -102,6 +119,11 @@ async def run_generation(
 ) -> None:
     """Execute video generation by building GenerationParams and calling generate_memory()."""
     from immich_memories.security import sanitize_filename
+    from immich_memories.ui.components import im_button
+
+    state.cancel_requested = False
+    # Mutable ref so the lambda closure can access the button after creation
+    cancel_ref: list[ui.button | None] = [None]
 
     progress_container.clear()
     with progress_container:
@@ -110,12 +132,22 @@ async def run_generation(
         status_label = ui.label("Starting...").classes("text-sm").style("color: var(--im-text)")
         run_id_label = ui.label("").classes("text-sm").style("color: var(--im-text-secondary)")
 
+        cancel_btn = im_button(
+            "Cancel",
+            variant="secondary",
+            on_click=lambda: _request_cancel(state, cancel_ref[0], status_label),
+            icon="cancel",
+        )
+        cancel_ref[0] = cancel_btn
+
     try:
-        from immich_memories.generate import generate_memory
+        from immich_memories.generate import GenerationError, generate_memory
 
         effective_output_path = output_dir / sanitize_filename(filename_input.value)
 
         def on_progress(phase: str, progress: float, msg: str) -> None:
+            if state.cancel_requested:
+                raise GenerationError("Generation cancelled by user")
             progress_bar.value = progress
             status_label.set_text(msg)
 
@@ -154,6 +186,7 @@ async def run_generation(
 
         progress_bar.value = 1.0
         status_label.set_text("Complete!")
+        cancel_btn.set_visibility(False)
         state.output_path = result_path
 
         _show_output(output_container, result_path)
@@ -162,6 +195,7 @@ async def run_generation(
         logger.exception("Video generation failed")
         safe_msg = sanitize_error_message(str(e))
         ui.notify(f"Generation failed: {safe_msg}", type="negative")
+        cancel_btn.set_visibility(False)
         progress_container.clear()
         with progress_container:
             im_info_card(f"Generation failed: {safe_msg}", variant="error")
