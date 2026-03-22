@@ -9,9 +9,9 @@ sidebar_position: 2
 
 End of December 2025. My son's birthday was coming up and I wanted to make a yearly recap of his best moments. I had hundreds of clips, all safely stored in Immich after I migrated off Google Photos.
 
-I opened DaVinci Resolve. Imported 40 clips. Started dragging them onto a timeline. Added a few crossfades. Realized I needed music. Found something on YouTube Audio Library. Tried to sync cuts to the beat. Two hours later I had 90 seconds of mediocre output and I still hadn't gone through the other 360 clips.
+I opened Premiere, imported 40 clips, started dragging them onto a timeline. Added a few crossfades. Realized I needed music. Two hours later I had 90 seconds of mediocre output and I still hadn't gone through the other 360 clips.
 
-I closed the laptop and watched TV instead.
+Closed the laptop and watched TV instead.
 
 That's the actual problem. Not "I can't find my videos" (Immich handles that). Not "I don't have enough storage" (solved). The problem is the 4-8 hours between "I have 400 clips" and "here's a 3-minute video I'd actually show my family."
 
