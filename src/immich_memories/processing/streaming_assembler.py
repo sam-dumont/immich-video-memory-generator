@@ -338,6 +338,21 @@ def _emit_body_frames(
     return frames_written
 
 
+def _match_blend_bufs(
+    ref: np.ndarray, blend_buf: np.ndarray, temp_buf: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Create black frame and ensure blend buffers match actual frame shape.
+
+    WHY: HDR mode pre-allocates flat uint16 YUV buffers, but some clips
+    (title screens, FFmpeg filter fallback on Linux) may decode as 3D RGB.
+    """
+    black = np.zeros_like(ref)
+    if blend_buf.shape != ref.shape or blend_buf.dtype != ref.dtype:
+        blend_buf = np.zeros_like(ref)
+        temp_buf = np.zeros_like(ref)
+    return black, blend_buf, temp_buf
+
+
 def _emit_crossfade(
     active_iter: Iterator[np.ndarray],
     next_iter: Iterator[np.ndarray],
@@ -349,13 +364,19 @@ def _emit_crossfade(
     width: int,
 ) -> None:
     """Blend fade_frames from two iterators and write to encoder."""
-    black = np.zeros((height, width, 3), dtype=blend_buf.dtype)
+    black: np.ndarray | None = None
     for fade_idx in range(fade_frames):
         frame_a = next(active_iter, None)
         frame_b = next(next_iter, None)
 
         if frame_a is None is frame_b:
             break
+
+        if black is None:
+            ref = frame_a if frame_a is not None else frame_b
+            assert ref is not None  # noqa: S101
+            black, blend_buf, temp_buf = _match_blend_bufs(ref, blend_buf, temp_buf)
+
         if frame_a is None:
             frame_a = black
         if frame_b is None:
