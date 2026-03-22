@@ -96,11 +96,9 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 10px;
 }
 
-/* Code blocks: dark background in light mode */
-[data-theme='light'] .prism-code {
-  background: #1e1e2e !important;
-  color: #cdd6f4 !important;
-}
+/* Code blocks: let Prism handle themes natively.
+   Light mode = github theme (light bg), dark mode = dracula (dark bg).
+   Forcing dark bg in light mode breaks Prism token colors. */
 
 /* Sidebar refinement */
 .theme-doc-sidebar-menu .menu__link {
