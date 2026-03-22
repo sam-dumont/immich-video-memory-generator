@@ -293,7 +293,7 @@ scheduler:
 
 ## Smart automation
 
-Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../cli/auto.md) for the full command reference.
+Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../create/cli/auto.md) for the full command reference.
 
 ```yaml
 automation:
