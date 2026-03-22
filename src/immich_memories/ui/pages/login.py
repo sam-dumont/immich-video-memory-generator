@@ -20,9 +20,15 @@ def render_login_page(auth_config: AuthConfig) -> None:
     apply_theme()
 
     with ui.column().classes("absolute-center items-center gap-6"):
-        with ui.row().classes("items-center gap-3"):
-            ui.icon("movie").classes("text-4xl").style("color: var(--im-primary)")
-            ui.label("Immich Memories").classes("text-2xl font-bold").style("color: var(--im-text)")
+        with ui.column().classes("items-center gap-1"):
+            with ui.row().classes("items-center gap-3"):
+                ui.icon("movie").classes("text-4xl").style("color: var(--im-primary)")
+                ui.label("Immich Memories").classes("text-2xl font-bold").style(
+                    "color: var(--im-text)"
+                )
+            ui.label("Turn your photo library into video memories").classes("text-sm").style(
+                "color: var(--im-text-muted)"
+            )
 
         with ui.card().classes("w-80 p-6"):
             if auth_config.provider == "basic":

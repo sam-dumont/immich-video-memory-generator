@@ -117,7 +117,69 @@ def render_step_indicator(current_step: int) -> None:  # noqa: ARG001
     """
 
 
-def render_sidebar(current_step: int) -> None:
+def _is_step_complete(state, step: int) -> bool:
+    """Check whether a wizard step has been completed based on AppState."""
+    if step == 1:
+        return state.config is not None and state.date_range is not None
+    if step == 2:
+        return len(state.selected_clip_ids) > 0
+    if step == 3:
+        return bool(state.generation_options)
+    return False
+
+
+def _render_step_nav(state, current_step: int) -> None:  # pragma: no cover
+    """Render the 4-step wizard nav items with completion indicators."""
+    with ui.column().classes("gap-0 px-3 mt-2"):
+        for i, (name, icon, path) in enumerate(_STEPS):
+            step_num = i + 1
+            is_active = step_num == current_step
+            is_complete = _is_step_complete(state, step_num)
+
+            def make_nav(s: int, p: str):
+                def handler():
+                    state.step = s
+                    ui.navigate.to(p)
+
+                return handler
+
+            classes = "im-nav-item"
+            if is_active:
+                classes += " im-nav-active"
+
+            with (
+                ui.element("div").classes(classes).on("click", make_nav(step_num, path)),
+                ui.row().classes("items-center gap-3 w-full"),
+            ):
+                ui.icon(icon).classes("text-xl")
+                ui.label(name).classes("text-sm")
+                if is_complete and not is_active:
+                    ui.element("div").classes("flex-grow")
+                    ui.icon("check_circle").classes("text-xs").style(
+                        "color: var(--im-success); font-size: 16px"
+                    )
+
+
+def _render_extra_nav() -> None:  # pragma: no cover
+    """Render settings/cache nav items below the step nav."""
+    with ui.column().classes("gap-0 px-3"):
+        for name, icon, path in _EXTRA_NAV:
+
+            def make_extra_nav(p: str):
+                def handler():
+                    ui.navigate.to(p)
+
+                return handler
+
+            with (
+                ui.element("div").classes("im-nav-item").on("click", make_extra_nav(path)),
+                ui.row().classes("items-center gap-3 w-full"),
+            ):
+                ui.icon(icon).classes("text-xl")
+                ui.label(name).classes("text-sm")
+
+
+def render_sidebar(current_step: int) -> None:  # pragma: no cover
     """Render Immich-style sidebar navigation."""
     state = get_app_state()
     # WHY: ensure_config lazily loads config into per-session state on first page load.
@@ -130,49 +192,13 @@ def render_sidebar(current_step: int) -> None:
             ui.icon("movie").classes("text-2xl").style("color: var(--im-primary)")
             ui.label("Immich Memories").classes("text-lg font-bold").style("color: var(--im-text)")
 
-        # Nav items
-        with ui.column().classes("gap-0 px-3 mt-2"):
-            for i, (name, icon, path) in enumerate(_STEPS):
-                step_num = i + 1
-                is_active = step_num == current_step
-
-                def make_nav(s: int, p: str):
-                    def handler():
-                        state.step = s
-                        ui.navigate.to(p)
-
-                    return handler
-
-                classes = "im-nav-item"
-                if is_active:
-                    classes += " im-nav-active"
-
-                with (
-                    ui.element("div").classes(classes).on("click", make_nav(step_num, path)),
-                    ui.row().classes("items-center gap-3 w-full"),
-                ):
-                    ui.icon(icon).classes("text-xl")
-                    ui.label(name).classes("text-sm")
+        _render_step_nav(state, current_step)
 
         # Extra nav (settings)
         ui.element("div").classes("mx-4 my-3").style(
             "height: 1px; background: var(--im-border-light)"
         )
-        with ui.column().classes("gap-0 px-3"):
-            for name, icon, path in _EXTRA_NAV:
-
-                def make_extra_nav(p: str):
-                    def handler():
-                        ui.navigate.to(p)
-
-                    return handler
-
-                with (
-                    ui.element("div").classes("im-nav-item").on("click", make_extra_nav(path)),
-                    ui.row().classes("items-center gap-3 w-full"),
-                ):
-                    ui.icon(icon).classes("text-xl")
-                    ui.label(name).classes("text-sm")
+        _render_extra_nav()
 
         # Spacer + toggles at bottom
         ui.element("div").classes("flex-grow")

@@ -15,7 +15,6 @@ from nicegui import run, ui
 from immich_memories.security import sanitize_error_message
 from immich_memories.ui.components import (
     im_info_card,
-    im_section_header,
     im_separator,
 )
 
@@ -237,23 +236,52 @@ async def _apply_music(
         )
 
 
+def _format_file_size(path: Path) -> str:
+    """Format file size in human-readable form."""
+    size_bytes = path.stat().st_size
+    if size_bytes >= 1_073_741_824:
+        return f"{size_bytes / 1_073_741_824:.1f} GB"
+    if size_bytes >= 1_048_576:
+        return f"{size_bytes / 1_048_576:.0f} MB"
+    return f"{size_bytes / 1024:.0f} KB"
+
+
 def _show_output(output_container, result_path: Path) -> None:
-    """Display the generated video in the output container."""
+    """Display the generated video with success state."""
     ui.notify("Video generated successfully!", type="positive")
     output_container.clear()
     with output_container:
         im_separator()
-        im_section_header("Output", icon="check_circle")
-        ui.label(f"Saved to: {result_path}").classes("text-sm").style(
-            "color: var(--im-text-secondary)"
-        )
+
+        # Success banner
+        with (
+            ui.element("div").classes("w-full rounded-lg p-4 im-alert-success"),
+            ui.row().classes("items-center gap-3"),
+        ):
+            ui.icon("check_circle").classes("text-2xl").style("color: var(--im-success)")
+            with ui.column().classes("gap-0"):
+                ui.label("Your memory video is ready!").classes("text-base font-semibold").style(
+                    "color: var(--im-success)"
+                )
+                if result_path.exists():
+                    file_size = _format_file_size(result_path)
+                    ui.label(f"Saved to: {result_path} ({file_size})").classes("text-sm").style(
+                        "color: var(--im-text-secondary)"
+                    )
+
         if result_path.exists():
             video_url = nicegui_app.add_media_file(local_file=result_path)
-            with (
+            video_wrapper = (
                 ui.element("div")
                 .classes("rounded-xl overflow-hidden mt-4")
                 .style("background: #000")
-            ):
+            )
+            with video_wrapper:
                 ui.video(video_url).classes("w-full max-w-2xl").style(
                     "max-height: 60vh; object-fit: contain"
                 )
+            # Auto-scroll to the video player
+            ui.run_javascript(
+                "document.querySelector('.im-alert-success')"
+                "?.scrollIntoView({behavior: 'smooth', block: 'start'})"
+            )
