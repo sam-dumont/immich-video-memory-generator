@@ -1,0 +1,14 @@
+graph TB
+    subgraph K8s["☸️ Kubernetes Cluster"]
+        subgraph NS1["namespace: immich"]
+            ImmichPods["📷 Immich pods<br/>PostgreSQL · Redis · ML"]
+        end
+        subgraph NS2["namespace: memories"]
+            App["🎬 memories-app<br/>CPU node"]
+            Music["🎵 memories-music<br/>GPU node · nodeSelector"]
+        end
+    end
+
+    ImmichPods -->|API| App
+    App -.->|optional| Music
+    App -->|PVC| Storage[("💾 Persistent<br/>Volume")]

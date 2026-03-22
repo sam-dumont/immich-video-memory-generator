@@ -1,0 +1,11 @@
+graph TB
+    subgraph NAS["🖥️ Synology / QNAP NAS"]
+        subgraph Docker["Docker"]
+            Immich["📷 Immich<br/>photos & videos"]
+            Memories["🎬 Immich Memories<br/>CPU encoding · 1080p"]
+        end
+        Output[("📁 /output volume")]
+    end
+
+    Immich -->|API| Memories
+    Memories -->|renders| Output

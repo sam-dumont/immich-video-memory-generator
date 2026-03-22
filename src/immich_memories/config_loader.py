@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from immich_memories.config_models import (
     ACEStepConfig,
@@ -54,6 +54,38 @@ _TIER2_SECTIONS = frozenset(
         "auth",
     }
 )
+
+
+def _load_yaml_data(path: Path) -> dict:
+    """Load and flatten YAML config data (advanced: → top-level)."""
+    if not path.exists():
+        return {}
+    with path.open() as f:
+        data = yaml.safe_load(f) or {}
+    if "advanced" in data and isinstance(data["advanced"], dict):
+        advanced = data.pop("advanced")
+        for key, value in advanced.items():
+            if key not in data:
+                data[key] = value
+    return data
+
+
+_yaml_source_data: dict = {}
+
+
+class _YamlSettingsSource(PydanticBaseSettingsSource):
+    """Pydantic-settings source backed by a YAML dict.
+
+    Sits below env vars in the priority chain so that
+    IMMICH_MEMORIES_FOO__BAR=x always overrides foo.bar in config.yaml.
+    """
+
+    def get_field_value(self, field, field_name):  # type: ignore[override]  # noqa: ANN001
+        val = _yaml_source_data.get(field_name)
+        return val, field_name, val is not None
+
+    def __call__(self) -> dict:
+        return _yaml_source_data.copy()
 
 
 class Config(BaseSettings):
@@ -104,24 +136,29 @@ class Config(BaseSettings):
     def from_yaml(cls, path: Path) -> Config:
         """Load configuration from a YAML file.
 
-        Accepts both formats:
-          - Flat: all sections at top level (legacy)
-          - Tiered: tier 2 sections nested under ``advanced:``
+        Priority order (highest wins): env vars > YAML file > defaults.
+        This ensures IMMICH_MEMORIES_AUTH__ENABLED=false always overrides
+        auth.enabled: true in config.yaml.
         """
-        if not path.exists():
+        global _yaml_source_data
+        _yaml_source_data = _load_yaml_data(path)
+        try:
             return cls()
+        finally:
+            _yaml_source_data = {}
 
-        with path.open() as f:
-            data = yaml.safe_load(f) or {}
-
-        # Flatten advanced: namespace → top-level fields
-        if "advanced" in data and isinstance(data["advanced"], dict):
-            advanced = data.pop("advanced")
-            for key, value in advanced.items():
-                if key not in data:  # top-level keys take precedence
-                    data[key] = value
-
-        return cls(**data)
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        yaml_source = _YamlSettingsSource(settings_cls)
+        # dotenv_settings intentionally excluded — YAML source replaces it
+        return (init_settings, env_settings, yaml_source, dotenv_settings, file_secret_settings)
 
     def save_yaml(self, path: Path) -> None:
         """Save configuration to a YAML file (tiered format)."""

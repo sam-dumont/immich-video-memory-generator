@@ -129,6 +129,8 @@ dev = [
     "mutmut>=2.0",
     "diff-cover>=9.0",
     "oidc-provider-mock>=0.3",
+    # E2E browser tests
+    "pytest-playwright>=0.5",
 ]
 
 [project.scripts]
@@ -485,7 +487,8 @@ DEP002 = [
     "torch",                                            # PANNs inference backend
     "freetype-py",                                      # imported as freetype
     "pytest", "pytest-cov", "pytest-asyncio",           # dev tools (CLI usage)
-    "pytest-benchmark", "pytest-xdist", "mypy", "ruff",  # dev tools
+    "pytest-benchmark", "pytest-xdist", "pytest-playwright", # dev tools
+    "mypy", "ruff",                                      # dev tools
     "pre-commit", "commitizen",                         # dev tools
     "types-pyyaml",                                     # mypy stub
     "grimp",                                            # import-linter backend
@@ -558,9 +561,11 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "integration: requires FFmpeg (deselect with '-m not integration')",
+    "e2e: Playwright E2E browser tests (deselect with '-m not e2e')",
+    "slow: long-running tests (full generation pipeline, ~10min)",
     "perf: performance benchmarks (run with: make benchmark-perf)",
 ]
-addopts = "-m 'not integration'"
+addopts = "-m 'not integration and not e2e'"
 
 [tool.coverage.run]
 source = ["src/immich_memories"]

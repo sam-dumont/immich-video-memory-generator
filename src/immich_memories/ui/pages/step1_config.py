@@ -289,23 +289,26 @@ def _render_options_section(state) -> None:
                 ui.switch("Include Live Photos").bind_value(state, "include_live_photos").props(
                     "color=primary"
                 )
-                ui.label("3s iPhone clips, burst-merged when consecutive").classes("text-sm").style(
-                    "color: var(--im-text-secondary)"
-                )
+                ui.label("Short clips from Live Photos, burst-merged when consecutive").classes(
+                    "text-sm"
+                ).style("color: var(--im-text-secondary)")
 
             # Include photos
             with ui.row().classes("items-center gap-3 w-full"):
                 ui.switch("Include Photos").bind_value(state, "include_photos").props(
                     "color=primary"
                 )
-                ui.label("Include photos as animated Ken Burns clips").classes("text-sm").style(
+                ui.label("Include photos as animated clips").classes("text-sm").style(
                     "color: var(--im-text-secondary)"
                 )
 
             # Analysis depth
             with ui.row().classes("items-center gap-3 w-full"):
                 ui.select(
-                    options={"fast": "Fast (metadata only)", "thorough": "Thorough (LLM analysis)"},
+                    options={
+                        "fast": "Fast (LLM top clips only)",
+                        "thorough": "Thorough (LLM all clips)",
+                    },
                     label="Analysis Depth",
                     value=state.analysis_depth,
                 ).classes("w-64").bind_value(state, "analysis_depth")

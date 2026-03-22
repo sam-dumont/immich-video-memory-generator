@@ -1,0 +1,18 @@
+{
+  "theme": "default",
+  "themeVariables": {
+    "primaryColor": "#4250af",
+    "primaryTextColor": "#ffffff",
+    "primaryBorderColor": "#4250af",
+    "lineColor": "#4250af",
+    "secondaryColor": "#f6f6f4",
+    "tertiaryColor": "#e8eaf6",
+    "background": "#ffffff",
+    "mainBkg": "#4250af",
+    "nodeBorder": "#4250af",
+    "clusterBkg": "#f6f6f4",
+    "clusterBorder": "#4250af",
+    "titleColor": "#000000",
+    "edgeLabelBackground": "#ffffff"
+  }
+}
