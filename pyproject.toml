@@ -562,6 +562,7 @@ asyncio_mode = "auto"
 markers = [
     "integration: requires FFmpeg (deselect with '-m not integration')",
     "e2e: Playwright E2E browser tests (deselect with '-m not e2e')",
+    "slow: long-running tests (full generation pipeline, ~10min)",
     "perf: performance benchmarks (run with: make benchmark-perf)",
 ]
 addopts = "-m 'not integration and not e2e'"

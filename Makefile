@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-fast mutation benchmark benchmark-perf lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e screenshots diagrams
+.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-fast mutation benchmark benchmark-perf lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
 
 # Default target
 help:
@@ -58,7 +58,8 @@ help:
 	@echo ""
 	@echo "E2E Tests (Playwright):"
 	@echo "  playwright-install  Install Playwright browsers"
-	@echo "  e2e                 Run Playwright E2E tests"
+	@echo "  e2e                 Run Playwright E2E tests (fast)"
+	@echo "  e2e-full            Run ALL E2E tests + full generation (~10min)"
 	@echo "  screenshots         Capture UI screenshots (light + dark)"
 	@echo "  diagrams            Render architecture diagrams (Mermaid)"
 	@echo ""
@@ -189,7 +190,11 @@ test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immic
 playwright-install:  ## Install Playwright browsers for E2E tests
 	uv run playwright install chromium
 
-e2e:  ## Run Playwright E2E tests (auto-starts UI under coverage, needs local config)
+e2e:  ## Run Playwright E2E tests (fast — screenshots + auth, ~3min)
+	uv run pytest tests/e2e/ -v -m "e2e and not slow" --log-cli-level=INFO --tb=short \
+		--junitxml=tests/e2e-junit.xml
+
+e2e-full:  ## Run ALL E2E tests including full generation pipeline (~10min)
 	uv run pytest tests/e2e/ -v -m e2e --log-cli-level=INFO --tb=short \
 		--junitxml=tests/e2e-junit.xml
 
