@@ -331,13 +331,21 @@ jobs:
             [ -f "$f" ] && sed -i'' -e "s/timestamp=\"[0-9]*\"/timestamp=\"${NOW_MS}\"/" "$f"
           done
 
-      - name: Upload coverage to Codecov
+      - name: Upload unit test coverage to Codecov
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
         with:
-          # Unit test coverage + committed Mac integration XMLs
-          # Linux integration coverage uploaded separately with flag integration-linux
-          flags: unittests,integration-mac
+          files: coverage.xml
+          flags: unittests
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+      - name: Upload Mac integration coverage to Codecov
+        uses: codecov/codecov-action@v5
+        if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
+        with:
+          files: tests/*-coverage.xml
+          flags: integration-mac
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
