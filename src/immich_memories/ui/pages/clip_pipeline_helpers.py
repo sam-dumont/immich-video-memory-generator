@@ -15,15 +15,15 @@ from immich_memories.ui.pages.step2_helpers import get_thumbnail
 logger = logging.getLogger(__name__)
 
 _AUDIO_CAT_COLORS = {
-    "laughter": "pink-4",
-    "baby": "pink-3",
-    "speech": "blue-grey-4",
-    "singing": "purple-4",
-    "music": "deep-purple-4",
-    "engine": "orange-6",
-    "nature": "green-5",
-    "crowd": "amber-6",
-    "animals": "brown-4",
+    "laughter": "--im-error",
+    "baby": "--im-error",
+    "speech": "--im-text-secondary",
+    "singing": "--im-analysis",
+    "music": "--im-analysis",
+    "engine": "--im-warning",
+    "nature": "--im-success",
+    "crowd": "--im-warning",
+    "animals": "--im-warning-text",
 }
 
 
@@ -92,8 +92,11 @@ def _render_audio_categories(audio_cats: list[str] | None) -> None:
     with ui.row().classes("gap-1 mt-1 flex-wrap"):
         ui.icon("hearing").classes("text-sm").style("color: var(--im-info)")
         for cat in audio_cats:
-            color = _AUDIO_CAT_COLORS.get(cat, "grey-5")
-            ui.badge(cat, color=color).classes("text-xs")
+            css_var = _AUDIO_CAT_COLORS.get(cat, "--im-text-secondary")
+            ui.badge(cat).classes("text-xs").style(
+                f"background: color-mix(in srgb, var({css_var}) 15%, transparent); "
+                f"color: var({css_var})"
+            )
 
 
 def _render_segment_and_score(segment: tuple | None, score: float | None) -> None:
