@@ -7,6 +7,8 @@ title: Privacy Mode
 
 Privacy mode (also called demo mode) blurs all video content, muffles audio, and anonymizes locations and names in the final output. It's for situations where you want to demo the app or share a screen recording without showing your actual footage.
 
+This feature is how all the demo videos on this site were made. I would never have been able to record shareable demos without it: building a privacy mode specifically for this purpose was one of those things where having AI write the code made it feasible. Without it, I'd have had to either skip demos entirely or manually edit out personal content from every recording.
+
 ## What it does
 
 When privacy mode is on:

@@ -1,6 +1,6 @@
 ---
 sidebar_label: "Built with AI"
-sidebar_position: 3
+sidebar_position: 4
 ---
 
 # Built with AI
@@ -31,4 +31,6 @@ These aren't decoration. They catch real bugs that Claude introduces confidently
 - 17 CI gates, all enforced on every commit
 - 80+ source files, all under 800 lines
 - Composition over inheritance everywhere: zero mixins
-- Full transcripts of every research conversation available in the [dev history archive](https://github.com/sam-dumont/immich-video-memory-generator)
+- ~50 development sessions over 3 months
+
+I'm planning a series of blog posts about the development process: the research conversations, the debugging odyssey, and the architectural decisions. Links will go here when they're published.
