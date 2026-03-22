@@ -8,6 +8,7 @@ from collections import defaultdict
 from nicegui import ui
 
 from immich_memories.api.models import VideoClipInfo
+from immich_memories.ui.components import im_badge
 from immich_memories.ui.pages.step2_helpers import (
     format_duration,
     get_thumbnail,
@@ -159,15 +160,15 @@ def _get_clip_badges(clip: VideoClipInfo) -> list[str]:
 
 # Colors for audio category tags (muted, distinct)
 _CATEGORY_COLORS: dict[str, str] = {
-    "laughter": "pink-4",
-    "baby": "pink-3",
-    "speech": "blue-grey-4",
-    "singing": "purple-4",
-    "music": "deep-purple-4",
-    "engine": "orange-6",
-    "nature": "green-5",
-    "crowd": "amber-6",
-    "animals": "brown-4",
+    "laughter": "--im-error",
+    "baby": "--im-error",
+    "speech": "--im-text-secondary",
+    "singing": "--im-analysis",
+    "music": "--im-analysis",
+    "engine": "--im-warning",
+    "nature": "--im-success",
+    "crowd": "--im-warning",
+    "animals": "--im-warning-text",
 }
 
 
@@ -177,8 +178,11 @@ def _render_audio_categories(clip: VideoClipInfo) -> None:
         return
     with ui.row().classes("gap-1 flex-wrap mt-1"):
         for cat in clip.audio_categories:
-            color = _CATEGORY_COLORS.get(cat, "grey-5")
-            ui.badge(cat, color=color).classes("text-xs")
+            css_var = _CATEGORY_COLORS.get(cat, "--im-text-secondary")
+            ui.badge(cat).classes("text-xs").style(
+                f"background: color-mix(in srgb, var({css_var}) 15%, transparent); "
+                f"color: var({css_var})"
+            )
 
 
 def _render_clip_badges(badges: list[str]) -> None:
@@ -187,11 +191,11 @@ def _render_clip_badges(badges: list[str]) -> None:
         with ui.row().classes("gap-1 flex-wrap"):
             for badge in badges:
                 if badge == "star":
-                    ui.icon("star", color="yellow").classes("text-xs")
+                    ui.icon("star").classes("text-xs").style("color: var(--im-warning)")
                 elif badge == "Live":
-                    ui.badge(badge, color="purple").classes("text-xs")
+                    im_badge(badge, variant="analysis")
                 else:
-                    ui.badge(badge, color="blue").classes("text-xs")
+                    im_badge(badge, variant="info")
 
 
 def _render_clip_thumbnail(asset_id: str) -> None:

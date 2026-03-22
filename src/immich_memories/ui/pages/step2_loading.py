@@ -366,11 +366,11 @@ def _render_cached_analysis_summary(clips: list[VideoClipInfo]) -> None:
 
     time_saved_seconds = len(analyzed_clips) * 30
 
-    with ui.card().classes("w-full p-2 bg-blue-50 mb-4"):
+    with ui.card().classes("w-full p-2 mb-4").style("background: var(--im-info-bg)"):
         ui.label(
             f"Previously Analyzed: Found {len(analyzed_clips)} clips already analyzed from cache. "
             f"This will save approximately {time_saved_seconds // 60}m {time_saved_seconds % 60}s."
-        ).classes("text-blue-700 text-sm")
+        ).classes("text-sm").style("color: var(--im-info)")
 
         def use_cached():
             for asset_id, analysis in analyzed_clips.items():

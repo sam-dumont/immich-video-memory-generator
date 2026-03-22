@@ -9,28 +9,29 @@ from typing import Any
 
 from nicegui import ui
 
+from immich_memories.ui.components import im_badge
 from immich_memories.ui.pages.step2_helpers import get_thumbnail
 
 logger = logging.getLogger(__name__)
 
 _AUDIO_CAT_COLORS = {
-    "laughter": "pink-4",
-    "baby": "pink-3",
-    "speech": "blue-grey-4",
-    "singing": "purple-4",
-    "music": "deep-purple-4",
-    "engine": "orange-6",
-    "nature": "green-5",
-    "crowd": "amber-6",
-    "animals": "brown-4",
+    "laughter": "--im-error",
+    "baby": "--im-error",
+    "speech": "--im-text-secondary",
+    "singing": "--im-analysis",
+    "music": "--im-analysis",
+    "engine": "--im-warning",
+    "nature": "--im-success",
+    "crowd": "--im-warning",
+    "animals": "--im-warning-text",
 }
 
 
 def _render_thumbnail_for(asset_id: str | None, _container: ui.element) -> None:
     """Render a thumbnail into a container (called from UI thread)."""
     if not asset_id:
-        ui.element("div").classes(
-            "w-full h-32 bg-gray-200 rounded flex items-center justify-center"
+        ui.element("div").classes("w-full h-32 rounded flex items-center justify-center").style(
+            "background: var(--im-bg-elevated)"
         )
         return
     thumb = get_thumbnail(asset_id)
@@ -38,10 +39,12 @@ def _render_thumbnail_for(asset_id: str | None, _container: ui.element) -> None:
         b64 = base64.b64encode(thumb).decode()
         ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-32 object-cover rounded")
     else:
-        with ui.element("div").classes(
-            "w-full h-32 bg-gray-200 rounded flex items-center justify-center"
+        with (
+            ui.element("div")
+            .classes("w-full h-32 rounded flex items-center justify-center")
+            .style("background: var(--im-bg-elevated)")
         ):
-            ui.icon("videocam", color="gray").classes("text-3xl")
+            ui.icon("videocam").classes("text-3xl").style("color: var(--im-text-muted)")
 
 
 def _render_currently_analyzing_card(
@@ -49,7 +52,9 @@ def _render_currently_analyzing_card(
 ) -> None:
     """Render the 'Currently Analyzing' card."""
     with ui.card().classes("flex-1 p-3"):
-        ui.label("Currently Analyzing").classes("text-sm font-semibold text-blue-600 mb-2")
+        ui.label("Currently Analyzing").classes("text-sm font-semibold mb-2").style(
+            "color: var(--im-info)"
+        )
         current_item = progress_state["current_item"]
         current_asset = progress_state["current_asset_id"]
         if current_item:
@@ -57,7 +62,7 @@ def _render_currently_analyzing_card(
             ui.label(current_item).classes("font-medium mt-2 truncate")
             ui.spinner(size="sm").classes("mt-1")
         else:
-            ui.label("Waiting...").classes("text-gray-400 italic")
+            ui.label("Waiting...").classes("italic").style("color: var(--im-text-muted)")
 
 
 def _render_llm_badges(
@@ -77,7 +82,7 @@ def _render_llm_badges(
         badges.append(f"quality: {llm_quality:.0%}")
     with ui.row().classes("gap-1 mt-1 flex-wrap"):
         for b in badges:
-            ui.badge(b, color="purple").props("outline").classes("text-xs")
+            im_badge(b, variant="analysis")
 
 
 def _render_audio_categories(audio_cats: list[str] | None) -> None:
@@ -85,10 +90,13 @@ def _render_audio_categories(audio_cats: list[str] | None) -> None:
     if not audio_cats:
         return
     with ui.row().classes("gap-1 mt-1 flex-wrap"):
-        ui.icon("hearing", color="blue").classes("text-sm")
+        ui.icon("hearing").classes("text-sm").style("color: var(--im-info)")
         for cat in audio_cats:
-            color = _AUDIO_CAT_COLORS.get(cat, "grey-5")
-            ui.badge(cat, color=color).classes("text-xs")
+            css_var = _AUDIO_CAT_COLORS.get(cat, "--im-text-secondary")
+            ui.badge(cat).classes("text-xs").style(
+                f"background: color-mix(in srgb, var({css_var}) 15%, transparent); "
+                f"color: var({css_var})"
+            )
 
 
 def _render_segment_and_score(segment: tuple | None, score: float | None) -> None:
@@ -97,11 +105,11 @@ def _render_segment_and_score(segment: tuple | None, score: float | None) -> Non
         start, end = segment
         seg_dur = end - start
         with ui.row().classes("gap-2 mt-2 items-center"):
-            ui.icon("content_cut", color="blue").classes("text-sm")
+            ui.icon("content_cut").classes("text-sm").style("color: var(--im-info)")
             ui.label(f"{start:.1f}s - {end:.1f}s ({seg_dur:.1f}s)").classes("text-sm")
     if score is not None:
         with ui.row().classes("gap-2 items-center"):
-            ui.icon("star", color="amber").classes("text-sm")
+            ui.icon("star").classes("text-sm").style("color: var(--im-warning)")
             ui.label(f"Score: {score:.2f}").classes("text-sm")
 
 
@@ -144,7 +152,9 @@ def _render_last_analyzed_card(
         return
 
     with ui.card().classes("flex-1 p-3"):
-        ui.label("Last Analyzed").classes("text-sm font-semibold text-green-600 mb-2")
+        ui.label("Last Analyzed").classes("text-sm font-semibold mb-2").style(
+            "color: var(--im-success)"
+        )
 
         preview_path = progress_state["last_completed_video_path"]
         video_shown = _try_render_video_preview(preview_path, _rendered_state)
@@ -159,8 +169,10 @@ def _render_last_analyzed_card(
         llm_desc = progress_state["last_completed_llm_description"]
         if llm_desc:
             with ui.row().classes("gap-2 mt-1 items-start"):
-                ui.icon("smart_toy", color="purple").classes("text-sm mt-0.5")
-                ui.label(llm_desc).classes("text-sm text-gray-600 italic")
+                ui.icon("smart_toy").classes("text-sm mt-0.5").style("color: var(--im-analysis)")
+                ui.label(llm_desc).classes("text-sm italic").style(
+                    "color: var(--im-text-secondary)"
+                )
 
         _render_llm_badges(
             progress_state["last_completed_llm_emotion"],

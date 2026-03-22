@@ -35,7 +35,7 @@ def render_upload_controls(state) -> None:
     """
     with im_card():
         with ui.row().classes("w-full items-center gap-4"):
-            ui.icon("cloud_upload").classes("text-2xl").style("color: var(--im-accent)")
+            ui.icon("cloud_upload").classes("text-2xl").style("color: var(--im-primary)")
             ui.label("Upload to Immich").classes("text-lg font-medium")
 
         with ui.column().classes("w-full gap-3 mt-2"):

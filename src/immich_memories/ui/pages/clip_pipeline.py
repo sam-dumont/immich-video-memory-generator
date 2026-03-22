@@ -34,11 +34,13 @@ def render_phase_indicator(current_phase: int, total_phases: int = 4) -> None:
             label = phase_labels[i] if i < len(phase_labels) else f"Phase {phase_num}"
 
             if phase_num < current_phase:
-                ui.label(f"{phase_num}. {label}").classes("text-green-600")
+                ui.label(f"{phase_num}. {label}").style("color: var(--im-success)")
             elif phase_num == current_phase:
-                ui.label(f"{phase_num}. {label}").classes("text-blue-600 font-bold")
+                ui.label(f"{phase_num}. {label}").classes("font-bold").style(
+                    "color: var(--im-info)"
+                )
             else:
-                ui.label(f"{phase_num}. {label}").classes("text-gray-400")
+                ui.label(f"{phase_num}. {label}").style("color: var(--im-text-muted)")
 
 
 def render_pipeline_summary(result: dict) -> None:
@@ -51,20 +53,24 @@ def render_pipeline_summary(result: dict) -> None:
     error_count = stats.get("error_count", 0)
     elapsed = stats.get("elapsed_seconds", 0)
 
-    with ui.card().classes("w-full p-4 bg-green-50"):
+    with ui.card().classes("w-full p-4").style("background: var(--im-success-bg)"):
         ui.label(
             f"Pipeline complete! Selected {selected_count} clips from {total_analyzed} analyzed."
-        ).classes("text-green-700 font-semibold")
+        ).classes("font-semibold").style("color: var(--im-success-text)")
 
         with ui.row().classes("w-full gap-8 mt-4"):
             with ui.column().classes("items-center"):
-                ui.label("Clips Selected").classes("text-sm text-gray-500")
+                ui.label("Clips Selected").classes("text-sm").style(
+                    "color: var(--im-text-secondary)"
+                )
                 ui.label(str(selected_count)).classes("text-2xl font-bold")
             with ui.column().classes("items-center"):
-                ui.label("Clips Analyzed").classes("text-sm text-gray-500")
+                ui.label("Clips Analyzed").classes("text-sm").style(
+                    "color: var(--im-text-secondary)"
+                )
                 ui.label(str(total_analyzed)).classes("text-2xl font-bold")
             with ui.column().classes("items-center"):
-                ui.label("Time Elapsed").classes("text-sm text-gray-500")
+                ui.label("Time Elapsed").classes("text-sm").style("color: var(--im-text-secondary)")
                 time_str = f"{elapsed / 60:.1f}m" if elapsed > 60 else f"{elapsed:.0f}s"
                 ui.label(time_str).classes("text-2xl font-bold")
 
@@ -73,7 +79,7 @@ def render_pipeline_summary(result: dict) -> None:
                 for err in errors:
                     clip_id = err.get("clip_id", "Unknown")
                     error_msg = err.get("error", "Unknown error")
-                    ui.label(f"{clip_id}: {error_msg}").classes("text-orange-600")
+                    ui.label(f"{clip_id}: {error_msg}").style("color: var(--im-warning)")
 
 
 def _handle_pipeline_completion(
@@ -293,13 +299,17 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
     progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-full")
 
     # Stats row: persistent labels updated via set_text (avoids clear/rebuild churn)
-    with ui.row().classes("w-full justify-between items-center text-sm text-gray-600 mt-1"):
+    with (
+        ui.row()
+        .classes("w-full justify-between items-center text-sm mt-1")
+        .style("color: var(--im-text-secondary)")
+    ):
         stats_clips_label = ui.label("0/0 clips").classes("font-medium")
         stats_elapsed_label = ui.label("Elapsed: 0s")
         stats_speed_label = ui.label("")
         stats_avg_label = ui.label("")
         stats_eta_label = ui.label("ETA: --").classes("font-medium")
-        stats_errors_label = ui.label("").classes("text-orange-600")
+        stats_errors_label = ui.label("").style("color: var(--im-warning)")
 
     status_label = ui.label("Starting pipeline...")
 
@@ -345,7 +355,11 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
         "prev_media_url": None,
     }
 
-    cancel_btn = ui.button("Cancel Pipeline", icon="stop").props("color=red outline")
+    cancel_btn = (
+        ui.button("Cancel Pipeline", icon="stop")
+        .props("outline")
+        .style("color: var(--im-error); border-color: var(--im-error)")
+    )
 
     def cancel_pipeline() -> None:
         progress_state["cancelled"] = True

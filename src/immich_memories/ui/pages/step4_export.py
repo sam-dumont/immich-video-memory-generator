@@ -129,7 +129,11 @@ def render_step4() -> None:
             "color: var(--im-text-secondary)"
         )
         video_url = nicegui_app.add_media_file(local_file=Path(state.output_path))
-        with ui.element("div").classes("rounded-xl overflow-hidden mt-4").style("background: #000"):
+        with (
+            ui.element("div")
+            .classes("rounded-xl overflow-hidden mt-4")
+            .style("background: var(--im-bg)")
+        ):
             ui.video(video_url).classes("w-full max-w-2xl").style(
                 "max-height: 60vh; object-fit: contain"
             )

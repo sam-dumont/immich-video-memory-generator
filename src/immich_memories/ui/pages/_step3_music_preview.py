@@ -143,13 +143,15 @@ def _render_player(state, container):
     if not version.full_mix or not version.full_mix.exists():
         return
 
-    with container, ui.card().classes("w-full p-4 bg-green-50 border-green-300 mt-4"):
+    with container, ui.card().classes("w-full p-4 mt-4").style("background: var(--im-success-bg)"):
         with ui.row().classes("w-full items-center gap-4"):
-            ui.icon("check_circle", color="green").classes("text-2xl")
+            ui.icon("check_circle").classes("text-2xl").style("color: var(--im-success)")
             with ui.column().classes("flex-1"):
                 ui.label("Generated Music").classes("font-medium")
                 mood_text = version.mood or result.mood or "auto"
-                ui.label(f"Mood: {mood_text}").classes("text-sm text-gray-500")
+                ui.label(f"Mood: {mood_text}").classes("text-sm").style(
+                    "color: var(--im-text-secondary)"
+                )
 
         # Audio player
         ui.audio(str(version.full_mix)).classes("w-full mt-2")
@@ -237,7 +239,7 @@ def render_music_preview_section(options: dict) -> None:
     with progress_container:
         progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-full")
         progress_bar.set_visibility(False)
-        status_label = ui.label("").classes("text-sm text-gray-600")
+        status_label = ui.label("").classes("text-sm").style("color: var(--im-text-secondary)")
         status_label.set_visibility(False)
 
     # Show existing preview if available
@@ -260,5 +262,5 @@ def render_music_preview_section(options: dict) -> None:
 
     if not has_preview:
         ui.label("Generate music now to preview before rendering your video").classes(
-            "text-sm text-gray-500 mt-1"
-        )
+            "text-sm mt-1"
+        ).style("color: var(--im-text-secondary)")

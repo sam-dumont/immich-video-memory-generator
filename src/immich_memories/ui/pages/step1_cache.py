@@ -53,9 +53,9 @@ def _render_cache_row(
     """Render a single cache row with stats and clear button."""
     with ui.row().classes("w-full items-center justify-between py-2"):
         with ui.row().classes("items-center gap-2"):
-            ui.icon(icon).classes("text-gray-500")
+            ui.icon(icon).style("color: var(--im-text-secondary)")
             ui.label(label).classes("font-medium")
-        ui.label(stat_text).classes("text-sm text-gray-500")
+        ui.label(stat_text).classes("text-sm").style("color: var(--im-text-secondary)")
         ui.button("Clear", on_click=on_clear, icon="delete_outline").props(
             "flat size=sm color=negative"
         )
