@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import itertools
 import logging
+import operator
 from datetime import date, timedelta
 from typing import Any
 
@@ -207,7 +208,7 @@ class MultiPersonDetector:
             scored_pairs.append((pair_score, person_a, person_b, estimated_shared))
 
         # Sort by score descending, take top pairs
-        scored_pairs.sort(key=lambda x: x[0], reverse=True)
+        scored_pairs.sort(key=operator.itemgetter(0), reverse=True)
 
         candidates: list[MemoryCandidate] = []
         for pair_score, person_a, person_b, estimated_shared in scored_pairs[: self.TOP_PAIRS]:
