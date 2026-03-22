@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-fast mutation benchmark benchmark-perf lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e screenshots
+.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-fast mutation benchmark benchmark-perf lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e screenshots diagrams
 
 # Default target
 help:
@@ -60,6 +60,7 @@ help:
 	@echo "  playwright-install  Install Playwright browsers"
 	@echo "  e2e                 Run Playwright E2E tests"
 	@echo "  screenshots         Capture UI screenshots (light + dark)"
+	@echo "  diagrams            Render architecture diagrams (Mermaid)"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  clean        Remove build artifacts"
@@ -195,6 +196,15 @@ e2e:  ## Run Playwright E2E tests (auto-starts UI under coverage, needs local co
 screenshots:  ## Capture UI screenshots in light + dark mode (coverage from server subprocess)
 	uv run pytest tests/e2e/test_screenshots.py -v -m e2e --log-cli-level=INFO --tb=short \
 		--junitxml=tests/e2e-junit.xml
+
+diagrams:  ## Render architecture diagrams from Mermaid source files
+	@for f in docs-site/diagrams/setup-*.mmd; do \
+		name=$$(basename "$$f" .mmd); \
+		echo "Rendering $$name (dark + light)..."; \
+		npx --yes @mermaid-js/mermaid-cli -i "$$f" -o "docs-site/static/img/diagrams/$${name}.png" -w 800 -H 400 -b transparent -c docs-site/diagrams/mermaid-config.json 2>/dev/null; \
+		npx --yes @mermaid-js/mermaid-cli -i "$$f" -o "docs-site/static/img/diagrams/$${name}-light.png" -w 800 -H 400 -b transparent -c docs-site/diagrams/mermaid-config-light.json 2>/dev/null; \
+	done
+	@echo "Diagrams saved to docs-site/static/img/diagrams/"
 
 mutation:  ## Run mutation testing (slow — weekly CI or local deep validation)
 	uv run mutmut run --max-children 4
