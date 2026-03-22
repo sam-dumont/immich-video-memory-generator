@@ -204,6 +204,16 @@ def generate_memory(params: GenerationParams) -> Path:
         return _generate_memory_inner(params)
 
 
+def _build_memory_key(params: GenerationParams) -> str | None:
+    """Compute deterministic dedup key from generation params, or None if incomplete."""
+    if not (params.memory_type and params.date_start and params.date_end):
+        return None
+    from immich_memories.automation.candidates import make_memory_key
+
+    person_names = [params.person_name] if params.person_name else []
+    return make_memory_key(params.memory_type, params.date_start, params.date_end, person_names)
+
+
 def _generate_memory_inner(params: GenerationParams) -> Path:
     """Inner pipeline — runs under PipelineLock."""
     from immich_memories.cache.video_cache import VideoDownloadCache
@@ -232,6 +242,8 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         person_name=params.person_name,
         date_range=None,
         target_duration_seconds=round(_total_clip_duration(params)),
+        memory_type=params.memory_type,
+        memory_key=_build_memory_key(params),
     )
 
     try:

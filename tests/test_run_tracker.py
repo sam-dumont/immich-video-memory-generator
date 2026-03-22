@@ -160,6 +160,39 @@ class TestRunTrackerStartRun:
         assert run_id is not None
 
 
+class TestRunTrackerMemoryFields:
+    """Tests for memory_type/memory_key propagation."""
+
+    # WHY: capture_system_info runs subprocess calls for CPU/GPU/RAM — avoid hardware probing
+    @patch("immich_memories.tracking.run_tracker.capture_system_info")
+    # WHY: RunDatabase opens a SQLite connection — isolate run lifecycle from disk I/O
+    @patch("immich_memories.tracking.run_tracker.RunDatabase")
+    def test_start_run_passes_memory_fields(self, mock_db_cls: MagicMock, mock_capture: MagicMock):
+        """start_run stores memory_type, memory_key, and source on RunMetadata."""
+        mock_capture.return_value = MagicMock()
+        tracker = RunTracker(db_path=_TEST_DB_PATH, capture_system=True)
+        tracker.start_run(
+            memory_type="year_in_review",
+            memory_key="year_in_review:2025-01-01:2025-12-31:",
+            source="auto",
+        )
+        saved_run = tracker.db.save_run.call_args[0][0]
+        assert saved_run.memory_type == "year_in_review"
+        assert saved_run.memory_key == "year_in_review:2025-01-01:2025-12-31:"
+        assert saved_run.source == "auto"
+
+    # WHY: RunDatabase opens a SQLite connection — isolate run lifecycle from disk I/O
+    @patch("immich_memories.tracking.run_tracker.RunDatabase")
+    def test_start_run_defaults_source_to_manual(self, mock_db_cls: MagicMock):
+        """start_run defaults source to 'manual' when not specified."""
+        tracker = RunTracker(db_path=_TEST_DB_PATH, capture_system=False)
+        tracker.start_run()
+        saved_run = tracker.db.save_run.call_args[0][0]
+        assert saved_run.source == "manual"
+        assert saved_run.memory_type is None
+        assert saved_run.memory_key is None
+
+
 class TestRunTrackerFailCancel:
     """Tests for fail_run and cancel_run."""
 

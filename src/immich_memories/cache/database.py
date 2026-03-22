@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Current schema version - increment when schema changes
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 # Scoring algorithm version — bump when score computation changes
 # so cached scores from the old algorithm get re-analyzed
@@ -90,6 +90,7 @@ class VideoAnalysisCache:
             6: self._migration_v6_add_llm_and_audio,
             7: self._migration_v7_asset_scores,
             8: self._migration_v8_scoring_version,
+            9: self._migration_v9_automation,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):
@@ -336,6 +337,18 @@ class VideoAnalysisCache:
             ADD COLUMN scoring_version INTEGER NOT NULL DEFAULT 1
         """)
         logger.info("Added scoring_version column to video_analysis")
+
+    def _migration_v9_automation(self, conn: sqlite3.Connection) -> None:
+        """Add memory_type, memory_key, source columns for automation dedup."""
+        conn.execute("ALTER TABLE pipeline_runs ADD COLUMN memory_type TEXT")
+        conn.execute("ALTER TABLE pipeline_runs ADD COLUMN memory_key TEXT")
+        conn.execute("ALTER TABLE pipeline_runs ADD COLUMN source TEXT DEFAULT 'manual'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_memory_key ON pipeline_runs(memory_key)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_runs_memory_type ON pipeline_runs(memory_type)"
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_source ON pipeline_runs(source)")
+        logger.info("Added memory_type, memory_key, source columns for automation")
 
     # =========================================================================
     # Quick Video Metadata Methods

@@ -131,6 +131,11 @@ class RunMetadata:
     completed_at: datetime | None = None
     status: Literal["running", "completed", "failed", "cancelled"] = "running"
 
+    # Automation / dedup
+    memory_type: str | None = None
+    memory_key: str | None = None
+    source: str = "manual"  # "manual" | "scheduled" | "auto"
+
     # Input parameters
     person_name: str | None = None
     person_id: str | None = None
@@ -168,6 +173,9 @@ class RunMetadata:
             "created_at": self.created_at.isoformat(),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "status": self.status,
+            "memory_type": self.memory_type,
+            "memory_key": self.memory_key,
+            "source": self.source,
             "person_name": self.person_name,
             "person_id": self.person_id,
             "date_range_start": (
@@ -196,6 +204,9 @@ class RunMetadata:
                 datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None
             ),
             status=data.get("status", "running"),
+            memory_type=data.get("memory_type"),
+            memory_key=data.get("memory_key"),
+            source=data.get("source", "manual"),
             person_name=data.get("person_name"),
             person_id=data.get("person_id"),
             date_range_start=(
