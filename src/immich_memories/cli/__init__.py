@@ -78,6 +78,7 @@ def ui(ctx: click.Context, port: int | None, host: str | None, reload: bool) -> 
 
 
 # Register all sub-command groups
+from immich_memories.cli.auto_cmd import register_auto_commands  # noqa: E402
 from immich_memories.cli.cache_cmd import register_cache_commands  # noqa: E402
 from immich_memories.cli.config_cmd import register_config_commands  # noqa: E402
 from immich_memories.cli.generate import register_generate_commands  # noqa: E402
@@ -95,6 +96,7 @@ register_music_commands(main)
 register_runs_commands(main)
 register_scheduler_commands(main)
 register_cache_commands(main)
+register_auto_commands(main)
 
 
 if __name__ == "__main__":
