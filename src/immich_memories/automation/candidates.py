@@ -2,7 +2,24 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
+
+
+@dataclass
+class MemoryCandidate:
+    """A proposed memory that could be generated next."""
+
+    memory_type: str
+    date_range_start: date
+    date_range_end: date
+    person_names: list[str]
+    memory_key: str
+    score: float
+    reason: str
+    asset_count: int
+    extra_params: dict[str, Any] = field(default_factory=dict)
 
 
 def make_memory_key(
