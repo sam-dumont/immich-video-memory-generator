@@ -45,6 +45,8 @@ def gen_server_url():
         env["IMMICH_MEMORIES_SERVER__ENABLE_DEMO_MODE"] = "true"
         env["IMMICH_MEMORIES_CACHE__DATABASE"] = f"{tmpdir}/fresh-cache.db"
         env["IMMICH_MEMORIES_CACHE__DIRECTORY"] = f"{tmpdir}/cache"
+        env["IMMICH_MEMORIES_DEFAULTS__TARGET_DURATION"] = "1"
+        env["IMMICH_MEMORIES_OUTPUT__RESOLUTION"] = "720p"
 
         venv_bin = _REPO_ROOT / ".venv" / "bin"
         proc = subprocess.Popen(
@@ -189,26 +191,27 @@ def test_full_generation_pipeline(
     gen_btn.click(force=True)
     page.wait_for_timeout(3000)
 
-    # Capture progress states over time
-    for i in range(60):
-        progress_bar = page.locator(".q-linear-progress")
-        if progress_bar.is_visible(timeout=1000):
-            _prep(page)
-            page.screenshot(path=str(d / f"step4-progress-{i:02d}.png"))
-
-        # Check if generation completed
+    # Capture progress: check every 15s, keep one mid-progress shot
+    captured_progress = False
+    for _ in range(80):  # 80 × 15s = 20 min max
         success = page.get_by_text("Your memory video is ready!")
         if success.is_visible(timeout=1000):
             break
 
-        page.wait_for_timeout(10_000)  # Check every 10s
+        if not captured_progress:
+            progress_bar = page.locator(".q-linear-progress")
+            if progress_bar.is_visible(timeout=1000):
+                _prep(page)
+                page.screenshot(path=str(d / "step4-generating.png"))
+                captured_progress = True
+
+        page.wait_for_timeout(15_000)
 
     # ── Capture completion state ──
     page.wait_for_timeout(2000)
     _prep(page)
     page.screenshot(path=str(d / "step4-complete.png"))
 
-    # Capture with sidebar hidden for hero shot
     page.evaluate("document.querySelector('.q-drawer')?.style.setProperty('display','none')")
     page.evaluate(
         "document.querySelector('.q-page-container')?.style.setProperty('padding-left','0')"
