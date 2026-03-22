@@ -125,8 +125,38 @@ def render_step3() -> None:
 
     with im_card() as card:
         card.classes("p-5")
+
+        # Always visible: Resolution, Output Format
         with ui.row().classes("w-full gap-8"):
-            # Left column
+            with ui.column().classes("flex-1 gap-4"):
+                resolution_select = ui.select(
+                    options=["Auto (match clips)", "4K", "1080p", "720p"],
+                    label="Resolution",
+                    value=options.get("resolution", "Auto (match clips)"),
+                ).classes("w-full")
+
+                def on_resolution_change(e):
+                    options["resolution"] = e.value
+
+                resolution_select.on_value_change(on_resolution_change)
+
+            with ui.column().classes("flex-1 gap-4"):
+                format_select = ui.select(
+                    options=["MP4 (H.264)", "MOV (ProRes)"],
+                    label="Output Format",
+                    value=options.get("format", "MP4 (H.264)"),
+                ).classes("w-full")
+
+                def on_format_change(e):
+                    options["format"] = e.value
+
+                format_select.on_value_change(on_format_change)
+
+        # Collapsed: advanced output options
+        with (
+            ui.expansion("Advanced options", icon="settings").classes("w-full mt-4"),
+            ui.row().classes("w-full gap-8"),
+        ):
             with ui.column().classes("flex-1 gap-4"):
                 orientation_select = ui.select(
                     options=[
@@ -176,30 +206,7 @@ def render_step3() -> None:
 
                 transition_select.on_value_change(on_transition_change)
 
-            # Right column
             with ui.column().classes("flex-1 gap-4"):
-                resolution_select = ui.select(
-                    options=["Auto (match clips)", "4K", "1080p", "720p"],
-                    label="Resolution",
-                    value=options.get("resolution", "Auto (match clips)"),
-                ).classes("w-full")
-
-                def on_resolution_change(e):
-                    options["resolution"] = e.value
-
-                resolution_select.on_value_change(on_resolution_change)
-
-                format_select = ui.select(
-                    options=["MP4 (H.264)", "MOV (ProRes)"],
-                    label="Output Format",
-                    value=options.get("format", "MP4 (H.264)"),
-                ).classes("w-full")
-
-                def on_format_change(e):
-                    options["format"] = e.value
-
-                format_select.on_value_change(on_format_change)
-
                 date_checkbox = ui.checkbox(
                     "Add date overlay", value=options.get("add_date", False)
                 )
@@ -210,7 +217,8 @@ def render_step3() -> None:
                 date_checkbox.on_value_change(on_date_change)
 
                 debug_checkbox = ui.checkbox(
-                    "Keep intermediate files", value=options.get("keep_intermediates", False)
+                    "Keep intermediate files",
+                    value=options.get("keep_intermediates", False),
                 )
 
                 def on_debug_change(e):
