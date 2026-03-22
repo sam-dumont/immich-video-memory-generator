@@ -5,75 +5,58 @@ sidebar_position: 2
 
 # Why Immich Memories?
 
-## The problem
-
-You have thousands of videos sitting in Immich. Birthdays, first steps, road trips, random Tuesday afternoons that turned out to be great. They're all there, backed up, searchable, safe.
-
-But when was the last time you actually watched any of them?
-
-The gap isn't storage: Immich handles that. The gap is between "having the videos" and "reliving the moments." Nobody scrolls through 400 clips to pick the 25 best ones, figure out transitions, add music, and export a video they'd actually want to watch on the couch with their family.
-
-That's what this tool does.
-
 ## How it started
 
-December 28, 2025. End of the year, wanting to make a video of my son's best moments from the past 12 months. Videos spread across iCloud, Google Photos, and Immich (I had migrated to Immich about a year before to get off Google's servers).
+End of December 2025. My son turned one earlier that year and I wanted to make a video of his best moments from the past 12 months. I had hundreds of clips: first steps, bath time chaos, the face he makes when he discovers something new. All safely stored in Immich after I migrated off Google Photos.
 
-I tried the obvious options:
-- **Google Photos** made auto-generated recaps, but the music was pre-canned and I couldn't change it. The clip selection felt random.
-- **Apple Photos** had nicer beat-synced transitions, but everything stayed locked inside the Apple ecosystem. No way to share a proper video file.
-- **Relive** made beautiful GPS flyovers for bike rides and hikes, but it only worked for tracked activities. A week at the beach with the kids? Useless.
-- **FamilyAlbum** had a 1-second-per-day feature that was genuinely emotional to watch. But the clip selection was often a wall or a ceiling, and the free tier was limited.
+I opened DaVinci Resolve. Imported 40 clips. Started dragging them onto a timeline. Added a few crossfades. Realized I needed music. Found something on YouTube Audio Library. Tried to sync cuts to the beat. Two hours later I had 90 seconds of mediocre output and I still hadn't gone through the other 360 clips.
 
-None of them let me: pick my own music, control which clips stay and which go, run it on my own server, and get an actual MP4 file out.
+I closed the laptop and watched TV instead.
 
-So I built what I wanted.
+That's the actual problem. Not "I can't find my videos" (Immich handles that). Not "I don't have enough storage" (solved). The problem is the 4-8 hours between "I have 400 clips" and "here's a 3-minute video I'd actually show my family."
 
-## What it actually does
+## What exists out there
 
-Point it at your Immich server. Pick a year, a person, or a trip. It pulls your videos and photos, scores every clip (motion, faces, audio, optionally LLM content analysis), and assembles a polished video with title screens, transitions, and background music.
+Tools that do parts of this exist. Cloud photo services generate annual recaps automatically, which is the right idea, but the music is pre-canned and the clip selection is a black box. Some phone platforms have beat-synced transitions and face awareness, but the output stays locked in their ecosystem. Activity trackers make beautiful GPS flyovers for bike rides and hikes, but they only work for tracked activities (not "my kid's year"). Some family apps have 1-second-per-day compilations that are genuinely moving to watch, but the clip selection is random (I got 1 second of a wall more than once).
 
-Your data never leaves your network. The Immich API key stays local. The connection is read-only by default.
+Each tool does one piece well. None of them combine smart clip selection, custom music, trip maps, title screens, and video assembly in a single pipeline. And none of them run on your own server or let you control what goes in and what doesn't.
 
-**Seven memory types** to pick from:
+If you're running Immich, you already made the decision to own your data. This tool gives you something to do with it.
 
-- **Year in Review**: the big annual recap, with monthly dividers
-- **Monthly Highlights**: shorter check-ins, good on a schedule
-- **Person Spotlight**: one person's best moments (needs face recognition in Immich)
-- **Multi-Person**: couples, siblings, friend groups
-- **Season / On This Day**: nostalgia modes
-- **Trip**: GPS-detected travel with animated satellite map zooms between locations
+## What I built instead
 
-Each type has its own clip scoring profile and title screen style.
+A tool that does the boring part for me. It connects to Immich (read-only), looks at a time period I pick, and figures out which clips are worth keeping. It scores them on motion, faces, audio content, and optionally runs an LLM to understand what's actually happening in the scene. Then it assembles everything into a video with title screens, transitions, and music.
 
-## Who this is for
+The key: I still get to review what it picked and remove anything I don't want. But I'm reviewing 30 pre-selected clips instead of scrolling through 400.
 
-You run Immich. You care about your family's privacy. You want to actually DO something with the thousands of videos you've been carefully backing up. You don't want to spend 4 hours in DaVinci Resolve to make a 3-minute video.
+## Why every feature exists
 
-You want to hit "generate" and get something you'd be proud to show at dinner.
+Every feature traces back to "remove a manual step from making a memory video":
 
-## What makes it different
+- **Smart clip scoring**: so I don't have to watch 400 clips to find the 25 good ones
+- **Face detection + recognition**: so clips with my kid in frame score higher than clips of the parking lot
+- **Scene detection**: so the tool picks the interesting 8-second segment, not the full 45-second recording
+- **Duplicate detection**: so I don't get three versions of the same moment from burst recordings
+- **Live photo stitching**: so those 3-second iPhone live photos get merged into usable clips
+- **AI music generation**: so I don't spend 45 minutes on YouTube Audio Library looking for a track that fits
+- **Audio ducking**: so music gets quieter when someone's talking or laughing in a clip
+- **Title screens**: so the output looks like something, not just "clip 1, clip 2, clip 3"
+- **Trip maps**: so a travel video starts with an animated satellite zoom showing where we went
+- **Photo support**: so still photos get mixed in with video (Ken Burns, blur background, face-aware pan)
+- **Scheduled generation**: so monthly highlights just appear on the 1st without me doing anything
 
-Most tools that generate video memories are either cloud-only (Google, Apple), ecosystem-locked (Apple), activity-specific (Relive), or require manual editing (any NLE). This one:
+The result is a video that looks like I spent a weekend in Premiere Pro, except I spent 5 minutes reviewing clips and hit "generate."
 
-- Runs entirely on your hardware (NAS, Mac, Linux server, K8s cluster)
-- Reads from Immich without modifying anything
-- Uses AI to pick the best moments (not just "most recent" or "random")
-- Generates original music that matches the mood of your clips
-- Adds animated title screens, globe fly-overs, satellite map zooms
-- Outputs a standard MP4 you can share anywhere
-- Runs on a schedule if you want monthly highlights on autopilot
+## Limitations
 
-## Honest limitations
-
-- **No mobile app.** Web UI and CLI. Works in mobile browsers, but no native app.
-- **Not instant.** 30 clips at 1080p takes 5-15 minutes depending on hardware. This is a batch process.
-- **Not a video editor.** You can select/deselect clips and adjust segments, but there's no timeline or frame-precise trimming.
-- **Requires Immich.** This is a companion tool, not a standalone photo manager.
+- **No mobile app.** Web UI and CLI. Works in mobile browsers but there's no native app.
+- **Not instant.** 30 clips at 1080p takes 5-15 minutes depending on hardware. Batch process.
+- **Not a video editor.** Select/deselect clips and adjust segments, but no timeline.
+- **Requires Immich.** Companion tool, not a standalone photo manager.
 
 :::info Screenshot needed
-**What to capture:** A finished memory video playing in the Step 4 video player, showing a title screen frame
+**What to capture:** A finished memory video playing in the Step 4 video player
 **Viewport:** 1280x800
-**State:** Generation complete, success banner visible, video loaded in player
+**State:** Generation complete, video loaded in player showing a real frame
 **Target file:** `static/screenshots/why-finished-video.png`
 :::
