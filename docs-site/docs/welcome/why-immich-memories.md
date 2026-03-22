@@ -17,7 +17,7 @@ The problem isn't storage (Immich handles that) or finding clips (search works).
 
 ## What exists out there
 
-Tools that do parts of this exist. Cloud photo services generate annual recaps automatically, which is the right idea, but the music is pre-canned and the clip selection is a black box. Some phone platforms have beat-synced transitions and face awareness, but the output stays locked in their ecosystem. Activity trackers make beautiful GPS flyovers for bike rides and hikes, but they only work for tracked activities (not "my kid's year"). Some family apps have 1-second-per-day compilations that are genuinely moving to watch, but the clip selection is random (I got 1 second of a wall more than once).
+Tools that do parts of this exist. Cloud photo services generate annual recaps automatically, which is the right idea, but the music is pre-canned and the clip selection is a black box. Some phone platforms have beat-synced transitions and face awareness, but the output stays locked in their ecosystem. Activity trackers make beautiful GPS flyovers for bike rides and hikes, but they only work for tracked activities (not "my kid's year").
 
 Each tool does one piece well. None of them combine smart clip selection, custom music, trip maps, title screens, and video assembly in a single pipeline. And none of them run on your own server or let you control what goes in and what doesn't.
 
