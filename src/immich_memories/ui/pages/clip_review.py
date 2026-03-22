@@ -23,7 +23,7 @@ def _render_clip_thumbnail(clip: VideoClipInfo) -> None:
         b64 = base64.b64encode(thumb).decode()
         ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-24 object-cover rounded")
     else:
-        ui.element("div").classes("w-full h-24 bg-gray-200 rounded")
+        ui.element("div").classes("w-full h-24 rounded").style("background: var(--im-bg-elevated)")
 
 
 def _make_preview_loader(video_aid: str, container: ui.element, vid_id: str):
@@ -215,7 +215,7 @@ def _render_clip_controls(
     )
 
     with ui.column().classes("flex-1"):
-        ui.label("Select range").classes("text-sm text-gray-500")
+        ui.label("Select range").classes("text-sm").style("color: var(--im-text-secondary)")
         range_slider = ui.range(
             min=0, max=duration, step=0.1, value={"min": start, "max": end}
         ).classes("w-full")
@@ -242,7 +242,7 @@ def _render_clip_controls(
         if clip.codec:
             meta_parts.append(clip.codec)
         if meta_parts:
-            ui.label(" | ".join(meta_parts)).classes("text-xs text-gray-400")
+            ui.label(" | ".join(meta_parts)).classes("text-xs").style("color: var(--im-text-muted)")
 
 
 def _render_review_clip_row(
@@ -303,18 +303,18 @@ def _render_summary_metrics(
     diff = total_selected - target_duration
     with summary_container:
         with ui.column().classes("items-center"):
-            ui.label("Selected Clips").classes("text-sm text-gray-500")
+            ui.label("Selected Clips").classes("text-sm").style("color: var(--im-text-secondary)")
             ui.label(
                 str(len([c for c in selected_clips if c.asset.id in state.selected_clip_ids]))
             ).classes("text-2xl font-bold")
         with ui.column().classes("items-center"):
-            ui.label("Total Duration").classes("text-sm text-gray-500")
+            ui.label("Total Duration").classes("text-sm").style("color: var(--im-text-secondary)")
             ui.label(format_duration(total_selected)).classes("text-2xl font-bold")
         with ui.column().classes("items-center"):
-            ui.label("Target").classes("text-sm text-gray-500")
+            ui.label("Target").classes("text-sm").style("color: var(--im-text-secondary)")
             ui.label(format_duration(target_duration)).classes("text-2xl font-bold")
         with ui.column().classes("items-center"):
-            ui.label("Difference").classes("text-sm text-gray-500")
+            ui.label("Difference").classes("text-sm").style("color: var(--im-text-secondary)")
             diff_str = f"{'+' if diff > 0 else ''}{format_duration(abs(diff))}"
             ui.label(diff_str).classes("text-2xl font-bold")
 
@@ -390,15 +390,15 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
 
     ui.label("Review & Refine Selected Clips").classes("text-xl font-semibold")
     ui.label("Adjust time segments, preview clips, and remove any unwanted selections.").classes(
-        "text-sm text-gray-500 mb-4"
-    )
+        "text-sm mb-4"
+    ).style("color: var(--im-text-secondary)")
 
     selected_clips = [c for c in clips if c.asset.id in state.selected_clip_ids]
 
     if not selected_clips:
-        with ui.card().classes("w-full p-4 bg-yellow-50"):
-            ui.label("No clips selected. Return to generate new selections.").classes(
-                "text-yellow-700"
+        with ui.card().classes("w-full p-4").style("background: var(--im-warning-bg)"):
+            ui.label("No clips selected. Return to generate new selections.").style(
+                "color: var(--im-warning-text)"
             )
 
         def go_back():

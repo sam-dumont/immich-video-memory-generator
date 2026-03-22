@@ -274,7 +274,7 @@ def _show_output(output_container, result_path: Path) -> None:
             video_wrapper = (
                 ui.element("div")
                 .classes("rounded-xl overflow-hidden mt-4")
-                .style("background: #000")
+                .style("background: var(--im-bg)")
             )
             with video_wrapper:
                 ui.video(video_url).classes("w-full max-w-2xl").style(

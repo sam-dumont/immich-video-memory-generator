@@ -86,6 +86,16 @@ def im_select(label: str, **kwargs) -> ui.select:
     return ui.select(label=label, **kwargs).classes("w-full")
 
 
+def im_badge(text: str, variant: str = "info", icon: str | None = None) -> ui.element:
+    """Themed badge with semantic color variants."""
+    css_class = f"im-badge im-badge-{variant}"
+    with ui.element("span").classes(css_class) as badge:
+        if icon:
+            ui.icon(icon).classes("text-xs")
+        ui.label(text)
+    return badge
+
+
 def im_separator() -> ui.element:
     """Themed horizontal separator — thin line."""
     return (

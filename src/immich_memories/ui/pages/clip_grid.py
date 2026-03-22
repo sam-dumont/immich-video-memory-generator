@@ -8,6 +8,7 @@ from collections import defaultdict
 from nicegui import ui
 
 from immich_memories.api.models import VideoClipInfo
+from immich_memories.ui.components import im_badge
 from immich_memories.ui.pages.step2_helpers import (
     format_duration,
     get_thumbnail,
@@ -187,11 +188,11 @@ def _render_clip_badges(badges: list[str]) -> None:
         with ui.row().classes("gap-1 flex-wrap"):
             for badge in badges:
                 if badge == "star":
-                    ui.icon("star", color="yellow").classes("text-xs")
+                    ui.icon("star").classes("text-xs").style("color: var(--im-warning)")
                 elif badge == "Live":
-                    ui.badge(badge, color="purple").classes("text-xs")
+                    im_badge(badge, variant="analysis")
                 else:
-                    ui.badge(badge, color="blue").classes("text-xs")
+                    im_badge(badge, variant="info")
 
 
 def _render_clip_thumbnail(asset_id: str) -> None:
