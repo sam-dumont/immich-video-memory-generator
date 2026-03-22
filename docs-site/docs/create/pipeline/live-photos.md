@@ -1,0 +1,133 @@
+---
+sidebar_position: 5
+title: Live Photos
+---
+
+import Video from '@site/src/components/Video';
+
+# Live Photos
+
+Every iPhone photo secretly records ~3 seconds of video. Most people have thousands of these clips sitting in their library without knowing it. immich-memories can pull them from Immich and use them in your memory videos.
+
+## Demo: What burst merging looks like
+
+Here's what happens when you rapid-fire 3 photos of an Italian hilltop. Each Live Photo is ~3 seconds. They overlap. The merger stitches them into one continuous clip:
+
+**Individual source clips (3 separate Live Photos):**
+
+<div style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+  <Video src="/demos/live-photos/italian_hilltop/source_1.mp4" width={240} controls muted />
+  <Video src="/demos/live-photos/italian_hilltop/source_2.mp4" width={240} controls muted />
+  <Video src="/demos/live-photos/italian_hilltop/source_3.mp4" width={240} controls muted />
+</div>
+
+**Merged result (4.5 seconds of continuous footage):**
+
+<Video src="/demos/live-photos/italian_hilltop/merged.mp4" width={720} controls />
+
+---
+
+**Bike race — 6 Live Photos merged into 8.4 seconds:**
+
+<Video src="/demos/live-photos/bike_race/merged.mp4" width={720} controls />
+
+## How it works
+
+1. **Discovery**: queries Immich for IMAGE assets with a linked `livePhotoVideoId`
+2. **Person filtering**: searches by person with no asset type filter, then filters client-side for live photos (Immich quirk)
+3. **Neighbor expansion**: untagged live photos taken within the merge window of a tagged one get pulled in automatically
+4. **Clustering**: groups photos taken within a configurable time window (default 10.0s) into bursts
+5. **Spectrogram alignment**: cross-correlates audio between overlapping clips to find the exact temporal offset (sample-accurate, ~10ms per pair)
+6. **Burst merging**: stitches clips with shutter-centered cuts, exposure normalization, and 30ms audio fade at boundaries
+7. **Prioritization**: if there's enough regular video, live photos are available but not pre-selected
+
+## Video prioritization
+
+Real video clips are almost always better than live photo clips: longer, better stabilized, intentionally filmed. So when you enable live photos, immich-memories checks whether your regular videos already cover the target duration. If they do, live photos show up in the review grid (with a purple "Live" badge) but unchecked by default. You can manually add any that look good.
+
+If there aren't enough regular videos to fill the target, live photos get selected automatically to make up the difference.
+
+## Burst merging: spectrogram-aligned shutter-centered cuts
+
+When you rapid-fire photos, each Live Photo's video overlaps with the next. The merger uses **audio spectrogram fingerprinting** to find the exact overlap, then cuts at the midpoint between consecutive shutter presses.
+
+### Why audio alignment?
+
+Timestamps alone aren't precise enough: each clip's video doesn't start at exactly `shutter_time - 1.5s`. The actual start varies by up to 200ms. On rapid bursts, that's enough to cause audible clicks and gaps.
+
+The spectrogram (Short-Time Fourier Transform) creates a unique frequency fingerprint at every 5ms window. Even with repetitive beat-heavy music, the exact mix of frequencies is unique at each moment. Cross-correlating these fingerprints between clips gives sample-accurate alignment with 0.95+ confidence.
+
+### The algorithm
+
+1. Extract 48kHz mono audio from each clip
+2. Compute STFT spectrogram (1024-sample window, 256 hop)
+3. For each consecutive pair: correlate first 100ms of clip B against clip A to find where B's audio starts in A's timeline
+4. Compute shutter-centered handoff points (midpoint between consecutive shutters)
+5. Gap-aware: if a handoff falls before the next clip starts, extend the current clip to cover the hole
+6. Build FFmpeg filter: trim each clip at its handoff points, normalize exposure, 30ms audio fade at boundaries, concatenate
+
+### Example
+
+3 photos at t=0, t=0.5s, t=2s (each clip ~3s):
+
+| Clip | Plays from | Plays to | Duration |
+|------|-----------|----------|----------|
+| Photo 1 | start | midpoint(0, 0.5) = 0.25s | ~1.75s |
+| Photo 2 | shutter-centered start | midpoint(0.5, 2.0) = 1.25s | ~1.5s |
+| Photo 3 | shutter-centered start | end | ~1.5s |
+
+Non-overlapping clips (gap > clip duration) are NOT merged: they stay as separate clips.
+
+### Works for any phone with audio
+
+The algorithm uses audio fingerprinting, not Apple metadata. It works for iPhone, Samsung, or any camera that records audio with video. The only requirement: overlapping clips with shared ambient audio.
+
+For devices without audio (like Google Pixel Motion Photos), spectrogram alignment is automatically skipped and clips are kept individual. See the [Device support](#device-support) section for details.
+
+## Configuration
+
+```yaml
+analysis:
+  include_live_photos: true                # ON by default
+  live_photo_merge_window_seconds: 10.0    # Max gap between photos to form a burst
+  live_photo_min_burst_count: 3            # Min photos needed for burst merging
+```
+
+In the UI wizard, there's a toggle in the Options section on Step 1. Via CLI:
+
+```bash
+immich-memories generate --include-live-photos --year 2024
+```
+
+## Device support
+
+Immich normalizes Live Photos / Motion Photos across device types using the `livePhotoVideoId` field. immich-memories auto-detects the device from EXIF metadata and adapts its merging strategy:
+
+| Feature | Apple iPhone | Samsung Galaxy | Google Pixel |
+|---------|-------------|----------------|--------------|
+| Clip duration | ~3.0s | ~3.5s | 0.7-1.3s |
+| Audio track | AAC | AAC stereo | **None** |
+| FPS | 30 | ~30 | 120 (variable) |
+| Burst overlap | Yes | Yes (massive) | **No** |
+| Spectrogram alignment | Works | Works | Skipped (no audio) |
+| Burst merging | Overlapping clips merged | Overlapping clips merged | Each clip stays individual |
+
+### Samsung Galaxy (Motion Photos)
+
+Samsung Motion Photos behave almost identically to Apple Live Photos: ~3.5 second clips with audio, heavy temporal overlap when photos are taken in rapid succession. The spectrogram alignment and burst merging pipeline works directly.
+
+### Google Pixel (Motion Photos)
+
+Google Pixel Motion Photos are fundamentally different: very short clips (0.7-1.3 seconds), no audio track, and no temporal overlap between consecutive shots. immich-memories detects Pixel clips via EXIF and:
+
+1. **Uses a shorter clip duration** (1.5s instead of 3.0s) for overlap detection
+2. **Skips spectrogram alignment**: no audio means no spectral fingerprint to correlate
+3. **Doesn't force-merge rapid bursts**: Pixel clips taken 2+ seconds apart are treated as individual clips, not concatenated into a single burst
+
+This means 4 rapid-fire Pixel photos become 4 individual clips in your memory video, not one merged blob with jarring cuts between unrelated 0.7-second segments.
+
+## When to enable
+
+Live Photos are most useful when your library has lots of photos and relatively few videos. Burst merging is particularly effective for events where you took rapid-fire photos (birthdays, travel, kids playing): those bursts become 5-15 second continuous clips that capture the moment better than any individual photo.
+
+If your library already has plenty of video, live photos won't add much.
