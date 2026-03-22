@@ -7,7 +7,7 @@ sidebar_position: 2
 
 ## How it started
 
-End of December 2025. My son turned one earlier that year and I wanted to make a video of his best moments from the past 12 months. I had hundreds of clips: first steps, bath time chaos, the face he makes when he discovers something new. All safely stored in Immich after I migrated off Google Photos.
+End of December 2025. My son's birthday was coming up and I wanted to make a yearly recap of his best moments. I had hundreds of clips, all safely stored in Immich after I migrated off Google Photos.
 
 I opened DaVinci Resolve. Imported 40 clips. Started dragging them onto a timeline. Added a few crossfades. Realized I needed music. Found something on YouTube Audio Library. Tried to sync cuts to the beat. Two hours later I had 90 seconds of mediocre output and I still hadn't gone through the other 360 clips.
 
