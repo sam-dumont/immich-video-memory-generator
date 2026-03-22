@@ -194,3 +194,61 @@ def test_capture_all_screenshots(
         _save(page, screenshot_dir, _name("step4-preview-export", theme))
     except Exception:
         pass
+
+    # ── Settings: Config Viewer ──
+    page.goto(f"{app_url}/settings/config")
+    _wait_for_ready(page)
+    _before_screenshot(page)
+    _save(page, screenshot_dir, _name("settings-config", theme))
+
+    # ── Settings: Cache Management ──
+    page.goto(f"{app_url}/settings/cache")
+    _wait_for_ready(page)
+    page.wait_for_timeout(2000)
+    _before_screenshot(page)
+    _save(page, screenshot_dir, _name("settings-cache", theme))
+
+    # ── Feature: Trip Preset Selected ──
+    page.goto(app_url)
+    _wait_for_ready(page)
+    trip_preset = page.get_by_text("Trip", exact=True)
+    if trip_preset.is_visible(timeout=5000):
+        trip_preset.scroll_into_view_if_needed()
+        trip_preset.click()
+        page.wait_for_timeout(500)
+        _before_screenshot(page)
+        _save(page, screenshot_dir, _name("trip-preset", theme))
+
+    # ── Feature: Privacy/Demo Mode Toggle ──
+    demo_switch = page.get_by_text("Demo mode")
+    if demo_switch.is_visible(timeout=3000):
+        demo_switch.scroll_into_view_if_needed()
+        page.wait_for_timeout(200)
+        _save(page, screenshot_dir, _name("privacy-toggle", theme))
+
+
+@pytest.mark.parametrize("theme", _THEMES)
+def test_capture_login_page(
+    page: Page,
+    app_url: str,
+    screenshot_dir: Path,
+    theme: str,
+) -> None:
+    """Capture the login page (basic auth variant).
+
+    The login page is at /login even when auth is disabled — it just
+    redirects. We navigate directly and capture if it renders.
+    """
+    page.goto(f"{app_url}/login")
+    _wait_for_ready(page)
+
+    # Only capture if a login form actually rendered (auth may be disabled)
+    sign_in_btn = page.get_by_role("button", name="Sign in")
+    sso_btn = page.get_by_text("Sign in with SSO")
+    if not sign_in_btn.is_visible(timeout=2000) and not sso_btn.is_visible(timeout=1000):
+        return
+
+    set_theme(page, theme)
+    page.goto(f"{app_url}/login")
+    _wait_for_ready(page)
+    _save(page, screenshot_dir, _name("login", theme))
