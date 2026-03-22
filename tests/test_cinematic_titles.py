@@ -196,10 +196,10 @@ class TestTypographyDefaults:
         style = TitleStyle()
         assert not style.use_line_accent
 
-    def test_default_text_shadow_enabled(self):
-        """Default style should have text shadow for readability on dark bg."""
+    def test_default_text_shadow_disabled(self):
+        """Default style should NOT have drop shadow (clean modern look)."""
         style = TitleStyle()
-        assert style.text_shadow
+        assert not style.text_shadow
 
 
 class TestBackgroundGeneration:

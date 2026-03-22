@@ -19,8 +19,8 @@ from typing import Literal
 class TitleStyle:
     """Complete visual style for title screens."""
 
-    # Typography
-    font_family: str = "Outfit"
+    # Typography — Montserrat Bold matches the map titles for visual consistency
+    font_family: str = "Montserrat"
     font_weight: Literal["light", "regular", "medium", "semibold"] = "semibold"
     title_size_ratio: float = 0.12  # Relative to screen height (0.08 - 0.15)
     subtitle_size_ratio: float = 0.6  # Relative to title size (0.5 - 0.7)
@@ -29,7 +29,7 @@ class TitleStyle:
 
     # Colors
     text_color: str = "#FFFFFF"
-    text_shadow: bool = True
+    text_shadow: bool = False
     text_blend_mode: Literal["normal", "multiply", "overlay", "soft_light"] = "normal"
     accent_color: str = "#F59E0B"
 
@@ -269,12 +269,11 @@ MOOD_STYLE_PROFILES: dict[str, dict] = {
 PRESET_STYLES: dict[str, TitleStyle] = {
     "modern_warm": TitleStyle(
         name="modern_warm",
-        font_family="Outfit",
+        font_family="Montserrat",
         font_weight="semibold",
         title_size_ratio=0.12,
         letter_spacing=0.02,
         text_color="#FFFFFF",
-        text_shadow=True,
         text_blend_mode="normal",
         background_type="solid_gradient",
         background_colors=["#1C1917", "#292524"],
@@ -284,13 +283,12 @@ PRESET_STYLES: dict[str, TitleStyle] = {
     ),
     "elegant_minimal": TitleStyle(
         name="elegant_minimal",
-        font_family="Raleway",
+        font_family="Montserrat",
         font_weight="medium",
         title_size_ratio=0.12,
         letter_spacing=0.05,
         text_transform="uppercase",
         text_color="#F5F5F4",
-        text_shadow=True,
         text_blend_mode="normal",
         background_type="solid_gradient",
         background_colors=["#0F172A", "#1E293B"],
@@ -300,12 +298,11 @@ PRESET_STYLES: dict[str, TitleStyle] = {
     ),
     "vintage_charm": TitleStyle(
         name="vintage_charm",
-        font_family="JosefinSans",
+        font_family="Montserrat",
         font_weight="medium",
         title_size_ratio=0.12,
         letter_spacing=0.03,
         text_color="#FAFAF9",
-        text_shadow=True,
         text_blend_mode="normal",
         background_type="vignette",
         background_colors=["#1C1917", "#292524"],
@@ -315,12 +312,11 @@ PRESET_STYLES: dict[str, TitleStyle] = {
     ),
     "playful_bright": TitleStyle(
         name="playful_bright",
-        font_family="Quicksand",
+        font_family="Montserrat",
         font_weight="semibold",
         title_size_ratio=0.12,
         letter_spacing=0.01,
         text_color="#FFFFFF",
-        text_shadow=True,
         text_blend_mode="normal",
         background_type="solid_gradient",
         background_colors=["#042F2E", "#134E4A"],
@@ -330,12 +326,11 @@ PRESET_STYLES: dict[str, TitleStyle] = {
     ),
     "soft_romantic": TitleStyle(
         name="soft_romantic",
-        font_family="JosefinSans",
+        font_family="Montserrat",
         font_weight="medium",
         title_size_ratio=0.12,
         letter_spacing=0.02,
         text_color="#FAFAF9",
-        text_shadow=True,
         text_blend_mode="normal",
         background_type="solid_gradient",
         background_colors=["#1E1B18", "#3D3428"],
@@ -360,9 +355,8 @@ def get_style_for_mood(mood: str, randomize: bool = True) -> TitleStyle:
     palette_name = profile["color_palette"]
     palette = COLOR_PALETTES[palette_name]
 
-    # Select font
-    preferred_fonts = profile["preferred_fonts"]
-    font_family = random.choice(preferred_fonts) if randomize else preferred_fonts[0]
+    # Montserrat for all titles — consistent with map titles
+    font_family = "Montserrat"
 
     # Select colors
     if randomize:
@@ -380,7 +374,7 @@ def get_style_for_mood(mood: str, randomize: bool = True) -> TitleStyle:
         font_weight=profile["font_weight"],
         title_size_ratio=0.12 if randomize else 0.12 + random.uniform(-0.01, 0.01),
         text_color=text_color,
-        text_shadow=True,
+        text_shadow=False,
         text_blend_mode="normal",
         accent_color=accent_color,
         background_type=profile["background_type"],

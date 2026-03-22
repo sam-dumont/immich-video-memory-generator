@@ -103,10 +103,10 @@ class TaichiTitleConfig:
     text_color: str = "#FFFFFF"
     title_size_ratio: float = 0.12
     subtitle_size_ratio: float = 0.06
-    font_family: str = "Helvetica"  # Font family for SDF rendering
-    use_sdf_text: bool = True  # Use GPU SDF text (vs PIL fallback)
-    enable_shadow: bool = True
-    shadow_offset_ratio: float = 0.03
+    font_family: str = "Montserrat"
+    use_sdf_text: bool = False  # PIL text = pixel-sharp (matches map titles)
+    enable_shadow: bool = False
+    shadow_offset_ratio: float = 0.004  # Only used if shadow re-enabled
     shadow_opacity: float = 0.35
 
     fade_in_duration: float = 0.6

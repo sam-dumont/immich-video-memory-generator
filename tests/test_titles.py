@@ -54,7 +54,7 @@ class TestTitleStyle:
         """Test default style values."""
         style = TitleStyle(name="test")
         assert style.name == "test"
-        assert style.font_family == "Outfit"
+        assert style.font_family == "Montserrat"
         assert style.font_weight == "semibold"
         assert style.title_size_ratio == 0.12
 

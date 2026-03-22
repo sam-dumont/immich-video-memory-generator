@@ -139,15 +139,17 @@ class RenderingService:
             else "#16213E",
             gradient_angle=float(style.background_angle),
             gradient_type=gradient_type,
-            # Text styling — force white + shadow when content-backed
+            # Text: white, Montserrat, PIL-rendered (pixel-sharp like map titles)
             text_color="#FFFFFF" if background_image is not None else style.text_color,
             title_size_ratio=style.title_size_ratio,
             subtitle_size_ratio=style.subtitle_size_ratio * style.title_size_ratio,
+            font_family="Montserrat",
+            use_sdf_text=False,  # PIL text = pixel-sharp (matches map titles)
+            # No drop shadow — clean modern look
+            enable_shadow=False,
             # Effects — no bokeh on content-backed (distracting over real content)
             enable_bokeh=background_image is None,
-            enable_shadow=True,
-            shadow_opacity=0.5 if background_image is not None else 0.35,
-            # Animated background — disable gradient animation for content-backed
+            # Animated background — disable for content-backed
             gradient_rotation=0.0
             if background_image is not None
             else (10.0 if animated_background else 0.0),
@@ -157,7 +159,6 @@ class RenderingService:
             vignette_pulse=0.0
             if background_image is not None
             else (0.05 if animated_background else 0.0),
-            # Subtle vignette on content-backed for edge darkening
             vignette_strength=0.2 if background_image is not None else 0.3,
             is_birthday=is_birthday,
         )
