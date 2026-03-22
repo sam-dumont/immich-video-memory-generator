@@ -177,7 +177,7 @@ class TestTypographyDefaults:
     def test_default_title_size_ratio(self):
         """Default title should be 12% of screen height (larger than old 10%)."""
         style = TitleStyle()
-        assert style.title_size_ratio >= 0.12, (
+        assert style.title_size_ratio >= 0.14, (
             f"title_size_ratio={style.title_size_ratio}, expected >= 0.12"
         )
 

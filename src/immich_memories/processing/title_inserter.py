@@ -34,6 +34,82 @@ class TitleInserter:
         self.prober = prober
 
     # ------------------------------------------------------------------
+    # Pre-render first clip for title background
+    # ------------------------------------------------------------------
+
+    def _pre_render_first_clip(
+        self,
+        clips: list[AssemblyClip],
+        output_dir: Path,
+        orientation: str,
+        resolution_tier: str,
+        fps: float,
+        hdr: bool,
+    ) -> Path | None:
+        """Pre-render the first clip through the assembly filter chain.
+
+        This produces a short intermediate video with identical framing
+        (scale_mode, HDR, rotation) to the final assembly, so the slow-mo
+        title background matches the clip it reveals into.
+        """
+        if not clips:
+            return None
+
+        from immich_memories.titles.encoding import ORIENTATION_RESOLUTIONS
+
+        res = ORIENTATION_RESOLUTIONS.get(orientation, {}).get(resolution_tier, (1920, 1080))
+        width, height = res
+
+        clip = clips[0]
+        output_path = output_dir / "first_clip_processed.mp4"
+
+        # WHY: use the same encoding params as the assembly pipeline
+        from immich_memories.processing.hdr_utilities import _get_gpu_encoder_args
+
+        try:
+            encoder_args = _get_gpu_encoder_args(
+                crf=12,
+                preserve_hdr=hdr,
+                hdr_type="hlg" if hdr else "",
+            )
+        except Exception:
+            encoder_args = ["-c:v", "libx264", "-crf", "12"]
+
+        # WHY: crop-to-fill for title background — the Taichi renderer
+        # blurs everything uniformly, so blur-background sides + sharp center
+        # would look wrong. Crop fills the entire frame with content.
+        vf = (
+            f"setpts=PTS-STARTPTS,"
+            f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop={width}:{height},"
+            f"fps={int(fps)},settb=1/{int(fps)},setsar=1"
+        )
+        filter_args = ["-vf", vf]
+
+        # Render first 1 second — slow-mo will stretch 0.5s to fill the title
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(clip.path),
+            *filter_args,
+            *encoder_args,
+            "-t", "1",
+            "-an",
+            str(output_path),
+        ]  # fmt: skip
+
+        import subprocess
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=30)
+            if result.returncode == 0 and output_path.exists():
+                logger.info(f"Pre-rendered first clip for title: {output_path}")
+                return output_path
+            logger.warning(f"Pre-render failed: {result.stderr[-200:].decode()}")
+        except Exception:
+            logger.warning("Failed to pre-render first clip", exc_info=True)
+        return None
+
+    # ------------------------------------------------------------------
     # Date parsing
     # ------------------------------------------------------------------
 
@@ -439,6 +515,18 @@ class TitleInserter:
             )
             logger.info(f"Generated trip map intro: {title_screen.path}")
         else:
+            # WHY: pre-render the first clip through the assembly pipeline's
+            # filter chain (scale_mode, HDR, rotation) so the title background
+            # has identical framing to the actual clip. Without this, the
+            # slow-mo reveal would have a jarring aspect ratio/color shift.
+            content_clip = self._pre_render_first_clip(
+                clips,
+                title_output_dir,
+                orientation,
+                resolution_tier,
+                detected_fps,
+                source_has_hdr,
+            )
             title_screen = generator.generate_title_screen(
                 year=title_settings.year,
                 month=title_settings.month,
@@ -446,7 +534,7 @@ class TitleInserter:
                 end_date=title_settings.end_date,
                 person_name=title_settings.person_name,
                 birthday_age=title_settings.birthday_age,
-                content_clip_path=clips[0].path if clips else None,
+                content_clip_path=content_clip,
             )
             logger.info(f"Generated title screen: {title_screen.path}")
 
@@ -457,6 +545,9 @@ class TitleInserter:
                 date=None,
                 asset_id="title_screen",
                 is_title_screen=True,
+                # WHY: force hard cut after title — the deblur reveal IS the
+                # transition. A crossfade would flash to gradient.
+                outgoing_transition="cut",
             )
         ]
 

@@ -11,7 +11,7 @@ because Taichi kernels require actual type objects, not string annotations.
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -119,6 +119,13 @@ class TaichiTitleConfig:
     # Used for map frames -- the map is rendered once, then used as static background
     background_image: np.ndarray | None = None
 
+    # Per-frame background reader for slow-motion content-backed titles.
+    # When set, read_frame() is called each frame instead of using static background_image.
+    background_reader: Any | None = None
+
+    # HDR output: when True, renderer outputs uint16 (65535 scale) instead of uint8
+    hdr: bool = False
+
     _bokeh_particles: np.ndarray = field(default_factory=lambda: np.array([]))
     _bokeh_seed: int = 42
 
@@ -217,9 +224,10 @@ class TaichiTitleRenderer:
         self.frame_buffer = np.zeros((h, w, 3), dtype=np.float32)
         self.temp_buffer = np.zeros((h, w, 3), dtype=np.float32)
         self.bokeh_buffer = np.zeros((h, w, 4), dtype=np.float32)
-        # WHY: reusable output buffer avoids allocating 25MB per frame at 4K.
-        # render_frame() converts float32→uint8 in-place into this buffer.
-        self._output_buffer = np.zeros((h, w, 3), dtype=np.uint8)
+        # WHY: reusable output buffer avoids allocating per frame at 4K.
+        # render_frame() converts float32→uint8/uint16 in-place into this buffer.
+        out_dtype = np.uint16 if self.config.hdr else np.uint8
+        self._output_buffer = np.zeros((h, w, 3), dtype=out_dtype)
 
         self.blur_kernel = _create_gaussian_kernel(self.config.blur_radius)
 
@@ -282,14 +290,26 @@ class TaichiTitleRenderer:
         progress = frame_number / self.total_frames
         cfg = self.config
 
-        # 1. Generate background (custom image or gradient)
-        if cfg.background_image is not None:
+        # 1. Generate background (slow-mo video > static image > gradient)
+        has_animated_bg = False
+        if cfg.background_reader is not None:
+            bg_frame = cfg.background_reader.read_frame()
+            if bg_frame is not None:
+                np.copyto(self.frame_buffer, bg_frame)
+                has_animated_bg = True
+            elif cfg.background_image is not None:
+                np.copyto(self.frame_buffer, cfg.background_image)
+            else:
+                self._render_gradient(t, progress, cfg)
+        elif cfg.background_image is not None:
             np.copyto(self.frame_buffer, cfg.background_image)
         else:
             self._render_gradient(t, progress, cfg)
 
-        # 2. Apply blur
-        if cfg.blur_radius > 0:
+        # 2. Apply blur — animated deblur for slow-mo backgrounds
+        if has_animated_bg:
+            self._apply_animated_deblur(progress, cfg)
+        elif cfg.blur_radius > 0:
             taichi_kernels._gaussian_blur_h(
                 self.frame_buffer, self.temp_buffer, self.blur_kernel, cfg.blur_radius
             )
@@ -297,10 +317,11 @@ class TaichiTitleRenderer:
                 self.temp_buffer, self.frame_buffer, self.blur_kernel, cfg.blur_radius
             )
 
-        # 3. Color pulsing
-        brightness_delta = cfg.color_pulse_amount * math.sin(progress * 2 * math.pi)
-        saturation_mult = 1.0 + 0.05 * math.sin(progress * 2 * math.pi + math.pi / 2)
-        taichi_kernels._apply_color_pulse(self.frame_buffer, brightness_delta, saturation_mult)
+        # 3. Color pulsing (only for non-animated backgrounds)
+        if not has_animated_bg:
+            brightness_delta = cfg.color_pulse_amount * math.sin(progress * 2 * math.pi)
+            saturation_mult = 1.0 + 0.05 * math.sin(progress * 2 * math.pi + math.pi / 2)
+            taichi_kernels._apply_color_pulse(self.frame_buffer, brightness_delta, saturation_mult)
 
         # 4. Vignette
         vignette_strength = cfg.vignette_strength + cfg.vignette_pulse * math.sin(
@@ -323,10 +344,48 @@ class TaichiTitleRenderer:
 
         # WHY: in-place conversion avoids 3 temporary arrays per frame (75MB at 4K).
         # np.clip + multiply + astype each allocate a full copy.
+        max_val = 65535.0 if cfg.hdr else 255.0
         np.clip(self.frame_buffer, 0, 1, out=self.frame_buffer)
-        np.multiply(self.frame_buffer, 255, out=self.frame_buffer)
-        self._output_buffer[:] = self.frame_buffer  # float32→uint8 copy into reused buffer
+        np.multiply(self.frame_buffer, max_val, out=self.frame_buffer)
+        self._output_buffer[:] = self.frame_buffer  # float32→uint8/uint16 into reused buffer
         return self._output_buffer
+
+    def _apply_animated_deblur(self, progress: float, cfg: TaichiTitleConfig) -> None:
+        """Apply animated deblur: full blur for most of the title, smooth reveal in last 1s.
+
+        Uses fixed blur kernel + float cross-fade between blurred and sharp
+        versions. No per-frame kernel recreation = no flicker or pops.
+        """
+        deblur_duration = 1.0
+        deblur_start_progress = 1.0 - (deblur_duration / cfg.duration)
+        if progress < deblur_start_progress:
+            blur_mix = 1.0
+        else:
+            t = (progress - deblur_start_progress) / (1.0 - deblur_start_progress)
+            blur_mix = 1.0 - (3 * t * t - 2 * t * t * t)  # ease-in-out cubic
+
+        if blur_mix < 1.0:
+            if not hasattr(self, "_sharp_buffer"):
+                self._sharp_buffer = np.zeros_like(self.frame_buffer)
+            np.copyto(self._sharp_buffer, self.frame_buffer)
+
+        taichi_kernels._gaussian_blur_h(
+            self.frame_buffer, self.temp_buffer, self.blur_kernel, cfg.blur_radius
+        )
+        taichi_kernels._gaussian_blur_v(
+            self.temp_buffer, self.frame_buffer, self.blur_kernel, cfg.blur_radius
+        )
+
+        if blur_mix < 1.0:
+            np.multiply(self.frame_buffer, blur_mix, out=self.frame_buffer)
+            np.add(
+                self.frame_buffer,
+                self._sharp_buffer * (1.0 - blur_mix),
+                out=self.frame_buffer,
+            )
+
+        brightness_delta = -0.15 * blur_mix
+        taichi_kernels._apply_color_pulse(self.frame_buffer, brightness_delta, 1.0)
 
     def _render_gradient(self, t: float, progress: float, cfg: TaichiTitleConfig):
         """Render the background gradient."""

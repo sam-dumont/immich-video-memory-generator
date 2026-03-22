@@ -56,7 +56,7 @@ class TestTitleStyle:
         assert style.name == "test"
         assert style.font_family == "Montserrat"
         assert style.font_weight == "semibold"
-        assert style.title_size_ratio == 0.12
+        assert style.title_size_ratio == 0.14
 
     def test_preset_styles_exist(self):
         """Test that preset styles are defined."""

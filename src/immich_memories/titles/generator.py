@@ -212,16 +212,11 @@ class TitleScreenGenerator:
         width, height = self.config.output_resolution
         output_path = self.output_dir / "title_screen.mp4"
 
-        # Extract content-backed background if clip is available
-        background_image = None
+        # Pass clip path for slow-mo content-backed background
+        clip_for_bg = None
         if content_clip_path and self.style.background_type == "content_backed":
-            from .content_background import extract_content_background
-
-            background_image = extract_content_background(content_clip_path, width, height)
-            if background_image is not None:
-                logger.info(f"Using content-backed background from {content_clip_path.name}")
-            else:
-                logger.info("Content extraction failed, falling back to dark gradient")
+            clip_for_bg = content_clip_path
+            logger.info(f"Using slow-mo content background from {content_clip_path.name}")
 
         self._rendering.create_title_video(
             title=title_info.main_title,
@@ -234,7 +229,7 @@ class TitleScreenGenerator:
             fps=self.config.fps,
             animated_background=self.config.animated_background,
             fade_from_white=True,
-            background_image=background_image,
+            content_clip_path=clip_for_bg,
         )
 
         renderer_type = "GPU (Taichi)" if self._rendering.use_gpu else "CPU (PIL)"
