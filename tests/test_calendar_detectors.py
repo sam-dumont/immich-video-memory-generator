@@ -286,3 +286,21 @@ class TestPersonSpotlightDetector:
         )
 
         assert "alice" in result[0].memory_key
+
+    def test_skips_upcoming_birthday_people(self):
+        """PersonSpotlightDetector skips people with upcoming birthdays."""
+        people = [_make_person("Alice"), _make_person("Bob")]
+        # Alice has an upcoming birthday — should be suppressed
+        upcoming = {people[0].id}
+
+        result = PersonSpotlightDetector().detect(
+            {},
+            people,
+            set(),
+            _make_config(),
+            date(2026, 3, 1),
+            upcoming_birthday_ids=upcoming,
+        )
+
+        assert len(result) == 1
+        assert result[0].person_names == ["Bob"]

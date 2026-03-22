@@ -76,6 +76,7 @@ def score_and_rank(
 _MAX_PER_TYPE = 3
 _TYPE_CAPS = {
     "on_this_day": 1,  # At most 1 per run — can't verify day-level content quality
+    "multi_person": 2,  # At most 2 pair suggestions per run
 }
 
 

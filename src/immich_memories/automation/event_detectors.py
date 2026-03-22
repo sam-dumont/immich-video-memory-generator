@@ -1,7 +1,8 @@
-"""Event-driven candidate detectors: TripDetector and ActivityBurstDetector."""
+"""Event-driven candidate detectors: TripDetector, ActivityBurstDetector, MultiPersonDetector."""
 
 from __future__ import annotations
 
+import itertools
 import logging
 from datetime import date, timedelta
 from typing import Any
@@ -148,6 +149,85 @@ class ActivityBurstDetector:
                     score=score,
                     reason=reason,
                     asset_count=count,
+                ),
+            )
+
+        return candidates
+
+
+class MultiPersonDetector:
+    """Detect pairs of people who appear together frequently."""
+
+    BASE_SCORE = 0.55
+    MIN_SHARED_ASSETS = 50
+    TOP_PAIRS = 3
+
+    def detect(
+        self,
+        assets_by_month: dict[str, int],
+        people: list[Any],
+        generated_keys: set[str],
+        config: Config,
+        today: date,
+        person_asset_counts: dict[str, int] | None = None,
+    ) -> list[MemoryCandidate]:
+        """Propose multi_person memories for pairs who frequently appear together."""
+        counts = person_asset_counts or {}
+        if not counts:
+            return []
+
+        # Top 10 named people with thumbnails, sorted by asset count
+        visible = [p for p in people if p.name and getattr(p, "thumbnail_path", None)]
+        visible.sort(key=lambda p: counts.get(p.id, 0), reverse=True)
+        top = visible[:10]
+
+        if len(top) < 2:
+            return []
+
+        year = today.year - 1
+        start = date(year, 1, 1)
+        end = date(year, 12, 31)
+
+        scored_pairs: list[tuple[float, Any, Any, int]] = []
+        for person_a, person_b in itertools.combinations(top, 2):
+            count_a = counts.get(person_a.id, 0)
+            count_b = counts.get(person_b.id, 0)
+            estimated_shared = int(min(count_a, count_b) * 0.3)
+
+            if estimated_shared < self.MIN_SHARED_ASSETS:
+                continue
+
+            names_sorted = sorted([person_a.name.lower(), person_b.name.lower()])
+            mem_key = make_memory_key("multi_person", start, end, names_sorted)
+
+            if mem_key in generated_keys:
+                continue
+
+            pair_score = self.BASE_SCORE * min(1.0, estimated_shared / 500)
+            scored_pairs.append((pair_score, person_a, person_b, estimated_shared))
+
+        # Sort by score descending, take top pairs
+        scored_pairs.sort(key=lambda x: x[0], reverse=True)
+
+        candidates: list[MemoryCandidate] = []
+        for pair_score, person_a, person_b, estimated_shared in scored_pairs[: self.TOP_PAIRS]:
+            names_sorted = sorted([person_a.name.lower(), person_b.name.lower()])
+            mem_key = make_memory_key("multi_person", start, end, names_sorted)
+
+            # Display names in original case
+            display_names = sorted([person_a.name, person_b.name])
+            reason = f"{display_names[0]} & {display_names[1]} together, ~{estimated_shared} shared moments"
+
+            candidates.append(
+                MemoryCandidate(
+                    memory_type="multi_person",
+                    date_range_start=start,
+                    date_range_end=end,
+                    person_names=display_names,
+                    memory_key=mem_key,
+                    score=round(pair_score, 3),
+                    reason=reason,
+                    asset_count=estimated_shared,
                 ),
             )
 

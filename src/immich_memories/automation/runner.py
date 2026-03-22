@@ -34,7 +34,13 @@ def _time_buckets_to_month_counts(
 def _build_last_runs_by_type(db: RunDatabase) -> dict[str, date]:
     """Query DB for the most recent completed run date per memory type."""
     result: dict[str, date] = {}
-    for mem_type in ("monthly_highlights", "year_in_review", "person_spotlight", "trip"):
+    for mem_type in (
+        "monthly_highlights",
+        "year_in_review",
+        "person_spotlight",
+        "trip",
+        "multi_person",
+    ):
         run = db.get_last_run_of_type(mem_type)
         if run and run.created_at:
             result[mem_type] = run.created_at.date()
@@ -64,6 +70,11 @@ def _build_generate_command(candidate: MemoryCandidate, upload: bool) -> list[st
         # Trip detection will re-detect; pass start date as hint
         cmd.extend(["--start", candidate.date_range_start.isoformat()])
         cmd.extend(["--end", candidate.date_range_end.isoformat()])
+    elif mem_type == "multi_person":
+        cmd.extend(["--memory-type", "person_spotlight"])
+        cmd.extend(["--year", str(candidate.date_range_start.year)])
+        for name in candidate.person_names:
+            cmd.extend(["--person", name])
 
     if upload:
         cmd.append("--upload-to-immich")
@@ -141,6 +152,20 @@ def _send_notification(
     )
 
 
+def _compute_upcoming_birthday_ids(people: list, today: date, lookahead_days: int = 7) -> set[str]:
+    """Return person IDs whose birthday falls within the next N days."""
+    ids: set[str] = set()
+    for person in people:
+        if not getattr(person, "birth_date", None):
+            continue
+        bday = person.birth_date
+        this_year_bday = date(today.year, bday.month, bday.day)
+        days_until = (this_year_bday - today).days
+        if 0 <= days_until <= lookahead_days:
+            ids.add(person.id)
+    return ids
+
+
 def _run_all_detectors(
     auto_cfg: AutomationConfig,
     assets_by_month: dict[str, int],
@@ -161,6 +186,7 @@ def _run_all_detectors(
     )
     from immich_memories.automation.event_detectors import (
         ActivityBurstDetector,
+        MultiPersonDetector,
         TripDetector,
     )
 
@@ -175,8 +201,22 @@ def _run_all_detectors(
             YearlyDetector().detect(assets_by_month, people, generated_keys, config, today)
         )
     if auto_cfg.detect_person_spotlight:
+        # WHY: suppress spotlights for people whose birthday is within 7 days
+        # so BirthdayDetector fires at the right time instead
+        upcoming_birthday_ids = _compute_upcoming_birthday_ids(people, today)
         all_candidates.extend(
             PersonSpotlightDetector().detect(
+                assets_by_month,
+                people,
+                generated_keys,
+                config,
+                today,
+                person_asset_counts=person_asset_counts,
+                upcoming_birthday_ids=upcoming_birthday_ids,
+            )
+        )
+        all_candidates.extend(
+            MultiPersonDetector().detect(
                 assets_by_month,
                 people,
                 generated_keys,

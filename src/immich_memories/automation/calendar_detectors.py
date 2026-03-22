@@ -142,6 +142,7 @@ class PersonSpotlightDetector:
         config: Config,
         today: date,
         person_asset_counts: dict[str, int] | None = None,
+        upcoming_birthday_ids: set[str] | None = None,
     ) -> list[MemoryCandidate]:
         if not people:
             return []
@@ -151,9 +152,11 @@ class PersonSpotlightDetector:
         end = date(target_year, 12, 31)
 
         counts = person_asset_counts or {}
+        skip_ids = upcoming_birthday_ids or set()
 
         # Filter to named people with thumbnails (proxy for "has content")
-        visible = [p for p in people if p.name and p.thumbnail_path]
+        # WHY: skip people with upcoming birthdays so BirthdayDetector fires instead
+        visible = [p for p in people if p.name and p.thumbnail_path and p.id not in skip_ids]
         if not visible:
             return []
 

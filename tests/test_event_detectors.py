@@ -1,14 +1,16 @@
-"""Tests for TripDetector and ActivityBurstDetector."""
+"""Tests for TripDetector, ActivityBurstDetector, and MultiPersonDetector."""
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from immich_memories.analysis.trip_detection import DetectedTrip
 from immich_memories.api.models import Asset, AssetType, ExifInfo
+from immich_memories.automation.candidates import make_memory_key
 from immich_memories.automation.event_detectors import (
     ActivityBurstDetector,
+    MultiPersonDetector,
     TripDetector,
 )
 from immich_memories.config_loader import Config
@@ -310,3 +312,95 @@ class TestActivityBurstDetector:
         )
 
         assert candidates == []
+
+
+def _make_person(name: str, *, thumbnail: str | None = "/thumb.jpg") -> MagicMock:
+    p = MagicMock()
+    p.name = name
+    p.thumbnail_path = thumbnail
+    p.id = f"id-{name.lower()}"
+    return p
+
+
+class TestMultiPersonDetector:
+    def test_detects_top_pairs(self):
+        """Top pairs by estimated co-occurrence are proposed."""
+        people = [_make_person("Alice"), _make_person("Bob")]
+        counts = {people[0].id: 500, people[1].id: 400}
+        today = date(2026, 3, 1)
+
+        result = MultiPersonDetector().detect(
+            assets_by_month={},
+            people=people,
+            generated_keys=set(),
+            config=Config(),
+            today=today,
+            person_asset_counts=counts,
+        )
+
+        assert len(result) == 1
+        c = result[0]
+        assert c.memory_type == "multi_person"
+        assert "Alice" in c.reason
+        assert "Bob" in c.reason
+        estimated = int(min(500, 400) * 0.3)
+        assert f"~{estimated}" in c.reason
+        assert c.score > 0
+
+    def test_skips_generated_pairs(self):
+        """Already-generated pairs are skipped."""
+        people = [_make_person("Alice"), _make_person("Bob")]
+        counts = {people[0].id: 500, people[1].id: 400}
+        today = date(2026, 3, 1)
+
+        key = make_memory_key(
+            "multi_person", date(2025, 1, 1), date(2025, 12, 31), ["alice", "bob"]
+        )
+
+        result = MultiPersonDetector().detect(
+            assets_by_month={},
+            people=people,
+            generated_keys={key},
+            config=Config(),
+            today=today,
+            person_asset_counts=counts,
+        )
+
+        assert result == []
+
+    def test_skips_low_count_pairs(self):
+        """Pairs below MIN_SHARED_ASSETS threshold are skipped."""
+        people = [_make_person("Alice"), _make_person("Bob")]
+        # min(50, 40) * 0.3 = 12 < 50 threshold
+        counts = {people[0].id: 50, people[1].id: 40}
+        today = date(2026, 3, 1)
+
+        result = MultiPersonDetector().detect(
+            assets_by_month={},
+            people=people,
+            generated_keys=set(),
+            config=Config(),
+            today=today,
+            person_asset_counts=counts,
+        )
+
+        assert result == []
+
+    def test_pair_key_is_sorted(self):
+        """Memory key uses sorted lowercase names regardless of input order."""
+        people = [_make_person("Zara"), _make_person("Alice")]
+        counts = {people[0].id: 500, people[1].id: 400}
+        today = date(2026, 3, 1)
+
+        result = MultiPersonDetector().detect(
+            assets_by_month={},
+            people=people,
+            generated_keys=set(),
+            config=Config(),
+            today=today,
+            person_asset_counts=counts,
+        )
+
+        assert len(result) == 1
+        # Key should have alice before zara (alphabetical)
+        assert "alice,zara" in result[0].memory_key
