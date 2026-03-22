@@ -22,9 +22,12 @@ def _print_candidates_table(candidates: list) -> None:
     table.add_column("Assets", justify="right")
 
     for i, c in enumerate(candidates, 1):
+        label = c.memory_type
+        if c.person_names:
+            label += f"\n({', '.join(c.person_names)})"
         table.add_row(
             str(i),
-            c.memory_type,
+            label,
             f"{c.date_range_start} to {c.date_range_end}",
             f"{c.score:.3f}",
             c.reason,

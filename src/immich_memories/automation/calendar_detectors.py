@@ -269,7 +269,7 @@ class BirthdayDetector:
         today: date,
         person_asset_counts: dict[str, int] | None = None,
     ) -> list[MemoryCandidate]:
-        """Emit candidates for people whose birthday is within +-7 days of today."""
+        """Emit candidates for people whose birthday was 2-60 days ago."""
         counts = person_asset_counts or {}
         candidates = []
 
@@ -277,11 +277,15 @@ class BirthdayDetector:
             if not person.name or not person.birth_date:
                 continue
 
+            # Skip people with no content (not worth generating)
+            if counts and counts.get(person.id, 0) == 0:
+                continue
+
             bday = person.birth_date
-            # Check if birthday is within window (handle year wrap)
+            # WHY: 2-day minimum buffer after birthday to let photo sync happen
             this_year_bday = date(today.year, bday.month, bday.day)
-            days_until = abs((this_year_bday - today).days)
-            if days_until > self.WINDOW_DAYS:
+            days_since = (today - this_year_bday).days
+            if days_since < 2 or days_since > self.WINDOW_DAYS:
                 continue
 
             target_year = today.year - 1

@@ -54,6 +54,20 @@ def score_and_rank(
         # 5. Clamp
         candidate.score = max(0.0, min(1.0, score))
 
+    # Deduplicate by memory_key — keep highest-scoring entry
+    seen_keys: dict[str, int] = {}
+    for i, c in enumerate(candidates):
+        if c.memory_key in seen_keys:
+            prev_idx = seen_keys[c.memory_key]
+            if c.score > candidates[prev_idx].score:
+                candidates[prev_idx].score = -1  # mark for removal
+                seen_keys[c.memory_key] = i
+            else:
+                c.score = -1
+        else:
+            seen_keys[c.memory_key] = i
+    candidates = [c for c in candidates if c.score >= 0]
+
     candidates.sort(key=lambda c: c.score, reverse=True)
     return _cap_per_type(candidates)
 
