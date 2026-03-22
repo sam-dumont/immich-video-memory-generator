@@ -54,6 +54,9 @@ class RunTracker:
         person_id: str | None = None,
         date_range: DateRange | None = None,
         target_duration_seconds: int = 600,
+        memory_type: str | None = None,
+        memory_key: str | None = None,
+        source: str = "manual",
     ) -> str:
         """Start tracking a new run.
 
@@ -62,6 +65,9 @@ class RunTracker:
             person_id: ID of person (if filtering by person).
             date_range: Date range for the run.
             target_duration_seconds: Target video duration in seconds.
+            memory_type: Memory preset type (year_in_review, trip, etc.).
+            memory_key: Deterministic dedup fingerprint.
+            source: How the run was triggered ("manual", "scheduled", "auto").
 
         Returns:
             The run ID.
@@ -77,6 +83,9 @@ class RunTracker:
             run_id=self.run_id,
             created_at=datetime.now(),
             status="running",
+            memory_type=memory_type,
+            memory_key=memory_key,
+            source=source,
             person_name=person_name,
             person_id=person_id,
             date_range_start=date_range.start.date() if date_range else None,

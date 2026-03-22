@@ -290,3 +290,39 @@ scheduler:
       duration_minutes: null
       params: {}
 ```
+
+## Smart automation
+
+Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../create/cli/auto.md) for the full command reference.
+
+```yaml
+automation:
+  cooldown_hours: 24              # min hours between auto-generated memories
+  upload_to_immich: false         # auto-upload results
+  album_name: null                # target album for uploads
+  detect_monthly: true            # monthly highlights candidates
+  detect_yearly: true             # year-in-review candidates
+  detect_trips: true              # GPS trip detection (needs homebase coords)
+  detect_person_spotlight: true   # per-person highlight candidates
+  detect_activity_burst: true     # unusually active months
+  burst_threshold: 2.0            # multiplier above rolling average to trigger burst
+```
+
+## Notifications
+
+Get notified when auto-generation or scheduled jobs complete. Uses [Apprise](https://github.com/caronc/apprise) (130+ services: ntfy, Discord, Telegram, Slack, email, webhooks).
+
+Install: `pip install immich-memories[notifications]`
+
+```yaml
+notifications:
+  enabled: false
+  urls:                           # Apprise notification URLs
+    - "ntfy://ntfy.sh/my-topic"
+    - "discord:///webhook_id/token"
+    - "tgram://bot_token/chat_id"
+  on_success: true                # notify on successful generation
+  on_failure: true                # notify on failed generation
+```
+
+Test your config: `immich-memories auto test-notification`

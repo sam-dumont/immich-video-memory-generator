@@ -789,6 +789,29 @@ class PhotoConfig(BaseModel):
     )
 
 
+class AutomationConfig(BaseModel):
+    """Smart automation settings for candidate detection and auto-generation."""
+
+    cooldown_hours: int = Field(default=24, ge=1, le=168)
+    upload_to_immich: bool = Field(default=False)
+    album_name: str | None = Field(default=None)
+    detect_monthly: bool = Field(default=True)
+    detect_yearly: bool = Field(default=True)
+    detect_trips: bool = Field(default=True)
+    detect_person_spotlight: bool = Field(default=True)
+    detect_activity_burst: bool = Field(default=True)
+    burst_threshold: float = Field(default=2.0, ge=1.0, le=10.0)
+
+
+class NotificationConfig(BaseModel):
+    """Apprise notification settings for job completion alerts."""
+
+    enabled: bool = Field(default=False)
+    urls: list[str] = Field(default_factory=list, description="Apprise notification URLs")
+    on_success: bool = Field(default=True)
+    on_failure: bool = Field(default=True)
+
+
 class UploadConfig(BaseModel):
     """Upload generated videos back to Immich."""
 

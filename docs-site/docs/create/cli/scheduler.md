@@ -5,7 +5,9 @@ title: scheduler
 
 # scheduler
 
-Set-and-forget memory generation. Define schedules in `config.yaml` under `scheduler.schedules` with standard cron expressions, and the daemon handles the rest.
+:::tip Smart automation is the easier option
+Most users should use [`auto`](./auto.md) instead: it detects trips, birthdays, and highlights automatically. No cron expressions or explicit schedules needed. The scheduler below is for Docker/K8s deployments or when you want exact control over what generates when.
+:::
 
 :::caution Background mode not yet implemented
 The scheduler daemon currently requires `--foreground` to run. Background (daemonized) mode is planned but not yet implemented. Always pass `--foreground` when starting the scheduler.

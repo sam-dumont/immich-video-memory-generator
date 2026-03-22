@@ -26,6 +26,9 @@ def row_to_run(row: sqlite3.Row) -> RunMetadata:
         created_at=datetime.fromisoformat(row["created_at"]),
         completed_at=(datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None),
         status=row["status"],
+        memory_type=row["memory_type"] if "memory_type" in dict(row) else None,
+        memory_key=row["memory_key"] if "memory_key" in dict(row) else None,
+        source=row["source"] if "source" in dict(row) else "manual",
         person_name=row["person_name"],
         person_id=row["person_id"],
         date_range_start=(
@@ -111,17 +114,21 @@ class RunDatabase:
                 """
                 INSERT OR REPLACE INTO pipeline_runs (
                     run_id, created_at, completed_at, status,
+                    memory_type, memory_key, source,
                     person_name, person_id, date_range_start, date_range_end,
                     target_duration_minutes, output_path, output_size_bytes,
                     output_duration_seconds, clips_analyzed, clips_selected,
                     errors_count, system_info
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.run_id,
                     run.created_at.isoformat(),
                     run.completed_at.isoformat() if run.completed_at else None,
                     run.status,
+                    run.memory_type,
+                    run.memory_key,
+                    run.source,
                     run.person_name,
                     run.person_id,
                     run.date_range_start.isoformat() if run.date_range_start else None,
@@ -355,6 +362,45 @@ class RunDatabase:
                 """
             ).fetchall()
             return [row["person_name"] for row in rows]
+
+    # =========================================================================
+    # Deduplication Queries (for automation)
+    # =========================================================================
+
+    def has_memory_been_generated(self, memory_key: str) -> bool:
+        """Check if a memory with this key has been successfully generated."""
+        if not memory_key:
+            return False
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM pipeline_runs WHERE memory_key = ? AND status = 'completed' LIMIT 1",
+                (memory_key,),
+            ).fetchone()
+            return row is not None
+
+    def get_last_run_of_type(self, memory_type: str) -> RunMetadata | None:
+        """Get the most recent completed run of a given memory type."""
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM pipeline_runs
+                WHERE memory_type = ? AND status = 'completed'
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (memory_type,),
+            ).fetchone()
+            return row_to_run(row) if row else None
+
+    def get_generated_memory_keys(self) -> set[str]:
+        """Get all memory_keys that have been successfully generated."""
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT memory_key FROM pipeline_runs
+                WHERE status = 'completed' AND memory_key IS NOT NULL
+                """
+            ).fetchall()
+            return {row["memory_key"] for row in rows}
 
     # =========================================================================
     # Active Jobs (from ActiveJobsMixin)

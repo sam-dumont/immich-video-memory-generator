@@ -34,6 +34,7 @@ const sidebars: SidebarsConfig = {
           label: 'Using the CLI',
           items: [
             'create/cli/generate',
+            'create/cli/auto',
             'create/cli/music',
             'create/cli/titles',
             'create/cli/scheduler',

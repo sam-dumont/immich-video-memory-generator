@@ -29,6 +29,11 @@ class PersonService:
         data = await self._request("GET", f"/people/{person_id}")
         return Person(**data)
 
+    async def get_person_asset_count(self, person_id: str) -> int:
+        """Get total asset count for a person via /people/{id}/statistics."""
+        data = await self._request("GET", f"/people/{person_id}/statistics")
+        return data.get("assets", 0)
+
     async def get_person_by_name(self, name: str) -> Person | None:
         """Find a person by name (case-insensitive)."""
         people = await self.get_all_people(with_hidden=True)

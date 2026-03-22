@@ -22,6 +22,7 @@ from immich_memories.config_models import (
     AnalysisConfig,
     AudioConfig,
     AudioContentConfig,
+    AutomationConfig,
     CacheConfig,
     ContentAnalysisConfig,
     DefaultsConfig,
@@ -29,6 +30,7 @@ from immich_memories.config_models import (
     ImmichConfig,
     LLMConfig,
     MusicGenConfig,
+    NotificationConfig,
     OutputConfig,
     PhotoConfig,
     ScoringPriorityConfig,
@@ -52,6 +54,8 @@ _TIER2_SECTIONS = frozenset(
         "audio_content",
         "server",
         "auth",
+        "automation",
+        "notifications",
     }
 )
 
@@ -131,6 +135,8 @@ class Config(BaseSettings):
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     trips: TripsConfig = Field(default_factory=TripsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    automation: AutomationConfig = Field(default_factory=AutomationConfig)
+    notifications: NotificationConfig = Field(default_factory=NotificationConfig)
 
     @classmethod
     def from_yaml(cls, path: Path) -> Config:
