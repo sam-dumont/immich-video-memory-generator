@@ -10,6 +10,7 @@ from pathlib import Path
 from immich_memories.automation.candidate_scorer import score_and_rank
 from immich_memories.automation.candidates import MemoryCandidate
 from immich_memories.config_loader import Config
+from immich_memories.config_models import AutomationConfig
 from immich_memories.tracking.run_database import RunDatabase
 
 logger = logging.getLogger(__name__)
@@ -140,6 +141,80 @@ def _send_notification(
     )
 
 
+def _run_all_detectors(
+    auto_cfg: AutomationConfig,
+    assets_by_month: dict[str, int],
+    people: list,
+    generated_keys: set[str],
+    config: Config,
+    today: date,
+    person_asset_counts: dict[str, int],
+    gps_assets: list | None,
+) -> list[MemoryCandidate]:
+    """Run all enabled detectors and collect candidates."""
+    from immich_memories.automation.calendar_detectors import (
+        MonthlyDetector,
+        OnThisDayDetector,
+        PersonSpotlightDetector,
+        YearlyDetector,
+    )
+    from immich_memories.automation.event_detectors import (
+        ActivityBurstDetector,
+        TripDetector,
+    )
+
+    all_candidates: list[MemoryCandidate] = []
+
+    if auto_cfg.detect_monthly:
+        all_candidates.extend(
+            MonthlyDetector().detect(assets_by_month, people, generated_keys, config, today)
+        )
+    if auto_cfg.detect_yearly:
+        all_candidates.extend(
+            YearlyDetector().detect(assets_by_month, people, generated_keys, config, today)
+        )
+    if auto_cfg.detect_person_spotlight:
+        all_candidates.extend(
+            PersonSpotlightDetector().detect(
+                assets_by_month,
+                people,
+                generated_keys,
+                config,
+                today,
+                person_asset_counts=person_asset_counts,
+            )
+        )
+    if auto_cfg.detect_activity_burst:
+        all_candidates.extend(
+            ActivityBurstDetector().detect(
+                assets_by_month,
+                people,
+                generated_keys,
+                config,
+                today,
+                burst_threshold=auto_cfg.burst_threshold,
+            )
+        )
+
+    all_candidates.extend(
+        OnThisDayDetector().detect(assets_by_month, people, generated_keys, config, today)
+    )
+
+    if auto_cfg.detect_trips and gps_assets is not None:
+        all_candidates.extend(
+            TripDetector().detect(
+                assets_by_month,
+                people,
+                generated_keys,
+                config,
+                today,
+                assets=gps_assets,
+            )
+        )
+
+    return all_candidates
+
+
 class AutoRunner:
     """Orchestrates candidate detection and one-shot generation."""
 
@@ -150,15 +225,6 @@ class AutoRunner:
     def suggest(self, limit: int = 10) -> list[MemoryCandidate]:
         """Detect, score, and rank memory candidates from the Immich library."""
         from immich_memories.api.immich import SyncImmichClient
-        from immich_memories.automation.calendar_detectors import (
-            MonthlyDetector,
-            PersonSpotlightDetector,
-            YearlyDetector,
-        )
-        from immich_memories.automation.event_detectors import (
-            ActivityBurstDetector,
-            TripDetector,
-        )
         from immich_memories.preflight import CheckStatus, check_immich
 
         immich_result = check_immich(self.config)
@@ -179,48 +245,38 @@ class AutoRunner:
             assets_by_month = _time_buckets_to_month_counts(buckets)
             people = client.get_all_people() if auto_cfg.detect_person_spotlight else []
 
-        all_candidates: list[MemoryCandidate] = []
+            # Fetch per-person asset counts (top 10 named people only)
+            person_asset_counts: dict[str, int] = {}
+            if auto_cfg.detect_person_spotlight and people:
+                named = [p for p in people if p.name and p.thumbnail_path][:10]
+                for p in named:
+                    person_asset_counts[p.id] = client.get_person_asset_count(p.id)
 
-        if auto_cfg.detect_monthly:
-            all_candidates.extend(
-                MonthlyDetector().detect(
-                    assets_by_month, people, generated_keys, self.config, today
-                )
-            )
+            # Fetch GPS assets for trip detection (past year only)
+            gps_assets = None
+            if auto_cfg.detect_trips:
+                trips_cfg = self.config.trips
+                if not (trips_cfg.homebase_latitude == trips_cfg.homebase_longitude == 0.0):
+                    from immich_memories.api.all_assets_service import AllAssetsService
+                    from immich_memories.timeperiod import DateRange
 
-        if auto_cfg.detect_yearly:
-            all_candidates.extend(
-                YearlyDetector().detect(assets_by_month, people, generated_keys, self.config, today)
-            )
+                    year_start = datetime(today.year - 1, 1, 1)
+                    year_end = datetime(today.year - 1, 12, 31, 23, 59, 59)
+                    dr = DateRange(start=year_start, end=year_end)
+                    asset_service = AllAssetsService(client._async_client.search)
+                    gps_assets = client._run(asset_service.get_assets_for_date_range(dr))
+                    logger.info("Fetched %d assets for trip detection", len(gps_assets))
 
-        if auto_cfg.detect_person_spotlight:
-            all_candidates.extend(
-                PersonSpotlightDetector().detect(
-                    assets_by_month, people, generated_keys, self.config, today
-                )
-            )
-
-        if auto_cfg.detect_activity_burst:
-            all_candidates.extend(
-                ActivityBurstDetector().detect(
-                    assets_by_month,
-                    people,
-                    generated_keys,
-                    self.config,
-                    today,
-                    burst_threshold=auto_cfg.burst_threshold,
-                )
-            )
-
-        # TripDetector needs full asset list — skip if trips disabled or no homebase
-        if auto_cfg.detect_trips:
-            trips_cfg = self.config.trips
-            if not (trips_cfg.homebase_latitude == trips_cfg.homebase_longitude == 0.0):
-                all_candidates.extend(
-                    TripDetector().detect(
-                        assets_by_month, people, generated_keys, self.config, today
-                    )
-                )
+        all_candidates = _run_all_detectors(
+            auto_cfg,
+            assets_by_month,
+            people,
+            generated_keys,
+            self.config,
+            today,
+            person_asset_counts,
+            gps_assets,
+        )
 
         ranked = score_and_rank(all_candidates, generated_keys, today, last_runs)
         return ranked[:limit]

@@ -251,11 +251,17 @@ class TestPersonSpotlightDetector:
 
         assert len(result) == 5
 
-    def test_first_person_scores_highest(self):
+    def test_first_person_scores_highest_with_counts(self):
         people = [_make_person("Alice"), _make_person("Bob"), _make_person("Carol")]
+        counts = {people[0].id: 1000, people[1].id: 500, people[2].id: 100}
 
         result = PersonSpotlightDetector().detect(
-            {}, people, set(), _make_config(), date(2026, 3, 1)
+            {},
+            people,
+            set(),
+            _make_config(),
+            date(2026, 3, 1),
+            person_asset_counts=counts,
         )
 
         scores = [c.score for c in result]

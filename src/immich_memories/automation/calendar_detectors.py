@@ -141,6 +141,7 @@ class PersonSpotlightDetector:
         generated_keys: set[str],
         config: Config,
         today: date,
+        person_asset_counts: dict[str, int] | None = None,
     ) -> list[MemoryCandidate]:
         if not people:
             return []
@@ -149,15 +150,19 @@ class PersonSpotlightDetector:
         start = date(target_year, 1, 1)
         end = date(target_year, 12, 31)
 
+        counts = person_asset_counts or {}
+
         # Filter to named people with thumbnails (proxy for "has content")
         visible = [p for p in people if p.name and p.thumbnail_path]
         if not visible:
             return []
 
-        # Use list position as a rough popularity proxy — Immich returns
-        # people sorted by appearance count descending
+        # Sort by asset count if available, otherwise keep Immich default order
+        if counts:
+            visible.sort(key=lambda p: counts.get(p.id, 0), reverse=True)
+
         top = visible[: self.TOP_N]
-        max_index_score = len(top)  # highest for first person
+        max_count = max((counts.get(p.id, 1) for p in top), default=1)
 
         candidates = []
         for rank, person in enumerate(top):
@@ -167,12 +172,15 @@ class PersonSpotlightDetector:
             if mem_key in generated_keys:
                 continue
 
-            # First person in the list scores highest
-            appearance_ratio = (max_index_score - rank) / max_index_score
-            score = self.BASE_SCORE * appearance_ratio
+            asset_count = counts.get(person.id, 0)
+            appearance_ratio = (
+                asset_count / max_count if max_count > 0 else (len(top) - rank) / len(top)
+            )
+            score = self.BASE_SCORE * max(0.2, appearance_ratio)
 
             ordinal = _ordinal(rank + 1)
-            reason = f"{ordinal} most featured person"
+            count_str = f", {asset_count} assets" if asset_count else ""
+            reason = f"{ordinal} most featured person{count_str}"
 
             candidates.append(
                 MemoryCandidate(
@@ -183,11 +191,63 @@ class PersonSpotlightDetector:
                     memory_key=mem_key,
                     score=round(score, 3),
                     reason=reason,
-                    asset_count=0,  # no per-person asset data available yet
+                    asset_count=asset_count,
                 )
             )
 
         return candidates
+
+
+class OnThisDayDetector:
+    """Proposes 'On This Day' memories for dates with significant content across years."""
+
+    BASE_SCORE = 0.5
+    MIN_YEARS = 2
+
+    def detect(
+        self,
+        assets_by_month: dict[str, int],
+        people: list,
+        generated_keys: set[str],
+        config: Config,
+        today: date,
+    ) -> list[MemoryCandidate]:
+        """Emit candidate if today's date has content in multiple prior years."""
+        target_month_key = f"-{today.month:02d}"
+        years_with_content = [
+            int(k.split("-")[0])
+            for k in assets_by_month
+            if k.endswith(target_month_key) and int(k.split("-")[0]) < today.year
+        ]
+
+        if len(years_with_content) < self.MIN_YEARS:
+            return []
+
+        mem_key = make_memory_key(
+            "on_this_day",
+            date(today.year, today.month, today.day),
+            date(today.year, today.month, today.day),
+        )
+
+        if mem_key in generated_keys:
+            return []
+
+        total_assets = sum(
+            assets_by_month.get(f"{y}-{today.month:02d}", 0) for y in years_with_content
+        )
+
+        return [
+            MemoryCandidate(
+                memory_type="on_this_day",
+                date_range_start=date(today.year, today.month, today.day),
+                date_range_end=date(today.year, today.month, today.day),
+                person_names=[],
+                memory_key=mem_key,
+                score=round(self.BASE_SCORE * min(1.0, len(years_with_content) / 5), 3),
+                reason=f"Content on this date across {len(years_with_content)} years",
+                asset_count=total_assets,
+            )
+        ]
 
 
 def _last_n_completed_months(today: date, n: int) -> list[tuple[int, int]]:
