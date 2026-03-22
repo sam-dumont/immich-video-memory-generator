@@ -76,6 +76,10 @@ audio-ml = [
 auth = [
     "authlib>=1.3",
 ]
+# Job completion notifications via Apprise (130+ backends: Slack, Discord, email, etc.)
+notifications = [
+    "apprise>=1.6",
+]
 # Local Demucs stem separation (in-process, no API server needed)
 # Model cache: ~/.cache/torch/hub/ (~80MB for htdemucs)
 demucs = [
@@ -302,6 +306,8 @@ module = [
     "acestep.*",
     # SDF font rendering
     "freetype.*",
+    # Apprise (optional notifications)
+    "apprise.*",
     # PyAV (optional video processing)
     "av.*",
     # Streamlit runtime (optional UI)
@@ -497,6 +503,7 @@ DEP002 = [
     "authlib",                                          # auth: used in upcoming OIDC client task
     "oidc-provider-mock",                               # auth: used in upcoming OIDC tests task
     "demucs",                                           # optional: local stem separation
+    "apprise",                                          # optional: notifications extra
 ]
 DEP001 = [
     "cv2", "Quartz", "Vision", "Metal", "CoreImage",   # Platform/alt-name imports
@@ -504,6 +511,7 @@ DEP001 = [
     "torchaudio", "demucs",                             # Optional: local audio pipeline
     "PIL", "av", "freetype", "streamlit",               # Alt package names (Pillow→PIL, pyav→av)
     "starlette",                                        # Transitive via nicegui→fastapi→starlette
+    "apprise",                                          # Optional: notifications extra
 ]
 DEP003 = ["PIL", "cv2", "yaml", "starlette"]  # Known transitive imports
 

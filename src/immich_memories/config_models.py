@@ -803,6 +803,15 @@ class AutomationConfig(BaseModel):
     burst_threshold: float = Field(default=2.0, ge=1.0, le=10.0)
 
 
+class NotificationConfig(BaseModel):
+    """Apprise notification settings for job completion alerts."""
+
+    enabled: bool = Field(default=False)
+    urls: list[str] = Field(default_factory=list, description="Apprise notification URLs")
+    on_success: bool = Field(default=True)
+    on_failure: bool = Field(default=True)
+
+
 class UploadConfig(BaseModel):
     """Upload generated videos back to Immich."""
 

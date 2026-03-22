@@ -189,6 +189,28 @@ def install(hour: int, minute: int, cooldown: int, uninstall: bool, show: bool) 
     print_info(f"  Deactivate: {result.deactivate_command}")
 
 
+@auto.command("test-notification")
+@click.pass_context
+def test_notification(ctx: click.Context) -> None:
+    """Send a test notification to verify Apprise URL configuration."""
+    from immich_memories.automation.notifications import send_test_notification
+
+    config: Config = ctx.obj["config"]
+    notif = config.notifications
+
+    if not notif.enabled:
+        print_info("Notifications are disabled — set notifications.enabled: true in config")
+        return
+    if not notif.urls:
+        print_info("No notification URLs configured — add URLs to notifications.urls in config")
+        return
+
+    if send_test_notification(notif.urls):
+        print_success("Test notification sent successfully")
+    else:
+        print_info("Test notification failed — check URLs and apprise installation")
+
+
 def register_auto_commands(cli_group: click.Group) -> None:
     """Register the auto command group on the main CLI group."""
     cli_group.add_command(auto)

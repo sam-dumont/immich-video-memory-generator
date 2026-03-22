@@ -112,6 +112,34 @@ def _execute_generate(cmd: list[str]) -> bool:
     return True
 
 
+def _send_notification(
+    config: Config,
+    memory_type: str,
+    success: bool,
+    duration_seconds: float = 0.0,
+    output_path: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Fire an Apprise notification if configured."""
+    notif = config.notifications
+    if not notif.enabled or not notif.urls:
+        return
+    status = "completed" if success else "failed"
+    if (success and not notif.on_success) or (not success and not notif.on_failure):
+        return
+
+    from immich_memories.automation.notifications import notify_job_complete
+
+    notify_job_complete(
+        memory_type=memory_type,
+        status=status,
+        duration_seconds=duration_seconds,
+        output_path=output_path,
+        error=error,
+        urls=notif.urls,
+    )
+
+
 class AutoRunner:
     """Orchestrates candidate detection and one-shot generation."""
 
@@ -230,7 +258,21 @@ class AutoRunner:
         logger.info("Generating: %s (score=%.3f)", candidate.reason, candidate.score)
         logger.info("Running: %s", " ".join(cmd))
 
-        if not _execute_generate(cmd):
+        import time as _time
+
+        start = _time.monotonic()
+        success = _execute_generate(cmd)
+        elapsed = _time.monotonic() - start
+
+        _send_notification(
+            config=self.config,
+            memory_type=candidate.memory_type,
+            success=success,
+            duration_seconds=elapsed,
+            error=None if success else "Generation subprocess failed",
+        )
+
+        if not success:
             return None
 
         logger.info("Generation completed successfully")

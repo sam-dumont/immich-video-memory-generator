@@ -108,16 +108,61 @@ def execute_job(job: PendingJob, timeout_seconds: int = 3600) -> None:
         cmd.extend(["--person", name])
 
     logger.info(f"Running: {' '.join(cmd)}")
+    start = time.monotonic()
+    error_msg: str | None = None
+    success = False
+
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
-        logger.error(f"Job '{job.schedule.name}' timed out after {timeout_seconds // 60} minutes")
+        error_msg = f"Timed out after {timeout_seconds // 60} minutes"
+        logger.error(f"Job '{job.schedule.name}' {error_msg}")
+    else:
+        if result.returncode == 0:
+            success = True
+            logger.info(f"Job '{job.schedule.name}' completed successfully")
+        else:
+            error_msg = result.stderr[-500:] if result.stderr else "no stderr"
+            logger.error(
+                f"Job '{job.schedule.name}' failed (exit {result.returncode}): {error_msg}"
+            )
+
+    elapsed = time.monotonic() - start
+    _notify_if_configured(
+        memory_type=params["memory_type"],
+        success=success,
+        duration_seconds=elapsed,
+        error=error_msg,
+    )
+
+
+def _notify_if_configured(
+    memory_type: str,
+    success: bool,
+    duration_seconds: float = 0.0,
+    error: str | None = None,
+) -> None:
+    """Send an Apprise notification if enabled in config."""
+    from immich_memories.config_loader import get_config
+
+    try:
+        config = get_config()
+    except Exception:
         return
 
-    if result.returncode == 0:
-        logger.info(f"Job '{job.schedule.name}' completed successfully")
-    else:
-        logger.error(
-            f"Job '{job.schedule.name}' failed (exit {result.returncode}): "
-            f"{result.stderr[-500:] if result.stderr else 'no stderr'}"
-        )
+    notif = config.notifications
+    if not notif.enabled or not notif.urls:
+        return
+    status = "completed" if success else "failed"
+    if (success and not notif.on_success) or (not success and not notif.on_failure):
+        return
+
+    from immich_memories.automation.notifications import notify_job_complete
+
+    notify_job_complete(
+        memory_type=memory_type,
+        status=status,
+        duration_seconds=duration_seconds,
+        error=error,
+        urls=notif.urls,
+    )
