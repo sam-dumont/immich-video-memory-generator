@@ -108,7 +108,7 @@ def test_full_generation_pipeline(
     """Run the full pipeline: preset → analyze → generate → complete."""
     d = screenshot_dir
 
-    # ── Step 1: Select Monthly Highlights for a recent month ──
+    # ── Step 1: Select Monthly Highlights for January 2025 ──
     _goto(page, gen_server_url)
     page.wait_for_timeout(3000)
     set_theme(page, "light")
@@ -123,19 +123,32 @@ def test_full_generation_pipeline(
     monthly.click()
     page.wait_for_timeout(1000)
 
-    # Pick first available person if person combo appears
-    person_combo = page.get_by_role("combobox", name="Person")
-    if person_combo.is_visible(timeout=3000):
-        person_combo.click()
-        page.wait_for_timeout(500)
-        options = page.get_by_role("option")
-        if options.count() > 1:
-            options.nth(1).click()
+    # Set month to January 2025
+    month_select = page.get_by_role("combobox", name="Month")
+    if month_select.is_visible(timeout=3000):
+        month_select.click()
+        page.wait_for_timeout(300)
+        jan_option = page.get_by_role("option", name="January")
+        if jan_option.is_visible(timeout=2000):
+            jan_option.click()
+            page.wait_for_timeout(300)
+
+    year_select = page.get_by_role("combobox", name="Year")
+    if year_select.is_visible(timeout=3000):
+        year_select.click()
+        page.wait_for_timeout(300)
+        y2025 = page.get_by_role("option", name="2025")
+        if y2025.is_visible(timeout=2000):
+            y2025.click()
+            page.wait_for_timeout(300)
+
+    # Set target duration to 1 minute
+    duration_input = page.get_by_label("Target Duration")
+    if duration_input.is_visible(timeout=3000):
+        duration_input.fill("1")
         page.wait_for_timeout(300)
 
-    _prep(page)
-    _goto(page, gen_server_url)  # Force page refresh to pick up selections
-    page.wait_for_timeout(2000)
+    page.wait_for_timeout(1000)
 
     # Click Next to start analysis
     next_btn = page.get_by_role("button", name="Next: Review Clips")
