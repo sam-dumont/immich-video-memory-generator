@@ -451,7 +451,11 @@ class AssemblyEngine:
         transitions = []
         for i in range(len(clips) - 1):
             clip, next_clip = clips[i], clips[i + 1]
-            if (
+            # WHY: explicit outgoing_transition (e.g. "cut" for content-backed
+            # title screens) takes priority over is_title_screen auto-fade.
+            if clip.outgoing_transition is not None:
+                transitions.append(clip.outgoing_transition)
+            elif (
                 clip.is_title_screen
                 or next_clip.is_title_screen
                 or self.settings.transition == TransitionType.CROSSFADE
@@ -460,7 +464,7 @@ class AssemblyEngine:
             elif self.settings.transition == TransitionType.CUT:
                 transitions.append("cut")
             elif self.settings.transition == TransitionType.SMART:
-                transitions.append(getattr(clip, "outgoing_transition", None) or "fade")
+                transitions.append("fade")
             else:
                 transitions.append("cut")
         return transitions
