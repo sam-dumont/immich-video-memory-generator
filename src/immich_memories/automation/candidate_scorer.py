@@ -55,4 +55,24 @@ def score_and_rank(
         candidate.score = max(0.0, min(1.0, score))
 
     candidates.sort(key=lambda c: c.score, reverse=True)
-    return candidates
+    return _cap_per_type(candidates)
+
+
+# Maximum candidates per memory_type — prevents any single type from flooding the list
+_MAX_PER_TYPE = 3
+_TYPE_CAPS = {
+    "on_this_day": 1,  # At most 1 per run — can't verify day-level content quality
+}
+
+
+def _cap_per_type(candidates: list[MemoryCandidate]) -> list[MemoryCandidate]:
+    """Keep at most _MAX_PER_TYPE candidates per memory_type, preserving score order."""
+    type_counts: dict[str, int] = {}
+    result: list[MemoryCandidate] = []
+    for c in candidates:
+        count = type_counts.get(c.memory_type, 0)
+        cap = _TYPE_CAPS.get(c.memory_type, _MAX_PER_TYPE)
+        if count < cap:
+            result.append(c)
+            type_counts[c.memory_type] = count + 1
+    return result

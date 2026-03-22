@@ -153,6 +153,7 @@ def _run_all_detectors(
 ) -> list[MemoryCandidate]:
     """Run all enabled detectors and collect candidates."""
     from immich_memories.automation.calendar_detectors import (
+        BirthdayDetector,
         MonthlyDetector,
         OnThisDayDetector,
         PersonSpotlightDetector,
@@ -199,6 +200,19 @@ def _run_all_detectors(
     all_candidates.extend(
         OnThisDayDetector().detect(assets_by_month, people, generated_keys, config, today)
     )
+
+    # Birthday detector — always on, high priority near birthdays
+    if people:
+        all_candidates.extend(
+            BirthdayDetector().detect(
+                assets_by_month,
+                people,
+                generated_keys,
+                config,
+                today,
+                person_asset_counts=person_asset_counts,
+            )
+        )
 
     if auto_cfg.detect_trips and gps_assets is not None:
         all_candidates.extend(

@@ -199,10 +199,15 @@ class PersonSpotlightDetector:
 
 
 class OnThisDayDetector:
-    """Proposes 'On This Day' memories for dates with significant content across years."""
+    """Proposes 'On This Day' memories for dates with rich content across years.
 
-    BASE_SCORE = 0.5
-    MIN_YEARS = 2
+    Uses month-level data as a proxy — can only fire weekly (not daily) to avoid
+    spamming since we can't distinguish good vs empty days within a month.
+    Best paired with a once-per-week schedule.
+    """
+
+    BASE_SCORE = 0.35
+    MIN_YEARS = 5
 
     def detect(
         self,
@@ -212,13 +217,13 @@ class OnThisDayDetector:
         config: Config,
         today: date,
     ) -> list[MemoryCandidate]:
-        """Emit candidate if today's date has content in multiple prior years."""
+        """Emit candidate if multiple prior years have content in today's month."""
         target_month_key = f"-{today.month:02d}"
-        years_with_content = [
+        years_with_content = sorted(
             int(k.split("-")[0])
             for k in assets_by_month
             if k.endswith(target_month_key) and int(k.split("-")[0]) < today.year
-        ]
+        )
 
         if len(years_with_content) < self.MIN_YEARS:
             return []
@@ -232,9 +237,8 @@ class OnThisDayDetector:
         if mem_key in generated_keys:
             return []
 
-        total_assets = sum(
-            assets_by_month.get(f"{y}-{today.month:02d}", 0) for y in years_with_content
-        )
+        n_years = len(years_with_content)
+        year_span = f"{years_with_content[0]}-{years_with_content[-1]}"
 
         return [
             MemoryCandidate(
@@ -243,11 +247,75 @@ class OnThisDayDetector:
                 date_range_end=date(today.year, today.month, today.day),
                 person_names=[],
                 memory_key=mem_key,
-                score=round(self.BASE_SCORE * min(1.0, len(years_with_content) / 5), 3),
-                reason=f"Content on this date across {len(years_with_content)} years",
-                asset_count=total_assets,
+                score=round(self.BASE_SCORE * min(1.0, n_years / 10), 3),
+                reason=f"Memories from this date across {n_years} years ({year_span})",
+                asset_count=n_years,
             )
         ]
+
+
+class BirthdayDetector:
+    """Proposes person spotlight memories near a person's birthday."""
+
+    BASE_SCORE = 0.75
+    WINDOW_DAYS = 60
+
+    def detect(
+        self,
+        assets_by_month: dict[str, int],
+        people: list,
+        generated_keys: set[str],
+        config: Config,
+        today: date,
+        person_asset_counts: dict[str, int] | None = None,
+    ) -> list[MemoryCandidate]:
+        """Emit candidates for people whose birthday is within +-7 days of today."""
+        counts = person_asset_counts or {}
+        candidates = []
+
+        for person in people:
+            if not person.name or not person.birth_date:
+                continue
+
+            bday = person.birth_date
+            # Check if birthday is within window (handle year wrap)
+            this_year_bday = date(today.year, bday.month, bday.day)
+            days_until = abs((this_year_bday - today).days)
+            if days_until > self.WINDOW_DAYS:
+                continue
+
+            target_year = today.year - 1
+            start = date(target_year, 1, 1)
+            end = date(target_year, 12, 31)
+            name_lower = person.name.lower()
+            mem_key = make_memory_key("person_spotlight", start, end, [name_lower])
+
+            if mem_key in generated_keys:
+                continue
+
+            asset_count = counts.get(person.id, 0)
+            age = today.year - bday.year
+            reason = (
+                f"Birthday ({age} years old), {asset_count} assets"
+                if asset_count
+                else f"Birthday ({age} years old)"
+            )
+
+            candidates.append(
+                MemoryCandidate(
+                    memory_type="person_spotlight",
+                    date_range_start=start,
+                    date_range_end=end,
+                    person_names=[person.name],
+                    memory_key=mem_key,
+                    score=round(self.BASE_SCORE, 3),
+                    reason=reason,
+                    asset_count=asset_count,
+                    extra_params={"birthday": True},
+                )
+            )
+
+        return candidates
 
 
 def _last_n_completed_months(today: date, n: int) -> list[tuple[int, int]]:

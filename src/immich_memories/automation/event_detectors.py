@@ -93,15 +93,22 @@ class ActivityBurstDetector:
         today: date,
         burst_threshold: float | None = None,
     ) -> list[MemoryCandidate]:
-        """Emit monthly_highlights candidates for burst months."""
+        """Emit monthly_highlights candidates for burst months in the last 12 months."""
         threshold = burst_threshold or self._DEFAULT_BURST_THRESHOLD
         if len(assets_by_month) < 2:
             return []
+
+        # WHY: only detect bursts in last 12 months — older content is for manual exploration
+        cutoff = date(today.year - 1, today.month, 1)
+        cutoff_key = f"{cutoff.year}-{cutoff.month:02d}"
 
         sorted_months = sorted(assets_by_month.keys())
         candidates: list[MemoryCandidate] = []
 
         for i, month_key in enumerate(sorted_months):
+            if month_key < cutoff_key:
+                continue
+
             # Rolling average over the 12 months preceding this one
             window_start = max(0, i - 12)
             window = sorted_months[window_start:i]
