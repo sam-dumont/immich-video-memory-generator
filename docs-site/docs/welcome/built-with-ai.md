@@ -25,21 +25,14 @@ AI-generated code without guardrails is fast garbage. The project has 17 CI chec
 
 These aren't decoration. They catch real bugs that Claude introduces confidently. The complexity gate alone has blocked dozens of over-engineered functions. The file length cap forced a composition-based architecture (every class under 800 lines, zero mixins) that turned out to be the right call anyway.
 
-## The numbers
+## What the velocity actually looks like
 
-| What | Count |
-|------|-------|
-| Development time | ~84 days (Dec 28, 2025 to launch) |
-| Development sessions | ~50 |
-| Commits | 139+ |
-| PRs merged | 64 |
-| Source code | ~57,000 lines across 207 files |
-| Test code | ~33,000 lines across 140 files |
-| Tests | 1,900+ (unit + integration) |
-| CI gates | 17, all enforced on every commit |
-| Max file length | 800 lines (enforced) |
-| Mixins / multiple inheritance | zero |
+The project went from "I want to make a birthday video" to a shipped product with 64 merged PRs in about 84 days. That's nearly one PR per day, each one passing 17 CI gates and adding to a test suite that's now at 1,900+ tests.
 
-That's roughly 1,000 lines of production code per day, plus 400 lines of tests. The velocity is the whole point: one person making decisions, AI writing the code, quality gates catching the mistakes.
+A typical feature cycle: I decide on Tuesday morning that trip memories need animated satellite maps. I spend a few hours researching map rendering approaches with Claude.ai (tile providers, zoom interpolation, Van Wijk smooth zoom for long distances vs. linear pan for short hops). By Wednesday I've picked the approach. Claude Code implements it. Thursday it's in the pipeline with tests, passing CI, ready for review.
 
-I'm planning a series of blog posts about the development process: the research conversations, the debugging odyssey, and the architectural decisions. Links will go here when they're published.
+That cycle used to take me 2-3 weeks when I wrote code myself (I'm a platform/infra person, not a frontend or video processing specialist). The AI doesn't remove the research or the decisions. It removes the "now I have to learn how FFmpeg compositing works well enough to write 400 lines of filter graph code" part.
+
+The hard problems still take time. The video assembly pipeline took 9 attempts over 2 months. Audio ducking needed 3 research rounds on stem separation. But the ratio of "thinking about the problem" to "typing code" shifted from maybe 30/70 to 80/20, which is where it should have been all along.
+
+I'm planning a series of blog posts about the development process: the research conversations, the debugging sessions, and the architectural decisions. Links will go here when they're published.
