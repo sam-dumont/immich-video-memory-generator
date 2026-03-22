@@ -18,6 +18,7 @@ from immich_memories.ui.pages.clip_grid import (
     _detect_duplicates,
     _group_clips_by_datetime,
     _render_clip_grid_paginated,
+    _render_compact_grid_paginated,
     _update_duration_summary,
 )
 from immich_memories.ui.pages.clip_pipeline import (
@@ -359,6 +360,25 @@ def _render_period_expansions(
         )
 
 
+def _render_view_toggle(state) -> None:
+    """Render Grid/List view toggle buttons."""
+    is_grid = state.clip_view_mode == "grid"
+
+    def set_view(mode: str):
+        state.clip_view_mode = mode
+        ui.navigate.to("/step2")
+
+    with ui.row().classes("gap-1 mb-2"):
+        grid_btn = ui.button(icon="grid_view", on_click=lambda: set_view("grid")).props(
+            "dense flat" if not is_grid else "dense unelevated"
+        )
+        grid_btn.tooltip("Compact grid view")
+        list_btn = ui.button(icon="view_list", on_click=lambda: set_view("list")).props(
+            "dense flat" if is_grid else "dense unelevated"
+        )
+        list_btn.tooltip("Detailed list view")
+
+
 def _render_step2_content(
     state,
     clips: list[VideoClipInfo],
@@ -380,7 +400,12 @@ def _render_step2_content(
             variant="info",
         )
 
-    _render_period_expansions(clips, duplicate_ids, lower_quality_ids, summary_container)
+    _render_view_toggle(state)
+
+    if state.clip_view_mode == "grid":
+        _render_compact_grid_paginated(clips, summary_container)
+    else:
+        _render_period_expansions(clips, duplicate_ids, lower_quality_ids, summary_container)
 
     im_separator()
 
