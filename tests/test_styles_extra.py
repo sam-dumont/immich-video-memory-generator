@@ -96,10 +96,10 @@ class TestGetStyleForMood:
         assert len(style.background_colors) == 2
         assert style.text_color.startswith("#")
 
-    def test_nostalgic_uses_vignette(self):
-        """Nostalgic mood uses vignette background."""
+    def test_nostalgic_uses_content_backed(self):
+        """Nostalgic mood uses content-backed background."""
         style = get_style_for_mood("nostalgic", randomize=False)
-        assert style.background_type == "vignette"
+        assert style.background_type == "content_backed"
 
     def test_calm_disables_line_accent(self):
         """Calm mood disables line accent."""
