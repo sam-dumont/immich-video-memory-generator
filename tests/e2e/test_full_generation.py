@@ -42,7 +42,6 @@ def gen_server_url():
             if not k.startswith("NICEGUI_") and k != "PYTEST_CURRENT_TEST"
         }
         env["IMMICH_MEMORIES_AUTH__ENABLED"] = "false"
-        env["IMMICH_MEMORIES_SERVER__ENABLE_DEMO_MODE"] = "true"
         env["IMMICH_MEMORIES_CACHE__DATABASE"] = f"{tmpdir}/fresh-cache.db"
         env["IMMICH_MEMORIES_CACHE__DIRECTORY"] = f"{tmpdir}/cache"
         env["IMMICH_MEMORIES_DEFAULTS__TARGET_DURATION"] = "1"

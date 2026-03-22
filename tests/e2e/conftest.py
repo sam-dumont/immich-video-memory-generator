@@ -45,7 +45,8 @@ def app_url() -> Generator[str, None, None]:
         if not k.startswith("NICEGUI_") and k != "PYTEST_CURRENT_TEST"
     }
     env["IMMICH_MEMORIES_AUTH__ENABLED"] = "false"
-    env["IMMICH_MEMORIES_SERVER__ENABLE_DEMO_MODE"] = "true"
+    # Don't enable demo mode via config — we inject the CSS class directly
+    # in enable_demo_mode(). The toggle would show in screenshots otherwise.
     env["COVERAGE_FILE"] = str(_SERVER_COVERAGE_FILE)
 
     venv_bin = _REPO_ROOT / ".venv" / "bin"
@@ -85,7 +86,7 @@ def app_url() -> Generator[str, None, None]:
 @pytest.fixture(scope="session")
 def browser_context_args() -> dict:
     """Override pytest-playwright default viewport to match screenshot size."""
-    return {"viewport": {"width": 1280, "height": 900}}
+    return {"viewport": {"width": 1440, "height": 900}}
 
 
 @pytest.fixture(scope="session")
