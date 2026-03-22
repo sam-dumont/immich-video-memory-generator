@@ -140,13 +140,15 @@ def _pick_transition(
     """Pick a single transition type for one clip boundary."""
     import random
 
-    if clip_before.is_title_screen or clip_after.is_title_screen:
-        return "fade", consecutive_fades + 1, 0
+    # WHY: explicit outgoing_transition takes priority over is_title_screen.
+    # Content-backed title screens use "cut" (deblur reveal IS the transition).
     if clip_before.outgoing_transition is not None:
         t = clip_before.outgoing_transition
         if t == "fade":
             return t, consecutive_fades + 1, 0
         return t, 0, consecutive_cuts + 1
+    if clip_before.is_title_screen or clip_after.is_title_screen:
+        return "fade", consecutive_fades + 1, 0
     use_fade = random.random() < 0.7
     if consecutive_fades >= 3:
         use_fade = False
