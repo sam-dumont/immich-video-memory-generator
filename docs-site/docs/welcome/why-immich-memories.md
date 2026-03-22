@@ -11,9 +11,9 @@ End of December 2025. My son's birthday was coming up and I wanted to make a yea
 
 I opened Premiere, imported 40 clips, started dragging them onto a timeline. Added a few crossfades. Realized I needed music. Two hours later I had 90 seconds of mediocre output and I still hadn't gone through the other 360 clips.
 
-Closed the laptop and watched TV instead.
+Never finished it.
 
-That's the actual problem. Not "I can't find my videos" (Immich handles that). Not "I don't have enough storage" (solved). The problem is the 4-8 hours between "I have 400 clips" and "here's a 3-minute video I'd actually show my family."
+The problem isn't storage (Immich handles that) or finding clips (search works). The problem is the 4-8 hours between "I have 400 clips" and "here's a 3-minute video I'd actually show my family."
 
 ## What exists out there
 

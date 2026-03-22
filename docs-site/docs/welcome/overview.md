@@ -60,4 +60,4 @@ Or use the [CLI](../create/cli/generate.md) for automation and scripting.
 
 ## Get started
 
-Ready? Head to the [Quick Start](./quick-start.md).
+Head to the [Quick Start](./quick-start.md).

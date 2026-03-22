@@ -43,4 +43,4 @@ When generation completes, you get a download button. The video is also saved to
 
 ## Re-generating
 
-Not happy with the result? Go back to Step 2 or 3, adjust your clip selection or settings, and generate again. The analysis cache means you won't have to re-analyze anything.
+If the result isn't right, go back to Step 2 or 3, adjust your clip selection or settings, and generate again. The analysis cache means you won't have to re-analyze anything.

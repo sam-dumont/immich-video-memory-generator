@@ -5,7 +5,7 @@ title: Scene Detection
 
 # Scene Detection
 
-Chopping videos at fixed 5-second intervals is lazy and it shows. Scene detection finds where the camera actually cut (or where the scene changed significantly) and splits there instead.
+Chopping videos at fixed 5-second intervals is lazy and it shows. Scene detection finds where the camera actually cut (or where the visual content changed enough to matter) and splits there instead.
 
 ## How it works
 
@@ -17,8 +17,8 @@ Uses [PySceneDetect](https://www.scenedetect.com/) under the hood. It analyzes f
 analysis:
   use_scene_detection: true    # enabled by default
   scene_threshold: 27.0        # default sensitivity
-  min_segment_duration: 2.0    # seconds — drop anything shorter
-  max_segment_duration: 15.0   # seconds — subdivide anything longer
+  min_segment_duration: 2.0    # seconds: drop anything shorter
+  max_segment_duration: 15.0   # seconds: subdivide anything longer
 ```
 
 ### Threshold tuning

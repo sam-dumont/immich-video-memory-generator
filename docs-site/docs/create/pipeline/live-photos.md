@@ -27,7 +27,7 @@ Here's what happens when you rapid-fire 3 photos of an Italian hilltop. Each Liv
 
 ---
 
-**Bike race — 6 Live Photos merged into 8.4 seconds:**
+**Bike race: 6 Live Photos merged into 8.4 seconds:**
 
 <Video src="/demos/live-photos/bike_race/merged.mp4" width={720} controls />
 

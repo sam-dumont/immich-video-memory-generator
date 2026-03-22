@@ -49,7 +49,7 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 
 ## Step 2: Connect to Immich
 
-Enter your Immich server URL and API key in the Configuration tab. Click connect. You should see a green checkmark confirming the connection.
+Enter your Immich server URL and API key in the Configuration tab. Click connect. A green checkmark confirms the connection.
 
 :::info Screenshot needed
 **What to capture:** Step 1 Configuration page with Immich URL filled in and connection confirmed
@@ -71,7 +71,7 @@ Select the **Year in Review** preset card. Pick the year you want (the one with 
 
 ## Step 4: Review clips
 
-Navigate to Step 2 (Clip Review). The pipeline will fetch your videos, analyze them, and score each clip. This takes 1-3 minutes depending on how many videos you have.
+Go to Step 2 (Clip Review). The pipeline will fetch your videos, analyze them, and score each clip. This takes 1-3 minutes depending on how many videos you have.
 
 Once done, you'll see a grid of clips sorted by score. The best ones are pre-selected. You can deselect clips you don't want or re-include ones the AI skipped.
 

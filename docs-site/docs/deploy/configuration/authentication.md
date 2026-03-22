@@ -60,7 +60,7 @@ advanced:
 
 ### OIDC / SSO
 
-Connect to any OpenID Connect provider. Uses PKCE automatically — no extra config needed.
+Connect to any OpenID Connect provider. Uses PKCE automatically: no extra config needed.
 
 **YAML config:**
 
@@ -74,7 +74,7 @@ advanced:
     client_secret: ${OIDC_CLIENT_SECRET}  # or leave empty for public clients
     scope: openid email profile            # default
     session_ttl_hours: 24                  # default
-    auto_launch: false    # if true, redirect directly to IdP — skips the login page
+    auto_launch: false    # if true, redirect directly to IdP (skips the login page)
     allow_insecure_issuer: false  # set true only for local dev (http:// issuer)
     button_text: "Sign in with SSO"  # text shown on the login button
 ```
@@ -168,7 +168,7 @@ For setups where a reverse proxy (Traefik + Authelia, nginx + oauth2-proxy, etc.
 **How it works:** The middleware reads the `Remote-User` header (configurable) and creates a session automatically. Requests from untrusted IPs have the headers stripped before they reach the app.
 
 :::caution trusted_proxies is required
-Without `trusted_proxies`, header auth is not enabled — any client could forge the headers and gain access. Set this to your proxy's IP or CIDR range.
+Without `trusted_proxies`, header auth is not enabled. Any client could forge the headers and gain access. Set this to your proxy's IP or CIDR range.
 :::
 
 **YAML config:**
@@ -208,7 +208,7 @@ services:
     # ... your Authelia config ...
 ```
 
-In your config YAML, set `trusted_proxies` to Traefik's container IP or Docker network CIDR. Authelia forwards `Remote-User` and `Remote-Email` by default — these match the defaults.
+In your config YAML, set `trusted_proxies` to Traefik's container IP or Docker network CIDR. Authelia forwards `Remote-User` and `Remote-Email` by default, which match the defaults.
 
 ---
 

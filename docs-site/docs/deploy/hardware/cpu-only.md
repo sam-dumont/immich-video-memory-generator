@@ -73,7 +73,7 @@ immich-memories hardware
 If no GPU is found, you will see:
 
 ```
-Hardware: No GPU acceleration — video encoding will use CPU (slower)
+Hardware: No GPU acceleration. Video encoding will use CPU (slower).
 ```
 
 This is a warning, not an error. The pipeline will work fine.

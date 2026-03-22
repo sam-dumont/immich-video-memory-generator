@@ -140,7 +140,7 @@ audio:
 
 **`ducking_threshold` (0.02)**: the minimum audio energy in the clip that triggers ducking. Lower values make it more sensitive (music ducks for quieter sounds). If your clips have a lot of background noise, you might want to raise this to 0.05 or higher.
 
-**`ducking_ratio` (6.0)**: the amount of volume reduction when ducking activates. A ratio of 6.0 means the music drops significantly. Lower values (e.g., 3.0) give a subtler dip.
+**`ducking_ratio` (6.0)**: how much the volume drops when ducking activates. A ratio of 6.0 means a large dip. Lower values (e.g., 3.0) give a subtler dip.
 
 **`music_volume_db` (-6.0)**: the baseline music volume *before* any ducking. At -6 dB, the music is already mixed quieter than the clip audio.
 

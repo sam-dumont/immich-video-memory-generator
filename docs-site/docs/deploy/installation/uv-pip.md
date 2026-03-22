@@ -7,7 +7,7 @@ title: uv / pip
 
 ## uv (Recommended)
 
-[uv](https://docs.astral.sh/uv/) is 10-100x faster than pip. If you're not using it yet, you should be.
+[uv](https://docs.astral.sh/uv/) is 10-100x faster than pip.
 
 ### One-Liner (No Install Required)
 
@@ -32,7 +32,7 @@ uv sync
 Install optional features depending on your setup:
 
 ```bash
-# macOS — Apple Vision framework for face detection + GPU rendering
+# macOS: Apple Vision framework for face detection + GPU rendering
 uv sync --extra mac
 
 # Face recognition (any platform)

@@ -4,7 +4,7 @@ sidebar_label: "Year in Review"
 
 # Year in Review
 
-The flagship memory type. Covers an entire calendar year and creates a video with monthly title dividers, giving you a chronological highlight reel of the best moments from each month.
+The most-used memory type. Covers an entire calendar year and creates a video with monthly title dividers: a chronological highlight reel of the best moments from each month.
 
 ## What it does
 

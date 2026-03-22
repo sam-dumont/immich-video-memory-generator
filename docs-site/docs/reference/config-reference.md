@@ -235,7 +235,7 @@ scoring_priority:
   moment: medium                 # Favor interesting content (motion, events)
 ```
 
-`people: high` means clips with faces score significantly higher. Useful for family compilations. Set it to `low` if you're doing a landscape/travel memory where faces aren't the point.
+`people: high` means clips with faces get a large score boost. Useful for family compilations. Set it to `low` if you're doing a landscape/travel memory where faces aren't the point.
 
 ## Cache
 

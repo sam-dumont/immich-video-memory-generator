@@ -64,6 +64,6 @@ No hardware acceleration available, falling back to CPU
 ## Music Generation Fails
 
 - Check the music API server is running and reachable.
-- For ACE-Step: hit `http://your-server:8000/health` in a browser. You should see `{"data": {"status": "ok"}}`.
+- For ACE-Step: hit `http://your-server:8000/health` in a browser. Expect `{"data": {"status": "ok"}}`.
 - For MusicGen: same thing, check the health endpoint.
 - If generation times out, increase `timeout_seconds` in your config. Some tracks take a while on slower GPUs.

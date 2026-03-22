@@ -7,7 +7,7 @@ title: Title Screens & Maps
 
 This is where the output stops looking like "FFmpeg concat" and starts looking like something you'd actually want to show people.
 
-Title screens are the cinematic glue: animated intro cards, month dividers, trip maps, globe fly-overs, and ending sequences. They're what separates a clip dump from a memory video that feels produced. Think of it as the Relive-style polish, but running on your own hardware with your own data.
+Title screens are the structural connective tissue: animated intro cards, month dividers, trip maps, globe fly-overs, and ending sequences. They're what separates a clip dump from a memory video that feels produced. Same kind of polish as Relive, but running on your own hardware with your own data.
 
 ## What gets generated
 

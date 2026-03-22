@@ -197,7 +197,7 @@ trips:
 
 ## Dry run
 
-Not sure what you'll get? Use `--dry-run` to see how many videos match your criteria without actually generating anything:
+Use `--dry-run` to see how many videos match your criteria without actually generating anything:
 
 ```bash
 immich-memories generate --year 2024 --person "Emma" --dry-run

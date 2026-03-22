@@ -5,7 +5,7 @@ title: NVIDIA
 
 # NVIDIA
 
-NVIDIA GPUs with NVENC provide hardware-accelerated video encoding that's significantly faster than software encoding. If you have a GTX 1050 or newer, you've got NVENC.
+NVIDIA GPUs with NVENC provide hardware-accelerated video encoding that's 5-10x faster than software encoding. If you have a GTX 1050 or newer, you've got NVENC.
 
 ## What you get
 
@@ -33,7 +33,7 @@ If NVENC is available, you'll see it listed with the specific encoders found.
 ```yaml
 hardware:
   enabled: true
-  backend: "nvidia"   # or "auto" — auto will find it
+  backend: "nvidia"   # or "auto" (auto will find it)
 ```
 
 You usually don't need to set `backend: "nvidia"` explicitly. `auto` detects NVIDIA GPUs fine. The only reason to force it is if you have multiple acceleration options and want to ensure NVIDIA is used.

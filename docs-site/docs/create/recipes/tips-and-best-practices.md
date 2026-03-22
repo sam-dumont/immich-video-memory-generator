@@ -56,7 +56,7 @@ Step 2 exists for a reason. Spend 2 minutes deselecting clips that don't belong:
 
 ## Enable LLM Analysis for Large Libraries
 
-For libraries with hundreds of videos, LLM content analysis dramatically improves clip selection. It adds a few seconds per video to analysis time but catches things that motion/face detection misses: a quiet but meaningful conversation, a funny reaction shot, etc.
+For libraries with hundreds of videos, LLM content analysis makes a real difference in clip selection. It adds a few seconds per video to analysis time but catches things that motion/face detection misses: a quiet but meaningful conversation, a funny reaction shot, etc.
 
 ```yaml
 content_analysis:
