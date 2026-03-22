@@ -1,0 +1,59 @@
+---
+sidebar_position: 1
+title: "Step 1: Configuration"
+---
+
+# Step 1: Configuration
+
+This is where you tell the tool what to work with.
+
+![Step 1 Configuration](/img/screenshots/step1-config-connected.png)
+
+## Immich Connection
+
+Enter your Immich server URL and API key. If you've set these in your `config.yaml` or environment variables, they'll be pre-filled.
+
+## Memory Type
+
+Pick one of the 6 preset cards or choose Custom for a manual date range.
+
+Each preset auto-configures the date range and target duration. For example, "Season: Summer 2025" sets the range to June-August 2025 and a 3-minute target. "Year in Review: 2024" covers Jan-Dec 2024 with a 10-minute target.
+
+The presets also drive the output filename and title screen. A Multi-Person preset with Sam and Emile for March 2026 produces `sam_emile_march_2026_memories.mp4` with "Sam & Emile" as the title subtitle.
+
+## Person Selection
+
+![Person Selection](/img/screenshots/step1-person-dropdown.png)
+
+A dropdown populated from Immich's face recognition data. Pick the person you want the memory video to focus on. The tool only pulls videos containing this person.
+
+For Multi-Person presets, you pick 2+ people and the tool finds clips where ALL of them appear.
+
+You can also skip person selection entirely and generate from all videos in the time period.
+
+## Time Period (Custom mode)
+
+Three options when using Custom:
+
+- **Year**: all videos from a specific year (e.g., 2024)
+- **Birthday**: a birthday-year range (e.g., Jul 21, 2024 to Jul 20, 2025). Good for birthday compilations.
+- **Date range**: any custom start and end date
+
+## Live Photos
+
+Optional toggle to include iPhone Live Photo clips. When enabled, the tool pulls the ~3s video hidden in each photo and can merge rapid-fire bursts into longer clips. See [Live Photos](../pipeline/live-photos.md) for details.
+
+If your library has enough regular video to fill the target duration, live photos show up in Step 2 but aren't pre-selected. They fill gaps rather than crowding out real video.
+
+## Target Duration
+
+The target duration for the final video (in minutes). Presets set this automatically based on the date range. The default heuristic: roughly 1 minute per 3 days of coverage. A 15-day trip gives ~5 minutes, a full year caps at 10 minutes. You can always override it manually.
+
+| Range | Auto-target | Notes |
+|-------|------------|-------|
+| 3 days (trip) | 1 min | Trips use 1 min per 3 days |
+| 1 week (trip) | 2-3 min | |
+| 2 weeks (trip) | 5 min | Capped at 10 min |
+| 1 month | 1 min | Non-trip: ~1 min per month |
+| 3 months (season) | 3 min | Preset default |
+| 1 year | 8 min | |

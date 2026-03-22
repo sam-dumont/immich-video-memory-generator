@@ -135,13 +135,13 @@ immich-memories generate --year 2024 --person "John" --output ~/Videos/john_2024
 
 See the [full documentation](https://sam-dumont.github.io/immich-video-memory-generator/) for:
 
-- [Installation options](https://sam-dumont.github.io/immich-video-memory-generator/docs/installation/uv) (uv, pip, Docker, Kubernetes, Terraform)
-- [UI Walkthrough](https://sam-dumont.github.io/immich-video-memory-generator/docs/ui-walkthrough/overview)
-- [CLI Reference](https://sam-dumont.github.io/immich-video-memory-generator/docs/cli/overview)
-- [Configuration](https://sam-dumont.github.io/immich-video-memory-generator/docs/configuration/config-file)
-- [Hardware Acceleration](https://sam-dumont.github.io/immich-video-memory-generator/docs/hardware/overview)
-- [AI Music](https://sam-dumont.github.io/immich-video-memory-generator/docs/music/overview)
-- [Guides](https://sam-dumont.github.io/immich-video-memory-generator/docs/guides/first-video)
+- [Installation](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/installation/docker) (Docker, uv/pip, Kubernetes, Terraform)
+- [Web UI Walkthrough](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/web-ui/step1-configuration)
+- [CLI Reference](https://sam-dumont.github.io/immich-video-memory-generator/docs/reference/cli-reference)
+- [Configuration](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/config-file)
+- [Hardware Acceleration](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/hardware/overview)
+- [Audio & Music](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/pipeline/audio-and-music)
+- [Recipes](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/recipes/birthday-compilations) (birthday compilations, automation, best practices)
 
 ## Development
 

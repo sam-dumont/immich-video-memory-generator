@@ -1,6 +1,27 @@
 /* Immich Memories docs — matches NiceGUI app visual system */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+/* Local Inter fonts (bundled, no Google Fonts dependency) */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+    U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+    U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
 
 :root {
   /* Match NiceGUI app primary: #4250af */
@@ -35,13 +56,13 @@
   --ifm-color-primary-light: #7D9DEC;
   --ifm-color-primary-lighter: #87A5EE;
   --ifm-color-primary-lightest: #A8BEF4;
-  --ifm-background-color: #000000;
-  --ifm-background-surface-color: #222222;
+  --ifm-background-color: #09090b;
+  --ifm-background-surface-color: #111113;
   --docusaurus-highlighted-code-line-bg: rgba(107, 143, 232, 0.15);
 
-  --im-bg-surface: #222222;
-  --im-border: #262626;
-  --im-border-light: #262626;
+  --im-bg-surface: #111113;
+  --im-border: rgba(255,255,255,0.08);
+  --im-border-light: rgba(255,255,255,0.05);
   --im-text-secondary: #d4d4d4;
   --im-shadow: none;
   --im-shadow-md: 0 2px 8px rgba(0,0,0,0.4);
@@ -57,6 +78,11 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 1.1rem;
 }
 
+/* Content width — comfortable reading measure */
+.theme-doc-markdown > * {
+  max-width: 80ch;
+}
+
 /* Cards match app's 10px radius, flat style */
 .card {
   border-radius: 10px;
@@ -66,23 +92,39 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 10px;
 }
 
-.alert {
-  border-radius: 10px;
-}
+/* Code blocks: let Prism handle themes natively.
+   Light mode = github theme (light bg), dark mode = dracula (dark bg).
+   Forcing dark bg in light mode breaks Prism token colors. */
 
-/* Sidebar font sizing matches app */
+/* Sidebar refinement */
 .theme-doc-sidebar-menu .menu__link {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 500;
   border-radius: 10px;
 }
 
-/* Dark mode: true black background like app */
+.theme-doc-sidebar-menu .menu__link--active {
+  border-left: 3px solid var(--ifm-color-primary);
+  padding-left: calc(var(--ifm-menu-link-padding-horizontal) - 3px);
+}
+
+/* Admonition refinement */
+.alert {
+  border-left-width: 3px;
+  border-radius: 8px;
+}
+
+[data-theme='dark'] .alert {
+  background: rgba(255,255,255,0.03);
+}
+
+/* Dark mode: warm near-black */
 [data-theme='dark'] .navbar {
-  background: #000000;
-  border-bottom: 1px solid #262626;
+  background: #09090b;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
 [data-theme='dark'] .footer--dark {
-  background: #000000;
-  border-top: 1px solid #262626;
+  background: #09090b;
+  border-top: 1px solid rgba(255,255,255,0.08);
 }

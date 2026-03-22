@@ -22,10 +22,10 @@ function HeroSection() {
               and title screens. No cloud. No subscription.
             </p>
             <div className={styles.heroCtas}>
-              <Link className={styles.ctaPrimary} to="/docs/quick-start">
+              <Link className={styles.ctaPrimary} to="/docs/welcome/quick-start">
                 Get started
               </Link>
-              <Link className={styles.ctaSecondary} to="/docs/intro">
+              <Link className={styles.ctaSecondary} to="/docs/">
                 See what it does
               </Link>
             </div>
@@ -231,10 +231,10 @@ function CtaSection() {
           Install in 2 minutes. Generate your first memory in 10.
         </p>
         <div className={styles.heroCtas}>
-          <Link className={styles.ctaPrimary} to="/docs/quick-start">
+          <Link className={styles.ctaPrimary} to="/docs/welcome/quick-start">
             Get started
           </Link>
-          <Link className={styles.ctaSecondary} to="/docs/installation/docker">
+          <Link className={styles.ctaSecondary} to="/docs/deploy/installation/docker">
             Docker setup
           </Link>
         </div>

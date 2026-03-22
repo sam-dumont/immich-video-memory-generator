@@ -1,0 +1,80 @@
+---
+sidebar_label: "Trip Memories"
+---
+
+# Trip Memories
+
+Automatically detects trips from GPS data in your photos and videos, then generates a video for each one with animated satellite maps showing your route.
+
+## How trip detection works
+
+The algorithm runs in four stages:
+
+1. **Filter by distance**: all assets with GPS coordinates within `min_distance_km` of your home (default: 50 km) are removed. Everything left is "away from home."
+2. **Cluster by day**: remaining assets are grouped by date. Each day with GPS-tagged content becomes a potential trip day.
+3. **Merge consecutive days**: days within `max_gap_days` (default: 2) of each other are merged into trips. A 2-day gap means a rest day doesn't split a trip.
+4. **Apply minimum duration**: trips shorter than `min_duration_days` (default: 2) are discarded. Day trips don't qualify unless you lower this threshold.
+
+The trip's location name comes from reverse geocoding the centroid of all GPS coordinates in the cluster (via Nominatim/OpenStreetMap).
+
+## CLI
+
+Detect and list all trips for a year:
+
+```bash
+immich-memories generate --memory-type trip --year 2025
+```
+
+This shows a table of detected trips with dates, location, and asset count. You then select which trip to generate:
+
+```bash
+# Generate a specific trip by index
+immich-memories generate --memory-type trip --year 2025 --trip-index 2
+
+# Generate all trips
+immich-memories generate --memory-type trip --year 2025 --all-trips
+
+# Filter by month (trips starting in July)
+immich-memories generate --memory-type trip --year 2025 --month 7
+```
+
+## Web UI
+
+Select the **Trip** memory type in Step 1. After connecting to Immich and picking a year, the UI runs trip detection and shows you the detected trips. Select one and proceed to clip review.
+
+:::info Screenshot needed
+**What to capture:** Step 1 trip detection results showing 3-4 detected trips with locations and dates
+**Viewport:** 1280x800
+**State:** Trip memory type selected, year chosen, trip list visible with map pins
+**Target file:** `static/screenshots/type-trip.png`
+:::
+
+## What you get
+
+- **Animated satellite map**: the video opens with a satellite map that zooms between your trip locations. If you visited multiple cities, the map animates the route.
+- **Overnight detection**: the algorithm identifies overnight bases (where you slept). This affects map animations and segment distribution.
+- **Location-aware title**: the title screen shows the trip destination name, pulled from reverse geocoding.
+- **Duration scales with trip length**: 35 seconds per day, minimum 60 seconds, maximum 10 minutes. A week-long trip gets about a 4-minute video.
+
+## Configuration
+
+Trip detection settings live in the `trips` section of `config.yaml`:
+
+```yaml
+trips:
+  homebase_latitude: 48.8566    # Your home latitude (required)
+  homebase_longitude: 2.3522    # Your home longitude (required)
+  min_distance_km: 50           # Minimum km from home to count
+  min_duration_days: 2          # Minimum days to qualify as a trip
+  max_gap_days: 2               # Max gap before splitting trips
+```
+
+The homebase coordinates are required. Without them, the algorithm can't determine what counts as "away."
+
+## Tips
+
+- **GPS data is required.** If your videos don't have GPS metadata (some cameras strip it, screen recordings never have it), trip detection won't find anything. iPhones and Android phones embed GPS by default.
+- **Set your homebase accurately.** The algorithm filters everything within `min_distance_km` of your home. If your coordinates are wrong, local trips might show up or real trips might get filtered out.
+- **Lower `min_distance_km` for local trips.** Default is 50 km. If you want to capture weekend drives to a nearby city, try 20 km.
+- **Lower `min_duration_days` for day trips.** Set it to 1 to include single-day excursions.
+- The person filter works with trips too: `--person "Alice"` generates a trip video using only clips that contain Alice.

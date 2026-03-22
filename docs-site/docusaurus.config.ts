@@ -80,15 +80,15 @@ const config: Config = {
           items: [
             {
               label: 'Quick Start',
-              to: '/docs/quick-start',
+              to: '/docs/welcome/quick-start',
             },
             {
               label: 'Installation',
-              to: '/docs/installation/uv',
+              to: '/docs/deploy/installation/docker',
             },
             {
               label: 'CLI Reference',
-              to: '/docs/cli/overview',
+              to: '/docs/reference/cli-reference',
             },
           ],
         },
