@@ -305,10 +305,14 @@ def _build_ducking_filter(
     # Prepare video audio (normalize if requested)
     # WHY: Split into two copies — FFmpeg 6.x doesn't allow consuming a label twice.
     # [va] feeds sidechaincompress (as sidechain input), [vamix] feeds amix.
+    # WHY: apad+atrim forces audio to exact video duration. The mux step before
+    # this already pads, but some FFmpeg versions/codecs don't honor padded AAC
+    # duration on re-decode — the stream decodes shorter than container metadata.
+    pad = f"apad=whole_dur={video_duration},atrim=0:{video_duration},"
     if config.normalize_audio:
-        filter_parts.append("[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,asplit=2[va][vamix]")
+        filter_parts.append(f"[0:a]{pad}loudnorm=I=-16:TP=-1.5:LRA=11,asplit=2[va][vamix]")
     else:
-        filter_parts.append("[0:a]asplit=2[va][vamix]")
+        filter_parts.append(f"[0:a]{pad}asplit=2[va][vamix]")
 
     # Apply sidechain compression: duck music when video audio is present
     sidechain_filter = (
