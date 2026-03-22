@@ -81,6 +81,44 @@ class TripDetector:
         return candidates
 
 
+def _month_end(year: int, month: int) -> date:
+    if month == 12:
+        return date(year, 12, 31)
+    return date(year, month + 1, 1) - timedelta(days=1)
+
+
+def _check_burst(
+    month_key: str,
+    avg: float,
+    count: int,
+    threshold: float,
+    generated_keys: set[str],
+) -> MemoryCandidate | None:
+    """Build a burst candidate if this month exceeds the threshold."""
+    ratio = count / avg
+    if ratio <= threshold:
+        return None
+
+    year, month = int(month_key[:4]), int(month_key[5:7])
+    start = date(year, month, 1)
+    end = _month_end(year, month)
+
+    key = make_memory_key("monthly_highlights", start, end)
+    if key in generated_keys:
+        return None
+
+    return MemoryCandidate(
+        memory_type="monthly_highlights",
+        date_range_start=start,
+        date_range_end=end,
+        person_names=[],
+        memory_key=key,
+        score=0.7 * min(1.0, ratio / threshold),
+        reason=f"{ratio:.1f}x average activity ({count} assets vs {avg:.0f} avg)",
+        asset_count=count,
+    )
+
+
 class ActivityBurstDetector:
     """Detect months with unusually high activity compared to rolling average."""
 
@@ -101,9 +139,7 @@ class ActivityBurstDetector:
             return []
 
         # WHY: only detect bursts in last 12 months — older content is for manual exploration
-        cutoff = date(today.year - 1, today.month, 1)
-        cutoff_key = f"{cutoff.year}-{cutoff.month:02d}"
-
+        cutoff_key = f"{today.year - 1}-{today.month:02d}"
         sorted_months = sorted(assets_by_month.keys())
         candidates: list[MemoryCandidate] = []
 
@@ -111,9 +147,7 @@ class ActivityBurstDetector:
             if month_key < cutoff_key:
                 continue
 
-            # Rolling average over the 12 months preceding this one
-            window_start = max(0, i - 12)
-            window = sorted_months[window_start:i]
+            window = sorted_months[max(0, i - 12):i]
             if not window:
                 continue
 
@@ -121,37 +155,11 @@ class ActivityBurstDetector:
             if avg == 0:
                 continue
 
-            count = assets_by_month[month_key]
-            ratio = count / avg
-            if ratio <= threshold:
-                continue
-
-            year, month = int(month_key[:4]), int(month_key[5:7])
-            start = date(year, month, 1)
-            if month == 12:
-                end = date(year, 12, 31)
-            else:
-                end = date(year, month + 1, 1) - timedelta(days=1)
-
-            key = make_memory_key("monthly_highlights", start, end)
-            if key in generated_keys:
-                continue
-
-            score = 0.7 * min(1.0, ratio / threshold)
-            reason = f"{ratio:.1f}x average activity ({count} assets vs {avg:.0f} avg)"
-
-            candidates.append(
-                MemoryCandidate(
-                    memory_type="monthly_highlights",
-                    date_range_start=start,
-                    date_range_end=end,
-                    person_names=[],
-                    memory_key=key,
-                    score=score,
-                    reason=reason,
-                    asset_count=count,
-                ),
+            candidate = _check_burst(
+                month_key, avg, assets_by_month[month_key], threshold, generated_keys,
             )
+            if candidate:
+                candidates.append(candidate)
 
         return candidates
 
