@@ -67,6 +67,7 @@ class RenderingService:
         animated_background: bool,
         fade_from_white: bool = False,
         is_birthday: bool = False,
+        background_image: np.ndarray | None = None,
     ) -> Path:
         """Create title video using GPU or PIL renderer.
 
@@ -87,6 +88,7 @@ class RenderingService:
                 fade_from_white,
                 is_birthday,
                 hdr=hdr,
+                background_image=background_image,
             )
         return create_title_video(
             title=title,
@@ -100,6 +102,7 @@ class RenderingService:
             animated_background=animated_background,
             fade_from_white=fade_from_white,
             hdr=hdr,
+            background_image=background_image,
         )
 
     def _create_gpu_title(
@@ -116,9 +119,9 @@ class RenderingService:
         fade_from_white: bool,
         is_birthday: bool,
         hdr: bool = True,
+        background_image: np.ndarray | None = None,
     ) -> Path:
         """Create title video using GPU-accelerated Taichi renderer."""
-        # Map background_type: soft_gradient/vignette use linear, solid uses radial
         gradient_type = "linear" if style.background_type != "radial" else "radial"
 
         config = TaichiTitleConfig(
@@ -126,7 +129,8 @@ class RenderingService:
             height=height,
             fps=fps,
             duration=duration,
-            # Background colors from style
+            # Content-backed background takes priority over gradient colors
+            background_image=background_image,
             bg_color1=style.background_colors[0] if style.background_colors else "#1A1A2E",
             bg_color2=style.background_colors[1]
             if len(style.background_colors) > 1
@@ -135,19 +139,26 @@ class RenderingService:
             else "#16213E",
             gradient_angle=float(style.background_angle),
             gradient_type=gradient_type,
-            # Text styling
-            text_color=style.text_color,
+            # Text styling — force white + shadow when content-backed
+            text_color="#FFFFFF" if background_image is not None else style.text_color,
             title_size_ratio=style.title_size_ratio,
-            subtitle_size_ratio=style.subtitle_size_ratio
-            * style.title_size_ratio,  # Convert relative to absolute
-            # Effects
-            enable_bokeh=True,  # Bokeh looks good
-            enable_shadow=getattr(style, "text_shadow", False),
-            # Animated background
-            gradient_rotation=10.0 if animated_background else 0.0,
-            color_pulse_amount=0.03 if animated_background else 0.0,
-            vignette_pulse=0.05 if animated_background else 0.0,
-            # Birthday celebration effects
+            subtitle_size_ratio=style.subtitle_size_ratio * style.title_size_ratio,
+            # Effects — no bokeh on content-backed (distracting over real content)
+            enable_bokeh=background_image is None,
+            enable_shadow=True,
+            shadow_opacity=0.5 if background_image is not None else 0.35,
+            # Animated background — disable gradient animation for content-backed
+            gradient_rotation=0.0
+            if background_image is not None
+            else (10.0 if animated_background else 0.0),
+            color_pulse_amount=0.0
+            if background_image is not None
+            else (0.03 if animated_background else 0.0),
+            vignette_pulse=0.0
+            if background_image is not None
+            else (0.05 if animated_background else 0.0),
+            # Subtle vignette on content-backed for edge darkening
+            vignette_strength=0.2 if background_image is not None else 0.3,
             is_birthday=is_birthday,
         )
         return create_title_video_taichi(

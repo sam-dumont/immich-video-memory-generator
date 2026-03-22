@@ -446,6 +446,7 @@ class TitleInserter:
                 end_date=title_settings.end_date,
                 person_name=title_settings.person_name,
                 birthday_age=title_settings.birthday_age,
+                content_clip_path=clips[0].path if clips else None,
             )
             logger.info(f"Generated title screen: {title_screen.path}")
 

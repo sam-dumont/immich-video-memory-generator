@@ -70,6 +70,7 @@ class TitleRenderer:
         style: TitleStyle,
         settings: RenderSettings | None = None,
         fonts_dir: Path | None = None,
+        background_image: np.ndarray | None = None,
     ):
         """Initialize the renderer.
 
@@ -77,6 +78,7 @@ class TitleRenderer:
             style: Visual style for rendering.
             settings: Render settings (resolution, fps, etc.).
             fonts_dir: Directory containing font files.
+            background_image: Optional content-backed background (float32, 0-1).
         """
         if not HAS_PIL:
             raise ImportError("PIL/Pillow is required for title rendering")
@@ -84,6 +86,7 @@ class TitleRenderer:
         self.style = style
         self.settings = settings or RenderSettings()
         self.fonts_dir = fonts_dir or Path(__file__).parent.parent / "fonts"
+        self._background_image = background_image
 
         # Load fonts
         self._title_font: ImageFont.FreeTypeFont | None = None
@@ -153,7 +156,10 @@ class TitleRenderer:
         animation_preset: AnimationPreset | None = None,
     ) -> Image.Image:
         """Render a single frame of the title screen."""
-        if self.settings.animated_background:
+        if self._background_image is not None:
+            # Content-backed: use the pre-extracted frame as static background
+            frame = Image.fromarray((self._background_image * 255).astype(np.uint8), mode="RGB")
+        elif self.settings.animated_background:
             total_frames = int(self.settings.duration * self.settings.fps)
             bg_progress = frame_number / max(1, total_frames - 1)
             frame = create_animated_background(
