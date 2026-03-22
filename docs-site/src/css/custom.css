@@ -92,10 +92,6 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 10px;
 }
 
-.alert {
-  border-radius: 10px;
-}
-
 /* Code blocks: let Prism handle themes natively.
    Light mode = github theme (light bg), dark mode = dracula (dark bg).
    Forcing dark bg in light mode breaks Prism token colors. */

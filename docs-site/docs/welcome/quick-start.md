@@ -56,8 +56,8 @@ immich-memories ui
 **CLI** (for scripts and automation):
 
 ```bash
-# Last 30 days, 5-minute video
-immich-memories generate --start 2024-01-01 --period 30d --duration 5
+# Last 30 days, 5-minute video (duration is in seconds)
+immich-memories generate --start 2024-01-01 --period 30d --duration 300
 
 # Or just a full year
 immich-memories generate --year 2024
