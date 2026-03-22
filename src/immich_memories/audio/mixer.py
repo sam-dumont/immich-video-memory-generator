@@ -323,7 +323,11 @@ def _build_ducking_filter(
     filter_parts.extend(
         (
             sidechain_filter,
-            "[vamix][ducked_music]amix=inputs=2:duration=first:dropout_transition=2[mixed]",
+            # WHY: duration=longest ensures output matches music duration (which was
+            # pre-trimmed to video_duration). duration=first would truncate to
+            # [vamix]'s decoded stream length, which can be shorter than the video
+            # if audio padding metadata isn't fully honored by the decoder.
+            "[vamix][ducked_music]amix=inputs=2:duration=longest:dropout_transition=2[mixed]",
         )
     )
 
