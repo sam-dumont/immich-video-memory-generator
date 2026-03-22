@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from datetime import date
 
-from immich_memories.ui.filename_builder import build_output_filename, get_divider_mode
+from immich_memories.ui.filename_builder import (
+    build_output_filename,
+    build_title_person_name,
+    get_divider_mode,
+)
 
 
 class TestBuildOutputFilename:
@@ -233,3 +237,45 @@ class TestGetDividerMode:
     def test_no_dates_defaults_to_month(self):
         result = get_divider_mode("year_in_review", None, None)
         assert result == "month"
+
+
+class TestBuildTitlePersonName:
+    def test_multi_person_two_names(self):
+        result = build_title_person_name(
+            "multi_person", {"person_names": ["Alice Dumont", "Bob Smith"]}, None
+        )
+        assert result == "Alice & Bob"
+
+    def test_multi_person_three_names(self):
+        result = build_title_person_name(
+            "multi_person", {"person_names": ["Alice D", "Bob S", "Carol T"]}, None
+        )
+        assert result == "Alice, Bob & Carol"
+
+    def test_multi_person_full_names(self):
+        result = build_title_person_name(
+            "multi_person",
+            {"person_names": ["Alice Dumont", "Bob Smith"]},
+            None,
+            use_first_name_only=False,
+        )
+        assert result == "Alice Dumont & Bob Smith"
+
+    def test_single_person_from_preset(self):
+        result = build_title_person_name(
+            "person_spotlight", {"person_names": ["Alice Dumont"]}, None
+        )
+        assert result == "Alice"
+
+    def test_single_person_from_state(self):
+        result = build_title_person_name("year_in_review", {}, "Bob Smith")
+        assert result == "Bob"
+
+    def test_no_person_returns_none(self):
+        assert build_title_person_name("year_in_review", {}, None) is None
+
+    def test_single_person_full_name(self):
+        result = build_title_person_name(
+            "person_spotlight", {}, "Alice Dumont", use_first_name_only=False
+        )
+        assert result == "Alice Dumont"
