@@ -1,8 +1,8 @@
 """Capture UI screenshots in both light and dark mode.
 
-Each run produces matching light/dark pairs for every screenshot.
-Screenshots are saved to docs-site/static/img/screenshots/ and are
-referenced by the ThemedScreenshot Docusaurus component.
+All screenshots are captured in a SINGLE wizard pass per theme to avoid
+exhausting NiceGUI's websocket connections. Each run produces matching
+light/dark pairs saved to docs-site/static/img/screenshots/.
 
 Usage:
     make screenshots          # light + dark, saves to docs-site/
@@ -22,74 +22,99 @@ from tests.e2e.redaction import redact_page, redact_person_names
 pytestmark = pytest.mark.e2e
 
 _THEMES = ["light", "dark"]
-
-# Maximum time to wait for clip loading (Immich fetch can be slow)
 _CLIP_LOAD_TIMEOUT = 300_000  # 5 minutes
 
 
 def _name(base: str, theme: str) -> str:
-    """Return screenshot filename: 'dark-{base}' for dark, '{base}' for light."""
     return f"dark-{base}" if theme == "dark" else base
 
 
-def _save(page: Page, screenshot_dir: Path, name: str) -> None:
-    path = screenshot_dir / f"{name}.png"
-    page.screenshot(path=str(path))
+def _save(page: Page, d: Path, name: str) -> None:
+    page.screenshot(path=str(d / f"{name}.png"))
 
 
-def _wait_for_ready(page: Page) -> None:
-    page.wait_for_load_state("networkidle")
+def _goto(page: Page, url: str) -> None:
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+    except Exception:
+        page.wait_for_timeout(2000)
+
+
+def _wait(page: Page) -> None:
+    try:
+        page.wait_for_load_state("networkidle", timeout=10_000)
+    except Exception:
+        pass
     page.wait_for_timeout(1500)
 
 
-def _before_screenshot(page: Page) -> None:
+def _prep(page: Page) -> None:
     enable_demo_mode(page)
     redact_page(page)
 
 
-@pytest.mark.parametrize("theme", _THEMES)
-def test_capture_all_screenshots(
-    page: Page,
-    app_url: str,
-    screenshot_dir: Path,
-    theme: str,
-) -> None:
-    """Navigate the full wizard and capture screenshots at each step.
+def _hide_sidebar(page: Page) -> None:
+    page.evaluate("document.querySelector('.q-drawer')?.style.setProperty('display','none')")
+    page.evaluate(
+        "document.querySelector('.q-page-container')?.style.setProperty('padding-left','0')"
+    )
+    page.wait_for_timeout(200)
 
-    One function per theme to preserve navigation state across steps.
-    This mirrors the structure of take-screenshots.ts.
-    """
-    # -- Set theme + enable demo mode for privacy --
-    page.goto(app_url)
-    _wait_for_ready(page)
+
+def _show_sidebar(page: Page) -> None:
+    page.evaluate("document.querySelector('.q-drawer')?.style.removeProperty('display')")
+    page.evaluate(
+        "document.querySelector('.q-page-container')?.style.removeProperty('padding-left')"
+    )
+    page.wait_for_timeout(200)
+
+
+@pytest.mark.parametrize("theme", _THEMES)
+def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str) -> None:
+    """Single wizard pass capturing all screenshots for one theme."""
+    d = screenshot_dir
+
+    # ── Set theme ──
+    _goto(page, app_url)
+    _wait(page)
     set_theme(page, theme)
 
-    # ── Step 1: Configuration ──
-    page.goto(app_url)
-    _wait_for_ready(page)
-    _before_screenshot(page)
-    _save(page, screenshot_dir, _name("step1-config-connected", theme))
+    # ════════════════════════════════════════════════════════════════
+    # STEP 1: Configuration
+    # ════════════════════════════════════════════════════════════════
+    _goto(page, app_url)
+    _wait(page)
+    _prep(page)
+    _save(page, d, _name("step1-config-connected", theme))
+    _save(page, d, _name("step1-overview", theme))
 
-    # Preset cards (scroll down to show them)
+    # Hero: no sidebar
+    _hide_sidebar(page)
+    _save(page, d, _name("hero-step1", theme))
+    _show_sidebar(page)
+
+    # Preset cards
     year_preset = page.get_by_text("Year in Review")
     if year_preset.is_visible():
         year_preset.scroll_into_view_if_needed()
         page.wait_for_timeout(300)
-        _before_screenshot(page)
-        _save(page, screenshot_dir, _name("step1-preset-cards", theme))
+        _prep(page)
+        _save(page, d, _name("step1-preset-cards", theme))
 
-        # Click to show selected state
         year_preset.click()
         page.wait_for_timeout(500)
-        _before_screenshot(page)
-        _save(page, screenshot_dir, _name("step1-preset-selected", theme))
+        _prep(page)
+        _save(page, d, _name("step1-preset-selected", theme))
+        _save(page, d, _name("type-year-review", theme))
 
-    # Person dropdown — only visible with person-specific presets
+    # Person dropdown (needs Person Spotlight preset)
     person_preset = page.get_by_text("Person Spotlight")
     if person_preset.is_visible(timeout=3000):
         person_preset.scroll_into_view_if_needed()
         person_preset.click()
         page.wait_for_timeout(1000)
+        _prep(page)
+        _save(page, d, _name("type-person", theme))
 
         person_combo = page.get_by_role("combobox", name="Person")
         if person_combo.is_visible(timeout=10_000):
@@ -97,7 +122,7 @@ def test_capture_all_screenshots(
             page.wait_for_timeout(500)
             enable_demo_mode(page)
             redact_person_names(page)
-            _save(page, screenshot_dir, _name("step1-person-dropdown", theme))
+            _save(page, d, _name("step1-person-dropdown", theme))
 
             options = page.get_by_role("option")
             if options.count() > 1:
@@ -106,51 +131,94 @@ def test_capture_all_screenshots(
                 page.get_by_role("option", name="All people").click()
             page.wait_for_timeout(300)
 
-        # Switch back to Year in Review for the rest of the flow
-        year_btn = page.get_by_text("Year in Review")
-        if year_btn.is_visible():
-            year_btn.click()
-            page.wait_for_timeout(500)
-
-    # Cache management panel
-    cache_button = page.get_by_text("Cache Management")
-    if cache_button.is_visible(timeout=10_000):
-        cache_button.scroll_into_view_if_needed()
-        cache_button.click()
-        page.wait_for_timeout(500)
-        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+    # Monthly Highlights preset
+    monthly = page.get_by_text("Monthly Highlights")
+    if monthly.is_visible(timeout=3000):
+        monthly.scroll_into_view_if_needed()
+        monthly.click()
+        page.wait_for_timeout(1000)
+        page.evaluate("window.scrollTo(0, 0)")
         page.wait_for_timeout(300)
-        _before_screenshot(page)
-        _save(page, screenshot_dir, _name("step1-cache-panel", theme))
+        _prep(page)
+        _save(page, d, _name("type-monthly", theme))
 
-    # ── Step 2: Clip Review ──
+    # Trip preset + detection
+    trip = page.get_by_text("Trip", exact=True)
+    if trip.is_visible(timeout=3000):
+        trip.scroll_into_view_if_needed()
+        trip.click()
+        page.wait_for_timeout(1000)
+        _prep(page)
+        _save(page, d, _name("trip-preset", theme))
+        _save(page, d, _name("type-trip", theme))
+
+        try:
+            page.get_by_text("Found").wait_for(timeout=30_000)
+            page.wait_for_timeout(500)
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            page.wait_for_timeout(300)
+            _prep(page)
+            _save(page, d, _name("trip-detection", theme))
+        except Exception:
+            pass
+
+    # Switch back to Year in Review for wizard navigation
+    year_btn = page.get_by_text("Year in Review")
+    if year_btn.is_visible(timeout=3000):
+        year_btn.click()
+        page.wait_for_timeout(500)
+
+    # ════════════════════════════════════════════════════════════════
+    # STEP 2: Clip Review
+    # ════════════════════════════════════════════════════════════════
     page.evaluate("window.scrollTo(0, 0)")
     page.wait_for_timeout(200)
-
     next_btn = page.get_by_role("button", name="Next: Review Clips")
-    if not next_btn.is_visible():
-        return  # Can't proceed without Immich connection
+    if not next_btn.is_visible(timeout=3000):
+        return
     next_btn.click()
-    page.wait_for_url("**/step2", timeout=30_000)
 
-    # Wait for loading dialog to disappear
+    try:
+        page.wait_for_url("**/step2", timeout=30_000)
+    except Exception:
+        return
     try:
         page.wait_for_selector('[role="dialog"]', timeout=5_000)
     except Exception:
-        pass  # Dialog may have already gone or never appeared
+        pass
     page.wait_for_function(
         "() => !document.querySelector('[role=\"dialog\"]')",
         timeout=_CLIP_LOAD_TIMEOUT,
     )
-    _wait_for_ready(page)
-
-    # Wait for clip content
+    _wait(page)
     try:
         page.wait_for_selector('button:has-text("clips")', timeout=30_000)
     except Exception:
-        pass  # May not have clips, screenshot anyway
-    _before_screenshot(page)
-    _save(page, screenshot_dir, _name("step2-clip-review", theme))
+        pass
+
+    _prep(page)
+    _save(page, d, _name("step2-clip-review", theme))
+
+    # Hero: no sidebar
+    _hide_sidebar(page)
+    _save(page, d, _name("hero-step2", theme))
+    _show_sidebar(page)
+
+    # Grid view
+    grid_btn = page.locator('button:has(i:text("grid_view"))')
+    if grid_btn.is_visible(timeout=3000):
+        grid_btn.evaluate("el => el.click()")
+        page.wait_for_timeout(1000)
+        _prep(page)
+        _save(page, d, _name("step2-grid", theme))
+
+    # List view
+    list_btn = page.locator('button:has(i:text("view_list"))')
+    if list_btn.is_visible(timeout=3000):
+        list_btn.evaluate("el => el.click()")
+        page.wait_for_timeout(1000)
+        _prep(page)
+        _save(page, d, _name("step2-list", theme))
 
     # Expand first month
     month_button = page.locator("button").filter(has_text=r"\(\d+ clips?\)").first
@@ -159,131 +227,106 @@ def test_capture_all_screenshots(
         month_button.click()
         page.wait_for_timeout(1000)
         month_button.scroll_into_view_if_needed()
-        _before_screenshot(page)
-        _save(page, screenshot_dir, _name("step2-clip-grid", theme))
+        _prep(page)
+        _save(page, d, _name("step2-clip-grid", theme))
 
     # Refine Moments
     refine_btn = page.get_by_role("button", name="Next: Refine Moments")
     if refine_btn.is_visible():
         refine_btn.scroll_into_view_if_needed()
-        refine_btn.click()
-        _wait_for_ready(page)
-        _before_screenshot(page)
-        _save(page, screenshot_dir, _name("step2-refine-moments", theme))
+        # WHY: JS click bypasses sidebar overlay pointer interception
+        refine_btn.evaluate("el => el.click()")
+        _wait(page)
+        _prep(page)
+        _save(page, d, _name("step2-refine-moments", theme))
 
-    # ── Step 3: Generation Options ──
+    # ════════════════════════════════════════════════════════════════
+    # STEP 3: Generation Options
+    # ════════════════════════════════════════════════════════════════
     page.evaluate("window.scrollTo(0, 0)")
     page.wait_for_timeout(500)
-    continue_btn = page.get_by_role("button", name="Continue to Generation")
+    cont = page.get_by_role("button", name="Continue to Generation")
     try:
-        continue_btn.click(timeout=10_000)
+        cont.evaluate("el => el.click()")
         page.wait_for_url("**/step3", timeout=30_000)
-        _wait_for_ready(page)
-        _before_screenshot(page)
-        _save(page, screenshot_dir, _name("step3-options", theme))
-    except Exception:
-        pass  # Button may not exist depending on clip state
+        _wait(page)
+        _prep(page)
+        _save(page, d, _name("step3-options", theme))
+        _save(page, d, _name("step3-basic", theme))
 
-    # ── Step 4: Preview & Export ──
-    next4_btn = page.get_by_role("button", name="Next: Preview & Export")
-    try:
-        next4_btn.click(timeout=10_000)
-        page.wait_for_url("**/step4", timeout=30_000)
-        _wait_for_ready(page)
-        _before_screenshot(page)
-        _save(page, screenshot_dir, _name("step4-preview-export", theme))
-    except Exception:
-        pass
-
-    # ── Settings: Config Viewer ──
-    page.goto(f"{app_url}/settings/config")
-    _wait_for_ready(page)
-    _before_screenshot(page)
-    _save(page, screenshot_dir, _name("settings-config", theme))
-
-    # ── Settings: Cache Management ──
-    page.goto(f"{app_url}/settings/cache")
-    _wait_for_ready(page)
-    page.wait_for_timeout(2000)
-    _before_screenshot(page)
-    _save(page, screenshot_dir, _name("settings-cache", theme))
-
-    # ── Feature: Trip Preset + Detection Dropdown ──
-    page.goto(app_url)
-    _wait_for_ready(page)
-    trip_preset = page.get_by_text("Trip", exact=True)
-    if trip_preset.is_visible(timeout=5000):
-        trip_preset.scroll_into_view_if_needed()
-        trip_preset.click()
-        page.wait_for_timeout(500)
-        _before_screenshot(page)
-        _save(page, screenshot_dir, _name("trip-preset", theme))
-
-        # Wait for trip detection to complete (async, hits Immich API)
-        trip_found = page.get_by_text("Found")
-        try:
-            trip_found.wait_for(timeout=30_000)
+        # Advanced options expanded
+        advanced = page.get_by_text("Advanced options")
+        if advanced.is_visible(timeout=3000):
+            advanced.click()
             page.wait_for_timeout(500)
-            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            page.wait_for_timeout(300)
-            _before_screenshot(page)
-            _save(page, screenshot_dir, _name("trip-detection", theme))
-        except Exception:
-            pass
+            advanced.scroll_into_view_if_needed()
+            _prep(page)
+            _save(page, d, _name("step3-advanced", theme))
 
-    # ── Feature: LLM Title Fields (visible on step3) ──
-    # We already captured step3-options earlier. The LLM title fields
-    # (Title, Subtitle, Regenerate) are on the same page. Re-navigate
-    # to step3 via direct URL if we were on it before.
-    try:
-        page.goto(f"{app_url}/step3", timeout=15_000)
-        page.wait_for_load_state("domcontentloaded")
-        page.wait_for_timeout(2000)
-
+        # LLM title fields
         title_input = page.get_by_label("Title")
-        if title_input.is_visible(timeout=5000):
+        if title_input.is_visible(timeout=3000):
             title_input.scroll_into_view_if_needed()
-            _before_screenshot(page)
-            _save(page, screenshot_dir, _name("llm-title-step3", theme))
+            _prep(page)
+            _save(page, d, _name("llm-title-step3", theme))
 
         regen_btn = page.get_by_role("button", name="Regenerate")
         if regen_btn.is_visible(timeout=3000):
             regen_btn.scroll_into_view_if_needed()
-            _before_screenshot(page)
-            _save(page, screenshot_dir, _name("llm-title-regenerate", theme))
+            _prep(page)
+            _save(page, d, _name("llm-title-regenerate", theme))
     except Exception:
         pass
 
-    # Demo mode toggle is intentionally hidden from screenshots — internal dev tool
+    # ════════════════════════════════════════════════════════════════
+    # STEP 4: Preview & Export
+    # ════════════════════════════════════════════════════════════════
+    next4 = page.get_by_role("button", name="Next: Preview & Export")
+    try:
+        next4.evaluate("el => el.click()")
+        page.wait_for_url("**/step4", timeout=30_000)
+        _wait(page)
+        _prep(page)
+        _save(page, d, _name("step4-preview-export", theme))
+        _save(page, d, _name("step4-pre-generate", theme))
+
+        # Hero: no sidebar
+        _hide_sidebar(page)
+        _save(page, d, _name("hero-step4", theme))
+        _show_sidebar(page)
+    except Exception:
+        pass
+
+    # ════════════════════════════════════════════════════════════════
+    # SETTINGS PAGES
+    # ════════════════════════════════════════════════════════════════
+    _goto(page, f"{app_url}/settings/config")
+    _wait(page)
+    _prep(page)
+    _save(page, d, _name("settings-config", theme))
+
+    _goto(page, f"{app_url}/settings/cache")
+    _wait(page)
+    page.wait_for_timeout(2000)
+    _prep(page)
+    _save(page, d, _name("settings-cache", theme))
 
 
 @pytest.mark.parametrize("theme", _THEMES)
-def test_capture_login_page(
-    page: Page,
-    app_url: str,
-    screenshot_dir: Path,
-    theme: str,
-) -> None:
-    """Capture the login page.
-
-    When auth is disabled, /login may redirect — the test gracefully
-    skips if no login form renders.
-    """
+def test_capture_login_page(page: Page, app_url: str, screenshot_dir: Path, theme: str) -> None:
+    """Capture the login page (skips if auth disabled)."""
     try:
-        page.goto(f"{app_url}/login", timeout=10_000)
+        _goto(page, f"{app_url}/login")
     except Exception:
         return
-    _wait_for_ready(page)
+    _wait(page)
 
-    sign_in_btn = page.get_by_role("button", name="Sign in")
-    sso_btn = page.get_by_text("Sign in with SSO")
-    if not sign_in_btn.is_visible(timeout=2000) and not sso_btn.is_visible(timeout=1000):
+    sign_in = page.get_by_role("button", name="Sign in")
+    sso = page.get_by_text("Sign in with SSO")
+    if not sign_in.is_visible(timeout=2000) and not sso.is_visible(timeout=1000):
         return
 
     set_theme(page, theme)
-    try:
-        page.goto(f"{app_url}/login", timeout=10_000)
-    except Exception:
-        return
-    _wait_for_ready(page)
+    _goto(page, f"{app_url}/login")
+    _wait(page)
     _save(page, screenshot_dir, _name("login", theme))
