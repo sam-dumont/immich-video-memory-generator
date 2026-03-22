@@ -61,8 +61,8 @@ class TaichiTitleConfig:
     fps: float = 30.0
     duration: float = 3.5
 
-    bg_color1: str = "#FFF5E6"
-    bg_color2: str = "#FFE4CC"
+    bg_color1: str = "#1A1A2E"
+    bg_color2: str = "#16213E"
     gradient_angle: float = 135.0
     gradient_type: str = "linear"
 
@@ -82,7 +82,7 @@ class TaichiTitleConfig:
     enable_bokeh: bool = True
     bokeh_count: int = 15  # Moderate number of circles
     bokeh_size_range: tuple[float, float] = (0.12, 0.28)  # Large soft circles
-    bokeh_opacity_range: tuple[float, float] = (0.15, 0.30)  # Visible but soft
+    bokeh_opacity_range: tuple[float, float] = (0.05, 0.15)  # Subtle on dark backgrounds
     bokeh_drift_speed: float = 0.3
     bokeh_color: tuple[float, float, float] = (1.0, 0.98, 0.92)  # Warm white glow
 
@@ -100,14 +100,14 @@ class TaichiTitleConfig:
 
     blur_radius: int = 20
 
-    text_color: str = "#2D2D2D"
-    title_size_ratio: float = 0.10
+    text_color: str = "#FFFFFF"
+    title_size_ratio: float = 0.12
     subtitle_size_ratio: float = 0.06
     font_family: str = "Helvetica"  # Font family for SDF rendering
     use_sdf_text: bool = True  # Use GPU SDF text (vs PIL fallback)
     enable_shadow: bool = True
     shadow_offset_ratio: float = 0.03
-    shadow_opacity: float = 0.2
+    shadow_opacity: float = 0.35
 
     fade_in_duration: float = 0.6
     fade_out_duration: float = 1.0

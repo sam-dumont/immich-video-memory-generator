@@ -424,8 +424,11 @@ def create_animated_background(
         image = create_animated_radial(width, height, colors[0], colors[1], progress, config)
 
     elif bg_type in ("vignette", BackgroundType.VIGNETTE.value):
-        # Vignette should fade to WHITE at edges for a bright, clean look
-        image = create_animated_vignette(width, height, colors[0], "#FFFFFF", progress, config)
+        # WHY: dark backgrounds vignette to black, light to white
+        from .backgrounds import _is_dark_palette
+
+        edge_color = "#000000" if _is_dark_palette(colors) else "#FFFFFF"
+        image = create_animated_vignette(width, height, colors[0], edge_color, progress, config)
 
     else:
         # Default to animated gradient (works for solid_gradient, soft_gradient)

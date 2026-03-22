@@ -55,11 +55,11 @@ class TitleScreenConfig:
     animated_background: bool = True  # Enable animated backgrounds by default
 
     # Decorative elements
-    show_decorative_lines: bool = True
+    show_decorative_lines: bool = False
 
     # Color preferences
-    avoid_dark_colors: bool = True
-    minimum_brightness: int = 100
+    avoid_dark_colors: bool = False
+    minimum_brightness: int = 0
 
     # Performance
     use_image_rendering: bool = True
@@ -305,8 +305,8 @@ class TitleScreenGenerator:
         divider_style = TitleStyle(
             name=f"{self.style.name}_divider",
             font_family=self.style.font_family,
-            font_weight="light",
-            title_size_ratio=0.08,
+            font_weight="medium",
+            title_size_ratio=0.10,
             text_color=self.style.text_color,
             background_type=self.style.background_type,
             background_colors=self.style.background_colors,

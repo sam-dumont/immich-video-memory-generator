@@ -639,17 +639,17 @@ class TitleScreenConfig(BaseModel):
         description="Enable subtle background animations (gradient shift, color pulse)",
     )
     show_decorative_lines: bool = Field(
-        default=True,
+        default=False,
         description="Show decorative line accents on title screens",
     )
 
     # Color preferences
     avoid_dark_colors: bool = Field(
-        default=True,
+        default=False,
         description="Avoid dark/black color schemes, prefer warm light colors",
     )
     minimum_brightness: int = Field(
-        default=100,
+        default=0,
         ge=0,
         le=255,
         description="Minimum brightness for colors (0-255)",

@@ -127,12 +127,12 @@ class RenderingService:
             fps=fps,
             duration=duration,
             # Background colors from style
-            bg_color1=style.background_colors[0] if style.background_colors else "#FFF5E6",
+            bg_color1=style.background_colors[0] if style.background_colors else "#1A1A2E",
             bg_color2=style.background_colors[1]
             if len(style.background_colors) > 1
             else style.background_colors[0]
             if style.background_colors
-            else "#FFE4CC",
+            else "#16213E",
             gradient_angle=float(style.background_angle),
             gradient_type=gradient_type,
             # Text styling
