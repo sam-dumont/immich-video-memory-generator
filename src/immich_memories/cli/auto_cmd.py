@@ -1,4 +1,4 @@
-"""Smart automation CLI commands -- suggest, run, and history."""
+"""Smart automation CLI commands -- suggest, run, install, and history."""
 
 from __future__ import annotations
 
@@ -72,78 +72,123 @@ def _print_history_table(runs: list) -> None:
     console.print(table)
 
 
+@click.group()
+def auto() -> None:
+    """Smart automation -- detect and generate memory candidates."""
+
+
+@auto.command()
+@click.option("--json", "as_json", is_flag=True, help="Machine-readable output")
+@click.option("--limit", default=10, help="Max candidates to show")
+@click.option("--type", "memory_type", default=None, help="Filter by memory type")
+@click.pass_context
+def suggest(ctx: click.Context, as_json: bool, limit: int, memory_type: str | None) -> None:
+    """Show prioritized memory candidates."""
+    from immich_memories.automation.runner import AutoRunner
+
+    config: Config = ctx.obj["config"]
+    candidates = AutoRunner(config).suggest(limit=limit)
+
+    if memory_type:
+        candidates = [c for c in candidates if c.memory_type == memory_type]
+
+    if not candidates:
+        click.echo("[]") if as_json else print_info("No candidates found")
+        return
+
+    click.echo(_candidates_to_json(candidates)) if as_json else _print_candidates_table(candidates)
+
+
+@auto.command("run")
+@click.option("--dry-run", is_flag=True, help="Show what would be generated")
+@click.option("--force", is_flag=True, help="Skip cooldown check")
+@click.option("--cooldown", type=int, default=None, help="Min hours since last auto-run")
+@click.option("--upload", is_flag=True, help="Upload to Immich")
+@click.option("--quiet", is_flag=True, help="Machine-friendly output")
+@click.pass_context
+def run_cmd(
+    ctx: click.Context,
+    dry_run: bool,
+    force: bool,
+    cooldown: int | None,
+    upload: bool,
+    quiet: bool,
+) -> None:
+    """Generate the top-scoring memory candidate."""
+    from immich_memories.automation.runner import AutoRunner
+
+    config: Config = ctx.obj["config"]
+    result = AutoRunner(config).run_one(
+        force=force, cooldown_hours=cooldown, upload=upload, dry_run=dry_run
+    )
+
+    if result:
+        click.echo(str(result)) if quiet else print_success(f"Generated: {result}")
+    elif not quiet:
+        print_info("Nothing generated (cooldown active, no candidates, or dry run)")
+
+
+@auto.command()
+@click.option("--limit", default=10, help="Number of entries to show")
+@click.pass_context
+def history(ctx: click.Context, limit: int) -> None:
+    """Show recent auto-generated memories."""
+    from immich_memories.tracking.run_database import RunDatabase
+
+    config: Config = ctx.obj["config"]
+    db = RunDatabase(db_path=config.cache.database_path)
+    all_runs = db.list_runs(limit=limit, status="completed")
+    auto_runs = [r for r in all_runs if r.source == "auto"]
+
+    if not auto_runs:
+        print_info("No auto-generated memories found")
+        return
+
+    _print_history_table(auto_runs)
+
+
+@auto.command()
+@click.option("--hour", default=9, type=click.IntRange(0, 23), help="Hour to run (0-23)")
+@click.option("--minute", default=0, type=click.IntRange(0, 59), help="Minute to run (0-59)")
+@click.option("--cooldown", default=24, help="Cooldown hours between runs")
+@click.option("--uninstall", is_flag=True, help="Remove installed scheduler")
+@click.option("--show", is_flag=True, help="Show config without installing")
+def install(hour: int, minute: int, cooldown: int, uninstall: bool, show: bool) -> None:
+    """Install system-level scheduler (launchd/systemd/cron)."""
+    from immich_memories.automation.system_scheduler import (
+        install_scheduler,
+        show_scheduler_config,
+        uninstall_scheduler,
+    )
+
+    if show:
+        content = show_scheduler_config(hour, minute, cooldown)
+        if content:
+            click.echo(content)
+        else:
+            print_info("immich-memories binary not found in PATH")
+        return
+
+    if uninstall:
+        if uninstall_scheduler():
+            print_success("Scheduler removed")
+        else:
+            print_info("No scheduler found to remove")
+        return
+
+    try:
+        result = install_scheduler(hour, minute, cooldown)
+    except FileNotFoundError:
+        print_info("immich-memories binary not found in PATH")
+        return
+
+    print_success(f"Installed {result.platform} scheduler")
+    for path in result.files_written:
+        print_info(f"  Written: {path}")
+    print_info(f"  Activate:   {result.activate_command}")
+    print_info(f"  Deactivate: {result.deactivate_command}")
+
+
 def register_auto_commands(cli_group: click.Group) -> None:
     """Register the auto command group on the main CLI group."""
-
-    @cli_group.group()
-    def auto() -> None:
-        """Smart automation -- detect and generate memory candidates."""
-
-    @auto.command()
-    @click.option("--json", "as_json", is_flag=True, help="Machine-readable output")
-    @click.option("--limit", default=10, help="Max candidates to show")
-    @click.option("--type", "memory_type", default=None, help="Filter by memory type")
-    @click.pass_context
-    def suggest(ctx: click.Context, as_json: bool, limit: int, memory_type: str | None) -> None:
-        """Show prioritized memory candidates."""
-        from immich_memories.automation.runner import AutoRunner
-
-        config: Config = ctx.obj["config"]
-        candidates = AutoRunner(config).suggest(limit=limit)
-
-        if memory_type:
-            candidates = [c for c in candidates if c.memory_type == memory_type]
-
-        if not candidates:
-            click.echo("[]") if as_json else print_info("No candidates found")
-            return
-
-        click.echo(_candidates_to_json(candidates)) if as_json else _print_candidates_table(
-            candidates
-        )
-
-    @auto.command("run")
-    @click.option("--dry-run", is_flag=True, help="Show what would be generated")
-    @click.option("--force", is_flag=True, help="Skip cooldown check")
-    @click.option("--cooldown", type=int, default=None, help="Min hours since last auto-run")
-    @click.option("--upload", is_flag=True, help="Upload to Immich")
-    @click.option("--quiet", is_flag=True, help="Machine-friendly output")
-    @click.pass_context
-    def run_cmd(
-        ctx: click.Context,
-        dry_run: bool,
-        force: bool,
-        cooldown: int | None,
-        upload: bool,
-        quiet: bool,
-    ) -> None:
-        """Generate the top-scoring memory candidate."""
-        from immich_memories.automation.runner import AutoRunner
-
-        config: Config = ctx.obj["config"]
-        result = AutoRunner(config).run_one(
-            force=force, cooldown_hours=cooldown, upload=upload, dry_run=dry_run
-        )
-
-        if result:
-            click.echo(str(result)) if quiet else print_success(f"Generated: {result}")
-        elif not quiet:
-            print_info("Nothing generated (cooldown active, no candidates, or dry run)")
-
-    @auto.command()
-    @click.option("--limit", default=10, help="Number of entries to show")
-    @click.pass_context
-    def history(ctx: click.Context, limit: int) -> None:
-        """Show recent auto-generated memories."""
-        from immich_memories.tracking.run_database import RunDatabase
-
-        config: Config = ctx.obj["config"]
-        db = RunDatabase(db_path=config.cache.database_path)
-        all_runs = db.list_runs(limit=limit, status="completed")
-        auto_runs = [r for r in all_runs if r.source == "auto"]
-
-        if not auto_runs:
-            print_info("No auto-generated memories found")
-            return
-
-        _print_history_table(auto_runs)
+    cli_group.add_command(auto)
