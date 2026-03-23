@@ -226,18 +226,21 @@ class TitleInserter:
         detected_fps: int,
         hdr_type: str | None,
         progress_callback: Callable[[float, str], None] | None,
+        use_content_bg: bool = True,
     ) -> None:
-        """Generate ending screen (reverse slow-mo blur + fade to white)."""
+        """Generate ending screen (reverse slow-mo or fade-to-white)."""
         if progress_callback:
             progress_callback(0.1, "Generating ending screen...")
-        ending_clip = self._pre_render_last_clip(
-            clips,
-            title_output_dir,
-            target_w,
-            target_h,
-            detected_fps,
-            hdr_type,
-        )
+        ending_clip = None
+        if use_content_bg:
+            ending_clip = self._pre_render_last_clip(
+                clips,
+                title_output_dir,
+                target_w,
+                target_h,
+                detected_fps,
+                hdr_type,
+            )
         ending_screen = generator.generate_ending_screen(content_clip_path=ending_clip)
         # WHY: last content clip gets hard cut → ending, and trim 0.5s from
         # the end since those frames were used in the ending slow-mo.
@@ -254,7 +257,7 @@ class TitleInserter:
                 duration=trim_dur,
                 date=last.date,
                 asset_id=last.asset_id,
-                outgoing_transition="cut",
+                outgoing_transition="cut" if use_content_bg else None,
             )
         final_clips.append(
             AssemblyClip(
@@ -827,6 +830,7 @@ class TitleInserter:
                 detected_fps,
                 hdr_type,
                 progress_callback,
+                use_content_bg=use_content_bg,
             )
 
         # 5. Assemble
