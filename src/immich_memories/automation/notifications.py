@@ -37,7 +37,7 @@ def notify_job_complete(
         apobj.add(url)
 
     try:
-        result: bool = apobj.notify(title=title, body=body)
+        result = bool(apobj.notify(title=title, body=body))
     except Exception:
         logger.exception("Notification delivery error")
         return False

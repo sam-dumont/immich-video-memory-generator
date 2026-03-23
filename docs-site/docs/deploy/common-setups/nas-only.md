@@ -27,12 +27,7 @@ You have a NAS with Docker support (Synology DSM 7+, Unraid, TrueNAS SCALE, QNAP
 └─────────────────────────────────────────┘
 ```
 
-:::info Screenshot needed
-**What to capture:** Architecture diagram for NAS-only setup (create as a proper diagram later)
-**Viewport:** 1280x800
-**State:** Box diagram showing NAS with Immich and Immich Memories containers
-**Target file:** `static/screenshots/setup-nas-diagram.png`
-:::
+![NAS setup diagram](/img/diagrams/setup-nas.png)
 
 ## Docker Compose
 
