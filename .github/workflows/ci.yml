@@ -322,14 +322,19 @@ jobs:
 
       - name: Freshen integration coverage timestamps
         # WHY: tests/*-coverage.xml are committed from local integration runs.
-        # Codecov checks the <coverage timestamp="..."> attribute inside the XML
-        # and rejects reports >12h old (max_report_age: off in codecov.yml doesn't
-        # prevent this). Rewrite the timestamp to "now" so they merge cleanly.
+        # Codecov rejects reports >12h old regardless of max_report_age setting.
+        # Rewrite timestamps to "now" before upload. Uses python for portability.
+        if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
         run: |
-          NOW_MS=$(python3 -c "import time; print(int(time.time()*1000))")
-          for f in tests/*-coverage.xml; do
-            [ -f "$f" ] && sed -i'' -e "s/timestamp=\"[0-9]*\"/timestamp=\"${NOW_MS}\"/" "$f"
-          done
+          python3 -c "
+          import glob, re, time, pathlib
+          now = str(int(time.time() * 1000))
+          for f in glob.glob('tests/*-coverage.xml'):
+              p = pathlib.Path(f)
+              txt = p.read_text()
+              p.write_text(re.sub(r'timestamp=\"[0-9]+\"', f'timestamp=\"{now}\"', txt))
+              print(f'  freshened {f}')
+          "
 
       - name: Upload unit test coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -337,15 +342,17 @@ jobs:
         with:
           files: coverage.xml
           flags: unittests
+          disable_search: true
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
-      - name: Upload Mac integration coverage to Codecov
+      - name: Upload integration coverage to Codecov
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
         with:
-          files: tests/*-coverage.xml
-          flags: integration-mac
+          files: tests/assembly-coverage.xml,tests/audio-coverage.xml,tests/auth-coverage.xml,tests/cli-coverage.xml,tests/live-photos-coverage.xml,tests/photos-coverage.xml,tests/pipeline-coverage.xml
+          flags: integration
+          disable_search: true
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
