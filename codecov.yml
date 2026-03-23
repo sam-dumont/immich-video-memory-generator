@@ -1,4 +1,28 @@
 codecov:
-  # Integration coverage XMLs (tests/*-coverage.xml) are generated locally
-  # and committed — their timestamps are always stale by the time CI uploads.
+  # WHY: Integration coverage XMLs (tests/*-coverage.xml) are generated locally
+  # and committed — their timestamps are stale. CI freshens them before upload,
+  # but this disables the server-side check as a safety net.
   max_report_age: off
+
+# WHY: Without flag definitions, Codecov auto-creates flags but doesn't
+# carry them forward — so a commit touching only unit tests would show 0%
+# integration coverage instead of keeping the last known value.
+flags:
+  unittests:
+    paths:
+      - src/immich_memories/
+    carryforward: true
+  integration:
+    paths:
+      - src/immich_memories/
+    carryforward: true
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 2%
+    patch:
+      default:
+        target: 80%
