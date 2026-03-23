@@ -238,7 +238,7 @@ class SlowmoBackgroundReader:
         if not self.is_active:
             return None
         if self._output_index >= self._total_output_frames:
-            return self._source_frames[-1]
+            return None
 
         # Map output position to source position
         n_src = len(self._source_frames)

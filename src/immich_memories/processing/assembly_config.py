@@ -65,7 +65,7 @@ class TitleScreenSettings:
     # Timing
     title_duration: float = 3.5
     month_divider_duration: float = 2.0
-    ending_duration: float = 7.0
+    ending_duration: float = 4.0
 
     # Features
     show_month_dividers: bool = True
@@ -73,6 +73,9 @@ class TitleScreenSettings:
     divider_mode: str = "month"  # "none", "month", or "year"
     show_ending_screen: bool = True
     use_first_name_only: bool = True  # Use only first name for titles
+    # Title background style: "content_backed" (slow-mo blur from clip) or
+    # "gradient" (classic dark gradient with crossfade)
+    title_background: str = "content_backed"
 
     # LLM-generated title override (bypasses template generation)
     title_override: str | None = None

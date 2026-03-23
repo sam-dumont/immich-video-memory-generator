@@ -14,7 +14,6 @@ from immich_memories.processing.assembly_config import (
     TransitionType,
 )
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
-from immich_memories.processing.hdr_utilities import has_any_hdr_clip
 from immich_memories.processing.scaling_utilities import aggregate_mood_from_clips
 
 logger = logging.getLogger(__name__)
@@ -41,72 +40,294 @@ class TitleInserter:
         self,
         clips: list[AssemblyClip],
         output_dir: Path,
-        orientation: str,
-        resolution_tier: str,
-        fps: float,
-        hdr: bool,
+        target_w: int,
+        target_h: int,
+        fps: int,
+        hdr_type: str | None,
     ) -> Path | None:
-        """Pre-render the first clip through the assembly filter chain.
+        """Pre-render the first clip through the SAME assembly pipeline.
 
-        This produces a short intermediate video with identical framing
-        (scale_mode, HDR, rotation) to the final assembly, so the slow-mo
-        title background matches the clip it reveals into.
+        Uses FrameDecoder (the streaming assembler's decoder) with identical
+        filters: rotation, scale_mode, HDR conversion, resolution. This
+        guarantees the title background matches the clip it reveals into —
+        no orientation guessing, no resolution guessing.
         """
         if not clips:
             return None
 
-        from immich_memories.titles.encoding import ORIENTATION_RESOLUTIONS
+        import subprocess
 
-        res = ORIENTATION_RESOLUTIONS.get(orientation, {}).get(resolution_tier, (1920, 1080))
-        width, height = res
-
-        clip = clips[0]
-        output_path = output_dir / "first_clip_processed.mp4"
-
-        # WHY: use the same encoding params as the assembly pipeline
+        from immich_memories.processing.assembly_engine import (
+            create_assembly_context,
+        )
         from immich_memories.processing.hdr_utilities import _get_gpu_encoder_args
+        from immich_memories.processing.streaming_assembler import _make_decoder
 
+        output_path = output_dir / "first_clip_processed.mp4"
+        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
+
+        # WHY: _make_decoder applies the EXACT same filter chain as the
+        # streaming assembler: rotation, scale_mode (blur bg), HDR conversion,
+        # resolution, fps, SAR. The output is pixel-identical to what the
+        # assembler will produce for this clip.
+        decoder = _make_decoder(
+            clips[0],
+            0,
+            target_w,
+            target_h,
+            fps,
+            ctx,
+            privacy_mode=self.settings.privacy_mode,
+            scale_mode=self.settings.scale_mode or "blur",
+            hdr_type=hdr_type,
+        )
+
+        preserve_hdr = hdr_type is not None
         try:
             encoder_args = _get_gpu_encoder_args(
                 crf=12,
-                preserve_hdr=hdr,
-                hdr_type="hlg" if hdr else "",
+                preserve_hdr=preserve_hdr,
+                hdr_type=hdr_type or "hlg",
             )
         except Exception:
             encoder_args = ["-c:v", "libx264", "-crf", "12"]
 
-        # WHY: crop-to-fill for title background — the Taichi renderer
-        # blurs everything uniformly, so blur-background sides + sharp center
-        # would look wrong. Crop fills the entire frame with content.
-        vf = (
-            f"setpts=PTS-STARTPTS,"
-            f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
-            f"crop={width}:{height},"
-            f"fps={int(fps)},settb=1/{int(fps)},setsar=1"
-        )
-        filter_args = ["-vf", vf]
-
-        # Render first 1 second — slow-mo will stretch 0.5s to fill the title
+        pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
+        # WHY: rawvideo pipe strips color metadata — must tag input explicitly
+        input_color_args: list[str] = []
+        if hdr_type:
+            input_color_args = [
+                "-color_range",
+                "tv",
+                "-color_primaries",
+                "bt2020",
+                "-color_trc",
+                "arib-std-b67",
+                "-colorspace",
+                "bt2020nc",
+            ]
         cmd = [
             "ffmpeg", "-y",
-            "-i", str(clip.path),
-            *filter_args,
+            "-f", "rawvideo", "-pix_fmt", pix_fmt,
+            "-s", f"{target_w}x{target_h}", "-r", str(fps),
+            *input_color_args,
+            "-i", "pipe:0",
             *encoder_args,
-            "-t", "1",
-            "-an",
+            "-an", "-movflags", "+faststart",
             str(output_path),
         ]  # fmt: skip
 
-        import subprocess
-
         try:
-            result = subprocess.run(cmd, capture_output=True, timeout=30)
-            if result.returncode == 0 and output_path.exists():
-                logger.info(f"Pre-rendered first clip for title: {output_path}")
+            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+            frame_count = 0
+            max_frames = fps * 1  # 1 second
+            for frame in decoder:
+                if frame_count >= max_frames:
+                    break
+                proc.stdin.write(frame.data)  # type: ignore[union-attr]
+                frame_count += 1
+            proc.stdin.close()  # type: ignore[union-attr]
+            proc.wait(timeout=30)
+            if proc.returncode == 0 and output_path.exists():
+                logger.info(
+                    f"Pre-rendered first clip ({frame_count} frames, "
+                    f"{target_w}x{target_h}): {output_path}"
+                )
                 return output_path
-            logger.warning(f"Pre-render failed: {result.stderr[-200:].decode()}")
+            stderr = proc.stderr.read().decode()[-200:] if proc.stderr else ""
+            logger.warning(f"Pre-render encode failed: {stderr}")
         except Exception:
             logger.warning("Failed to pre-render first clip", exc_info=True)
+        return None
+
+    def _build_title_config(
+        self,
+        title_settings: Any,
+        target_w: int,
+        target_h: int,
+        fps: int,
+        hdr: bool,
+    ) -> Any:
+        """Build TitleScreenConfig from assembly parameters."""
+        from immich_memories.titles import TitleScreenConfig
+
+        orientation = "portrait" if target_h > target_w else "landscape"
+        max_dim = max(target_w, target_h)
+        resolution_tier = "4k" if max_dim >= 2160 else "1080p" if max_dim >= 1080 else "720p"
+        logger.info(
+            f"Generating title screens ({target_w}x{target_h}, {'HDR' if hdr else 'SDR'}, {fps}fps)"
+        )
+        return TitleScreenConfig(
+            enabled=True,
+            title_duration=title_settings.title_duration,
+            month_divider_duration=title_settings.month_divider_duration,
+            ending_duration=title_settings.ending_duration,
+            locale=title_settings.locale,
+            style_mode=title_settings.style_mode,
+            show_month_dividers=title_settings.show_month_dividers,
+            month_divider_threshold=title_settings.month_divider_threshold,
+            orientation=orientation,
+            resolution=resolution_tier,
+            fps=float(fps),
+            hdr=hdr,
+            title_override=title_settings.title_override,
+            subtitle_override=title_settings.subtitle_override,
+        )
+
+    def _decide_transitions_for_final_clips(self, clips: list[AssemblyClip]) -> list[str]:
+        """Pre-decide transitions for the full clip list (title + content + ending).
+
+        WHY: the assembler's get_transition_types rebuilds AssemblyContext
+        from the full clip list, which shifts HDR type indices when title
+        screens are inserted. By pre-deciding here, the assembler uses
+        predecided_transitions directly and never rebuilds the context.
+        """
+        transitions = []
+        for i in range(len(clips) - 1):
+            clip = clips[i]
+            if clip.outgoing_transition is not None:
+                transitions.append(clip.outgoing_transition)
+            elif clip.is_title_screen or clips[i + 1].is_title_screen:
+                transitions.append("fade")
+            else:
+                transitions.append("fade")  # default to fade for content clips
+        return transitions
+
+    def _generate_ending(
+        self,
+        clips: list[AssemblyClip],
+        final_clips: list[AssemblyClip],
+        generator: Any,
+        title_output_dir: Path,
+        target_w: int,
+        target_h: int,
+        detected_fps: int,
+        hdr_type: str | None,
+        progress_callback: Callable[[float, str], None] | None,
+    ) -> None:
+        """Generate ending screen (reverse slow-mo blur + fade to white)."""
+        if progress_callback:
+            progress_callback(0.1, "Generating ending screen...")
+        ending_clip = self._pre_render_last_clip(
+            clips,
+            title_output_dir,
+            target_w,
+            target_h,
+            detected_fps,
+            hdr_type,
+        )
+        ending_screen = generator.generate_ending_screen(content_clip_path=ending_clip)
+        # WHY: last content clip gets hard cut → ending (no crossfade)
+        if final_clips and not final_clips[-1].is_title_screen:
+            last = final_clips[-1]
+            final_clips[-1] = AssemblyClip(
+                path=last.path,
+                duration=last.duration,
+                date=last.date,
+                asset_id=last.asset_id,
+                outgoing_transition="cut",
+            )
+        final_clips.append(
+            AssemblyClip(
+                path=ending_screen.path,
+                duration=ending_screen.duration,
+                date=None,
+                asset_id="ending_screen",
+                is_title_screen=True,
+            )
+        )
+        logger.info(f"Generated ending screen: {ending_screen.path}")
+
+    def _pre_render_last_clip(
+        self,
+        clips: list[AssemblyClip],
+        output_dir: Path,
+        target_w: int,
+        target_h: int,
+        fps: int,
+        hdr_type: str | None,
+    ) -> Path | None:
+        """Pre-render the last clip's final second for the ending screen."""
+        if not clips:
+            return None
+
+        import subprocess
+
+        from immich_memories.processing.assembly_engine import create_assembly_context
+        from immich_memories.processing.hdr_utilities import _get_gpu_encoder_args
+        from immich_memories.processing.streaming_assembler import _make_decoder
+
+        clip = clips[-1]
+        output_path = output_dir / "last_clip_processed.mp4"
+        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
+
+        decoder = _make_decoder(
+            clip,
+            len(clips) - 1,
+            target_w,
+            target_h,
+            fps,
+            ctx,
+            privacy_mode=self.settings.privacy_mode,
+            scale_mode=self.settings.scale_mode or "blur",
+            hdr_type=hdr_type,
+        )
+
+        preserve_hdr = hdr_type is not None
+        try:
+            encoder_args = _get_gpu_encoder_args(
+                crf=12,
+                preserve_hdr=preserve_hdr,
+                hdr_type=hdr_type or "hlg",
+            )
+        except Exception:
+            encoder_args = ["-c:v", "libx264", "-crf", "12"]
+
+        pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
+        input_color_args: list[str] = []
+        if hdr_type:
+            input_color_args = [
+                "-color_range",
+                "tv",
+                "-color_primaries",
+                "bt2020",
+                "-color_trc",
+                "arib-std-b67",
+                "-colorspace",
+                "bt2020nc",
+            ]
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "rawvideo", "-pix_fmt", pix_fmt,
+            "-s", f"{target_w}x{target_h}", "-r", str(fps),
+            *input_color_args,
+            "-i", "pipe:0",
+            *encoder_args,
+            "-an", "-movflags", "+faststart",
+            str(output_path),
+        ]  # fmt: skip
+
+        try:
+            # WHY: read ALL frames, keep only the last fps*1 frames
+            all_frames: list[bytes] = []
+            for frame in decoder:
+                all_frames.append(bytes(frame.data))
+                # Keep only last 2 seconds worth of frames
+                if len(all_frames) > fps * 2:
+                    all_frames.pop(0)
+
+            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+            # Write last 1 second
+            for frame_data in all_frames[-fps:]:
+                proc.stdin.write(frame_data)  # type: ignore[union-attr]
+            proc.stdin.close()  # type: ignore[union-attr]
+            proc.wait(timeout=30)
+
+            if proc.returncode == 0 and output_path.exists():
+                logger.info(f"Pre-rendered last clip for ending: {output_path}")
+                return output_path
+        except Exception:
+            logger.warning("Failed to pre-render last clip", exc_info=True)
         return None
 
     # ------------------------------------------------------------------
@@ -316,9 +537,13 @@ class TitleInserter:
             clip_date = self.parse_clip_date(clip)
             if clip_date:
                 month_key = (clip_date.year, clip_date.month)
+                # WHY: skip the first month divider — the intro title already
+                # shows the month/year context. Only insert dividers when the
+                # month CHANGES (not for the very first clip).
                 if (
                     title_settings.show_month_dividers
-                    and (current_month is None or month_key != current_month)
+                    and current_month is not None
+                    and month_key != current_month
                     and month_key in month_divider_paths
                 ):
                     result.append(
@@ -428,6 +653,21 @@ class TitleInserter:
     # Main entry point
     # ------------------------------------------------------------------
 
+    def _resolve_assembly_params(
+        self, clips: list[AssemblyClip]
+    ) -> tuple[int, int, int, str | None]:
+        """Resolve target resolution, fps, and HDR type using the assembler's logic."""
+        from immich_memories.processing.assembly_engine import (
+            create_assembly_context,
+            resolve_target_resolution,
+        )
+
+        target_w, target_h = resolve_target_resolution(self.settings, self.prober, clips)
+        detected_fps = self.prober.detect_max_framerate(clips)
+        ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
+        hdr_type = ctx.hdr_type if self.settings.preserve_hdr else None
+        return target_w, target_h, detected_fps, hdr_type
+
     def assemble_with_titles(
         self,
         clips: list[AssemblyClip],
@@ -454,35 +694,16 @@ class TitleInserter:
             return assemble_fn(clips, output_path, progress_callback)
 
         try:
-            from immich_memories.titles import TitleScreenConfig, TitleScreenGenerator
+            from immich_memories.titles import TitleScreenGenerator
         except ImportError as e:
             logger.warning(f"Title screens not available: {e}")
             return assemble_fn(clips, output_path, progress_callback)
 
-        orientation = self.get_orientation_from_clips(clips)
-        resolution_tier = self.get_resolution_tier(clips)
-        source_has_hdr = has_any_hdr_clip(clips) if self.settings.preserve_hdr else False
-        detected_fps = float(self.prober.detect_max_framerate(clips))
-        logger.info(
-            f"Generating title screens ({orientation}, {resolution_tier}, "
-            f"{'HDR' if source_has_hdr else 'SDR'}, {detected_fps:.0f}fps)"
-        )
+        target_w, target_h, detected_fps, hdr_type = self._resolve_assembly_params(clips)
+        source_has_hdr = hdr_type is not None
 
-        title_config = TitleScreenConfig(
-            enabled=True,
-            title_duration=title_settings.title_duration,
-            month_divider_duration=title_settings.month_divider_duration,
-            ending_duration=title_settings.ending_duration,
-            locale=title_settings.locale,
-            style_mode=title_settings.style_mode,
-            show_month_dividers=title_settings.show_month_dividers,
-            month_divider_threshold=title_settings.month_divider_threshold,
-            orientation=orientation,
-            resolution=resolution_tier,
-            fps=detected_fps,
-            hdr=source_has_hdr,
-            title_override=title_settings.title_override,
-            subtitle_override=title_settings.subtitle_override,
+        title_config = self._build_title_config(
+            title_settings, target_w, target_h, detected_fps, source_has_hdr
         )
 
         title_output_dir = output_path.parent / ".title_screens"
@@ -515,18 +736,19 @@ class TitleInserter:
             )
             logger.info(f"Generated trip map intro: {title_screen.path}")
         else:
-            # WHY: pre-render the first clip through the assembly pipeline's
-            # filter chain (scale_mode, HDR, rotation) so the title background
-            # has identical framing to the actual clip. Without this, the
-            # slow-mo reveal would have a jarring aspect ratio/color shift.
-            content_clip = self._pre_render_first_clip(
-                clips,
-                title_output_dir,
-                orientation,
-                resolution_tier,
-                detected_fps,
-                source_has_hdr,
+            use_content_bg = (
+                getattr(title_settings, "title_background", "content_backed") == "content_backed"
             )
+            content_clip = None
+            if use_content_bg:
+                content_clip = self._pre_render_first_clip(
+                    clips,
+                    title_output_dir,
+                    target_w,
+                    target_h,
+                    detected_fps,
+                    hdr_type,
+                )
             title_screen = generator.generate_title_screen(
                 year=title_settings.year,
                 month=title_settings.month,
@@ -545,9 +767,9 @@ class TitleInserter:
                 date=None,
                 asset_id="title_screen",
                 is_title_screen=True,
-                # WHY: force hard cut after title — the deblur reveal IS the
-                # transition. A crossfade would flash to gradient.
-                outgoing_transition="cut",
+                # WHY: content_backed uses hard cut (deblur IS the transition).
+                # Gradient mode uses default fade (is_title_screen auto-fades).
+                outgoing_transition="cut" if use_content_bg else None,
             )
         ]
 
@@ -559,32 +781,48 @@ class TitleInserter:
 
         # 4. Ending screen
         if title_settings.show_ending_screen:
-            if progress_callback:
-                progress_callback(0.1, "Generating ending screen...")
-            video_paths = [clip.path for clip in clips]
-            ending_screen = generator.generate_ending_screen(video_clips=video_paths)
-            final_clips.append(
-                AssemblyClip(
-                    path=ending_screen.path,
-                    duration=ending_screen.duration,
-                    date=None,
-                    asset_id="ending_screen",
-                    is_title_screen=True,
-                )
+            self._generate_ending(
+                clips,
+                final_clips,
+                generator,
+                title_output_dir,
+                target_w,
+                target_h,
+                detected_fps,
+                hdr_type,
+                progress_callback,
             )
-            logger.info(f"Generated ending screen: {ending_screen.path}")
 
         # 5. Assemble
         if progress_callback:
             progress_callback(0.15, "Assembling video...")
         logger.info(f"Assembling {len(final_clips)} clips (including title screens)")
 
-        original_transition = self.settings.transition
-        if self.settings.transition == TransitionType.CUT:
-            logger.info("Upgrading CUT to SMART transitions (title screens require fades)")
-            self.settings.transition = TransitionType.SMART
+        # WHY: pre-decide transitions for the full clip list so the assembler
+        # doesn't call get_transition_types (which rebuilds HDR context from
+        # the extended clip list, causing HDR type index mismatches).
+        transitions = self._decide_transitions_for_final_clips(final_clips)
+        logger.info(
+            f"Transitions: {transitions.count('fade')} fades, {transitions.count('cut')} cuts"
+        )
+
+        saved = (
+            self.settings.transition,
+            self.settings.target_resolution,
+            self.settings.auto_resolution,
+            self.settings.predecided_transitions,
+        )
+        self.settings.transition = TransitionType.SMART
+        self.settings.target_resolution = (target_w, target_h)
+        self.settings.auto_resolution = False
+        self.settings.predecided_transitions = transitions
 
         try:
             return assemble_fn(final_clips, output_path, progress_callback)
         finally:
-            self.settings.transition = original_transition
+            (
+                self.settings.transition,
+                self.settings.target_resolution,
+                self.settings.auto_resolution,
+                self.settings.predecided_transitions,
+            ) = saved

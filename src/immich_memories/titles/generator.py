@@ -44,7 +44,7 @@ class TitleScreenConfig:
     # Timing
     title_duration: float = 3.5  # seconds
     month_divider_duration: float = 2.0
-    ending_duration: float = 7.0
+    ending_duration: float = 4.0
     animation_duration: float = 0.5
 
     # Localization
@@ -392,23 +392,41 @@ class TitleScreenGenerator:
         self,
         video_clips: list[Path] | None = None,
         _dominant_color: tuple[int, int, int] | None = None,
+        content_clip_path: Path | None = None,
     ) -> GeneratedScreen:
-        """Generate the ending screen with fade to white."""
-        fade_to_color = (255, 255, 255)
+        """Generate the ending screen — reverse slow-mo blur + fade to white."""
         output_path = self.output_dir / "ending_screen.mp4"
         width, height = self.config.output_resolution
 
-        self._ending.create_ending_video(
-            output_path=output_path,
-            fade_to_color=fade_to_color,
-            width=width,
-            height=height,
-            duration=self.config.ending_duration,
-            fps=self.config.fps,
-            hdr=self.config.hdr,
-        )
+        if content_clip_path and self.style.background_type == "content_backed":
+            # Reverse slow-mo: sharp→blur, then fade to white
+            logger.info(f"Using reverse slow-mo ending from {content_clip_path.name}")
+            self._rendering.create_title_video(
+                title="",
+                subtitle=None,
+                style=self.style,
+                output_path=output_path,
+                width=width,
+                height=height,
+                duration=self.config.ending_duration,
+                fps=self.config.fps,
+                animated_background=False,
+                fade_to_white=True,
+                content_clip_path=content_clip_path,
+                is_ending=True,
+            )
+        else:
+            self._ending.create_ending_video(
+                output_path=output_path,
+                fade_to_color=(255, 255, 255),
+                width=width,
+                height=height,
+                duration=self.config.ending_duration,
+                fps=self.config.fps,
+                hdr=self.config.hdr,
+            )
 
-        logger.info("Generated ending screen with fade to white")
+        logger.info("Generated ending screen")
 
         return GeneratedScreen(
             path=output_path,

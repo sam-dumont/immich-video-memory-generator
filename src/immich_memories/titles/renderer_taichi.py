@@ -126,6 +126,9 @@ class TaichiTitleConfig:
     # HDR output: when True, renderer outputs uint16 (65535 scale) instead of uint8
     hdr: bool = False
 
+    # Reverse blur: for ending screens — blur increases instead of decreasing
+    reverse_blur: bool = False
+
     _bokeh_particles: np.ndarray = field(default_factory=lambda: np.array([]))
     _bokeh_seed: int = 42
 
@@ -351,18 +354,31 @@ class TaichiTitleRenderer:
         return self._output_buffer
 
     def _apply_animated_deblur(self, progress: float, cfg: TaichiTitleConfig) -> None:
-        """Apply animated deblur: full blur for most of the title, smooth reveal in last 1s.
+        """Apply animated blur transition.
+
+        Intro (reverse_blur=False): full blur → sharp reveal in last 1s
+        Ending (reverse_blur=True): sharp → full blur in first 1s, then fade to white
 
         Uses fixed blur kernel + float cross-fade between blurred and sharp
         versions. No per-frame kernel recreation = no flicker or pops.
         """
-        deblur_duration = 1.0
-        deblur_start_progress = 1.0 - (deblur_duration / cfg.duration)
-        if progress < deblur_start_progress:
-            blur_mix = 1.0
+        transition_duration = 1.0
+        if cfg.reverse_blur:
+            # Ending: sharp at start → blur after 1s
+            transition_end = transition_duration / cfg.duration
+            if progress > transition_end:
+                blur_mix = 1.0  # fully blurred
+            else:
+                t = progress / transition_end
+                blur_mix = 3 * t * t - 2 * t * t * t  # ease-in-out cubic
         else:
-            t = (progress - deblur_start_progress) / (1.0 - deblur_start_progress)
-            blur_mix = 1.0 - (3 * t * t - 2 * t * t * t)  # ease-in-out cubic
+            # Intro: blur → sharp reveal in last 1s
+            deblur_start = 1.0 - (transition_duration / cfg.duration)
+            if progress < deblur_start:
+                blur_mix = 1.0
+            else:
+                t = (progress - deblur_start) / (1.0 - deblur_start)
+                blur_mix = 1.0 - (3 * t * t - 2 * t * t * t)
 
         if blur_mix < 1.0:
             if not hasattr(self, "_sharp_buffer"):
@@ -460,8 +476,12 @@ class TaichiTitleRenderer:
     ):
         """Render title and subtitle text onto the frame."""
         title_anim = self._compute_animation(t, progress, is_subtitle=False)
-        title_size = int(cfg.height * cfg.title_size_ratio)
-        subtitle_size = int(cfg.height * cfg.subtitle_size_ratio)
+        # WHY: base size on min(w,h) so portrait text isn't giant.
+        # Same approach as map titles (rendering_service.py:180).
+        base = min(cfg.width, cfg.height)
+        ratio = cfg.title_size_ratio * 0.65 if subtitle else cfg.title_size_ratio
+        title_size = int(base * ratio)
+        subtitle_size = int(base * cfg.subtitle_size_ratio)
 
         if self._use_sdf:
             self._render_text_sdf(
@@ -904,8 +924,10 @@ class TaichiTitleRenderer:
         if self._cached_text == (title, subtitle):
             return
 
-        title_size = int(self.config.height * self.config.title_size_ratio)
-        subtitle_size = int(self.config.height * self.config.subtitle_size_ratio)
+        base = min(self.config.width, self.config.height)
+        ratio = self.config.title_size_ratio * 0.65 if subtitle else self.config.title_size_ratio
+        title_size = int(base * ratio)
+        subtitle_size = int(base * self.config.subtitle_size_ratio)
 
         tr, tg, tb = self.text_rgb
         text_rgba = (int(tr * 255), int(tg * 255), int(tb * 255), 255)

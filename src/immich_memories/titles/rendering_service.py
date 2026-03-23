@@ -69,6 +69,8 @@ class RenderingService:
         is_birthday: bool = False,
         background_image: np.ndarray | None = None,
         content_clip_path: Path | None = None,
+        is_ending: bool = False,
+        fade_to_white: bool = False,
     ) -> Path:
         """Create title video using GPU or PIL renderer.
 
@@ -91,6 +93,8 @@ class RenderingService:
                 hdr=hdr,
                 background_image=background_image,
                 content_clip_path=content_clip_path,
+                is_ending=is_ending,
+                fade_to_white=fade_to_white,
             )
         return create_title_video(
             title=title,
@@ -123,6 +127,8 @@ class RenderingService:
         hdr: bool = True,
         background_image: np.ndarray | None = None,
         content_clip_path: Path | None = None,
+        is_ending: bool = False,
+        fade_to_white: bool = False,
     ) -> Path:
         """Create title video using GPU-accelerated Taichi renderer."""
         gradient_type = "linear" if style.background_type != "radial" else "radial"
@@ -179,10 +185,17 @@ class RenderingService:
             vignette_pulse=0.0 if has_content else (0.05 if animated_background else 0.0),
             vignette_strength=0.15 if has_content else 0.3,
             is_birthday=is_birthday,
+            reverse_blur=is_ending,
         )
         try:
             return create_title_video_taichi(
-                title, subtitle, output_path, config, fade_from_white, hdr=hdr
+                title,
+                subtitle,
+                output_path,
+                config,
+                fade_from_white=fade_from_white,
+                fade_to_white=fade_to_white,
+                hdr=hdr,
             )
         finally:
             if slowmo_reader is not None:

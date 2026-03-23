@@ -97,9 +97,9 @@ class FrameDecoder:
         elif self._rotation == 270:
             parts.append("transpose=2")
 
-        # Privacy blur
+        # WHY: privacy blur scales with resolution so faces stay unidentifiable
         if self._privacy_blur:
-            parts.append("gblur=sigma=80")
+            parts.append(f"gblur=sigma={int(self._height * 0.075)}")
 
         # PTS reset — critical for multi-clip concat
         parts.append("setpts=PTS-STARTPTS")
@@ -166,6 +166,7 @@ class FrameDecoder:
             str(self._fps),
             "pipe:1",
         ]
+        logger.debug(f"FrameDecoder cmd: {' '.join(cmd)}")
         proc = subprocess.Popen(  # noqa: S603, S607
             cmd,
             stdout=subprocess.PIPE,
@@ -365,6 +366,11 @@ def _emit_crossfade(
 ) -> None:
     """Blend fade_frames from two iterators and write to encoder."""
     black: np.ndarray | None = None
+    # WHY: hold last valid frame when a clip runs short instead of
+    # inserting black. Short clips (live photos) create a freeze-frame
+    # crossfade which looks much better than fade-to-black.
+    last_a: np.ndarray | None = None
+    last_b: np.ndarray | None = None
     for fade_idx in range(fade_frames):
         frame_a = next(active_iter, None)
         frame_b = next(next_iter, None)
@@ -377,10 +383,14 @@ def _emit_crossfade(
             assert ref is not None  # noqa: S101
             black, blend_buf, temp_buf = _match_blend_bufs(ref, blend_buf, temp_buf)
 
-        if frame_a is None:
-            frame_a = black
-        if frame_b is None:
-            frame_b = black
+        if frame_a is not None:
+            last_a = frame_a
+        else:
+            frame_a = last_a if last_a is not None else black
+        if frame_b is not None:
+            last_b = frame_b
+        else:
+            frame_b = last_b if last_b is not None else black
 
         alpha = (fade_idx + 1) / fade_frames
         blend_crossfade(frame_a, frame_b, alpha, out=blend_buf, temp=temp_buf)
@@ -451,10 +461,23 @@ def _make_decoder(
     if rotation_override is not None and rotation_override != 0:
         rotation = rotation_override
 
-    hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, _ = _resolve_clip_hdr(
-        clip_idx, ctx, hdr_type
-    )
+    # WHY: title screens are already encoded with the correct HDR settings
+    # by the title generator. Skip per-clip HDR detection which can fail
+    # when the context was rebuilt from the extended clip list (shifted indices).
+    if is_title and hdr_type:
+        hdr_conversion = ""
+        colorspace_filter = ""
+        output_pix_fmt = ""
+        sdr_to_hdr_filter = ""
+    else:
+        hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, _ = _resolve_clip_hdr(
+            clip_idx, ctx, hdr_type
+        )
     pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
+    logger.info(
+        f"Decoder[{clip_idx}] pix={pix_fmt} title={is_title} hdr_type={hdr_type} "
+        f"sdr2hdr={bool(sdr_to_hdr_filter)} {clip.path.name}"
+    )
 
     return FrameDecoder(
         clip_path=clip.path,

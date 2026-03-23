@@ -263,7 +263,7 @@ class TestTitleScreenConfig:
         assert config.enabled
         assert config.title_duration == 3.5
         assert config.month_divider_duration == 2.0
-        assert config.ending_duration == 7.0
+        assert config.ending_duration == 4.0
         assert config.locale == "en"
         assert config.orientation == "landscape"
         assert config.resolution == "1080p"

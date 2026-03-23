@@ -22,7 +22,7 @@ def _make_title_settings(**overrides) -> TitleScreenSettings:
         "enabled": True,
         "title_duration": 3.5,
         "month_divider_duration": 2.0,
-        "ending_duration": 7.0,
+        "ending_duration": 4.0,
         "show_month_dividers": False,
         "divider_mode": "none",
         "month_divider_threshold": 2,
@@ -49,8 +49,8 @@ class TestEstimateTitleOverhead:
             title_settings=settings,
             target_duration=300.0,
         )
-        # 3.5 (title) + 7.0 (ending) = 10.5
-        assert overhead == 10.5
+        # 3.5 (title) + 4.0 (ending) = 7.5
+        assert overhead == 7.5
 
     def test_crossfade_compensation_reduces_overhead(self):
         """Crossfade transitions compress the timeline — compensate."""
@@ -85,8 +85,8 @@ class TestEstimateTitleOverhead:
             title_settings=settings,
             target_duration=300.0,
         )
-        # 3.5 + 7.0 + 2 dividers (July, August meet threshold=2; Sep doesn't) × 2.0
-        assert overhead == 3.5 + 7.0 + 2 * 2.0  # 14.5
+        # 3.5 + 4.0 + 2 dividers (July, August meet threshold=2; Sep doesn't) × 2.0
+        assert overhead == 3.5 + 4.0 + 2 * 2.0  # 11.5
 
     def test_overhead_capped_at_20_percent(self):
         """Regular memories cap overhead at 20% of target."""
@@ -121,18 +121,18 @@ class TestEstimateTitleOverhead:
             target_duration=300.0,
             memory_type="trip",
         )
-        assert overhead == 3.5 + 7.0 + 12 * 2.0  # 34.5 (uncapped, fits in 30%)
+        assert overhead == 3.5 + 4.0 + 12 * 2.0  # 31.5 (uncapped, fits in 30%)
 
     def test_trip_overhead_floor_10_percent(self):
         """Trip always reserves at least 10% for title narrative."""
-        settings = _make_title_settings()  # No dividers → raw = 10.5
+        settings = _make_title_settings()  # No dividers → raw = 7.5
         overhead = estimate_title_overhead(
             clip_dates=["2025-07-01"],
             title_settings=settings,
             target_duration=300.0,
             memory_type="trip",
         )
-        # Raw = 10.5, but floor = 30.0 (10% of 300) → use floor
+        # Raw = 7.5, but floor = 30.0 (10% of 300) → use floor
         assert overhead == 300.0 * 0.10  # 30.0
 
     def test_trip_10_stops_within_cap(self):
@@ -144,8 +144,8 @@ class TestEstimateTitleOverhead:
         )
         # 10-stop trip: locations change across 10 different days in 3 months
         # Dividers from months: 3 months × 2.0 = 6.0
-        # Total raw: 3.5 + 7.0 + 6.0 = 16.5
-        # 30% of 300 = 90, so 16.5 fits easily
+        # Total raw: 3.5 + 4.0 + 6.0 = 13.5
+        # 30% of 300 = 90, so 13.5 fits easily
         dates = [
             "2025-07-01",
             "2025-07-05",
