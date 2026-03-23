@@ -342,8 +342,11 @@ class TitleInserter:
                     all_frames.pop(0)
 
             proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-            # Write last 1 second
-            for frame_data in all_frames[-fps:]:
+            # WHY: write exactly the last 0.5s (source_seconds) to match
+            # what SlowmoBackgroundReader reads. The ending starts where
+            # the clip ends — no "go back in time".
+            source_frames = max(1, fps // 2)  # 0.5s
+            for frame_data in all_frames[-source_frames:]:
                 proc.stdin.write(frame_data)  # type: ignore[union-attr]
             proc.stdin.close()  # type: ignore[union-attr]
             proc.wait(timeout=30)
