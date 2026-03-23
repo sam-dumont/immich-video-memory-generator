@@ -759,6 +759,9 @@ class TitleInserter:
             progress_callback(0.0, "Generating title screen...")
 
         is_trip = getattr(title_settings, "memory_type", None) == "trip"
+        use_content_bg = (
+            getattr(title_settings, "title_background", "content_backed") == "content_backed"
+        )
         if is_trip and title_settings.trip_locations and title_settings.trip_title_text:
             title_screen = generator.generate_trip_map_screen(
                 locations=title_settings.trip_locations,
@@ -768,9 +771,6 @@ class TitleInserter:
             )
             logger.info(f"Generated trip map intro: {title_screen.path}")
         else:
-            use_content_bg = (
-                getattr(title_settings, "title_background", "content_backed") == "content_backed"
-            )
             content_clip = None
             if use_content_bg:
                 content_clip = self._pre_render_first_clip(
