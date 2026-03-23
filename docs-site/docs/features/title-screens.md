@@ -82,4 +82,4 @@ immich-memories titles test --birthday-age 3 --person "Emma" --year 2025
 immich-memories titles test --year 2025 --locale fr --orientation portrait
 ```
 
-See [CLI: titles](../cli/titles.md) for all flags.
+See [CLI: titles](../create/cli/titles.md) for all flags.
