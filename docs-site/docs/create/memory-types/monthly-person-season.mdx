@@ -30,7 +30,19 @@ A year focused on one person. Filters clips to only those containing the named p
 immich-memories generate --memory-type person_spotlight --person "Alice" --year 2025
 ```
 
-Default duration: 120 seconds. Title screen shows "Your Year with Alice" as the subtitle.
+Narrow to a single month with `--month`:
+
+```bash
+immich-memories generate --memory-type person_spotlight --person "Alice" --year 2025 --month 7
+```
+
+Use birthday-based year (auto-detects from Immich):
+
+```bash
+immich-memories generate --memory-type person_spotlight --person "Alice" --year 2025 --birthday
+```
+
+Default duration: 120 seconds (full year), ~60 seconds (single month). Duration auto-scales with date range. You can also override the date range entirely with `--start/--end`.
 
 **Best for:** parent-child compilations, partner videos, or any relationship where you want to see just that person's moments. Needs Immich face recognition to be set up and the person tagged.
 
@@ -67,12 +79,18 @@ immich-memories generate --memory-type season --season summer --year 2025 --hemi
 
 ## On This Day
 
-Looks back across previous years for content near today's date. Creates date ranges spanning a week around the current date for each of the last 5 years.
+Looks back across all previous years for content near today's date. Creates ±1 day date ranges for each previous year.
 
 ```bash
 immich-memories generate --memory-type on_this_day
 ```
 
-Default duration: 45 seconds. No `--year` needed: it automatically looks back from today's date.
+Limit to the last 3 years with `--years-back`:
+
+```bash
+immich-memories generate --memory-type on_this_day --years-back 3
+```
+
+Default duration: 45 seconds. No `--year` needed: it automatically looks back from today's date. By default, it searches all years with data (up to 30 years back).
 
 **Best for:** daily nostalgia, "what were we doing last year" moments. Works best if you've been shooting video for 3+ years. Can be combined with the scheduler for an automatic daily memory.

@@ -14,6 +14,28 @@ from immich_memories.timeperiod import (
 )
 
 
+def _resolve_manual_dates(
+    start: str | None,
+    end: str | None,
+    period: str | None,
+) -> DateRange | None:
+    """Try to resolve --start/--end or --start/--period to a DateRange.
+
+    Returns None if neither combination is provided.
+    """
+    if start and end:
+        try:
+            return custom_range(parse_date(start), parse_date(end))
+        except ValueError as e:
+            raise click.UsageError(str(e))
+    if start and period:
+        try:
+            return from_period(parse_date(start), period)
+        except ValueError as e:
+            raise click.UsageError(str(e))
+    return None
+
+
 def resolve_date_range(
     year: int | None,
     start: str | None,
@@ -24,45 +46,31 @@ def resolve_date_range(
     season: str | None = None,
     month: int | None = None,
     hemisphere: str = "north",
+    years_back: int | None = None,
 ) -> DateRange | list[DateRange]:
     """Resolve date range from command line options.
 
     When --memory-type is set, delegates to preset date builders.
+    --start/--end can override the preset's default date range.
     Otherwise falls through to manual date range options.
-
-    Returns:
-        DateRange or list[DateRange] for the selected period
-
-    Raises:
-        click.UsageError: If invalid combination of options
     """
     if memory_type:
-        return _resolve_memory_type_dates(memory_type, year, season, month, hemisphere)
+        default_range = _resolve_memory_type_dates(
+            memory_type, year, season, month, hemisphere, years_back
+        )
+        return _resolve_manual_dates(start, end, period) or default_range
 
-    if start and end:
-        try:
-            start_date = parse_date(start)
-            end_date = parse_date(end)
-            return custom_range(start_date, end_date)
-        except ValueError as e:
-            raise click.UsageError(str(e))
-
-    if start and period:
-        try:
-            start_date = parse_date(start)
-            return from_period(start_date, period)
-        except ValueError as e:
-            raise click.UsageError(str(e))
+    manual = _resolve_manual_dates(start, end, period)
+    if manual:
+        return manual
 
     if year:
         if birthday:
             try:
-                bday = parse_date(birthday)
-                return birthday_year(bday, year)
+                return birthday_year(parse_date(birthday), year)
             except ValueError as e:
                 raise click.UsageError(str(e))
-        else:
-            return calendar_year(year)
+        return calendar_year(year)
 
     raise click.UsageError(
         "You must specify a time period. Use one of:\n"
@@ -80,6 +88,7 @@ def _resolve_memory_type_dates(
     season: str | None,
     month: int | None,
     hemisphere: str,
+    years_back: int | None = None,
 ) -> DateRange | list[DateRange]:
     """Resolve date ranges from memory type preset."""
     from immich_memories.memory_types.date_builders import (
@@ -105,11 +114,16 @@ def _resolve_memory_type_dates(
     if memory_type == "on_this_day":
         from datetime import date
 
-        return build_on_this_day(date.today())
+        return build_on_this_day(date.today(), years_back=years_back)
 
     # Types that use calendar year: year_in_review, person_spotlight, multi_person
     if not year:
         raise click.UsageError(f"--year is required with --memory-type {memory_type}")
+
+    # --month narrows any yearly type to a single month
+    if month is not None:
+        return build_month(month, year)
+
     return calendar_year(year)
 
 

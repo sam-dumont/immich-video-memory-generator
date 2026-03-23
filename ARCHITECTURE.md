@@ -215,7 +215,9 @@ src/immich_memories/
 │   ├── _helpers.py             # Shared console/print utilities
 │   ├── _analyze_export.py      # Analysis export helpers
 │   ├── _config_errors.py       # Config error formatting
-│   ├── _trip_display.py        # Trip detection display & selection
+│   ├── _pipeline_runner.py     # Fetch assets + run SmartPipeline + generate
+│   ├── _trip_generation.py     # Trip detection, selection, per-trip generation
+│   ├── _trip_display.py        # Trip table formatting & selection logic
 │   └── _date_resolution.py     # Date range resolution for memory types
 │
 ├── ui/                         # NiceGUI web interface

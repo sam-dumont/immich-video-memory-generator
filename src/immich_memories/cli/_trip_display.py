@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING
 
 from rich.table import Table
@@ -49,12 +50,14 @@ def select_trips(
     trip_index: int | None = None,
     all_trips: bool = False,
     month: int | None = None,
+    near_date: str | None = None,
 ) -> list[DetectedTrip]:
     """Select trips based on CLI flags.
 
     - trip_index: 1-based index to select a single trip
     - all_trips: select all detected trips
     - month: auto-select trip closest to this month (1-12)
+    - near_date: auto-select trip closest to this date (YYYY-MM-DD)
     - Neither: return empty list (discovery mode, just show the table)
     """
     if all_trips:
@@ -66,21 +69,31 @@ def select_trips(
             raise ValueError(msg)
         return [trips[trip_index - 1]]
 
+    if near_date is not None and trips:
+        from immich_memories.timeperiod import parse_date
+
+        target_day = parse_date(near_date)
+        return [_closest_trip_to_date(trips, target_day)]
+
     if month is not None and trips:
         # WHY: pick the trip whose midpoint is closest to the 15th of the given month
         from datetime import date as date_cls
 
         target_year = trips[0].start_date.year
         target_day = date_cls(target_year, month, 15)
-
-        def distance_to_month(trip: DetectedTrip) -> int:
-            midpoint = trip.start_date + (trip.end_date - trip.start_date) / 2
-            return abs((midpoint - target_day).days)
-
-        closest = min(trips, key=distance_to_month)
-        return [closest]
+        return [_closest_trip_to_date(trips, target_day)]
 
     return []
+
+
+def _closest_trip_to_date(trips: list[DetectedTrip], target: date) -> DetectedTrip:
+    """Find the trip whose midpoint is closest to the target date."""
+
+    def distance(trip: DetectedTrip) -> int:
+        midpoint = trip.start_date + (trip.end_date - trip.start_date) / 2
+        return abs((midpoint - target).days)
+
+    return min(trips, key=distance)
 
 
 def run_trip_detection(
