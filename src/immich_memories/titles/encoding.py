@@ -45,13 +45,17 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
     hdr_pix_fmt_sw = "yuv420p10le"  # 10-bit for software encoder
     sdr_pix_fmt = "yuv420p"  # 8-bit for SDR
 
+    # WHY: titles are intermediates that get recompressed during final assembly.
+    # Near-lossless quality avoids double-compression artifacts on text and gradients.
+    # File size is negligible (~3s clips).
+
     # macOS: VideoToolbox (GPU accelerated)
     if sys.platform == "darwin":
         return [
             "-c:v",
             "hevc_videotoolbox",
             "-q:v",
-            "50",
+            "80",  # High quality intermediate (matches assembly's archival CRF 12 → q:v 78)
             "-pix_fmt",
             hdr_pix_fmt_hw if hdr else sdr_pix_fmt,
             "-tag:v",
@@ -59,7 +63,7 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
             *color_args,
         ]
 
-    # Check for NVIDIA NVENC (probe with a 1-frame encode to verify GPU is actually available)
+    # Check for NVIDIA NVENC
     with contextlib.suppress(Exception):
         probe = subprocess.run(
             [
@@ -88,7 +92,7 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
                 "-rc",
                 "constqp",
                 "-qp",
-                "18",
+                "4",  # Near-lossless (0-51 scale, lower=better)
                 "-pix_fmt",
                 hdr_pix_fmt_hw if hdr else sdr_pix_fmt,
                 "-tag:v",
@@ -96,12 +100,12 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
                 *color_args,
             ]
 
-    # Fallback to CPU libx265 (slower)
+    # Fallback to CPU libx265
     return [
         "-c:v",
         "libx265",
         "-crf",
-        "18",
+        "4",  # Near-lossless (0-51 scale, lower=better)
         "-preset",
         "fast",
         "-pix_fmt",

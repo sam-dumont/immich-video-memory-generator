@@ -2,7 +2,7 @@
 
 This module contains:
 - TitleStyle dataclass with all visual properties
-- Color palettes (warm, avoiding dark colors)
+- Color palettes (cinematic dark backgrounds with high-contrast white text)
 - Font definitions with fallbacks
 - Mood-to-style mapping for automatic selection
 """
@@ -19,30 +19,32 @@ from typing import Literal
 class TitleStyle:
     """Complete visual style for title screens."""
 
-    # Typography
-    font_family: str = "Outfit"
-    font_weight: Literal["light", "regular", "medium", "semibold"] = "medium"
-    title_size_ratio: float = 0.10  # Relative to screen height (0.08 - 0.15)
-    subtitle_size_ratio: float = 0.6  # Relative to title size (0.5 - 0.7)
+    # Typography — Montserrat Bold matches the map titles for visual consistency
+    font_family: str = "Montserrat"
+    font_weight: Literal["light", "regular", "medium", "semibold"] = "semibold"
+    title_size_ratio: float = 0.14  # Relative to screen height (0.08 - 0.15)
+    subtitle_size_ratio: float = 0.75  # Relative to title size
     letter_spacing: float = 0.02  # em units (-0.02 to 0.1)
     text_transform: Literal["none", "uppercase", "capitalize"] = "none"
 
     # Colors
-    text_color: str = "#2D2D2D"
-    text_shadow: bool = False  # Replaced by blend mode
-    text_blend_mode: Literal["normal", "multiply", "overlay", "soft_light"] = "multiply"
+    text_color: str = "#FFFFFF"
+    text_shadow: bool = False
+    text_blend_mode: Literal["normal", "multiply", "overlay", "soft_light"] = "normal"
     accent_color: str = "#F59E0B"
 
     # Background
-    background_type: Literal["solid_gradient", "soft_gradient", "vignette"] = "soft_gradient"
-    background_colors: list[str] = field(default_factory=lambda: ["#FFF5E6", "#FFE4CC"])
+    background_type: Literal["solid_gradient", "soft_gradient", "vignette", "content_backed"] = (
+        "content_backed"
+    )
+    background_colors: list[str] = field(default_factory=lambda: ["#1A1A2E", "#16213E"])
     background_angle: int = 135  # degrees for linear gradient
 
     # Animation preset name (see animations.py)
     animation_preset: str = "fade_up"
 
     # Decorative elements
-    use_line_accent: bool = True
+    use_line_accent: bool = False
     line_position: Literal["above", "below", "both", "none"] = "above"
     line_width: int = 60  # pixels
     line_thickness: int = 1  # pixels
@@ -88,70 +90,63 @@ class TitleStyle:
         return None
 
 
-# Color palettes (avoiding dark/black colors as per spec)
+# Cinematic dark palettes — white text on dark backgrounds for professional look.
+# Legacy pastel palettes preserved with _legacy_ prefix for backwards compatibility.
 COLOR_PALETTES: dict[str, dict] = {
-    "warm_vibrant": {
+    "cinematic_dark": {
         "backgrounds": [
-            ["#FFF5E6", "#FFE4CC"],  # Warm cream
-            ["#FFF0F5", "#FFE4EC"],  # Soft pink
-            ["#FFFBEB", "#FEF3C7"],  # Warm yellow
+            ["#1A1A2E", "#16213E"],  # Deep navy
+            ["#0F0F1A", "#1A1A2E"],  # Near black to navy
+            ["#1C1917", "#292524"],  # Warm charcoal
+        ],
+        "text_colors": ["#FFFFFF", "#F5F5F4", "#E7E5E4"],
+        "accents": ["#F59E0B", "#06B6D4", "#A855F7"],
+    },
+    "warm_dark": {
+        "backgrounds": [
+            ["#1C1917", "#292524"],  # Warm stone dark
+            ["#27272A", "#3F3F46"],  # Zinc
+            ["#1E1B18", "#3D3428"],  # Dark amber-tinted
+        ],
+        "text_colors": ["#FAFAF9", "#F5F5F4", "#E7E5E4"],
+        "accents": ["#F59E0B", "#D97706", "#B45309"],
+    },
+    "deep_teal": {
+        "backgrounds": [
+            ["#042F2E", "#134E4A"],  # Deep teal
+            ["#0C4A6E", "#0369A1"],  # Ocean blue
+            ["#1E3A5F", "#2D5986"],  # Muted blue
+        ],
+        "text_colors": ["#FFFFFF", "#F0F9FF", "#E0F2FE"],
+        "accents": ["#2DD4BF", "#06B6D4", "#22D3EE"],
+    },
+    "midnight": {
+        "backgrounds": [
+            ["#0F172A", "#1E293B"],  # Slate midnight
+            ["#171717", "#262626"],  # Neutral dark
+            ["#18181B", "#27272A"],  # Zinc dark
+        ],
+        "text_colors": ["#FFFFFF", "#F8FAFC", "#E2E8F0"],
+        "accents": ["#818CF8", "#A78BFA", "#C084FC"],
+    },
+    # Legacy palettes — kept for backwards compat with explicit style_mode config
+    "_legacy_warm_vibrant": {
+        "backgrounds": [
+            ["#FFF5E6", "#FFE4CC"],
+            ["#FFF0F5", "#FFE4EC"],
+            ["#FFFBEB", "#FEF3C7"],
         ],
         "text_colors": ["#2D2D2D", "#3D3D3D", "#4A4A4A"],
         "accents": ["#F59E0B", "#EC4899", "#8B5CF6"],
     },
-    "soft_pastels": {
+    "_legacy_soft_pastels": {
         "backgrounds": [
-            ["#F0F9FF", "#E0F2FE"],  # Soft blue
-            ["#FDF4FF", "#FAE8FF"],  # Soft purple
-            ["#F0FDF4", "#DCFCE7"],  # Soft green
+            ["#F0F9FF", "#E0F2FE"],
+            ["#FDF4FF", "#FAE8FF"],
+            ["#F0FDF4", "#DCFCE7"],
         ],
         "text_colors": ["#374151", "#4B5563", "#6B7280"],
         "accents": ["#06B6D4", "#A855F7", "#10B981"],
-    },
-    "warm_muted": {
-        "backgrounds": [
-            ["#FEF7ED", "#FED7AA"],  # Muted orange
-            ["#FFFBEB", "#FDE68A"],  # Muted yellow
-            ["#FDF2F8", "#FBCFE8"],  # Muted pink
-        ],
-        "text_colors": ["#44403C", "#57534E", "#78716C"],
-        "accents": ["#D97706", "#DB2777", "#7C3AED"],
-    },
-    "bright_warm": {
-        "backgrounds": [
-            ["#FEF9C3", "#FDE047"],  # Bright yellow
-            ["#FFE4E6", "#FDA4AF"],  # Bright pink
-            ["#FFEDD5", "#FDBA74"],  # Bright orange
-        ],
-        "text_colors": ["#1C1917", "#292524", "#3D3D3D"],
-        "accents": ["#EAB308", "#F43F5E", "#F97316"],
-    },
-    "bright_colorful": {
-        "backgrounds": [
-            ["#ECFEFF", "#A5F3FC"],  # Cyan
-            ["#FDF2F8", "#F9A8D4"],  # Pink
-            ["#F0FDF4", "#86EFAC"],  # Green
-        ],
-        "text_colors": ["#0F172A", "#1E293B", "#334155"],
-        "accents": ["#06B6D4", "#EC4899", "#22C55E"],
-    },
-    "soft_warm": {
-        "backgrounds": [
-            ["#FFFBEB", "#FEF3C7"],  # Soft amber
-            ["#FFF7ED", "#FED7AA"],  # Soft orange
-            ["#FEF2F2", "#FECACA"],  # Soft red
-        ],
-        "text_colors": ["#451A03", "#78350F", "#7C2D12"],
-        "accents": ["#F59E0B", "#EA580C", "#DC2626"],
-    },
-    "elegant_neutral": {
-        "backgrounds": [
-            ["#FAFAF9", "#E7E5E4"],  # Stone
-            ["#F9FAFB", "#E5E7EB"],  # Gray
-            ["#FFFBEB", "#FEF3C7"],  # Warm touch
-        ],
-        "text_colors": ["#1C1917", "#292524", "#44403C"],
-        "accents": ["#78716C", "#A8A29E", "#D6D3D1"],
     },
 }
 
@@ -193,155 +188,155 @@ FONT_STACK: dict[str, dict] = {
 }
 
 
-# Mood-to-style mapping
+# Mood-to-style mapping — all moods use dark cinematic palettes
 MOOD_STYLE_PROFILES: dict[str, dict] = {
     "happy": {
-        "color_palette": "warm_vibrant",
+        "color_palette": "warm_dark",
         "preferred_fonts": ["Quicksand", "Outfit"],
         "animation_preset": "fade_up",
-        "background_type": "soft_gradient",
-        "font_weight": "medium",
-        "use_line_accent": True,
+        "background_type": "content_backed",
+        "font_weight": "semibold",
+        "use_line_accent": False,
     },
     "calm": {
-        "color_palette": "soft_pastels",
-        "preferred_fonts": ["Raleway", "JosefinSans"],
+        "color_palette": "deep_teal",
+        "preferred_fonts": ["Raleway", "Outfit"],
         "animation_preset": "slow_fade",
-        "background_type": "solid_gradient",
-        "font_weight": "light",
+        "background_type": "content_backed",
+        "font_weight": "medium",
         "use_line_accent": False,
     },
     "energetic": {
-        "color_palette": "bright_warm",
+        "color_palette": "midnight",
         "preferred_fonts": ["Outfit", "Quicksand"],
         "animation_preset": "smooth_slide",
-        "background_type": "soft_gradient",
+        "background_type": "content_backed",
         "font_weight": "semibold",
-        "use_line_accent": True,
+        "use_line_accent": False,
     },
     "nostalgic": {
-        "color_palette": "warm_muted",
+        "color_palette": "warm_dark",
         "preferred_fonts": ["JosefinSans", "Raleway"],
         "animation_preset": "slow_fade",
-        "background_type": "vignette",
-        "font_weight": "light",
-        "use_line_accent": True,
-        "line_position": "both",
+        "background_type": "content_backed",
+        "font_weight": "medium",
+        "use_line_accent": False,
     },
     "romantic": {
-        "color_palette": "soft_warm",
+        "color_palette": "warm_dark",
         "preferred_fonts": ["JosefinSans", "Raleway"],
         "animation_preset": "gentle_scale",
-        "background_type": "soft_gradient",
-        "font_weight": "light",
-        "use_line_accent": True,
+        "background_type": "content_backed",
+        "font_weight": "medium",
+        "use_line_accent": False,
     },
     "playful": {
-        "color_palette": "bright_colorful",
+        "color_palette": "midnight",
         "preferred_fonts": ["Quicksand", "Outfit"],
         "animation_preset": "fade_up",
-        "background_type": "soft_gradient",
-        "font_weight": "medium",
-        "use_line_accent": True,
+        "background_type": "content_backed",
+        "font_weight": "semibold",
+        "use_line_accent": False,
     },
     "peaceful": {
-        "color_palette": "soft_pastels",
+        "color_palette": "deep_teal",
         "preferred_fonts": ["Raleway", "JosefinSans"],
         "animation_preset": "slow_fade",
-        "background_type": "vignette",
-        "font_weight": "light",
+        "background_type": "content_backed",
+        "font_weight": "medium",
         "use_line_accent": False,
     },
     "exciting": {
-        "color_palette": "bright_warm",
+        "color_palette": "cinematic_dark",
         "preferred_fonts": ["Outfit", "Quicksand"],
         "animation_preset": "smooth_slide",
-        "background_type": "soft_gradient",
+        "background_type": "content_backed",
         "font_weight": "semibold",
-        "use_line_accent": True,
+        "use_line_accent": False,
     },
     "default": {
-        "color_palette": "warm_vibrant",
+        "color_palette": "cinematic_dark",
         "preferred_fonts": ["Outfit", "Raleway"],
         "animation_preset": "fade_up",
-        "background_type": "soft_gradient",
-        "font_weight": "medium",
-        "use_line_accent": True,
+        "background_type": "content_backed",
+        "font_weight": "semibold",
+        "use_line_accent": False,
     },
 }
 
 
-# Pre-defined complete styles
+# Pre-defined complete styles — all cinematic dark
 PRESET_STYLES: dict[str, TitleStyle] = {
     "modern_warm": TitleStyle(
         name="modern_warm",
-        font_family="Outfit",
-        font_weight="medium",
-        title_size_ratio=0.10,
+        font_family="Montserrat",
+        font_weight="semibold",
+        title_size_ratio=0.14,
         letter_spacing=0.02,
-        text_color="#2D2D2D",
-        background_type="soft_gradient",
-        background_colors=["#FFF5E6", "#FFE4CC"],
+        text_color="#FFFFFF",
+        text_blend_mode="normal",
+        background_type="content_backed",
+        background_colors=["#1C1917", "#292524"],
         accent_color="#F59E0B",
         animation_preset="fade_up",
-        use_line_accent=True,
-        line_position="above",
+        use_line_accent=False,
     ),
     "elegant_minimal": TitleStyle(
         name="elegant_minimal",
-        font_family="Raleway",
-        font_weight="light",
-        title_size_ratio=0.09,
+        font_family="Montserrat",
+        font_weight="medium",
+        title_size_ratio=0.14,
         letter_spacing=0.05,
         text_transform="uppercase",
-        text_color="#374151",
-        background_type="solid_gradient",
-        background_colors=["#F0F9FF", "#E0F2FE"],
+        text_color="#F5F5F4",
+        text_blend_mode="normal",
+        background_type="content_backed",
+        background_colors=["#0F172A", "#1E293B"],
         accent_color="#06B6D4",
         animation_preset="slow_fade",
         use_line_accent=False,
     ),
     "vintage_charm": TitleStyle(
         name="vintage_charm",
-        font_family="JosefinSans",
-        font_weight="light",
-        title_size_ratio=0.11,
+        font_family="Montserrat",
+        font_weight="medium",
+        title_size_ratio=0.14,
         letter_spacing=0.03,
-        text_color="#44403C",
-        background_type="vignette",
-        background_colors=["#FFFBF5", "#F5E6D3"],
+        text_color="#FAFAF9",
+        text_blend_mode="normal",
+        background_type="content_backed",
+        background_colors=["#1C1917", "#292524"],
         accent_color="#D97706",
         animation_preset="slow_fade",
-        use_line_accent=True,
-        line_position="both",
+        use_line_accent=False,
     ),
     "playful_bright": TitleStyle(
         name="playful_bright",
-        font_family="Quicksand",
-        font_weight="medium",
-        title_size_ratio=0.10,
+        font_family="Montserrat",
+        font_weight="semibold",
+        title_size_ratio=0.14,
         letter_spacing=0.01,
-        text_color="#1C1917",
-        background_type="soft_gradient",
-        background_colors=["#FEF9C3", "#FDE047"],
-        accent_color="#EAB308",
+        text_color="#FFFFFF",
+        text_blend_mode="normal",
+        background_type="content_backed",
+        background_colors=["#042F2E", "#134E4A"],
+        accent_color="#2DD4BF",
         animation_preset="fade_up",
-        use_line_accent=True,
-        line_position="above",
+        use_line_accent=False,
     ),
     "soft_romantic": TitleStyle(
         name="soft_romantic",
-        font_family="JosefinSans",
-        font_weight="regular",
-        title_size_ratio=0.10,
+        font_family="Montserrat",
+        font_weight="medium",
+        title_size_ratio=0.14,
         letter_spacing=0.02,
-        text_color="#451A03",
-        background_type="soft_gradient",
-        background_colors=["#FFF0F5", "#FFE4EC"],
-        accent_color="#EC4899",
+        text_color="#FAFAF9",
+        text_blend_mode="normal",
+        background_type="content_backed",
+        background_colors=["#1E1B18", "#3D3428"],
+        accent_color="#D97706",
         animation_preset="gentle_scale",
-        use_line_accent=True,
-        line_position="below",
+        use_line_accent=False,
     ),
 }
 
@@ -360,9 +355,8 @@ def get_style_for_mood(mood: str, randomize: bool = True) -> TitleStyle:
     palette_name = profile["color_palette"]
     palette = COLOR_PALETTES[palette_name]
 
-    # Select font
-    preferred_fonts = profile["preferred_fonts"]
-    font_family = random.choice(preferred_fonts) if randomize else preferred_fonts[0]
+    # Montserrat for all titles — consistent with map titles
+    font_family = "Montserrat"
 
     # Select colors
     if randomize:
@@ -378,13 +372,15 @@ def get_style_for_mood(mood: str, randomize: bool = True) -> TitleStyle:
         name=f"{mood}_style",
         font_family=font_family,
         font_weight=profile["font_weight"],
-        title_size_ratio=0.10 if randomize else 0.10 + random.uniform(-0.01, 0.01),
+        title_size_ratio=0.14,
         text_color=text_color,
+        text_shadow=False,
+        text_blend_mode="normal",
         accent_color=accent_color,
         background_type=profile["background_type"],
         background_colors=bg_colors,
         animation_preset=profile["animation_preset"],
-        use_line_accent=profile.get("use_line_accent", True),
+        use_line_accent=profile.get("use_line_accent", False),
         line_position=profile.get("line_position", "above"),
     )
 

@@ -18,7 +18,7 @@ from .encoding import _get_gpu_encoder_args
 from .styles import TitleStyle
 
 if TYPE_CHECKING:
-    pass
+    import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +173,7 @@ def create_title_video(
     animated_background: bool = True,
     fade_from_white: bool = False,
     hdr: bool = True,
+    background_image: np.ndarray | None = None,
 ) -> Path:
     """Create a complete title video with full animation support.
 
@@ -203,7 +204,7 @@ def create_title_video(
         duration=duration,
         animated_background=animated_background,
     )
-    renderer = TitleRenderer(style, settings)
+    renderer = TitleRenderer(style, settings, background_image=background_image)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     encoder_args, video_filter = _get_best_encoder(hdr=hdr)

@@ -65,7 +65,7 @@ class TitleScreenSettings:
     # Timing
     title_duration: float = 3.5
     month_divider_duration: float = 2.0
-    ending_duration: float = 7.0
+    ending_duration: float = 4.0
 
     # Features
     show_month_dividers: bool = True
@@ -73,6 +73,9 @@ class TitleScreenSettings:
     divider_mode: str = "month"  # "none", "month", or "year"
     show_ending_screen: bool = True
     use_first_name_only: bool = True  # Use only first name for titles
+    # Title background style: "content_backed" (slow-mo blur from clip) or
+    # "gradient" (classic dark gradient with crossfade)
+    title_background: str = "content_backed"
 
     # LLM-generated title override (bypasses template generation)
     title_override: str | None = None
@@ -162,6 +165,8 @@ class AssemblyClip:
     outgoing_transition: str | None = None
     # Photo clip flag — True when this clip was generated from a still image
     is_photo: bool = False
+    # Seek offset: skip this many seconds from the start (used for title trim)
+    input_seek: float = 0.0
 
 
 def _get_rotation_filter(rotation: int) -> str:

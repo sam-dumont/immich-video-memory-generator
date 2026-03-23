@@ -18,22 +18,75 @@ from .renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
 logger = logging.getLogger(__name__)
 
 
+def _apply_fade_from_white(
+    frame: np.ndarray,
+    frame_num: int,
+    fade_in_frames: int,
+    white_val: int,
+    blend_buffer: np.ndarray | None,
+) -> np.ndarray:
+    """Apply fade-from-white effect to a frame."""
+    if blend_buffer is not None and frame_num < fade_in_frames:
+        alpha = 1.0 - (1.0 - frame_num / fade_in_frames) ** 2
+        np.multiply(white_val * (1 - alpha), 1.0, out=blend_buffer, casting="unsafe")
+        np.add(blend_buffer, frame * alpha, out=blend_buffer, casting="unsafe")
+        return blend_buffer
+    return frame
+
+
+def _apply_fade_to_white(
+    frame: np.ndarray,
+    frame_num: int,
+    fade_out_start: int,
+    fade_out_frames: int,
+    white_val: int,
+    blend_buffer: np.ndarray | None,
+) -> np.ndarray:
+    """Apply fade-to-white effect at the end of a video."""
+    if blend_buffer is not None and fade_out_frames > 0 and frame_num >= fade_out_start:
+        t = (frame_num - fade_out_start) / max(1, fade_out_frames)
+        alpha = t * t  # quadratic ease-in
+        np.multiply(white_val * alpha, 1.0, out=blend_buffer, casting="unsafe")
+        np.add(blend_buffer, frame * (1 - alpha), out=blend_buffer, casting="unsafe")
+        return blend_buffer
+    return frame
+
+
 def create_title_video_taichi(
     title: str,
     subtitle: str | None,
     output_path: Path,
     config: TaichiTitleConfig | None = None,
     fade_from_white: bool = False,
+    fade_to_white: bool = False,
     hdr: bool = True,
 ) -> Path:
     """Create title video using Taichi GPU rendering."""
     cfg = config or TaichiTitleConfig()
+    cfg.hdr = hdr
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     renderer = TaichiTitleRenderer(cfg)
 
-    # Encoder args from single source of truth (encoding.py)
     encoder_args = _get_gpu_encoder_args(hdr=hdr)
+
+    # WHY: rgb48le (16-bit) for HDR preserves full 10-bit+ precision.
+    # rgb24 (8-bit) for SDR. No zscale conversion needed — data is
+    # already in the correct color space from the source clip.
+    pix_fmt = "rgb48le" if hdr else "rgb24"
+
+    # WHY: rawvideo input needs explicit color metadata for HDR —
+    # without it, the encoder strips bt2020 tags from the output.
+    input_color_args: list[str] = []
+    if hdr:
+        input_color_args = [
+            "-color_primaries",
+            "bt2020",
+            "-color_trc",
+            "arib-std-b67",
+            "-colorspace",
+            "bt2020nc",
+        ]
 
     cmd = [
         "ffmpeg",
@@ -45,7 +98,8 @@ def create_title_video_taichi(
         "-s",
         f"{cfg.width}x{cfg.height}",
         "-pix_fmt",
-        "rgb24",
+        pix_fmt,
+        *input_color_args,
         "-r",
         str(cfg.fps),
         "-i",
@@ -70,26 +124,27 @@ def create_title_video_taichi(
 
     process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    # Fade FROM white at the start (only for intro title, not month dividers)
     fade_in_frames = int(0.8 * cfg.fps) if fade_from_white else 0
-    # WHY: reusable blend buffer avoids 50MB of temporaries per fade frame at 4K
-    blend_buffer = np.zeros((cfg.height, cfg.width, 3), dtype=np.uint8) if fade_from_white else None
+    # Fade TO white in last 1.5 seconds (for ending screens)
+    fade_out_frames = int(1.5 * cfg.fps) if fade_to_white else 0
+    fade_out_start = renderer.total_frames - fade_out_frames
 
-    with contextlib.suppress(BrokenPipeError):  # FFmpeg closed pipe early — check returncode below
+    white_val = 65535 if hdr else 255
+    blend_dtype = np.uint16 if hdr else np.uint8
+    blend_buffer = (
+        np.zeros((cfg.height, cfg.width, 3), dtype=blend_dtype)
+        if (fade_from_white or fade_to_white)
+        else None
+    )
+
+    with contextlib.suppress(BrokenPipeError):
         for frame_num in range(renderer.total_frames):
             frame = renderer.render_frame(frame_num, title, subtitle)
-
-            if fade_from_white and frame_num < fade_in_frames:
-                fade_in_progress = frame_num / fade_in_frames
-                alpha = 1.0 - (1.0 - fade_in_progress) ** 2
-                # In-place blend: blend_buffer = white*(1-alpha) + frame*alpha
-                assert blend_buffer is not None
-                np.multiply(255 * (1 - alpha), 1.0, out=blend_buffer, casting="unsafe")
-                np.add(blend_buffer, frame * alpha, out=blend_buffer, casting="unsafe")
-                # WHY: write buffer directly — .tobytes() would copy 25MB per frame
-                process.stdin.write(blend_buffer.data)  # type: ignore[union-attr]
-            else:
-                process.stdin.write(frame.data)  # type: ignore[union-attr]
+            out = _apply_fade_from_white(frame, frame_num, fade_in_frames, white_val, blend_buffer)
+            out = _apply_fade_to_white(
+                out, frame_num, fade_out_start, fade_out_frames, white_val, blend_buffer
+            )
+            process.stdin.write(out.data)  # type: ignore[union-attr]
 
         process.stdin.close()
 

@@ -56,6 +56,7 @@ class BackgroundType(Enum):
     RADIAL_GRADIENT = "radial_gradient"
     VIGNETTE = "vignette"
     SOLID = "solid"
+    CONTENT_BACKED = "content_backed"
 
 
 @dataclass
@@ -314,6 +315,15 @@ def create_soft_gradient(
     return base
 
 
+def _is_dark_palette(colors: list[str]) -> bool:
+    """Check if colors are dark (average luminance below 50%)."""
+    total = 0.0
+    for c in colors:
+        r, g, b = hex_to_rgb(c)
+        total += (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+    return (total / max(len(colors), 1)) < 0.5
+
+
 def create_background_for_style(
     width: int,
     height: int,
@@ -351,9 +361,9 @@ def create_background_for_style(
         return create_radial_gradient(width, height, colors[0], colors[1])
 
     elif background_type in ("vignette", BackgroundType.VIGNETTE.value):
-        # Vignette should fade to WHITE at edges (not dark) for a bright, clean look
-        # Use the center color as the main background, fade edges to white
-        return create_vignette_background(width, height, colors[0], "#FFFFFF", strength=0.3)
+        # WHY: dark backgrounds should vignette to black, light to white
+        edge_color = "#000000" if _is_dark_palette(colors) else "#FFFFFF"
+        return create_vignette_background(width, height, colors[0], edge_color, strength=0.3)
 
     # Default to soft gradient
     return create_soft_gradient(width, height, colors)

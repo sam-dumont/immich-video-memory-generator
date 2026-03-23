@@ -11,7 +11,7 @@ because Taichi kernels require actual type objects, not string annotations.
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -61,8 +61,8 @@ class TaichiTitleConfig:
     fps: float = 30.0
     duration: float = 3.5
 
-    bg_color1: str = "#FFF5E6"
-    bg_color2: str = "#FFE4CC"
+    bg_color1: str = "#1A1A2E"
+    bg_color2: str = "#16213E"
     gradient_angle: float = 135.0
     gradient_type: str = "linear"
 
@@ -82,7 +82,7 @@ class TaichiTitleConfig:
     enable_bokeh: bool = True
     bokeh_count: int = 15  # Moderate number of circles
     bokeh_size_range: tuple[float, float] = (0.12, 0.28)  # Large soft circles
-    bokeh_opacity_range: tuple[float, float] = (0.15, 0.30)  # Visible but soft
+    bokeh_opacity_range: tuple[float, float] = (0.05, 0.15)  # Subtle on dark backgrounds
     bokeh_drift_speed: float = 0.3
     bokeh_color: tuple[float, float, float] = (1.0, 0.98, 0.92)  # Warm white glow
 
@@ -100,14 +100,14 @@ class TaichiTitleConfig:
 
     blur_radius: int = 20
 
-    text_color: str = "#2D2D2D"
-    title_size_ratio: float = 0.10
+    text_color: str = "#FFFFFF"
+    title_size_ratio: float = 0.12
     subtitle_size_ratio: float = 0.06
-    font_family: str = "Helvetica"  # Font family for SDF rendering
-    use_sdf_text: bool = True  # Use GPU SDF text (vs PIL fallback)
-    enable_shadow: bool = True
-    shadow_offset_ratio: float = 0.03
-    shadow_opacity: float = 0.2
+    font_family: str = "Montserrat"
+    use_sdf_text: bool = False  # PIL text = pixel-sharp (matches map titles)
+    enable_shadow: bool = False
+    shadow_offset_ratio: float = 0.004  # Only used if shadow re-enabled
+    shadow_opacity: float = 0.35
 
     fade_in_duration: float = 0.6
     fade_out_duration: float = 1.0
@@ -118,6 +118,16 @@ class TaichiTitleConfig:
     # Custom background image (numpy float32 array, overrides gradient)
     # Used for map frames -- the map is rendered once, then used as static background
     background_image: np.ndarray | None = None
+
+    # Per-frame background reader for slow-motion content-backed titles.
+    # When set, read_frame() is called each frame instead of using static background_image.
+    background_reader: Any | None = None
+
+    # HDR output: when True, renderer outputs uint16 (65535 scale) instead of uint8
+    hdr: bool = False
+
+    # Reverse blur: for ending screens — blur increases instead of decreasing
+    reverse_blur: bool = False
 
     _bokeh_particles: np.ndarray = field(default_factory=lambda: np.array([]))
     _bokeh_seed: int = 42
@@ -217,9 +227,10 @@ class TaichiTitleRenderer:
         self.frame_buffer = np.zeros((h, w, 3), dtype=np.float32)
         self.temp_buffer = np.zeros((h, w, 3), dtype=np.float32)
         self.bokeh_buffer = np.zeros((h, w, 4), dtype=np.float32)
-        # WHY: reusable output buffer avoids allocating 25MB per frame at 4K.
-        # render_frame() converts float32→uint8 in-place into this buffer.
-        self._output_buffer = np.zeros((h, w, 3), dtype=np.uint8)
+        # WHY: reusable output buffer avoids allocating per frame at 4K.
+        # render_frame() converts float32→uint8/uint16 in-place into this buffer.
+        out_dtype = np.uint16 if self.config.hdr else np.uint8
+        self._output_buffer = np.zeros((h, w, 3), dtype=out_dtype)
 
         self.blur_kernel = _create_gaussian_kernel(self.config.blur_radius)
 
@@ -282,14 +293,26 @@ class TaichiTitleRenderer:
         progress = frame_number / self.total_frames
         cfg = self.config
 
-        # 1. Generate background (custom image or gradient)
-        if cfg.background_image is not None:
+        # 1. Generate background (slow-mo video > static image > gradient)
+        has_animated_bg = False
+        if cfg.background_reader is not None:
+            bg_frame = cfg.background_reader.read_frame()
+            if bg_frame is not None:
+                np.copyto(self.frame_buffer, bg_frame)
+                has_animated_bg = True
+            elif cfg.background_image is not None:
+                np.copyto(self.frame_buffer, cfg.background_image)
+            else:
+                self._render_gradient(t, progress, cfg)
+        elif cfg.background_image is not None:
             np.copyto(self.frame_buffer, cfg.background_image)
         else:
             self._render_gradient(t, progress, cfg)
 
-        # 2. Apply blur
-        if cfg.blur_radius > 0:
+        # 2. Apply blur — animated deblur for slow-mo backgrounds
+        if has_animated_bg:
+            self._apply_animated_deblur(progress, cfg)
+        elif cfg.blur_radius > 0:
             taichi_kernels._gaussian_blur_h(
                 self.frame_buffer, self.temp_buffer, self.blur_kernel, cfg.blur_radius
             )
@@ -297,10 +320,11 @@ class TaichiTitleRenderer:
                 self.temp_buffer, self.frame_buffer, self.blur_kernel, cfg.blur_radius
             )
 
-        # 3. Color pulsing
-        brightness_delta = cfg.color_pulse_amount * math.sin(progress * 2 * math.pi)
-        saturation_mult = 1.0 + 0.05 * math.sin(progress * 2 * math.pi + math.pi / 2)
-        taichi_kernels._apply_color_pulse(self.frame_buffer, brightness_delta, saturation_mult)
+        # 3. Color pulsing (only for non-animated backgrounds)
+        if not has_animated_bg:
+            brightness_delta = cfg.color_pulse_amount * math.sin(progress * 2 * math.pi)
+            saturation_mult = 1.0 + 0.05 * math.sin(progress * 2 * math.pi + math.pi / 2)
+            taichi_kernels._apply_color_pulse(self.frame_buffer, brightness_delta, saturation_mult)
 
         # 4. Vignette
         vignette_strength = cfg.vignette_strength + cfg.vignette_pulse * math.sin(
@@ -323,10 +347,61 @@ class TaichiTitleRenderer:
 
         # WHY: in-place conversion avoids 3 temporary arrays per frame (75MB at 4K).
         # np.clip + multiply + astype each allocate a full copy.
+        max_val = 65535.0 if cfg.hdr else 255.0
         np.clip(self.frame_buffer, 0, 1, out=self.frame_buffer)
-        np.multiply(self.frame_buffer, 255, out=self.frame_buffer)
-        self._output_buffer[:] = self.frame_buffer  # float32→uint8 copy into reused buffer
+        np.multiply(self.frame_buffer, max_val, out=self.frame_buffer)
+        self._output_buffer[:] = self.frame_buffer  # float32→uint8/uint16 into reused buffer
         return self._output_buffer
+
+    def _apply_animated_deblur(self, progress: float, cfg: TaichiTitleConfig) -> None:
+        """Apply animated blur transition.
+
+        Intro (reverse_blur=False): full blur → sharp reveal in last 1s
+        Ending (reverse_blur=True): sharp → full blur in first 1s, then fade to white
+
+        Uses fixed blur kernel + float cross-fade between blurred and sharp
+        versions. No per-frame kernel recreation = no flicker or pops.
+        """
+        transition_duration = 1.0
+        if cfg.reverse_blur:
+            # Ending: sharp at start → blur after 1s
+            transition_end = transition_duration / cfg.duration
+            if progress > transition_end:
+                blur_mix = 1.0  # fully blurred
+            else:
+                t = progress / transition_end
+                blur_mix = 3 * t * t - 2 * t * t * t  # ease-in-out cubic
+        else:
+            # Intro: blur → sharp reveal in last 1s
+            deblur_start = 1.0 - (transition_duration / cfg.duration)
+            if progress < deblur_start:
+                blur_mix = 1.0
+            else:
+                t = (progress - deblur_start) / (1.0 - deblur_start)
+                blur_mix = 1.0 - (3 * t * t - 2 * t * t * t)
+
+        if blur_mix < 1.0:
+            if not hasattr(self, "_sharp_buffer"):
+                self._sharp_buffer = np.zeros_like(self.frame_buffer)
+            np.copyto(self._sharp_buffer, self.frame_buffer)
+
+        taichi_kernels._gaussian_blur_h(
+            self.frame_buffer, self.temp_buffer, self.blur_kernel, cfg.blur_radius
+        )
+        taichi_kernels._gaussian_blur_v(
+            self.temp_buffer, self.frame_buffer, self.blur_kernel, cfg.blur_radius
+        )
+
+        if blur_mix < 1.0:
+            np.multiply(self.frame_buffer, blur_mix, out=self.frame_buffer)
+            np.add(
+                self.frame_buffer,
+                self._sharp_buffer * (1.0 - blur_mix),
+                out=self.frame_buffer,
+            )
+
+        brightness_delta = -0.15 * blur_mix
+        taichi_kernels._apply_color_pulse(self.frame_buffer, brightness_delta, 1.0)
 
     def _render_gradient(self, t: float, progress: float, cfg: TaichiTitleConfig):
         """Render the background gradient."""
@@ -401,8 +476,12 @@ class TaichiTitleRenderer:
     ):
         """Render title and subtitle text onto the frame."""
         title_anim = self._compute_animation(t, progress, is_subtitle=False)
-        title_size = int(cfg.height * cfg.title_size_ratio)
-        subtitle_size = int(cfg.height * cfg.subtitle_size_ratio)
+        # WHY: base size on min(w,h) so portrait text isn't giant.
+        # Same approach as map titles (rendering_service.py:180).
+        base = min(cfg.width, cfg.height)
+        ratio = cfg.title_size_ratio * 0.65 if subtitle else cfg.title_size_ratio
+        title_size = int(base * ratio)
+        subtitle_size = int(base * cfg.subtitle_size_ratio)
 
         if self._use_sdf:
             self._render_text_sdf(
@@ -443,7 +522,7 @@ class TaichiTitleRenderer:
         )
         if subtitle:
             subtitle_anim = self._compute_animation(t, progress, is_subtitle=True)
-            subtitle_y_offset = subtitle_anim["y_offset"] + title_size * 0.8
+            subtitle_y_offset = subtitle_anim["y_offset"] + title_size * 1.3
             self._render_sdf_text_direct(
                 subtitle,
                 subtitle_size,
@@ -491,12 +570,15 @@ class TaichiTitleRenderer:
 
         if self._subtitle_layer is not None:
             subtitle_anim = self._compute_animation(t, progress, is_subtitle=True)
+            base = min(cfg.width, cfg.height)
+            ratio = cfg.title_size_ratio * 0.65 if subtitle else cfg.title_size_ratio
+            pil_title_size = int(base * ratio)
             taichi_kernels._composite_text_with_offset(
                 self.frame_buffer,
                 self._subtitle_layer,
                 self.temp_buffer,
                 subtitle_anim["opacity"],
-                subtitle_anim["y_offset"],
+                subtitle_anim["y_offset"] + pil_title_size * 1.3,
                 subtitle_anim["x_offset"],
             )
             np.copyto(self.frame_buffer, self.temp_buffer)
@@ -845,8 +927,10 @@ class TaichiTitleRenderer:
         if self._cached_text == (title, subtitle):
             return
 
-        title_size = int(self.config.height * self.config.title_size_ratio)
-        subtitle_size = int(self.config.height * self.config.subtitle_size_ratio)
+        base = min(self.config.width, self.config.height)
+        ratio = self.config.title_size_ratio * 0.65 if subtitle else self.config.title_size_ratio
+        title_size = int(base * ratio)
+        subtitle_size = int(base * self.config.subtitle_size_ratio)
 
         tr, tg, tb = self.text_rgb
         text_rgba = (int(tr * 255), int(tg * 255), int(tb * 255), 255)

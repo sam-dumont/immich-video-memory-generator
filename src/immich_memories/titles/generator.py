@@ -44,7 +44,7 @@ class TitleScreenConfig:
     # Timing
     title_duration: float = 3.5  # seconds
     month_divider_duration: float = 2.0
-    ending_duration: float = 7.0
+    ending_duration: float = 4.0
     animation_duration: float = 0.5
 
     # Localization
@@ -55,11 +55,11 @@ class TitleScreenConfig:
     animated_background: bool = True  # Enable animated backgrounds by default
 
     # Decorative elements
-    show_decorative_lines: bool = True
+    show_decorative_lines: bool = False
 
     # Color preferences
-    avoid_dark_colors: bool = True
-    minimum_brightness: int = 100
+    avoid_dark_colors: bool = False
+    minimum_brightness: int = 0
 
     # Performance
     use_image_rendering: bool = True
@@ -167,6 +167,7 @@ class TitleScreenGenerator:
         person_name: str | None = None,
         birthday_age: int | None = None,
         selection_type: SelectionType | None = None,
+        content_clip_path: Path | None = None,
     ) -> GeneratedScreen:
         """Generate the opening title screen."""
         if selection_type is None:
@@ -211,6 +212,12 @@ class TitleScreenGenerator:
         width, height = self.config.output_resolution
         output_path = self.output_dir / "title_screen.mp4"
 
+        # Pass clip path for slow-mo content-backed background
+        clip_for_bg = None
+        if content_clip_path and self.style.background_type == "content_backed":
+            clip_for_bg = content_clip_path
+            logger.info(f"Using slow-mo content background from {content_clip_path.name}")
+
         self._rendering.create_title_video(
             title=title_info.main_title,
             subtitle=title_info.subtitle,
@@ -222,6 +229,7 @@ class TitleScreenGenerator:
             fps=self.config.fps,
             animated_background=self.config.animated_background,
             fade_from_white=True,
+            content_clip_path=clip_for_bg,
         )
 
         renderer_type = "GPU (Taichi)" if self._rendering.use_gpu else "CPU (PIL)"
@@ -305,8 +313,8 @@ class TitleScreenGenerator:
         divider_style = TitleStyle(
             name=f"{self.style.name}_divider",
             font_family=self.style.font_family,
-            font_weight="light",
-            title_size_ratio=0.08,
+            font_weight="medium",
+            title_size_ratio=0.10,
             text_color=self.style.text_color,
             background_type=self.style.background_type,
             background_colors=self.style.background_colors,
@@ -384,23 +392,41 @@ class TitleScreenGenerator:
         self,
         video_clips: list[Path] | None = None,
         _dominant_color: tuple[int, int, int] | None = None,
+        content_clip_path: Path | None = None,
     ) -> GeneratedScreen:
-        """Generate the ending screen with fade to white."""
-        fade_to_color = (255, 255, 255)
+        """Generate the ending screen — reverse slow-mo blur + fade to white."""
         output_path = self.output_dir / "ending_screen.mp4"
         width, height = self.config.output_resolution
 
-        self._ending.create_ending_video(
-            output_path=output_path,
-            fade_to_color=fade_to_color,
-            width=width,
-            height=height,
-            duration=self.config.ending_duration,
-            fps=self.config.fps,
-            hdr=self.config.hdr,
-        )
+        if content_clip_path and self.style.background_type == "content_backed":
+            # Reverse slow-mo: sharp→blur, then fade to white
+            logger.info(f"Using reverse slow-mo ending from {content_clip_path.name}")
+            self._rendering.create_title_video(
+                title="",
+                subtitle=None,
+                style=self.style,
+                output_path=output_path,
+                width=width,
+                height=height,
+                duration=self.config.ending_duration,
+                fps=self.config.fps,
+                animated_background=False,
+                fade_to_white=True,
+                content_clip_path=content_clip_path,
+                is_ending=True,
+            )
+        else:
+            self._ending.create_ending_video(
+                output_path=output_path,
+                fade_to_color=(255, 255, 255),
+                width=width,
+                height=height,
+                duration=self.config.ending_duration,
+                fps=self.config.fps,
+                hdr=self.config.hdr,
+            )
 
-        logger.info("Generated ending screen with fade to white")
+        logger.info("Generated ending screen")
 
         return GeneratedScreen(
             path=output_path,

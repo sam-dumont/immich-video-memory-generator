@@ -67,8 +67,10 @@ class FrameDecoder:
         output_pix_fmt: str = "",
         scale_mode: str = "black",
         sdr_to_hdr_filter: str = "",
+        input_seek: float = 0.0,
     ) -> None:
         self._clip_path = clip_path
+        self._input_seek = input_seek
         self._width = width
         self._height = height
         self._fps = fps
@@ -97,9 +99,9 @@ class FrameDecoder:
         elif self._rotation == 270:
             parts.append("transpose=2")
 
-        # Privacy blur
+        # WHY: privacy blur scales with resolution so faces stay unidentifiable
         if self._privacy_blur:
-            parts.append("gblur=sigma=80")
+            parts.append(f"gblur=sigma={int(self._height * 0.075)}")
 
         # PTS reset — critical for multi-clip concat
         parts.append("setpts=PTS-STARTPTS")
@@ -151,8 +153,10 @@ class FrameDecoder:
         else:
             filter_args = ["-vf", vf]
 
+        seek_args = ["-ss", str(self._input_seek)] if self._input_seek > 0 else []
         cmd = [
             "ffmpeg",
+            *seek_args,
             "-i",
             str(self._clip_path),
             "-f",
@@ -166,6 +170,7 @@ class FrameDecoder:
             str(self._fps),
             "pipe:1",
         ]
+        logger.debug(f"FrameDecoder cmd: {' '.join(cmd)}")
         proc = subprocess.Popen(  # noqa: S603, S607
             cmd,
             stdout=subprocess.PIPE,
@@ -347,10 +352,27 @@ def _match_blend_bufs(
     (title screens, FFmpeg filter fallback on Linux) may decode as 3D RGB.
     """
     black = np.zeros_like(ref)
+    # WHY: in YUV, all-zeros = GREEN (U=0, V=0 = green chroma).
+    # For flat uint16 arrays (yuv420p10le), set chroma planes to 512.
+    if ref.ndim == 1 and ref.dtype == np.uint16:
+        # Y plane occupies first 2/3 of the flat array, U+V the last 1/3
+        y_size = len(ref) * 2 // 3
+        black[y_size:] = 512
     if blend_buf.shape != ref.shape or blend_buf.dtype != ref.dtype:
         blend_buf = np.zeros_like(ref)
         temp_buf = np.zeros_like(ref)
     return black, blend_buf, temp_buf
+
+
+def _hold_or_fallback(
+    frame: np.ndarray | None,
+    last: np.ndarray | None,
+    black: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Return frame (or held last frame) and update last-seen cache."""
+    if frame is not None:
+        return frame, frame
+    return (last if last is not None else black), last
 
 
 def _emit_crossfade(
@@ -365,6 +387,8 @@ def _emit_crossfade(
 ) -> None:
     """Blend fade_frames from two iterators and write to encoder."""
     black: np.ndarray | None = None
+    last_a: np.ndarray | None = None
+    last_b: np.ndarray | None = None
     for fade_idx in range(fade_frames):
         frame_a = next(active_iter, None)
         frame_b = next(next_iter, None)
@@ -377,10 +401,8 @@ def _emit_crossfade(
             assert ref is not None  # noqa: S101
             black, blend_buf, temp_buf = _match_blend_bufs(ref, blend_buf, temp_buf)
 
-        if frame_a is None:
-            frame_a = black
-        if frame_b is None:
-            frame_b = black
+        frame_a, last_a = _hold_or_fallback(frame_a, last_a, black)
+        frame_b, last_b = _hold_or_fallback(frame_b, last_b, black)
 
         alpha = (fade_idx + 1) / fade_frames
         blend_crossfade(frame_a, frame_b, alpha, out=blend_buf, temp=temp_buf)
@@ -421,7 +443,13 @@ def _resolve_clip_hdr(
     sdr_to_hdr_filter = ""
     if hdr_type and not clip_is_hdr:
         trc = "arib-std-b67" if hdr_type == "hlg" else "smpte2084"
+        # WHY: format=yuv420p normalizes yuvj444p (full range, 4:4:4) to
+        # yuv420p (TV range, 4:2:0) BEFORE the zscale HDR conversion.
+        # Without this, different SDR formats (yuvj444p from live merges
+        # vs yuv420p from regular clips) produce different chroma values
+        # after conversion → green flash during crossfade.
         sdr_to_hdr_filter = (
+            "format=yuv420p,"
             f"zscale=t={trc}:tin=iec61966-2-1"
             ":p=bt2020:pin=bt709"
             ":m=bt2020nc:min=bt709"
@@ -451,10 +479,23 @@ def _make_decoder(
     if rotation_override is not None and rotation_override != 0:
         rotation = rotation_override
 
-    hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, _ = _resolve_clip_hdr(
-        clip_idx, ctx, hdr_type
-    )
+    # WHY: title screens are already encoded with the correct HDR settings
+    # by the title generator. Skip per-clip HDR detection which can fail
+    # when the context was rebuilt from the extended clip list (shifted indices).
+    if is_title and hdr_type:
+        hdr_conversion = ""
+        colorspace_filter = ""
+        output_pix_fmt = ""
+        sdr_to_hdr_filter = ""
+    else:
+        hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, _ = _resolve_clip_hdr(
+            clip_idx, ctx, hdr_type
+        )
     pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
+    logger.info(
+        f"Decoder[{clip_idx}] pix={pix_fmt} title={is_title} hdr_type={hdr_type} "
+        f"sdr2hdr={bool(sdr_to_hdr_filter)} {clip.path.name}"
+    )
 
     return FrameDecoder(
         clip_path=clip.path,
@@ -469,6 +510,7 @@ def _make_decoder(
         output_pix_fmt=output_pix_fmt,
         scale_mode=scale_mode,
         sdr_to_hdr_filter=sdr_to_hdr_filter,
+        input_seek=getattr(clip, "input_seek", 0.0),
     )
 
 

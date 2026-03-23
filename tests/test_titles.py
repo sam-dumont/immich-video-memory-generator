@@ -54,9 +54,9 @@ class TestTitleStyle:
         """Test default style values."""
         style = TitleStyle(name="test")
         assert style.name == "test"
-        assert style.font_family == "Outfit"
-        assert style.font_weight == "medium"
-        assert style.title_size_ratio == 0.1
+        assert style.font_family == "Montserrat"
+        assert style.font_weight == "semibold"
+        assert style.title_size_ratio == 0.14
 
     def test_preset_styles_exist(self):
         """Test that preset styles are defined."""
@@ -263,7 +263,7 @@ class TestTitleScreenConfig:
         assert config.enabled
         assert config.title_duration == 3.5
         assert config.month_divider_duration == 2.0
-        assert config.ending_duration == 7.0
+        assert config.ending_duration == 4.0
         assert config.locale == "en"
         assert config.orientation == "landscape"
         assert config.resolution == "1080p"

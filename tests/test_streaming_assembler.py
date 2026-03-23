@@ -554,7 +554,8 @@ class TestFrameDecoderFilterChain:
             Path("/fake.mp4"), width=1920, height=1080, fps=30, privacy_blur=True
         )
         vf = decoder._build_vf()
-        assert "gblur=sigma=80" in vf
+        # 1080 * 0.075 = 81
+        assert "gblur=sigma=81" in vf
 
     def test_hdr_not_in_decoder(self) -> None:
         """HDR conversion must NOT be in the decoder — it happens on the encoder side.
@@ -680,7 +681,7 @@ class TestMakeDecoderIntegration:
         decoder = _make_decoder(clip, 0, 1920, 1080, 30, privacy_mode=True)
 
         assert decoder._privacy_blur is True
-        assert "gblur=sigma=80" in decoder._build_vf()
+        assert "gblur=sigma=81" in decoder._build_vf()
 
     def test_privacy_mode_not_applied_to_title_screen(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
