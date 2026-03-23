@@ -30,6 +30,8 @@ pytestmark = pytest.mark.skipif(not _has_ffmpeg(), reason="FFmpeg not available"
 
 @pytest.fixture
 def landscape_clip(tmp_path: Path) -> Path:
+    # WHY: testsrc2 generates a moving test pattern (not solid color)
+    # so frame interpolation tests can detect actual differences
     path = tmp_path / "landscape.mp4"
     subprocess.run(
         [
@@ -37,7 +39,7 @@ def landscape_clip(tmp_path: Path) -> Path:
             "-f",
             "lavfi",
             "-i",
-            "color=c=green:size=320x240:duration=2:rate=30",
+            "testsrc2=size=320x240:duration=2:rate=30",
             "-c:v",
             "libx264",
             "-pix_fmt",
@@ -130,24 +132,29 @@ class TestSlowmoInterpolation:
         reader.close()
         assert count == 105, f"Expected 105 frames (3.5s * 30fps), got {count}"
 
-    def test_no_duplicate_adjacent_frames(self, landscape_clip: Path):
+    def test_no_duplicate_frames_in_fast_section(self, landscape_clip: Path):
+        """Last 20 frames (fast section of ease-in) should all be unique."""
         from immich_memories.titles.content_background import SlowmoBackgroundReader
 
         reader = SlowmoBackgroundReader(landscape_clip, 160, 120, 30, 3.5)
         if not reader.is_active:
             pytest.skip("Could not create reader")
 
-        prev = None
-        duplicates = 0
-        for _ in range(20):
-            frame = reader.read_frame()
-            if frame is None:
+        # WHY: cubic ease-in makes first frames nearly identical (very slow).
+        # Check the LAST 20 frames where speed is near real-time.
+        frames = []
+        for _ in range(105):
+            f = reader.read_frame()
+            if f is None:
                 break
-            if prev is not None and (frame == prev).all():
-                duplicates += 1
-            prev = frame.copy()
+            frames.append(f.copy())
         reader.close()
-        assert duplicates == 0, f"{duplicates} duplicate frames — interpolation broken"
+
+        duplicates = 0
+        for i in range(max(0, len(frames) - 20), len(frames) - 1):
+            if (frames[i] == frames[i + 1]).all():
+                duplicates += 1
+        assert duplicates == 0, f"{duplicates} duplicate frames in fast section"
 
     def test_frame_values_in_range(self, landscape_clip: Path):
         from immich_memories.titles.content_background import SlowmoBackgroundReader

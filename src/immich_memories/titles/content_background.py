@@ -240,10 +240,13 @@ class SlowmoBackgroundReader:
         if self._output_index >= self._total_output_frames:
             return None
 
-        # Map output position to source position
+        # WHY: ease-in cubic maps output time to source time with acceleration.
+        # Starts very slow (dreamy slow-mo), ends near real-time speed so the
+        # hard cut to the clip doesn't "jump" from slow to fast.
         n_src = len(self._source_frames)
         progress = self._output_index / max(1, self._total_output_frames - 1)
-        src_pos = progress * (n_src - 1)
+        eased = progress * progress * progress  # cubic ease-in
+        src_pos = eased * (n_src - 1)
 
         idx = min(int(src_pos), n_src - 2)
         t = src_pos - idx  # fractional position [0, 1)

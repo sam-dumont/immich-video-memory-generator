@@ -23,7 +23,7 @@ class TitleStyle:
     font_family: str = "Montserrat"
     font_weight: Literal["light", "regular", "medium", "semibold"] = "semibold"
     title_size_ratio: float = 0.14  # Relative to screen height (0.08 - 0.15)
-    subtitle_size_ratio: float = 0.6  # Relative to title size (0.5 - 0.7)
+    subtitle_size_ratio: float = 0.75  # Relative to title size
     letter_spacing: float = 0.02  # em units (-0.02 to 0.1)
     text_transform: Literal["none", "uppercase", "capitalize"] = "none"
 

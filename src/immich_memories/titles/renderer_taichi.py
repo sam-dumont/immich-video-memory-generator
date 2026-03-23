@@ -522,7 +522,7 @@ class TaichiTitleRenderer:
         )
         if subtitle:
             subtitle_anim = self._compute_animation(t, progress, is_subtitle=True)
-            subtitle_y_offset = subtitle_anim["y_offset"] + title_size * 0.8
+            subtitle_y_offset = subtitle_anim["y_offset"] + title_size * 1.3
             self._render_sdf_text_direct(
                 subtitle,
                 subtitle_size,
@@ -570,7 +570,6 @@ class TaichiTitleRenderer:
 
         if self._subtitle_layer is not None:
             subtitle_anim = self._compute_animation(t, progress, is_subtitle=True)
-            # WHY: offset subtitle below the title center by title_size * 0.8
             base = min(cfg.width, cfg.height)
             ratio = cfg.title_size_ratio * 0.65 if subtitle else cfg.title_size_ratio
             pil_title_size = int(base * ratio)
@@ -579,7 +578,7 @@ class TaichiTitleRenderer:
                 self._subtitle_layer,
                 self.temp_buffer,
                 subtitle_anim["opacity"],
-                subtitle_anim["y_offset"] + pil_title_size * 0.8,
+                subtitle_anim["y_offset"] + pil_title_size * 1.3,
                 subtitle_anim["x_offset"],
             )
             np.copyto(self.frame_buffer, self.temp_buffer)
