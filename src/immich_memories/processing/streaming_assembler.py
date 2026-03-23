@@ -435,13 +435,16 @@ def _resolve_clip_hdr(
     sdr_to_hdr_filter = ""
     if hdr_type and not clip_is_hdr:
         trc = "arib-std-b67" if hdr_type == "hlg" else "smpte2084"
-        # WHY: rin=full handles yuvj444p (full range) live photo merges.
-        # Without it, zscale assumes TV range (16-235) → green tint.
+        # WHY: format=yuv420p normalizes yuvj444p (full range, 4:4:4) to
+        # yuv420p (TV range, 4:2:0) BEFORE the zscale HDR conversion.
+        # Without this, different SDR formats (yuvj444p from live merges
+        # vs yuv420p from regular clips) produce different chroma values
+        # after conversion → green flash during crossfade.
         sdr_to_hdr_filter = (
+            "format=yuv420p,"
             f"zscale=t={trc}:tin=iec61966-2-1"
             ":p=bt2020:pin=bt709"
             ":m=bt2020nc:min=bt709"
-            ":rin=full:r=tv"
             ":npl=203"
             ",format=yuv420p10le"
         )
