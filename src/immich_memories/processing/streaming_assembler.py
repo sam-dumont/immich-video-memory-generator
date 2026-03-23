@@ -352,10 +352,27 @@ def _match_blend_bufs(
     (title screens, FFmpeg filter fallback on Linux) may decode as 3D RGB.
     """
     black = np.zeros_like(ref)
+    # WHY: in YUV, all-zeros = GREEN (U=0, V=0 = green chroma).
+    # For flat uint16 arrays (yuv420p10le), set chroma planes to 512.
+    if ref.ndim == 1 and ref.dtype == np.uint16:
+        # Y plane occupies first 2/3 of the flat array, U+V the last 1/3
+        y_size = len(ref) * 2 // 3
+        black[y_size:] = 512
     if blend_buf.shape != ref.shape or blend_buf.dtype != ref.dtype:
         blend_buf = np.zeros_like(ref)
         temp_buf = np.zeros_like(ref)
     return black, blend_buf, temp_buf
+
+
+def _hold_or_fallback(
+    frame: np.ndarray | None,
+    last: np.ndarray | None,
+    black: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Return frame (or held last frame) and update last-seen cache."""
+    if frame is not None:
+        return frame, frame
+    return (last if last is not None else black), last
 
 
 def _emit_crossfade(
@@ -384,14 +401,8 @@ def _emit_crossfade(
             assert ref is not None  # noqa: S101
             black, blend_buf, temp_buf = _match_blend_bufs(ref, blend_buf, temp_buf)
 
-        if frame_a is not None:
-            last_a = frame_a
-        else:
-            frame_a = last_a if last_a is not None else black
-        if frame_b is not None:
-            last_b = frame_b
-        else:
-            frame_b = last_b if last_b is not None else black
+        frame_a, last_a = _hold_or_fallback(frame_a, last_a, black)
+        frame_b, last_b = _hold_or_fallback(frame_b, last_b, black)
 
         alpha = (fade_idx + 1) / fade_frames
         blend_crossfade(frame_a, frame_b, alpha, out=blend_buf, temp=temp_buf)
