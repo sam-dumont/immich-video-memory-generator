@@ -570,12 +570,16 @@ class TaichiTitleRenderer:
 
         if self._subtitle_layer is not None:
             subtitle_anim = self._compute_animation(t, progress, is_subtitle=True)
+            # WHY: offset subtitle below the title center by title_size * 0.8
+            base = min(cfg.width, cfg.height)
+            ratio = cfg.title_size_ratio * 0.65 if subtitle else cfg.title_size_ratio
+            pil_title_size = int(base * ratio)
             taichi_kernels._composite_text_with_offset(
                 self.frame_buffer,
                 self._subtitle_layer,
                 self.temp_buffer,
                 subtitle_anim["opacity"],
-                subtitle_anim["y_offset"],
+                subtitle_anim["y_offset"] + pil_title_size * 0.8,
                 subtitle_anim["x_offset"],
             )
             np.copyto(self.frame_buffer, self.temp_buffer)

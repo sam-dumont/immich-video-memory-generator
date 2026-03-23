@@ -140,6 +140,24 @@ class TitleInserter:
             logger.warning("Failed to pre-render first clip", exc_info=True)
         return None
 
+    @staticmethod
+    def _trim_first_clip(clips: list[AssemblyClip], trim_seconds: float) -> None:
+        """Trim seconds from the start of the first clip (used in title slow-mo)."""
+        if not clips:
+            return
+        first = clips[0]
+        if first.duration > trim_seconds + 1.0:
+            clips[0] = AssemblyClip(
+                path=first.path,
+                duration=first.duration - trim_seconds,
+                date=first.date,
+                asset_id=first.asset_id,
+                input_seek=trim_seconds,
+                latitude=first.latitude,
+                longitude=first.longitude,
+                location_name=first.location_name,
+            )
+
     def _build_title_config(
         self,
         title_settings: Any,
@@ -217,12 +235,19 @@ class TitleInserter:
             hdr_type,
         )
         ending_screen = generator.generate_ending_screen(content_clip_path=ending_clip)
-        # WHY: last content clip gets hard cut → ending (no crossfade)
+        # WHY: last content clip gets hard cut → ending, and trim 0.5s from
+        # the end since those frames were used in the ending slow-mo.
+        source_seconds = 0.5
         if final_clips and not final_clips[-1].is_title_screen:
             last = final_clips[-1]
+            trim_dur = (
+                last.duration - source_seconds
+                if ending_clip and last.duration > source_seconds + 1.0
+                else last.duration
+            )
             final_clips[-1] = AssemblyClip(
                 path=last.path,
-                duration=last.duration,
+                duration=trim_dur,
                 date=last.date,
                 asset_id=last.asset_id,
                 outgoing_transition="cut",
@@ -772,6 +797,10 @@ class TitleInserter:
                 outgoing_transition="cut" if use_content_bg else None,
             )
         ]
+
+        # Trim 0.5s from first clip (used in title slow-mo)
+        if use_content_bg and content_clip:
+            self._trim_first_clip(clips, 0.5)
 
         # 2-3. Clips with dividers
         content_clips = self.select_divider_strategy(

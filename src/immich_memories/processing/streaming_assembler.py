@@ -67,8 +67,10 @@ class FrameDecoder:
         output_pix_fmt: str = "",
         scale_mode: str = "black",
         sdr_to_hdr_filter: str = "",
+        input_seek: float = 0.0,
     ) -> None:
         self._clip_path = clip_path
+        self._input_seek = input_seek
         self._width = width
         self._height = height
         self._fps = fps
@@ -151,8 +153,10 @@ class FrameDecoder:
         else:
             filter_args = ["-vf", vf]
 
+        seek_args = ["-ss", str(self._input_seek)] if self._input_seek > 0 else []
         cmd = [
             "ffmpeg",
+            *seek_args,
             "-i",
             str(self._clip_path),
             "-f",
@@ -495,6 +499,7 @@ def _make_decoder(
         output_pix_fmt=output_pix_fmt,
         scale_mode=scale_mode,
         sdr_to_hdr_filter=sdr_to_hdr_filter,
+        input_seek=getattr(clip, "input_seek", 0.0),
     )
 
 

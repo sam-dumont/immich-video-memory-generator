@@ -165,6 +165,8 @@ class AssemblyClip:
     outgoing_transition: str | None = None
     # Photo clip flag — True when this clip was generated from a still image
     is_photo: bool = False
+    # Seek offset: skip this many seconds from the start (used for title trim)
+    input_seek: float = 0.0
 
 
 def _get_rotation_filter(rotation: int) -> str:
