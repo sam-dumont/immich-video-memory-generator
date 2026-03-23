@@ -83,10 +83,26 @@ def redact_inputs(page: Page) -> None:
         page.evaluate(
             """({sel, val}) => {
                 const el = document.querySelector(sel);
-                if (el) el.value = val;
+                if (el) {
+                    el.value = val;
+                    // Quasar wraps inputs — also set the inner control's value
+                    const native = el.closest('.q-field')?.querySelector('input');
+                    if (native && native !== el) native.value = val;
+                }
             }""",
             {"sel": selector, "val": value},
         )
+    # Catch any remaining IP:port patterns in ALL input elements
+    page.evaluate("""() => {
+        document.querySelectorAll('input').forEach(el => {
+            if (/\\d+\\.\\d+\\.\\d+\\.\\d+/.test(el.value)) {
+                el.value = el.value.replace(
+                    /https?:\\/\\/\\d+\\.\\d+\\.\\d+\\.\\d+(:\\d+)?/g,
+                    'https://photos.example.com'
+                );
+            }
+        });
+    }""")
 
 
 def redact_text_nodes(page: Page) -> None:

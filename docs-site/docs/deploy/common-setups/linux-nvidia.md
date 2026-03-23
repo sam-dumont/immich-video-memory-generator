@@ -33,12 +33,7 @@ You have a Linux server (Ubuntu, Debian, Fedora) with an NVIDIA GPU (GTX 1060 or
 └──────────────────────────────────────────────────────┘
 ```
 
-:::info Screenshot needed
-**What to capture:** Architecture diagram for Linux + NVIDIA setup
-**Viewport:** 1280x800
-**State:** Box diagram showing Docker containers with GPU passthrough
-**Target file:** `static/screenshots/setup-linux-diagram.png`
-:::
+![Linux setup diagram](/img/diagrams/setup-linux.png)
 
 ## Prerequisites
 

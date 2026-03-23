@@ -40,12 +40,7 @@ You run a Kubernetes cluster with NVIDIA GPU nodes (on-prem, cloud, or hybrid). 
     └──────────────┘
 ```
 
-:::info Screenshot needed
-**What to capture:** Architecture diagram for Kubernetes + GPU setup
-**Viewport:** 1280x800
-**State:** K8s cluster diagram with namespace, pods, PVCs, and Immich connection
-**Target file:** `static/screenshots/setup-k8s-diagram.png`
-:::
+![Kubernetes setup diagram](/img/diagrams/setup-k8s.png)
 
 ## Prerequisites
 

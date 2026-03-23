@@ -2,6 +2,8 @@
 sidebar_label: "Year in Review"
 ---
 
+import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
+
 # Year in Review
 
 The most-used memory type. Covers an entire calendar year and creates a video with monthly title dividers: a chronological highlight reel of the best moments from each month.
@@ -32,12 +34,7 @@ immich-memories generate --memory-type year_in_review --year 2025 --include-phot
 
 Select the **Year in Review** card in Step 1, pick the year from the dropdown.
 
-:::info Screenshot needed
-**What to capture:** Step 1 with Year in Review preset card selected, year picker visible
-**Viewport:** 1280x800
-**State:** Year in Review card highlighted, year dropdown showing 2025
-**Target file:** `static/screenshots/type-year-review.png`
-:::
+<ThemedScreenshot name="type-year-review" alt="Year in Review preset" />
 
 ## What makes it special
 
@@ -47,7 +44,7 @@ Select the **Year in Review** card in Step 1, pick the year from the dropdown.
 
 ## Tips
 
-- Works best with **50+ videos** spread across the year. If you only have clips from a summer trip, a [Season](./monthly-person-season.md) or [Trip](./trip-memories.md) memory will be a better fit.
+- Works best with **50+ videos** spread across the year. If you only have clips from a summer trip, a [Season](./monthly-person-season.mdx) or [Trip](./trip-memories.mdx) memory will be a better fit.
 - Enable LLM content analysis (`--analysis-depth thorough`) for smarter scoring. Without it, the pipeline uses motion, faces, favorites, and audio signals.
 - The default 10-minute duration works well for most libraries. For smaller collections (under 100 videos), try `--duration 300` for a tighter 5-minute edit.
 - Combining `--person` with Year in Review creates a "Your Year With Alice" style video: only clips containing that person, but still with monthly structure.

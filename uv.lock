@@ -1714,6 +1714,7 @@ wheels = [
 name = "immich-memories"
 source = { editable = "." }
 dependencies = [
+    { name = "apprise", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "click", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "croniter", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "geopy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
@@ -1809,13 +1810,10 @@ mac = [
     { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'" },
     { name = "pyobjc-framework-vision", marker = "sys_platform == 'darwin'" },
 ]
-notifications = [
-    { name = "apprise", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
-]
 
 [package.metadata]
 requires-dist = [
-    { name = "apprise", marker = "extra == 'notifications'", specifier = ">=1.6" },
+    { name = "apprise", specifier = ">=1.9" },
     { name = "authlib", marker = "extra == 'auth'", specifier = ">=1.3" },
     { name = "click", specifier = ">=8.1" },
     { name = "commitizen", marker = "extra == 'dev'", specifier = ">=3.0" },
@@ -1889,7 +1887,7 @@ requires-dist = [
     { name = "videohash", specifier = ">=3.0" },
     { name = "watchdog", specifier = ">=3.0" },
 ]
-provides-extras = ["all", "all-mac", "audio", "audio-ml", "auth", "demucs", "dev", "face", "gpu", "mac", "notifications"]
+provides-extras = ["all", "all-mac", "audio", "audio-ml", "auth", "demucs", "dev", "face", "gpu", "mac"]
 
 [[package]]
 name = "import-linter"
