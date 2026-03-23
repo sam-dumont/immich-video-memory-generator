@@ -2,6 +2,8 @@
 sidebar_label: "Trip Memories"
 ---
 
+import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
+
 # Trip Memories
 
 Automatically detects trips from GPS data in your photos and videos, then generates a video for each one with animated satellite maps showing your route.
@@ -42,12 +44,7 @@ immich-memories generate --memory-type trip --year 2025 --month 7
 
 Select the **Trip** memory type in Step 1. After connecting to Immich and picking a year, the UI runs trip detection and shows you the detected trips. Select one and proceed to clip review.
 
-:::info Screenshot needed
-**What to capture:** Step 1 trip detection results showing 3-4 detected trips with locations and dates
-**Viewport:** 1280x800
-**State:** Trip memory type selected, year chosen, trip list visible with map pins
-**Target file:** `static/screenshots/type-trip.png`
-:::
+<ThemedScreenshot name="type-trip" alt="Trip memory preset with detected trips" />
 
 ## What you get
 

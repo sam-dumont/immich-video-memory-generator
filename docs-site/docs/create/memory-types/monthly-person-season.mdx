@@ -2,6 +2,8 @@
 sidebar_label: "Monthly, Person & Season"
 ---
 
+import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
+
 # Monthly, Person, Season & On This Day
 
 Four memory types that share a similar structure: pick a time range, optionally filter by person, generate. They differ in scope and scoring emphasis.
@@ -18,6 +20,8 @@ Default duration: 60 seconds. The title screen shows the month and year (e.g., "
 
 **Best for:** months with 10+ videos. If you shot a lot in one month (vacation, birthday party, holiday), this gives you a tight one-minute highlight.
 
+<ThemedScreenshot name="type-monthly" alt="Monthly Highlights preset" />
+
 ## Person Spotlight
 
 A year focused on one person. Filters clips to only those containing the named person (requires face recognition enabled in Immich). Scoring weights faces higher than usual (60% face weight vs the default 30%).
@@ -30,12 +34,7 @@ Default duration: 120 seconds. Title screen shows "Your Year with Alice" as the 
 
 **Best for:** parent-child compilations, partner videos, or any relationship where you want to see just that person's moments. Needs Immich face recognition to be set up and the person tagged.
 
-:::info Screenshot needed
-**What to capture:** Step 1 with Person Spotlight selected and person name entered
-**Viewport:** 1280x800
-**State:** Person Spotlight card selected, person picker showing a name
-**Target file:** `static/screenshots/type-person.png`
-:::
+<ThemedScreenshot name="type-person" alt="Person Spotlight preset" />
 
 ## Multi-Person
 

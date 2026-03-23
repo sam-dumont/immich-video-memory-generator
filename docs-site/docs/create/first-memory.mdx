@@ -3,6 +3,8 @@ sidebar_label: "Your First Memory"
 sidebar_position: 1
 ---
 
+import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
+
 # Your First Memory
 
 This walks you through creating a video from start to finish. Takes about 15 minutes total: 5 to set up, 10 for the generation.
@@ -40,34 +42,15 @@ uvx immich-memories ui
 
 Open [http://localhost:8080](http://localhost:8080) in your browser.
 
-:::info Screenshot needed
-**What to capture:** The login/landing page with the Immich URL and API key fields visible
-**Viewport:** 1280x800
-**State:** Dark mode, empty fields, fresh install state
-**Target file:** `static/screenshots/first-login.png`
-:::
-
 ## Step 2: Connect to Immich
 
 Enter your Immich server URL and API key in the Configuration tab. Click connect. A green checkmark confirms the connection.
 
-:::info Screenshot needed
-**What to capture:** Step 1 Configuration page with Immich URL filled in and connection confirmed
-**Viewport:** 1280x800
-**State:** Green checkmark visible next to Immich URL, dark mode
-**Target file:** `static/screenshots/first-step1-connect.png`
-:::
+<ThemedScreenshot name="step1-config-connected" alt="Connected to Immich" />
 
 ## Step 3: Pick "Year in Review"
 
 Select the **Year in Review** preset card. Pick the year you want (the one with the most videos works best for a first try). This preset covers an entire calendar year and creates monthly title dividers in the output.
-
-:::info Screenshot needed
-**What to capture:** Step 1 with the Year in Review preset card highlighted/selected
-**Viewport:** 1280x800
-**State:** Year in Review card selected (blue highlight), year picker showing 2025
-**Target file:** `static/screenshots/first-step1-preset.png`
-:::
 
 ## Step 4: Review clips
 
@@ -75,12 +58,7 @@ Go to Step 2 (Clip Review). The pipeline will fetch your videos, analyze them, a
 
 Once done, you'll see a grid of clips sorted by score. The best ones are pre-selected. You can deselect clips you don't want or re-include ones the AI skipped.
 
-:::info Screenshot needed
-**What to capture:** Step 2 clip grid with 12+ clips displayed, some selected
-**Viewport:** 1280x800
-**State:** Grid view, 3+ clips selected (blue highlight), month headers visible, scores shown
-**Target file:** `static/screenshots/first-step2-clips.png`
-:::
+<ThemedScreenshot name="step2-clip-review" alt="Reviewing selected clips" />
 
 ## Step 5: Set options
 
@@ -101,25 +79,13 @@ Hit Generate in Step 4. The progress bar shows four phases:
 3. **Mixing music** (if configured)
 4. **Done**: video ready to watch
 
-:::info Screenshot needed
-**What to capture:** Step 4 mid-generation with progress bar at ~60%
-**Viewport:** 1280x800
-**State:** Progress bar visible, "Assembling final video..." status text
-**Target file:** `static/screenshots/first-step4-progress.png`
-:::
+<ThemedScreenshot name="step4-generating" alt="Generation in progress" />
 
 30 clips at 1080p takes about 8 minutes on an M2 Pro, 15 minutes on a NAS-grade Celeron. 4K roughly doubles the time.
 
 ## Step 7: Watch
 
 When it's done, the built-in video player shows your result. You can download the MP4 directly or (if configured) upload it back to an Immich album.
-
-:::info Screenshot needed
-**What to capture:** Step 4 complete state with video player showing the finished video
-**Viewport:** 1280x800
-**State:** Video player visible with play button, download button, success message
-**Target file:** `static/screenshots/first-step4-done.png`
-:::
 
 ## What just happened?
 
@@ -129,7 +95,7 @@ The analysis results are cached in a local SQLite database. Next time you genera
 
 ## Next steps
 
-- Try other memory types: [Trip Memories](./memory-types/trip-memories.md) (needs GPS data), [Person Spotlight](./memory-types/monthly-person-season.md) (needs face recognition in Immich)
+- Try other memory types: [Trip Memories](./memory-types/trip-memories.mdx) (needs GPS data), [Person Spotlight](./memory-types/monthly-person-season.mdx) (needs face recognition in Immich)
 - Set up [LLM content analysis](./pipeline/llm-content-analysis.md) for smarter clip scoring
 - Automate it: [Scheduled generation](./cli/scheduler.md) via cron
 - Explore [all CLI options](./cli/generate.md) for fine-grained control

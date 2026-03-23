@@ -30,12 +30,7 @@ You have a Mac with Apple Silicon (M1/M2/M3/M4). You want LLM-powered content an
 └───────────────────────────────────────────────────┘
 ```
 
-:::info Screenshot needed
-**What to capture:** Architecture diagram for Mac + local LLM setup
-**Viewport:** 1280x800
-**State:** Box diagram showing Mac with mlx-vlm, Immich Memories, and Immich connection
-**Target file:** `static/screenshots/setup-mac-diagram.png`
-:::
+![Mac setup diagram](/img/diagrams/setup-mac.png)
 
 ## Install
 
