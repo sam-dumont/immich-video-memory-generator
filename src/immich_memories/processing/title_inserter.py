@@ -199,16 +199,20 @@ class TitleInserter:
         from the full clip list, which shifts HDR type indices when title
         screens are inserted. By pre-deciding here, the assembler uses
         predecided_transitions directly and never rebuilds the context.
+
+        Content clips use the same SMART logic as the assembler (_pick_transition).
+        Title screens use explicit outgoing_transition or auto-fade.
         """
+        from immich_memories.processing.assembly_engine import _pick_transition
+
         transitions = []
+        consecutive_fades = 0
+        consecutive_cuts = 0
         for i in range(len(clips) - 1):
-            clip = clips[i]
-            if clip.outgoing_transition is not None:
-                transitions.append(clip.outgoing_transition)
-            elif clip.is_title_screen or clips[i + 1].is_title_screen:
-                transitions.append("fade")
-            else:
-                transitions.append("fade")  # default to fade for content clips
+            t, consecutive_fades, consecutive_cuts = _pick_transition(
+                clips[i], clips[i + 1], consecutive_fades, consecutive_cuts
+            )
+            transitions.append(t)
         return transitions
 
     def _generate_ending(
