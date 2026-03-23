@@ -765,6 +765,7 @@ class TitleInserter:
         use_content_bg = (
             getattr(title_settings, "title_background", "content_backed") == "content_backed"
         )
+        content_clip = None
         if is_trip and title_settings.trip_locations and title_settings.trip_title_text:
             title_screen = generator.generate_trip_map_screen(
                 locations=title_settings.trip_locations,
@@ -772,9 +773,9 @@ class TitleInserter:
                 home_lat=getattr(title_settings, "home_lat", None),
                 home_lon=getattr(title_settings, "home_lon", None),
             )
+            use_content_bg = False  # trip maps don't use content-backed
             logger.info(f"Generated trip map intro: {title_screen.path}")
         else:
-            content_clip = None
             if use_content_bg:
                 content_clip = self._pre_render_first_clip(
                     clips,
