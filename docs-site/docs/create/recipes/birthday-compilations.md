@@ -9,14 +9,27 @@ A birthday compilation spans from one birthday to the next: for example, Jul 21,
 
 ## CLI
 
+If Emma's birthday is set in Immich, just use the `--birthday` flag — it auto-detects:
+
 ```bash
 immich-memories generate \
   --person "Emma" \
-  --birthday 2024-07-21 \
+  --year 2024 \
+  --birthday \
   --duration 600
 ```
 
-The `--birthday` flag sets the start date. The end date is automatically one year later (minus one day).
+Or specify the date manually:
+
+```bash
+immich-memories generate \
+  --person "Emma" \
+  --year 2024 \
+  --birthday 07/21 \
+  --duration 600
+```
+
+The `--birthday` flag makes the year run from birthday to birthday (e.g., Jul 21, 2024 through Jul 20, 2025) instead of January to December.
 
 ## UI
 

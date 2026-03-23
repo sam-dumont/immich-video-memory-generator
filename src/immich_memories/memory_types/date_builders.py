@@ -107,7 +107,7 @@ def build_month(month: int, year: int) -> DateRange:
 
 def build_on_this_day(
     target_date: date,
-    years_back: int = 5,
+    years_back: int | None = None,
 ) -> list[DateRange]:
     """Build a list of +/-1 day ranges for each previous year.
 
@@ -116,17 +116,20 @@ def build_on_this_day(
 
     Args:
         target_date: The reference date (e.g., today).
-        years_back: How many years to look back. Returns empty if <= 0.
+        years_back: How many years to look back. None = all years (30-year max).
+            Explicit 0 or negative returns empty.
 
     Returns:
         List of DateRange objects, most recent year first.
     """
-    if years_back <= 0:
+    # WHY: 30-year max covers most personal photo libraries without excessive API calls
+    effective_years_back = years_back if years_back is not None else 30
+    if effective_years_back <= 0:
         return []
 
     ranges: list[DateRange] = []
 
-    for i in range(1, years_back + 1):
+    for i in range(1, effective_years_back + 1):
         past_year = target_date.year - i
 
         # Resolve the target day in the past year

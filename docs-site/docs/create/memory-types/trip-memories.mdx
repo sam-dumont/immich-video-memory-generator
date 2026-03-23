@@ -36,8 +36,11 @@ immich-memories generate --memory-type trip --year 2025 --trip-index 2
 # Generate all trips
 immich-memories generate --memory-type trip --year 2025 --all-trips
 
-# Filter by month (trips starting in July)
+# Closest trip to a month
 immich-memories generate --memory-type trip --year 2025 --month 7
+
+# Closest trip to a specific date
+immich-memories generate --memory-type trip --year 2025 --near-date 2025-07-15
 ```
 
 ## Web UI

@@ -172,9 +172,10 @@ class TestBuildOnThisDay:
         result = build_on_this_day(date(2024, 3, 12), years_back=-1)
         assert not result
 
-    def test_default_years_back_is_five(self) -> None:
+    def test_default_years_back_is_all(self) -> None:
+        """Default years_back=None means forever (30-year max)."""
         result = build_on_this_day(date(2024, 3, 12))
-        assert len(result) == 5
+        assert len(result) == 30
 
 
 class TestBuildOnThisDayFeb29:

@@ -20,8 +20,7 @@ immich-memories generate [OPTIONS]
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
 | `--year` | `-y` | int | — | Year to generate (calendar year by default) |
-| `--birthday` | `-b` | string | — | Birthday date for year calculation (use with `--year`) |
-| `--start` | — | string | — | Start date (`YYYY-MM-DD` or `DD/MM/YYYY`) |
+| `--start` | — | string | — | Start date (`YYYY-MM-DD` or `DD/MM/YYYY`). Overrides memory type date range when combined with `--end` |
 | `--end` | — | string | — | End date (use with `--start`) |
 | `--period` | — | string | — | Period from start date (e.g., `6m`, `1y`, `2w`, `30d`) |
 
@@ -31,9 +30,11 @@ immich-memories generate [OPTIONS]
 |------|-------|------|---------|-------------|
 | `--memory-type` | — | choice | — | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `trip` |
 | `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Alice" --person "Bob"`) |
+| `--birthday` | `-b` | flag/string | — | Use birthday-based year. Bare flag auto-detects from Immich; or pass `MM/DD` to override |
 | `--season` | — | choice | — | `spring`, `summer`, `fall`, `autumn`, `winter` (use with `--memory-type season`) |
-| `--month` | — | int | — | Month 1-12 (use with `--memory-type monthly_highlights`) |
+| `--month` | — | int | — | Month 1-12 (narrows any yearly memory type; selects trip by month) |
 | `--hemisphere` | — | choice | `north` | `north` or `south` (for season date calculation) |
+| `--years-back` | — | int | all | Years to look back for `on_this_day` (default: all years) |
 
 ### Output
 
@@ -89,6 +90,7 @@ immich-memories generate [OPTIONS]
 |------|-------|------|---------|-------------|
 | `--trip-index` | — | int | — | Select a specific trip by index (use with `--memory-type trip`) |
 | `--all-trips` | — | flag | — | Generate a video for every detected trip (use with `--memory-type trip`) |
+| `--near-date` | — | string | — | Select trip closest to this date (`YYYY-MM-DD`, use with `--memory-type trip`) |
 
 ## Examples
 
@@ -102,10 +104,29 @@ immich-memories generate --year 2024
 
 ### Birthday year
 
-Your kid's birthday is July 21st. Generate their "2nd year" (Jul 21 2024 to Jul 20 2025):
+Auto-detects the birthday from Immich when `--birthday` is used as a flag:
 
 ```bash
-immich-memories generate --year 2024 --birthday 07/21 --person "Emma" --duration 900
+immich-memories generate --year 2024 --birthday --person "Emma" --duration 900
+```
+
+Or specify manually: `--birthday 07/21`.
+
+### Person spotlight for a single month
+
+Narrow a person spotlight to just February:
+
+```bash
+immich-memories generate --memory-type person_spotlight --person "Alice" --year 2026 --month 2
+```
+
+### Override any preset with custom dates
+
+`--start/--end` overrides the date range for any memory type:
+
+```bash
+immich-memories generate --memory-type person_spotlight --person "Alice" \
+  --start 2025-02-01 --end 2025-03-31
 ```
 
 ### Custom date range
@@ -124,6 +145,24 @@ Six months from a start date:
 immich-memories generate --start 2024-01-01 --period 6m
 ```
 
+### On This Day — all years
+
+Look back across all years with data (not just the last 5):
+
+```bash
+immich-memories generate --memory-type on_this_day
+```
+
+Or limit to the last 3 years: `--years-back 3`.
+
+### Trip closest to a date
+
+Find and generate the trip closest to a specific date:
+
+```bash
+immich-memories generate --memory-type trip --year 2024 --near-date 2024-07-15
+```
+
 ### With photos
 
 Include photos alongside videos:
@@ -137,11 +176,13 @@ immich-memories generate --year 2024 --include-photos --photo-duration 5.0
 | Method | Flags | What you get |
 |--------|-------|-------------|
 | Calendar year | `--year 2024` | Jan 1 2024 to Dec 31 2024 |
-| Birthday year | `--year 2024 --birthday 07/21` | Jul 21 2024 to Jul 20 2025 |
+| Birthday year | `--year 2024 --birthday --person "Emma"` | Birthday to birthday (auto-detected from Immich) |
+| Single month | `--year 2024 --month 7` | Jul 1 to Jul 31 2024 |
 | Custom range | `--start 2024-06-01 --end 2024-08-31` | Exact start and end dates |
 | Period from start | `--start 2024-01-01 --period 6m` | 6 months from the start date |
+| Override preset | `--memory-type season --season summer --start 2024-07-01 --end 2024-07-31` | Custom dates with preset scoring |
 
-Date formats: `YYYY-MM-DD`, `DD/MM/YYYY`, or `MM/DD` (for `--birthday`).
+Date formats: `YYYY-MM-DD`, `DD/MM/YYYY`, or `MM/DD` (for `--birthday` manual override).
 
 Period format: number + unit (`d` days, `w` weeks, `m` months, `y` years). Examples: `90d`, `2w`, `6m`, `1y`.
 
