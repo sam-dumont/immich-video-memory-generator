@@ -370,9 +370,6 @@ def _emit_crossfade(
 ) -> None:
     """Blend fade_frames from two iterators and write to encoder."""
     black: np.ndarray | None = None
-    # WHY: hold last valid frame when a clip runs short instead of
-    # inserting black. Short clips (live photos) create a freeze-frame
-    # crossfade which looks much better than fade-to-black.
     last_a: np.ndarray | None = None
     last_b: np.ndarray | None = None
     for fade_idx in range(fade_frames):
