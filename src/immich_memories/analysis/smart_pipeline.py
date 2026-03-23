@@ -38,6 +38,30 @@ class JobCancelledException(Exception):
     pass
 
 
+def _cap_analysis_candidates(
+    selected: list[VideoClipInfo], target_clips: int
+) -> list[VideoClipInfo]:
+    """Cap selected clips at 1.5x target to prevent over-analysis.
+
+    Favorites are always preserved. Non-favorites are trimmed by resolution
+    (highest resolution kept first).
+    """
+    max_candidates = int(target_clips * 1.5)
+    if len(selected) <= max_candidates:
+        return selected
+
+    fav = [c for c in selected if c.asset.is_favorite]
+    non_fav = [c for c in selected if not c.asset.is_favorite]
+    non_fav.sort(
+        key=lambda c: c.width * c.height if c.width and c.height else 0,
+        reverse=True,
+    )
+    keep = max(0, max_candidates - len(fav))
+    result = fav + non_fav[:keep] if keep > 0 else fav[:max_candidates]
+    logger.info(f"Capped analysis candidates to {len(result)} (1.5x target {target_clips})")
+    return result
+
+
 @dataclass
 class PipelineConfig:
     """Configuration for the smart pipeline."""
@@ -379,9 +403,10 @@ class SmartPipeline:
         buckets = compute_density_budget(
             assets=entries,
             target_duration_seconds=target_seconds,
+            raw_multiplier=1.3,
         )
 
-        raw_budget = (target_seconds - 50) * 2.0
+        raw_budget = (target_seconds - 50) * 1.3
         log_budget_summary(buckets, raw_budget)
 
         # Collect selected asset IDs from budget
@@ -393,7 +418,11 @@ class SmartPipeline:
         # Build clip lists
         clip_map = {c.asset.id: c for c in clips}
         selected = [clip_map[aid] for aid in selected_ids if aid in clip_map]
-        self._available_non_favorites = [c for c in clips if c.asset.id not in selected_ids]
+        selected = _cap_analysis_candidates(selected, self.config.target_clips)
+
+        self._available_non_favorites = [
+            c for c in clips if c.asset.id not in {c.asset.id for c in selected}
+        ]
 
         fav_count = sum(1 for c in selected if c.asset.is_favorite)
         gap_count = len(selected) - fav_count

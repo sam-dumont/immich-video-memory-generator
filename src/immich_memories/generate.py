@@ -349,11 +349,14 @@ def _add_photos_if_enabled(
 
     _report(params, "photos", 0.5, "Selecting and rendering photos...")
 
-    if params.target_duration_seconds:
-        video_clips, photo_clips = _apply_unified_budget(assembly_clips, params, run_output_dir)
-    else:
-        video_clips = assembly_clips
-        photo_clips = _render_photos(params, run_output_dir, len(assembly_clips))
+    # WHY: always use unified budget to avoid rendering photos that get discarded
+    effective_duration = params.target_duration_seconds
+    if effective_duration is None:
+        effective_duration = sum(c.duration for c in assembly_clips) * 1.25
+
+    video_clips, photo_clips = _apply_unified_budget(
+        assembly_clips, params, run_output_dir, target_override=effective_duration
+    )
 
     return _merge_by_date(video_clips, photo_clips)
 
@@ -406,6 +409,7 @@ def _apply_unified_budget(
     assembly_clips: list[AssemblyClip],
     params: GenerationParams,
     output_dir: Path,
+    target_override: float | None = None,
 ) -> tuple[list[AssemblyClip], list[AssemblyClip]]:
     """Apply unified budget: score photos, select within budget, render selected.
 
@@ -418,7 +422,8 @@ def _apply_unified_budget(
     )
     from immich_memories.photos.photo_pipeline import render_photo_clips, score_photos
 
-    assert params.target_duration_seconds is not None
+    target = target_override or params.target_duration_seconds
+    assert target is not None
     photo_dir = output_dir / "photos"
     photo_dir.mkdir(exist_ok=True)
 
@@ -469,15 +474,15 @@ def _apply_unified_budget(
     overhead = estimate_title_overhead(
         clip_dates=clip_dates,
         title_settings=title_settings,
-        target_duration=params.target_duration_seconds,
+        target_duration=target,
         memory_type=params.memory_type,
         num_clips=len(assembly_clips),
         transition_duration=transition_dur,
     )
-    content_budget = params.target_duration_seconds - overhead
+    content_budget = target - overhead
 
     logger.info(
-        f"Unified budget: target={params.target_duration_seconds:.0f}s, "
+        f"Unified budget: target={target:.0f}s, "
         f"overhead={overhead:.1f}s, content_budget={content_budget:.1f}s"
     )
 
