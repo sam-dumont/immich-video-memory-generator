@@ -16,6 +16,10 @@ flags:
     paths:
       - src/immich_memories/
     carryforward: true
+  integration-linux:
+    paths:
+      - src/immich_memories/
+    carryforward: true
 
 coverage:
   status:

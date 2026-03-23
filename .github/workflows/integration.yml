@@ -139,12 +139,28 @@ jobs:
             cli)         make test-integration-cli ;;
           esac
 
+      - name: Freshen coverage timestamps
+        # WHY: Codecov rejects reports >12h old. GPU tests can be slow and
+        # queued — ensure timestamps are current before upload.
+        if: always()
+        run: |
+          python3 -c "
+          import glob, re, time, pathlib
+          now = str(int(time.time() * 1000))
+          for f in glob.glob('tests/*-coverage.xml'):
+              p = pathlib.Path(f)
+              txt = p.read_text()
+              p.write_text(re.sub(r'timestamp=\"[0-9]+\"', f'timestamp=\"{now}\"', txt))
+              print(f'  freshened {f}')
+          "
+
       - name: Upload coverage
         uses: codecov/codecov-action@v5
         if: always()
         with:
-          files: tests/assembly-coverage.xml,tests/photos-coverage.xml,tests/pipeline-coverage.xml,tests/live-photos-coverage.xml,tests/auth-coverage.xml
+          files: tests/assembly-coverage.xml,tests/audio-coverage.xml,tests/auth-coverage.xml,tests/cli-coverage.xml,tests/live-photos-coverage.xml,tests/photos-coverage.xml,tests/pipeline-coverage.xml
           flags: integration-linux
+          disable_search: true
           override_commit: ${{ steps.params.outputs.sha }}
           override_branch: ${{ steps.params.outputs.branch }}
           slug: ${{ steps.params.outputs.public_repo }}
