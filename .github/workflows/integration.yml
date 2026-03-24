@@ -42,7 +42,7 @@ jobs:
     runs-on: gpu
     # Only runs on the private mirror — never on the public repo
     if: github.repository == 'sam-dumont/immich-memories-ci'
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - name: Resolve params
         id: params
