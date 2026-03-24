@@ -305,9 +305,12 @@ class TestPhaseAnalyzeErrorFallback:
 
         analyzer._analyze_clip_with_preview = MagicMock(side_effect=RuntimeError("disk full"))
 
-        analyzer.phase_analyze([clip], tracker, check_cancelled=lambda: None)
+        results = analyzer.phase_analyze([clip], tracker, check_cancelled=lambda: None)
 
-        tracker.complete_item.assert_called_once()
+        # Verify fallback segment was still produced despite the error
+        assert len(results) == 1
+        assert results[0].score == 0.0
+        # Verify error details were reported to the tracker
         call_kwargs = tracker.complete_item.call_args[1]
         assert call_kwargs["success"] is False
         assert "disk full" in call_kwargs["error"]
@@ -702,23 +705,32 @@ class TestPhaseAnalyzeOrchestration:
         assert results[1].end_time == 5.0  # min(6.0, 5.0)
 
     @patch("immich_memories.analysis.content_analyzer.ContentAnalyzer")
-    def test_complete_phase_called_at_end(self, mock_ca_cls):
+    def test_phase_completes_with_all_results(self, mock_ca_cls):
         analyzer, _, _, _ = _make_analyzer()
         tracker = _make_tracker()
 
         analyzer._analyze_clip_with_preview = MagicMock(return_value=(0.0, 3.0, 0.5, None, None))
 
-        analyzer.phase_analyze(
+        results = analyzer.phase_analyze(
             [make_clip("x", duration=5.0)], tracker, check_cancelled=lambda: None
         )
 
+        # Phase produced the expected result count
+        assert len(results) == 1
+        assert results[0].score == 0.5
+        # Tracker was notified the phase finished
         tracker.complete_phase.assert_called_once()
 
     @patch("immich_memories.analysis.content_analyzer.ContentAnalyzer")
-    def test_cleanup_called_after_phase(self, mock_ca_cls):
+    def test_cleanup_runs_after_phase(self, mock_ca_cls):
         analyzer, _, _, _ = _make_analyzer()
         tracker = _make_tracker()
-        analyzer._cleanup_pipeline_resources = MagicMock()
+
+        # Pre-seed cached analyzers to verify cleanup clears them
+        mock_content = MagicMock()
+        mock_audio = MagicMock()
+        analyzer._cached_content_analyzer = mock_content
+        analyzer._cached_audio_analyzer = mock_audio
 
         analyzer._analyze_clip_with_preview = MagicMock(return_value=(0.0, 3.0, 0.5, None, None))
 
@@ -726,4 +738,6 @@ class TestPhaseAnalyzeOrchestration:
             [make_clip("y", duration=5.0)], tracker, check_cancelled=lambda: None
         )
 
-        analyzer._cleanup_pipeline_resources.assert_called_once()
+        # Verify cleanup actually cleared the cached analyzers
+        assert analyzer._cached_content_analyzer is None
+        assert analyzer._cached_audio_analyzer is None

@@ -67,8 +67,13 @@ class TestStrategySelection:
             music_other_path=stems_dir["other"],
         )
         with patch.object(svc, "_add_music_with_4stems", return_value=tmp_path / "out.mp4") as m4:
-            svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
-        m4.assert_called_once()
+            result = svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
+        assert result == tmp_path / "out.mp4"
+        # Verify correct stem paths were passed
+        call_args = m4.call_args
+        assert call_args[0][0] == tmp_path / "video.mp4"  # video_path
+        assert call_args[0][2] == stems_dir["drums"]  # drums_path
+        assert call_args[0][3] == stems_dir["bass"]  # bass_path
 
     def test_two_stems_present_uses_2stem(self, stems_dir: dict[str, Path], tmp_path: Path) -> None:
         svc = _make_service(
@@ -77,14 +82,23 @@ class TestStrategySelection:
             music_accompaniment_path=stems_dir["accompaniment"],
         )
         with patch.object(svc, "_add_music_with_stems", return_value=tmp_path / "out.mp4") as m2:
-            svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
-        m2.assert_called_once()
+            result = svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
+        assert result == tmp_path / "out.mp4"
+        # Verify correct stem paths were passed
+        call_args = m2.call_args
+        assert call_args[0][0] == tmp_path / "video.mp4"  # video_path
+        assert call_args[0][2] == stems_dir["vocals"]  # vocals_path
+        assert call_args[0][3] == stems_dir["accompaniment"]  # accompaniment_path
 
     def test_no_stems_uses_simple(self, tmp_path: Path) -> None:
         svc = _make_service(music_path=tmp_path / "music.mp3")
         with patch.object(svc, "_add_music_simple", return_value=tmp_path / "out.mp4") as ms:
-            svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
-        ms.assert_called_once()
+            result = svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
+        assert result == tmp_path / "out.mp4"
+        # Verify video_path and output_path were forwarded
+        call_args = ms.call_args
+        assert call_args[0][0] == tmp_path / "video.mp4"
+        assert call_args[0][1] == tmp_path / "out.mp4"
 
     def test_four_stems_one_missing_file_skips_4stem(
         self, stems_dir: dict[str, Path], tmp_path: Path
@@ -102,8 +116,12 @@ class TestStrategySelection:
         )
         # Should fall through to 2-stem since vocals + accompaniment exist
         with patch.object(svc, "_add_music_with_stems", return_value=tmp_path / "out.mp4") as m2:
-            svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
-        m2.assert_called_once()
+            result = svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
+        assert result == tmp_path / "out.mp4"
+        # Verify 2-stem got the correct vocals + accompaniment paths
+        call_args = m2.call_args
+        assert call_args[0][2] == stems_dir["vocals"]
+        assert call_args[0][3] == stems_dir["accompaniment"]
 
     def test_stems_path_none_skips_that_strategy(self, tmp_path: Path) -> None:
         svc = _make_service(
@@ -111,9 +129,9 @@ class TestStrategySelection:
             music_vocals_path=None,
             music_accompaniment_path=None,
         )
-        with patch.object(svc, "_add_music_simple", return_value=tmp_path / "out.mp4") as ms:
-            svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
-        ms.assert_called_once()
+        with patch.object(svc, "_add_music_simple", return_value=tmp_path / "out.mp4"):
+            result = svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
+        assert result == tmp_path / "out.mp4"
 
     def test_four_stems_preferred_over_two_stems(
         self, stems_dir: dict[str, Path], tmp_path: Path
@@ -131,7 +149,9 @@ class TestStrategySelection:
             patch.object(svc, "_add_music_with_4stems", return_value=tmp_path / "out.mp4") as m4,
             patch.object(svc, "_add_music_with_stems", return_value=tmp_path / "out.mp4") as m2,
         ):
-            svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
+            result = svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
+        assert result == tmp_path / "out.mp4"
+        # 4-stem is preferred — 2-stem must NOT be called
         m4.assert_called_once()
         m2.assert_not_called()
 
@@ -174,8 +194,9 @@ class TestFallbackBehavior:
             ),
         ):
             result = svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
-        mock_simple.assert_called_once()
+        # Fallback IS behavior: 4-stem failure must still produce valid output
         assert result == tmp_path / "out.mp4"
+        mock_simple.assert_called_once()
 
     def test_2stem_failure_falls_back_to_simple(
         self, stems_dir: dict[str, Path], tmp_path: Path

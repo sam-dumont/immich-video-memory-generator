@@ -294,10 +294,15 @@ class TestGenerateEndingScreen:
     ):
         gen = _make_generator(tmp_output, mock_rendering, mock_ending, mock_trip)
         gen.style.background_type = "soft_gradient"
-        gen.generate_ending_screen()
+        result = gen.generate_ending_screen()
 
+        # Routing IS behavior: wrong service = visually broken output
         mock_ending.create_ending_video.assert_called_once()
         mock_rendering.create_title_video.assert_not_called()
+        # Verify output properties
+        assert result.screen_type == "ending"
+        assert result.path == tmp_output / "ending_screen.mp4"
+        assert result.duration == 4.0
 
     def test_gradient_ending_passes_white_fade(
         self, tmp_output, mock_rendering, mock_ending, mock_trip
@@ -316,10 +321,15 @@ class TestGenerateEndingScreen:
         gen.style.background_type = "content_backed"
         clip = Path("/fake/last_clip.mp4")
 
-        gen.generate_ending_screen(content_clip_path=clip)
+        result = gen.generate_ending_screen(content_clip_path=clip)
 
+        # Routing IS behavior: content_backed → reverse slow-mo via RenderingService
         mock_rendering.create_title_video.assert_called_once()
         mock_ending.create_ending_video.assert_not_called()
+        # Verify output properties
+        assert result.screen_type == "ending"
+        assert result.path == tmp_output / "ending_screen.mp4"
+        assert result.duration == 4.0
 
     def test_content_backed_ending_sets_reverse_flags(
         self, tmp_output, mock_rendering, mock_ending, mock_trip
@@ -342,12 +352,16 @@ class TestGenerateEndingScreen:
         gen = _make_generator(tmp_output, mock_rendering, mock_ending, mock_trip)
         gen.style.background_type = "content_backed"
 
-        gen.generate_ending_screen(content_clip_path=None)
+        result = gen.generate_ending_screen(content_clip_path=None)
 
         # WHY: Without a clip, content_backed can't do reverse slow-mo.
         # Should fall through to EndingService (fade to white).
         mock_ending.create_ending_video.assert_called_once()
         mock_rendering.create_title_video.assert_not_called()
+        # Verify fallback still produces valid ending output
+        assert result.screen_type == "ending"
+        assert result.path == tmp_output / "ending_screen.mp4"
+        assert result.duration == 4.0
 
     def test_ending_uses_config_duration(self, tmp_output, mock_rendering, mock_ending, mock_trip):
         gen = _make_generator(
