@@ -139,6 +139,8 @@ class TestComputeMotionMetrics:
         assert len(result) == 2
         assert isinstance(result[0], float)
         assert isinstance(result[1], float)
+        assert 0.0 <= result[0] <= 1.0, f"Motion score {result[0]} outside valid range"
+        assert 0.0 <= result[1] <= 1.0, f"Stability score {result[1]} outside valid range"
 
     def test_high_motion_detected(self):
         """Large pixel shift should produce non-trivial motion score."""
@@ -191,6 +193,7 @@ class TestComputeFaceScore:
         score, positions = result
         assert isinstance(score, float)
         assert isinstance(positions, list)
+        assert 0.0 <= score <= 1.0, f"Face score {score} outside valid range"
 
 
 # ---------------------------------------------------------------------------
