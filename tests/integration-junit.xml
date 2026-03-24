@@ -1,238 +1,329 @@
 <?xml version='1.0' encoding='utf-8'?>
 <testsuites>
-  <testsuite name="integration" tests="229" errors="0" failures="0" skipped="2" time="904.823">
-    <testcase classname="tests.integration.assembly.test_assembly.TestSingleClipAssembly" name="test_single_clip_produces_valid_output" time="0.167" />
-    <testcase classname="tests.integration.assembly.test_assembly.TestDefaultSettings" name="test_none_defaults_use_config_fallback" time="0.065" />
-    <testcase classname="tests.integration.assembly.test_assembly.TestCrossfadeTransition" name="test_two_clips_with_crossfade" time="3.938" />
-    <testcase classname="tests.integration.assembly.test_assembly.TestTitleScreenPIL" name="test_pil_title_renders_valid_video" time="16.920" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineScalable" name="test_assemble_two_clips_crossfade" time="1.958" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineScalable" name="test_assemble_single_clip_passthrough" time="1.402" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineScalable" name="test_assemble_with_resolution_override" time="1.984" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineScalable" name="test_assemble_no_clips_raises" time="0.032" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineScalable" name="test_assemble_with_cut_transitions" time="2.075" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoder" name="test_encode_clip_default" time="1.294" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoder" name="test_encode_clip_with_rotation" time="1.214" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoder" name="test_encode_clip_resolution" time="1.234" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoder" name="test_encode_clip_blur_mode" time="1.401" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoder" name="test_trim_segment_copy" time="0.092" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilder" name="test_build_clip_video_filter" time="0.062" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilder" name="test_build_xfade_chain" time="0.025" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilder" name="test_build_audio_prep_filters" time="0.025" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilder" name="test_build_smart_transition_chain" time="0.023" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilder" name="test_xfade_chain_runs_through_ffmpeg" time="0.979" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_parse_clip_date_iso" time="0.016" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_parse_clip_date_datetime" time="0.013" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_parse_clip_date_none" time="0.030" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_detect_month_changes" time="0.019" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_detect_year_changes" time="0.018" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_build_clips_with_dividers" time="0.017" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_get_orientation_from_clips" time="0.242" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_get_resolution_tier" time="0.059" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_detect_hdr_on_sdr_clip" time="0.064" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_detect_color_primaries" time="0.057" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_colorspace_filter_hlg" time="0.011" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_colorspace_filter_pq" time="0.011" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_dominant_hdr_type_sdr_clips" time="0.092" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_clip_hdr_types" time="0.089" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_has_any_hdr_clip_false_for_sdr" time="0.054" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_gpu_encoder_args_returns_list" time="0.012" />
+  <testsuite name="integration" tests="270" errors="0" failures="0" skipped="27" time="191.027">
+    <testcase classname="tests.integration.assembly.test_assembly.TestSingleClipAssembly" name="test_single_clip_produces_valid_output" time="0.135" />
+    <testcase classname="tests.integration.assembly.test_assembly.TestDefaultSettings" name="test_none_defaults_use_config_fallback" time="0.050" />
+    <testcase classname="tests.integration.assembly.test_assembly.TestCrossfadeTransition" name="test_two_clips_with_crossfade" time="2.095" />
+    <testcase classname="tests.integration.assembly.test_assembly.TestTitleScreenPIL" name="test_pil_title_renders_valid_video" time="9.874" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineScalable" name="test_assemble_two_clips_crossfade" time="1.287" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineScalable" name="test_assemble_single_clip_passthrough" time="0.799" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineScalable" name="test_assemble_with_resolution_override" time="1.246" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineScalable" name="test_assemble_no_clips_raises" time="0.011" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineScalable" name="test_assemble_with_cut_transitions" time="1.281" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoder" name="test_encode_clip_default" time="0.810" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoder" name="test_encode_clip_with_rotation" time="0.817" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoder" name="test_encode_clip_resolution" time="0.791" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoder" name="test_encode_clip_blur_mode" time="0.921" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoder" name="test_trim_segment_copy" time="0.116" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilder" name="test_build_clip_video_filter" time="0.096" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilder" name="test_build_xfade_chain" time="0.029" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilder" name="test_build_audio_prep_filters" time="0.029" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilder" name="test_build_smart_transition_chain" time="0.029" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilder" name="test_xfade_chain_runs_through_ffmpeg" time="0.932" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_parse_clip_date_iso" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_parse_clip_date_datetime" time="0.011" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_parse_clip_date_none" time="0.010" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_detect_month_changes" time="0.010" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_detect_year_changes" time="0.010" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_build_clips_with_dividers" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_get_orientation_from_clips" time="0.212" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserter" name="test_get_resolution_tier" time="0.049" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_detect_hdr_on_sdr_clip" time="0.048" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_detect_color_primaries" time="0.048" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_colorspace_filter_hlg" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_colorspace_filter_pq" time="0.010" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_dominant_hdr_type_sdr_clips" time="0.082" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_clip_hdr_types" time="0.081" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_has_any_hdr_clip_false_for_sdr" time="0.048" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_gpu_encoder_args_returns_list" time="0.011" />
     <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_gpu_encoder_args_hdr" time="0.011" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_hdr_conversion_filter_same_type" time="0.011" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_hdr_conversion_filter_sdr_to_hlg" time="0.060" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_hdr_conversion_filter_same_type" time="0.010" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilities" name="test_get_hdr_conversion_filter_sdr_to_hlg" time="0.045" />
     <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyContext" name="test_create_assembly_context_sdr" time="0.052" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyContext" name="test_resolve_target_resolution_explicit" time="0.070" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyContext" name="test_resolve_target_resolution_auto" time="0.105" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTransitionDecisions" name="test_get_transition_types_crossfade" time="0.011" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTransitionDecisions" name="test_get_transition_types_cut" time="0.022" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTransitionDecisions" name="test_title_screen_forces_fade" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyContext" name="test_resolve_target_resolution_explicit" time="0.050" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyContext" name="test_resolve_target_resolution_auto" time="0.082" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTransitionDecisions" name="test_get_transition_types_crossfade" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTransitionDecisions" name="test_get_transition_types_cut" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTransitionDecisions" name="test_title_screen_forces_fade" time="0.011" />
     <testcase classname="tests.integration.assembly.test_assembly_core.TestTransitionDecisions" name="test_validate_fade_transitions_short_clips" time="0.011" />
     <testcase classname="tests.integration.assembly.test_assembly_core.TestTransitionDecisions" name="test_decide_transitions_two_clips" time="0.012" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTransitionDecisions" name="test_decide_transitions_empty" time="0.012" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTransitionDecisions" name="test_predecided_transitions_override" time="0.012" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineMethods" name="test_assemble_with_cuts" time="0.683" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineMethods" name="test_assemble_with_crossfade" time="0.952" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineMethods" name="test_assemble_with_smart_transitions" time="0.625" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineMethods" name="test_assemble_with_cuts_empty_raises" time="0.026" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineMethods" name="test_assemble_with_crossfade_one_clip_raises" time="0.027" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineMethods" name="test_assemble_with_progress_callback" time="1.455" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_encode_clip_with_title_screen_flag" time="0.580" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_log_ffmpeg_error_parses_stderr" time="0.014" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_log_ffmpeg_error_truncates_long_stderr" time="0.014" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_resolve_encode_resolution_explicit" time="0.014" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_resolve_encode_resolution_from_settings" time="0.016" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_resolve_encode_hdr_sdr" time="0.015" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_resolve_encode_hdr_enabled" time="0.063" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_trim_segment_reencode" time="0.290" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_build_clip_video_filter_with_rotation" time="0.057" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_build_clip_video_filter_privacy_mode" time="0.063" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_build_audio_prep_title_screen_uses_silence" time="0.030" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_get_clip_hdr_conversion_same_type" time="0.029" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_get_clip_hdr_conversion_no_hdr" time="0.028" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_build_probed_audio_filters" time="0.028" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_build_probed_xfade_chain" time="0.030" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_build_clips_with_year_dividers" time="0.026" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_select_divider_strategy_none" time="0.020" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_assemble_with_titles_disabled" time="0.017" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_assemble_with_titles_no_settings" time="0.016" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_assemble_with_titles_empty_raises" time="0.015" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_parse_clip_date_bad_format" time="0.015" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_detect_month_changes_no_dates" time="0.014" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_detect_year_changes_same_year" time="0.013" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_detect_year_changes_skips_no_date" time="0.014" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_generate_year_dividers" time="0.014" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_generate_month_dividers" time="0.014" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_generate_month_dividers_disabled" time="0.014" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTransitionDecisions" name="test_decide_transitions_empty" time="0.010" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTransitionDecisions" name="test_predecided_transitions_override" time="0.011" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineMethods" name="test_assemble_with_cuts" time="0.648" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineMethods" name="test_assemble_with_crossfade" time="0.856" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineMethods" name="test_assemble_with_smart_transitions" time="0.799" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineMethods" name="test_assemble_with_cuts_empty_raises" time="0.011" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineMethods" name="test_assemble_with_crossfade_one_clip_raises" time="0.011" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestAssemblyEngineMethods" name="test_assemble_with_progress_callback" time="1.229" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_encode_clip_with_title_screen_flag" time="0.598" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_log_ffmpeg_error_parses_stderr" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_log_ffmpeg_error_truncates_long_stderr" time="0.011" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_resolve_encode_resolution_explicit" time="0.013" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_resolve_encode_resolution_from_settings" time="0.011" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_resolve_encode_hdr_sdr" time="0.011" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_resolve_encode_hdr_enabled" time="0.066" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestClipEncoderExtra" name="test_trim_segment_reencode" time="0.359" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_build_clip_video_filter_with_rotation" time="0.056" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_build_clip_video_filter_privacy_mode" time="0.053" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_build_audio_prep_title_screen_uses_silence" time="0.014" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_get_clip_hdr_conversion_same_type" time="0.014" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_get_clip_hdr_conversion_no_hdr" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_build_probed_audio_filters" time="0.011" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestFilterBuilderExtra" name="test_build_probed_xfade_chain" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_build_clips_with_year_dividers" time="0.013" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_select_divider_strategy_none" time="0.013" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_assemble_with_titles_disabled" time="0.013" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_assemble_with_titles_no_settings" time="0.013" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_assemble_with_titles_empty_raises" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_parse_clip_date_bad_format" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_detect_month_changes_no_dates" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_detect_year_changes_same_year" time="0.014" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_detect_year_changes_skips_no_date" time="0.013" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_generate_year_dividers" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_generate_month_dividers" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_generate_month_dividers_disabled" time="0.013" />
     <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_select_divider_strategy_year_mode" time="0.014" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_select_divider_strategy_month_mode" time="0.014" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilitiesExtra" name="test_check_zscale_available" time="0.052" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilitiesExtra" name="test_hdr_color_args" time="0.017" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilitiesExtra" name="test_encoder_args_macos_sdr" time="0.019" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilitiesExtra" name="test_encoder_args_macos_hdr" time="0.018" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestTitleInserterExtra" name="test_select_divider_strategy_month_mode" time="0.012" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilitiesExtra" name="test_check_zscale_available" time="0.050" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilitiesExtra" name="test_hdr_color_args" time="0.015" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilitiesExtra" name="test_encoder_args_macos_sdr" time="0.014" />
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilitiesExtra" name="test_encoder_args_macos_hdr" time="0.012" />
     <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilitiesExtra" name="test_encoder_args_cpu_sdr" time="0.018" />
-    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilitiesExtra" name="test_encoder_args_cpu_hdr" time="0.018" />
-    <testcase classname="tests.integration.assembly.test_hdr_pixel.TestHDRPassthrough" name="test_hdr_passthrough_preserves_color_range" time="0.225" />
-    <testcase classname="tests.integration.assembly.test_hdr_pixel.TestHDRPassthrough" name="test_hdr_chroma_preserved" time="0.178" />
-    <testcase classname="tests.integration.assembly.test_hdr_pixel.TestSDRInHDROutput" name="test_sdr_clip_in_hdr_output_not_red_tinted" time="0.186" />
-    <testcase classname="tests.integration.assembly.test_hdr_pixel.TestSDRInHDROutput" name="test_sdr_in_hdr_output_not_washed_out" time="0.158" />
-    <testcase classname="tests.integration.assembly.test_hdr_pixel.TestHDROutputMetadata" name="test_hdr_output_metadata_correct" time="0.171" />
-    <testcase classname="tests.integration.assembly.test_hdr_pixel.TestHDROutputMetadata" name="test_hdr_output_color_range_tagged_tv" time="0.175" />
-    <testcase classname="tests.integration.assembly.test_perf_assembly.TestMinimalScenario" name="test_minimal_assembly_resources" time="1.311" />
-    <testcase classname="tests.integration.assembly.test_perf_assembly.TestTypicalScenario" name="test_typical_assembly_resources" time="6.180" />
-    <testcase classname="tests.integration.assembly.test_perf_assembly.TestHeavyScenario" name="test_heavy_assembly_resources" time="10.716" />
-    <testcase classname="tests.integration.assembly.test_perf_assembly" name="test_save_results" time="0.012" />
-    <testcase classname="tests.integration.assembly.test_streaming_assembly.TestStreamingViaEngine" name="test_two_clips_crossfade" time="1.149" />
-    <testcase classname="tests.integration.assembly.test_streaming_assembly.TestStreamingViaEngine" name="test_many_clips_no_chunking" time="3.347" />
-    <testcase classname="tests.integration.auth.test_oidc_flow.TestOIDCDiscovery" name="test_well_known_endpoint_reachable" time="0.573" />
-    <testcase classname="tests.integration.auth.test_oidc_flow.TestOIDCAuthorizeRedirect" name="test_authorize_redirects_to_idp" time="0.110" />
-    <testcase classname="tests.integration.auth.test_oidc_flow.TestOIDCFullFlow" name="test_full_auth_code_flow" time="0.262" />
-    <testcase classname="tests.integration.auth.test_oidc_flow.TestOIDCCallbackErrors" name="test_callback_without_code" time="0.067" />
-    <testcase classname="tests.integration.auth.test_oidc_flow.TestOIDCCallbackErrors" name="test_callback_with_invalid_state" time="0.089" />
-    <testcase classname="tests.integration.auth.test_oidc_flow.TestBasicAuthIntegration" name="test_basic_login_flow" time="0.069" />
-    <testcase classname="tests.integration.auth.test_oidc_flow.TestBasicAuthIntegration" name="test_basic_wrong_credentials" time="0.065" />
-    <testcase classname="tests.integration.auth.test_oidc_flow.TestMiddlewareIntegration" name="test_health_bypasses_auth" time="0.067" />
-    <testcase classname="tests.integration.auth.test_oidc_flow.TestMiddlewareIntegration" name="test_protected_page_redirects" time="0.068" />
-    <testcase classname="tests.integration.auth.test_oidc_flow.TestMiddlewareIntegration" name="test_authenticated_session_passes" time="0.308" />
-    <testcase classname="tests.integration.photos.test_mixed_assembly.TestMixedAssembly" name="test_photo_clip_concat_with_video_clip" time="0.572" />
-    <testcase classname="tests.integration.photos.test_mixed_assembly.TestMixedAssembly" name="test_two_photo_clips_different_modes" time="2.711" />
-    <testcase classname="tests.integration.photos.test_mixed_assembly.TestMixedAssembly" name="test_assembly_clip_is_photo_flag" time="0.530" />
-    <testcase classname="tests.integration.photos.test_photo_animation.TestKenBurnsAnimation" name="test_landscape_produces_correct_format" time="0.807" />
-    <testcase classname="tests.integration.photos.test_photo_animation.TestKenBurnsAnimation" name="test_first_and_last_frames_differ_from_zoom" time="2.162" />
-    <testcase classname="tests.integration.photos.test_photo_animation.TestFaceZoomAnimation" name="test_produces_correct_format" time="0.635" />
-    <testcase classname="tests.integration.photos.test_photo_animation.TestFaceZoomAnimation" name="test_face_zoom_differs_from_ken_burns" time="2.753" />
-    <testcase classname="tests.integration.photos.test_photo_animation.TestFaceZoomAnimation" name="test_corner_face_produces_valid_output" time="0.522" />
-    <testcase classname="tests.integration.photos.test_photo_animation.TestBlurBgAnimation" name="test_portrait_produces_correct_format" time="2.776" />
-    <testcase classname="tests.integration.photos.test_photo_animation.TestBlurBgAnimation" name="test_edges_are_blurred" time="3.127" />
-    <testcase classname="tests.integration.photos.test_photo_animation.TestBlurBgAnimation" name="test_square_photo" time="2.211" />
-    <testcase classname="tests.integration.photos.test_photo_animation.TestAutoModeSelection" name="test_landscape_auto_uses_ken_burns" time="1.949" />
-    <testcase classname="tests.integration.photos.test_photo_animation.TestAutoModeSelection" name="test_portrait_auto_uses_blur_bg" time="2.999" />
-    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoFetch" name="test_photos_are_images_not_live_photos" time="0.319" />
-    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoFetch" name="test_photos_have_created_date" time="0.027" />
-    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoFetch" name="test_photos_sorted_chronologically" time="0.029" />
-    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoFetch" name="test_some_photos_have_exif" time="0.031" />
-    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoGrouping" name="test_grouper_produces_groups" time="0.030" />
-    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoGrouping" name="test_scoring_produces_valid_scores" time="0.028" />
-    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoAnimation" name="test_download_and_animate_ken_burns" time="2.521" />
-    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoAnimation" name="test_animate_portrait_photo" time="2.547" />
-    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoAnimation" name="test_hdr_photo_detection" time="1.790" />
-    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoWithPeople" name="test_some_photos_have_people" time="0.023" />
-    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoWithPeople" name="test_face_data_available_for_scoring" time="0.025" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderKenBurns" name="test_landscape_in_landscape_produces_valid_video" time="6.782" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderKenBurns" name="test_portrait_in_landscape_has_blur_bg" time="0.590" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderKenBurns" name="test_zoom_changes_visible_area" time="0.734" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderKenBurns" name="test_no_black_pixels_in_output" time="0.956" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderSlideIn" name="test_produces_correct_frame_count" time="0.422" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderSlideIn" name="test_first_frame_differs_from_last" time="0.455" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderSlideIn" name="test_last_frame_has_photo_centered" time="0.481" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderSlideIn" name="test_encodes_to_valid_video" time="3.177" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderCollage" name="test_horizontal_3_photos" time="0.671" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderCollage" name="test_vertical_3_photos" time="0.549" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderCollage" name="test_slide_in_makes_first_frame_different" time="1.362" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderCollage" name="test_background_is_not_black" time="0.551" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderCollage" name="test_rejects_too_few_photos" time="0.030" />
-    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderCollage" name="test_encodes_to_valid_video" time="3.413" />
-    <testcase classname="tests.integration.titles.test_ending_pixels.TestEndingPixels" name="test_early_frames_show_background" time="0.291" />
-    <testcase classname="tests.integration.titles.test_ending_pixels.TestEndingPixels" name="test_last_frame_is_bright" time="0.270" />
-    <testcase classname="tests.integration.titles.test_ending_pixels.TestEndingPixels" name="test_fade_is_progressive" time="0.465" />
-    <testcase classname="tests.integration.titles.test_ending_pixels.TestEndingPixels" name="test_has_audio_stream" time="0.241" />
-    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_background_is_dark" time="0.495" />
-    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_text_is_visible" time="0.507" />
-    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_fade_from_white_first_frame_bright" time="1.194" />
-    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_mid_video_darker_than_start" time="1.161" />
-    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_has_audio_stream" time="0.491" />
-    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_correct_resolution" time="0.487" />
-    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_portrait_resolution" time="0.489" />
-    <testcase classname="tests.integration.titles.test_generator_pixels.TestMonthDividerPixels" name="test_divider_has_text" time="0.312" />
-    <testcase classname="tests.integration.titles.test_generator_pixels.TestMonthDividerPixels" name="test_divider_background_dark" time="0.302" />
-    <testcase classname="tests.integration.titles.test_generator_pixels.TestAllScreensPixels" name="test_ending_differs_from_title" time="1.646" />
-    <testcase classname="tests.integration.titles.test_generator_pixels.TestAllScreensPixels" name="test_sdr_no_hdr_metadata" time="0.478" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_render_frame_returns_pil_image" time="0.032" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_render_frame_with_subtitle" time="0.026" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_render_frame_is_not_blank" time="0.036" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_render_all_frames_count" time="0.340" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_render_all_frames_parallel" time="0.376" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_render_all_frames_parallel_small_count_falls_back" time="0.051" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_text_transform_uppercase" time="0.023" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_text_transform_capitalize" time="0.024" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_text_transform_none" time="0.022" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILColorParsing" name="test_parse_hex_color_6_digit" time="0.021" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILColorParsing" name="test_parse_hex_color_3_digit" time="0.021" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILColorParsing" name="test_parse_color_with_alpha" time="0.022" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILColorParsing" name="test_luminance_white" time="0.021" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestPILColorParsing" name="test_luminance_black" time="0.019" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestOptimalTextSettings" name="test_dark_background_gets_light_text" time="0.024" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestOptimalTextSettings" name="test_light_background_gets_dark_text" time="0.021" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestOptimalTextSettings" name="test_settings_cached" time="0.022" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestBlendModes" name="test_normal_blend" time="0.020" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestBlendModes" name="test_multiply_blend" time="0.021" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestBlendModes" name="test_screen_blend" time="0.023" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestBlendModes" name="test_overlay_blend" time="0.021" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestBlendModes" name="test_soft_light_blend" time="0.021" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestBlendModes" name="test_unknown_blend_falls_back_to_normal" time="0.025" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestRenderTitleFrame" name="test_returns_numpy_array" time="0.024" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestRenderTitleFrame" name="test_with_subtitle" time="0.022" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_escape_colon" time="0.021" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_escape_percent" time="0.020" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_escape_brackets" time="0.020" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_escape_semicolon" time="0.019" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_escape_backslash" time="0.019" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_strips_control_characters" time="0.023" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_preserves_spaces" time="0.019" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleGeneration" name="test_create_title_with_effects" time="0.239" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleGeneration" name="test_create_title_with_effects_no_subtitle" time="0.220" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleGeneration" name="test_output_is_valid_video" time="0.257" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleGeneration" name="test_creates_parent_directory" time="0.223" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleGeneration" name="test_special_characters_in_title" time="0.225" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleConfig" name="test_defaults" time="0.019" />
-    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleConfig" name="test_custom_config" time="0.022" />
-    <testcase classname="tests.integration.pipeline.test_density_budget.TestDensityBudgetRealData" name="test_budget_selects_clips_from_multiple_months" time="0.551" />
-    <testcase classname="tests.integration.pipeline.test_density_budget.TestDensityBudgetRealData" name="test_favorites_take_priority_over_non_favorites" time="0.021" />
-    <testcase classname="tests.integration.pipeline.test_density_budget.TestDensityBudgetRealData" name="test_full_pipeline_runs_with_density_budget" time="0.210" />
-    <testcase classname="tests.integration.pipeline.test_density_budget.TestDensityBudgetRealData" name="test_clips_have_valid_dimensions" time="0.012" />
-    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestFullPipelineWithTitles" name="test_full_pipeline_with_titles_and_transitions" time="201.445" />
-    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestFullPipelineSynthetic" name="test_titles_and_crossfade_with_synthetic_clips" time="19.603" />
-    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestTripMemoryPipeline" name="test_trip_memory_type_with_gps" time="16.987" />
-    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestPipelineWithMusic" name="test_pipeline_with_music_mixing" time="2.837" />
-    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestResolutionVariations" name="test_resolution_override_720p" time="2.683" />
-    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestResolutionVariations" name="test_scale_mode_applied_in_assembly" time="1.907" />
-    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestLivePhotoFullPipeline" name="test_full_pipeline_with_live_photos" time="84.591">
-      <skipped type="pytest.skip" message="Not enough same-orientation clips after filtering">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/pipeline/test_full_pipeline.py:651: Not enough same-orientation clips after filtering</skipped>
+    <testcase classname="tests.integration.assembly.test_assembly_core.TestHDRUtilitiesExtra" name="test_encoder_args_cpu_hdr" time="0.025" />
+    <testcase classname="tests.integration.assembly.test_hdr_pixel.TestHDRPassthrough" name="test_hdr_passthrough_preserves_color_range" time="0.329" />
+    <testcase classname="tests.integration.assembly.test_hdr_pixel.TestHDRPassthrough" name="test_hdr_chroma_preserved" time="0.168" />
+    <testcase classname="tests.integration.assembly.test_hdr_pixel.TestSDRInHDROutput" name="test_sdr_clip_in_hdr_output_not_red_tinted" time="0.182" />
+    <testcase classname="tests.integration.assembly.test_hdr_pixel.TestSDRInHDROutput" name="test_sdr_in_hdr_output_not_washed_out" time="0.186" />
+    <testcase classname="tests.integration.assembly.test_hdr_pixel.TestHDROutputMetadata" name="test_hdr_output_metadata_correct" time="0.172" />
+    <testcase classname="tests.integration.assembly.test_hdr_pixel.TestHDROutputMetadata" name="test_hdr_output_color_range_tagged_tv" time="0.173" />
+    <testcase classname="tests.integration.assembly.test_perf_assembly.TestMinimalScenario" name="test_minimal_assembly_resources" time="1.229" />
+    <testcase classname="tests.integration.assembly.test_perf_assembly.TestTypicalScenario" name="test_typical_assembly_resources" time="5.763" />
+    <testcase classname="tests.integration.assembly.test_perf_assembly.TestHeavyScenario" name="test_heavy_assembly_resources" time="10.821" />
+    <testcase classname="tests.integration.assembly.test_perf_assembly" name="test_save_results" time="0.016" />
+    <testcase classname="tests.integration.assembly.test_streaming_assembly.TestStreamingViaEngine" name="test_two_clips_crossfade" time="1.277" />
+    <testcase classname="tests.integration.assembly.test_streaming_assembly.TestStreamingViaEngine" name="test_many_clips_no_chunking" time="3.632" />
+    <testcase classname="tests.integration.auth.test_oidc_flow.TestOIDCDiscovery" name="test_well_known_endpoint_reachable" time="0.294" />
+    <testcase classname="tests.integration.auth.test_oidc_flow.TestOIDCAuthorizeRedirect" name="test_authorize_redirects_to_idp" time="0.060" />
+    <testcase classname="tests.integration.auth.test_oidc_flow.TestOIDCFullFlow" name="test_full_auth_code_flow" time="0.149" />
+    <testcase classname="tests.integration.auth.test_oidc_flow.TestOIDCCallbackErrors" name="test_callback_without_code" time="0.043" />
+    <testcase classname="tests.integration.auth.test_oidc_flow.TestOIDCCallbackErrors" name="test_callback_with_invalid_state" time="0.058" />
+    <testcase classname="tests.integration.auth.test_oidc_flow.TestBasicAuthIntegration" name="test_basic_login_flow" time="0.041" />
+    <testcase classname="tests.integration.auth.test_oidc_flow.TestBasicAuthIntegration" name="test_basic_wrong_credentials" time="0.029" />
+    <testcase classname="tests.integration.auth.test_oidc_flow.TestMiddlewareIntegration" name="test_health_bypasses_auth" time="0.027" />
+    <testcase classname="tests.integration.auth.test_oidc_flow.TestMiddlewareIntegration" name="test_protected_page_redirects" time="0.042" />
+    <testcase classname="tests.integration.auth.test_oidc_flow.TestMiddlewareIntegration" name="test_authenticated_session_passes" time="0.228" />
+    <testcase classname="tests.integration.photos.test_mixed_assembly.TestMixedAssembly" name="test_photo_clip_concat_with_video_clip" time="0.452" />
+    <testcase classname="tests.integration.photos.test_mixed_assembly.TestMixedAssembly" name="test_two_photo_clips_different_modes" time="1.309" />
+    <testcase classname="tests.integration.photos.test_mixed_assembly.TestMixedAssembly" name="test_assembly_clip_is_photo_flag" time="0.290" />
+    <testcase classname="tests.integration.photos.test_photo_animation.TestKenBurnsAnimation" name="test_landscape_produces_correct_format" time="0.455" />
+    <testcase classname="tests.integration.photos.test_photo_animation.TestKenBurnsAnimation" name="test_first_and_last_frames_differ_from_zoom" time="1.210" />
+    <testcase classname="tests.integration.photos.test_photo_animation.TestFaceZoomAnimation" name="test_produces_correct_format" time="0.417" />
+    <testcase classname="tests.integration.photos.test_photo_animation.TestFaceZoomAnimation" name="test_face_zoom_differs_from_ken_burns" time="1.598" />
+    <testcase classname="tests.integration.photos.test_photo_animation.TestFaceZoomAnimation" name="test_corner_face_produces_valid_output" time="0.347" />
+    <testcase classname="tests.integration.photos.test_photo_animation.TestBlurBgAnimation" name="test_portrait_produces_correct_format" time="1.804" />
+    <testcase classname="tests.integration.photos.test_photo_animation.TestBlurBgAnimation" name="test_edges_are_blurred" time="1.844" />
+    <testcase classname="tests.integration.photos.test_photo_animation.TestBlurBgAnimation" name="test_square_photo" time="1.421" />
+    <testcase classname="tests.integration.photos.test_photo_animation.TestAutoModeSelection" name="test_landscape_auto_uses_ken_burns" time="1.210" />
+    <testcase classname="tests.integration.photos.test_photo_animation.TestAutoModeSelection" name="test_portrait_auto_uses_blur_bg" time="1.863" />
+    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoFetch" name="test_photos_are_images_not_live_photos" time="0.010">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/photos/test_photo_pipeline.py:72: Immich not reachable</skipped>
     </testcase>
-    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestTitleOverridePipeline" name="test_custom_title_override_renders" time="24.322" />
-    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestCutTransitionPipeline" name="test_cut_transition_no_overlap" time="2.576" />
-    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestPrivacyModePipeline" name="test_privacy_mode_blurs_clips" time="2.040" />
-    <testcase classname="tests.integration.pipeline.test_generate.TestGenerateMemoryIntegration" name="test_generates_valid_video_from_clips" time="2.889" />
-    <testcase classname="tests.integration.pipeline.test_generate.TestGenerateMemoryIntegration" name="test_single_clip_passthrough" time="0.419" />
-    <testcase classname="tests.integration.pipeline.test_scenarios.TestErrorHandling" name="test_exception_wraps_in_generation_error" time="0.555" />
-    <testcase classname="tests.integration.pipeline.test_scenarios.TestMusicApplication" name="test_music_mixed_into_video" time="0.941" />
-    <testcase classname="tests.integration.pipeline.test_scenarios.TestLivePhotoBurst" name="test_burst_merge_produces_video" time="9.341" />
-    <testcase classname="tests.integration.pipeline.test_scenarios.TestLivePhotoMergeReal" name="test_auto_detect_and_merge_live_photos" time="85.859">
-      <skipped type="pytest.skip" message="Not enough same-orientation clips after filtering">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/pipeline/test_scenarios.py:300: Not enough same-orientation clips after filtering</skipped>
+    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoFetch" name="test_photos_have_created_date" time="0.010">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/photos/test_photo_pipeline.py:80: Immich not reachable</skipped>
     </testcase>
-    <testcase classname="tests.integration.pipeline.test_scenarios.TestErrorWrapping" name="test_non_generation_error_gets_wrapped" time="0.445" />
-    <testcase classname="tests.integration.pipeline.test_scenarios.TestTripTitleSettings" name="test_trip_memory_type_builds_title_with_locations" time="0.073" />
-    <testcase classname="tests.integration.pipeline.test_scenarios.TestClipSegmentOverrides" name="test_custom_segment_trims_clip" time="0.661" />
-    <testcase classname="tests.integration.live_photos.test_merge.TestLivePhotoSpectrogram" name="test_spectrogram_alignment_produces_valid_video" time="143.625" />
-    <testcase classname="tests.integration.live_photos.test_merge.TestLivePhotoSpectrogram" name="test_generate_memory_with_live_burst" time="19.054" />
-    <testcase classname="tests.integration.live_photos.test_merge.TestLivePhotoSpectrogram" name="test_second_burst_also_merges" time="142.825" />
+    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoFetch" name="test_photos_sorted_chronologically" time="0.010">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/photos/test_photo_pipeline.py:87: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoFetch" name="test_some_photos_have_exif" time="0.010">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/photos/test_photo_pipeline.py:97: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoGrouping" name="test_grouper_produces_groups" time="0.009">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/photos/test_photo_pipeline.py:110: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoGrouping" name="test_scoring_produces_valid_scores" time="0.010">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/photos/test_photo_pipeline.py:129: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoAnimation" name="test_download_and_animate_ken_burns" time="0.011">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/photos/test_photo_pipeline.py:145: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoAnimation" name="test_animate_portrait_photo" time="0.010">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/photos/test_photo_pipeline.py:201: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoAnimation" name="test_hdr_photo_detection" time="0.009">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/photos/test_photo_pipeline.py:251: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoWithPeople" name="test_some_photos_have_people" time="0.009">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/photos/test_photo_pipeline.py:308: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.photos.test_photo_pipeline.TestImmichPhotoWithPeople" name="test_face_data_available_for_scoring" time="0.010">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/photos/test_photo_pipeline.py:322: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderKenBurns" name="test_landscape_in_landscape_produces_valid_video" time="5.780" />
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderKenBurns" name="test_portrait_in_landscape_has_blur_bg" time="0.597" />
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderKenBurns" name="test_zoom_changes_visible_area" time="0.663" />
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderKenBurns" name="test_no_black_pixels_in_output" time="0.871" />
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderSlideIn" name="test_produces_correct_frame_count" time="0.395" />
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderSlideIn" name="test_first_frame_differs_from_last" time="0.405" />
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderSlideIn" name="test_last_frame_has_photo_centered" time="0.462" />
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderSlideIn" name="test_encodes_to_valid_video" time="3.092" />
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderCollage" name="test_horizontal_3_photos" time="0.677" />
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderCollage" name="test_vertical_3_photos" time="0.507" />
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderCollage" name="test_slide_in_makes_first_frame_different" time="1.234" />
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderCollage" name="test_background_is_not_black" time="0.412" />
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderCollage" name="test_rejects_too_few_photos" time="0.010" />
+    <testcase classname="tests.integration.photos.test_photo_renderer.TestRenderCollage" name="test_encodes_to_valid_video" time="3.428" />
+    <testcase classname="tests.integration.titles.test_ending_pixels.TestEndingPixels" name="test_early_frames_show_background" time="0.317" />
+    <testcase classname="tests.integration.titles.test_ending_pixels.TestEndingPixels" name="test_last_frame_is_bright" time="0.253" />
+    <testcase classname="tests.integration.titles.test_ending_pixels.TestEndingPixels" name="test_fade_is_progressive" time="0.458" />
+    <testcase classname="tests.integration.titles.test_ending_pixels.TestEndingPixels" name="test_has_audio_stream" time="0.216" />
+    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_background_is_dark" time="0.437" />
+    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_text_is_visible" time="0.435" />
+    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_fade_from_white_first_frame_bright" time="0.953" />
+    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_mid_video_darker_than_start" time="0.985" />
+    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_has_audio_stream" time="0.424" />
+    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_correct_resolution" time="0.422" />
+    <testcase classname="tests.integration.titles.test_generator_pixels.TestTitleScreenPixels" name="test_portrait_resolution" time="0.441" />
+    <testcase classname="tests.integration.titles.test_generator_pixels.TestMonthDividerPixels" name="test_divider_has_text" time="0.276" />
+    <testcase classname="tests.integration.titles.test_generator_pixels.TestMonthDividerPixels" name="test_divider_background_dark" time="0.264" />
+    <testcase classname="tests.integration.titles.test_generator_pixels.TestAllScreensPixels" name="test_ending_differs_from_title" time="1.538" />
+    <testcase classname="tests.integration.titles.test_generator_pixels.TestAllScreensPixels" name="test_sdr_no_hdr_metadata" time="0.469" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_render_frame_returns_pil_image" time="0.028" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_render_frame_with_subtitle" time="0.029" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_render_frame_is_not_blank" time="0.030" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_render_all_frames_count" time="0.305" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_render_all_frames_parallel" time="0.329" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_render_all_frames_parallel_small_count_falls_back" time="0.044" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_text_transform_uppercase" time="0.017" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_text_transform_capitalize" time="0.014" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILTitleRenderer" name="test_text_transform_none" time="0.013" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILColorParsing" name="test_parse_hex_color_6_digit" time="0.014" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILColorParsing" name="test_parse_hex_color_3_digit" time="0.020" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILColorParsing" name="test_parse_color_with_alpha" time="0.016" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILColorParsing" name="test_luminance_white" time="0.019" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestPILColorParsing" name="test_luminance_black" time="0.017" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestOptimalTextSettings" name="test_dark_background_gets_light_text" time="0.017" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestOptimalTextSettings" name="test_light_background_gets_dark_text" time="0.020" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestOptimalTextSettings" name="test_settings_cached" time="0.026" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestBlendModes" name="test_normal_blend" time="0.023" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestBlendModes" name="test_multiply_blend" time="0.020" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestBlendModes" name="test_screen_blend" time="0.020" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestBlendModes" name="test_overlay_blend" time="0.022" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestBlendModes" name="test_soft_light_blend" time="0.016" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestBlendModes" name="test_unknown_blend_falls_back_to_normal" time="0.015" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestRenderTitleFrame" name="test_returns_numpy_array" time="0.017" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestRenderTitleFrame" name="test_with_subtitle" time="0.014" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_escape_colon" time="0.017" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_escape_percent" time="0.014" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_escape_brackets" time="0.012" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_escape_semicolon" time="0.012" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_escape_backslash" time="0.016" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_strips_control_characters" time="0.013" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegEscaping" name="test_preserves_spaces" time="0.013" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleGeneration" name="test_create_title_with_effects" time="0.241" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleGeneration" name="test_create_title_with_effects_no_subtitle" time="0.242" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleGeneration" name="test_output_is_valid_video" time="0.285" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleGeneration" name="test_creates_parent_directory" time="0.214" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleGeneration" name="test_special_characters_in_title" time="0.191" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleConfig" name="test_defaults" time="0.012" />
+    <testcase classname="tests.integration.titles.test_title_rendering.TestFFmpegTitleConfig" name="test_custom_config" time="0.012" />
+    <testcase classname="tests.integration.pipeline.test_density_budget.TestDensityBudgetRealData" name="test_budget_selects_clips_from_multiple_months" time="0.015">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/pipeline/test_density_budget.py:24: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.pipeline.test_density_budget.TestDensityBudgetRealData" name="test_favorites_take_priority_over_non_favorites" time="0.013">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/pipeline/test_density_budget.py:60: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.pipeline.test_density_budget.TestDensityBudgetRealData" name="test_full_pipeline_runs_with_density_budget" time="0.012">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/pipeline/test_density_budget.py:93: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.pipeline.test_density_budget.TestDensityBudgetRealData" name="test_clips_have_valid_dimensions" time="0.011">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/pipeline/test_density_budget.py:129: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestFullPipelineWithTitles" name="test_full_pipeline_with_titles_and_transitions" time="0.011">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/pipeline/test_full_pipeline.py:265: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestFullPipelineSynthetic" name="test_titles_and_crossfade_with_synthetic_clips" time="19.633" />
+    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestTripMemoryPipeline" name="test_trip_memory_type_with_gps" time="15.513" />
+    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestPipelineWithMusic" name="test_pipeline_with_music_mixing" time="2.124" />
+    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestResolutionVariations" name="test_resolution_override_720p" time="1.934" />
+    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestResolutionVariations" name="test_scale_mode_applied_in_assembly" time="1.394" />
+    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestLivePhotoFullPipeline" name="test_full_pipeline_with_live_photos" time="0.022">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/pipeline/test_full_pipeline.py:594: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestTitleOverridePipeline" name="test_custom_title_override_renders" time="15.752" />
+    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestCutTransitionPipeline" name="test_cut_transition_no_overlap" time="1.886" />
+    <testcase classname="tests.integration.pipeline.test_full_pipeline.TestPrivacyModePipeline" name="test_privacy_mode_blurs_clips" time="1.610" />
+    <testcase classname="tests.integration.pipeline.test_generate.TestGenerateMemoryIntegration" name="test_generates_valid_video_from_clips" time="2.189" />
+    <testcase classname="tests.integration.pipeline.test_generate.TestGenerateMemoryIntegration" name="test_single_clip_passthrough" time="0.269" />
+    <testcase classname="tests.integration.pipeline.test_scenarios.TestErrorHandling" name="test_exception_wraps_in_generation_error" time="0.442" />
+    <testcase classname="tests.integration.pipeline.test_scenarios.TestMusicApplication" name="test_music_mixed_into_video" time="0.543" />
+    <testcase classname="tests.integration.pipeline.test_scenarios.TestLivePhotoBurst" name="test_burst_merge_produces_video" time="0.022">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/pipeline/test_scenarios.py:178: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.pipeline.test_scenarios.TestLivePhotoMergeReal" name="test_auto_detect_and_merge_live_photos" time="0.021">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/pipeline/test_scenarios.py:238: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.pipeline.test_scenarios.TestErrorWrapping" name="test_non_generation_error_gets_wrapped" time="0.233" />
+    <testcase classname="tests.integration.pipeline.test_scenarios.TestTripTitleSettings" name="test_trip_memory_type_builds_title_with_locations" time="0.027" />
+    <testcase classname="tests.integration.pipeline.test_scenarios.TestClipSegmentOverrides" name="test_custom_segment_trims_clip" time="0.332" />
+    <testcase classname="tests.integration.live_photos.test_merge.TestLivePhotoSpectrogram" name="test_spectrogram_alignment_produces_valid_video" time="0.018">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/live_photos/test_merge.py:118: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.live_photos.test_merge.TestLivePhotoSpectrogram" name="test_generate_memory_with_live_burst" time="0.014">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/live_photos/test_merge.py:196: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.live_photos.test_merge.TestLivePhotoSpectrogram" name="test_second_burst_also_merges" time="0.012">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/live_photos/test_merge.py:238: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.cli.test_generate.TestGenerateMemoryPipeline" name="test_two_clips_crossfade" time="1.053" />
+    <testcase classname="tests.integration.cli.test_generate.TestGenerateMemoryPipeline" name="test_single_clip_cut" time="0.328" />
+    <testcase classname="tests.integration.cli.test_generate.TestGenerateMemoryPipeline" name="test_upload_back_mocked_write" time="0.417" />
+    <testcase classname="tests.integration.cli.test_generate.TestGenerateMemoryPipeline" name="test_empty_clips_raises_error" time="0.026" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIGenerate" name="test_cli_generate_invokes_pipeline" time="0.047" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIGenerate" name="test_cli_generate_nonexistent_person" time="0.024">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/cli/test_generate.py:306: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.cli.test_generate.TestCLIGenerate" name="test_cli_missing_date_args_fails" time="0.031" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIGenerate" name="test_cli_year_flag" time="0.033" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIGenerate" name="test_cli_memory_type_person_spotlight" time="0.027" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIGenerate" name="test_cli_memory_type_monthly" time="0.027" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIGenerate" name="test_cli_resolution_flag" time="0.024" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIGenerate" name="test_cli_dry_run" time="0.021" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIGenerate" name="test_cli_include_photos_flag" time="0.021" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIGenerate" name="test_cli_privacy_mode" time="0.025" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIGenerate" name="test_cli_trip_requires_year" time="0.019" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIGenerate" name="test_cli_invalid_date_format" time="0.019" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIGenerate" name="test_cli_period_flag" time="0.027" />
+    <testcase classname="tests.integration.cli.test_generate.TestPipelineRunner" name="test_fetch_videos_returns_assets" time="0.023" />
+    <testcase classname="tests.integration.cli.test_generate.TestPipelineRunner" name="test_fetch_videos_person_filter" time="0.023" />
+    <testcase classname="tests.integration.cli.test_generate.TestPipelineRunner" name="test_fetch_videos_multi_person" time="0.023" />
+    <testcase classname="tests.integration.cli.test_generate.TestPipelineRunner" name="test_run_pipeline_wires_config_and_calls_generate" time="0.034" />
+    <testcase classname="tests.integration.cli.test_generate.TestTripGenerationFlow" name="test_resolve_music_arg_none" time="0.022" />
+    <testcase classname="tests.integration.cli.test_generate.TestTripGenerationFlow" name="test_resolve_music_arg_valid_path" time="0.025" />
+    <testcase classname="tests.integration.cli.test_generate.TestTripGenerationFlow" name="test_resolve_music_arg_missing_file" time="0.024" />
+    <testcase classname="tests.integration.cli.test_generate.TestTripGenerationFlow" name="test_handle_trip_generation_no_trips" time="0.176" />
+    <testcase classname="tests.integration.cli.test_generate.TestTripGenerationFlow" name="test_handle_trip_generation_discovery_mode" time="0.023" />
+    <testcase classname="tests.integration.cli.test_generate.TestTripGenerationFlow" name="test_handle_trip_generation_selects_and_generates" time="0.031" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIFlexibleFiltering" name="test_person_spotlight_with_month" time="0.028" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIFlexibleFiltering" name="test_year_in_review_with_month" time="0.033" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIFlexibleFiltering" name="test_start_end_overrides_person_spotlight" time="0.030" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIFlexibleFiltering" name="test_start_end_overrides_season" time="0.027" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIFlexibleFiltering" name="test_on_this_day_with_years_back" time="0.025" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIFlexibleFiltering" name="test_on_this_day_default_all_years" time="0.027" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIFlexibleFiltering" name="test_near_date_requires_trip" time="0.023" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIFlexibleFiltering" name="test_years_back_requires_on_this_day" time="0.021" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIFlexibleFiltering" name="test_birthday_flag_without_person_is_harmless" time="0.026" />
+    <testcase classname="tests.integration.cli.test_generate.TestCLIFlexibleFiltering" name="test_birthday_manual_override" time="0.026" />
+    <testcase classname="tests.integration.cli.test_generate_e2e.TestRealPipelineIntegration" name="test_year_in_review_produces_valid_video" time="0.019">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/cli/test_generate_e2e.py:173: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.cli.test_generate_e2e.TestRealPipelineIntegration" name="test_single_month_produces_valid_video" time="0.022">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/cli/test_generate_e2e.py:185: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.cli.test_generate_e2e.TestRealPipelineIntegration" name="test_output_has_audio_stream" time="0.018">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/cli/test_generate_e2e.py:195: Immich not reachable</skipped>
+    </testcase>
+    <testcase classname="tests.integration.cli.test_generate_e2e.TestRealPipelineIntegration" name="test_output_not_black" time="0.021">
+      <skipped type="pytest.skip" message="Immich not reachable">/Users/sam/Code/perso/immich-video-memory-generator/tests/integration/cli/test_generate_e2e.py:202: Immich not reachable</skipped>
+    </testcase>
   </testsuite>
 </testsuites>
