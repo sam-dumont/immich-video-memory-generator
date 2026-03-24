@@ -96,6 +96,12 @@ class RenderingService:
                 is_ending=is_ending,
                 fade_to_white=fade_to_white,
             )
+        # WHY: PIL fallback can't do animated slow-mo deblur, but it CAN
+        # use a static blurred frame from the content clip as background
+        # instead of falling back to a plain gradient.
+        if background_image is None and content_clip_path is not None:
+            background_image = self._extract_blurred_frame(content_clip_path, width, height)
+
         return create_title_video(
             title=title,
             subtitle=subtitle,
@@ -200,6 +206,44 @@ class RenderingService:
         finally:
             if slowmo_reader is not None:
                 slowmo_reader.close()
+
+    @staticmethod
+    def _extract_blurred_frame(clip_path: Path, width: int, height: int) -> np.ndarray | None:
+        """Extract a mid-clip frame, blur it, and return as background array.
+
+        Falls back to None if extraction fails (caller uses gradient instead).
+        """
+        import subprocess
+
+        try:
+            # Extract mid-frame as raw RGB
+            result = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-i",
+                    str(clip_path),
+                    "-vf",
+                    f"select=eq(n\\,30),scale={width}:{height},gblur=sigma=30",
+                    "-vframes",
+                    "1",
+                    "-f",
+                    "rawvideo",
+                    "-pix_fmt",
+                    "rgb24",
+                    "pipe:1",
+                ],
+                capture_output=True,
+                timeout=15,
+            )
+            if result.returncode != 0:
+                return None
+
+            frame = np.frombuffer(result.stdout, dtype=np.uint8).reshape(height, width, 3)
+            # Darken to 40% so white text pops (same as Taichi path)
+            return frame.astype(np.float32) / 255.0 * 0.4
+        except Exception as e:
+            logger.debug(f"Failed to extract blurred frame for PIL fallback: {e}")
+            return None
 
     def create_map_video(
         self,
