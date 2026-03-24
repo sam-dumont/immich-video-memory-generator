@@ -350,7 +350,7 @@ jobs:
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
         with:
-          files: tests/assembly-coverage.xml,tests/audio-coverage.xml,tests/auth-coverage.xml,tests/cli-coverage.xml,tests/live-photos-coverage.xml,tests/photos-coverage.xml,tests/pipeline-coverage.xml
+          files: tests/assembly-coverage.xml,tests/audio-coverage.xml,tests/auth-coverage.xml,tests/automation-coverage.xml,tests/cli-coverage.xml,tests/e2e-coverage.xml,tests/live-photos-coverage.xml,tests/photos-coverage.xml,tests/pipeline-coverage.xml,tests/titles-coverage.xml
           flags: integration
           disable_search: true
           token: ${{ secrets.CODECOV_TOKEN }}
