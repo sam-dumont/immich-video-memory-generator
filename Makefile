@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-fast mutation benchmark benchmark-perf lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
+.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast mutation benchmark benchmark-perf lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
 
 # Default target
 help:
@@ -150,9 +150,15 @@ test-integration-audio:  ## Run ONLY audio ML tests (~2min, needs demucs/acestep
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/audio-coverage.xml --cov-fail-under=0 \
 		--junitxml=tests/audio-junit.xml
 
+test-integration-titles:  ## Run ONLY title screen pixel tests (~30s, FFmpeg only)
+	uv run pytest tests/integration/titles/ -v -m integration --log-cli-level=INFO --tb=short \
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/titles-coverage.xml --cov-fail-under=0 \
+		--junitxml=tests/titles-junit.xml
+
 test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immich), saves per-suite coverage XMLs
 	$(MAKE) test-integration-auth
 	$(MAKE) test-integration-assembly
+	$(MAKE) test-integration-titles
 	$(MAKE) test-integration-photos
 	$(MAKE) test-integration-pipeline
 	$(MAKE) test-integration-live-photos
@@ -160,7 +166,7 @@ test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immic
 	@# already covered by test-integration-pipeline. Run separately: make test-integration-cli
 	@# Merge per-suite JUnit XMLs into one (no re-run needed)
 	@python3 scripts/merge_junit_xml.py tests/integration-junit.xml \
-		tests/auth-junit.xml tests/assembly-junit.xml tests/photos-junit.xml \
+		tests/auth-junit.xml tests/assembly-junit.xml tests/titles-junit.xml tests/photos-junit.xml \
 		tests/pipeline-junit.xml tests/live-photos-junit.xml tests/audio-junit.xml 2>/dev/null || true
 	@echo ""
 	@echo "═══════════════════════════════════════════════════"

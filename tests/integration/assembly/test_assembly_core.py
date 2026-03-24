@@ -604,13 +604,13 @@ class TestTitleInserter:
 
         result = ti.build_clips_with_dividers(clips, month_divider_paths, title_settings)
 
-        # 2 dividers (Jan, Mar) + 3 original clips = 5
-        assert len(result) == 5
-        assert result[0].is_title_screen  # Jan divider
+        # WHY: first month divider is skipped (intro title covers it).
+        # 1 divider (Mar only) + 3 original clips = 4
+        assert len(result) == 4
+        assert not result[0].is_title_screen  # Jan clip (no divider)
         assert not result[1].is_title_screen  # Jan clip
-        assert not result[2].is_title_screen  # Jan clip
-        assert result[3].is_title_screen  # Mar divider
-        assert not result[4].is_title_screen  # Mar clip
+        assert result[2].is_title_screen  # Mar divider
+        assert not result[3].is_title_screen  # Mar clip
 
     def test_get_orientation_from_clips(self, test_clip_720p, test_clip_portrait):
         """get_orientation_from_clips detects landscape vs portrait majority."""
@@ -1647,8 +1647,8 @@ class TestTitleInserterExtra:
         result = ti.select_divider_strategy(
             clips, FakeGenerator(), title_settings, None, is_trip=False
         )
-        # 2 month dividers + 2 clips = 4
-        assert len(result) == 4
+        # 1 month divider (first skipped) + 2 clips = 3
+        assert len(result) == 3
 
 
 # ===================================================================

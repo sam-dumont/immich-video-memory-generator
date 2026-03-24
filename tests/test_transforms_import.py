@@ -21,9 +21,9 @@ def test_transforms_module_imports():
         apply_aspect_ratio_transform,
     )
 
-    assert ScaleMode.FIT is not None
+    assert ScaleMode.FIT.value == "fit"
     assert callable(apply_aspect_ratio_transform)
-    assert AspectRatioTransformer is not None
+    assert issubclass(AspectRatioTransformer, object)
 
 
 def test_transforms_ffmpeg_imports():
@@ -34,7 +34,13 @@ def test_transforms_ffmpeg_imports():
         transform_fit,
     )
 
-    assert CropRegion is not None
+    region = CropRegion(x=10, y=20, width=100, height=80)
+    assert region.x == 10
+    assert region.y == 20
+    assert region.width == 100
+    assert region.height == 80
+    assert region.center == (60, 60)
+    assert "crop=100:80:10:20" in region.to_ffmpeg_filter()
     assert callable(get_video_dimensions)
     assert callable(transform_fill)
     assert callable(transform_fit)

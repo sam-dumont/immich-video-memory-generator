@@ -3,7 +3,7 @@
 These tests verify actual image/video output. PIL tests are always run.
 FFmpeg tests require ffmpeg installed (skipped otherwise).
 
-Run: make test-integration-assembly
+Run: make test-integration-titles
 """
 
 from __future__ import annotations

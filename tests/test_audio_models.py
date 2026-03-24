@@ -79,8 +79,11 @@ class TestSafeCutPoints:
     def test_overlapping_protected_ranges_handled(self):
         result = AudioAnalysisResult(protected_ranges=[(1.0, 3.0), (2.0, 4.0)])
         points = result.get_safe_cut_points()
-        # Should not crash; output should be valid
         assert isinstance(points, list)
+        # WHY: Cut points should be floats representing valid timestamps
+        for point in points:
+            assert isinstance(point, float), f"Cut point {point} should be float"
+            assert point >= 0.0, f"Cut point {point} should be non-negative"
 
 
 # ---------------------------------------------------------------------------

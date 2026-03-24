@@ -64,9 +64,14 @@ class TestVideoEncodingHDRFlag:
         from immich_memories.titles.video_encoding import _get_best_encoder
 
         _, video_filter = _get_best_encoder(hdr=True)
-        # Should have a conversion filter (zscale or format=p010le)
-        # Note: may be empty if libx264 fallback, but on most systems it's set
         assert isinstance(video_filter, str)
+        # WHY: On systems with zscale, filter contains conversion.
+        # On systems without, it falls back to basic format conversion.
+        # Either way, if non-empty it must contain format conversion.
+        if video_filter:
+            assert "format=" in video_filter or "zscale" in video_filter, (
+                f"HDR filter should contain format conversion, got: {video_filter}"
+            )
 
     def test_hdr_false_no_color_metadata(self):
         from immich_memories.titles.video_encoding import _get_best_encoder
