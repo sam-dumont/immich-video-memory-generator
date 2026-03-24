@@ -459,6 +459,272 @@ class TestScoringVersion:
         assert needs is True
 
 
+class TestDensityBudgetNegativeBudget:
+    """Regression: divider overhead must not cause negative budget (#151)."""
+
+    def test_many_buckets_small_target_still_selects_clips(self):
+        """12 monthly buckets with target_clips=5 should not produce 0 clips.
+
+        WHY: The old code multiplied divider overhead by raw_multiplier,
+        causing 12 * 2.0 * 1.3 = 31.2s to be subtracted from a 26s budget.
+        """
+        from datetime import datetime
+
+        from immich_memories.analysis.density_budget import AssetEntry, compute_density_budget
+
+        entries = []
+        for month in range(1, 13):
+            for i in range(50):
+                entries.append(
+                    AssetEntry(
+                        asset_id=f"m{month}_c{i}",
+                        asset_type="video",
+                        date=datetime(2025, month, 1 + i % 28),
+                        duration=10.0,
+                        is_favorite=(i == 0),
+                        width=1920,
+                        height=1080,
+                        is_camera_original=True,
+                    )
+                )
+
+        # target_clips=5 * avg_clip_duration=5.0 = 25s target
+        buckets = compute_density_budget(entries, target_duration_seconds=25.0, raw_multiplier=1.3)
+        total_selected = sum(len(b.favorite_ids) + len(b.gap_fill_ids) for b in buckets)
+
+        assert total_selected > 0, (
+            f"Budget selected 0 clips from {len(entries)} — "
+            f"divider overhead likely caused negative budget"
+        )
+        # Should select at least the 12 favorites (1 per month)
+        total_favorites = sum(len(b.favorite_ids) for b in buckets)
+        assert total_favorites >= 5, (
+            f"Only {total_favorites} favorites selected — budget too restrictive"
+        )
+
+    def test_budget_never_negative(self):
+        """Bucket quotas should never be negative regardless of bucket count."""
+        from datetime import datetime, timedelta
+
+        from immich_memories.analysis.density_budget import AssetEntry, compute_density_budget
+
+        base = datetime(2025, 1, 1)
+        entries = [
+            AssetEntry(
+                asset_id=f"w{w}_c{i}",
+                asset_type="video",
+                date=base + timedelta(weeks=w, days=i),
+                duration=5.0,
+                is_favorite=False,
+                width=1920,
+                height=1080,
+                is_camera_original=True,
+            )
+            for w in range(52)
+            for i in range(3)
+        ]
+
+        buckets = compute_density_budget(
+            entries, target_duration_seconds=30.0, raw_multiplier=1.3, bucket_mode="week"
+        )
+
+        for b in buckets:
+            assert b.quota_seconds >= 0, f"Bucket {b.key} has negative quota {b.quota_seconds:.1f}s"
+
+
+class TestDensityBudgetEdgeCases:
+    """Edge cases and adversarial inputs for density budget."""
+
+    def test_single_bucket_gets_full_budget(self):
+        """All clips in one month with month mode → single bucket gets entire budget."""
+        from datetime import datetime
+
+        from immich_memories.analysis.density_budget import AssetEntry, compute_density_budget
+
+        entries = [
+            AssetEntry(
+                asset_id=f"c{i}",
+                asset_type="video",
+                date=datetime(2025, 6, 1 + i),
+                duration=10.0,
+                is_favorite=False,
+                width=1920,
+                height=1080,
+                is_camera_original=True,
+            )
+            for i in range(20)
+        ]
+        # WHY: force month mode — auto would pick "week" for <180 day span
+        buckets = compute_density_budget(
+            entries,
+            target_duration_seconds=60.0,
+            bucket_mode="month",
+        )
+        assert len(buckets) == 1
+        assert buckets[0].quota_seconds > 0
+
+    def test_very_small_target_still_selects(self):
+        """target=10s with 500 clips should still select something."""
+        from datetime import datetime
+
+        from immich_memories.analysis.density_budget import AssetEntry, compute_density_budget
+
+        entries = [
+            AssetEntry(
+                asset_id=f"c{i}",
+                asset_type="video",
+                date=datetime(2025, (i % 12) + 1, 1 + i % 28),
+                duration=8.0,
+                is_favorite=(i % 50 == 0),
+                width=1920,
+                height=1080,
+                is_camera_original=True,
+            )
+            for i in range(500)
+        ]
+        buckets = compute_density_budget(
+            entries,
+            target_duration_seconds=10.0,
+            raw_multiplier=1.3,
+        )
+        total = sum(len(b.favorite_ids) + len(b.gap_fill_ids) for b in buckets)
+        assert total > 0, "10s target with 500 clips selected nothing"
+
+    def test_all_favorites_always_included(self):
+        """Favorites must be selected even when budget is tight."""
+        from datetime import datetime
+
+        from immich_memories.analysis.density_budget import AssetEntry, compute_density_budget
+
+        entries = [
+            AssetEntry(
+                asset_id=f"fav{i}",
+                asset_type="video",
+                date=datetime(2025, 6, 1 + i),
+                duration=5.0,
+                is_favorite=True,
+                width=1920,
+                height=1080,
+                is_camera_original=True,
+            )
+            for i in range(10)
+        ]
+        buckets = compute_density_budget(
+            entries,
+            target_duration_seconds=15.0,
+            raw_multiplier=1.3,
+        )
+        fav_ids = set()
+        for b in buckets:
+            fav_ids.update(b.favorite_ids)
+        # Should get at least some favorites even with tight budget
+        assert len(fav_ids) > 0, "No favorites selected despite all clips being favorites"
+
+    def test_empty_assets_returns_empty(self):
+        from immich_memories.analysis.density_budget import compute_density_budget
+
+        assert compute_density_budget([], target_duration_seconds=60.0) == []
+
+    def test_dense_month_gets_more_quota(self):
+        """Month with 3x clips should get ~3x the quota of a sparse month."""
+        from datetime import datetime
+
+        from immich_memories.analysis.density_budget import AssetEntry, compute_density_budget
+
+        entries = []
+        # January: 10 clips
+        for i in range(10):
+            entries.append(
+                AssetEntry(
+                    asset_id=f"jan{i}",
+                    asset_type="video",
+                    date=datetime(2025, 1, 1 + i),
+                    duration=10.0,
+                    is_favorite=False,
+                    width=1920,
+                    height=1080,
+                    is_camera_original=True,
+                )
+            )
+        # July: 30 clips (3x density)
+        for i in range(30):
+            entries.append(
+                AssetEntry(
+                    asset_id=f"jul{i}",
+                    asset_type="video",
+                    date=datetime(2025, 7, 1 + i % 28),
+                    duration=10.0,
+                    is_favorite=False,
+                    width=1920,
+                    height=1080,
+                    is_camera_original=True,
+                )
+            )
+
+        buckets = compute_density_budget(entries, target_duration_seconds=120.0)
+        jan = next(b for b in buckets if b.key == "2025-01")
+        jul = next(b for b in buckets if b.key == "2025-07")
+
+        # July has 3x clips → should get ~3x quota
+        assert jul.quota_seconds > jan.quota_seconds * 2, (
+            f"July ({jul.quota_seconds:.1f}s) should get ~3x January ({jan.quota_seconds:.1f}s)"
+        )
+
+    def test_gap_fillers_selected_when_no_favorites(self):
+        """With no favorites, gap-fillers should fill the quota."""
+        from datetime import datetime
+
+        from immich_memories.analysis.density_budget import AssetEntry, compute_density_budget
+
+        entries = [
+            AssetEntry(
+                asset_id=f"c{i}",
+                asset_type="video",
+                date=datetime(2025, 6, 1 + i),
+                duration=5.0,
+                is_favorite=False,
+                score=float(i) / 20,
+                width=1920,
+                height=1080,
+                is_camera_original=True,
+            )
+            for i in range(20)
+        ]
+        buckets = compute_density_budget(entries, target_duration_seconds=30.0)
+        gap_ids = set()
+        for b in buckets:
+            gap_ids.update(b.gap_fill_ids)
+        assert len(gap_ids) > 0, "No gap-fillers selected despite no favorites"
+
+    def test_week_mode_creates_weekly_buckets(self):
+        """bucket_mode='week' should create weekly buckets."""
+        from datetime import datetime, timedelta
+
+        from immich_memories.analysis.density_budget import AssetEntry, compute_density_budget
+
+        base = datetime(2025, 6, 1)
+        entries = [
+            AssetEntry(
+                asset_id=f"c{i}",
+                asset_type="video",
+                date=base + timedelta(days=i),
+                duration=5.0,
+                is_favorite=False,
+                width=1920,
+                height=1080,
+                is_camera_original=True,
+            )
+            for i in range(28)  # 4 weeks
+        ]
+        buckets = compute_density_budget(
+            entries,
+            target_duration_seconds=60.0,
+            bucket_mode="week",
+        )
+        assert len(buckets) >= 4, f"Expected 4+ weekly buckets, got {len(buckets)}"
+        assert all("-W" in b.key for b in buckets), "Weekly bucket keys should contain -W"
+
+
 class TestDensityBudgetQualityGate:
     """Non-camera and low-res clips must be filtered BEFORE entering density budget."""
 

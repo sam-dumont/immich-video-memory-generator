@@ -100,9 +100,11 @@ def compute_density_budget(
         key = _bucket_key(a.date, bucket_mode)
         buckets[key].append(a)
 
-    # Estimate month divider overhead
+    # WHY: dividers are pre-rendered at exact duration — don't multiply by
+    # raw_multiplier (that's for raw footage needing trimming, not titles).
+    # Cap to 30% of budget so divider overhead can't starve content selection.
     divider_overhead = len(buckets) * 2.0
-    raw_budget -= divider_overhead * raw_multiplier
+    raw_budget -= min(divider_overhead, raw_budget * 0.3)
 
     total_assets = len(assets)
 
