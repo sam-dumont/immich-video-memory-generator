@@ -118,7 +118,7 @@ class TestGenerateMemoryPipeline:
     def _mock_assemble(self, fixture_mp4):
         """Return a side_effect that copies fixture to output path."""
 
-        def _assemble(clips, output_path, *_args, **_kwargs):
+        def _assemble(clips, output_path, progress_callback=None, **_kwargs):
             shutil.copy(fixture_mp4, output_path)
             return output_path
 
