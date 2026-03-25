@@ -119,6 +119,10 @@ benchmark-steps:  ## Per-step pipeline timing benchmark (requires FFmpeg, no Imm
 	uv run pytest tests/integration/assembly/test_perf_steps.py -v -m integration \
 		--log-cli-level=INFO --tb=short
 
+benchmark-titles:  ## Title rendering drill-down: content-backed vs gradient (requires FFmpeg)
+	uv run pytest tests/integration/assembly/test_perf_title_drilldown.py -v -m integration \
+		--log-cli-level=INFO --tb=short
+
 benchmark-pipeline:  ## Full pipeline benchmark with Immich (requires FFmpeg + Immich)
 	uv run pytest tests/integration/pipeline/test_perf_pipeline.py -v -m integration \
 		--log-cli-level=INFO --tb=short
