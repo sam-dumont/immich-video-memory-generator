@@ -87,6 +87,7 @@ config.yaml
 coverage.xml
 tests/integration-coverage.xml
 tests/*-junit.xml
+tests/benchmark-*.json
 tests/integration-junit.xml
 develop-eggs/
 dist/

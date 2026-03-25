@@ -15,7 +15,12 @@ from pathlib import Path
 import pytest
 
 from tests.integration.assembly.conftest import make_n_clips
-from tests.integration.assembly.perf_utils import PerfResult, measure_resources, save_results
+from tests.integration.assembly.perf_utils import (
+    PerfResult,
+    measure_resources,
+    save_benchmark_json,
+    save_results,
+)
 from tests.integration.conftest import (
     ffprobe_json,
     get_duration,
@@ -141,3 +146,8 @@ def test_save_results(tmp_path):
     output = project_root / "tests" / "perf-results.json"
     save_results(_module_results, output)
     logger.info(f"Results saved to {output}")
+
+    # Save benchmark JSON for github-action-benchmark
+    bench_output = project_root / "tests" / "benchmark-assembly.json"
+    save_benchmark_json(_module_results, bench_output)
+    logger.info(f"Benchmark JSON saved to {bench_output}")
