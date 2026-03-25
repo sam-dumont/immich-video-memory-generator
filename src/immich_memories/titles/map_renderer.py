@@ -86,10 +86,13 @@ def render_location_card(
     lon: float | None = None,
     map_style: str = DEFAULT_MAP_STYLE,
 ) -> Image.Image:
-    """Render a location interstitial card with map background.
+    """Render a location card background (no text).
 
-    If lat/lon provided, renders a zoomed satellite map behind the name.
+    If lat/lon provided, renders a zoomed satellite map.
     Otherwise falls back to dark gradient.
+
+    Text is rendered by the title video pipeline, not baked into the
+    background — baking text caused a ghost echo (#83).
     """
     if lat is not None and lon is not None:
         img, _sm = _render_base_map([(lat, lon)], width, height, map_style)
@@ -100,17 +103,6 @@ def render_location_card(
     else:
         img = Image.new("RGB", (width, height), color=(30, 30, 35))
 
-    draw = ImageDraw.Draw(img)
-    font_size = int(height * 0.10)
-    font = _get_font(font_size, bold=True)
-
-    bbox = draw.textbbox((0, 0), location_name, font=font)
-    text_w = bbox[2] - bbox[0]
-    text_h = bbox[3] - bbox[1]
-    x = (width - text_w) // 2
-    y = (height - text_h) // 2
-
-    draw.text((x, y), location_name, fill=_TEXT_COLOR, font=font)
     return img
 
 

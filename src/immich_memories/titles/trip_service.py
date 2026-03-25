@@ -12,8 +12,6 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 if TYPE_CHECKING:
     from .generator import GeneratedScreen, TitleScreenConfig
     from .rendering_service import RenderingService
@@ -123,37 +121,4 @@ class TripService:
             path=output_path,
             duration=self.config.title_duration,
             screen_type="trip_map",
-        )
-
-    def generate_location_card_screen(
-        self,
-        location_name: str,
-    ) -> GeneratedScreen:
-        """Generate a location interstitial card."""
-        from .generator import GeneratedScreen
-        from .map_renderer import render_location_card
-
-        width, height = self.config.output_resolution
-        card_img = render_location_card(location_name, width, height)
-        card_array = np.array(card_img, dtype=np.float32) / 255.0
-
-        safe_name = location_name.replace(" ", "_").replace(",", "")[:30]
-        output_path = self.output_dir / f"location_{safe_name}.mp4"
-
-        self._rendering.create_map_video(
-            title=location_name,
-            subtitle=None,
-            background_array=card_array,
-            output_path=output_path,
-            width=width,
-            height=height,
-            duration=self.config.month_divider_duration,
-            fps=self.config.fps,
-        )
-
-        logger.info(f"Location card generated: {location_name}")
-        return GeneratedScreen(
-            path=output_path,
-            duration=self.config.month_divider_duration,
-            screen_type="location_card",
         )
