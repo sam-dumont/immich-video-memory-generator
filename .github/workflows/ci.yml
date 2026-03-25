@@ -316,9 +316,29 @@ jobs:
 
       - name: Diff coverage (≥80% on changed lines)
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git fetch origin main --depth=1
           make diff-cover-ci
+
+          # Post diff-cover report as PR comment
+          COVERAGE_FILES="coverage.xml"
+          for f in tests/*-coverage.xml; do
+            [ -f "$f" ] && COVERAGE_FILES="$COVERAGE_FILES $f"
+          done
+          uvx diff-cover $COVERAGE_FILES --compare-branch=origin/main --markdown > diff-cover-report.md 2>/dev/null || true
+          if [ -s diff-cover-report.md ]; then
+            {
+              echo "## Diff Coverage Report"
+              echo ""
+              cat diff-cover-report.md
+            } > diff-cover-comment.md
+            # --edit-last updates existing comment instead of spamming new ones
+            gh pr comment "${{ github.event.pull_request.number }}" \
+              --body-file diff-cover-comment.md --edit-last 2>/dev/null \
+              || gh pr comment "${{ github.event.pull_request.number }}" \
+              --body-file diff-cover-comment.md
+          fi
 
       - name: Normalize coverage XML paths and freshen timestamps
         # WHY: Unit test coverage.xml uses absolute <source> paths (e.g.
