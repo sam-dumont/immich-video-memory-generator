@@ -580,8 +580,8 @@ class TestProgressTrackerDisplayFields:
         assert tracker.progress.last_completed_score == 0.7
 
     @patch("immich_memories.analysis.progress.time")
-    def test_partial_display_data_only_updates_provided_fields(self, mock_time: object) -> None:
-        """Only preview_path triggers display update; missing LLM fields stay None."""
+    def test_partial_display_data_clears_unprovided_fields(self, mock_time: object) -> None:
+        """When a new clip has display data, unprovided LLM fields reset to None."""
         mock_time.time.return_value = 1.0  # type: ignore[union-attr]
         tracker = ProgressTracker()
         tracker.start_phase(PipelinePhase.ANALYZING, total_items=5)
@@ -592,9 +592,53 @@ class TestProgressTrackerDisplayFields:
         p = tracker.progress
         assert p.last_completed_asset_id == "vid1"
         assert p.last_completed_video_path == "/tmp/p.mp4"
-        # LLM fields not provided → stay None
+        # LLM fields not provided → should be None
         assert p.last_completed_llm_description is None
         assert p.last_completed_llm_emotion is None
+
+    @patch("immich_memories.analysis.progress.time")
+    def test_llm_description_does_not_leak_between_clips(self, mock_time: object) -> None:
+        """Regression test for #121: stale LLM description from clip A must not
+        persist when clip B completes without LLM data."""
+        mock_time.time.return_value = 1.0  # type: ignore[union-attr]
+        tracker = ProgressTracker()
+        tracker.start_phase(PipelinePhase.ANALYZING, total_items=3)
+
+        # Clip A: has full LLM analysis
+        tracker.start_item("clip_a", asset_id="asset-a")
+        mock_time.time.return_value = 2.0  # type: ignore[union-attr]
+        tracker.complete_item(
+            "clip_a",
+            preview_path="/tmp/a.mp4",
+            llm_description="A young child in a snowy yard",
+            llm_emotion="joyful",
+            llm_interestingness=0.9,
+            llm_quality=0.8,
+            audio_categories=["speech"],
+        )
+        assert tracker.progress.last_completed_llm_description == "A young child in a snowy yard"
+
+        # Clip B: no LLM analysis, but has audio categories (triggers display update)
+        mock_time.time.return_value = 3.0  # type: ignore[union-attr]
+        tracker.start_item("clip_b", asset_id="asset-b")
+        mock_time.time.return_value = 4.0  # type: ignore[union-attr]
+        tracker.complete_item(
+            "clip_b",
+            audio_categories=["laughter"],
+        )
+
+        p = tracker.progress
+        # Asset ID must update to clip B
+        assert p.last_completed_asset_id == "clip_b"
+        # LLM fields must NOT leak from clip A — they should be None
+        assert p.last_completed_llm_description is None
+        assert p.last_completed_llm_emotion is None
+        assert p.last_completed_llm_interestingness is None
+        assert p.last_completed_llm_quality is None
+        # Audio categories should reflect clip B
+        assert p.last_completed_audio_categories == ["laughter"]
+        # Preview path should be cleared (clip B has no preview)
+        assert p.last_completed_video_path is None
 
 
 # ---------------------------------------------------------------------------

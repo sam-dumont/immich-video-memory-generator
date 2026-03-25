@@ -197,7 +197,11 @@ class ProgressTracker:
         llm_quality: float | None,
         audio_categories: list[str] | None,
     ) -> None:
-        """Update 'Last Analyzed' display fields if any displayable data is present."""
+        """Update 'Last Analyzed' display fields if any displayable data is present.
+
+        All fields are set unconditionally so that stale data from a previous
+        clip never leaks into the current display (fixes #121).
+        """
         has_display_data = (
             preview_path is not None or llm_description is not None or audio_categories is not None
         )
@@ -206,18 +210,12 @@ class ProgressTracker:
         self.progress.last_completed_asset_id = item_id
         self.progress.last_completed_segment = segment
         self.progress.last_completed_score = score
-        if preview_path is not None:
-            self.progress.last_completed_video_path = preview_path
-        if llm_description is not None:
-            self.progress.last_completed_llm_description = llm_description
-        if llm_emotion is not None:
-            self.progress.last_completed_llm_emotion = llm_emotion
-        if llm_interestingness is not None:
-            self.progress.last_completed_llm_interestingness = llm_interestingness
-        if llm_quality is not None:
-            self.progress.last_completed_llm_quality = llm_quality
-        if audio_categories is not None:
-            self.progress.last_completed_audio_categories = audio_categories
+        self.progress.last_completed_video_path = preview_path
+        self.progress.last_completed_llm_description = llm_description
+        self.progress.last_completed_llm_emotion = llm_emotion
+        self.progress.last_completed_llm_interestingness = llm_interestingness
+        self.progress.last_completed_llm_quality = llm_quality
+        self.progress.last_completed_audio_categories = audio_categories
 
     def complete_item(
         self,
