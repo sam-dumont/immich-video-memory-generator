@@ -78,7 +78,8 @@ class TestWeightNormalization:
             scorer.face_weight * 1.0
             + scorer.motion_weight * 1.0
             + scorer.stability_weight * 1.0
-            + scorer.audio_weight * 0.5  # audio defaults to 0.5 in score_scene
+            + scorer.audio_weight
+            * 0.5  # SceneScorer hardcodes 0.5; external paths use UnifiedSegmentAnalyzer
             + scorer.content_weight * 1.0
             + scorer.duration_weight * 1.0
         )

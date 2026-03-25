@@ -514,3 +514,35 @@ class TestCreateUnifiedAnalyzerFromConfig:
 
             assert analyzer.content_weight == 0.2
             mock_get_analyzer.assert_called_once()
+
+
+class TestScoreVisualExcludesAudio:
+    """Visual score should only include face, motion, stability — not audio."""
+
+    def test_visual_score_excludes_audio_weight(self):
+        # WHY: mock scorer to verify the weighted average excludes audio_score
+        mock_scorer = MagicMock()
+        mock_scorer.score_scene.return_value = MomentScore(
+            start_time=0.0,
+            end_time=3.0,
+            total_score=0.5,
+            face_score=0.9,
+            motion_score=0.6,
+            stability_score=0.3,
+            audio_score=0.5,
+        )
+        mock_scorer.face_weight = 0.35
+        mock_scorer.motion_weight = 0.20
+        mock_scorer.stability_weight = 0.15
+        mock_scorer.audio_weight = 0.15
+
+        analyzer = UnifiedSegmentAnalyzer(
+            scorer=mock_scorer,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
+        result = analyzer._score_visual(Path("/fake.mp4"), 0.0, 3.0)
+
+        # Visual score = weighted average of face, motion, stability ONLY
+        expected = (0.9 * 0.35 + 0.6 * 0.20 + 0.3 * 0.15) / (0.35 + 0.20 + 0.15)
+        assert abs(result["total"] - expected) < 0.001

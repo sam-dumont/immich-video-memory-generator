@@ -587,15 +587,15 @@ class UnifiedSegmentAnalyzer:
         # Use the SceneScorer to get component scores
         moment = self.scorer.score_scene(video_path, scene, sample_frames=5)
 
-        # Use scorer's own weights for visual sub-components
+        # Use scorer's own weights for visual sub-components (exclude audio —
+        # audio scoring is handled independently by PANNs via audio_content_weight)
         s = self.scorer
-        visual_weights = s.face_weight + s.motion_weight + s.stability_weight + s.audio_weight
+        visual_weights = s.face_weight + s.motion_weight + s.stability_weight
         if visual_weights > 0:
             total = (
                 moment.face_score * s.face_weight
                 + moment.motion_score * s.motion_weight
                 + moment.stability_score * s.stability_weight
-                + moment.audio_score * s.audio_weight
             ) / visual_weights
         else:
             total = 0.0

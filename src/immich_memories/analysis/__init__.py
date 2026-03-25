@@ -12,7 +12,6 @@ __all__ = [
     "cluster_thumbnails",
     "deduplicate_by_thumbnails",
     # Pipeline
-    "VideoAnalyzer",
     "ClusterManager",
     "DuplicateCluster",
     # Smart Pipeline
@@ -30,9 +29,7 @@ __all__ = [
     "detect_scenes",
     # Scoring
     "MomentScore",
-    "SceneScorer",
-    "score_scene",
-    "sample_video",
+    "create_analyzer_from_config",
     # Apple Vision
     "is_vision_available",
     "detect_faces_vision",
@@ -61,7 +58,6 @@ _SUBMODULE_MAP = {
     "find_duplicate_groups": "immich_memories.analysis.duplicates",
     "ClusterManager": "immich_memories.analysis.pipeline",
     "DuplicateCluster": "immich_memories.analysis.pipeline",
-    "VideoAnalyzer": "immich_memories.analysis.pipeline",
     "PipelinePhase": "immich_memories.analysis.progress",
     "PipelineProgress": "immich_memories.analysis.progress",
     "ProgressTracker": "immich_memories.analysis.progress",
@@ -69,9 +65,7 @@ _SUBMODULE_MAP = {
     "SceneDetector": "immich_memories.analysis.scenes",
     "detect_scenes": "immich_memories.analysis.scenes",
     "MomentScore": "immich_memories.analysis.scoring",
-    "SceneScorer": "immich_memories.analysis.scoring",
-    "sample_video": "immich_memories.analysis.scoring",
-    "score_scene": "immich_memories.analysis.scoring",
+    "create_analyzer_from_config": "immich_memories.analysis.scoring_factory",
     "PipelineConfig": "immich_memories.analysis.smart_pipeline",
     "PipelineResult": "immich_memories.analysis.smart_pipeline",
     "SmartPipeline": "immich_memories.analysis.smart_pipeline",

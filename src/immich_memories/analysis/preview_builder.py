@@ -110,10 +110,12 @@ class PreviewBuilder:
         config: PipelineConfig,
         analysis_cache: VideoAnalysisCache,
     ) -> tuple[float, float, float]:
-        """Run legacy visual scoring with silence adjustment."""
+        """Run legacy analysis using UnifiedSegmentAnalyzer (visual + silence boundaries)."""
         import gc
 
         from immich_memories.analysis.scoring import SceneScorer
+        from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
+        from immich_memories.config_models import AudioContentConfig
 
         a_config = self._analysis_config
         min_segment = a_config.min_segment_duration
@@ -123,50 +125,40 @@ class PreviewBuilder:
             content_analysis_config=self._content_analysis_config,
             analysis_config=a_config,
         )
-        moments = scorer.sample_and_score_video(
-            analysis_video,
-            segment_duration=config.segment_duration,
-            overlap=0.5,
-            sample_frames=5,
+        analyzer = UnifiedSegmentAnalyzer(
+            scorer=scorer,
+            min_segment_duration=min_segment,
+            max_segment_duration=max_segment,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=a_config,
         )
+        segments = analyzer.analyze(analysis_video, video_duration=video_duration)
 
-        if not moments:
+        if not segments:
             duration = clip.duration_seconds or 10
             return 0.0, min(duration, config.avg_clip_duration), 0.0
 
-        best_moment = max(moments, key=lambda m: m.total_score)
-        segment_duration = max(min_segment, min(best_moment.duration, max_segment))
+        best = segments[0]  # Sorted by score, best first
+        segment_duration = max(min_segment, min(best.end_time - best.start_time, max_segment))
 
-        start = best_moment.start_time
+        start = best.start_time
         end = start + segment_duration
-        score = best_moment.total_score
+        score = best.total_score
 
         if end > video_duration:
             end = video_duration
             start = max(0, end - segment_duration)
 
-        try:
-            from immich_memories.analysis.silence_detection import (
-                adjust_segment_to_silence,
-                detect_silence_gaps,
-            )
+        # Silence adjustment is handled by UnifiedSegmentAnalyzer's boundary detection
 
-            silence_gaps = detect_silence_gaps(original_video or analysis_video)
-            if silence_gaps:
-                start, end = adjust_segment_to_silence(
-                    start, end, silence_gaps, max_adjustment=1.0, min_duration=min_segment
-                )
-                logger.debug(f"Adjusted segment to silence: {start:.1f}s - {end:.1f}s")
-        except Exception as e:
-            logger.debug(f"Silence detection skipped: {e}")
-
+        moments = [seg.to_moment_score() for seg in segments]
         analysis_cache.save_analysis(
             asset=clip.asset, video_info=clip, perceptual_hash=None, segments=moments
         )
 
-        del moments
-        scorer.release_capture()
-        del scorer
+        del segments, moments
+        analyzer.clear_cache()
+        del analyzer
         gc.collect()
 
         return start, end, score
