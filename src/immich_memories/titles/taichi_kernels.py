@@ -5,7 +5,6 @@ because Taichi kernels require actual type objects, not string annotations.
 """
 
 import contextlib
-import io
 import logging
 import os
 from pathlib import Path
@@ -14,18 +13,18 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# WHY: Taichi prints a version banner via Python print() at import time
-# and "[Taichi] Starting on arch=..." at init time. Neither respects
-# TI_LOG_LEVEL reliably. We suppress stdout/stderr during import so
-# these writes don't corrupt Rich Live's cursor-controlled display.
+# WHY: Taichi prints "[Taichi] version..." banner at import time and
+# "[Taichi] Starting on arch=..." at ti.init(). These corrupt Rich Live.
+# ENABLE_TAICHI_HEADER_PRINT="0" suppresses the import-time banner.
+# TI_LOG_LEVEL="error" suppresses the init-time messages.
+# See: https://github.com/taichi-dev/taichi/issues/8334
+os.environ.setdefault("ENABLE_TAICHI_HEADER_PRINT", "0")
 os.environ.setdefault("TI_LOG_LEVEL", "error")
-_devnull = io.StringIO()
 
 try:
-    with contextlib.redirect_stdout(_devnull), contextlib.redirect_stderr(_devnull):
-        from .sdf_atlas_gen import get_cached_atlas
-        from .sdf_font import find_font
-        from .sdf_font_rendering import init_sdf_kernels, layout_text
+    from .sdf_atlas_gen import get_cached_atlas
+    from .sdf_font import find_font
+    from .sdf_font_rendering import init_sdf_kernels, layout_text
 
     SDF_AVAILABLE = True
 except ImportError:
@@ -36,8 +35,7 @@ except ImportError:
     layout_text = None
 
 try:
-    with contextlib.redirect_stdout(_devnull), contextlib.redirect_stderr(_devnull):
-        import taichi as ti
+    import taichi as ti
 
     TAICHI_AVAILABLE = True
 except ImportError:
@@ -75,10 +73,7 @@ def init_taichi() -> str | None:
     last_error = None
     for backend, name in backends:
         try:
-            # WHY: Taichi prints "[Taichi] Starting on arch=..." to stdout
-            # during init, corrupting Rich Live. Redirect stdout/stderr.
-            with contextlib.redirect_stdout(_devnull), contextlib.redirect_stderr(_devnull):
-                ti.init(arch=backend, offline_cache=True, log_level=ti.ERROR)
+            ti.init(arch=backend, offline_cache=True, log_level=ti.ERROR)
             logger.info(f"Taichi initialized with {name} backend")
             _compile_kernels()
             if SDF_AVAILABLE and init_sdf_kernels:
