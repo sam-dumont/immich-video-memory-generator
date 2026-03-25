@@ -45,9 +45,11 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
     hdr_pix_fmt_sw = "yuv420p10le"  # 10-bit for software encoder
     sdr_pix_fmt = "yuv420p"  # 8-bit for SDR
 
-    # WHY: titles are intermediates that get recompressed during final assembly.
-    # Near-lossless quality avoids double-compression artifacts on text and gradients.
-    # File size is negligible (~3s clips).
+    # WHY: titles are intermediates re-encoded once during final assembly.
+    # Quality must survive one more encode without visible artifacts on text/gradients,
+    # but near-lossless (q:v 80, CRF 4) is overkill and causes FFmpeg pipe stalls
+    # at 4K (~500ms/frame blocking on stdin.write). These values are fast to encode
+    # while preserving enough quality for one additional transcode.
 
     # macOS: VideoToolbox (GPU accelerated)
     if sys.platform == "darwin":
@@ -55,7 +57,7 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
             "-c:v",
             "hevc_videotoolbox",
             "-q:v",
-            "80",  # High quality intermediate (matches assembly's archival CRF 12 → q:v 78)
+            "58",
             "-pix_fmt",
             hdr_pix_fmt_hw if hdr else sdr_pix_fmt,
             "-tag:v",
@@ -92,7 +94,7 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
                 "-rc",
                 "constqp",
                 "-qp",
-                "4",  # Near-lossless (0-51 scale, lower=better)
+                "18",
                 "-pix_fmt",
                 hdr_pix_fmt_hw if hdr else sdr_pix_fmt,
                 "-tag:v",
@@ -105,7 +107,7 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
         "-c:v",
         "libx265",
         "-crf",
-        "4",  # Near-lossless (0-51 scale, lower=better)
+        "18",
         "-preset",
         "fast",
         "-pix_fmt",

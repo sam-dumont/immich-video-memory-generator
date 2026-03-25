@@ -51,6 +51,45 @@ class TestEncodingHDRFlag:
         assert "bt2020" in args
 
 
+class TestEncodingQualityForIntermediates:
+    """Title screens are intermediates — quality should be fast, not near-lossless."""
+
+    def test_videotoolbox_quality_is_intermediate_not_lossless(self):
+        """On macOS, q:v should be 55-65 (fast intermediate), not 80 (near-lossless)."""
+        import sys
+
+        if sys.platform != "darwin":
+            return  # Only applies to macOS
+
+        from immich_memories.titles.encoding import _get_gpu_encoder_args
+
+        args = _get_gpu_encoder_args(hdr=True)
+        if "-q:v" in args:
+            qv_idx = args.index("-q:v") + 1
+            qv = int(args[qv_idx])
+            assert 50 <= qv <= 65, f"q:v should be 50-65 for intermediates, got {qv}"
+
+    def test_nvenc_qp_is_intermediate_not_lossless(self):
+        """NVENC qp should be ~18-22, not 4 (near-lossless)."""
+        from immich_memories.titles.encoding import _get_gpu_encoder_args
+
+        args = _get_gpu_encoder_args(hdr=True)
+        if "-qp" in args:
+            qp_idx = args.index("-qp") + 1
+            qp = int(args[qp_idx])
+            assert 15 <= qp <= 25, f"qp should be 15-25 for intermediates, got {qp}"
+
+    def test_libx265_crf_is_intermediate_not_lossless(self):
+        """libx265 CRF should be ~18, not 4 (near-lossless)."""
+        from immich_memories.titles.encoding import _get_gpu_encoder_args
+
+        args = _get_gpu_encoder_args(hdr=True)
+        if "-crf" in args:
+            crf_idx = args.index("-crf") + 1
+            crf = int(args[crf_idx])
+            assert 14 <= crf <= 22, f"CRF should be 14-22 for intermediates, got {crf}"
+
+
 class TestVideoEncodingHDRFlag:
     """video_encoding.py: _get_best_encoder respects hdr flag."""
 
