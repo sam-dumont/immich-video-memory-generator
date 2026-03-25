@@ -1,0 +1,73 @@
+{
+  "timestamp": "2026-03-25T13:26:32",
+  "platform": "macOS-26.3.1-arm64-arm-64bit-Mach-O",
+  "python": "3.13.11",
+  "results": [
+    {
+      "scenario": "slowmo_init",
+      "python_peak_mb": 210.9480791091919,
+      "wall_seconds": 0.12077820801641792,
+      "cpu_user_seconds": 0.084258,
+      "cpu_sys_seconds": 0.038447999999999996,
+      "child_peak_rss_mb": 163.71875,
+      "output_size_mb": 0.0,
+      "clip_count": 0,
+      "resolution": "720p"
+    },
+    {
+      "scenario": "catmull_rom_105",
+      "python_peak_mb": 42.20029640197754,
+      "wall_seconds": 0.5511614579590969,
+      "cpu_user_seconds": 0.0,
+      "cpu_sys_seconds": 0.0,
+      "child_peak_rss_mb": 163.71875,
+      "output_size_mb": 0.0,
+      "clip_count": 0,
+      "resolution": "720p"
+    },
+    {
+      "scenario": "taichi_content_backed",
+      "python_peak_mb": 70.91716575622559,
+      "wall_seconds": 4.519016333972104,
+      "cpu_user_seconds": 0.0,
+      "cpu_sys_seconds": 0.0,
+      "child_peak_rss_mb": 163.71875,
+      "output_size_mb": 0.0,
+      "clip_count": 0,
+      "resolution": "720p"
+    },
+    {
+      "scenario": "full_title_content_backed",
+      "python_peak_mb": 269.23413467407227,
+      "wall_seconds": 4.756976791017223,
+      "cpu_user_seconds": 0.30433599999999994,
+      "cpu_sys_seconds": 0.12533099999999997,
+      "child_peak_rss_mb": 163.71875,
+      "output_size_mb": 0.0,
+      "clip_count": 0,
+      "resolution": "720p"
+    },
+    {
+      "scenario": "taichi_gradient_only",
+      "python_peak_mb": 42.2259521484375,
+      "wall_seconds": 3.7312486250302754,
+      "cpu_user_seconds": 0.0,
+      "cpu_sys_seconds": 0.0,
+      "child_peak_rss_mb": 163.71875,
+      "output_size_mb": 0.0,
+      "clip_count": 0,
+      "resolution": "720p"
+    },
+    {
+      "scenario": "full_title_gradient_only",
+      "python_peak_mb": 90.02069568634033,
+      "wall_seconds": 3.959134250006173,
+      "cpu_user_seconds": 0.21872700000000012,
+      "cpu_sys_seconds": 0.09268900000000002,
+      "child_peak_rss_mb": 163.71875,
+      "output_size_mb": 0.0,
+      "clip_count": 0,
+      "resolution": "720p"
+    }
+  ]
+}
