@@ -13,6 +13,8 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 if TYPE_CHECKING:
     pass
 
@@ -457,8 +459,53 @@ class TitleScreenGenerator:
         self,
         location_name: str,
     ) -> GeneratedScreen:
-        """Generate a location interstitial card (delegates to TripService)."""
-        return self._trip.generate_location_card_screen(location_name)
+        """Generate a location interstitial card with mood-based styling.
+
+        Uses the same title pipeline as month dividers for visual
+        consistency. The background comes from TripService (dark gradient
+        or satellite map), text is rendered by the title video pipeline.
+        """
+        from .map_renderer import render_location_card
+
+        width, height = self.config.output_resolution
+        card_img = render_location_card(location_name, width, height)
+        bg_array = np.array(card_img, dtype=np.float32) / 255.0
+
+        divider_style = TitleStyle(
+            name=f"{self.style.name}_location",
+            font_family=self.style.font_family,
+            font_weight="medium",
+            title_size_ratio=0.10,
+            text_color=self.style.text_color,
+            background_type=self.style.background_type,
+            background_colors=self.style.background_colors,
+            animation_preset="slow_fade",
+            use_line_accent=False,
+        )
+
+        safe_name = location_name.replace(" ", "_").replace(",", "")[:30]
+        output_path = self.output_dir / f"location_{safe_name}.mp4"
+
+        self._rendering.create_title_video(
+            title=location_name,
+            subtitle=None,
+            style=divider_style,
+            output_path=output_path,
+            width=width,
+            height=height,
+            duration=self.config.month_divider_duration,
+            fps=self.config.fps,
+            animated_background=self.config.animated_background,
+            fade_from_white=True,
+            background_image=bg_array,
+        )
+
+        logger.info(f"Location card generated: {location_name}")
+        return GeneratedScreen(
+            path=output_path,
+            duration=self.config.month_divider_duration,
+            screen_type="location_card",
+        )
 
     def generate_all_screens(
         self,

@@ -243,6 +243,30 @@ class TestLocationCardWithMap:
         assert result.size == (1920, 1080)
 
 
+class TestLocationCardNoGhostText:
+    """Location cards must not bake text into the background (#83)."""
+
+    def test_location_card_background_has_no_text(self):
+        """render_location_card should produce a background without baked text.
+
+        Text rendering is handled by the title video pipeline, not the
+        background image. Baking text into the background creates a ghost
+        echo when the video renderer adds text on top.
+        """
+        from immich_memories.titles.map_renderer import render_location_card
+
+        # Dark fallback card — center region should be uniform dark
+        result = render_location_card("Charente-Maritime, France", width=1920, height=1080)
+        assert result.size == (1920, 1080)
+
+        # Sample center pixels — should be uniform background, no text
+        pixels = [result.getpixel((x, 540)) for x in range(860, 1060, 10)]
+        # All center pixels should be identical (no text = uniform color)
+        assert len(set(pixels)) == 1, (
+            f"Center pixels vary — text is baked into the background: {set(pixels)}"
+        )
+
+
 class TestEquirectangularMap:
     """Equirectangular map fetching for globe projection texture."""
 
