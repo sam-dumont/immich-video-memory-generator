@@ -41,7 +41,10 @@ def create_unified_analyzer_from_config(config: Config):
                 model=config.llm.model,
                 api_key=config.llm.api_key,
             )
-            content_weight = config.content_analysis.weight
+            if content_analyzer:
+                content_weight = config.content_analysis.weight
+            else:
+                logger.warning("Content analysis enabled but no analyzer available")
         except Exception as e:
             logger.warning(f"Failed to initialize content analyzer: {e}")
 
@@ -73,7 +76,6 @@ def create_unified_analyzer_from_config(config: Config):
         optimal_clip_duration=config.analysis.optimal_clip_duration,
         max_optimal_duration=config.analysis.max_optimal_duration,
         target_extraction_ratio=config.analysis.target_extraction_ratio,
-        duration_weight=config.analysis.duration_weight,
         audio_content_config=config.audio_content,
         analysis_config=config.analysis,
     )
