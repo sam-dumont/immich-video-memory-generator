@@ -100,6 +100,17 @@ class TestCameraKeyframes:
         distances = [kf.distance for kf in keyframes]
         assert all(d == distances[0] for d in distances)
 
+    def test_close_distance_is_city_level(self):
+        """Close zoom should be tight enough for city-level view (<2.0)."""
+        from immich_memories.titles.globe_renderer import generate_camera_keyframes
+
+        keyframes = generate_camera_keyframes(
+            home_lat=50.85,
+            home_lon=4.35,
+            destinations=[(51.22, 2.92)],
+        )
+        assert keyframes[0].distance < 2.0
+
     def test_multi_destination_produces_n_plus_1_keyframes(self):
         """Home → dest1 → dest2 → dest3 = 4 keyframes."""
         from immich_memories.titles.globe_renderer import generate_camera_keyframes
@@ -117,41 +128,44 @@ class TestCameraInterpolation:
 
     def test_interpolate_at_start_returns_first_keyframe(self):
         from immich_memories.titles.globe_renderer import (
+            _CLOSE_DISTANCE,
             GlobeCameraKeyframe,
             interpolate_camera,
         )
 
         kfs = [
-            GlobeCameraKeyframe(lat=0.5, lon=0.1, distance=2.2, time=0.0),
-            GlobeCameraKeyframe(lat=0.8, lon=0.3, distance=2.2, time=1.0),
+            GlobeCameraKeyframe(lat=0.5, lon=0.1, distance=_CLOSE_DISTANCE, time=0.0),
+            GlobeCameraKeyframe(lat=0.8, lon=0.3, distance=_CLOSE_DISTANCE, time=1.0),
         ]
         lat, lon, dist = interpolate_camera(kfs, 0.0)
         assert abs(lat - 0.5) < 0.01
-        assert abs(dist - 2.2) < 0.01
+        assert abs(dist - _CLOSE_DISTANCE) < 0.01
 
     def test_interpolate_at_end_returns_last_keyframe(self):
         from immich_memories.titles.globe_renderer import (
+            _CLOSE_DISTANCE,
             GlobeCameraKeyframe,
             interpolate_camera,
         )
 
         kfs = [
-            GlobeCameraKeyframe(lat=0.5, lon=0.1, distance=2.2, time=0.0),
-            GlobeCameraKeyframe(lat=0.8, lon=0.3, distance=2.2, time=1.0),
+            GlobeCameraKeyframe(lat=0.5, lon=0.1, distance=_CLOSE_DISTANCE, time=0.0),
+            GlobeCameraKeyframe(lat=0.8, lon=0.3, distance=_CLOSE_DISTANCE, time=1.0),
         ]
         lat, lon, dist = interpolate_camera(kfs, 1.0)
         assert abs(lat - 0.8) < 0.01
-        assert abs(dist - 2.2) < 0.01
+        assert abs(dist - _CLOSE_DISTANCE) < 0.01
 
     def test_interpolate_midpoint_is_between_keyframes(self):
         from immich_memories.titles.globe_renderer import (
+            _CLOSE_DISTANCE,
             GlobeCameraKeyframe,
             interpolate_camera,
         )
 
         kfs = [
-            GlobeCameraKeyframe(lat=0.0, lon=0.0, distance=2.2, time=0.0),
-            GlobeCameraKeyframe(lat=1.0, lon=1.0, distance=2.2, time=1.0),
+            GlobeCameraKeyframe(lat=0.0, lon=0.0, distance=_CLOSE_DISTANCE, time=0.0),
+            GlobeCameraKeyframe(lat=1.0, lon=1.0, distance=_CLOSE_DISTANCE, time=1.0),
         ]
         lat, lon, dist = interpolate_camera(kfs, 0.5)
         # Cosine easing at t=0.5 gives exactly the midpoint
@@ -161,45 +175,72 @@ class TestCameraInterpolation:
     def test_endpoints_return_close_distance(self):
         """Both t=0 and t=1 should be at the keyframe's close distance."""
         from immich_memories.titles.globe_renderer import (
+            _CLOSE_DISTANCE,
             GlobeCameraKeyframe,
             interpolate_camera,
         )
 
         kfs = [
-            GlobeCameraKeyframe(lat=0.887, lon=0.076, distance=2.2, time=0.0),
-            GlobeCameraKeyframe(lat=0.607, lon=0.576, distance=2.2, time=1.0),
+            GlobeCameraKeyframe(lat=0.887, lon=0.076, distance=_CLOSE_DISTANCE, time=0.0),
+            GlobeCameraKeyframe(lat=0.607, lon=0.576, distance=_CLOSE_DISTANCE, time=1.0),
         ]
         _, _, dist_start = interpolate_camera(kfs, 0.0)
         _, _, dist_end = interpolate_camera(kfs, 1.0)
-        assert abs(dist_start - 2.2) < 0.01
-        assert abs(dist_end - 2.2) < 0.01
+        assert abs(dist_start - _CLOSE_DISTANCE) < 0.01
+        assert abs(dist_end - _CLOSE_DISTANCE) < 0.01
 
     def test_midpoint_pulls_back_proportional_to_distance(self):
         """Mid-flight should zoom out, more for longer distances."""
         from immich_memories.titles.globe_renderer import (
-            GlobeCameraKeyframe,
+            generate_camera_keyframes,
             interpolate_camera,
         )
 
-        # Short hop: Brussels (0.887, 0.076) → Amsterdam (0.912, 0.085) ~170km
-        kfs_short = [
-            GlobeCameraKeyframe(lat=0.887, lon=0.076, distance=2.2, time=0.0),
-            GlobeCameraKeyframe(lat=0.912, lon=0.085, distance=2.2, time=1.0),
-        ]
+        # Short hop: Brussels → Ostend ~120km
+        kfs_short = generate_camera_keyframes(50.85, 4.35, [(51.22, 2.92)])
+        close = kfs_short[0].distance
         _, _, dist_short = interpolate_camera(kfs_short, 0.5)
 
-        # Long hop: Brussels (0.887, 0.076) → Cyprus (0.607, 0.576) ~2800km
-        kfs_long = [
-            GlobeCameraKeyframe(lat=0.887, lon=0.076, distance=2.2, time=0.0),
-            GlobeCameraKeyframe(lat=0.607, lon=0.576, distance=2.2, time=1.0),
-        ]
+        # Long hop: Brussels → Cyprus ~2800km
+        kfs_long = generate_camera_keyframes(50.85, 4.35, [(34.71, 33.02)])
         _, _, dist_long = interpolate_camera(kfs_long, 0.5)
 
         # Both should pull back beyond the close distance
-        assert dist_short > 2.2
-        assert dist_long > 2.2
+        assert dist_short > close
+        assert dist_long > close
         # Long hop should pull back significantly more
         assert dist_long > dist_short + 0.5
+
+    def test_short_trip_barely_pulls_back(self):
+        """Short trip (<200km) should barely zoom out at midpoint (#28)."""
+        from immich_memories.titles.globe_renderer import (
+            generate_camera_keyframes,
+            interpolate_camera,
+        )
+
+        # Brussels → Ostend ~120km
+        kfs = generate_camera_keyframes(50.85, 4.35, [(51.22, 2.92)])
+        close = kfs[0].distance
+        _, _, dist_mid = interpolate_camera(kfs, 0.5)
+
+        # Pull-back should be minimal for a short trip
+        pullback = dist_mid - close
+        assert pullback < 0.3
+
+    def test_long_trip_still_has_strong_pullback(self):
+        """Long trip should still pull back substantially (#28)."""
+        from immich_memories.titles.globe_renderer import (
+            generate_camera_keyframes,
+            interpolate_camera,
+        )
+
+        # Brussels → Tokyo ~9500km
+        kfs = generate_camera_keyframes(50.85, 4.35, [(35.68, 139.69)])
+        close = kfs[0].distance
+        _, _, dist_mid = interpolate_camera(kfs, 0.5)
+
+        # Should pull back at least 3.0 units above close
+        assert dist_mid - close > 3.0
 
 
 class TestGlobeVideo:

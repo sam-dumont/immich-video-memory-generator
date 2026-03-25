@@ -13,8 +13,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-# Close-up zoom for start/end of each segment
-_CLOSE_DISTANCE = 2.2
+# Close-up zoom for start/end — city-level tight (#28)
+_CLOSE_DISTANCE = 1.5
 
 
 @dataclass
@@ -110,11 +110,12 @@ def _segment_cruise_altitude(lat0: float, lon0: float, lat1: float, lon1: float)
     """Compute mid-flight camera distance based on segment arc length.
 
     Uses great-circle distance on the unit sphere (radians input).
-    Maps to camera distance:
-        ~100km  (0.016 rad) → 2.5  (barely zoom out)
-        ~800km  (0.125 rad) → 3.5  (moderate pull-back)
-        ~2500km (0.39 rad)  → 5.5  (high altitude, like a plane)
-        ~5000km+            → 7.0  (max pull-back)
+    Power-curve scaling keeps short trips tight while long trips still
+    pull back dramatically (#28):
+        ~120km  (0.019 rad) → ~1.8  (barely zoom out)
+        ~800km  (0.125 rad) → ~2.7  (moderate pull-back)
+        ~2800km (0.44 rad)  → ~4.2  (high altitude)
+        ~9500km (1.49 rad)  → ~6.5  (near max pull-back)
     """
     # Great-circle distance on unit sphere (haversine formula, radians)
     dlat = lat1 - lat0
@@ -122,6 +123,6 @@ def _segment_cruise_altitude(lat0: float, lon0: float, lat1: float, lon1: float)
     a = math.sin(dlat / 2) ** 2 + math.cos(lat0) * math.cos(lat1) * math.sin(dlon / 2) ** 2
     arc = 2 * math.asin(min(1.0, math.sqrt(a)))
 
-    # arc is in radians; π = half the globe (~20,000km)
-    # Map: 0 → _CLOSE_DISTANCE, π → 7.0
-    return min(7.0, _CLOSE_DISTANCE + arc * 3.0)
+    # Power curve: short arcs barely zoom out, long arcs pull back hard.
+    # arc**0.7 compresses small values → tighter short trips.
+    return min(7.0, _CLOSE_DISTANCE + (arc**0.7) * 5.0)
