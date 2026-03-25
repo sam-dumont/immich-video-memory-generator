@@ -47,9 +47,16 @@ def init_taichi() -> str | None:
     if _taichi_initialized:
         return _taichi_backend
 
+    import os
     import platform
 
-    if platform.system() == "Darwin":
+    # WHY: CI public runners may have CUDA but benchmarks should compare CPU-only.
+    # Self-hosted GPU runners set their own env to use GPU.
+    force_cpu = os.environ.get("IMMICH_FORCE_CPU", "").lower() in ("1", "true", "yes")
+
+    if force_cpu:
+        backends = [(ti.cpu, "CPU")]
+    elif platform.system() == "Darwin":
         backends = [(ti.metal, "Metal"), (ti.cpu, "CPU")]
     else:
         backends = [(ti.cuda, "CUDA"), (ti.vulkan, "Vulkan"), (ti.cpu, "CPU")]
