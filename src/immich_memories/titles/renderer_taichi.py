@@ -224,15 +224,14 @@ class TaichiTitleRenderer:
         self.total_frames = int(self.config.fps * self.config.duration)
 
         h, w = self.config.height, self.config.width
-        self.frame_buffer = np.zeros((h, w, 3), dtype=np.float32)
-        self.temp_buffer = np.zeros((h, w, 3), dtype=np.float32)
-        self.bokeh_buffer = np.zeros((h, w, 4), dtype=np.float32)
-        # WHY: reusable output buffer avoids allocating per frame at 4K.
-        # render_frame() converts float32→uint8/uint16 in-place into this buffer.
-        out_dtype = np.uint16 if self.config.hdr else np.uint8
-        self._output_buffer = np.zeros((h, w, 3), dtype=out_dtype)
+        # WHY: GPU-resident buffers (ti.ndarray) eliminate implicit CPU↔GPU
+        # transfers. Kernels operate on device memory; only background-in
+        # and uint8-out cross the bus. See issue #164.
+        from .taichi_kernels import GPUBuffers
 
-        self.blur_kernel = _create_gaussian_kernel(self.config.blur_radius)
+        self.gpu = GPUBuffers(h, w, hdr=self.config.hdr)
+
+        self._blur_kernel_np = _create_gaussian_kernel(self.config.blur_radius)
 
         self.color1 = _hex_to_rgb(self.config.bg_color1)
         self.color2 = _hex_to_rgb(self.config.bg_color2)
@@ -244,11 +243,17 @@ class TaichiTitleRenderer:
         self._title_layer: np.ndarray | None = None
         self._subtitle_layer: np.ndarray | None = None
         self._shadow_layer: np.ndarray | None = None
+        # WHY: GPU-cached text layers avoid re-uploading each frame.
+        # PIL renders text once → upload to ti.ndarray → reuse across frames.
+        self._title_layer_gpu = None
+        self._subtitle_layer_gpu = None
+        self._shadow_layer_gpu = None
         self._cached_text: tuple[str, str | None] | None = None
 
         # SDF font atlas (loaded on first text render)
         self._sdf_atlas: SDFFontAtlas | None = None
         self._sdf_atlas_float: np.ndarray | None = None
+        self._sdf_atlas_gpu = None
         self._use_sdf = self.config.use_sdf_text and SDF_AVAILABLE
 
         if self._use_sdf:
@@ -288,91 +293,82 @@ class TaichiTitleRenderer:
     def render_frame(
         self, frame_number: int, title: str, subtitle: str | None = None
     ) -> np.ndarray:
-        """Render a single frame on GPU."""
+        """Render a single frame. One CPU-to-GPU in, one GPU-to-CPU out."""
         t = frame_number / self.config.fps
         progress = frame_number / self.total_frames
         cfg = self.config
 
-        # 1. Generate background (slow-mo video > static image > gradient)
+        # 1. Background → GPU (single CPU→GPU transfer)
         has_animated_bg = False
         if cfg.background_reader is not None:
             bg_frame = cfg.background_reader.read_frame()
             if bg_frame is not None:
-                np.copyto(self.frame_buffer, bg_frame)
+                self.gpu.load_background(bg_frame)
                 has_animated_bg = True
             elif cfg.background_image is not None:
-                np.copyto(self.frame_buffer, cfg.background_image)
+                self.gpu.load_background(cfg.background_image)
             else:
                 self._render_gradient(t, progress, cfg)
         elif cfg.background_image is not None:
-            np.copyto(self.frame_buffer, cfg.background_image)
+            self.gpu.load_background(cfg.background_image)
         else:
             self._render_gradient(t, progress, cfg)
 
-        # 2. Apply blur — animated deblur for slow-mo backgrounds
+        # 2. Blur (GPU→GPU, no transfers)
         if has_animated_bg:
             self._apply_animated_deblur(progress, cfg)
         elif cfg.blur_radius > 0:
             taichi_kernels._gaussian_blur_h(
-                self.frame_buffer, self.temp_buffer, self.blur_kernel, cfg.blur_radius
+                self.gpu.frame, self.gpu.temp, self._blur_kernel_np, cfg.blur_radius
             )
             taichi_kernels._gaussian_blur_v(
-                self.temp_buffer, self.frame_buffer, self.blur_kernel, cfg.blur_radius
+                self.gpu.temp, self.gpu.frame, self._blur_kernel_np, cfg.blur_radius
             )
 
-        # 3. Color pulsing (only for non-animated backgrounds)
+        # 3. Color pulse (GPU in-place, non-animated only)
         if not has_animated_bg:
             brightness_delta = cfg.color_pulse_amount * math.sin(progress * 2 * math.pi)
             saturation_mult = 1.0 + 0.05 * math.sin(progress * 2 * math.pi + math.pi / 2)
-            taichi_kernels._apply_color_pulse(self.frame_buffer, brightness_delta, saturation_mult)
+            taichi_kernels._apply_color_pulse(self.gpu.frame, brightness_delta, saturation_mult)
 
-        # 4. Vignette
+        # 4. Vignette + noise (FUSED — one kernel launch instead of two)
         vignette_strength = cfg.vignette_strength + cfg.vignette_pulse * math.sin(
             progress * 2 * math.pi
         )
-        taichi_kernels._apply_vignette(self.frame_buffer, vignette_strength, cfg.width, cfg.height)
+        noise_intensity = (
+            cfg.noise_intensity if (cfg.enable_noise and cfg.noise_intensity > 0) else 0.0
+        )
+        noise_seed = frame_number * 12345 % 1000000 if noise_intensity > 0 else 0
+        taichi_kernels._apply_vignette_and_noise(
+            self.gpu.frame, vignette_strength, noise_intensity, noise_seed, cfg.width, cfg.height
+        )
 
-        # 5. Bokeh/Fireworks particles
+        # 5. Particles (GPU)
         self._render_particles(progress, cfg)
 
-        # 6. Apply noise/grain texture
-        if cfg.enable_noise and cfg.noise_intensity > 0:
-            noise_seed = frame_number * 12345 % 1000000
-            taichi_kernels._apply_noise_grain(
-                self.frame_buffer, cfg.noise_intensity, noise_seed, cfg.width, cfg.height
-            )
-
-        # 7. Render text
+        # 6. Text (GPU)
         self._render_text(t, progress, cfg, title, subtitle)
 
-        # WHY: in-place conversion avoids 3 temporary arrays per frame (75MB at 4K).
-        # np.clip + multiply + astype each allocate a full copy.
+        # 7. Finalize on GPU: clip + scale + convert, then single GPU→CPU readback
         max_val = 65535.0 if cfg.hdr else 255.0
-        np.clip(self.frame_buffer, 0, 1, out=self.frame_buffer)
-        np.multiply(self.frame_buffer, max_val, out=self.frame_buffer)
-        self._output_buffer[:] = self.frame_buffer  # float32→uint8/uint16 into reused buffer
-        return self._output_buffer
+        taichi_kernels._finalize_to_output(self.gpu.frame, self.gpu.output, max_val, hdr=cfg.hdr)
+        return self.gpu.read_output()
 
     def _apply_animated_deblur(self, progress: float, cfg: TaichiTitleConfig) -> None:
-        """Apply animated blur transition.
+        """Apply animated blur transition (all GPU-resident).
 
         Intro (reverse_blur=False): full blur → sharp reveal in last 1s
         Ending (reverse_blur=True): sharp → full blur in first 1s, then fade to white
-
-        Uses fixed blur kernel + float cross-fade between blurred and sharp
-        versions. No per-frame kernel recreation = no flicker or pops.
         """
         transition_duration = 1.0
         if cfg.reverse_blur:
-            # Ending: sharp at start → blur after 1s
             transition_end = transition_duration / cfg.duration
             if progress > transition_end:
-                blur_mix = 1.0  # fully blurred
+                blur_mix = 1.0
             else:
                 t = progress / transition_end
-                blur_mix = 3 * t * t - 2 * t * t * t  # ease-in-out cubic
+                blur_mix = 3 * t * t - 2 * t * t * t
         else:
-            # Intro: blur → sharp reveal in last 1s
             deblur_start = 1.0 - (transition_duration / cfg.duration)
             if progress < deblur_start:
                 blur_mix = 1.0
@@ -381,30 +377,24 @@ class TaichiTitleRenderer:
                 blur_mix = 1.0 - (3 * t * t - 2 * t * t * t)
 
         if blur_mix < 1.0:
-            if not hasattr(self, "_sharp_buffer"):
-                self._sharp_buffer = np.zeros_like(self.frame_buffer)
-            np.copyto(self._sharp_buffer, self.frame_buffer)
+            self.gpu.ensure_sharp()
+            taichi_kernels._copy_field_3(self.gpu.frame, self.gpu.sharp)
 
         taichi_kernels._gaussian_blur_h(
-            self.frame_buffer, self.temp_buffer, self.blur_kernel, cfg.blur_radius
+            self.gpu.frame, self.gpu.temp, self._blur_kernel_np, cfg.blur_radius
         )
         taichi_kernels._gaussian_blur_v(
-            self.temp_buffer, self.frame_buffer, self.blur_kernel, cfg.blur_radius
+            self.gpu.temp, self.gpu.frame, self._blur_kernel_np, cfg.blur_radius
         )
 
         if blur_mix < 1.0:
-            np.multiply(self.frame_buffer, blur_mix, out=self.frame_buffer)
-            np.add(
-                self.frame_buffer,
-                self._sharp_buffer * (1.0 - blur_mix),
-                out=self.frame_buffer,
-            )
+            taichi_kernels._blend_fields(self.gpu.frame, self.gpu.sharp, 1.0 - blur_mix)
 
         brightness_delta = -0.15 * blur_mix
-        taichi_kernels._apply_color_pulse(self.frame_buffer, brightness_delta, 1.0)
+        taichi_kernels._apply_color_pulse(self.gpu.frame, brightness_delta, 1.0)
 
     def _render_gradient(self, t: float, progress: float, cfg: TaichiTitleConfig):
-        """Render the background gradient."""
+        """Render the background gradient directly to GPU frame buffer."""
         angle_rad = math.radians(cfg.gradient_angle)
         angle_offset = math.radians(cfg.gradient_rotation) * math.sin(progress * 2 * math.pi)
         current_angle = angle_rad + angle_offset
@@ -413,7 +403,7 @@ class TaichiTitleRenderer:
             if not hasattr(self, "_aurora_blobs"):
                 self._init_aurora_blobs()
             taichi_kernels._generate_aurora_gradient(
-                self.frame_buffer,
+                self.gpu.frame,
                 self._aurora_blobs,
                 len(self._aurora_blobs),
                 cfg.width,
@@ -422,7 +412,7 @@ class TaichiTitleRenderer:
             )
         elif cfg.gradient_type == "radial":
             taichi_kernels._generate_radial_gradient(
-                self.frame_buffer,
+                self.gpu.frame,
                 self.color1[0],
                 self.color1[1],
                 self.color1[2],
@@ -435,7 +425,7 @@ class TaichiTitleRenderer:
             )
         else:
             taichi_kernels._generate_linear_gradient(
-                self.frame_buffer,
+                self.gpu.frame,
                 self.color1[0],
                 self.color1[1],
                 self.color1[2],
@@ -448,23 +438,24 @@ class TaichiTitleRenderer:
             )
 
     def _render_particles(self, progress: float, cfg: TaichiTitleConfig):
-        """Render bokeh or fireworks particles."""
+        """Render bokeh or fireworks particles (GPU-resident)."""
         if not cfg.enable_bokeh:
             return
 
+        # WHY: particle position data (~500B for bokeh, ~10KB for fireworks) is
+        # updated on CPU each frame. The implicit transfer is negligible vs
+        # the ~13MB frame buffers that now stay on GPU.
         self._update_bokeh_particles(progress)
-        self.bokeh_buffer.fill(0)
+        taichi_kernels._zero_field_4(self.gpu.bokeh)
         if cfg.is_birthday:
             particle_count = cfg.fireworks_burst_count * cfg.fireworks_particles_per_burst
         else:
             particle_count = cfg.bokeh_count
         taichi_kernels._render_bokeh_particles(
-            self.bokeh_buffer, self._bokeh_particles, particle_count, cfg.width, cfg.height
+            self.gpu.bokeh, self._bokeh_particles, particle_count, cfg.width, cfg.height
         )
-        taichi_kernels._composite_rgba_over(
-            self.frame_buffer, self.bokeh_buffer, self.temp_buffer, 1.0
-        )
-        np.copyto(self.frame_buffer, self.temp_buffer)
+        taichi_kernels._composite_rgba_over(self.gpu.frame, self.gpu.bokeh, self.gpu.temp, 1.0)
+        taichi_kernels._copy_field_3(self.gpu.temp, self.gpu.frame)
 
     def _render_text(
         self,
@@ -542,46 +533,46 @@ class TaichiTitleRenderer:
         t: float,
         progress: float,
     ):
-        """Render text using PIL-based layers."""
+        """Render text using PIL-based layers (GPU-cached)."""
         self._render_text_layers(title, subtitle)
 
-        if cfg.enable_shadow and self._shadow_layer is not None:
+        if cfg.enable_shadow and self._shadow_layer_gpu is not None:
             shadow_offset = max(2, int(cfg.height * cfg.shadow_offset_ratio))
             taichi_kernels._composite_text_with_offset(
-                self.frame_buffer,
-                self._shadow_layer,
-                self.temp_buffer,
+                self.gpu.frame,
+                self._shadow_layer_gpu,
+                self.gpu.temp,
                 title_anim["opacity"] * cfg.shadow_opacity,
                 title_anim["y_offset"] + shadow_offset,
                 title_anim["x_offset"] + shadow_offset,
             )
-            np.copyto(self.frame_buffer, self.temp_buffer)
+            taichi_kernels._copy_field_3(self.gpu.temp, self.gpu.frame)
 
-        if self._title_layer is not None:
+        if self._title_layer_gpu is not None:
             taichi_kernels._composite_text_with_offset(
-                self.frame_buffer,
-                self._title_layer,
-                self.temp_buffer,
+                self.gpu.frame,
+                self._title_layer_gpu,
+                self.gpu.temp,
                 title_anim["opacity"],
                 title_anim["y_offset"],
                 title_anim["x_offset"],
             )
-            np.copyto(self.frame_buffer, self.temp_buffer)
+            taichi_kernels._copy_field_3(self.gpu.temp, self.gpu.frame)
 
-        if self._subtitle_layer is not None:
+        if self._subtitle_layer_gpu is not None:
             subtitle_anim = self._compute_animation(t, progress, is_subtitle=True)
             base = min(cfg.width, cfg.height)
             ratio = cfg.title_size_ratio * 0.65 if subtitle else cfg.title_size_ratio
             pil_title_size = int(base * ratio)
             taichi_kernels._composite_text_with_offset(
-                self.frame_buffer,
-                self._subtitle_layer,
-                self.temp_buffer,
+                self.gpu.frame,
+                self._subtitle_layer_gpu,
+                self.gpu.temp,
                 subtitle_anim["opacity"],
                 subtitle_anim["y_offset"] + pil_title_size * 1.3,
                 subtitle_anim["x_offset"],
             )
-            np.copyto(self.frame_buffer, self.temp_buffer)
+            taichi_kernels._copy_field_3(self.gpu.temp, self.gpu.frame)
 
     # =========================================================================
     # Particle Methods (from TaichiParticlesMixin)
@@ -818,6 +809,11 @@ class TaichiTitleRenderer:
         atlas_size = 128
         self._sdf_atlas = get_cached_atlas(font_path, atlas_size)
         self._sdf_atlas_float = self._sdf_atlas.texture.astype(np.float32) / 255.0
+        # Cache SDF atlas on GPU — loaded once, reused every frame
+        import taichi as ti
+
+        self._sdf_atlas_gpu = ti.ndarray(dtype=ti.f32, shape=self._sdf_atlas_float.shape)
+        self._sdf_atlas_gpu.from_numpy(self._sdf_atlas_float)
         logger.info(f"SDF atlas loaded: {self._sdf_atlas.texture.shape}")
 
     def _render_sdf_text_direct(
@@ -852,9 +848,12 @@ class TaichiTitleRenderer:
 
         smoothing = max(0.05, min(0.2, 0.15 / scale))
 
+        # WHY: glyph_data is small (~8 floats × num_glyphs) and generated
+        # per-call from layout_text(). Implicit transfer is negligible.
+        atlas = self._sdf_atlas_gpu if self._sdf_atlas_gpu is not None else self._sdf_atlas_float
         taichi_kernels._render_sdf_text(
-            self.frame_buffer,
-            self._sdf_atlas_float,
+            self.gpu.frame,
+            atlas,
             glyph_data,
             len(glyph_data),
             color[0],
@@ -923,9 +922,11 @@ class TaichiTitleRenderer:
             draw.text((x, y), line, font=font, fill=color)
 
     def _render_text_layers(self, title: str, subtitle: str | None):
-        """Pre-render text layers (cached)."""
+        """Pre-render text layers (cached on GPU)."""
         if self._cached_text == (title, subtitle):
             return
+
+        import taichi as ti
 
         base = min(self.config.width, self.config.height)
         ratio = self.config.title_size_ratio * 0.65 if subtitle else self.config.title_size_ratio
@@ -937,13 +938,20 @@ class TaichiTitleRenderer:
         shadow_rgba = (0, 0, 0, int(self.config.shadow_opacity * 255))
 
         self._title_layer = self._render_text_layer(title, title_size, text_rgba)
+        self._title_layer_gpu = ti.ndarray(dtype=ti.f32, shape=self._title_layer.shape)
+        self._title_layer_gpu.from_numpy(self._title_layer)
 
         if self.config.enable_shadow:
             self._shadow_layer = self._render_text_layer(title, title_size, shadow_rgba)
+            self._shadow_layer_gpu = ti.ndarray(dtype=ti.f32, shape=self._shadow_layer.shape)
+            self._shadow_layer_gpu.from_numpy(self._shadow_layer)
 
         if subtitle:
             self._subtitle_layer = self._render_text_layer(subtitle, subtitle_size, text_rgba)
+            self._subtitle_layer_gpu = ti.ndarray(dtype=ti.f32, shape=self._subtitle_layer.shape)
+            self._subtitle_layer_gpu.from_numpy(self._subtitle_layer)
         else:
             self._subtitle_layer = None
+            self._subtitle_layer_gpu = None
 
         self._cached_text = (title, subtitle)
