@@ -78,7 +78,7 @@ def _encode_preview_jpeg(rgb: np.ndarray, quality: int = 75, max_height: int = 7
     h, w = rgb.shape[:2]
     if h > max_height:
         scale = max_height / h
-        img = img.resize((int(w * scale), max_height), Image.LANCZOS)
+        img = img.resize((int(w * scale), max_height), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=quality)
     return buf.getvalue()
