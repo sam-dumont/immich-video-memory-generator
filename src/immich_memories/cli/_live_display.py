@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import io
 import logging
-import os
-import sys
 import threading
 import time
 from collections import deque
@@ -54,26 +51,14 @@ class ProgressDisplay(Protocol):
 _MISSING: object = object()
 
 MAX_LOG_LINES = 5
-MAX_VISIBLE_COMPLETED = 20
 
 
 class LiveDisplay:
     """Interactive display combining spinner/bar, completed steps, and live logs.
 
-    Usage::
-
-        with LiveDisplay(console=console) as display:
-            task = display.add_task("Connecting...", total=None)
-            # ... work ...
-            display.update(task, completed=True)
-            # Shows: ✓ Connecting...
-
-            task2 = display.add_task("Analyzing clips...", total=100)
-            display.update(task2, completed=50)
-            # Shows progress bar at 50%
-
-            display.add_log("Clustered 47 clips into 46 groups")
-            # Shows log line in dim panel below
+    Completed steps are printed permanently above the Live area using
+    console.print(). The Live area only contains the active progress bar
+    and log lines — keeping it small so Rich never loses cursor control.
     """
 
     def __init__(self, console: Console) -> None:
@@ -103,17 +88,12 @@ class LiveDisplay:
             self.render(),
             console=self._console,
             refresh_per_second=8,
-            transient=False,
+            transient=True,
         )
         self._live.__enter__()
         # WHY: Route logging through the live display so log lines
         # appear in the scrolling panel instead of breaking Rich's output
         self._original_handlers = install_live_handler(self)
-        # WHY: Redirect raw stdout/stderr at the OS level so C libraries
-        # (Taichi banner, FFmpeg warnings) can't corrupt Rich's display.
-        # Python's sys.stdout is left intact — Rich uses it for rendering.
-        self._stdout_capture = _FDCapture(1, self)  # stdout
-        self._stderr_capture = _FDCapture(2, self)  # stderr
         set_active_display(self)
         return self
 
@@ -123,11 +103,6 @@ class LiveDisplay:
         _exc_val: BaseException | None,
         _exc_tb: TracebackType | None,
     ) -> None:
-        # Restore FD captures before anything else
-        if hasattr(self, "_stderr_capture"):
-            self._stderr_capture.restore()
-        if hasattr(self, "_stdout_capture"):
-            self._stdout_capture.restore()
         # Restore original logging and console routing before teardown
         set_active_display(None)
         if self._original_handlers is not None:
@@ -142,8 +117,6 @@ class LiveDisplay:
 
         self._progress.stop()
         if self._live:
-            # Final render showing all completed lines
-            self._live.update(self.render_final())
             self._live.__exit__(None, None, None)
             self._live = None
 
@@ -212,9 +185,14 @@ class LiveDisplay:
             self._refresh()
 
     def print_message(self, message: str) -> None:
-        """Print a rich-formatted message as a completed line."""
+        """Print a rich-formatted message permanently above the Live area."""
         with self._lock:
             self._completed_lines.append(message)
+            if self._live:
+                # WHY: console.print() during a Live context prints
+                # permanently above the Live renderable — it scrolls
+                # up and stays, keeping the Live area small.
+                self._console.print(Text.from_markup(message))
             self._refresh()
 
     def stop(self) -> None:
@@ -223,11 +201,6 @@ class LiveDisplay:
         Called by trip detection flow before printing interactive tables.
         The display can't be resumed after this — use __exit__ instead.
         """
-        # Restore FD captures first
-        if hasattr(self, "_stderr_capture"):
-            self._stderr_capture.restore()
-        if hasattr(self, "_stdout_capture"):
-            self._stdout_capture.restore()
         if self._active_task_id is not None:
             state = self._tasks.get(self._active_task_id)
             if state and not state.done:
@@ -235,7 +208,6 @@ class LiveDisplay:
 
         self._progress.stop()
         if self._live:
-            self._live.update(self.render_final())
             self._live.stop()
 
         # Restore logging so subsequent console output works normally
@@ -245,12 +217,18 @@ class LiveDisplay:
             self._original_handlers = None
 
     def _finish_task(self, task_id: int) -> None:
-        """Mark task as done and add a checkmark line."""
+        """Mark task as done and print a checkmark line above the Live area."""
         state = self._tasks.get(task_id)
         if state is None or state.done:
             return
         state.done = True
-        self._completed_lines.append(f"[green]✓[/green] {state.description}")
+        line = f"[green]✓[/green] {state.description}"
+        self._completed_lines.append(line)
+        # WHY: Print completed steps permanently above the Live area.
+        # This keeps the Live renderable small (just active task + logs)
+        # so Rich never loses cursor control from terminal overflow.
+        if self._live:
+            self._console.print(Text.from_markup(line))
         self._progress.update(TaskID(task_id), visible=False)
         if self._active_task_id == task_id:
             self._active_task_id = None
@@ -260,19 +238,8 @@ class LiveDisplay:
             self._live.update(self.render())
 
     def render(self) -> RenderableType:
-        """Build the composite renderable for the current display state."""
+        """Build the Live renderable: only active task + log lines."""
         parts: list[RenderableType] = []
-
-        # Cap visible completed lines to prevent terminal overflow
-        total = len(self._completed_lines)
-        if total > MAX_VISIBLE_COMPLETED:
-            hidden = total - MAX_VISIBLE_COMPLETED
-            parts.append(Text(f"  ({hidden} earlier steps hidden)", style="dim"))
-            visible = self._completed_lines[-MAX_VISIBLE_COMPLETED:]
-        else:
-            visible = self._completed_lines
-
-        parts.extend(Text.from_markup(line) for line in visible)
 
         # Active progress bar (spinner or bar) + elapsed time
         if self._active_task_id is not None:
@@ -316,68 +283,6 @@ def _format_duration(seconds: float) -> str:
     if s < 3600:
         return f"{s // 60}:{s % 60:02d}"
     return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}"
-
-
-class _FDCapture:
-    """Redirect a raw OS file descriptor into a LiveDisplay log panel.
-
-    WHY: Libraries like Taichi print via C-level stdout/stderr, bypassing
-    Python's sys.stdout entirely. Rich Live can't coordinate with these
-    writes, so they corrupt the cursor-controlled display. This class
-    redirects the OS-level FD into a pipe that a background thread reads
-    and routes into LiveDisplay.add_log().
-    """
-
-    def __init__(self, fd: int, display: LiveDisplay) -> None:
-        self._fd = fd
-        self._display = display
-        self._restored = False
-
-        # Save the original FD and replace it with a pipe
-        self._saved_fd = os.dup(fd)
-        self._read_fd, self._write_fd = os.pipe()
-        os.dup2(self._write_fd, fd)
-        os.close(self._write_fd)
-
-        # Also redirect Python's sys.stdout/stderr to use our pipe
-        # WHY: Some Python code writes via sys.stdout.write() which uses
-        # the Python-level file object, not the raw FD
-        if fd == 1:
-            self._orig_stream = sys.stdout
-            sys.stdout = io.TextIOWrapper(
-                os.fdopen(os.dup(self._saved_fd), "wb"), write_through=True
-            )
-        elif fd == 2:
-            self._orig_stream = sys.stderr
-            sys.stderr = io.TextIOWrapper(
-                os.fdopen(os.dup(self._saved_fd), "wb"), write_through=True
-            )
-        else:
-            self._orig_stream = None
-
-        # Background thread reads from the pipe and routes to display
-        self._thread = threading.Thread(target=self._drain, daemon=True)
-        self._thread.start()
-
-    def _drain(self) -> None:
-        with os.fdopen(self._read_fd, "r", errors="replace") as f:
-            for line in f:
-                stripped = line.rstrip()
-                if stripped:
-                    self._display.add_log(stripped)
-
-    def restore(self) -> None:
-        if self._restored:
-            return
-        self._restored = True
-        # Restore the original FD
-        os.dup2(self._saved_fd, self._fd)
-        os.close(self._saved_fd)
-        # Restore Python stream
-        if self._fd == 1 and self._orig_stream is not None:
-            sys.stdout = self._orig_stream
-        elif self._fd == 2 and self._orig_stream is not None:
-            sys.stderr = self._orig_stream
 
 
 class _TaskState:

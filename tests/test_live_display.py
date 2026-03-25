@@ -68,13 +68,13 @@ class TestLiveDisplayTaskLifecycle:
             task_id = display.add_task("Step 1", total=None)
             assert isinstance(task_id, int)
 
-    def test_completed_spinner_renders_checkmark(self) -> None:
-        """Finishing a spinner task adds a '✓' line to rendered output."""
+    def test_completed_spinner_in_final_render(self) -> None:
+        """Finishing a spinner task adds a '✓' line to render_final() output."""
         display = self._make_display()
         with display:
             t = display.add_task("Connecting...", total=None)
             display.update(t, completed=True)
-            rendered = _render_text(display.render())
+        rendered = _render_text(display.render_final())
         assert "✓" in rendered
         assert "Connecting..." in rendered
 
@@ -84,8 +84,8 @@ class TestLiveDisplayTaskLifecycle:
         with display:
             display.add_task("Step 1", total=None)
             display.add_task("Step 2", total=None)
-            rendered = _render_text(display.render())
-        # Step 1 should appear as completed (checkmark), Step 2 still active
+        # Step 1 should appear as completed in final render
+        rendered = _render_text(display.render_final())
         assert "✓" in rendered
         assert "Step 1" in rendered
 
@@ -345,63 +345,44 @@ class TestInstallRestoreHandlers:
 
 
 # ---------------------------------------------------------------------------
-# LiveDisplay — bounded rendering height
+# LiveDisplay — completed lines printed above Live, not in render()
 # ---------------------------------------------------------------------------
 
 
-class TestLiveDisplayBoundedHeight:
-    def test_render_caps_visible_completed_lines(self) -> None:
-        """render() shows at most MAX_VISIBLE_COMPLETED lines, not all."""
-        from immich_memories.cli._live_display import MAX_VISIBLE_COMPLETED
-
+class TestLiveDisplayCompletedAboveLive:
+    def test_completed_lines_not_in_render(self) -> None:
+        """render() does NOT contain completed steps — they go above via console.print()."""
         display = LiveDisplay(console=Console(force_terminal=False))
         with display:
-            for i in range(MAX_VISIBLE_COMPLETED + 10):
-                t = display.add_task(f"Step {i}", total=None)
-                display.update(t, completed=True)
+            t = display.add_task("Step 1", total=None)
+            display.update(t, completed=True)
             rendered = _render_text(display.render())
-        # Earliest steps should be hidden
-        assert "Step 0" not in rendered
-        # Latest steps should be visible
-        assert f"Step {MAX_VISIBLE_COMPLETED + 9}" in rendered
+        # render() should only have active task + logs, not completed checkmarks
+        assert "Step 1" not in rendered
 
-    def test_render_shows_hidden_count_when_truncated(self) -> None:
-        """When lines are truncated, a '(N earlier steps hidden)' line appears."""
-        from immich_memories.cli._live_display import MAX_VISIBLE_COMPLETED
-
+    def test_completed_lines_in_render_final(self) -> None:
+        """render_final() contains all completed steps for post-Live output."""
         display = LiveDisplay(console=Console(force_terminal=False))
         with display:
-            for i in range(MAX_VISIBLE_COMPLETED + 5):
-                t = display.add_task(f"Step {i}", total=None)
-                display.update(t, completed=True)
-            rendered = _render_text(display.render())
-        assert "earlier steps hidden" in rendered
-
-    def test_render_final_shows_all_completed_lines(self) -> None:
-        """render_final() shows ALL completed lines, not just the last N."""
-        from immich_memories.cli._live_display import MAX_VISIBLE_COMPLETED
-
-        display = LiveDisplay(console=Console(force_terminal=False))
-        with display:
-            for i in range(MAX_VISIBLE_COMPLETED + 10):
+            for i in range(30):
                 t = display.add_task(f"Step {i}", total=None)
                 display.update(t, completed=True)
         rendered = _render_text(display.render_final())
-        # Final render should show everything
         assert "Step 0" in rendered
-        assert f"Step {MAX_VISIBLE_COMPLETED + 9}" in rendered
+        assert "Step 29" in rendered
 
-    def test_no_truncation_when_under_limit(self) -> None:
-        """When fewer than MAX_VISIBLE_COMPLETED lines, no truncation message."""
+    def test_render_only_has_active_task_and_logs(self) -> None:
+        """render() only contains the active task and log lines."""
         display = LiveDisplay(console=Console(force_terminal=False))
         with display:
-            for i in range(3):
-                t = display.add_task(f"Step {i}", total=None)
-                display.update(t, completed=True)
+            display.add_task("Done1", total=None)
+            display.add_task("Active", total=100)
+            display.update(display._active_task_id, completed=50)
+            display.add_log("Some log")
             rendered = _render_text(display.render())
-        assert "hidden" not in rendered
-        assert "Step 0" in rendered
-        assert "Step 2" in rendered
+        assert "Active" in rendered or "50%" in rendered
+        assert "Some log" in rendered
+        assert "Done1" not in rendered
 
 
 # ---------------------------------------------------------------------------
