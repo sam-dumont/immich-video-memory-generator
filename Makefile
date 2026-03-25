@@ -351,10 +351,10 @@ diff-cover:
 	uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=80
 
 # Dependency vulnerability audit
-pip-audit:
+pip-audit:  ## Check dependencies for known vulnerabilities (warns on unfixable, fails on fixable)
 	uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==' -e '^audioop-lts==' > /tmp/pip-audit-reqs.txt
-	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict
-	rm -f /tmp/pip-audit-reqs.txt
+	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict 2>&1 | python3 scripts/pip_audit_smart.py; \
+		EXIT=$$?; rm -f /tmp/pip-audit-reqs.txt; exit $$EXIT
 
 diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merges integration coverage)
 	@echo "Running unit tests with coverage..."

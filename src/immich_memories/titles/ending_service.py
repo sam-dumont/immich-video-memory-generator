@@ -5,6 +5,7 @@ Creates fade-to-white ending videos by streaming frames to FFmpeg.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -114,7 +115,7 @@ class EndingService:
             stderr=subprocess.PIPE,
         )
 
-        try:
+        with contextlib.suppress(BrokenPipeError):
             for i in range(total_frames):
                 if i < fade_start_frame:
                     # Before fade - reuse cached base background bytes
@@ -134,13 +135,18 @@ class EndingService:
                     process.stdin.write(frame.tobytes())
                     del frame  # Immediate cleanup
 
-            assert process.stdin is not None
+            if process.stdin is not None and not process.stdin.closed:
+                process.stdin.close()
+
+        # WHY: Python 3.12's communicate() calls stdin.flush() even after
+        # stdin.close(), crashing with ValueError. Verified: FFmpeg succeeds
+        # (returncode=0, output exists) but communicate() aborts the pipeline.
+        # Use direct stderr.read() + wait() to avoid the buggy code path.
+        if process.stdin and not process.stdin.closed:
             process.stdin.close()
-            _, stderr = process.communicate()
 
-            if process.returncode != 0:
-                raise RuntimeError(f"FFmpeg failed: {stderr.decode()[-500:]}")
+        stderr_bytes = process.stderr.read() if process.stderr else b""
+        process.wait()
 
-        except BrokenPipeError:
-            _, stderr = process.communicate()
-            raise RuntimeError(f"FFmpeg pipe broken: {stderr.decode()[-500:]}")
+        if process.returncode != 0:
+            raise RuntimeError(f"FFmpeg failed: {stderr_bytes.decode()[-500:]}")
