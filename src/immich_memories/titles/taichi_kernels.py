@@ -94,11 +94,18 @@ _composite_rgba_over = None
 _composite_text_with_offset = None
 _apply_color_pulse = None
 _render_sdf_text = None
+# GPU-resident buffer kernels (issue #164)
+_copy_field_3 = None
+_zero_field_4 = None
+_blend_fields = None
+_finalize_to_output_u8 = None
+_finalize_to_output_u16 = None
+_apply_vignette_and_noise = None
 
 
 def _compile_kernels():
     """Compile all Taichi kernels. Must be called AFTER ti.init()."""
-    global _kernels_compiled, _generate_linear_gradient, _generate_radial_gradient, _gaussian_blur_h, _gaussian_blur_v, _apply_vignette, _render_bokeh_particles, _apply_noise_grain, _generate_aurora_gradient, _composite_rgba_over, _composite_text_with_offset, _apply_color_pulse, _render_sdf_text  # noqa: PLW0603, E501
+    global _kernels_compiled, _generate_linear_gradient, _generate_radial_gradient, _gaussian_blur_h, _gaussian_blur_v, _apply_vignette, _render_bokeh_particles, _apply_noise_grain, _generate_aurora_gradient, _composite_rgba_over, _composite_text_with_offset, _apply_color_pulse, _render_sdf_text, _copy_field_3, _zero_field_4, _blend_fields, _finalize_to_output_u8, _finalize_to_output_u16, _apply_vignette_and_noise  # noqa: PLW0603, E501
 
     if _kernels_compiled or not TAICHI_AVAILABLE:
         return
@@ -429,6 +436,89 @@ def _compile_kernels():
                 output[y, x, 1] = output[y, x, 1] * (1.0 - final_alpha) + color_g * final_alpha
                 output[y, x, 2] = output[y, x, 2] * (1.0 - final_alpha) + color_b * final_alpha
 
+    # --- GPU buffer utility kernels (issue #164) ---
+
+    @ti.kernel
+    def copy_field_3(
+        src: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        dst: ti.types.ndarray(dtype=ti.f32, ndim=3),
+    ):
+        for y, x in ti.ndrange(src.shape[0], src.shape[1]):
+            for c in ti.static(range(3)):
+                dst[y, x, c] = src[y, x, c]
+
+    @ti.kernel
+    def zero_field_4(
+        arr: ti.types.ndarray(dtype=ti.f32, ndim=3),
+    ):
+        for y, x in ti.ndrange(arr.shape[0], arr.shape[1]):
+            for c in ti.static(range(4)):
+                arr[y, x, c] = 0.0
+
+    @ti.kernel
+    def blend_fields(
+        dst: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        src: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        mix: ti.f32,
+    ):
+        """dst = dst * (1-mix) + src * mix"""
+        for y, x in ti.ndrange(dst.shape[0], dst.shape[1]):
+            for c in ti.static(range(3)):
+                dst[y, x, c] = dst[y, x, c] * (1.0 - mix) + src[y, x, c] * mix
+
+    @ti.kernel
+    def finalize_to_output_u8(
+        frame: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        output: ti.types.ndarray(dtype=ti.u8, ndim=3),
+        max_val: ti.f32,
+    ):
+        for y, x in ti.ndrange(frame.shape[0], frame.shape[1]):
+            for c in ti.static(range(3)):
+                v = ti.max(0.0, ti.min(1.0, frame[y, x, c]))
+                output[y, x, c] = ti.cast(v * max_val + 0.5, ti.u8)
+
+    @ti.kernel
+    def finalize_to_output_u16(
+        frame: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        output: ti.types.ndarray(dtype=ti.u16, ndim=3),
+        max_val: ti.f32,
+    ):
+        for y, x in ti.ndrange(frame.shape[0], frame.shape[1]):
+            for c in ti.static(range(3)):
+                v = ti.max(0.0, ti.min(1.0, frame[y, x, c]))
+                output[y, x, c] = ti.cast(v * max_val + 0.5, ti.u16)
+
+    @ti.kernel
+    def apply_vignette_and_noise(
+        output: ti.types.ndarray(dtype=ti.f32, ndim=3),
+        vignette_strength: ti.f32,
+        noise_intensity: ti.f32,
+        seed: ti.i32,
+        width: ti.i32,
+        height: ti.i32,
+    ):
+        """Fused vignette + noise grain — one kernel launch instead of two."""
+        cx = width * 0.5
+        cy = height * 0.5
+        for y, x in ti.ndrange(height, width):
+            dx = (x - cx) / cx
+            dy = (y - cy) / cy
+            dist = ti.sqrt(dx * dx + dy * dy)
+            vignette_factor = ti.min(1.0, vignette_strength * dist * dist)
+
+            noise = 0.0
+            if noise_intensity > 0.0:
+                hash_val = (x * 374761393 + y * 668265263 + seed) ^ (seed * 1013904223)
+                hash_val = (hash_val ^ (hash_val >> 13)) * 1274126177
+                hash_val = hash_val ^ (hash_val >> 16)
+                noise = (float(hash_val & 0xFFFF) / 32768.0 - 1.0) * noise_intensity
+
+            for c in ti.static(range(3)):
+                val = output[y, x, c]
+                val = val + (1.0 - val) * vignette_factor
+                val = val + noise
+                output[y, x, c] = ti.max(0.0, ti.min(1.0, val))
+
     _generate_linear_gradient = generate_linear_gradient
     _generate_radial_gradient = generate_radial_gradient
     _gaussian_blur_h = gaussian_blur_h
@@ -441,6 +531,12 @@ def _compile_kernels():
     _composite_text_with_offset = composite_text_with_offset
     _apply_color_pulse = apply_color_pulse
     _render_sdf_text = render_sdf_text
+    _copy_field_3 = copy_field_3
+    _zero_field_4 = zero_field_4
+    _blend_fields = blend_fields
+    _finalize_to_output_u8 = finalize_to_output_u8
+    _finalize_to_output_u16 = finalize_to_output_u16
+    _apply_vignette_and_noise = apply_vignette_and_noise
 
     _kernels_compiled = True
     logger.debug("Taichi kernels compiled")
@@ -462,6 +558,52 @@ def _hex_to_rgb(hex_color: str) -> tuple[float, float, float]:
     """Convert hex color to normalized RGB floats."""
     h = hex_color.lstrip("#")
     return (int(h[0:2], 16) / 255.0, int(h[2:4], 16) / 255.0, int(h[4:6], 16) / 255.0)
+
+
+def _finalize_to_output(frame, output, max_val: float, *, hdr: bool | None = None) -> None:
+    """Dispatch to u8 or u16 finalize kernel.
+
+    For ti.ndarray pass hdr= explicitly; for np.ndarray auto-detects from dtype.
+    """
+    if hdr is None:
+        hdr = hasattr(output, "dtype") and output.dtype == np.uint16
+    if hdr:
+        _finalize_to_output_u16(frame, output, max_val)
+    else:
+        _finalize_to_output_u8(frame, output, max_val)
+
+
+class GPUBuffers:
+    """GPU-resident buffers for title rendering (issue #164).
+
+    Allocates ti.ndarray objects that stay on the GPU device. Kernels
+    operating on these buffers avoid implicit CPU-GPU transfers.
+    On CPU backend, these are regular memory allocations.
+    """
+
+    def __init__(self, h: int, w: int, hdr: bool = False):
+        self.h = h
+        self.w = w
+        self.hdr = hdr
+        self.frame = ti.ndarray(dtype=ti.f32, shape=(h, w, 3))
+        self.temp = ti.ndarray(dtype=ti.f32, shape=(h, w, 3))
+        self.bokeh = ti.ndarray(dtype=ti.f32, shape=(h, w, 4))
+        out_dtype = ti.u16 if hdr else ti.u8
+        self.output = ti.ndarray(dtype=out_dtype, shape=(h, w, 3))
+        self.sharp: ti.ndarray | None = None
+
+    def load_background(self, bg: np.ndarray) -> None:
+        """CPU to GPU: load background frame (one transfer per frame)."""
+        self.frame.from_numpy(bg)
+
+    def read_output(self) -> np.ndarray:
+        """GPU to CPU: read finalized uint8/uint16 frame."""
+        return self.output.to_numpy()
+
+    def ensure_sharp(self) -> None:
+        """Lazily allocate sharp buffer for animated deblur."""
+        if self.sharp is None:
+            self.sharp = ti.ndarray(dtype=ti.f32, shape=(self.h, self.w, 3))
 
 
 _OFL_FONTS = {"Montserrat", "Outfit", "Raleway", "Quicksand"}
