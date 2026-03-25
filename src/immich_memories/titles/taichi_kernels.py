@@ -64,7 +64,10 @@ def init_taichi() -> str | None:
     last_error = None
     for backend, name in backends:
         try:
-            ti.init(arch=backend, offline_cache=True)
+            # WHY: log_level=ti.ERROR suppresses Taichi's stdout banner
+            # ("[Taichi] version...", "[Taichi] Starting on arch=...") that
+            # corrupts Rich's Live cursor-controlled display
+            ti.init(arch=backend, offline_cache=True, log_level=ti.ERROR)
             logger.info(f"Taichi initialized with {name} backend")
             _compile_kernels()
             if SDF_AVAILABLE and init_sdf_kernels:

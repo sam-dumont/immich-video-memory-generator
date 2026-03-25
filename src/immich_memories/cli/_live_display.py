@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections import deque
 from types import TracebackType
 from typing import Any, Protocol, Self, runtime_checkable
@@ -50,6 +51,7 @@ class ProgressDisplay(Protocol):
 _MISSING: object = object()
 
 MAX_LOG_LINES = 5
+MAX_VISIBLE_COMPLETED = 20
 
 
 class LiveDisplay:
@@ -89,8 +91,10 @@ class LiveDisplay:
         )
         self._tasks: dict[int, _TaskState] = {}
         self._active_task_id: int | None = None
+        self._start_time: float | None = None
 
     def __enter__(self) -> LiveDisplay:
+        self._start_time = time.monotonic()
         self._progress.start()
         self._live = Live(
             self.render(),
@@ -239,13 +243,27 @@ class LiveDisplay:
 
     def render(self) -> RenderableType:
         """Build the composite renderable for the current display state."""
-        parts: list[RenderableType] = [Text.from_markup(line) for line in self._completed_lines]
+        parts: list[RenderableType] = []
 
-        # Active progress bar (spinner or bar)
+        # Cap visible completed lines to prevent terminal overflow
+        total = len(self._completed_lines)
+        if total > MAX_VISIBLE_COMPLETED:
+            hidden = total - MAX_VISIBLE_COMPLETED
+            parts.append(Text(f"  ({hidden} earlier steps hidden)", style="dim"))
+            visible = self._completed_lines[-MAX_VISIBLE_COMPLETED:]
+        else:
+            visible = self._completed_lines
+
+        parts.extend(Text.from_markup(line) for line in visible)
+
+        # Active progress bar (spinner or bar) + elapsed time
         if self._active_task_id is not None:
             state = self._tasks.get(self._active_task_id)
             if state and not state.done:
                 parts.append(self._progress)
+                time_line = self._build_time_line(state)
+                if time_line:
+                    parts.append(time_line)
 
         # Log lines panel
         parts.extend(Text(f"  │ {log_line}", style="dim") for log_line in self._log_lines)
@@ -255,10 +273,31 @@ class LiveDisplay:
 
         return Group(*parts)
 
+    def _build_time_line(self, state: _TaskState) -> Text | None:
+        if self._start_time is None:
+            return None
+        elapsed = time.monotonic() - self._start_time
+        time_text = f"  ⏱ {_format_duration(elapsed)} elapsed"
+        if state.total is not None and self._active_task_id is not None:
+            rich_task = self._progress.tasks[self._active_task_id]
+            pct = rich_task.percentage
+            if pct and pct > 5:
+                remaining = elapsed * (100 - pct) / pct
+                time_text += f", ~{_format_duration(remaining)} remaining"
+        return Text(time_text, style="dim")
+
     def render_final(self) -> RenderableType:
         """Render final state: just completed lines, no spinner or logs."""
         parts = [Text.from_markup(line) for line in self._completed_lines]
         return Group(*parts) if parts else Text("")
+
+
+def _format_duration(seconds: float) -> str:
+    """Format seconds as M:SS or H:MM:SS."""
+    s = int(seconds)
+    if s < 3600:
+        return f"{s // 60}:{s % 60:02d}"
+    return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}"
 
 
 class _TaskState:

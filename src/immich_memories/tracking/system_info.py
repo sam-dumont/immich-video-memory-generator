@@ -278,7 +278,7 @@ def _check_taichi() -> bool:
         import taichi as ti
 
         # Try to initialize - this validates GPU support
-        ti.init(arch=ti.gpu, offline_cache=True, log_level=ti.WARN)
+        ti.init(arch=ti.gpu, offline_cache=True, log_level=ti.ERROR)
         return True
     except Exception:
         return False

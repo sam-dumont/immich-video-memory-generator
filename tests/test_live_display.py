@@ -344,6 +344,88 @@ class TestInstallRestoreHandlers:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# LiveDisplay — bounded rendering height
+# ---------------------------------------------------------------------------
+
+
+class TestLiveDisplayBoundedHeight:
+    def test_render_caps_visible_completed_lines(self) -> None:
+        """render() shows at most MAX_VISIBLE_COMPLETED lines, not all."""
+        from immich_memories.cli._live_display import MAX_VISIBLE_COMPLETED
+
+        display = LiveDisplay(console=Console(force_terminal=False))
+        with display:
+            for i in range(MAX_VISIBLE_COMPLETED + 10):
+                t = display.add_task(f"Step {i}", total=None)
+                display.update(t, completed=True)
+            rendered = _render_text(display.render())
+        # Earliest steps should be hidden
+        assert "Step 0" not in rendered
+        # Latest steps should be visible
+        assert f"Step {MAX_VISIBLE_COMPLETED + 9}" in rendered
+
+    def test_render_shows_hidden_count_when_truncated(self) -> None:
+        """When lines are truncated, a '(N earlier steps hidden)' line appears."""
+        from immich_memories.cli._live_display import MAX_VISIBLE_COMPLETED
+
+        display = LiveDisplay(console=Console(force_terminal=False))
+        with display:
+            for i in range(MAX_VISIBLE_COMPLETED + 5):
+                t = display.add_task(f"Step {i}", total=None)
+                display.update(t, completed=True)
+            rendered = _render_text(display.render())
+        assert "earlier steps hidden" in rendered
+
+    def test_render_final_shows_all_completed_lines(self) -> None:
+        """render_final() shows ALL completed lines, not just the last N."""
+        from immich_memories.cli._live_display import MAX_VISIBLE_COMPLETED
+
+        display = LiveDisplay(console=Console(force_terminal=False))
+        with display:
+            for i in range(MAX_VISIBLE_COMPLETED + 10):
+                t = display.add_task(f"Step {i}", total=None)
+                display.update(t, completed=True)
+        rendered = _render_text(display.render_final())
+        # Final render should show everything
+        assert "Step 0" in rendered
+        assert f"Step {MAX_VISIBLE_COMPLETED + 9}" in rendered
+
+    def test_no_truncation_when_under_limit(self) -> None:
+        """When fewer than MAX_VISIBLE_COMPLETED lines, no truncation message."""
+        display = LiveDisplay(console=Console(force_terminal=False))
+        with display:
+            for i in range(3):
+                t = display.add_task(f"Step {i}", total=None)
+                display.update(t, completed=True)
+            rendered = _render_text(display.render())
+        assert "hidden" not in rendered
+        assert "Step 0" in rendered
+        assert "Step 2" in rendered
+
+
+# ---------------------------------------------------------------------------
+# LiveDisplay — elapsed time display
+# ---------------------------------------------------------------------------
+
+
+class TestLiveDisplayElapsedTime:
+    def test_render_includes_elapsed_time(self) -> None:
+        """Active task render includes elapsed time indicator."""
+        display = LiveDisplay(console=Console(force_terminal=False))
+        with display:
+            display.add_task("Working...", total=100)
+            display.update(display._active_task_id, completed=50)
+            rendered = _render_text(display.render())
+        # Should contain elapsed time (at least "0:00" or similar)
+        assert "elapsed" in rendered.lower() or "0:" in rendered
+
+
+# ---------------------------------------------------------------------------
+# configure_logging — file handler (dual stdout + file)
+# ---------------------------------------------------------------------------
+
+
 class TestConfigureLoggingFile:
     def test_log_file_creates_both_handlers(self) -> None:
         """When log_file is set, both stdout and file handlers exist."""
