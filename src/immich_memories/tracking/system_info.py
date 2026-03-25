@@ -275,9 +275,11 @@ def _get_opencv_version() -> str | None:
 def _check_taichi() -> bool:
     """Check if Taichi is available and working."""
     try:
+        import os
+
+        os.environ.setdefault("TI_LOG_LEVEL", "error")
         import taichi as ti
 
-        # Try to initialize - this validates GPU support
         ti.init(arch=ti.gpu, offline_cache=True, log_level=ti.ERROR)
         return True
     except Exception:
