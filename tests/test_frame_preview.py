@@ -168,3 +168,133 @@ class TestHdrJpegRoundTrip:
         # Should be a grayish-bright pixel (neutral chroma)
         r, g, b = img.getpixel((80, 60))
         assert r > 100 and g > 100 and b > 100
+
+
+class TestMaybeEmitPreview:
+    def test_fires_on_first_call(self) -> None:
+        """Callback should fire on first call when last_time is 0."""
+        from immich_memories.processing.frame_preview import _maybe_emit_preview
+
+        captured: list[bytes] = []
+        frame = np.full((100, 100, 3), 128, dtype=np.uint8)
+
+        new_time = _maybe_emit_preview(
+            frame=frame,
+            last_preview_time=0.0,
+            callback=captured.append,
+            is_hdr=False,
+            height=100,
+            width=100,
+        )
+
+        assert len(captured) == 1
+        assert captured[0][:2] == b"\xff\xd8"
+        assert new_time > 0
+
+    def test_skips_when_interval_not_elapsed(self) -> None:
+        """Callback should NOT fire if <2s since last call."""
+        from unittest.mock import patch
+
+        from immich_memories.processing.frame_preview import _maybe_emit_preview
+
+        captured: list[bytes] = []
+        frame = np.full((100, 100, 3), 128, dtype=np.uint8)
+
+        with patch("immich_memories.processing.frame_preview.time") as mock_time:
+            mock_time.monotonic.return_value = 10.5
+            new_time = _maybe_emit_preview(
+                frame=frame,
+                last_preview_time=10.0,
+                callback=captured.append,
+                is_hdr=False,
+                height=100,
+                width=100,
+            )
+
+        assert len(captured) == 0
+        assert new_time == 10.0
+
+    def test_fires_after_interval_elapsed(self) -> None:
+        """Callback should fire if >=2s since last call."""
+        from unittest.mock import patch
+
+        from immich_memories.processing.frame_preview import _maybe_emit_preview
+
+        captured: list[bytes] = []
+        frame = np.full((100, 100, 3), 128, dtype=np.uint8)
+
+        with patch("immich_memories.processing.frame_preview.time") as mock_time:
+            mock_time.monotonic.return_value = 12.1
+            new_time = _maybe_emit_preview(
+                frame=frame,
+                last_preview_time=10.0,
+                callback=captured.append,
+                is_hdr=False,
+                height=100,
+                width=100,
+            )
+
+        assert len(captured) == 1
+        assert new_time == 12.1
+
+    def test_none_callback_returns_immediately(self) -> None:
+        """When callback is None, should return last_time unchanged."""
+        from immich_memories.processing.frame_preview import _maybe_emit_preview
+
+        frame = np.full((100, 100, 3), 128, dtype=np.uint8)
+
+        result = _maybe_emit_preview(
+            frame=frame,
+            last_preview_time=5.0,
+            callback=None,
+            is_hdr=False,
+            height=100,
+            width=100,
+        )
+
+        assert result == 5.0
+
+    def test_hdr_frame_produces_valid_jpeg(self) -> None:
+        """HDR frame should go through _to_rgb8 -> JPEG pipeline."""
+        from immich_memories.processing.frame_preview import _maybe_emit_preview
+
+        captured: list[bytes] = []
+        width, height = 160, 120
+        buf = _make_yuv420p10le_buffer(700, 512, 512, width, height)
+
+        _maybe_emit_preview(
+            frame=buf,
+            last_preview_time=0.0,
+            callback=captured.append,
+            is_hdr=True,
+            height=height,
+            width=width,
+        )
+
+        assert len(captured) == 1
+        assert captured[0][:2] == b"\xff\xd8"
+        img = Image.open(io.BytesIO(captured[0]))
+        assert img.size == (width, height)
+
+    def test_crossfade_blend_buffer_produces_preview(self) -> None:
+        """A 50/50 blend of red and blue (= purple) should produce correct JPEG."""
+        from immich_memories.processing.frame_preview import _maybe_emit_preview
+
+        captured: list[bytes] = []
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        frame[:, :] = [128, 0, 128]
+
+        _maybe_emit_preview(
+            frame=frame,
+            last_preview_time=0.0,
+            callback=captured.append,
+            is_hdr=False,
+            height=100,
+            width=100,
+        )
+
+        img = Image.open(io.BytesIO(captured[0]))
+        r, g, b = img.getpixel((50, 50))
+        assert abs(r - 128) < 15
+        assert g < 15
+        assert abs(b - 128) < 15

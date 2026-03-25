@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import io
+import time
+from collections.abc import Callable
 
 import numpy as np
 from PIL import Image
+
+PREVIEW_INTERVAL_SECONDS = 2.0
 
 
 def _to_rgb8(frame: np.ndarray, height: int, width: int) -> np.ndarray:
@@ -41,6 +45,31 @@ def _to_rgb8(frame: np.ndarray, height: int, width: int) -> np.ndarray:
     # the entire image making reference white look gray.
     rgb = np.stack([r, g, b], axis=-1)
     return np.clip(rgb * 255.0, 0, 255).astype(np.uint8)
+
+
+def _maybe_emit_preview(
+    frame: np.ndarray,
+    last_preview_time: float,
+    callback: Callable[[bytes], None] | None,
+    is_hdr: bool,
+    height: int,
+    width: int,
+) -> float:
+    """Emit a JPEG preview if enough time has elapsed since last emission.
+
+    Returns the updated last_preview_time.
+    """
+    if callback is None:
+        return last_preview_time
+
+    now = time.monotonic()
+    if now - last_preview_time < PREVIEW_INTERVAL_SECONDS:
+        return last_preview_time
+
+    rgb = _to_rgb8(frame, height, width) if is_hdr else frame
+    jpeg = _encode_preview_jpeg(rgb)
+    callback(jpeg)
+    return now
 
 
 def _encode_preview_jpeg(rgb: np.ndarray, quality: int = 75, max_height: int = 720) -> bytes:
