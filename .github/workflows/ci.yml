@@ -327,7 +327,7 @@ jobs:
           for f in tests/*-coverage.xml; do
             [ -f "$f" ] && COVERAGE_FILES="$COVERAGE_FILES $f"
           done
-          uvx diff-cover $COVERAGE_FILES --compare-branch=origin/main --markdown > diff-cover-report.md 2>&1 || true
+          uvx diff-cover $COVERAGE_FILES --compare-branch=origin/main --format markdown:diff-cover-report.md || true
           if [ -s diff-cover-report.md ]; then
             {
               echo "## Diff Coverage Report"
