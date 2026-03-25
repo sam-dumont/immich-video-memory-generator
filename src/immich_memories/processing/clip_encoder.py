@@ -204,6 +204,12 @@ class ClipEncoder:
         common_suffix: str,
         audio_filter: str,
     ) -> str:
+        # WHY: privacy blur scales with resolution so faces stay unidentifiable,
+        # matching streaming_assembler.py's gblur formula
+        privacy_filter = ""
+        if self.settings.privacy_mode and not clip.is_title_screen:
+            privacy_filter = f"gblur=sigma={int(target_h * 0.075)},"
+
         use_blur = self.settings.scale_mode == "blur" and not clip.is_title_screen
         use_smart_zoom = self.settings.scale_mode == "smart_zoom" and not clip.is_title_screen
 
@@ -216,9 +222,7 @@ class ClipEncoder:
                     crop_filter = _get_smart_crop_filter(
                         src_w, src_h, target_w, target_h, face_center[0], face_center[1]
                     )
-                    video_filter = (
-                        f"{rotation_filter}setpts=PTS-STARTPTS,{crop_filter},{common_suffix}"
-                    )
+                    video_filter = f"{rotation_filter}{privacy_filter}setpts=PTS-STARTPTS,{crop_filter},{common_suffix}"
                     logger.info(
                         f"Smart zoom: cropping centered on face "
                         f"at ({face_center[0]:.2f}, {face_center[1]:.2f})"
@@ -232,7 +236,7 @@ class ClipEncoder:
 
         if use_blur:
             return (
-                f"[0:v]{rotation_filter}setpts=PTS-STARTPTS,split[bg][fg];"
+                f"[0:v]{rotation_filter}{privacy_filter}setpts=PTS-STARTPTS,split[bg][fg];"
                 f"[bg]scale={target_w}:{target_h}:force_original_aspect_ratio=increase:flags=fast_bilinear,"
                 f"crop={target_w}:{target_h},boxblur=luma_radius=150:chroma_radius=150:luma_power=3:chroma_power=3[blurred];"
                 f"[fg]scale={target_w}:{target_h}:force_original_aspect_ratio=decrease:flags=lanczos[scaled];"
@@ -241,7 +245,7 @@ class ClipEncoder:
             )
 
         video_filter = (
-            f"{rotation_filter}setpts=PTS-STARTPTS,"
+            f"{rotation_filter}{privacy_filter}setpts=PTS-STARTPTS,"
             f"scale={target_w}:{target_h}:"
             f"force_original_aspect_ratio=decrease:flags=lanczos,"
             f"pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2:black,"
