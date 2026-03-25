@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import logging
+import os
+import sys
 import threading
 import time
 from collections import deque
@@ -106,6 +109,11 @@ class LiveDisplay:
         # WHY: Route logging through the live display so log lines
         # appear in the scrolling panel instead of breaking Rich's output
         self._original_handlers = install_live_handler(self)
+        # WHY: Redirect raw stdout/stderr at the OS level so C libraries
+        # (Taichi banner, FFmpeg warnings) can't corrupt Rich's display.
+        # Python's sys.stdout is left intact — Rich uses it for rendering.
+        self._stdout_capture = _FDCapture(1, self)  # stdout
+        self._stderr_capture = _FDCapture(2, self)  # stderr
         set_active_display(self)
         return self
 
@@ -115,6 +123,11 @@ class LiveDisplay:
         _exc_val: BaseException | None,
         _exc_tb: TracebackType | None,
     ) -> None:
+        # Restore FD captures before anything else
+        if hasattr(self, "_stderr_capture"):
+            self._stderr_capture.restore()
+        if hasattr(self, "_stdout_capture"):
+            self._stdout_capture.restore()
         # Restore original logging and console routing before teardown
         set_active_display(None)
         if self._original_handlers is not None:
@@ -210,6 +223,11 @@ class LiveDisplay:
         Called by trip detection flow before printing interactive tables.
         The display can't be resumed after this — use __exit__ instead.
         """
+        # Restore FD captures first
+        if hasattr(self, "_stderr_capture"):
+            self._stderr_capture.restore()
+        if hasattr(self, "_stdout_capture"):
+            self._stdout_capture.restore()
         if self._active_task_id is not None:
             state = self._tasks.get(self._active_task_id)
             if state and not state.done:
@@ -298,6 +316,68 @@ def _format_duration(seconds: float) -> str:
     if s < 3600:
         return f"{s // 60}:{s % 60:02d}"
     return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+
+
+class _FDCapture:
+    """Redirect a raw OS file descriptor into a LiveDisplay log panel.
+
+    WHY: Libraries like Taichi print via C-level stdout/stderr, bypassing
+    Python's sys.stdout entirely. Rich Live can't coordinate with these
+    writes, so they corrupt the cursor-controlled display. This class
+    redirects the OS-level FD into a pipe that a background thread reads
+    and routes into LiveDisplay.add_log().
+    """
+
+    def __init__(self, fd: int, display: LiveDisplay) -> None:
+        self._fd = fd
+        self._display = display
+        self._restored = False
+
+        # Save the original FD and replace it with a pipe
+        self._saved_fd = os.dup(fd)
+        self._read_fd, self._write_fd = os.pipe()
+        os.dup2(self._write_fd, fd)
+        os.close(self._write_fd)
+
+        # Also redirect Python's sys.stdout/stderr to use our pipe
+        # WHY: Some Python code writes via sys.stdout.write() which uses
+        # the Python-level file object, not the raw FD
+        if fd == 1:
+            self._orig_stream = sys.stdout
+            sys.stdout = io.TextIOWrapper(
+                os.fdopen(os.dup(self._saved_fd), "wb"), write_through=True
+            )
+        elif fd == 2:
+            self._orig_stream = sys.stderr
+            sys.stderr = io.TextIOWrapper(
+                os.fdopen(os.dup(self._saved_fd), "wb"), write_through=True
+            )
+        else:
+            self._orig_stream = None
+
+        # Background thread reads from the pipe and routes to display
+        self._thread = threading.Thread(target=self._drain, daemon=True)
+        self._thread.start()
+
+    def _drain(self) -> None:
+        with os.fdopen(self._read_fd, "r", errors="replace") as f:
+            for line in f:
+                stripped = line.rstrip()
+                if stripped:
+                    self._display.add_log(stripped)
+
+    def restore(self) -> None:
+        if self._restored:
+            return
+        self._restored = True
+        # Restore the original FD
+        os.dup2(self._saved_fd, self._fd)
+        os.close(self._saved_fd)
+        # Restore Python stream
+        if self._fd == 1 and self._orig_stream is not None:
+            sys.stdout = self._orig_stream
+        elif self._fd == 2 and self._orig_stream is not None:
+            sys.stderr = self._orig_stream
 
 
 class _TaskState:
