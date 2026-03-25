@@ -95,14 +95,43 @@ class TestBuildAssemblySettings:
         assert settings.target_resolution == (1920, 1080)
         assert settings.auto_resolution is False
 
-    def test_auto_resolution(self):
+    def test_no_resolution_uses_config_default(self):
+        """When output_resolution is None (user didn't specify), use config default."""
+        config = Config()
+        config.output.resolution = "1080p"
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/out.mp4"),
+            config=config,
+        )
+        settings = _build_assembly_settings(params, [])
+        assert settings.auto_resolution is False
+        assert settings.target_resolution == (1920, 1080)
+
+    def test_explicit_auto_enables_auto_detection(self):
+        """When output_resolution is 'auto', enable source-based auto-detection."""
         params = GenerationParams(
             clips=[],
             output_path=Path("/tmp/out.mp4"),
             config=Config(),
+            output_resolution="auto",
         )
         settings = _build_assembly_settings(params, [])
         assert settings.auto_resolution is True
+        assert settings.target_resolution is None
+
+    def test_no_resolution_uses_config_720p(self):
+        """Config default of 720p is respected when no CLI flag given."""
+        config = Config()
+        config.output.resolution = "720p"
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/out.mp4"),
+            config=config,
+        )
+        settings = _build_assembly_settings(params, [])
+        assert settings.auto_resolution is False
+        assert settings.target_resolution == (1280, 720)
 
     def test_privacy_mode_passed_through(self):
         params = GenerationParams(

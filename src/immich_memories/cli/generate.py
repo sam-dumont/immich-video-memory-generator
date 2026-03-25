@@ -183,8 +183,8 @@ def register_generate_commands(main: click.Group) -> None:
         "--resolution",
         "-r",
         type=click.Choice(["auto", "4k", "1080p", "720p"]),
-        default="auto",
-        help="Output resolution (default: auto — match source clips)",
+        default=None,
+        help="Output resolution (default: config value, 'auto' to match source clips)",
     )
     @click.option(
         "--music-volume",
@@ -664,7 +664,7 @@ def register_generate_commands(main: click.Group) -> None:
                         music_volume=music_volume,
                         no_music=no_music,
                         output_path=output_path,
-                        output_resolution=None if resolution == "auto" else resolution,
+                        output_resolution=resolution,
                         scale_mode=effective_scale_mode,
                         output_format=output_format,
                         add_date_overlay=add_date,

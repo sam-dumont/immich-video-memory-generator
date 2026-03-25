@@ -159,7 +159,7 @@ def handle_trip_generation(
             music_volume=music_volume,
             no_music=no_music,
             output_path=trip_output,
-            output_resolution=None if resolution == "auto" else resolution,
+            output_resolution=resolution,
             scale_mode=scale_mode or config.defaults.scale_mode,
             output_format=output_format,
             add_date_overlay=add_date,

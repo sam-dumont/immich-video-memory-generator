@@ -39,10 +39,10 @@ _TRANSITION_MAP = {
 }
 
 _RESOLUTION_MAP = {
-    "4K": "4K",
+    "4K": "4k",
     "1080p": "1080p",
     "720p": "720p",
-    "Auto (match clips)": None,
+    "Auto (match clips)": "auto",
 }
 
 _SCALE_MODE_MAP = {
