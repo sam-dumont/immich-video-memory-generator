@@ -115,6 +115,14 @@ benchmark-perf:  ## Run assembly performance benchmarks (requires FFmpeg)
 	uv run pytest tests/integration/assembly/test_perf_assembly.py -v -m integration \
 		--log-cli-level=INFO --tb=short
 
+benchmark-steps:  ## Per-step pipeline timing benchmark (requires FFmpeg, no Immich)
+	uv run pytest tests/integration/assembly/test_perf_steps.py -v -m integration \
+		--log-cli-level=INFO --tb=short
+
+benchmark-pipeline:  ## Full pipeline benchmark with Immich (requires FFmpeg + Immich)
+	uv run pytest tests/integration/pipeline/test_perf_pipeline.py -v -m integration \
+		--log-cli-level=INFO --tb=short
+
 test-integration-live-photos:  ## Run ONLY live photo merge tests (~30s, needs Immich)
 	uv run pytest tests/integration/live_photos/ -v -s -m integration --log-cli-level=INFO --tb=short \
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/live-photos-coverage.xml --cov-fail-under=0 \
