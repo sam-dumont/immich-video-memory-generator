@@ -25,6 +25,11 @@ def set_active_display(display: LiveDisplay | None) -> None:
     _active_display.set(display)
 
 
+def get_active_display() -> LiveDisplay | None:
+    """Get the active LiveDisplay, or None if not in interactive mode."""
+    return _active_display.get()
+
+
 def print_error(message: str) -> None:
     """Print an error message."""
     display = _active_display.get()

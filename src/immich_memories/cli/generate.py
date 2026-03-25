@@ -514,18 +514,18 @@ def register_generate_commands(main: click.Group) -> None:
         try:
             # WHY: LiveDisplay coordinates Rich Live output with logging to
             # prevent raw log lines from breaking cursor-controlled rendering.
-            display_ctx: ProgressDisplay
-            if show_interactive:
-                display_ctx = LiveDisplay(console=console)  # type: ignore[assignment]
-            else:
-                display_ctx = Progress(  # type: ignore[assignment]
+            def _make_progress(interactive: bool) -> ProgressDisplay:
+                if interactive:
+                    return LiveDisplay(console=console)
+                return Progress(
                     SpinnerColumn(),
                     TextColumn("[progress.description]{task.description}"),
                     BarColumn(),
                     TaskProgressColumn(),
                     console=console,
                 )
-            with display_ctx as progress:
+
+            with _make_progress(show_interactive) as progress:
                 # Connect to Immich
                 task = progress.add_task("Connecting to Immich...", total=None)
 

@@ -22,6 +22,7 @@ import os
 import sys
 import traceback
 from datetime import UTC, datetime
+from typing import Protocol
 
 # Context variable holding the current pipeline run_id.
 # WHY: contextvars over threading.local — works with asyncio and threads.
@@ -74,6 +75,12 @@ TEXT_FORMAT = "%(asctime)s [%(levelname)s] %(name)s [%(run_id)s]: %(message)s"
 LOG_LINE_FORMAT = "[%(levelname)s] %(message)s"
 
 
+class _LogSink(Protocol):
+    """Minimal interface for routing log lines (avoids circular import)."""
+
+    def add_log(self, message: str) -> None: ...
+
+
 class LiveDisplayLogHandler(logging.Handler):
     """Routes log records into a LiveDisplay's scrolling log panel.
 
@@ -82,28 +89,27 @@ class LiveDisplayLogHandler(logging.Handler):
     messages through LiveDisplay.add_log() so Rich coordinates all output.
     """
 
-    def __init__(self, display: object) -> None:
+    def __init__(self, display: _LogSink) -> None:
         super().__init__()
-        # WHY: typed as object to avoid circular import with _live_display
         self._display = display
         self.setFormatter(logging.Formatter(LOG_LINE_FORMAT))
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
-            self._display.add_log(msg)  # type: ignore[attr-defined]
+            self._display.add_log(msg)
         except Exception:  # noqa: BLE001
             self.handleError(record)
 
 
-def install_live_handler(display: object) -> list[logging.Handler]:
+def install_live_handler(display: _LogSink) -> list[logging.Handler]:
     """Replace stdout/stderr handlers with one that feeds a LiveDisplay.
 
     File handlers are kept so logs still go to log files (useful for
     containers and debugging). Returns the removed handlers for restore.
     """
     root = logging.getLogger()
-    original_handlers = list(root.handlers)
+    original_handlers = root.handlers.copy()
 
     # WHY: Only remove stream handlers (stdout/stderr). File handlers
     # stay so logs are always available on disk even in interactive mode.

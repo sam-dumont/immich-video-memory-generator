@@ -1,15 +1,12 @@
-"""Interactive CLI display with spinner, progress bar, and live log lines.
-
-Provides a Claude Code-like experience: a single active spinner/progress bar
-with completed steps shown as checkmarks above, and recent log lines below.
-"""
+"""Interactive CLI display with spinner, progress bar, and live log lines."""
 
 from __future__ import annotations
 
 import logging
 import threading
 from collections import deque
-from typing import Any, Protocol, runtime_checkable
+from types import TracebackType
+from typing import Any, Protocol, Self, runtime_checkable
 
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
@@ -23,16 +20,26 @@ from immich_memories.logging_config import install_live_handler, restore_handler
 
 @runtime_checkable
 class ProgressDisplay(Protocol):
-    """Minimal protocol matching both LiveDisplay and rich.progress.Progress.
+    """Minimal protocol matching both LiveDisplay and rich.progress.Progress."""
 
-    Uses TaskID (int subclass) so callers work transparently with either.
-    """
+    def __enter__(self) -> Self: ...
 
-    def __enter__(self) -> ProgressDisplay: ...
+    def __exit__(
+        self,
+        _exc_type: type[BaseException] | None,
+        _exc_val: BaseException | None,
+        _exc_tb: TracebackType | None,
+    ) -> None: ...
 
-    def __exit__(self, *args: object) -> None: ...
-
-    def add_task(self, description: str, total: float | None = ..., **kwargs: Any) -> TaskID: ...
+    def add_task(
+        self,
+        description: str,
+        start: bool = ...,
+        total: float | None = ...,
+        completed: int = ...,
+        visible: bool = ...,
+        **fields: Any,
+    ) -> TaskID: ...
 
     def update(self, task_id: TaskID, **kwargs: Any) -> None: ...
 
@@ -86,7 +93,7 @@ class LiveDisplay:
     def __enter__(self) -> LiveDisplay:
         self._progress.start()
         self._live = Live(
-            self._render(),
+            self.render(),
             console=self._console,
             refresh_per_second=8,
             transient=False,
@@ -98,7 +105,12 @@ class LiveDisplay:
         set_active_display(self)
         return self
 
-    def __exit__(self, *args: object) -> None:
+    def __exit__(
+        self,
+        _exc_type: type[BaseException] | None,
+        _exc_val: BaseException | None,
+        _exc_tb: TracebackType | None,
+    ) -> None:
         # Restore original logging and console routing before teardown
         set_active_display(None)
         if self._original_handlers is not None:
@@ -114,11 +126,19 @@ class LiveDisplay:
         self._progress.stop()
         if self._live:
             # Final render showing all completed lines
-            self._live.update(self._render_final())
+            self._live.update(self.render_final())
             self._live.__exit__(None, None, None)
             self._live = None
 
-    def add_task(self, description: str, total: float | None = None, **kwargs: Any) -> TaskID:
+    def add_task(
+        self,
+        description: str,
+        start: bool = True,
+        total: float | None = None,
+        completed: int = 0,
+        visible: bool = True,
+        **fields: Any,
+    ) -> TaskID:
         """Start a new task, auto-completing any prior spinner-only task."""
         with self._lock:
             # Auto-complete previous indeterminate (spinner) task
@@ -128,7 +148,14 @@ class LiveDisplay:
                     self._finish_task(self._active_task_id)
 
             # Create task in the internal Progress widget
-            task_id = self._progress.add_task(description, total=total, **kwargs)
+            task_id = self._progress.add_task(
+                description,
+                start=start,
+                total=total,
+                completed=completed,
+                visible=visible,
+                **fields,
+            )
             self._tasks[int(task_id)] = _TaskState(
                 description=description,
                 total=total,
@@ -186,7 +213,7 @@ class LiveDisplay:
 
         self._progress.stop()
         if self._live:
-            self._live.update(self._render_final())
+            self._live.update(self.render_final())
             self._live.stop()
 
         # Restore logging so subsequent console output works normally
@@ -208,15 +235,11 @@ class LiveDisplay:
 
     def _refresh(self) -> None:
         if self._live:
-            self._live.update(self._render())
+            self._live.update(self.render())
 
-    def _render(self) -> RenderableType:
-        """Build the composite renderable."""
-        parts: list[RenderableType] = []
-
-        # Completed step lines
-        for line in self._completed_lines:
-            parts.append(Text.from_markup(line))
+    def render(self) -> RenderableType:
+        """Build the composite renderable for the current display state."""
+        parts: list[RenderableType] = [Text.from_markup(line) for line in self._completed_lines]
 
         # Active progress bar (spinner or bar)
         if self._active_task_id is not None:
@@ -225,20 +248,16 @@ class LiveDisplay:
                 parts.append(self._progress)
 
         # Log lines panel
-        if self._log_lines:
-            for log_line in self._log_lines:
-                parts.append(Text(f"  │ {log_line}", style="dim"))
+        parts.extend(Text(f"  │ {log_line}", style="dim") for log_line in self._log_lines)
 
         if not parts:
             return Text("")
 
         return Group(*parts)
 
-    def _render_final(self) -> RenderableType:
+    def render_final(self) -> RenderableType:
         """Render final state: just completed lines, no spinner or logs."""
-        parts: list[RenderableType] = []
-        for line in self._completed_lines:
-            parts.append(Text.from_markup(line))
+        parts = [Text.from_markup(line) for line in self._completed_lines]
         return Group(*parts) if parts else Text("")
 
 
