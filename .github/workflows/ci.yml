@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -326,7 +327,7 @@ jobs:
           for f in tests/*-coverage.xml; do
             [ -f "$f" ] && COVERAGE_FILES="$COVERAGE_FILES $f"
           done
-          uvx diff-cover $COVERAGE_FILES --compare-branch=origin/main --markdown > diff-cover-report.md 2>/dev/null || true
+          uvx diff-cover $COVERAGE_FILES --compare-branch=origin/main --markdown > diff-cover-report.md 2>&1 || true
           if [ -s diff-cover-report.md ]; then
             {
               echo "## Diff Coverage Report"
@@ -335,9 +336,11 @@ jobs:
             } > diff-cover-comment.md
             # --edit-last updates existing comment instead of spamming new ones
             gh pr comment "${{ github.event.pull_request.number }}" \
-              --body-file diff-cover-comment.md --edit-last 2>/dev/null \
+              --body-file diff-cover-comment.md --edit-last \
               || gh pr comment "${{ github.event.pull_request.number }}" \
               --body-file diff-cover-comment.md
+          else
+            echo "diff-cover-report.md is empty, skipping PR comment"
           fi
 
       - name: Normalize coverage XML paths and freshen timestamps
