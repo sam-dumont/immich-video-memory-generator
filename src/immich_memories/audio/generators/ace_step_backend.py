@@ -125,9 +125,21 @@ class ACEStepBackend(MusicGenerator):
         if self.config.mode == "lib":
             if _is_ace_step_importable():
                 return True
-            # Fallback: check API mode
-            logger.info("ACE-Step lib not found, checking API fallback...")
-            return await self._check_api()
+            logger.warning(
+                "ACE-Step library not installed (pip install 'ace-step @ "
+                "git+https://github.com/ace-step/ACE-Step.git'). "
+                "Falling back to API at %s",
+                self.config.api_url,
+            )
+            api_ok = await self._check_api()
+            if not api_ok:
+                logger.warning(
+                    "ACE-Step unavailable: library not installed AND API at %s "
+                    "unreachable. Configure a reachable URL in advanced.ace_step.api_url "
+                    "or install the library.",
+                    self.config.api_url,
+                )
+            return api_ok
         return await self._check_api()
 
     async def _check_api(self) -> bool:
@@ -139,9 +151,22 @@ class ACEStepBackend(MusicGenerator):
                 resp = await client.get(f"{self.config.api_url}/health")
                 if resp.status_code == 200:
                     data = resp.json()
-                    return data.get("data", {}).get("status") == "ok"
+                    if data.get("data", {}).get("status") == "ok":
+                        return True
+                    logger.warning(
+                        "ACE-Step API at %s returned unhealthy: %s",
+                        self.config.api_url,
+                        data,
+                    )
+                    return False
+                logger.warning(
+                    "ACE-Step API at %s returned HTTP %d",
+                    self.config.api_url,
+                    resp.status_code,
+                )
                 return False
-        except Exception:
+        except Exception as exc:
+            logger.warning("ACE-Step API at %s unreachable: %s", self.config.api_url, exc)
             return False
 
     def _get_effective_mode(self) -> str:

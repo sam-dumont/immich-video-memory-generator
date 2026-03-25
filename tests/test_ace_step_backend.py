@@ -195,6 +195,92 @@ class TestACEStepBackendAPIAvailability:
         assert result is False
 
 
+class TestACEStepDiagnosticMessages:
+    """Verify that ACE-Step logs helpful messages when unavailable."""
+
+    def test_lib_missing_logs_install_instructions(self, caplog):
+        """When lib mode fails, log should include pip install instructions."""
+        backend = ACEStepBackend(ACEStepConfig(mode="lib", api_url="http://fake:9999"))
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=ConnectionError("refused"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        # WHY: Mock import check and HTTP client — real ace-step not installed,
+        # and we don't want real network calls
+        with (
+            patch(
+                "immich_memories.audio.generators.ace_step_backend._is_ace_step_importable",
+                return_value=False,
+            ),
+            patch("httpx.AsyncClient", return_value=mock_client),
+            caplog.at_level("WARNING"),
+        ):
+            result = asyncio.run(backend.is_available())
+
+        assert result is False
+        log_text = caplog.text
+        assert "pip install" in log_text or "not installed" in log_text
+
+    def test_both_fail_logs_comprehensive_message(self, caplog):
+        """When both lib and API fail, log should mention both failure modes."""
+        backend = ACEStepBackend(ACEStepConfig(mode="lib", api_url="http://fake:9999"))
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=ConnectionError("refused"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "immich_memories.audio.generators.ace_step_backend._is_ace_step_importable",
+                return_value=False,
+            ),
+            patch("httpx.AsyncClient", return_value=mock_client),
+            caplog.at_level("WARNING"),
+        ):
+            result = asyncio.run(backend.is_available())
+
+        assert result is False
+        log_text = caplog.text
+        # Should mention both the library AND the API URL
+        assert "unreachable" in log_text or "api" in log_text.lower()
+
+    def test_api_error_logs_status_code(self, caplog):
+        """When API returns non-200, log should show the status code."""
+        backend = ACEStepBackend(ACEStepConfig(mode="api", api_url="http://fake:9999"))
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 503
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=mock_client), caplog.at_level("WARNING"):
+            result = asyncio.run(backend._check_api())
+
+        assert result is False
+        assert "503" in caplog.text
+
+    def test_api_connection_error_logs_exception(self, caplog):
+        """When API is unreachable, log should include the exception details."""
+        backend = ACEStepBackend(ACEStepConfig(mode="api", api_url="http://fake:9999"))
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=ConnectionError("Connection refused"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=mock_client), caplog.at_level("WARNING"):
+            result = asyncio.run(backend._check_api())
+
+        assert result is False
+        assert "unreachable" in caplog.text or "Connection refused" in caplog.text
+
+
 class TestACEStepBackendAPIGeneration:
     def test_generate_api_builds_correct_payload(self):
         """The API payload includes all required musical parameters."""

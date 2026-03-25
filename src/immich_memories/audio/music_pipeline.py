@@ -99,7 +99,13 @@ class MusicPipeline:
             result = await self._try_generate(request, progress_callback, i, num_versions)
 
             if result is None:
-                logger.error(f"All backends failed for version {i + 1}")
+                backend_names = ", ".join(g.name for g in self._generators)
+                logger.error(
+                    "All music backends failed for version %d/%d (tried: %s)",
+                    i + 1,
+                    num_versions,
+                    backend_names,
+                )
                 continue
 
             stems = await self._try_separate_stems(result, request, progress_callback, i)
