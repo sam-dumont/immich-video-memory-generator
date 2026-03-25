@@ -130,9 +130,13 @@ class VideoAssembler:
         clips: list[AssemblyClip],
         output_path: Path,
         progress_callback: Callable[[float, str], None] | None = None,
+        frame_preview_callback: Callable[[bytes], None] | None = None,
     ) -> Path:
+        def wrapped_assemble(clips, output_path, progress_callback=None):
+            return self.assemble(clips, output_path, progress_callback, frame_preview_callback)
+
         return self.title_inserter.assemble_with_titles(
-            clips, output_path, self.assemble, progress_callback
+            clips, output_path, wrapped_assemble, progress_callback
         )
 
     def assemble(
@@ -140,6 +144,7 @@ class VideoAssembler:
         clips: list[AssemblyClip],
         output_path: Path,
         progress_callback: Callable[[float, str], None] | None = None,
+        frame_preview_callback: Callable[[bytes], None] | None = None,
     ) -> Path:
         """Assemble clips into a final video.
 
@@ -147,6 +152,7 @@ class VideoAssembler:
             clips: List of clips to assemble.
             output_path: Path for output video.
             progress_callback: Progress callback (0.0 to 1.0).
+            frame_preview_callback: Receives JPEG bytes for live preview.
 
         Returns:
             Path to assembled video.
@@ -157,7 +163,9 @@ class VideoAssembler:
         if len(clips) == 1:
             return self._process_single_clip(clips[0], output_path)
 
-        result = self.engine.assemble_scalable(clips, output_path, progress_callback)
+        result = self.engine.assemble_scalable(
+            clips, output_path, progress_callback, frame_preview_callback
+        )
 
         if self.settings.music_path and self.settings.music_path.exists():
             result = self.audio_mixer.add_music(result, output_path)

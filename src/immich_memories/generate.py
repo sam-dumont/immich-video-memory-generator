@@ -105,6 +105,9 @@ class GenerationParams:
     # Progress callback: (phase, progress_fraction, status_message)
     progress_callback: Callable[[str, float, str], None] | None = None
 
+    # Frame preview callback: receives JPEG bytes for live UI thumbnail
+    frame_preview_callback: Callable[[bytes], None] | None = None
+
 
 class GenerationError(Exception):
     """Raised when video generation fails."""
@@ -293,7 +296,10 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         settings = _build_assembly_settings(params, assembly_clips)
         assembler = _create_assembler(settings, run_id, params.config)
         result_path = assembler.assemble_with_titles(
-            assembly_clips, result_output_path, assembly_cb
+            assembly_clips,
+            result_output_path,
+            assembly_cb,
+            frame_preview_callback=params.frame_preview_callback,
         )
         run_tracker.complete_phase(items_processed=len(assembly_clips))
 

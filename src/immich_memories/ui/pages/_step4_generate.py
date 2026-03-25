@@ -132,6 +132,10 @@ async def run_generation(
         status_label = ui.label("Starting...").classes("text-sm").style("color: var(--im-text)")
         run_id_label = ui.label("").classes("text-sm").style("color: var(--im-text-secondary)")
 
+        preview_image = (
+            ui.image().classes("w-full rounded-lg").style("max-height: 400px; object-fit: contain")
+        )
+
         cancel_btn = im_button(
             "Cancel",
             variant="secondary",
@@ -151,8 +155,15 @@ async def run_generation(
             progress_bar.value = progress
             status_label.set_text(msg)
 
+        def on_frame_preview(jpeg_bytes: bytes) -> None:
+            import base64
+
+            b64 = base64.b64encode(jpeg_bytes).decode()
+            preview_image.source = f"data:image/jpeg;base64,{b64}"
+
         params = _build_generation_params(state, selected_clips, effective_output_path)
         params.progress_callback = on_progress
+        params.frame_preview_callback = on_frame_preview
 
         # Phases 1+2: extract clips and assemble video
         result_path = await run.io_bound(generate_memory, params)
