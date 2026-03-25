@@ -307,3 +307,67 @@ class TestSmartSelectClips:
         clips = [_clip_on_day(0)]
         result = smart_select_clips(clips, clips_needed=0)
         assert len(result) == 0
+
+
+# ---------------------------------------------------------------------------
+# analyze_clip_for_highlight
+# ---------------------------------------------------------------------------
+
+
+class TestAnalyzeClipForHighlight:
+    def test_returns_best_segment_from_unified_analyzer(self):
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from immich_memories.analysis.analyzer_models import ScoredSegment
+        from immich_memories.analysis.clip_selection import analyze_clip_for_highlight
+        from immich_memories.config_models import AnalysisConfig, ContentAnalysisConfig
+
+        seg = ScoredSegment(
+            start_time=1.0,
+            end_time=4.0,
+            total_score=0.8,
+            visual_score=0.7,
+            audio_score=0.6,
+            duration_score=0.5,
+            face_score=0.8,
+            motion_score=0.5,
+            stability_score=0.6,
+        )
+
+        # WHY: mock at source module — import is inside function body
+        with patch(
+            "immich_memories.analysis.unified_analyzer.UnifiedSegmentAnalyzer.analyze",
+            return_value=[seg],
+        ):
+            start, end, score = analyze_clip_for_highlight(
+                Path("/fake.mp4"),
+                content_analysis_config=ContentAnalysisConfig(),
+                analysis_config=AnalysisConfig(),
+            )
+
+        assert score == 0.8
+        assert start == 1.0
+
+    def test_empty_segments_returns_fallback(self):
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from immich_memories.analysis.clip_selection import analyze_clip_for_highlight
+        from immich_memories.config_models import AnalysisConfig, ContentAnalysisConfig
+
+        # WHY: mock at source module — import is inside function body
+        with patch(
+            "immich_memories.analysis.unified_analyzer.UnifiedSegmentAnalyzer.analyze",
+            return_value=[],
+        ):
+            start, end, score = analyze_clip_for_highlight(
+                Path("/fake.mp4"),
+                target_duration=5.0,
+                content_analysis_config=ContentAnalysisConfig(),
+                analysis_config=AnalysisConfig(),
+            )
+
+        assert start == 0.0
+        assert end == 5.0
+        assert score == 0.0

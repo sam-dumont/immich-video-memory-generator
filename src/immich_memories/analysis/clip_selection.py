@@ -275,39 +275,32 @@ def analyze_clip_for_highlight(
 ) -> tuple[float, float, float]:
     """Analyze a single clip to find the best highlight segment.
 
-    This is a standalone function for analyzing individual clips.
-
-    Args:
-        video_path: Path to the video file.
-        min_duration: Minimum segment duration.
-        max_duration: Maximum segment duration.
-        target_duration: Target segment duration.
-        content_analysis_config: Content analysis config.
-        analysis_config: Analysis config.
-
-    Returns:
-        Tuple of (start_time, end_time, score).
+    Uses UnifiedSegmentAnalyzer for silence-aware boundaries and
+    audio scoring (when enabled).
     """
     from immich_memories.analysis.scoring import SceneScorer
+    from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
+    from immich_memories.config_models import AudioContentConfig
 
-    moments = SceneScorer(
+    scorer = SceneScorer(
         content_analysis_config=content_analysis_config,
         analysis_config=analysis_config,
-    ).sample_and_score_video(
-        video_path,
-        segment_duration=3.0,
-        overlap=0.5,
-        sample_frames=5,
     )
+    analyzer = UnifiedSegmentAnalyzer(
+        scorer=scorer,
+        min_segment_duration=min_duration,
+        max_segment_duration=max_duration,
+        audio_content_config=AudioContentConfig(),
+        analysis_config=analysis_config,
+    )
+    segments = analyzer.analyze(video_path)
 
-    if not moments:
+    if not segments:
         return 0.0, target_duration, 0.0
 
-    # Find best moment
-    best = max(moments, key=lambda m: m.total_score)
+    best = segments[0]  # Already sorted by score (best first)
 
-    # Clamp duration
-    duration = min(max(best.duration, min_duration), max_duration)
+    duration = min(max(best.end_time - best.start_time, min_duration), max_duration)
     if duration > target_duration:
         duration = target_duration
 
