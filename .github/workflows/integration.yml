@@ -141,9 +141,9 @@ jobs:
             cli)         make test-integration-cli ;;
           esac
 
-      - name: Freshen coverage timestamps
-        # WHY: Codecov rejects reports >12h old. GPU tests can be slow and
-        # queued — ensure timestamps are current before upload.
+      - name: Normalize coverage paths and freshen timestamps
+        # WHY: Codecov rejects reports >12h old, and source paths must match
+        # across all uploads for proper merging. Normalize to relative paths.
         if: always()
         run: |
           python3 -c "
@@ -151,9 +151,13 @@ jobs:
           now = str(int(time.time() * 1000))
           for f in glob.glob('tests/*-coverage.xml'):
               p = pathlib.Path(f)
+              if not p.exists():
+                  continue
               txt = p.read_text()
-              p.write_text(re.sub(r'timestamp=\"[0-9]+\"', f'timestamp=\"{now}\"', txt))
-              print(f'  freshened {f}')
+              txt = re.sub(r'<source>.*/src/immich_memories</source>', '<source>src/immich_memories</source>', txt)
+              txt = re.sub(r'timestamp=\"[0-9]+\"', f'timestamp=\"{now}\"', txt)
+              p.write_text(txt)
+              print(f'  normalized {f}')
           "
 
       - name: Upload coverage

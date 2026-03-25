@@ -320,20 +320,27 @@ jobs:
           git fetch origin main --depth=1
           make diff-cover-ci
 
-      - name: Freshen integration coverage timestamps
-        # WHY: tests/*-coverage.xml are committed from local integration runs.
-        # Codecov rejects reports >12h old regardless of max_report_age setting.
-        # Rewrite timestamps to "now" before upload. Uses python for portability.
+      - name: Normalize coverage XML paths and freshen timestamps
+        # WHY: Unit test coverage.xml uses absolute <source> paths (e.g.
+        # /home/runner/.../src/immich_memories) while integration XMLs use
+        # relative paths (src/immich_memories). Codecov can't merge them
+        # unless the <source> tags match. Normalize all to relative paths.
+        # Also freshen timestamps — Codecov rejects reports >12h old.
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
         run: |
           python3 -c "
           import glob, re, time, pathlib
           now = str(int(time.time() * 1000))
-          for f in glob.glob('tests/*-coverage.xml'):
+          # Normalize all coverage XMLs (unit + integration) to relative source paths
+          for f in ['coverage.xml'] + glob.glob('tests/*-coverage.xml'):
               p = pathlib.Path(f)
+              if not p.exists():
+                  continue
               txt = p.read_text()
-              p.write_text(re.sub(r'timestamp=\"[0-9]+\"', f'timestamp=\"{now}\"', txt))
-              print(f'  freshened {f}')
+              txt = re.sub(r'<source>.*/src/immich_memories</source>', '<source>src/immich_memories</source>', txt)
+              txt = re.sub(r'timestamp=\"[0-9]+\"', f'timestamp=\"{now}\"', txt)
+              p.write_text(txt)
+              print(f'  normalized {f}')
           "
 
       - name: Upload unit test coverage to Codecov
