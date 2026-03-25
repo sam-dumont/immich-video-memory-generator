@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast mutation benchmark benchmark-perf lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
+.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast mutation benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
 
 # Default target
 help:
@@ -19,8 +19,12 @@ help:
 	@echo "  test         Run all tests"
 	@echo "  test-cov     Run tests with coverage report"
 	@echo "  test-fast    Run tests without slow integration tests"
-	@echo "  benchmark    Run performance benchmarks"
-	@echo "  benchmark-perf Run assembly performance benchmarks (requires FFmpeg)"
+	@echo "  benchmark         Run pytest-benchmark suite"
+	@echo "  benchmark-perf    Run assembly performance benchmarks (requires FFmpeg)"
+	@echo "  benchmark-assembly  Assembly benchmarks → tests/benchmark-assembly.json"
+	@echo "  benchmark-titles    Title benchmarks → tests/benchmark-titles.json"
+	@echo "  benchmark-json    Run all benchmarks, produce JSON for CI"
+	@echo "  benchmark-submit  Submit local benchmark results to GitHub"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  lint         Run ruff linter"
@@ -126,6 +130,38 @@ benchmark-titles:  ## Title rendering drill-down: content-backed vs gradient (re
 benchmark-pipeline:  ## Full pipeline benchmark with Immich (requires FFmpeg + Immich)
 	uv run pytest tests/integration/pipeline/test_perf_pipeline.py -v -m integration \
 		--log-cli-level=INFO --tb=short
+
+benchmark-assembly:  ## Assembly benchmarks → tests/benchmark-assembly.json
+	uv run pytest tests/integration/assembly/test_perf_assembly.py -v -m integration \
+		--log-cli-level=INFO --tb=short
+
+benchmark-titles-json:  ## Title benchmarks → tests/benchmark-titles.json
+	uv run pytest tests/integration/titles/test_perf_titles.py -v -m integration \
+		--log-cli-level=INFO --tb=short
+
+benchmark-json: benchmark-assembly benchmark-titles-json  ## Run all benchmarks, produce JSON for CI
+	@echo ""
+	@echo "Benchmark JSON files:"
+	@ls -la tests/benchmark-*.json 2>/dev/null || echo "  (none found — benchmarks may have been skipped)"
+
+benchmark-submit:  ## Submit local benchmark results to GitHub (for non-CI runners)
+	@RUNNER_NAME=$${BENCHMARK_RUNNER:-$$(hostname)}; \
+	BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
+	SHA=$$(git rev-parse --short HEAD); \
+	echo "Submitting benchmarks from $$RUNNER_NAME ($$BRANCH@$$SHA)..."; \
+	for f in tests/benchmark-*.json; do \
+		[ -f "$$f" ] || continue; \
+		SUITE=$$(basename "$$f" .json | sed 's/benchmark-//'); \
+		echo "  Uploading $$SUITE results..."; \
+		gh api repos/:owner/:repo/actions/workflows/benchmark.yml/dispatches \
+			-f ref=main \
+			-f "inputs[runner]=$$RUNNER_NAME" \
+			-f "inputs[suite]=$$SUITE" \
+			-f "inputs[sha]=$$SHA" \
+			-f "inputs[results]=$$(cat $$f)" \
+		&& echo "    ✓ $$SUITE submitted" \
+		|| echo "    ✗ $$SUITE failed (is GH_TOKEN set?)"; \
+	done
 
 test-integration-live-photos:  ## Run ONLY live photo merge tests (~30s, needs Immich)
 	uv run pytest tests/integration/live_photos/ -v -s -m integration --log-cli-level=INFO --tb=short \

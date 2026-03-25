@@ -113,3 +113,22 @@ def load_results(path: Path) -> list[PerfResult]:
         return []
     data = json.loads(path.read_text())
     return [PerfResult(**r) for r in data.get("results", [])]
+
+
+def save_benchmark_json(results: list[PerfResult], output_path: Path) -> None:
+    """Export results in github-action-benchmark's customSmallerIsBetter format.
+
+    Produces a JSON list where each entry has name, unit, value.
+    Wall time is the primary metric; peak memory (child RSS) is included
+    as a secondary metric with a `:peak-memory` suffix.
+    """
+    entries: list[dict[str, str | float]] = []
+    for r in results:
+        entries.append({"name": r.scenario, "unit": "seconds", "value": round(r.wall_seconds, 2)})
+        # WHY: child_peak_rss_mb captures FFmpeg subprocess memory, which is
+        # the dominant allocation — more useful than Python heap for regression tracking.
+        peak_mb = r.child_peak_rss_mb if r.child_peak_rss_mb > 0 else r.python_peak_mb
+        entries.append(
+            {"name": f"{r.scenario}:peak-memory", "unit": "MB", "value": round(peak_mb, 1)}
+        )
+    output_path.write_text(json.dumps(entries, indent=2) + "\n")

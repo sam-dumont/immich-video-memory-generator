@@ -1,0 +1,198 @@
+# Benchmark persistence — track performance across CI runs and local machines
+#
+# Uses github-action-benchmark with actions/cache for historical comparison.
+# Each runner (linux-ci, mac-local, synology, gpu-arc) gets its own cache
+# namespace so results are compared against the same hardware.
+#
+# Flow:
+#   CI (Linux):  push/PR → run benchmarks → compare against cache → PR comment
+#   Local (Mac/Synology/etc.): `make benchmark-json && make benchmark-submit`
+#       → workflow_dispatch → ingest results into runner-specific cache
+#
+# The benchmark-submit target dispatches results via GitHub API — no CI runner
+# needed for Mac/Synology. Results land in separate cache namespaces.
+
+name: Benchmarks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/immich_memories/processing/**"
+      - "src/immich_memories/titles/**"
+      - "tests/integration/assembly/test_perf_*.py"
+      - "tests/integration/titles/test_perf_*.py"
+      - "tests/integration/assembly/perf_utils.py"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/immich_memories/processing/**"
+      - "src/immich_memories/titles/**"
+      - "tests/integration/assembly/test_perf_*.py"
+      - "tests/integration/titles/test_perf_*.py"
+      - "tests/integration/assembly/perf_utils.py"
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Runner name (e.g. mac-m4, synology-ds923, gpu-arc)"
+        required: true
+      suite:
+        description: "Benchmark suite"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - assembly
+          - titles
+      sha:
+        description: "Git SHA of the benchmarked commit"
+        required: false
+        default: ""
+      results:
+        description: "JSON benchmark results (from make benchmark-submit)"
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: benchmark-${{ github.event.inputs.runner || 'linux-ci' }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ── CI benchmarks (Linux only) ─────────────────────────────────────────────
+  bench-linux:
+    name: Benchmark (Linux CI)
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create LFS cache key
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+      - name: Cache LFS objects
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+          restore-keys: lfs-
+      - name: Pull LFS files
+        run: git lfs pull
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          prune-cache: false
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - run: make dev-test
+
+      - name: Run assembly benchmarks
+        run: make benchmark-assembly
+        continue-on-error: true
+
+      - name: Run title benchmarks
+        run: make benchmark-titles-json
+        continue-on-error: true
+
+      - name: Merge benchmark JSON files
+        run: |
+          python3 -c "
+          import json, glob, sys
+          merged = []
+          for f in sorted(glob.glob('tests/benchmark-*.json')):
+              try:
+                  merged.extend(json.loads(open(f).read()))
+              except Exception as e:
+                  print(f'WARN: skipping {f}: {e}', file=sys.stderr)
+          if not merged:
+              print('No benchmark results found', file=sys.stderr)
+              sys.exit(1)
+          out = 'tests/benchmark-results.json'
+          open(out, 'w').write(json.dumps(merged, indent=2))
+          print(f'Merged {len(merged)} entries to {out}')
+          "
+
+      # WHY: restore BEFORE benchmark-action so it has historical data to compare against
+      - name: Restore benchmark cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ./cache
+          key: benchmark-linux-ci-main-
+          restore-keys: |
+            benchmark-linux-ci-main-
+
+      - name: Compare against baseline
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: customSmallerIsBetter
+          output-file-path: tests/benchmark-results.json
+          external-data-json-path: ./cache/benchmark-data.json
+          alert-threshold: "150%"
+          fail-on-alert: ${{ github.event_name == 'pull_request' }}
+          comment-on-alert: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save benchmark cache
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: ./cache
+          key: benchmark-linux-ci-main-${{ github.run_id }}
+
+      - name: Upload benchmark artifact
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: benchmark-linux-ci
+          path: tests/benchmark-*.json
+          retention-days: 90
+
+  # ── Ingest results from local runners (Mac, Synology, GPU, etc.) ───────────
+  ingest:
+    name: Ingest (${{ github.event.inputs.runner }})
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Write results to file
+        run: |
+          cat <<'RESULTS_EOF' > tests/benchmark-results.json
+          ${{ github.event.inputs.results }}
+          RESULTS_EOF
+          echo "Ingesting ${{ github.event.inputs.suite }} results from ${{ github.event.inputs.runner }}"
+          echo "SHA: ${{ github.event.inputs.sha || 'not specified' }}"
+          python3 -c "import json; d=json.load(open('tests/benchmark-results.json')); print(f'{len(d)} benchmark entries')"
+
+      - name: Restore benchmark cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ./cache
+          key: benchmark-${{ github.event.inputs.runner }}-main-
+          restore-keys: |
+            benchmark-${{ github.event.inputs.runner }}-main-
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: customSmallerIsBetter
+          output-file-path: tests/benchmark-results.json
+          external-data-json-path: ./cache/benchmark-data.json
+          alert-threshold: "150%"
+          fail-on-alert: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save benchmark cache
+        uses: actions/cache/save@v4
+        with:
+          path: ./cache
+          key: benchmark-${{ github.event.inputs.runner }}-main-${{ github.run_id }}
