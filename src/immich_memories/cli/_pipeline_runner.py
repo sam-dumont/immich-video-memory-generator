@@ -14,9 +14,8 @@ from immich_memories.cli._helpers import print_error, print_success
 from immich_memories.timeperiod import DateRange
 
 if TYPE_CHECKING:
-    from rich.progress import Progress
-
     from immich_memories.api.immich import SyncImmichClient
+    from immich_memories.cli._live_display import ProgressDisplay
     from immich_memories.config_loader import Config
 
 
@@ -29,7 +28,7 @@ def run_pipeline_and_generate(
     analysis_depth: str = "fast",
     client: SyncImmichClient,
     config: Config,
-    progress: Progress,
+    progress: ProgressDisplay,
     duration: float,
     transition: str,
     music: str | None,
@@ -167,7 +166,7 @@ def fetch_videos_and_live_photos(
     *,
     client: SyncImmichClient,
     config: Config,
-    progress: Progress,
+    progress: ProgressDisplay,
     date_ranges: list[DateRange],
     person_ids: list[str],
     use_live_photos: bool,

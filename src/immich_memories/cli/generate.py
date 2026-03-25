@@ -361,6 +361,8 @@ def register_generate_commands(main: click.Group) -> None:
         """
         from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
+        from immich_memories.cli._live_display import LiveDisplay, ProgressDisplay
+
         config = ctx.obj["config"]
 
         # CLI quality flag overrides config
@@ -510,13 +512,20 @@ def register_generate_commands(main: click.Group) -> None:
         from immich_memories.generate import GenerationError
 
         try:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=console,
-            ) as progress:
+            # WHY: LiveDisplay coordinates Rich Live output with logging to
+            # prevent raw log lines from breaking cursor-controlled rendering.
+            display_ctx: ProgressDisplay
+            if show_interactive:
+                display_ctx = LiveDisplay(console=console)  # type: ignore[assignment]
+            else:
+                display_ctx = Progress(  # type: ignore[assignment]
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TaskProgressColumn(),
+                    console=console,
+                )
+            with display_ctx as progress:
                 # Connect to Immich
                 task = progress.add_task("Connecting to Immich...", total=None)
 
@@ -525,8 +534,6 @@ def register_generate_commands(main: click.Group) -> None:
                     api_key=config.immich.api_key,
                 ) as client:
                     progress.update(task, completed=True)
-                    print_success("Connected to Immich")
-
                     # Trip detection flow: branch early
                     if memory_type == "trip" and year:
                         handle_trip_generation(
@@ -625,21 +632,19 @@ def register_generate_commands(main: click.Group) -> None:
                                 client.get_photos_for_date_range(dr, person_id=pid)
                             )
                         if fetched_photos:
-                            console.print(f"Found {len(fetched_photos)} photos")
+                            print_info(f"Found {len(fetched_photos)} photos")
 
                     if not assets and not live_photo_clips and not fetched_photos:
                         print_error("No videos or photos found matching criteria")
                         sys.exit(1)
 
                     # Display video summary
-                    console.print()
                     total_dur = sum(a.duration_seconds or 0 for a in assets)
-                    console.print(f"Total video duration: {total_dur / 60:.1f} minutes")
+                    print_info(f"Total video duration: {total_dur / 60:.1f} minutes")
                     if live_photo_clips:
-                        console.print(f"Live photo clips: {len(live_photo_clips)}")
+                        print_info(f"Live photo clips: {len(live_photo_clips)}")
                     if fetched_photos:
-                        console.print(f"Photo clips to render: {len(fetched_photos)}")
-                    console.print()
+                        print_info(f"Photo clips to render: {len(fetched_photos)}")
 
                     # Config fallbacks: CLI flag > config > hardcoded default
                     effective_transition = (
@@ -679,7 +684,6 @@ def register_generate_commands(main: click.Group) -> None:
                         album=album,
                     )
 
-                console.print()
                 print_success(f"Video saved to: {result_path}")
                 if should_upload:
                     print_success(f"Uploaded to Immich (album: {album_name or 'none'})")

@@ -71,11 +71,75 @@ class JsonFormatter(logging.Formatter):
 
 
 TEXT_FORMAT = "%(asctime)s [%(levelname)s] %(name)s [%(run_id)s]: %(message)s"
+LOG_LINE_FORMAT = "[%(levelname)s] %(message)s"
+
+
+class LiveDisplayLogHandler(logging.Handler):
+    """Routes log records into a LiveDisplay's scrolling log panel.
+
+    WHY: Standard StreamHandler writes raw lines that break Rich's
+    cursor-controlled Live display. This handler feeds formatted
+    messages through LiveDisplay.add_log() so Rich coordinates all output.
+    """
+
+    def __init__(self, display: object) -> None:
+        super().__init__()
+        # WHY: typed as object to avoid circular import with _live_display
+        self._display = display
+        self.setFormatter(logging.Formatter(LOG_LINE_FORMAT))
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            self._display.add_log(msg)  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            self.handleError(record)
+
+
+def install_live_handler(display: object) -> list[logging.Handler]:
+    """Replace stdout/stderr handlers with one that feeds a LiveDisplay.
+
+    File handlers are kept so logs still go to log files (useful for
+    containers and debugging). Returns the removed handlers for restore.
+    """
+    root = logging.getLogger()
+    original_handlers = list(root.handlers)
+
+    # WHY: Only remove stream handlers (stdout/stderr). File handlers
+    # stay so logs are always available on disk even in interactive mode.
+    for h in original_handlers:
+        if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler):
+            root.removeHandler(h)
+
+    handler = LiveDisplayLogHandler(display)
+    handler.addFilter(RunIdFilter())
+    root.addHandler(handler)
+
+    return original_handlers
+
+
+def restore_handlers(original_handlers: list[logging.Handler]) -> None:
+    """Restore original logging handlers after LiveDisplay exits.
+
+    Removes the LiveDisplayLogHandler and re-adds the original stream handlers.
+    File handlers that were kept during install are left untouched.
+    """
+    root = logging.getLogger()
+    # Remove the LiveDisplayLogHandler
+    for h in root.handlers.copy():
+        if isinstance(h, LiveDisplayLogHandler):
+            root.removeHandler(h)
+    # Re-add original stream handlers that were removed
+    current = set(root.handlers)
+    for h in original_handlers:
+        if h not in current:
+            root.addHandler(h)
 
 
 def configure_logging(
     fmt: str | None = None,
     level: str = "INFO",
+    log_file: str | None = None,
 ) -> None:
     """Configure the root logger with the specified format.
 
@@ -83,9 +147,13 @@ def configure_logging(
         fmt: Log format - "text" for human-readable, "json" for structured JSON.
             If None, reads from IMMICH_MEMORIES_LOG_FORMAT env var (default: "text").
         level: Log level name (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+        log_file: Path to a log file. If None, reads from IMMICH_MEMORIES_LOG_FILE
+            env var. When set, logs go to both stdout and the file.
     """
     if fmt is None:
         fmt = os.environ.get("IMMICH_MEMORIES_LOG_FORMAT", "text").lower()
+    if log_file is None:
+        log_file = os.environ.get("IMMICH_MEMORIES_LOG_FILE")
 
     root = logging.getLogger()
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
@@ -94,12 +162,24 @@ def configure_logging(
     for handler in root.handlers.copy():
         root.removeHandler(handler)
 
-    handler = logging.StreamHandler(sys.stdout)
-    handler.addFilter(RunIdFilter())
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.addFilter(RunIdFilter())
 
     if fmt == "json":
-        handler.setFormatter(JsonFormatter())
+        stream_handler.setFormatter(JsonFormatter())
     else:
-        handler.setFormatter(logging.Formatter(TEXT_FORMAT))
+        stream_handler.setFormatter(logging.Formatter(TEXT_FORMAT))
 
-    root.addHandler(handler)
+    root.addHandler(stream_handler)
+
+    # WHY: File handler enables persistent logs for containers and debugging.
+    # In interactive mode, the stream handler is swapped for LiveDisplay
+    # but the file handler stays, so logs are never lost.
+    if log_file:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.addFilter(RunIdFilter())
+        if fmt == "json":
+            file_handler.setFormatter(JsonFormatter())
+        else:
+            file_handler.setFormatter(logging.Formatter(TEXT_FORMAT))
+        root.addHandler(file_handler)
