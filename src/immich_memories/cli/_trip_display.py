@@ -10,9 +10,8 @@ from rich.table import Table
 from immich_memories.analysis.trip_detection import DetectedTrip, detect_trips
 
 if TYPE_CHECKING:
-    from rich.progress import Progress
-
     from immich_memories.api.immich import SyncImmichClient
+    from immich_memories.cli._live_display import ProgressDisplay
     from immich_memories.config_loader import Config
 
 
@@ -100,7 +99,7 @@ def run_trip_detection(
     client: SyncImmichClient,
     config: Config,
     year: int,
-    progress: Progress,
+    progress: ProgressDisplay,
     person_names: list[str] | None = None,
 ) -> list[DetectedTrip]:
     """Run trip detection for a year: fetch videos, validate homebase, detect trips."""

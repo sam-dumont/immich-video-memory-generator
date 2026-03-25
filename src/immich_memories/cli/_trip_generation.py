@@ -17,9 +17,8 @@ from immich_memories.cli._pipeline_runner import (
 from immich_memories.timeperiod import DateRange
 
 if TYPE_CHECKING:
-    from rich.progress import Progress
-
     from immich_memories.api.immich import SyncImmichClient
+    from immich_memories.cli._live_display import ProgressDisplay
     from immich_memories.config_loader import Config
 
 
@@ -41,7 +40,7 @@ def handle_trip_generation(
     *,
     client: SyncImmichClient,
     config: Config,
-    progress: Progress,
+    progress: ProgressDisplay,
     year: int,
     month: int | None,
     trip_index: int | None,
