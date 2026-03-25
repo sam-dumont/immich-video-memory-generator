@@ -141,6 +141,42 @@ jobs:
             cli)         make test-integration-cli ;;
           esac
 
+      - name: Run GPU benchmarks
+        if: always() && steps.tests.outcome == 'success'
+        run: |
+          make benchmark-assembly || true
+          make benchmark-titles-json || true
+
+      - name: Submit GPU benchmark results
+        if: always() && steps.tests.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          python3 -c "
+          import json, glob, sys
+          merged = []
+          for f in sorted(glob.glob('tests/benchmark-*.json')):
+              try:
+                  merged.extend(json.loads(open(f).read()))
+              except Exception as e:
+                  print(f'WARN: skipping {f}: {e}', file=sys.stderr)
+          if not merged:
+              print('No benchmark results found', file=sys.stderr)
+              sys.exit(0)
+          open('benchmark-results.json', 'w').write(json.dumps(merged, indent=2))
+          print(f'Merged {len(merged)} entries into benchmark-results.json')
+          " || true
+          if [ -f benchmark-results.json ]; then
+            RESULTS=$(cat benchmark-results.json)
+            SHA="${{ steps.params.outputs.sha }}"
+            gh api repos/${{ steps.params.outputs.public_repo }}/actions/workflows/benchmark.yml/dispatches \
+              -f ref=main \
+              -f "inputs[runner]=gpu-arc" \
+              -f "inputs[suite]=all" \
+              -f "inputs[sha]=$SHA" \
+              -f "inputs[results]=$RESULTS" || echo "WARN: benchmark submit failed"
+          fi
+
       - name: Normalize coverage paths and freshen timestamps
         # WHY: Codecov rejects reports >12h old, and source paths must match
         # across all uploads for proper merging. Normalize to relative paths.

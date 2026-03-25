@@ -98,10 +98,14 @@ jobs:
       - name: Run assembly benchmarks
         run: make benchmark-assembly
         continue-on-error: true
+        env:
+          IMMICH_FORCE_CPU: "1"
 
       - name: Run title benchmarks
         run: make benchmark-titles-json
         continue-on-error: true
+        env:
+          IMMICH_FORCE_CPU: "1"
 
       - name: Merge benchmark JSON files
         run: |
