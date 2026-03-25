@@ -188,4 +188,11 @@ def generate_ending_screen(
         fps=fps,
     )
 
-    return TitleScreenGenerator(config=config, style=style).generate_ending_screen().path
+    generator = TitleScreenGenerator(config=config, style=style, output_dir=output_path.parent)
+    result = generator.generate_ending_screen()
+    # WHY: generator uses hardcoded filename "ending_screen.mp4" in output_dir,
+    # but callers expect the file at their requested output_path
+    if result.path != output_path:
+        result.path.rename(output_path)
+        return output_path
+    return result.path

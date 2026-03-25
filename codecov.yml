@@ -1,3 +1,5 @@
+comment: false
+
 codecov:
   # WHY: Integration coverage XMLs (tests/*-coverage.xml) are generated locally
   # and committed — their timestamps are stale. CI freshens them before upload,
@@ -23,14 +25,12 @@ flags:
 
 coverage:
   status:
+    # WHY: Codecov only sees CI unit tests, not integration coverage XMLs.
+    # Real enforcement is via `make diff-cover-ci` which merges all XMLs.
+    # Codecov stays informational — uploads for tracking, no blocking.
     project:
       default:
-        target: auto
-        threshold: 2%
+        informational: true
     patch:
       default:
-        # WHY: Patch coverage is enforced locally via `make diff-cover` (80%
-        # threshold with merged integration XMLs). Codecov only sees CI unit
-        # tests, so it under-counts coverage for code that needs FFmpeg/Immich.
-        # Making this informational avoids false failures on PRs.
         informational: true
