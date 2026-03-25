@@ -820,6 +820,11 @@ class TitleInserter:
         final_clips.extend(content_clips)
 
         # 4. Ending screen
+        # WHY: ending always uses content-backed (reverse slow-mo) when the
+        # style supports it — even for trips where the INTRO uses a map.
+        ending_uses_content_bg = (
+            getattr(title_settings, "title_background", "content_backed") == "content_backed"
+        )
         if title_settings.show_ending_screen:
             self._generate_ending(
                 clips,
@@ -831,7 +836,7 @@ class TitleInserter:
                 detected_fps,
                 hdr_type,
                 progress_callback,
-                use_content_bg=use_content_bg,
+                use_content_bg=ending_uses_content_bg,
             )
 
         # 5. Assemble

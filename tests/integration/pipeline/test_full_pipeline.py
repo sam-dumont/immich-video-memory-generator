@@ -280,6 +280,10 @@ class TestFullPipelineWithTitles:
         config.title_screens.title_duration = 2.0  # Shorter for test speed
         config.title_screens.ending_duration = 2.0
         config.title_screens.month_divider_duration = 1.5
+        # WHY: Force 720p@30fps — 4K PIL title rendering takes 2.5min per
+        # screen on CPU (no Taichi on Linux CI). At 720p@30fps, it's ~5s.
+        config.title_screens.resolution = "720p"
+        config.title_screens.fps = 30.0
 
         output = tmp_path / "full_titles.mp4"
         progress_phases = []
