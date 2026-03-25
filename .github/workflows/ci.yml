@@ -1,15 +1,12 @@
 name: CI
 
 on:
-  push:
-    branches: [main]  # Codecov needs coverage on main to compare PRs against
   pull_request:
     branches: [main]
-  workflow_call:  # Allow this workflow to be called from release.yml
+  workflow_call:  # Called from release.yml on push to main (provides Codecov baseline)
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -267,6 +264,9 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
     needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique]
+    permissions:
+      contents: read
+      pull-requests: write
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
