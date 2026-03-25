@@ -333,7 +333,7 @@ class TestAudioHandling:
         from pathlib import Path
 
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_assembler import extract_and_mix_audio
+        from immich_memories.processing.streaming_audio import extract_and_mix_audio
 
         tmp = Path(str(tmp_path))
 
@@ -600,7 +600,7 @@ class TestAudioFilterChain:
 
     def test_loudnorm_included_when_normalize_true(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_assembler import _build_audio_filter_graph
+        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
 
         clips = [
             AssemblyClip(path=Path("/a.mp4"), duration=3.0),
@@ -611,7 +611,7 @@ class TestAudioFilterChain:
 
     def test_loudnorm_excluded_when_normalize_false(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_assembler import _build_audio_filter_graph
+        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
 
         clips = [
             AssemblyClip(path=Path("/a.mp4"), duration=3.0),
@@ -622,7 +622,7 @@ class TestAudioFilterChain:
 
     def test_privacy_muffle_included(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_assembler import _build_audio_filter_graph
+        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
 
         clips = [
             AssemblyClip(path=Path("/a.mp4"), duration=3.0),
@@ -633,7 +633,7 @@ class TestAudioFilterChain:
 
     def test_title_screen_gets_null_audio(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_assembler import _build_audio_filter_graph
+        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
 
         clips = [
             AssemblyClip(path=Path("/title.mp4"), duration=3.0, is_title_screen=True),
@@ -644,7 +644,7 @@ class TestAudioFilterChain:
 
     def test_loudnorm_not_applied_to_title_screens(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
-        from immich_memories.processing.streaming_assembler import _build_audio_filter_graph
+        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
 
         clips = [
             AssemblyClip(path=Path("/title.mp4"), duration=3.0, is_title_screen=True),
@@ -814,3 +814,110 @@ class TestStreamingProgressCallback:
         assert len(progress_calls) > 3
         intermediate = [pct for pct, _ in progress_calls if 0.05 < pct < 0.85]
         assert len(intermediate) > 0
+
+
+@requires_ffmpeg
+class TestFramePreviewCallback:
+    def test_callback_fires_during_assembly(self, tmp_path: Path) -> None:
+        """frame_preview_callback should fire at least once during a multi-clip assembly."""
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import assemble_streaming
+
+        captured: list[bytes] = []
+
+        clips = []
+        for i, color in enumerate(["red", "blue"]):
+            clip_path = tmp_path / f"clip_{i}.mp4"
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    f"color=c={color}:size=320x240:rate=10:duration=3",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "anullsrc=r=48000:cl=stereo:d=3",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "ultrafast",
+                    "-c:a",
+                    "aac",
+                    "-shortest",
+                    str(clip_path),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            clips.append(AssemblyClip(path=clip_path, duration=3.0))
+
+        output = tmp_path / "output.mp4"
+        assemble_streaming(
+            clips=clips,
+            transitions=["fade"],
+            output_path=output,
+            width=320,
+            height=240,
+            fps=10,
+            fade_duration=0.5,
+            frame_preview_callback=captured.append,
+        )
+
+        # At least 1 capture (first frame always fires since last_preview_time=0).
+        # Fast encodes may not trigger the 2s interval again.
+        assert len(captured) >= 1
+        for jpeg in captured:
+            assert jpeg[:2] == b"\xff\xd8"
+            # Verify JPEG is decodable with correct dimensions
+            from PIL import Image
+
+            img = Image.open(__import__("io").BytesIO(jpeg))
+            assert img.size == (320, 240)
+
+    def test_no_callback_still_works(self, tmp_path: Path) -> None:
+        """Assembly should work fine when frame_preview_callback is None."""
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_assembler import assemble_streaming
+
+        clip_path = tmp_path / "clip.mp4"
+        subprocess.run(  # noqa: S603, S607
+            [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=green:size=320x240:rate=10:duration=1",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=48000:cl=stereo:d=1",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-c:a",
+                "aac",
+                "-shortest",
+                str(clip_path),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=10,
+        )
+        clip = AssemblyClip(path=clip_path, duration=1.0)
+
+        output = tmp_path / "output.mp4"
+        assemble_streaming(
+            clips=[clip, clip],
+            transitions=["fade"],
+            output_path=output,
+            width=320,
+            height=240,
+            fps=10,
+        )
+        assert output.exists()

@@ -182,6 +182,7 @@ class AssemblyEngine:
         clips: list[AssemblyClip],
         output_path: Path,
         progress_callback: Callable[[float, str], None] | None = None,
+        frame_preview_callback: Callable[[bytes], None] | None = None,
     ) -> Path:
         """Assemble clips via streaming frame blender. Constant memory.
 
@@ -203,7 +204,12 @@ class AssemblyEngine:
         self.settings.auto_resolution = False
         try:
             return self._assemble_scalable_inner(
-                clips, output_path, progress_callback, target_w, target_h
+                clips,
+                output_path,
+                progress_callback,
+                target_w,
+                target_h,
+                frame_preview_callback,
             )
         finally:
             self.settings.target_resolution = saved_res
@@ -216,6 +222,7 @@ class AssemblyEngine:
         progress_callback: Callable[[float, str], None] | None,
         target_w: int,
         target_h: int,
+        frame_preview_callback: Callable[[bytes], None] | None = None,
     ) -> Path:
         transitions = self.get_transition_types(clips)
         transitions = self._validate_fade_transitions(
@@ -259,6 +266,7 @@ class AssemblyEngine:
             else None,
             scale_mode=self.settings.scale_mode,
             progress_callback=progress_callback,
+            frame_preview_callback=frame_preview_callback,
         )
         return output_path
 

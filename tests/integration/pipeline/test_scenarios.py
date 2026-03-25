@@ -183,7 +183,7 @@ class TestLivePhotoBurst:
         from immich_memories.api.models import VideoClipInfo
         from immich_memories.cache.video_cache import VideoDownloadCache
         from immich_memories.config_loader import Config
-        from immich_memories.generate import _download_clip
+        from immich_memories.generate_downloads import download_clip
         from immich_memories.timeperiod import DateRange
 
         config = Config.from_yaml(Config.get_default_path())
@@ -218,7 +218,7 @@ class TestLivePhotoBurst:
             max_age_days=1,
         )
 
-        result = _download_clip(client, video_cache, clip, tmp_path)
+        result = download_clip(client, video_cache, clip, tmp_path)
 
         # Should produce a merged file (or fallback to single download)
         assert result is not None

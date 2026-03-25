@@ -29,4 +29,8 @@ coverage:
         threshold: 2%
     patch:
       default:
-        target: 80%
+        # WHY: Patch coverage is enforced locally via `make diff-cover` (80%
+        # threshold with merged integration XMLs). Codecov only sees CI unit
+        # tests, so it under-counts coverage for code that needs FFmpeg/Immich.
+        # Making this informational avoids false failures on PRs.
+        informational: true
