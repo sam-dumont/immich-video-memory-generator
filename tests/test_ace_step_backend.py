@@ -100,7 +100,7 @@ class TestMoodToStructuredPrompt:
 class TestACEStepConfig:
     def test_defaults(self):
         cfg = ACEStepConfig()
-        assert cfg.mode == "lib"
+        assert cfg.mode == "api"
         assert cfg.api_url == "http://localhost:8000"
         assert cfg.model_variant == "turbo"
         assert cfg.timeout_seconds == 3600

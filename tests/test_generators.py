@@ -795,7 +795,7 @@ class TestACEStepConfig:
 
     def test_defaults(self):
         config = ACEStepConfig()
-        assert config.mode == "lib"
+        assert config.mode == "api"
         assert config.model_variant == "turbo"
         assert config.lm_model_size == "1.7B"
         assert config.use_lm
@@ -1028,7 +1028,7 @@ class TestConfigIntegration:
         config = Config()
         assert hasattr(config, "ace_step")
         assert not config.ace_step.enabled
-        assert config.ace_step.mode == "lib"
+        assert config.ace_step.mode == "api"
         assert config.ace_step.model_variant == "turbo"
 
     def test_music_source_accepts_ace_step(self):

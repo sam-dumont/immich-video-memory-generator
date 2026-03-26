@@ -52,7 +52,7 @@ def _is_ace_step_importable() -> bool:
 class ACEStepConfig:
     """Configuration for ACE-Step backend."""
 
-    mode: str = "lib"  # "lib" or "api"
+    mode: str = "api"  # "api" (default, no Python version constraints) or "lib"
     api_url: str = "http://localhost:8000"
     model_variant: str = "turbo"
     lm_model_size: str = "1.7B"
