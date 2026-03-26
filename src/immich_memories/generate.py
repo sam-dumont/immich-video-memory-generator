@@ -260,6 +260,11 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
     )
 
     try:
+        import time as _time
+
+        _phase_times: dict[str, float] = {}
+        _phase_start = _time.monotonic()
+
         # Phase 1: Download and extract clips
         _report(params, "extract", 0.0, "Starting clip extraction...")
         run_tracker.start_phase("clip_extraction", len(params.clips))
@@ -273,9 +278,12 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
 
         assembly_clips = _extract_clips(params, video_cache, run_output_dir)
         run_tracker.complete_phase(items_processed=len(assembly_clips))
+        _phase_times["download"] = _time.monotonic() - _phase_start
 
         # Phase 1b: Unified budget selection + render selected photos
+        _t = _time.monotonic()
         assembly_clips = _add_photos_if_enabled(assembly_clips, params, run_output_dir)
+        _phase_times["photos"] = _time.monotonic() - _t
 
         # Pre-assembly validation: skip clips with missing/empty files
         assembly_clips, skipped = validate_clips(assembly_clips)
@@ -295,7 +303,8 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
                 memory_preset_params=anon_preset,
             )
 
-        # Phase 2: Assemble
+        # Phase 2: Assemble (includes title generation + streaming encode)
+        _t = _time.monotonic()
         assembly_cb = _make_assembly_callback(params, len(assembly_clips))
         if assembly_cb:
             assembly_cb(0.0, "Assembling final video...")
@@ -312,14 +321,20 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
             frame_preview_callback=params.frame_preview_callback,
         )
         run_tracker.complete_phase(items_processed=len(assembly_clips))
+        _phase_times["assembly"] = _time.monotonic() - _t
 
         # Phase 3: Music
+        _t = _time.monotonic()
         _run_music_phase(params, assembly_clips, result_path, run_output_dir, run_tracker)
+        _phase_times["music"] = _time.monotonic() - _t
 
         # Phase 4: Upload (if requested)
         if params.upload_enabled and params.client:
             _report(params, "upload", 0.95, "Uploading to Immich...")
             _upload_to_immich(params.client, result_path, params.upload_album)
+
+        _phase_times["total"] = _time.monotonic() - _phase_start
+        _log_phase_timing(_phase_times, len(assembly_clips))
 
         _report(params, "done", 1.0, "Complete!")
         run_tracker.complete_run(
@@ -341,6 +356,17 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         raise GenerationError(f"Generation failed: {safe_msg}") from e
     finally:
         set_current_run_id(None)
+
+
+def _log_phase_timing(times: dict[str, float], clip_count: int) -> None:
+    """Log phase durations to help tune progress bar estimates."""
+    total = times.get("total", 0)
+    parts = []
+    for phase in ("download", "photos", "assembly", "music"):
+        dur = times.get(phase, 0)
+        pct = (dur / total * 100) if total > 0 else 0
+        parts.append(f"{phase}={dur:.1f}s ({pct:.0f}%)")
+    logger.info(f"Pipeline timing ({clip_count} clips, {total:.1f}s total): {', '.join(parts)}")
 
 
 def _total_clip_duration(params: GenerationParams) -> int:

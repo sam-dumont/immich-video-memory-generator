@@ -761,6 +761,9 @@ class TitleInserter:
         #   0.00 - 0.35  Title screen generation (~90s at 4K)
         #   0.35 - 0.50  Ending screen generation (~90s at 4K)
         #   0.50 - 1.00  Streaming encode of all clips
+        import time as _time
+
+        _t_title_start = _time.monotonic()
 
         # 1. Opening title screen (trip map or standard)
         if progress_callback:
@@ -818,6 +821,7 @@ class TitleInserter:
         if use_content_bg and content_clip:
             self._trim_first_clip(clips, 0.5)
 
+        _t_title_done = _time.monotonic()
         if progress_callback:
             progress_callback(0.35, "Title screen ready")
 
@@ -848,6 +852,8 @@ class TitleInserter:
                 None,  # don't pass callback to _generate_ending (we handle it here)
                 use_content_bg=ending_uses_content_bg,
             )
+
+        _t_ending_done = _time.monotonic()
 
         # 5. Assemble
         if progress_callback:
@@ -880,7 +886,17 @@ class TitleInserter:
                 progress_callback(0.50 + pct * 0.50, msg)
 
         try:
-            return assemble_fn(final_clips, output_path, _scaled_encode_cb)
+            result = assemble_fn(final_clips, output_path, _scaled_encode_cb)
+            _t_encode_done = _time.monotonic()
+            title_dur = _t_title_done - _t_title_start
+            ending_dur = _t_ending_done - _t_title_done
+            encode_dur = _t_encode_done - _t_ending_done
+            total_dur = _t_encode_done - _t_title_start
+            logger.info(
+                f"Assembly timing ({len(final_clips)} clips, {total_dur:.1f}s): "
+                f"title={title_dur:.1f}s, ending={ending_dur:.1f}s, encode={encode_dur:.1f}s"
+            )
+            return result
         finally:
             (
                 self.settings.transition,
