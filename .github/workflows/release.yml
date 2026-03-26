@@ -179,7 +179,7 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
 
   # Create release (requires approval for major releases)
   release:
