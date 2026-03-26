@@ -165,41 +165,54 @@ def _report(params: GenerationParams, phase: str, progress: float, msg: str) -> 
         params.progress_callback(phase, progress, msg)
 
 
-def _make_assembly_callback(
-    params: GenerationParams, clip_count: int
-) -> Callable[[float, str], None] | None:
-    """Create a 2-arg callback that scales assembly progress into the overall pipeline range.
+class _PipelineProgress:
+    """Maps per-phase 0.0-1.0 progress into the overall pipeline range.
 
-    The full pipeline has 4 phases with estimated relative durations:
-    - Download/extract clips: ~3s per clip
-    - Title screen generation: ~90s (Taichi GPU render + FFmpeg encode, x2 for intro+ending)
-    - Assembly (streaming encode): ~8s per clip
-    - Music generation: ~120s (ACE-Step/MusicGen)
-
-    The callback maps the assembly phase's 0.0-1.0 progress into the correct
-    slice of the overall 0.0-1.0 range, accounting for all phases.
+    Each phase gets a proportional slice of 0.0-1.0 based on estimated
+    wall-clock time. All progress reports go through this to ensure the
+    bar only moves forward, never jumps backward.
     """
-    if not params.progress_callback:
-        return None
 
-    est_download = clip_count * 3.0
-    est_titles = 180.0  # ~90s per title screen (intro + ending)
-    est_encoding = clip_count * 8.0
-    has_music = not params.no_music
-    est_music = 120.0 if has_music else 0.0
-    total_est = est_download + est_titles + est_encoding + est_music
+    def __init__(self, params: GenerationParams, clip_count: int) -> None:
+        self._params = params
+        has_music = not params.no_music
 
-    # The assembly callback receives progress from assemble_with_titles(),
-    # which internally does: title gen (0.0-0.15) → encoding (0.15-1.0).
-    # We scale its 0.0-1.0 into the titles+encoding portion of overall progress.
-    phase_start = est_download / total_est
-    phase_end = (est_download + est_titles + est_encoding) / total_est
+        # WHY: Estimated relative durations for each phase.
+        # These determine how much of the progress bar each phase occupies.
+        # Tune based on _log_phase_timing output from real runs.
+        weights = {
+            "download": clip_count * 3.0,
+            "photos": 20.0,
+            "assembly": 180.0 + clip_count * 8.0,  # titles + encoding
+            "music": 120.0 if has_music else 0.0,
+        }
+        total = sum(weights.values())
 
-    def assembly_cb(pct: float, msg: str) -> None:
-        scaled = phase_start + pct * (phase_end - phase_start)
-        _report(params, "assemble", scaled, msg)
+        # Build [start, end) ranges for each phase
+        self._ranges: dict[str, tuple[float, float]] = {}
+        cursor = 0.0
+        for phase, w in weights.items():
+            span = w / total if total > 0 else 0
+            self._ranges[phase] = (cursor, cursor + span)
+            cursor += span
 
-    return assembly_cb
+    def report(self, phase: str, pct: float, msg: str) -> None:
+        """Report progress within a phase. pct is 0.0-1.0 within that phase."""
+        if not self._params.progress_callback:
+            return
+        start, end = self._ranges.get(phase, (0.0, 1.0))
+        scaled = start + pct * (end - start)
+        self._params.progress_callback(phase, scaled, msg)
+
+    def assembly_callback(self) -> Callable[[float, str], None] | None:
+        """Create a 2-arg callback for assemble_with_titles."""
+        if not self._params.progress_callback:
+            return None
+
+        def cb(pct: float, msg: str) -> None:
+            self.report("assembly", pct, msg)
+
+        return cb
 
 
 def generate_memory(params: GenerationParams) -> Path:
@@ -264,9 +277,10 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
 
         _phase_times: dict[str, float] = {}
         _phase_start = _time.monotonic()
+        pp = _PipelineProgress(params, len(params.clips))
 
         # Phase 1: Download and extract clips
-        _report(params, "extract", 0.0, "Starting clip extraction...")
+        pp.report("download", 0.0, "Downloading clips...")
         run_tracker.start_phase("clip_extraction", len(params.clips))
 
         video_cache = VideoDownloadCache(
@@ -279,11 +293,14 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         assembly_clips = _extract_clips(params, video_cache, run_output_dir)
         run_tracker.complete_phase(items_processed=len(assembly_clips))
         _phase_times["download"] = _time.monotonic() - _phase_start
+        pp.report("download", 1.0, "Clips downloaded")
 
         # Phase 1b: Unified budget selection + render selected photos
         _t = _time.monotonic()
+        pp.report("photos", 0.0, "Selecting and rendering photos...")
         assembly_clips = _add_photos_if_enabled(assembly_clips, params, run_output_dir)
         _phase_times["photos"] = _time.monotonic() - _t
+        pp.report("photos", 1.0, "Photos ready")
 
         # Pre-assembly validation: skip clips with missing/empty files
         assembly_clips, skipped = validate_clips(assembly_clips)
@@ -305,11 +322,7 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
 
         # Phase 2: Assemble (includes title generation + streaming encode)
         _t = _time.monotonic()
-        assembly_cb = _make_assembly_callback(params, len(assembly_clips))
-        if assembly_cb:
-            assembly_cb(0.0, "Assembling final video...")
-        else:
-            _report(params, "assemble", 0.7, "Assembling final video...")
+        assembly_cb = pp.assembly_callback()
         run_tracker.start_phase("assembly", len(assembly_clips))
 
         settings = _build_assembly_settings(params, assembly_clips)
@@ -325,8 +338,10 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
 
         # Phase 3: Music
         _t = _time.monotonic()
+        pp.report("music", 0.0, "Generating music...")
         _run_music_phase(params, assembly_clips, result_path, run_output_dir, run_tracker)
         _phase_times["music"] = _time.monotonic() - _t
+        pp.report("music", 1.0, "Music ready")
 
         # Phase 4: Upload (if requested)
         if params.upload_enabled and params.client:
@@ -388,8 +403,6 @@ def _add_photos_if_enabled(
     """Add photo clips to assembly if photo support is enabled."""
     if not params.include_photos or not params.photo_assets:
         return assembly_clips
-
-    _report(params, "photos", 0.5, "Selecting and rendering photos...")
 
     # WHY: always use unified budget to avoid rendering photos that get discarded
     effective_duration = params.target_duration_seconds
