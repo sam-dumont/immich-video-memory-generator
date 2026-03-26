@@ -66,9 +66,20 @@ def run_pipeline_and_generate(
         print_error("No usable video clips (all too short)")
         sys.exit(1)
 
+    import logging
+    import time as _time
+
+    _runner_logger = logging.getLogger(__name__)
+
     print_success(f"{len(clips)} clips ready for generation")
 
-    task = progress.add_task("Analyzing and selecting clips...", total=100)
+    # WHY: ONE unified task covers the entire pipeline (analysis → generation).
+    # The adaptive ETA in LiveDisplay uses elapsed/percentage, so it
+    # auto-adjusts whether analysis is cached (fast) or uncached (slow).
+    # Analysis: 0-20%, Generation: 20-100%.
+    # (Real timing data: analysis ~83s/22%, generation ~295s/78%)
+    task = progress.add_task("Analyzing clips...", total=100)
+    _pipeline_start = _time.monotonic()
 
     pipeline_config = PipelineConfig(
         hdr_only=False,
@@ -97,12 +108,12 @@ def run_pipeline_and_generate(
         phase_name = status.get("current_phase", "")
         progress.update(
             task,
-            completed=int(pct * 100),
-            description=f"Pipeline: {phase_name}",
+            completed=int(pct * 20),
+            description=f"Analyzing: {phase_name}",
         )
 
     pipeline_result = pipeline.run(clips, progress_callback=pipeline_progress)
-    progress.update(task, completed=100)
+    _analysis_time = _time.monotonic() - _pipeline_start
     selected_clips = pipeline_result.selected_clips
     clip_segments = pipeline_result.clip_segments
 
@@ -116,14 +127,9 @@ def run_pipeline_and_generate(
     album_name = album or config.upload.album_name
     person_name = person_names[0] if person_names else None
 
-    gen_task = progress.add_task("Generating video...", total=100)
-
     def gen_progress(phase: str, frac: float, msg: str) -> None:
-        progress.update(
-            gen_task,
-            completed=int(frac * 100),
-            description=msg,
-        )
+        scaled = 20 + int(frac * 80)
+        progress.update(task, completed=scaled, description=msg)
 
     gen_params = GenerationParams(
         clips=selected_clips,
@@ -157,7 +163,20 @@ def run_pipeline_and_generate(
     )
 
     result_path = generate_memory(gen_params)
-    progress.update(gen_task, completed=100)
+    _total_time = _time.monotonic() - _pipeline_start
+    _gen_time = _total_time - _analysis_time
+    progress.update(task, completed=100)
+
+    _runner_logger.info(
+        "Full pipeline timing (%d clips, %.1fs total): "
+        "analysis=%.1fs (%.0f%%), generation=%.1fs (%.0f%%)",
+        len(selected_clips),
+        _total_time,
+        _analysis_time,
+        _analysis_time / _total_time * 100 if _total_time > 0 else 0,
+        _gen_time,
+        _gen_time / _total_time * 100 if _total_time > 0 else 0,
+    )
 
     return result_path, should_upload, album_name
 
