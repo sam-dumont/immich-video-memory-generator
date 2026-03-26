@@ -8,6 +8,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -60,6 +61,7 @@ def create_title_video_taichi(
     fade_from_white: bool = False,
     fade_to_white: bool = False,
     hdr: bool = True,
+    frame_progress: Callable[[int, int], None] | None = None,
 ) -> Path:
     """Create title video using Taichi GPU rendering."""
     cfg = config or TaichiTitleConfig()
@@ -145,6 +147,8 @@ def create_title_video_taichi(
                 out, frame_num, fade_out_start, fade_out_frames, white_val, blend_buffer
             )
             process.stdin.write(out.data)  # type: ignore[union-attr]
+            if frame_progress and frame_num % 10 == 0:
+                frame_progress(frame_num, renderer.total_frames)
 
         process.stdin.close()
 

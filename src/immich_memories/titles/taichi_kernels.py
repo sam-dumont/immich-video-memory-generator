@@ -6,11 +6,19 @@ because Taichi kernels require actual type objects, not string annotations.
 
 import contextlib
 import logging
+import os
 from pathlib import Path
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# WHY: Taichi's C++ runtime prints to stdout, corrupting Rich Live display.
+# ENABLE_TAICHI_HEADER_PRINT="0" — suppresses import-time version banner (taichi#8334)
+# TI_LOG_LEVEL — belt-and-suspenders for C++ log messages
+# The main fix is verbose=False on ti.init() calls (see init_taichi and _check_taichi)
+os.environ.setdefault("ENABLE_TAICHI_HEADER_PRINT", "0")
+os.environ.setdefault("TI_LOG_LEVEL", "error")
 
 try:
     from .sdf_atlas_gen import get_cached_atlas
@@ -36,6 +44,30 @@ except ImportError:
 _taichi_initialized = False
 _taichi_backend = None
 _kernels_compiled = False
+
+
+def _silent_init(**kwargs) -> None:
+    """Call ti.init() with stdout/stderr silenced at the OS file descriptor level.
+
+    WHY: Taichi's C++ runtime prints "[Taichi] Starting on arch=metal"
+    directly to file descriptor 1, bypassing Python's sys.stdout, all
+    env vars (TI_LOG_LEVEL, ENABLE_TAICHI_HEADER_PRINT), and all Python
+    API flags (verbose=False, log_level). The ONLY way to suppress it is
+    to redirect the raw OS file descriptors during the call.
+    """
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    saved_stdout = os.dup(1)
+    saved_stderr = os.dup(2)
+    try:
+        os.dup2(devnull_fd, 1)
+        os.dup2(devnull_fd, 2)
+        ti.init(**kwargs)
+    finally:
+        os.dup2(saved_stdout, 1)
+        os.dup2(saved_stderr, 2)
+        os.close(saved_stdout)
+        os.close(saved_stderr)
+        os.close(devnull_fd)
 
 
 def init_taichi() -> str | None:
@@ -64,7 +96,7 @@ def init_taichi() -> str | None:
     last_error = None
     for backend, name in backends:
         try:
-            ti.init(arch=backend, offline_cache=True)
+            _silent_init(arch=backend, offline_cache=True)
             logger.info(f"Taichi initialized with {name} backend")
             _compile_kernels()
             if SDF_AVAILABLE and init_sdf_kernels:

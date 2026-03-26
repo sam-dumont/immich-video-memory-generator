@@ -68,13 +68,13 @@ class TestLiveDisplayTaskLifecycle:
             task_id = display.add_task("Step 1", total=None)
             assert isinstance(task_id, int)
 
-    def test_completed_spinner_renders_checkmark(self) -> None:
-        """Finishing a spinner task adds a '✓' line to rendered output."""
+    def test_completed_spinner_in_final_render(self) -> None:
+        """Finishing a spinner task adds a '✓' line to render_final() output."""
         display = self._make_display()
         with display:
             t = display.add_task("Connecting...", total=None)
             display.update(t, completed=True)
-            rendered = _render_text(display.render())
+        rendered = _render_text(display.render_final())
         assert "✓" in rendered
         assert "Connecting..." in rendered
 
@@ -84,8 +84,8 @@ class TestLiveDisplayTaskLifecycle:
         with display:
             display.add_task("Step 1", total=None)
             display.add_task("Step 2", total=None)
-            rendered = _render_text(display.render())
-        # Step 1 should appear as completed (checkmark), Step 2 still active
+        # Step 1 should appear as completed in final render
+        rendered = _render_text(display.render_final())
         assert "✓" in rendered
         assert "Step 1" in rendered
 
@@ -337,6 +337,69 @@ class TestInstallRestoreHandlers:
             assert "Routed message" in rendered
         finally:
             restore_handlers(original)
+
+
+# ---------------------------------------------------------------------------
+# configure_logging — file handler (dual stdout + file)
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# LiveDisplay — completed lines printed above Live, not in render()
+# ---------------------------------------------------------------------------
+
+
+class TestLiveDisplayCompletedAboveLive:
+    def test_completed_lines_not_in_render(self) -> None:
+        """render() does NOT contain completed steps — they go above via console.print()."""
+        display = LiveDisplay(console=Console(force_terminal=False))
+        with display:
+            t = display.add_task("Step 1", total=None)
+            display.update(t, completed=True)
+            rendered = _render_text(display.render())
+        # render() should only have active task + logs, not completed checkmarks
+        assert "Step 1" not in rendered
+
+    def test_completed_lines_in_render_final(self) -> None:
+        """render_final() contains all completed steps for post-Live output."""
+        display = LiveDisplay(console=Console(force_terminal=False))
+        with display:
+            for i in range(30):
+                t = display.add_task(f"Step {i}", total=None)
+                display.update(t, completed=True)
+        rendered = _render_text(display.render_final())
+        assert "Step 0" in rendered
+        assert "Step 29" in rendered
+
+    def test_render_only_has_active_task_and_logs(self) -> None:
+        """render() only contains the active task and log lines."""
+        display = LiveDisplay(console=Console(force_terminal=False))
+        with display:
+            display.add_task("Done1", total=None)
+            display.add_task("Active", total=100)
+            display.update(display._active_task_id, completed=50)
+            display.add_log("Some log")
+            rendered = _render_text(display.render())
+        assert "Active" in rendered or "50%" in rendered
+        assert "Some log" in rendered
+        assert "Done1" not in rendered
+
+
+# ---------------------------------------------------------------------------
+# LiveDisplay — elapsed time display
+# ---------------------------------------------------------------------------
+
+
+class TestLiveDisplayElapsedTime:
+    def test_render_includes_elapsed_time(self) -> None:
+        """Active task render includes elapsed time indicator."""
+        display = LiveDisplay(console=Console(force_terminal=False))
+        with display:
+            display.add_task("Working...", total=100)
+            display.update(display._active_task_id, completed=50)
+            rendered = _render_text(display.render())
+        # Should contain elapsed time (at least "0:00" or similar)
+        assert "elapsed" in rendered.lower() or "0:" in rendered
 
 
 # ---------------------------------------------------------------------------

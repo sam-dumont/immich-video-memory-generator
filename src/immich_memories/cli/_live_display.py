@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections import deque
 from types import TracebackType
 from typing import Any, Protocol, Self, runtime_checkable
@@ -55,20 +56,9 @@ MAX_LOG_LINES = 5
 class LiveDisplay:
     """Interactive display combining spinner/bar, completed steps, and live logs.
 
-    Usage::
-
-        with LiveDisplay(console=console) as display:
-            task = display.add_task("Connecting...", total=None)
-            # ... work ...
-            display.update(task, completed=True)
-            # Shows: ✓ Connecting...
-
-            task2 = display.add_task("Analyzing clips...", total=100)
-            display.update(task2, completed=50)
-            # Shows progress bar at 50%
-
-            display.add_log("Clustered 47 clips into 46 groups")
-            # Shows log line in dim panel below
+    Completed steps are printed permanently above the Live area using
+    console.print(). The Live area only contains the active progress bar
+    and log lines — keeping it small so Rich never loses cursor control.
     """
 
     def __init__(self, console: Console) -> None:
@@ -79,24 +69,28 @@ class LiveDisplay:
         self._lock = threading.Lock()
         self._original_handlers: list[logging.Handler] | None = None
 
-        # Internal progress bar (used for rendering, not shown directly)
+        # WHY: auto_refresh=False prevents RichProgress from creating its
+        # OWN internal Live display. We embed _progress as a renderable
+        # inside OUR Live, so two Lives would cause duplicate rendering.
         self._progress = RichProgress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TaskProgressColumn(),
             console=console,
+            auto_refresh=False,
         )
         self._tasks: dict[int, _TaskState] = {}
         self._active_task_id: int | None = None
+        self._start_time: float | None = None
 
     def __enter__(self) -> LiveDisplay:
-        self._progress.start()
+        self._start_time = time.monotonic()
         self._live = Live(
             self.render(),
             console=self._console,
             refresh_per_second=8,
-            transient=False,
+            transient=True,
         )
         self._live.__enter__()
         # WHY: Route logging through the live display so log lines
@@ -123,10 +117,7 @@ class LiveDisplay:
             if state and not state.done:
                 self._finish_task(self._active_task_id)
 
-        self._progress.stop()
         if self._live:
-            # Final render showing all completed lines
-            self._live.update(self.render_final())
             self._live.__exit__(None, None, None)
             self._live = None
 
@@ -195,9 +186,14 @@ class LiveDisplay:
             self._refresh()
 
     def print_message(self, message: str) -> None:
-        """Print a rich-formatted message as a completed line."""
+        """Print a rich-formatted message permanently above the Live area."""
         with self._lock:
             self._completed_lines.append(message)
+            if self._live:
+                # WHY: console.print() during a Live context prints
+                # permanently above the Live renderable — it scrolls
+                # up and stays, keeping the Live area small.
+                self._console.print(Text.from_markup(message))
             self._refresh()
 
     def stop(self) -> None:
@@ -211,9 +207,7 @@ class LiveDisplay:
             if state and not state.done:
                 self._finish_task(self._active_task_id)
 
-        self._progress.stop()
         if self._live:
-            self._live.update(self.render_final())
             self._live.stop()
 
         # Restore logging so subsequent console output works normally
@@ -223,12 +217,18 @@ class LiveDisplay:
             self._original_handlers = None
 
     def _finish_task(self, task_id: int) -> None:
-        """Mark task as done and add a checkmark line."""
+        """Mark task as done and print a checkmark line above the Live area."""
         state = self._tasks.get(task_id)
         if state is None or state.done:
             return
         state.done = True
-        self._completed_lines.append(f"[green]✓[/green] {state.description}")
+        line = f"[green]✓[/green] {state.description}"
+        self._completed_lines.append(line)
+        # WHY: Print completed steps permanently above the Live area.
+        # This keeps the Live renderable small (just active task + logs)
+        # so Rich never loses cursor control from terminal overflow.
+        if self._live:
+            self._console.print(Text.from_markup(line))
         self._progress.update(TaskID(task_id), visible=False)
         if self._active_task_id == task_id:
             self._active_task_id = None
@@ -238,14 +238,17 @@ class LiveDisplay:
             self._live.update(self.render())
 
     def render(self) -> RenderableType:
-        """Build the composite renderable for the current display state."""
-        parts: list[RenderableType] = [Text.from_markup(line) for line in self._completed_lines]
+        """Build the Live renderable: only active task + log lines."""
+        parts: list[RenderableType] = []
 
-        # Active progress bar (spinner or bar)
+        # Active progress bar (spinner or bar) + elapsed time
         if self._active_task_id is not None:
             state = self._tasks.get(self._active_task_id)
             if state and not state.done:
                 parts.append(self._progress)
+                time_line = self._build_time_line(state)
+                if time_line:
+                    parts.append(time_line)
 
         # Log lines panel
         parts.extend(Text(f"  │ {log_line}", style="dim") for log_line in self._log_lines)
@@ -255,10 +258,31 @@ class LiveDisplay:
 
         return Group(*parts)
 
+    def _build_time_line(self, state: _TaskState) -> Text | None:
+        if self._start_time is None:
+            return None
+        elapsed = time.monotonic() - self._start_time
+        time_text = f"  ⏱ {_format_duration(elapsed)} elapsed"
+        if state.total is not None and self._active_task_id is not None:
+            rich_task = self._progress.tasks[self._active_task_id]
+            pct = rich_task.percentage
+            if pct and pct > 5:
+                remaining = elapsed * (100 - pct) / pct
+                time_text += f", ~{_format_duration(remaining)} remaining"
+        return Text(time_text, style="dim")
+
     def render_final(self) -> RenderableType:
         """Render final state: just completed lines, no spinner or logs."""
         parts = [Text.from_markup(line) for line in self._completed_lines]
         return Group(*parts) if parts else Text("")
+
+
+def _format_duration(seconds: float) -> str:
+    """Format seconds as M:SS or H:MM:SS."""
+    s = int(seconds)
+    if s < 3600:
+        return f"{s // 60}:{s % 60:02d}"
+    return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}"
 
 
 class _TaskState:

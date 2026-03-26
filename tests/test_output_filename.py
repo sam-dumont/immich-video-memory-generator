@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from immich_memories.ui.filename_builder import (
+from immich_memories.filename_builder import (
     build_output_filename,
     build_title_person_name,
     get_divider_mode,

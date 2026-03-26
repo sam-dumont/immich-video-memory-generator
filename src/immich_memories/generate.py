@@ -165,31 +165,54 @@ def _report(params: GenerationParams, phase: str, progress: float, msg: str) -> 
         params.progress_callback(phase, progress, msg)
 
 
-def _make_assembly_callback(
-    params: GenerationParams, clip_count: int
-) -> Callable[[float, str], None] | None:
-    """Create a 2-arg callback that scales assembly progress into the overall pipeline range.
+class _PipelineProgress:
+    """Maps per-phase 0.0-1.0 progress into the overall pipeline range.
 
-    The assembly phase occupies the range between extraction and music phases.
-    Uses workload-based estimates to calculate phase boundaries.
+    Each phase gets a proportional slice of 0.0-1.0 based on estimated
+    wall-clock time. All progress reports go through this to ensure the
+    bar only moves forward, never jumps backward.
     """
-    if not params.progress_callback:
-        return None
 
-    # WHY: Estimate relative time for each phase to allocate proportional progress
-    est_download = clip_count * 3.0
-    est_assembly = clip_count * 8.0
-    est_music = 120.0
-    total_est = est_download + est_assembly + est_music
+    def __init__(self, params: GenerationParams, clip_count: int) -> None:
+        self._params = params
+        has_music = not params.no_music
 
-    phase_start = est_download / total_est
-    phase_end = (est_download + est_assembly) / total_est
+        # WHY: Estimated relative durations for each phase.
+        # These determine how much of the progress bar each phase occupies.
+        # Tune based on _log_phase_timing output from real runs.
+        weights = {
+            "download": clip_count * 3.0,
+            "photos": 20.0,
+            "assembly": 180.0 + clip_count * 8.0,  # titles + encoding
+            "music": 120.0 if has_music else 0.0,
+        }
+        total = sum(weights.values())
 
-    def assembly_cb(pct: float, msg: str) -> None:
-        scaled = phase_start + pct * (phase_end - phase_start)
-        _report(params, "assemble", scaled, msg)
+        # Build [start, end) ranges for each phase
+        self._ranges: dict[str, tuple[float, float]] = {}
+        cursor = 0.0
+        for phase, w in weights.items():
+            span = w / total if total > 0 else 0
+            self._ranges[phase] = (cursor, cursor + span)
+            cursor += span
 
-    return assembly_cb
+    def report(self, phase: str, pct: float, msg: str) -> None:
+        """Report progress within a phase. pct is 0.0-1.0 within that phase."""
+        if not self._params.progress_callback:
+            return
+        start, end = self._ranges.get(phase, (0.0, 1.0))
+        scaled = start + pct * (end - start)
+        self._params.progress_callback(phase, scaled, msg)
+
+    def assembly_callback(self) -> Callable[[float, str], None] | None:
+        """Create a 2-arg callback for assemble_with_titles."""
+        if not self._params.progress_callback:
+            return None
+
+        def cb(pct: float, msg: str) -> None:
+            self.report("assembly", pct, msg)
+
+        return cb
 
 
 def generate_memory(params: GenerationParams) -> Path:
@@ -250,8 +273,14 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
     )
 
     try:
+        import time as _time
+
+        _phase_times: dict[str, float] = {}
+        _phase_start = _time.monotonic()
+        pp = _PipelineProgress(params, len(params.clips))
+
         # Phase 1: Download and extract clips
-        _report(params, "extract", 0.0, "Starting clip extraction...")
+        pp.report("download", 0.0, "Downloading clips...")
         run_tracker.start_phase("clip_extraction", len(params.clips))
 
         video_cache = VideoDownloadCache(
@@ -263,9 +292,15 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
 
         assembly_clips = _extract_clips(params, video_cache, run_output_dir)
         run_tracker.complete_phase(items_processed=len(assembly_clips))
+        _phase_times["download"] = _time.monotonic() - _phase_start
+        pp.report("download", 1.0, "Clips downloaded")
 
         # Phase 1b: Unified budget selection + render selected photos
+        _t = _time.monotonic()
+        pp.report("photos", 0.0, "Selecting and rendering photos...")
         assembly_clips = _add_photos_if_enabled(assembly_clips, params, run_output_dir)
+        _phase_times["photos"] = _time.monotonic() - _t
+        pp.report("photos", 1.0, "Photos ready")
 
         # Pre-assembly validation: skip clips with missing/empty files
         assembly_clips, skipped = validate_clips(assembly_clips)
@@ -285,12 +320,9 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
                 memory_preset_params=anon_preset,
             )
 
-        # Phase 2: Assemble
-        assembly_cb = _make_assembly_callback(params, len(assembly_clips))
-        if assembly_cb:
-            assembly_cb(0.0, "Assembling final video...")
-        else:
-            _report(params, "assemble", 0.7, "Assembling final video...")
+        # Phase 2: Assemble (includes title generation + streaming encode)
+        _t = _time.monotonic()
+        assembly_cb = pp.assembly_callback()
         run_tracker.start_phase("assembly", len(assembly_clips))
 
         settings = _build_assembly_settings(params, assembly_clips)
@@ -302,14 +334,22 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
             frame_preview_callback=params.frame_preview_callback,
         )
         run_tracker.complete_phase(items_processed=len(assembly_clips))
+        _phase_times["assembly"] = _time.monotonic() - _t
 
         # Phase 3: Music
+        _t = _time.monotonic()
+        pp.report("music", 0.0, "Generating music...")
         _run_music_phase(params, assembly_clips, result_path, run_output_dir, run_tracker)
+        _phase_times["music"] = _time.monotonic() - _t
+        pp.report("music", 1.0, "Music ready")
 
         # Phase 4: Upload (if requested)
         if params.upload_enabled and params.client:
             _report(params, "upload", 0.95, "Uploading to Immich...")
             _upload_to_immich(params.client, result_path, params.upload_album)
+
+        _phase_times["total"] = _time.monotonic() - _phase_start
+        _log_phase_timing(_phase_times, len(assembly_clips))
 
         _report(params, "done", 1.0, "Complete!")
         run_tracker.complete_run(
@@ -333,6 +373,17 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         set_current_run_id(None)
 
 
+def _log_phase_timing(times: dict[str, float], clip_count: int) -> None:
+    """Log phase durations to help tune progress bar estimates."""
+    total = times.get("total", 0)
+    parts = []
+    for phase in ("download", "photos", "assembly", "music"):
+        dur = times.get(phase, 0)
+        pct = (dur / total * 100) if total > 0 else 0
+        parts.append(f"{phase}={dur:.1f}s ({pct:.0f}%)")
+    logger.info(f"Pipeline timing ({clip_count} clips, {total:.1f}s total): {', '.join(parts)}")
+
+
 def _total_clip_duration(params: GenerationParams) -> int:
     total: float = 0.0
     for clip in params.clips:
@@ -352,8 +403,6 @@ def _add_photos_if_enabled(
     """Add photo clips to assembly if photo support is enabled."""
     if not params.include_photos or not params.photo_assets:
         return assembly_clips
-
-    _report(params, "photos", 0.5, "Selecting and rendering photos...")
 
     # WHY: always use unified budget to avoid rendering photos that get discarded
     effective_duration = params.target_duration_seconds
@@ -685,7 +734,7 @@ def _build_title_settings(
     if not config.title_screens.enabled:
         return None
 
-    from immich_memories.ui.filename_builder import build_title_person_name, get_divider_mode
+    from immich_memories.filename_builder import build_title_person_name, get_divider_mode
 
     title_person_name = build_title_person_name(
         memory_type=params.memory_type,

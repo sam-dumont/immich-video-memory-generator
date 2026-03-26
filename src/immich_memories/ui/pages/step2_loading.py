@@ -7,11 +7,11 @@ import logging
 
 from nicegui import run, ui
 
+from immich_memories.analysis.live_photo_pipeline import fetch_live_photo_clips
 from immich_memories.api.immich import SyncImmichClient
 from immich_memories.api.models import VideoClipInfo
 from immich_memories.processing.clip_probing import probe_video_url
 from immich_memories.security import sanitize_error_message
-from immich_memories.ui.pages._step2_live_photos import fetch_live_photo_clips
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)

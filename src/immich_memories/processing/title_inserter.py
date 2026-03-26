@@ -241,7 +241,16 @@ class TitleInserter:
                 detected_fps,
                 hdr_type,
             )
-        ending_screen = generator.generate_ending_screen(content_clip_path=ending_clip)
+
+        def _ending_frame_progress(frame: int, total: int) -> None:
+            if progress_callback:
+                progress_callback(
+                    0.35 + 0.15 * frame / max(total, 1), "Generating ending screen..."
+                )
+
+        ending_screen = generator.generate_ending_screen(
+            content_clip_path=ending_clip, frame_progress=_ending_frame_progress
+        )
         # WHY: last content clip gets hard cut → ending, and trim 0.5s from
         # the end since those frames were used in the ending slow-mo.
         source_seconds = 0.5
@@ -757,6 +766,14 @@ class TitleInserter:
             config=title_config, mood=mood, output_dir=title_output_dir
         )
 
+        # Progress budget within assemble_with_titles:
+        #   0.00 - 0.35  Title screen generation (~90s at 4K)
+        #   0.35 - 0.50  Ending screen generation (~90s at 4K)
+        #   0.50 - 1.00  Streaming encode of all clips
+        import time as _time
+
+        _t_title_start = _time.monotonic()
+
         # 1. Opening title screen (trip map or standard)
         if progress_callback:
             progress_callback(0.0, "Generating title screen...")
@@ -785,6 +802,11 @@ class TitleInserter:
                     detected_fps,
                     hdr_type,
                 )
+
+            def _title_frame_progress(frame: int, total: int) -> None:
+                if progress_callback:
+                    progress_callback(0.35 * frame / max(total, 1), "Generating title screen...")
+
             title_screen = generator.generate_title_screen(
                 year=title_settings.year,
                 month=title_settings.month,
@@ -793,6 +815,7 @@ class TitleInserter:
                 person_name=title_settings.person_name,
                 birthday_age=title_settings.birthday_age,
                 content_clip_path=content_clip,
+                frame_progress=_title_frame_progress,
             )
             logger.info(f"Generated title screen: {title_screen.path}")
 
@@ -813,6 +836,10 @@ class TitleInserter:
         if use_content_bg and content_clip:
             self._trim_first_clip(clips, 0.5)
 
+        _t_title_done = _time.monotonic()
+        if progress_callback:
+            progress_callback(0.35, "Title screen ready")
+
         # 2-3. Clips with dividers
         content_clips = self.select_divider_strategy(
             clips, generator, title_settings, progress_callback, is_trip
@@ -826,6 +853,8 @@ class TitleInserter:
             getattr(title_settings, "title_background", "content_backed") == "content_backed"
         )
         if title_settings.show_ending_screen:
+            if progress_callback:
+                progress_callback(0.35, "Generating ending screen...")
             self._generate_ending(
                 clips,
                 final_clips,
@@ -835,13 +864,15 @@ class TitleInserter:
                 target_h,
                 detected_fps,
                 hdr_type,
-                progress_callback,
+                None,  # don't pass callback to _generate_ending (we handle it here)
                 use_content_bg=ending_uses_content_bg,
             )
 
+        _t_ending_done = _time.monotonic()
+
         # 5. Assemble
         if progress_callback:
-            progress_callback(0.15, "Assembling video...")
+            progress_callback(0.50, "Encoding video...")
         logger.info(f"Assembling {len(final_clips)} clips (including title screens)")
 
         # WHY: pre-decide transitions for the full clip list so the assembler
@@ -863,8 +894,24 @@ class TitleInserter:
         self.settings.auto_resolution = False
         self.settings.predecided_transitions = transitions
 
+        # WHY: Scale encoding progress into 0.50-1.0 range so it doesn't
+        # reset the overall progress back to 0% after title generation.
+        def _scaled_encode_cb(pct: float, msg: str) -> None:
+            if progress_callback:
+                progress_callback(0.50 + pct * 0.50, msg)
+
         try:
-            return assemble_fn(final_clips, output_path, progress_callback)
+            result = assemble_fn(final_clips, output_path, _scaled_encode_cb)
+            _t_encode_done = _time.monotonic()
+            title_dur = _t_title_done - _t_title_start
+            ending_dur = _t_ending_done - _t_title_done
+            encode_dur = _t_encode_done - _t_ending_done
+            total_dur = _t_encode_done - _t_title_start
+            logger.info(
+                f"Assembly timing ({len(final_clips)} clips, {total_dur:.1f}s): "
+                f"title={title_dur:.1f}s, ending={ending_dur:.1f}s, encode={encode_dur:.1f}s"
+            )
+            return result
         finally:
             (
                 self.settings.transition,

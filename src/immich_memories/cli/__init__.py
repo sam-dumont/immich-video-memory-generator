@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+# WHY: Taichi prints a banner to stdout at import time and init time.
+# Must be set before ANY module imports taichi (including tracking/system_info).
+# See https://github.com/taichi-dev/taichi/issues/8334
+os.environ.setdefault("ENABLE_TAICHI_HEADER_PRINT", "0")
+os.environ.setdefault("TI_LOG_LEVEL", "error")
 
 import click
 
