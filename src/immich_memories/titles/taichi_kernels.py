@@ -13,11 +13,10 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# WHY: Taichi prints "[Taichi] version..." banner at import time and
-# "[Taichi] Starting on arch=..." at ti.init(). These corrupt Rich Live.
-# ENABLE_TAICHI_HEADER_PRINT="0" suppresses the import-time banner.
-# TI_LOG_LEVEL="error" suppresses the init-time messages.
-# See: https://github.com/taichi-dev/taichi/issues/8334
+# WHY: Taichi's C++ runtime prints to stdout, corrupting Rich Live display.
+# ENABLE_TAICHI_HEADER_PRINT="0" — suppresses import-time version banner (taichi#8334)
+# TI_LOG_LEVEL — belt-and-suspenders for C++ log messages
+# The main fix is verbose=False on ti.init() calls (see init_taichi and _check_taichi)
 os.environ.setdefault("ENABLE_TAICHI_HEADER_PRINT", "0")
 os.environ.setdefault("TI_LOG_LEVEL", "error")
 
@@ -73,7 +72,7 @@ def init_taichi() -> str | None:
     last_error = None
     for backend, name in backends:
         try:
-            ti.init(arch=backend, offline_cache=True, log_level=ti.ERROR)
+            ti.init(arch=backend, offline_cache=True, verbose=False, log_level=ti.CRITICAL)
             logger.info(f"Taichi initialized with {name} backend")
             _compile_kernels()
             if SDF_AVAILABLE and init_sdf_kernels:

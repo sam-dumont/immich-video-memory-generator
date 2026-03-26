@@ -280,7 +280,7 @@ def _check_taichi() -> bool:
         os.environ.setdefault("TI_LOG_LEVEL", "error")
         import taichi as ti
 
-        ti.init(arch=ti.gpu, offline_cache=True, log_level=ti.ERROR)
+        ti.init(arch=ti.gpu, offline_cache=True, verbose=False, log_level=ti.CRITICAL)
         return True
     except Exception:
         return False
