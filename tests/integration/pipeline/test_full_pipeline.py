@@ -323,7 +323,7 @@ class TestFullPipelineWithTitles:
         # Progress callback was invoked with expected phases
         assert len(progress_phases) > 0
         assert "extract" in progress_phases
-        assert "assemble" in progress_phases
+        assert "assembly" in progress_phases
 
 
 # ---------------------------------------------------------------------------
