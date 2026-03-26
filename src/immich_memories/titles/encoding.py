@@ -45,27 +45,25 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
     hdr_pix_fmt_sw = "yuv420p10le"  # 10-bit for software encoder
     sdr_pix_fmt = "yuv420p"  # 8-bit for SDR
 
-    # WHY: titles are intermediates re-encoded once during final assembly.
-    # Quality must survive one more encode without visible artifacts on text/gradients,
-    # but near-lossless (q:v 80, CRF 4) is overkill and causes FFmpeg pipe stalls
-    # at 4K (~500ms/frame blocking on stdin.write). These values are fast to encode
-    # while preserving enough quality for one additional transcode.
+    # WHY: H.264 instead of HEVC for title intermediates. Titles are re-encoded
+    # once during final assembly, so the intermediate codec doesn't matter — only
+    # quality retention and encoding speed. H.264 is 3-5x faster than HEVC on all
+    # hardware (VideoToolbox, NVENC, CPU) and universally available. At CRF 17-18
+    # quality easily survives one more transcode.
 
-    # macOS: VideoToolbox (GPU accelerated)
+    # macOS: VideoToolbox H.264 (GPU accelerated, ~3x faster than HEVC VT)
     if sys.platform == "darwin":
         return [
             "-c:v",
-            "hevc_videotoolbox",
+            "h264_videotoolbox",
             "-q:v",
-            "58",
+            "55",
             "-pix_fmt",
             hdr_pix_fmt_hw if hdr else sdr_pix_fmt,
-            "-tag:v",
-            "hvc1",
             *color_args,
         ]
 
-    # Check for NVIDIA NVENC
+    # Check for NVIDIA NVENC H.264
     with contextlib.suppress(Exception):
         probe = subprocess.run(
             [
@@ -76,7 +74,7 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
                 "-i",
                 "color=c=black:s=16x16:d=0.01",
                 "-c:v",
-                "hevc_nvenc",
+                "h264_nvenc",
                 "-f",
                 "null",
                 "-",
@@ -88,7 +86,7 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
         if probe.returncode == 0:
             return [
                 "-c:v",
-                "hevc_nvenc",
+                "h264_nvenc",
                 "-preset",
                 "p4",
                 "-rc",
@@ -97,23 +95,19 @@ def _get_gpu_encoder_args(hdr: bool = True) -> list[str]:
                 "18",
                 "-pix_fmt",
                 hdr_pix_fmt_hw if hdr else sdr_pix_fmt,
-                "-tag:v",
-                "hvc1",
                 *color_args,
             ]
 
-    # Fallback to CPU libx265
+    # Fallback to CPU libx264 (fast on any hardware, even integrated GPUs)
     return [
         "-c:v",
-        "libx265",
+        "libx264",
         "-crf",
-        "18",
+        "17",
         "-preset",
         "fast",
         "-pix_fmt",
         hdr_pix_fmt_sw if hdr else sdr_pix_fmt,
-        "-tag:v",
-        "hvc1",
         *color_args,
     ]
 

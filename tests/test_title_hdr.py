@@ -51,43 +51,35 @@ class TestEncodingHDRFlag:
         assert "bt2020" in args
 
 
-class TestEncodingQualityForIntermediates:
-    """Title screens are intermediates — quality should be fast, not near-lossless."""
+class TestEncodingUsesH264ForIntermediates:
+    """Title intermediates should use H.264 (fast) not HEVC (slow)."""
 
-    def test_videotoolbox_quality_is_intermediate_not_lossless(self):
-        """On macOS, q:v should be 55-65 (fast intermediate), not 80 (near-lossless)."""
-        import sys
+    def test_uses_h264_not_hevc(self):
+        """Encoder should be H.264 variant, not HEVC."""
+        from immich_memories.titles.encoding import _get_gpu_encoder_args
 
-        if sys.platform != "darwin":
-            return  # Only applies to macOS
+        args = _get_gpu_encoder_args(hdr=True)
+        codec_idx = args.index("-c:v") + 1
+        codec = args[codec_idx]
+        assert "264" in codec or "x264" in codec, (
+            f"Expected H.264 encoder for intermediates, got {codec}"
+        )
+        assert "265" not in codec and "hevc" not in codec
 
+    def test_quality_is_intermediate_not_lossless(self):
+        """Quality params should be fast-intermediate, not near-lossless."""
         from immich_memories.titles.encoding import _get_gpu_encoder_args
 
         args = _get_gpu_encoder_args(hdr=True)
         if "-q:v" in args:
-            qv_idx = args.index("-q:v") + 1
-            qv = int(args[qv_idx])
-            assert 50 <= qv <= 65, f"q:v should be 50-65 for intermediates, got {qv}"
-
-    def test_nvenc_qp_is_intermediate_not_lossless(self):
-        """NVENC qp should be ~18-22, not 4 (near-lossless)."""
-        from immich_memories.titles.encoding import _get_gpu_encoder_args
-
-        args = _get_gpu_encoder_args(hdr=True)
+            qv = int(args[args.index("-q:v") + 1])
+            assert 40 <= qv <= 65, f"q:v should be 40-65 for intermediates, got {qv}"
         if "-qp" in args:
-            qp_idx = args.index("-qp") + 1
-            qp = int(args[qp_idx])
+            qp = int(args[args.index("-qp") + 1])
             assert 15 <= qp <= 25, f"qp should be 15-25 for intermediates, got {qp}"
-
-    def test_libx265_crf_is_intermediate_not_lossless(self):
-        """libx265 CRF should be ~18, not 4 (near-lossless)."""
-        from immich_memories.titles.encoding import _get_gpu_encoder_args
-
-        args = _get_gpu_encoder_args(hdr=True)
         if "-crf" in args:
-            crf_idx = args.index("-crf") + 1
-            crf = int(args[crf_idx])
-            assert 14 <= crf <= 22, f"CRF should be 14-22 for intermediates, got {crf}"
+            crf = int(args[args.index("-crf") + 1])
+            assert 14 <= crf <= 22, f"CRF should be 14-22, got {crf}"
 
 
 class TestVideoEncodingHDRFlag:
