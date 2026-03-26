@@ -97,6 +97,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Pin Python version for uv
+        run: echo "${{ env.PYTHON_VERSION }}" > .python-version
       - run: make dev
 
       - name: Restore config
