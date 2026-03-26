@@ -241,7 +241,16 @@ class TitleInserter:
                 detected_fps,
                 hdr_type,
             )
-        ending_screen = generator.generate_ending_screen(content_clip_path=ending_clip)
+
+        def _ending_frame_progress(frame: int, total: int) -> None:
+            if progress_callback:
+                progress_callback(
+                    0.35 + 0.15 * frame / max(total, 1), "Generating ending screen..."
+                )
+
+        ending_screen = generator.generate_ending_screen(
+            content_clip_path=ending_clip, frame_progress=_ending_frame_progress
+        )
         # WHY: last content clip gets hard cut → ending, and trim 0.5s from
         # the end since those frames were used in the ending slow-mo.
         source_seconds = 0.5
@@ -793,6 +802,11 @@ class TitleInserter:
                     detected_fps,
                     hdr_type,
                 )
+
+            def _title_frame_progress(frame: int, total: int) -> None:
+                if progress_callback:
+                    progress_callback(0.35 * frame / max(total, 1), "Generating title screen...")
+
             title_screen = generator.generate_title_screen(
                 year=title_settings.year,
                 month=title_settings.month,
@@ -801,6 +815,7 @@ class TitleInserter:
                 person_name=title_settings.person_name,
                 birthday_age=title_settings.birthday_age,
                 content_clip_path=content_clip,
+                frame_progress=_title_frame_progress,
             )
             logger.info(f"Generated title screen: {title_screen.path}")
 

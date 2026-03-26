@@ -7,6 +7,7 @@ video creation methods for titles and map backgrounds.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -71,6 +72,7 @@ class RenderingService:
         content_clip_path: Path | None = None,
         is_ending: bool = False,
         fade_to_white: bool = False,
+        frame_progress: Callable[[int, int], None] | None = None,
     ) -> Path:
         """Create title video using GPU or PIL renderer.
 
@@ -95,6 +97,7 @@ class RenderingService:
                 content_clip_path=content_clip_path,
                 is_ending=is_ending,
                 fade_to_white=fade_to_white,
+                frame_progress=frame_progress,
             )
         # WHY: PIL fallback can't do animated slow-mo deblur, but it CAN
         # use a static blurred frame from the content clip as background
@@ -135,6 +138,7 @@ class RenderingService:
         content_clip_path: Path | None = None,
         is_ending: bool = False,
         fade_to_white: bool = False,
+        frame_progress: Callable[[int, int], None] | None = None,
     ) -> Path:
         """Create title video using GPU-accelerated Taichi renderer."""
         gradient_type = "linear" if style.background_type != "radial" else "radial"
@@ -202,6 +206,7 @@ class RenderingService:
                 fade_from_white=fade_from_white,
                 fade_to_white=fade_to_white,
                 hdr=hdr,
+                frame_progress=frame_progress,
             )
         finally:
             if slowmo_reader is not None:

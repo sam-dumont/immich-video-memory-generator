@@ -8,6 +8,7 @@ TripService).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -170,6 +171,7 @@ class TitleScreenGenerator:
         birthday_age: int | None = None,
         selection_type: SelectionType | None = None,
         content_clip_path: Path | None = None,
+        frame_progress: Callable[[int, int], None] | None = None,
     ) -> GeneratedScreen:
         """Generate the opening title screen."""
         if selection_type is None:
@@ -232,6 +234,7 @@ class TitleScreenGenerator:
             animated_background=self.config.animated_background,
             fade_from_white=True,
             content_clip_path=clip_for_bg,
+            frame_progress=frame_progress,
         )
 
         renderer_type = "GPU (Taichi)" if self._rendering.use_gpu else "CPU (PIL)"
@@ -395,6 +398,7 @@ class TitleScreenGenerator:
         video_clips: list[Path] | None = None,
         _dominant_color: tuple[int, int, int] | None = None,
         content_clip_path: Path | None = None,
+        frame_progress: Callable[[int, int], None] | None = None,
     ) -> GeneratedScreen:
         """Generate the ending screen — reverse slow-mo blur + fade to white."""
         output_path = self.output_dir / "ending_screen.mp4"
@@ -416,6 +420,7 @@ class TitleScreenGenerator:
                 fade_to_white=True,
                 content_clip_path=content_clip_path,
                 is_ending=True,
+                frame_progress=frame_progress,
             )
         else:
             self._ending.create_ending_video(
