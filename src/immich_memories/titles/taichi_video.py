@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import queue
 import subprocess
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -17,6 +19,21 @@ from .encoding import _get_gpu_encoder_args
 from .renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
 
 logger = logging.getLogger(__name__)
+
+
+def _pipe_writer(proc: subprocess.Popen, q: queue.Queue[bytes | None]) -> None:
+    """Background thread: drain frame queue into FFmpeg stdin."""
+    try:
+        while True:
+            data = q.get()
+            if data is None:
+                break
+            proc.stdin.write(data)  # type: ignore[union-attr]
+    except BrokenPipeError:
+        pass
+    finally:
+        with contextlib.suppress(Exception):
+            proc.stdin.close()  # type: ignore[union-attr]
 
 
 def _apply_fade_from_white(
@@ -139,6 +156,13 @@ def create_title_video_taichi(
         else None
     )
 
+    # WHY: Buffered writer decouples GPU rendering from FFmpeg encoding.
+    # Without it, process.stdin.write() blocks ~500ms/frame at 4K because
+    # the pipe buffer (32KB) is tiny relative to frame size (12MB).
+    frame_q: queue.Queue[bytes | None] = queue.Queue(maxsize=4)
+    writer = threading.Thread(target=_pipe_writer, args=(process, frame_q), daemon=True)
+    writer.start()
+
     with contextlib.suppress(BrokenPipeError):
         for frame_num in range(renderer.total_frames):
             frame = renderer.render_frame(frame_num, title, subtitle)
@@ -146,11 +170,12 @@ def create_title_video_taichi(
             out = _apply_fade_to_white(
                 out, frame_num, fade_out_start, fade_out_frames, white_val, blend_buffer
             )
-            process.stdin.write(out.data)  # type: ignore[union-attr]
+            frame_q.put(bytes(out.data))
             if frame_progress and frame_num % 10 == 0:
                 frame_progress(frame_num, renderer.total_frames)
 
-        process.stdin.close()
+    frame_q.put(None)
+    writer.join()
 
     process.wait()
     stderr = process.stderr.read() if process.stderr else b""

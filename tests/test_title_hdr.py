@@ -51,6 +51,37 @@ class TestEncodingHDRFlag:
         assert "bt2020" in args
 
 
+class TestEncodingUsesH264ForIntermediates:
+    """Title intermediates should use H.264 (fast) not HEVC (slow)."""
+
+    def test_uses_h264_not_hevc(self):
+        """Encoder should be H.264 variant, not HEVC."""
+        from immich_memories.titles.encoding import _get_gpu_encoder_args
+
+        args = _get_gpu_encoder_args(hdr=True)
+        codec_idx = args.index("-c:v") + 1
+        codec = args[codec_idx]
+        assert "264" in codec or "x264" in codec, (
+            f"Expected H.264 encoder for intermediates, got {codec}"
+        )
+        assert "265" not in codec and "hevc" not in codec
+
+    def test_quality_is_intermediate_not_lossless(self):
+        """Quality params should be fast-intermediate, not near-lossless."""
+        from immich_memories.titles.encoding import _get_gpu_encoder_args
+
+        args = _get_gpu_encoder_args(hdr=True)
+        if "-q:v" in args:
+            qv = int(args[args.index("-q:v") + 1])
+            assert 40 <= qv <= 65, f"q:v should be 40-65 for intermediates, got {qv}"
+        if "-qp" in args:
+            qp = int(args[args.index("-qp") + 1])
+            assert 15 <= qp <= 25, f"qp should be 15-25 for intermediates, got {qp}"
+        if "-crf" in args:
+            crf = int(args[args.index("-crf") + 1])
+            assert 14 <= crf <= 22, f"CRF should be 14-22, got {crf}"
+
+
 class TestVideoEncodingHDRFlag:
     """video_encoding.py: _get_best_encoder respects hdr flag."""
 
