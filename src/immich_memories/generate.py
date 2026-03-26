@@ -170,20 +170,30 @@ def _make_assembly_callback(
 ) -> Callable[[float, str], None] | None:
     """Create a 2-arg callback that scales assembly progress into the overall pipeline range.
 
-    The assembly phase occupies the range between extraction and music phases.
-    Uses workload-based estimates to calculate phase boundaries.
+    The full pipeline has 4 phases with estimated relative durations:
+    - Download/extract clips: ~3s per clip
+    - Title screen generation: ~90s (Taichi GPU render + FFmpeg encode, x2 for intro+ending)
+    - Assembly (streaming encode): ~8s per clip
+    - Music generation: ~120s (ACE-Step/MusicGen)
+
+    The callback maps the assembly phase's 0.0-1.0 progress into the correct
+    slice of the overall 0.0-1.0 range, accounting for all phases.
     """
     if not params.progress_callback:
         return None
 
-    # WHY: Estimate relative time for each phase to allocate proportional progress
     est_download = clip_count * 3.0
-    est_assembly = clip_count * 8.0
-    est_music = 120.0
-    total_est = est_download + est_assembly + est_music
+    est_titles = 180.0  # ~90s per title screen (intro + ending)
+    est_encoding = clip_count * 8.0
+    has_music = not params.no_music
+    est_music = 120.0 if has_music else 0.0
+    total_est = est_download + est_titles + est_encoding + est_music
 
+    # The assembly callback receives progress from assemble_with_titles(),
+    # which internally does: title gen (0.0-0.15) → encoding (0.15-1.0).
+    # We scale its 0.0-1.0 into the titles+encoding portion of overall progress.
     phase_start = est_download / total_est
-    phase_end = (est_download + est_assembly) / total_est
+    phase_end = (est_download + est_titles + est_encoding) / total_est
 
     def assembly_cb(pct: float, msg: str) -> None:
         scaled = phase_start + pct * (phase_end - phase_start)

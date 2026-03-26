@@ -757,6 +757,11 @@ class TitleInserter:
             config=title_config, mood=mood, output_dir=title_output_dir
         )
 
+        # Progress budget within assemble_with_titles:
+        #   0.00 - 0.35  Title screen generation (~90s at 4K)
+        #   0.35 - 0.50  Ending screen generation (~90s at 4K)
+        #   0.50 - 1.00  Streaming encode of all clips
+
         # 1. Opening title screen (trip map or standard)
         if progress_callback:
             progress_callback(0.0, "Generating title screen...")
@@ -813,6 +818,9 @@ class TitleInserter:
         if use_content_bg and content_clip:
             self._trim_first_clip(clips, 0.5)
 
+        if progress_callback:
+            progress_callback(0.35, "Title screen ready")
+
         # 2-3. Clips with dividers
         content_clips = self.select_divider_strategy(
             clips, generator, title_settings, progress_callback, is_trip
@@ -826,6 +834,8 @@ class TitleInserter:
             getattr(title_settings, "title_background", "content_backed") == "content_backed"
         )
         if title_settings.show_ending_screen:
+            if progress_callback:
+                progress_callback(0.35, "Generating ending screen...")
             self._generate_ending(
                 clips,
                 final_clips,
@@ -835,13 +845,13 @@ class TitleInserter:
                 target_h,
                 detected_fps,
                 hdr_type,
-                progress_callback,
+                None,  # don't pass callback to _generate_ending (we handle it here)
                 use_content_bg=ending_uses_content_bg,
             )
 
         # 5. Assemble
         if progress_callback:
-            progress_callback(0.15, "Assembling video...")
+            progress_callback(0.50, "Encoding video...")
         logger.info(f"Assembling {len(final_clips)} clips (including title screens)")
 
         # WHY: pre-decide transitions for the full clip list so the assembler
@@ -863,8 +873,14 @@ class TitleInserter:
         self.settings.auto_resolution = False
         self.settings.predecided_transitions = transitions
 
+        # WHY: Scale encoding progress into 0.50-1.0 range so it doesn't
+        # reset the overall progress back to 0% after title generation.
+        def _scaled_encode_cb(pct: float, msg: str) -> None:
+            if progress_callback:
+                progress_callback(0.50 + pct * 0.50, msg)
+
         try:
-            return assemble_fn(final_clips, output_path, progress_callback)
+            return assemble_fn(final_clips, output_path, _scaled_encode_cb)
         finally:
             (
                 self.settings.transition,

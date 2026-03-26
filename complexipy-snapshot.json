@@ -2958,5 +2958,18 @@
       }
     ],
     "complexity": 163
+  },
+  {
+    "path": "src/immich_memories/processing/title_inserter.py",
+    "file_name": "title_inserter.py",
+    "functions": [
+      {
+        "name": "TitleInserter::assemble_with_titles",
+        "complexity": 20,
+        "line_start": 706,
+        "line_end": 880,
+        "line_complexities": []
+      }
+    ]
   }
 ]
