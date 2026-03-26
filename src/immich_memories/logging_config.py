@@ -111,15 +111,23 @@ def install_live_handler(display: _LogSink) -> list[logging.Handler]:
     root = logging.getLogger()
     original_handlers = root.handlers.copy()
 
-    # WHY: Only remove stream handlers (stdout/stderr). File handlers
-    # stay so logs are always available on disk even in interactive mode.
-    for h in original_handlers:
-        if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler):
+    # WHY: Remove ALL handlers except FileHandlers. Stream handlers write
+    # to stdout/stderr which corrupts Rich Live's cursor-controlled display.
+    # We also remove any unknown handler types as a safety measure — during
+    # the Live context, ALL log output should go through LiveDisplayLogHandler.
+    for h in root.handlers.copy():
+        if not isinstance(h, logging.FileHandler):
             root.removeHandler(h)
 
     handler = LiveDisplayLogHandler(display)
     handler.addFilter(RunIdFilter())
     root.addHandler(handler)
+
+    # WHY: Disable lastResort handler — Python's logging module has a
+    # built-in StreamHandler(stderr) that fires when the root logger has
+    # no handlers at WARNING+ level. Our LiveDisplayLogHandler handles
+    # everything, but lastResort doesn't know that.
+    logging.lastResort = None  # type: ignore[assignment]
 
     return original_handlers
 
@@ -130,6 +138,9 @@ def restore_handlers(original_handlers: list[logging.Handler]) -> None:
     Removes the LiveDisplayLogHandler and re-adds the original stream handlers.
     File handlers that were kept during install are left untouched.
     """
+    # Restore Python's lastResort handler
+    logging.lastResort = logging.StreamHandler(sys.stderr)
+
     root = logging.getLogger()
     # Remove the LiveDisplayLogHandler
     for h in root.handlers.copy():
