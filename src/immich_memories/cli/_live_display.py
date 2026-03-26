@@ -69,13 +69,16 @@ class LiveDisplay:
         self._lock = threading.Lock()
         self._original_handlers: list[logging.Handler] | None = None
 
-        # Internal progress bar (used for rendering, not shown directly)
+        # WHY: auto_refresh=False prevents RichProgress from creating its
+        # OWN internal Live display. We embed _progress as a renderable
+        # inside OUR Live, so two Lives would cause duplicate rendering.
         self._progress = RichProgress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TaskProgressColumn(),
             console=console,
+            auto_refresh=False,
         )
         self._tasks: dict[int, _TaskState] = {}
         self._active_task_id: int | None = None
@@ -83,7 +86,6 @@ class LiveDisplay:
 
     def __enter__(self) -> LiveDisplay:
         self._start_time = time.monotonic()
-        self._progress.start()
         self._live = Live(
             self.render(),
             console=self._console,
@@ -115,7 +117,6 @@ class LiveDisplay:
             if state and not state.done:
                 self._finish_task(self._active_task_id)
 
-        self._progress.stop()
         if self._live:
             self._live.__exit__(None, None, None)
             self._live = None
@@ -206,7 +207,6 @@ class LiveDisplay:
             if state and not state.done:
                 self._finish_task(self._active_task_id)
 
-        self._progress.stop()
         if self._live:
             self._live.stop()
 

@@ -46,6 +46,30 @@ _taichi_backend = None
 _kernels_compiled = False
 
 
+def _silent_init(**kwargs) -> None:
+    """Call ti.init() with stdout/stderr silenced at the OS file descriptor level.
+
+    WHY: Taichi's C++ runtime prints "[Taichi] Starting on arch=metal"
+    directly to file descriptor 1, bypassing Python's sys.stdout, all
+    env vars (TI_LOG_LEVEL, ENABLE_TAICHI_HEADER_PRINT), and all Python
+    API flags (verbose=False, log_level). The ONLY way to suppress it is
+    to redirect the raw OS file descriptors during the call.
+    """
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    saved_stdout = os.dup(1)
+    saved_stderr = os.dup(2)
+    try:
+        os.dup2(devnull_fd, 1)
+        os.dup2(devnull_fd, 2)
+        ti.init(**kwargs)
+    finally:
+        os.dup2(saved_stdout, 1)
+        os.dup2(saved_stderr, 2)
+        os.close(saved_stdout)
+        os.close(saved_stderr)
+        os.close(devnull_fd)
+
+
 def init_taichi() -> str | None:
     """Initialize Taichi with the best available GPU backend."""
     global _taichi_initialized, _taichi_backend
@@ -72,7 +96,7 @@ def init_taichi() -> str | None:
     last_error = None
     for backend, name in backends:
         try:
-            ti.init(arch=backend, offline_cache=True, verbose=False, log_level=ti.CRITICAL)
+            _silent_init(arch=backend, offline_cache=True)
             logger.info(f"Taichi initialized with {name} backend")
             _compile_kernels()
             if SDF_AVAILABLE and init_sdf_kernels:

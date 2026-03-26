@@ -277,10 +277,23 @@ def _check_taichi() -> bool:
     try:
         import os
 
-        os.environ.setdefault("TI_LOG_LEVEL", "error")
         import taichi as ti
 
-        ti.init(arch=ti.gpu, offline_cache=True, verbose=False, log_level=ti.CRITICAL)
+        # WHY: Taichi's C++ runtime prints to FD 1 regardless of any
+        # Python API flags. Redirect FDs to devnull for the init call.
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        saved_out = os.dup(1)
+        saved_err = os.dup(2)
+        try:
+            os.dup2(devnull_fd, 1)
+            os.dup2(devnull_fd, 2)
+            ti.init(arch=ti.gpu, offline_cache=True)
+        finally:
+            os.dup2(saved_out, 1)
+            os.dup2(saved_err, 2)
+            os.close(saved_out)
+            os.close(saved_err)
+            os.close(devnull_fd)
         return True
     except Exception:
         return False
