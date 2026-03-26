@@ -17,7 +17,12 @@ from subprocess import run as sp_run
 import numpy as np
 import pytest
 
-from tests.integration.assembly.perf_utils import PerfResult, measure_resources, save_results
+from tests.integration.assembly.perf_utils import (
+    PerfResult,
+    measure_resources,
+    save_benchmark_json,
+    save_results,
+)
 from tests.integration.conftest import (
     ffprobe_json,
     get_duration,
@@ -234,4 +239,9 @@ def test_save_pipeline_results(tmp_path):
     project_root = Path(__file__).resolve().parents[3]
     output = project_root / "tests" / "perf-results-pipeline.json"
     save_results(_pipeline_results, output)
+
+    # Export in github-action-benchmark format for CI comparison
+    benchmark_output = project_root / "tests" / "benchmark-pipeline.json"
+    save_benchmark_json(_pipeline_results, benchmark_output)
     logger.info(f"Results saved to {output}")
+    logger.info(f"Benchmark JSON saved to {benchmark_output}")

@@ -22,6 +22,7 @@ help:
 	@echo "  benchmark         Run pytest-benchmark suite"
 	@echo "  benchmark-perf    Run assembly performance benchmarks (requires FFmpeg)"
 	@echo "  benchmark-assembly  Assembly benchmarks → tests/benchmark-assembly.json"
+	@echo "  benchmark-pipeline  Pipeline benchmarks → tests/benchmark-pipeline.json (Immich)"
 	@echo "  benchmark-titles    Title benchmarks → tests/benchmark-titles.json"
 	@echo "  benchmark-json    Run all benchmarks, produce JSON for CI"
 	@echo "  benchmark-submit  Submit local benchmark results to GitHub"
@@ -139,7 +140,9 @@ benchmark-titles-json:  ## Title benchmarks → tests/benchmark-titles.json
 	uv run pytest tests/integration/titles/test_perf_titles.py -v -m integration \
 		--log-cli-level=INFO --tb=short
 
-benchmark-json: benchmark-assembly benchmark-titles-json  ## Run all benchmarks, produce JSON for CI
+benchmark-json: benchmark-assembly benchmark-titles-json  ## Run all benchmarks, produce JSON for CI (no Immich)
+
+benchmark-json-full: benchmark-assembly benchmark-titles-json benchmark-pipeline  ## All benchmarks including pipeline (requires Immich)
 	@echo ""
 	@echo "Benchmark JSON files:"
 	@ls -la tests/benchmark-*.json 2>/dev/null || echo "  (none found — benchmarks may have been skipped)"
