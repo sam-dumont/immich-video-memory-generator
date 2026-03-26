@@ -685,7 +685,7 @@ def _build_title_settings(
     if not config.title_screens.enabled:
         return None
 
-    from immich_memories.ui.filename_builder import build_title_person_name, get_divider_mode
+    from immich_memories.filename_builder import build_title_person_name, get_divider_mode
 
     title_person_name = build_title_person_name(
         memory_type=params.memory_type,

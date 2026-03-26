@@ -68,7 +68,7 @@ def render_step4() -> None:
     output_dir = Path.home() / "Videos" / "Memories"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    from immich_memories.ui.filename_builder import build_output_filename
+    from immich_memories.filename_builder import build_output_filename
 
     date_range = state.date_range
     person = state.selected_person

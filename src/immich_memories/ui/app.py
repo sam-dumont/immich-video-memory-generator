@@ -11,11 +11,6 @@ import socket
 import sys
 from pathlib import Path
 
-# Configure logging before importing our modules
-from immich_memories.logging_config import configure_logging
-
-configure_logging()
-
 import httpx
 from nicegui import app, ui
 from starlette.requests import Request
@@ -529,6 +524,9 @@ def _is_port_free(host: str, port: int) -> bool:
 
 def main(port: int = 8080, host: str = "0.0.0.0", reload: bool = False) -> None:  # noqa: S104
     """Run the NiceGUI application."""
+    from immich_memories.logging_config import configure_logging
+
+    configure_logging()
     if not _is_port_free(host, port):
         logger.error(
             f"Port {port} is already in use. "
