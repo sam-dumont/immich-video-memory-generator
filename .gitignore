@@ -1,4 +1,5 @@
 
+.python-version
 __pycache__/
 .agent/
 .cache

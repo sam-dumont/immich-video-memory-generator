@@ -495,8 +495,8 @@ class ACEStepConfig(BaseModel):
         description="Enable ACE-Step music generation",
     )
     mode: Literal["lib", "api"] = Field(
-        default="lib",
-        description="Generation mode: 'lib' for local library, 'api' for remote REST server",
+        default="api",
+        description="Generation mode: 'api' for remote REST server (default), 'lib' for local library (requires Python 3.12)",
     )
     api_url: str = Field(
         default="http://localhost:8000",
