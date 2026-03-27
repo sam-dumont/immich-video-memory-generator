@@ -36,7 +36,9 @@ def _build_preset_grid(grid_container: ui.element, state, select_preset_fn) -> N
     grid_container.clear()
     with (
         grid_container,
-        ui.element("div").classes("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"),
+        ui.element("div")
+        .classes("grid gap-3")
+        .style("grid-template-columns: repeat(auto-fill, minmax(160px, 1fr))"),
     ):
         for key, icon, title, desc in _PRESET_CARDS:
             is_selected = state.memory_type == key
@@ -63,8 +65,8 @@ def render_preset_selector(on_custom_selected=None) -> None:
             Receives a ui.column container to render the custom date range UI into.
     """
     state = get_app_state()
+    grid_container = ui.element("div").classes("w-full")
     params_container = ui.column().classes("w-full")
-    grid_container = ui.element("div")
 
     def _fill_params(key: str) -> None:
         with params_container:

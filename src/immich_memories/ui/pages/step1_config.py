@@ -40,15 +40,17 @@ logger = logging.getLogger(__name__)
 
 
 def _render_immich_config_section(state) -> None:
-    """Render the Immich connection configuration section."""
-    im_section_header("Immich Connection", icon="cloud")
+    """Render the Immich connection as a collapsible section."""
+    # If connected, show compact inline status; expand for editing
+    is_connected = bool(state.connected_user)
+    header_text = (
+        f"Immich Connection — {state.connected_user}" if is_connected else "Immich Connection"
+    )
 
-    with im_card() as card:
-        card.classes("p-5")
-
+    with ui.expansion(header_text, icon="cloud", value=not is_connected).classes("w-full"):
         # Connection status
         connection_status_container = ui.column().classes("w-full")
-        if state.connected_user:
+        if is_connected:
             with (
                 connection_status_container,
                 ui.row()
@@ -74,7 +76,7 @@ def _render_immich_config_section(state) -> None:
         # Connection buttons
         status_label = ui.label("").classes("text-sm")
 
-        with ui.row().classes("gap-2 mt-2"):
+        with ui.row().classes("gap-2 mt-1"):
 
             async def test_connection() -> None:
                 if not state.immich_url or not state.immich_api_key:
@@ -265,7 +267,7 @@ def _render_time_period_tabs(state) -> None:
     # Date range display label
     date_range_label = (
         ui.label("")
-        .classes("p-2 rounded-lg mt-4")
+        .classes("p-2 rounded-lg mt-2")
         .style("color: var(--im-info); background: rgba(59,130,246,0.1)")
     )
     _duration_input: list[Number | None] = [None]
@@ -278,49 +280,48 @@ def _render_time_period_tabs(state) -> None:
 
 
 def _render_options_section(state) -> None:
-    """Render generation options (live photos, favorites, etc)."""
+    """Render generation options as a compact 2x2 grid with tooltips."""
     im_section_header("Options", icon="settings")
 
-    with im_card() as card:
-        card.classes("p-4")
-        with ui.column().classes("gap-3 w-full"):
-            # Live Photos toggle
-            with ui.row().classes("items-center gap-3 w-full"):
-                ui.switch("Include Live Photos").bind_value(state, "include_live_photos").props(
-                    "color=primary"
-                )
-                ui.label("Short clips from Live Photos, burst-merged when consecutive").classes(
-                    "text-sm"
-                ).style("color: var(--im-text-secondary)")
+    with (
+        ui.element("div")
+        .classes("w-full grid gap-3")
+        .style("grid-template-columns: repeat(auto-fill, minmax(180px, 1fr))")
+    ):
+        # Prioritize Favorites
+        with im_card() as c1:
+            c1.classes("p-3")
+            ui.switch("Prioritize Favorites").bind_value(state, "prioritize_favorites").props(
+                "color=primary"
+            ).tooltip("Rank favorited clips higher in selection")
 
-            # Include photos
-            with ui.row().classes("items-center gap-3 w-full"):
-                ui.switch("Include Photos").bind_value(state, "include_photos").props(
-                    "color=primary"
-                )
-                ui.label("Include photos as animated clips").classes("text-sm").style(
-                    "color: var(--im-text-secondary)"
-                )
+        # Include Photos
+        with im_card() as c2:
+            c2.classes("p-3")
+            ui.switch("Include Photos").bind_value(state, "include_photos").props(
+                "color=primary"
+            ).tooltip("Include photos as animated clips")
 
-            # Analysis depth
-            with ui.row().classes("items-center gap-3 w-full"):
-                ui.select(
-                    options={
-                        "fast": "Fast (LLM top clips only)",
-                        "thorough": "Thorough (LLM all clips)",
-                    },
-                    label="Analysis Depth",
-                    value=state.analysis_depth,
-                ).classes("w-64").bind_value(state, "analysis_depth")
+        # Include Live Photos
+        with im_card() as c3:
+            c3.classes("p-3")
+            ui.switch("Include Live Photos").bind_value(state, "include_live_photos").props(
+                "color=primary"
+            ).tooltip("Short clips from Live Photos, burst-merged when consecutive")
 
-            # Prioritize favorites
-            with ui.row().classes("items-center gap-3 w-full"):
-                ui.switch("Prioritize Favorites").bind_value(state, "prioritize_favorites").props(
-                    "color=primary"
-                )
-                ui.label("Rank favorited clips higher in selection").classes("text-sm").style(
-                    "color: var(--im-text-secondary)"
-                )
+        # Analysis Depth
+        with im_card() as c4:
+            c4.classes("p-3")
+            ui.select(
+                options={
+                    "fast": "Fast (LLM top clips only)",
+                    "thorough": "Thorough (LLM all clips)",
+                },
+                label="Analysis Depth",
+                value=state.analysis_depth,
+            ).classes("w-full").bind_value(state, "analysis_depth").tooltip(
+                "Fast analyzes only top-ranked clips; Thorough scores all clips with LLM"
+            )
 
 
 def _render_navigation(state) -> None:

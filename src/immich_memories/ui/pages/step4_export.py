@@ -55,14 +55,49 @@ def render_step4() -> None:
     # Summary
     im_section_header("Summary", icon="summarize")
 
-    with ui.element("div").classes("grid grid-cols-3 gap-4 mb-4"):
+    photos_count = len(state.photo_assets) if state.include_photos and state.photo_assets else 0
+
+    with (
+        ui.element("div")
+        .classes("w-full grid gap-3 mb-2")
+        .style("grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))")
+    ):
         im_stat_card("Clips", str(len(selected_clips)), icon="movie")
+        if photos_count:
+            im_stat_card("Photo Pool", str(photos_count), icon="photo_library")
         im_stat_card("Duration", format_duration(total_duration), icon="timer")
         im_stat_card("Format", options.get("format", "MP4"), icon="video_file")
 
-    im_separator()
+    # Photo preview (if included)
+    if photos_count:
+        import base64
 
-    # Output Settings
+        from immich_memories.ui.pages.step2_helpers import get_thumbnail
+
+        with ui.expansion(
+            f"{photos_count} Photos Available (auto-selected at generation)",
+            icon="photo_library",
+            value=False,
+        ).classes("w-full"):
+            max_preview = 40
+            with (
+                ui.element("div")
+                .classes("w-full grid gap-2")
+                .style("grid-template-columns: repeat(auto-fill, minmax(80px, 1fr))")
+            ):
+                for photo in state.photo_assets[:max_preview]:
+                    thumb = get_thumbnail(photo.id)
+                    if thumb:
+                        b64 = base64.b64encode(thumb).decode()
+                        ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full rounded").style(
+                            "aspect-ratio: 1; object-fit: cover"
+                        )
+            if photos_count > max_preview:
+                ui.label(f"+ {photos_count - max_preview} more").classes("text-sm mt-1").style(
+                    "color: var(--im-text-secondary)"
+                )
+
+    # Output Settings (merged with Upload)
     im_section_header("Output", icon="folder")
 
     output_dir = Path.home() / "Videos" / "Memories"
@@ -81,28 +116,26 @@ def render_step4() -> None:
         date_end=date_range.end if date_range else None,
     )
 
+    from immich_memories.ui.pages._step4_upload import init_upload_state, render_upload_controls
+
+    init_upload_state(state)
+
     with im_card() as card:
-        card.classes("p-5")
+        card.classes("p-4")
         filename_input = ui.input("Output filename", value=default_filename).classes(
-            "w-full max-w-md"
+            "w-full max-w-lg"
         )
         ui.label(f"Will be saved to: {output_dir / default_filename}").classes("text-sm").style(
             "color: var(--im-text-secondary)"
         ).bind_text_from(filename_input, "value", lambda v: f"Will be saved to: {output_dir / v}")
 
-    im_separator()
+        ui.separator().classes("my-2")
 
-    # Upload to Immich
-    im_section_header("Upload to Immich", icon="cloud_upload")
-    from immich_memories.ui.pages._step4_upload import init_upload_state, render_upload_controls
-
-    init_upload_state(state)
-    render_upload_controls(state)
-    im_separator()
+        render_upload_controls(state)
 
     # Generate Button and Progress
-    progress_container = ui.column().classes("w-full")
-    output_container = ui.column().classes("w-full")
+    progress_container = ui.column().classes("w-full min-h-[200px]")
+    output_container = ui.column().classes("w-full min-h-[200px]")
 
     async def generate_video():
         from immich_memories.ui.pages._step4_generate import run_generation
@@ -122,21 +155,16 @@ def render_step4() -> None:
         "w-full"
     )
 
+    # Video result (if already generated) — below generate button, capped height
     if state.output_path and Path(state.output_path).exists():
-        im_separator()
-        im_section_header("Output", icon="check_circle")
+        im_section_header("Result", icon="check_circle")
         ui.label(f"Saved to: {state.output_path}").classes("text-sm").style(
             "color: var(--im-text-secondary)"
         )
         video_url = nicegui_app.add_media_file(local_file=Path(state.output_path))
-        with (
-            ui.element("div")
-            .classes("rounded-xl overflow-hidden mt-4")
-            .style("background: var(--im-bg)")
-        ):
-            ui.video(video_url).classes("w-full max-w-2xl").style(
-                "max-height: 60vh; object-fit: contain"
-            )
+        ui.video(video_url).classes("w-full rounded-lg").style(
+            "max-height: 400px; object-fit: contain; background: var(--im-bg-surface)"
+        )
 
     im_separator()
     # Navigation

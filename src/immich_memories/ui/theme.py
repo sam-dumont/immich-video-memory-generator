@@ -242,6 +242,51 @@ body.demo-mode video {
     filter: blur(12px) !important;
     -webkit-filter: blur(12px) !important;
 }
+
+/* Fixed aspect containers for media — prevent layout shift */
+.im-media-container {
+    aspect-ratio: 16/9;
+    overflow: hidden;
+    border-radius: 8px;
+    background: var(--im-bg-surface);
+    position: relative;
+}
+/* Target raw img/video AND NiceGUI's q-img Quasar wrapper */
+.im-media-container > img,
+.im-media-container > video,
+.im-media-container > .q-img,
+.im-media-container > div {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover;
+}
+.im-media-container .q-img__image {
+    object-fit: cover !important;
+}
+.im-media-container--contain > img,
+.im-media-container--contain > video,
+.im-media-container--contain > .q-img,
+.im-media-container--contain > div {
+    object-fit: contain;
+}
+.im-media-container--contain .q-img__image {
+    object-fit: contain !important;
+}
+/* Placeholder skeleton for loading states */
+.im-skeleton {
+    background: linear-gradient(90deg,
+        var(--im-bg-surface) 25%,
+        var(--im-border-light) 50%,
+        var(--im-bg-surface) 75%);
+    background-size: 200% 100%;
+    animation: im-shimmer 1.5s infinite;
+}
+@keyframes im-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+/* Compact flow utility */
+.im-flow-tight > * + * { margin-top: 8px; }
 """
 
 

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def _render_volume_slider(options: dict, width: str = "w-64") -> None:
     """Render a music volume slider."""
-    with ui.row().classes("items-center gap-4 mt-4"):
+    with ui.row().classes("items-center gap-4 mt-2"):
         ui.label("Music volume:").classes("text-sm")
         volume_slider = ui.slider(
             min=0.0, max=1.0, step=0.05, value=options.get("music_volume", 0.70)
@@ -113,7 +113,7 @@ def render_step3() -> None:
             "add_date": False,
             "music_source": "AI Generated" if musicgen_available else "None",
             "music_file": None,
-            "music_volume": 0.5,
+            "music_volume": 0.7,
         }
 
     options = state.generation_options
@@ -124,10 +124,10 @@ def render_step3() -> None:
     im_section_header("Output Settings", icon="tune")
 
     with im_card() as card:
-        card.classes("p-5")
+        card.classes("p-4")
 
         # Always visible: Resolution, Output Format
-        with ui.row().classes("w-full gap-8"):
+        with ui.row().classes("w-full gap-6"):
             with ui.column().classes("flex-1 gap-4"):
                 resolution_select = ui.select(
                     options=["Auto (match clips)", "4K", "1080p", "720p"],
@@ -154,8 +154,8 @@ def render_step3() -> None:
 
         # Collapsed: advanced output options
         with (
-            ui.expansion("Advanced options", icon="settings").classes("w-full mt-4"),
-            ui.row().classes("w-full gap-8"),
+            ui.expansion("Advanced options", icon="settings").classes("w-full mt-2"),
+            ui.row().classes("w-full gap-6"),
         ):
             with ui.column().classes("flex-1 gap-4"):
                 orientation_select = ui.select(
@@ -228,20 +228,16 @@ def render_step3() -> None:
 
                 _render_photo_status(state)
 
-    im_separator()
-
     # ========================================================================
     # Title Settings
     # ========================================================================
     im_section_header("Title", icon="title")
 
     with im_card() as title_card:
-        title_card.classes("p-5")
+        title_card.classes("p-4")
         from immich_memories.ui.pages._step3_music_preview import render_title_section
 
         render_title_section()
-
-    im_separator()
 
     # ========================================================================
     # Music Settings
@@ -275,8 +271,6 @@ def render_step3() -> None:
     music_source_select.on_value_change(on_music_source_change)
     _render_music_options(options.get("music_source", "None"))
 
-    im_separator()
-
     # ========================================================================
     # Summary
     # ========================================================================
@@ -298,7 +292,11 @@ def render_step3() -> None:
     elif current_music == "Upload file" and options.get("music_filename"):
         music_str = "Custom"
 
-    with ui.element("div").classes("grid grid-cols-2 md:grid-cols-4 gap-4"):
+    with (
+        ui.element("div")
+        .classes("w-full grid gap-3")
+        .style("grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))")
+    ):
         im_stat_card("Clips", str(len(selected_clips)), icon="movie")
         im_stat_card("Duration", f"{minutes}:{secs:02d}", icon="timer")
         im_stat_card("Resolution", options.get("resolution", "Auto"), icon="hd")

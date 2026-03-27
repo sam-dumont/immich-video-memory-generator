@@ -174,16 +174,16 @@ def _render_extra_nav() -> None:  # pragma: no cover
                 ui.label(name).classes("text-sm")
 
 
-def render_sidebar(current_step: int) -> None:  # pragma: no cover
-    """Render Immich-style sidebar navigation."""
+def render_sidebar(current_step: int):  # pragma: no cover
+    """Render Immich-style sidebar navigation. Returns drawer for toggle."""
     state = get_app_state()
     # WHY: ensure_config lazily loads config into per-session state on first page load.
     # Doing it here means every page gets it automatically.
     ensure_config(state)
 
-    with ui.left_drawer(value=True).classes("p-0"):
+    with ui.left_drawer(value=True).classes("p-0") as drawer:
         # Branding
-        with ui.row().classes("items-center gap-3 px-5 py-4"):
+        with ui.row().classes("items-center gap-3 px-5 py-3"):
             ui.icon("movie").classes("text-2xl").style("color: var(--im-primary)")
             ui.label("Immich Memories").classes("text-lg font-bold").style("color: var(--im-text)")
 
@@ -197,7 +197,7 @@ def render_sidebar(current_step: int) -> None:  # pragma: no cover
 
         # Spacer + toggles at bottom
         ui.element("div").classes("flex-grow")
-        with ui.column().classes("px-5 pb-4 mt-auto"):
+        with ui.column().classes("px-5 pb-3 mt-auto"):
             ui.element("div").classes("mb-3").style(
                 "height: 1px; background: var(--im-border-light)"
             )
@@ -207,12 +207,19 @@ def render_sidebar(current_step: int) -> None:  # pragma: no cover
             render_theme_toggle()
             _render_auth_controls()
 
+    return drawer
 
-def page_header(title: str, step: int) -> None:
+
+def page_header(title: str, step: int, drawer=None) -> None:
     """Render a consistent page header with step indicator."""
     ui.page_title(f"Immich Memories - {title}")
     render_step_indicator(step)
-    ui.label(title).classes("text-xl font-semibold mb-4").style("color: var(--im-text)")
+    with ui.row().classes("w-full items-center gap-2 mb-2"):
+        if drawer is not None:
+            ui.button(icon="menu", on_click=drawer.toggle).props("flat dense round").style(
+                "color: var(--im-text-muted)"
+            )
+        ui.label(title).classes("text-xl font-semibold").style("color: var(--im-text)")
 
 
 # ============================================================================
@@ -226,9 +233,9 @@ def index_page() -> None:
     from immich_memories.ui.pages.step1_config import render_step1
 
     apply_theme()
-    render_sidebar(1)
-    with ui.column().classes("w-full max-w-4xl mx-auto p-6"):
-        page_header("Configuration", 1)
+    d = render_sidebar(1)
+    with ui.column().classes("w-full px-8 py-5"):
+        page_header("Configuration", 1, drawer=d)
         render_step1()
 
 
@@ -238,9 +245,9 @@ def step2_page() -> None:
     from immich_memories.ui.pages.step2_review import render_step2
 
     apply_theme()
-    render_sidebar(2)
-    with ui.column().classes("w-full max-w-6xl mx-auto p-6"):
-        page_header("Clip Review", 2)
+    d = render_sidebar(2)
+    with ui.column().classes("w-full px-8 py-5"):
+        page_header("Clip Review", 2, drawer=d)
         render_step2()
 
 
@@ -250,9 +257,9 @@ def step3_page() -> None:
     from immich_memories.ui.pages.step3_options import render_step3
 
     apply_theme()
-    render_sidebar(3)
-    with ui.column().classes("w-full max-w-4xl mx-auto p-6"):
-        page_header("Generation Options", 3)
+    d = render_sidebar(3)
+    with ui.column().classes("w-full px-8 py-5"):
+        page_header("Generation Options", 3, drawer=d)
         render_step3()
 
 
@@ -262,9 +269,9 @@ def step4_page() -> None:
     from immich_memories.ui.pages.step4_export import render_step4
 
     apply_theme()
-    render_sidebar(4)
-    with ui.column().classes("w-full max-w-4xl mx-auto p-6"):
-        page_header("Preview & Export", 4)
+    d = render_sidebar(4)
+    with ui.column().classes("w-full px-8 py-5"):
+        page_header("Preview & Export", 4, drawer=d)
         render_step4()
 
 
@@ -274,10 +281,14 @@ def config_page() -> None:
     from immich_memories.ui.pages.settings_config import render_config_page
 
     apply_theme()
-    render_sidebar(0)
-    with ui.column().classes("w-full max-w-4xl mx-auto p-6"):
+    d = render_sidebar(0)
+    with ui.column().classes("w-full px-8 py-5"):
         ui.page_title("Immich Memories - Configuration")
-        ui.label("Configuration").classes("text-2xl font-bold mb-4").style("color: var(--im-text)")
+        with ui.row().classes("w-full items-center gap-2 mb-2"):
+            ui.button(icon="menu", on_click=d.toggle).props("flat dense round").style(
+                "color: var(--im-text-muted)"
+            )
+            ui.label("Configuration").classes("text-2xl font-bold").style("color: var(--im-text)")
         render_config_page()
 
 
@@ -287,12 +298,16 @@ def cache_page() -> None:
     from immich_memories.ui.pages.step1_cache import render_cache_management
 
     apply_theme()
-    render_sidebar(0)
-    with ui.column().classes("w-full max-w-4xl mx-auto p-6"):
+    d = render_sidebar(0)
+    with ui.column().classes("w-full px-8 py-5"):
         ui.page_title("Immich Memories - Cache")
-        ui.label("Cache Management").classes("text-2xl font-bold mb-4").style(
-            "color: var(--im-text)"
-        )
+        with ui.row().classes("w-full items-center gap-2 mb-2"):
+            ui.button(icon="menu", on_click=d.toggle).props("flat dense round").style(
+                "color: var(--im-text-muted)"
+            )
+            ui.label("Cache Management").classes("text-2xl font-bold").style(
+                "color: var(--im-text)"
+            )
         render_cache_management()
 
 
