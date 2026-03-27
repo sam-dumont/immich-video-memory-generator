@@ -12,12 +12,19 @@ import logging
 import operator
 import random
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import cv2
 import numpy as np
 
+from immich_memories.analysis.unified_budget import (
+    BudgetCandidate,
+    UnifiedSelection,
+    estimate_title_overhead,
+    select_within_budget,
+)
 from immich_memories.api.models import Asset
 from immich_memories.config_models import PhotoConfig
 from immich_memories.photos.animator import prepare_photo_source
@@ -30,6 +37,14 @@ from immich_memories.photos.scoring import score_photo
 from immich_memories.processing.assembly_config import AssemblyClip
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PhotoSelectionResult:
+    """Result of photo scoring + budget selection."""
+
+    scored_photos: list[tuple[Asset, float]]
+    selection: UnifiedSelection
 
 
 def score_photos(
@@ -71,6 +86,74 @@ def score_photos(
     )
 
     return scored
+
+
+def score_and_select_photos(
+    photo_assets: list[Asset],
+    video_candidates: list[BudgetCandidate],
+    config: Any,
+    target_duration: float,
+    work_dir: Path,
+    download_fn: Any,
+    thumbnail_fn: Any | None = None,
+    title_settings: Any | None = None,
+    clip_dates: list[str] | None = None,
+    memory_type: str | None = None,
+    transition_duration: float = 0.5,
+) -> PhotoSelectionResult:
+    """Score photos and select within unified budget.
+
+    Extracted from generate.py:_apply_unified_budget() so it can be
+    called from both UI (Step 2) and CLI (generation time).
+    """
+    if not photo_assets:
+        return PhotoSelectionResult(scored_photos=[], selection=UnifiedSelection())
+
+    scored = score_photos(
+        assets=photo_assets,
+        config=config.photos,
+        video_clip_count=len(video_candidates),
+        work_dir=work_dir,
+        download_fn=download_fn,
+        thumbnail_fn=thumbnail_fn,
+    )
+
+    if not scored:
+        return PhotoSelectionResult(scored_photos=scored, selection=UnifiedSelection())
+
+    photo_candidates = [
+        BudgetCandidate(
+            asset_id=asset.id,
+            duration=config.photos.duration,
+            score=score,
+            candidate_type="photo",
+            date=asset.file_created_at,
+            is_favorite=asset.is_favorite,
+        )
+        for asset, score in scored
+    ]
+
+    overhead = 0.0
+    if title_settings is not None:
+        overhead = estimate_title_overhead(
+            clip_dates=clip_dates or [],
+            title_settings=title_settings,
+            target_duration=target_duration,
+            memory_type=memory_type,
+            num_clips=len(video_candidates),
+            transition_duration=transition_duration,
+        )
+    content_budget = target_duration - overhead
+
+    selection = select_within_budget(
+        video_candidates,
+        photo_candidates,
+        content_budget=content_budget,
+        max_photo_ratio=config.photos.max_ratio,
+        min_photo_ratio=0.10,
+    )
+
+    return PhotoSelectionResult(scored_photos=scored, selection=selection)
 
 
 def render_photo_clips(

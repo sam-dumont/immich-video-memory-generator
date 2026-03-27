@@ -131,6 +131,7 @@ class TestUnifiedPhotoBudget:
         params.include_photos = True
         params.photo_assets = [MagicMock()]
         params.target_duration_seconds = None  # Not set (UI path before fix)
+        params.selected_photo_ids = None  # No pre-selection → fallback path
         params.progress_callback = None
 
         with patch(
@@ -159,6 +160,7 @@ class TestUnifiedPhotoBudget:
         params.include_photos = True
         params.photo_assets = [MagicMock()]
         params.target_duration_seconds = 120.0
+        params.selected_photo_ids = None  # No pre-selection → fallback path
         params.progress_callback = None
 
         with patch(

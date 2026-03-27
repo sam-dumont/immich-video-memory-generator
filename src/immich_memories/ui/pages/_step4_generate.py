@@ -108,6 +108,7 @@ def _build_generation_params(state, selected_clips, output_path):
         include_photos=state.include_photos and bool(state.photo_assets),
         photo_assets=_filter_selected_photos(state),
         target_duration_seconds=state.target_duration * 60,
+        selected_photo_ids=state.selected_photo_ids if state.selected_photo_ids else None,
         # Music and upload handled separately by UI (AI gen, 4-stem ducking, NiceGUI progress)
         music_path=None,
         upload_enabled=False,

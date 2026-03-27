@@ -67,6 +67,7 @@ class TestGenerateMemoryRealImmich:
             transition="crossfade",
             output_resolution="720p",
             person_name="Test Person",
+            memory_type="yearly",
             date_start=date(2025, 1, 1),
             date_end=date(2025, 12, 31),
         )

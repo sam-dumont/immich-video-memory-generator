@@ -1,21 +1,21 @@
 {
-  "timestamp": "2026-03-26T17:25:02",
+  "timestamp": "2026-03-27T18:00:02",
   "substeps": {
-    "content_backed__slowmo_init": 0.17597787500017148,
-    "content_backed__catmull_rom": 0.6099639580006624,
-    "content_backed__catmull_rom_avg_ms": 5.804910352301141,
-    "content_backed__catmull_rom_p95_ms": 6.215208999492461,
-    "content_backed__taichi_render": 1.7050661670000409,
-    "content_backed__taichi_avg_ms": 16.23233808570062,
-    "content_backed__taichi_p95_ms": 17.99724999909813,
-    "content_backed__taichi_first_ms": 66.9874159993924,
-    "content_backed__full_title": 2.046965416000603,
-    "content_backed__output_mb": 0.47861480712890625,
-    "gradient__taichi_render": 0.7056158750001487,
-    "gradient__taichi_avg_ms": 6.713414990424229,
-    "gradient__taichi_p95_ms": 8.684708000146202,
-    "gradient__taichi_first_ms": 24.14354200118396,
-    "gradient__full_title": 0.9136345830011123,
-    "gradient__output_mb": 0.2398662567138672
+    "content_backed__slowmo_init": 0.11898870799632277,
+    "content_backed__catmull_rom": 0.5401903750025667,
+    "content_backed__catmull_rom_avg_ms": 5.141258800202715,
+    "content_backed__catmull_rom_p95_ms": 5.169542011572048,
+    "content_backed__taichi_render": 1.5706704589974834,
+    "content_backed__taichi_avg_ms": 14.953407524375333,
+    "content_backed__taichi_p95_ms": 15.856500001973473,
+    "content_backed__taichi_first_ms": 71.55412499560043,
+    "content_backed__full_title": 1.9251787079992937,
+    "content_backed__output_mb": 0.47900390625,
+    "gradient__taichi_render": 0.7125288340030238,
+    "gradient__taichi_avg_ms": 6.779917847459382,
+    "gradient__taichi_p95_ms": 7.7609160071006045,
+    "gradient__taichi_first_ms": 22.9563749890076,
+    "gradient__full_title": 0.9288914170028875,
+    "gradient__output_mb": 0.2398672103881836
   }
 }

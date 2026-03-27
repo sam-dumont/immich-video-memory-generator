@@ -103,11 +103,11 @@ class TestExtractClipRealData:
         ]
 
         extractor = ClipExtractor(output_dir=tmp_path / "clips", config=config)
-        progress_calls: list[float] = []
+        progress_calls: list[tuple] = []
 
         results = extractor.batch_extract(
             segments,
-            progress_callback=lambda p: progress_calls.append(p),
+            progress_callback=lambda current, total: progress_calls.append((current, total)),
         )
 
         assert len(results) >= 1

@@ -102,6 +102,9 @@ class GenerationParams:
     # Duration budget for unified photo+video selection
     target_duration_seconds: float | None = None
 
+    # Pre-selected photo IDs from UI (skip re-scoring when set)
+    selected_photo_ids: set[str] | None = None
+
     # Progress callback: (phase, progress_fraction, status_message)
     progress_callback: Callable[[str, float, str], None] | None = None
 
@@ -404,7 +407,37 @@ def _add_photos_if_enabled(
     if not params.include_photos or not params.photo_assets:
         return assembly_clips
 
-    # WHY: always use unified budget to avoid rendering photos that get discarded
+    # Pre-selected path: skip scoring, render only selected photos
+    if params.selected_photo_ids is not None:
+        from immich_memories.photos.photo_pipeline import render_photo_clips
+
+        selected_assets = [a for a in params.photo_assets if a.id in params.selected_photo_ids]
+        if not selected_assets:
+            return assembly_clips
+
+        photo_dir = run_output_dir / "photos"
+        photo_dir.mkdir(exist_ok=True)
+
+        download_fn = params.client.download_asset if params.client else None
+        thumbnail_fn = params.client.get_asset_thumbnail if params.client else None
+        if not download_fn:
+            logger.warning("No Immich client — cannot download photos")
+            return assembly_clips
+
+        target_w, target_h = _detect_photo_resolution(params)
+        photo_clips = render_photo_clips(
+            assets=selected_assets,
+            config=params.config.photos,
+            target_w=target_w,
+            target_h=target_h,
+            work_dir=photo_dir,
+            download_fn=download_fn,
+            video_clip_count=len(assembly_clips),
+            thumbnail_fn=thumbnail_fn,
+        )
+        return _merge_by_date(assembly_clips, photo_clips)
+
+    # Fallback: full scoring + budget at generation time (CLI path)
     effective_duration = params.target_duration_seconds
     if effective_duration is None:
         effective_duration = sum(c.duration for c in assembly_clips) * 1.25
@@ -470,12 +503,8 @@ def _apply_unified_budget(
 
     Returns (filtered_video_clips, rendered_photo_clips).
     """
-    from immich_memories.analysis.unified_budget import (
-        BudgetCandidate,
-        estimate_title_overhead,
-        select_within_budget,
-    )
-    from immich_memories.photos.photo_pipeline import render_photo_clips, score_photos
+    from immich_memories.analysis.unified_budget import BudgetCandidate
+    from immich_memories.photos.photo_pipeline import render_photo_clips, score_and_select_photos
 
     target = target_override or params.target_duration_seconds
     assert target is not None
@@ -488,17 +517,7 @@ def _apply_unified_budget(
         logger.warning("No Immich client — cannot download photos")
         return assembly_clips, []
 
-    # Score photos (no rendering yet)
-    scored_photos = score_photos(
-        assets=params.photo_assets or [],
-        config=params.config.photos,
-        video_clip_count=len(assembly_clips),
-        work_dir=photo_dir,
-        download_fn=download_fn,
-        thumbnail_fn=thumbnail_fn,
-    )
-
-    # Build budget candidates
+    # Build video candidates from assembly clips
     video_candidates = [
         BudgetCandidate(
             asset_id=c.asset_id,
@@ -510,52 +529,36 @@ def _apply_unified_budget(
         )
         for c in assembly_clips
     ]
-    photo_candidates = [
-        BudgetCandidate(
-            asset_id=asset.id,
-            duration=params.config.photos.duration,
-            score=score,
-            candidate_type="photo",
-            date=asset.file_created_at,
-            is_favorite=asset.is_favorite,
-        )
-        for asset, score in scored_photos
-    ]
 
-    # Estimate title overhead (with crossfade compensation)
-    clip_dates = [c.date or "" for c in assembly_clips]
     title_settings = _build_title_settings_for_overhead(params)
-    transition_dur = params.transition_duration
-    overhead = estimate_title_overhead(
-        clip_dates=clip_dates,
-        title_settings=title_settings,
+    clip_dates = [c.date or "" for c in assembly_clips]
+
+    photo_result = score_and_select_photos(
+        photo_assets=params.photo_assets or [],
+        video_candidates=video_candidates,
+        config=params.config,
         target_duration=target,
+        work_dir=photo_dir,
+        download_fn=download_fn,
+        thumbnail_fn=thumbnail_fn,
+        title_settings=title_settings,
+        clip_dates=clip_dates,
         memory_type=params.memory_type,
-        num_clips=len(assembly_clips),
-        transition_duration=transition_dur,
-    )
-    content_budget = target - overhead
-
-    logger.info(
-        f"Unified budget: target={target:.0f}s, "
-        f"overhead={overhead:.1f}s, content_budget={content_budget:.1f}s"
+        transition_duration=params.transition_duration,
     )
 
-    # Select within budget (min 10% photos, max from config)
-    selection = select_within_budget(
-        video_candidates,
-        photo_candidates,
-        content_budget=content_budget,
-        max_photo_ratio=params.config.photos.max_ratio,
-        min_photo_ratio=0.10,
-    )
+    selection = photo_result.selection
+
+    logger.info(f"Unified budget: target={target:.0f}s, content={selection.content_duration:.1f}s")
 
     # Filter video clips to kept set
-    filtered_videos = [c for c in assembly_clips if (c.asset_id) in selection.kept_video_ids]
+    filtered_videos = [c for c in assembly_clips if c.asset_id in selection.kept_video_ids]
 
     # Render only selected photos
-    selected_photo_ids = set(selection.selected_photo_ids)
-    selected_assets = [asset for asset, _ in scored_photos if asset.id in selected_photo_ids]
+    selected_photo_ids_set = set(selection.selected_photo_ids)
+    selected_assets = [
+        asset for asset, _ in photo_result.scored_photos if asset.id in selected_photo_ids_set
+    ]
 
     target_w, target_h = _detect_photo_resolution(params)
     photo_clips = render_photo_clips(
