@@ -275,6 +275,25 @@ class ACEStepBackend(MusicGenerator):
 
         def _run_pipeline():
             assert self._pipeline is not None
+
+            # WHY: ACE-Step uses torchaudio.save() which hard-requires torchcodec
+            # in torchaudio 2.10+. Replace the pipeline's save method with one
+            # that uses soundfile directly — same format, no torchcodec dependency.
+            import soundfile as sf
+
+            def _soundfile_save(target_wav, idx, save_path=None, sample_rate=48000, format="wav"):
+                if save_path is None:
+                    save_path = str(output_path)
+                elif os.path.isdir(save_path):
+                    save_path = os.path.join(save_path, f"output_{idx}.{format}")
+                Path(os.path.dirname(save_path)).mkdir(parents=True, exist_ok=True)
+                audio_np = target_wav.cpu().float().numpy().T
+                sf.write(save_path, audio_np, sample_rate, format=format.upper())
+                logger.info(f"Saved audio with soundfile: {save_path}")
+                return save_path
+
+            self._pipeline.save_wav_file = _soundfile_save
+
             return self._pipeline(
                 audio_duration=float(duration),
                 prompt=caption_result.caption,

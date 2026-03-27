@@ -12,7 +12,6 @@ from pathlib import Path
 from nicegui import run, ui
 
 from immich_memories.security import sanitize_error_message
-from immich_memories.ui.components import im_card
 
 logger = logging.getLogger(__name__)
 
@@ -33,26 +32,21 @@ def render_upload_controls(state) -> None:
     Args:
         state: AppState instance with upload_enabled and upload_album_name.
     """
-    with im_card():
-        with ui.row().classes("w-full items-center gap-4"):
-            ui.icon("cloud_upload").classes("text-2xl").style("color: var(--im-primary)")
-            ui.label("Upload to Immich").classes("text-lg font-medium")
+    with ui.column().classes("w-full gap-3"):
+        upload_switch = ui.switch("Upload after generation").bind_value(state, "upload_enabled")
 
-        with ui.column().classes("w-full gap-3 mt-2"):
-            upload_switch = ui.switch("Upload after generation").bind_value(state, "upload_enabled")
+        (
+            ui.input("Album name", placeholder="Memories")
+            .bind_value(state, "upload_album_name")
+            .classes("w-full")
+            .bind_visibility_from(upload_switch, "value")
+        )
 
-            (
-                ui.input("Album name", placeholder="Memories")
-                .bind_value(state, "upload_album_name")
-                .classes("w-full")
-                .bind_visibility_from(upload_switch, "value")
-            )
-
-            with ui.element("div").bind_visibility_from(upload_switch, "value"):
-                ui.label(
-                    "The generated video will be uploaded to your Immich instance "
-                    "and added to the specified album."
-                ).classes("text-xs").style("color: var(--im-text-secondary)")
+        with ui.element("div").bind_visibility_from(upload_switch, "value"):
+            ui.label(
+                "The generated video will be uploaded to your Immich instance "
+                "and added to the specified album."
+            ).classes("text-xs").style("color: var(--im-text-secondary)")
 
 
 async def upload_to_immich(

@@ -58,6 +58,13 @@ _FORMAT_MAP = {
 }
 
 
+def _filter_selected_photos(state) -> list | None:
+    """Return only photo assets whose IDs are in the selected set."""
+    if not state.include_photos or not state.photo_assets:
+        return None
+    return [p for p in state.photo_assets if p.id in state.selected_photo_ids]
+
+
 def _build_generation_params(state, selected_clips, output_path):
     """Build GenerationParams from UI AppState."""
     from immich_memories.api.immich import SyncImmichClient
@@ -99,7 +106,7 @@ def _build_generation_params(state, selected_clips, output_path):
         clip_segments=state.clip_segments,
         clip_rotations=state.clip_rotations,
         include_photos=state.include_photos and bool(state.photo_assets),
-        photo_assets=state.photo_assets if state.include_photos else None,
+        photo_assets=_filter_selected_photos(state),
         target_duration_seconds=state.target_duration * 60,
         selected_photo_ids=state.selected_photo_ids if state.selected_photo_ids else None,
         # Music and upload handled separately by UI (AI gen, 4-stem ducking, NiceGUI progress)

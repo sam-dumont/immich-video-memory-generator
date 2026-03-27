@@ -35,11 +35,17 @@ MOODS = [
 
 
 async def generate_track(mood_name: str, prompt: str) -> Path | None:
-    from immich_memories.audio.generators.ace_step_backend import ACEStepBackend, ACEStepConfig
+    from immich_memories.audio.generators.ace_step_backend import ACEStepBackend
     from immich_memories.audio.generators.base import GenerationRequest
+    from immich_memories.config import get_config
 
-    config = ACEStepConfig(mode="api")
-    backend = ACEStepBackend(config)
+    # WHY: Read ace_step config from user's config.yaml so it picks up
+    # the correct mode (lib/api) and api_url.
+    app_config = get_config()
+    from immich_memories.audio.generators.factory import _app_config_to_ace_step
+
+    ace_config = _app_config_to_ace_step(app_config.ace_step)
+    backend = ACEStepBackend(ace_config)
 
     if not await backend.is_available():
         logger.error("ACE-Step API not available")

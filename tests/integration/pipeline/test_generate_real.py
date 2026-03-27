@@ -8,6 +8,7 @@ No mocks. Real FFmpeg, real Immich, real data.
 from __future__ import annotations
 
 import logging
+from datetime import date
 
 import pytest
 
@@ -56,8 +57,6 @@ class TestGenerateMemoryRealImmich:
         config.title_screens.title_duration = 2.0
         config.title_screens.ending_duration = 2.0
         output = tmp_path / "output" / "titled_memory.mp4"
-
-        from datetime import date
 
         params = GenerationParams(
             clips=clips[:2],

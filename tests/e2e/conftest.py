@@ -90,6 +90,14 @@ def browser_context_args() -> dict:
 
 
 @pytest.fixture(scope="session")
+def demo_raw_dir() -> Path:
+    """Directory for raw demo video recordings."""
+    out = _REPO_ROOT / "docs-site" / "static" / "demo" / "raw"
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+@pytest.fixture(scope="session")
 def screenshot_dir() -> Path:
     """Path to the docs-site screenshot directory."""
     repo_root = Path(__file__).resolve().parents[2]

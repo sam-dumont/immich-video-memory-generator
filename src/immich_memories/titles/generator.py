@@ -84,12 +84,18 @@ class TitleScreenConfig:
     resolution: str = "1080p"  # "720p", "1080p", or "4k"
     fps: float = 30.0  # Matched to assembly target fps by caller; 30 is safe default
 
+    # Exact pixel overrides — bypass tier-based lookup when set (fixes #188)
+    resolution_width: int | None = None
+    resolution_height: int | None = None
+
     # HDR: match source clips. True = HLG bt2020, False = SDR yuv420p.
     hdr: bool = True
 
     @property
     def output_resolution(self) -> tuple[int, int]:
         """Get the output resolution based on orientation and resolution settings."""
+        if self.resolution_width is not None and self.resolution_height is not None:
+            return (self.resolution_width, self.resolution_height)
         return get_resolution_for_orientation(self.orientation, self.resolution)
 
 

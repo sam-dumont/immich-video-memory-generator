@@ -85,9 +85,9 @@ class AppState:
     include_live_photos: bool = False
     include_photos: bool = False
     photo_assets: list[Any] = field(default_factory=list)
+    selected_photo_ids: set[str] = field(default_factory=set)
     photo_duration: float = 4.0
     scored_photos: list[Any] = field(default_factory=list)
-    selected_photo_ids: set[str] = field(default_factory=set)
     photo_budget_result: Any | None = None
 
     # Analysis depth (fast or thorough)
@@ -134,6 +134,7 @@ class AppState:
         """Reset clip-related state when changing configuration."""
         self.clips = []
         self.selected_clip_ids = set()
+        self.selected_photo_ids = set()
         self.clip_segments = {}
         self.clip_rotations = {}
         self.pipeline_result = None
@@ -143,7 +144,6 @@ class AppState:
         self.title_suggestion_subtitle = None
         self.cancel_requested = False
         self.scored_photos = []
-        self.selected_photo_ids = set()
         self.photo_budget_result = None
 
     def get_selected_clips(self) -> list[VideoClipInfo]:

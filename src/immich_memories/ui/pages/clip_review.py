@@ -21,9 +21,13 @@ def _render_clip_thumbnail(clip: VideoClipInfo) -> None:
     thumb = get_thumbnail(clip.asset.id)
     if thumb:
         b64 = base64.b64encode(thumb).decode()
-        ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-24 object-cover rounded")
+        ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full rounded").style(
+            "aspect-ratio: 16/9; object-fit: cover"
+        )
     else:
-        ui.element("div").classes("w-full h-24 rounded").style("background: var(--im-bg-elevated)")
+        ui.element("div").classes("w-full rounded").style(
+            "aspect-ratio: 16/9; background: var(--im-bg-surface)"
+        )
 
 
 def _make_preview_loader(video_aid: str, container: ui.element, vid_id: str):
@@ -71,10 +75,10 @@ def _make_range_handler(asset_id: str, vid_id: str | None, state, update_summary
         state.clip_segments[asset_id] = (value["min"], value["max"])
         update_summary()
         if vid_id:
-            ui.run_javascript(f'''
+            ui.run_javascript(f"""
                 const v = document.getElementById("{vid_id}");
                 if (v) {{ v.currentTime = {value["min"]}; }}
-            ''')
+            """)
 
     return handler
 
@@ -84,7 +88,7 @@ def _make_play_handler(vid_id: str, asset_id: str, default_start: float, default
 
     def handler():
         s, e = state.clip_segments.get(asset_id, (default_start, default_end))
-        ui.run_javascript(f'''
+        ui.run_javascript(f"""
             const v = document.getElementById("{vid_id}");
             if (v) {{
                 v.currentTime = {s};
@@ -97,7 +101,7 @@ def _make_play_handler(vid_id: str, asset_id: str, default_start: float, default
                     }}
                 }}, 50);
             }}
-        ''')
+        """)
 
     return handler
 
@@ -118,10 +122,10 @@ def _make_quick_btn_handler(
         slider.value = {"min": new_start, "max": new_end}
         update_summary()
         if vid_id:
-            ui.run_javascript(f'''
+            ui.run_javascript(f"""
                 const v = document.getElementById("{vid_id}");
                 if (v) {{ v.currentTime = {new_start}; }}
-            ''')
+            """)
 
     return handler
 
@@ -306,22 +310,22 @@ def _render_summary_metrics(
             ui.label("Selected Clips").classes("text-sm").style("color: var(--im-text-secondary)")
             ui.label(
                 str(len([c for c in selected_clips if c.asset.id in state.selected_clip_ids]))
-            ).classes("text-2xl font-bold")
+            ).classes("text-xl font-bold")
         with ui.column().classes("items-center"):
             ui.label("Total Duration").classes("text-sm").style("color: var(--im-text-secondary)")
-            ui.label(format_duration(total_selected)).classes("text-2xl font-bold")
+            ui.label(format_duration(total_selected)).classes("text-xl font-bold")
         with ui.column().classes("items-center"):
             ui.label("Target").classes("text-sm").style("color: var(--im-text-secondary)")
-            ui.label(format_duration(target_duration)).classes("text-2xl font-bold")
+            ui.label(format_duration(target_duration)).classes("text-xl font-bold")
         with ui.column().classes("items-center"):
             ui.label("Difference").classes("text-sm").style("color: var(--im-text-secondary)")
             diff_str = f"{'+' if diff > 0 else ''}{format_duration(abs(diff))}"
-            ui.label(diff_str).classes("text-2xl font-bold")
+            ui.label(diff_str).classes("text-xl font-bold")
 
 
 def _render_bulk_actions(selected_clips, state, update_summary) -> None:
     """Render quick bulk action buttons."""
-    with ui.row().classes("w-full gap-2 mb-4"):
+    with ui.row().classes("w-full gap-2 mb-2"):
 
         def set_all_first_5s():
             for clip in selected_clips:
@@ -353,7 +357,7 @@ def _render_bulk_actions(selected_clips, state, update_summary) -> None:
 
 def _render_review_nav(state) -> None:
     """Render navigation buttons at the bottom of clip review."""
-    with ui.row().classes("w-full gap-4 mt-4"):
+    with ui.row().classes("w-full gap-4 mt-2"):
 
         def go_back_selection():
             state.review_selected_mode = False
@@ -424,7 +428,7 @@ def _render_review_selected_clips(clips: list[VideoClipInfo]) -> None:
 
     target_duration = state.target_duration * 60
 
-    summary_container = ui.row().classes("w-full gap-8 mb-4")
+    summary_container = ui.row().classes("w-full gap-4 mb-2")
 
     def update_summary():
         _render_summary_metrics(

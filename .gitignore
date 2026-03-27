@@ -1,5 +1,7 @@
 
+.nicegui/
 .python-version
+.superpowers/
 __pycache__/
 .agent/
 .cache
@@ -120,3 +122,8 @@ venv/
 wheels/
 .superpowers/
 .nicegui/
+
+# Demo video artifacts (generated, not tracked)
+docs-site/static/demo/raw/
+docs-site/static/demo/work/
+docs-site/static/demo/music-candidates/

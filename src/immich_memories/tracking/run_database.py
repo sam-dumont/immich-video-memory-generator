@@ -146,29 +146,40 @@ class RunDatabase:
             conn.commit()
 
     def save_phase_stats(self, run_id: str, stats: PhaseStats) -> None:
-        """Save phase timing statistics."""
-        with self._get_connection() as conn:
-            conn.execute(
-                """
-                INSERT INTO phase_stats (
-                    run_id, phase_name, started_at, completed_at,
-                    duration_seconds, items_processed, items_total,
-                    errors, extra_metrics
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    run_id,
-                    stats.phase_name,
-                    stats.started_at.isoformat(),
-                    stats.completed_at.isoformat() if stats.completed_at else None,
-                    stats.duration_seconds,
-                    stats.items_processed,
-                    stats.items_total,
-                    json.dumps(stats.errors) if stats.errors else None,
-                    json.dumps(stats.extra_metrics) if stats.extra_metrics else None,
-                ),
+        """Save phase timing statistics.
+
+        Gracefully handles missing run_id (e.g. DB was deleted mid-run).
+        Phase stats are observability data — losing them is acceptable.
+        """
+        try:
+            with self._get_connection() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO phase_stats (
+                        run_id, phase_name, started_at, completed_at,
+                        duration_seconds, items_processed, items_total,
+                        errors, extra_metrics
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        run_id,
+                        stats.phase_name,
+                        stats.started_at.isoformat(),
+                        stats.completed_at.isoformat() if stats.completed_at else None,
+                        stats.duration_seconds,
+                        stats.items_processed,
+                        stats.items_total,
+                        json.dumps(stats.errors) if stats.errors else None,
+                        json.dumps(stats.extra_metrics) if stats.extra_metrics else None,
+                    ),
+                )
+                conn.commit()
+        except sqlite3.IntegrityError:
+            logger.warning(
+                "Phase stats lost for '%s' — run_id '%s' may no longer exist in database",
+                stats.phase_name,
+                run_id,
             )
-            conn.commit()
 
     def get_run(self, run_id: str) -> RunMetadata | None:
         """Get a single run by ID."""

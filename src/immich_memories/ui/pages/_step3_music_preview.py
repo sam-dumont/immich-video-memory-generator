@@ -143,7 +143,7 @@ def _render_player(state, container):
     if not version.full_mix or not version.full_mix.exists():
         return
 
-    with container, ui.card().classes("w-full p-4 mt-4").style("background: var(--im-success-bg)"):
+    with container, ui.card().classes("w-full p-3 mt-2").style("background: var(--im-success-bg)"):
         with ui.row().classes("w-full items-center gap-4"):
             ui.icon("check_circle").classes("text-2xl").style("color: var(--im-success)")
             with ui.column().classes("flex-1"):
@@ -178,32 +178,43 @@ def render_title_section() -> None:
     """
     state = get_app_state()
 
-    with ui.column().classes("w-full gap-3"):
-        title_input = ui.input(
-            label="Title",
-            value=state.title_suggestion_title or "",
-            placeholder="e.g. Summer in Saxony",
-        ).classes("w-full")
+    with ui.column().classes("w-full gap-2"):
+        # Title + Subtitle + Language in one flowing row
+        with ui.row().classes("w-full gap-4 items-end flex-wrap"):
+            title_input = (
+                ui.input(
+                    label="Title",
+                    value=state.title_suggestion_title or "",
+                    placeholder="e.g. Summer in Saxony",
+                )
+                .classes("flex-1")
+                .style("min-width: 200px")
+            )
 
-        def on_title_change(e):
-            state.title_suggestion_title = e.value or None
+            def on_title_change(e):
+                state.title_suggestion_title = e.value or None
 
-        title_input.on_value_change(on_title_change)
+            title_input.on_value_change(on_title_change)
 
-        subtitle_input = ui.input(
-            label="Subtitle",
-            value=state.title_suggestion_subtitle or "",
-            placeholder="e.g. June – August 2025",
-        ).classes("w-full")
+            subtitle_input = (
+                ui.input(
+                    label="Subtitle",
+                    value=state.title_suggestion_subtitle or "",
+                    placeholder="e.g. June – August 2025",
+                )
+                .classes("flex-1")
+                .style("min-width: 200px")
+            )
 
-        def on_subtitle_change(e):
-            state.title_suggestion_subtitle = e.value or None
+            def on_subtitle_change(e):
+                state.title_suggestion_subtitle = e.value or None
 
-        subtitle_input.on_value_change(on_subtitle_change)
+            subtitle_input.on_value_change(on_subtitle_change)
 
-        config = state.config
-        locale_default = config.title_screens.locale if config and config.title_screens else "en"
-        with ui.row().classes("w-full gap-2 items-end"):
+            config = state.config
+            locale_default = (
+                config.title_screens.locale if config and config.title_screens else "en"
+            )
             locale_select = ui.select(
                 label="Language",
                 options=["auto", "en", "fr", "de", "es", "it", "nl", "pt", "ja", "ko"],
@@ -233,7 +244,7 @@ def render_music_preview_section(options: dict) -> None:
     state = get_app_state()
 
     # Container for progress and player
-    progress_container = ui.column().classes("w-full mt-4")
+    progress_container = ui.column().classes("w-full mt-2")
     player_container = ui.column().classes("w-full")
 
     with progress_container:

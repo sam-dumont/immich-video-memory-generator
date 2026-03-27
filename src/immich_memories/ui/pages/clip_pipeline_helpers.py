@@ -30,28 +30,27 @@ _AUDIO_CAT_COLORS = {
 def _render_thumbnail_for(asset_id: str | None, _container: ui.element) -> None:
     """Render a thumbnail into a container (called from UI thread)."""
     if not asset_id:
-        ui.element("div").classes("w-full h-32 rounded flex items-center justify-center").style(
-            "background: var(--im-bg-elevated)"
+        ui.element("div").classes("w-full rounded").style(
+            "height: 180px; background: var(--im-bg-elevated)"
         )
         return
     thumb = get_thumbnail(asset_id)
     if thumb:
         b64 = base64.b64encode(thumb).decode()
-        ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-32 object-cover rounded")
+        ui.image(f"data:image/jpeg;base64,{b64}").classes("rounded").style(
+            "max-height: 180px; max-width: 100%; object-fit: contain"
+        )
     else:
-        with (
-            ui.element("div")
-            .classes("w-full h-32 rounded flex items-center justify-center")
-            .style("background: var(--im-bg-elevated)")
-        ):
-            ui.icon("videocam").classes("text-3xl").style("color: var(--im-text-muted)")
+        ui.element("div").classes("w-full rounded").style(
+            "height: 180px; background: var(--im-bg-elevated)"
+        )
 
 
 def _render_currently_analyzing_card(
     progress_state: dict[str, Any], detail_container: ui.element
 ) -> None:
     """Render the 'Currently Analyzing' card."""
-    with ui.card().classes("flex-1 p-3"):
+    with ui.card().classes("flex-1 p-3").style("max-width: 600px"):
         ui.label("Currently Analyzing").classes("text-sm font-semibold mb-2").style(
             "color: var(--im-info)"
         )
@@ -94,7 +93,7 @@ def _render_audio_categories(audio_cats: list[str] | None) -> None:
         for cat in audio_cats:
             css_var = _AUDIO_CAT_COLORS.get(cat, "--im-text-secondary")
             ui.badge(cat).classes("text-xs").style(
-                f"background: color-mix(in srgb, var({css_var}) 15%, transparent); "
+                f"background: color-mix(in srgb, var({css_var}) 20%, var(--im-bg-elevated)); "
                 f"color: var({css_var})"
             )
 
@@ -135,7 +134,9 @@ def _try_render_video_preview(preview_path: str | None, _rendered_state: dict[st
                 nicegui_app.remove_route(old_url)
         _rendered_state["prev_media_url"] = video_url
 
-        ui.video(video_url).classes("w-full rounded").props("muted autoplay loop")
+        ui.video(video_url).classes("rounded").props("muted autoplay loop").style(
+            "max-height: 180px; max-width: 100%; object-fit: contain"
+        )
         return True
     except Exception:
         return False
@@ -151,7 +152,7 @@ def _render_last_analyzed_card(
     if not last_asset:
         return
 
-    with ui.card().classes("flex-1 p-3"):
+    with ui.card().classes("flex-1 p-3").style("max-width: 600px"):
         ui.label("Last Analyzed").classes("text-sm font-semibold mb-2").style(
             "color: var(--im-success)"
         )
