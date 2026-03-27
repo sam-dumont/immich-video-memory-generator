@@ -286,7 +286,7 @@ class ACEStepBackend(MusicGenerator):
                     save_path = str(output_path)
                 elif os.path.isdir(save_path):
                     save_path = os.path.join(save_path, f"output_{idx}.{format}")
-                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                Path(os.path.dirname(save_path)).mkdir(parents=True, exist_ok=True)
                 audio_np = target_wav.cpu().float().numpy().T
                 sf.write(save_path, audio_np, sample_rate, format=format.upper())
                 logger.info(f"Saved audio with soundfile: {save_path}")
