@@ -620,3 +620,14 @@ demo-video: docs-install
 	@echo "Assembling final video..."
 	cd docs-site && bash scripts/assemble-demo.sh
 	@echo "Demo video saved to docs-site/static/demo/demo.mp4"
+
+demo-music:  ## Generate 12 ACE-Step candidate tracks for demo video
+	uv run python scripts/generate-demo-music.py
+
+demo-record:  ## Record demo segments via Playwright (requires running UI on :8099)
+	uv run pytest tests/e2e/test_demo_recording.py -v -m e2e --log-cli-level=INFO --tb=short
+
+demo-assemble:  ## Post-process recordings into polished demo video
+	uv run python scripts/assemble-demo.py
+
+demo: demo-record demo-assemble  ## Record + assemble demo video (select music first)
