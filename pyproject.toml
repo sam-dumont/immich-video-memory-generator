@@ -223,6 +223,11 @@ major_version_zero = true
 # with platform-specific packages like pyobjc
 environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'", "sys_platform == 'win32'"]
 
+# WHY: torchaudio 2.9+ replaced soundfile backend with torchcodec, which has
+# ABI incompatibilities with PyTorch on macOS. ACE-Step uses torchaudio.save()
+# with backend="soundfile" which only works on torchaudio <2.9.
+override-dependencies = ["torchaudio<2.9"]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
