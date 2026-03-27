@@ -5,13 +5,16 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+import pytest
+
 from immich_memories.config_models import PhotoConfig
 from immich_memories.photos.photo_pipeline import render_photo_clips
 from tests.conftest import make_asset
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg
 
+pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
-@requires_ffmpeg
+
 class TestRenderPhotoClips:
     def test_renders_correct_number_of_clips(self, test_photo_landscape, tmp_path):
         """N photo assets should produce <=N AssemblyClips with valid video files."""

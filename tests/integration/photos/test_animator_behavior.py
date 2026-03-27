@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import subprocess
 
+import pytest
+
 from immich_memories.config_models import PhotoConfig
 from immich_memories.photos.animator import PhotoAnimator, prepare_photo_source
 from immich_memories.photos.models import AnimationMode
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg
 
+pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
-@requires_ffmpeg
+
 class TestPreparePhotoSource:
     def test_jpeg_returns_path_and_dimensions(self, test_photo_landscape, tmp_path):
         """JPEG input should return a PreparedPhoto with correct dimensions."""
@@ -22,7 +25,6 @@ class TestPreparePhotoSource:
         assert result.has_gain_map is False
 
 
-@requires_ffmpeg
 class TestAutoModeSelection:
     def test_no_face_landscape_returns_ken_burns(self):
         config = PhotoConfig()
@@ -53,7 +55,6 @@ class TestAutoModeSelection:
         assert mode == AnimationMode.BLUR_BG
 
 
-@requires_ffmpeg
 class TestKenBurnsAnimation:
     def test_produces_valid_video(self, test_photo_landscape, tmp_path):
         """Ken Burns should produce a video with correct resolution and duration."""
