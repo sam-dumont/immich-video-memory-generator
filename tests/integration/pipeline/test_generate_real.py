@@ -8,6 +8,7 @@ No mocks. Real FFmpeg, real Immich, real data.
 from __future__ import annotations
 
 import logging
+from datetime import date
 
 import pytest
 
@@ -66,6 +67,8 @@ class TestGenerateMemoryRealImmich:
             transition="crossfade",
             output_resolution="720p",
             person_name="Test Person",
+            date_start=date(2025, 1, 1),
+            date_end=date(2025, 12, 31),
         )
         result = generate_memory(params)
 
