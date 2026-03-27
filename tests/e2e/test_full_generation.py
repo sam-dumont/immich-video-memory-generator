@@ -222,7 +222,7 @@ def test_full_generation_pipeline(
         try:
             status = page.locator(".q-linear-progress + *").first.text_content(timeout=500)
             if status and i % 2 == 0:
-                print(f"   ⏳ [{i*15}s] {status}")
+                print(f"   ⏳ [{i * 15}s] {status}")
         except Exception:
             pass
 
