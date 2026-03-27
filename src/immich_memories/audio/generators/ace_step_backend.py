@@ -293,7 +293,19 @@ class ACEStepBackend(MusicGenerator):
             )
 
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _run_pipeline)
+        try:
+            await loop.run_in_executor(None, _run_pipeline)
+        except Exception as exc:
+            # WHY: ACE-Step saves audio via soundfile BEFORE attempting
+            # torchcodec post-processing. If torchcodec fails (missing
+            # libtorchcodec, ABI mismatch), the wav is already on disk.
+            if output_path.exists() and output_path.stat().st_size > 0:
+                logger.warning(
+                    "ACE-Step post-processing failed (%s) but audio was saved — continuing",
+                    exc,
+                )
+            else:
+                raise
 
         if not output_path.exists():
             raise RuntimeError(f"ACE-Step did not produce output at {output_path}")
