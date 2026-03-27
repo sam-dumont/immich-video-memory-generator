@@ -17,6 +17,8 @@ from immich_memories.processing.assembly_config import AssemblyClip
 from tests.conftest import make_clip
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg
 
+pytestmark = [pytest.mark.integration, requires_ffmpeg]
+
 
 def _mock_extract(clips_with_paths: list[tuple[Path, str, float]]):
     """Build a patch for _extract_clips that returns AssemblyClips from local files."""
@@ -35,7 +37,6 @@ def _mock_extract(clips_with_paths: list[tuple[Path, str, float]]):
     return patch("immich_memories.generate._extract_clips", side_effect=_extract)
 
 
-@requires_ffmpeg
 class TestGenerateFlowHappyPath:
     def test_single_clip_produces_valid_video(self, test_clip_720p, tmp_path):
         """One clip in -> valid video out with video stream and nonzero duration."""
@@ -87,7 +88,6 @@ class TestGenerateFlowHappyPath:
         assert 4.0 < duration < 7.0
 
 
-@requires_ffmpeg
 class TestGenerateFlowErrors:
     def test_no_clips_raises_error(self, tmp_path):
         """Empty clip list should raise GenerationError immediately."""
@@ -139,7 +139,6 @@ class TestGenerateFlowErrors:
                 generate_memory(params)
 
 
-@requires_ffmpeg
 class TestGenerateFlowProgress:
     def test_progress_is_monotonically_increasing(self, test_clip_720p, tmp_path):
         """All progress callback values should be >= the previous value."""

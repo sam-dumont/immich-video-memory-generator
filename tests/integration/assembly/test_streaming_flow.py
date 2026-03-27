@@ -5,8 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 from immich_memories.processing.streaming_assembler import streaming_assemble_full
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg
+
+pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
 
 @dataclass
@@ -22,7 +26,6 @@ class _FakeClip:
     input_seek: float = 0.0
 
 
-@requires_ffmpeg
 class TestStreamingAssembleFull:
     def test_single_clip_valid_output(self, test_clip_720p, tmp_path):
         """One clip should produce a valid video with audio."""

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+
 from immich_memories.config_loader import Config
 from immich_memories.processing.clips import extract_clip
 from tests.integration.conftest import ffprobe_json, get_duration, requires_ffmpeg
 
+pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
-@requires_ffmpeg
+
 class TestExtractClipBehavior:
     def test_extract_segment_has_correct_duration(self, test_clip_720p, tmp_path):
         """Extracting [0.5, 2.5] from a 3s clip should produce ~2s output."""
