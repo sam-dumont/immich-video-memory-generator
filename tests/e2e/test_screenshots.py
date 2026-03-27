@@ -48,9 +48,19 @@ def _wait(page: Page) -> None:
     page.wait_for_timeout(1500)
 
 
+def _hide_warnings(page: Page) -> None:
+    """Hide warning/error alert cards that clutter screenshots."""
+    page.evaluate("""() => {
+        document.querySelectorAll('.im-alert-warning, .im-alert-error').forEach(
+            el => el.style.display = 'none'
+        );
+    }""")
+
+
 def _prep(page: Page) -> None:
     enable_demo_mode(page)
     redact_page(page)
+    _hide_warnings(page)
 
 
 def _hide_sidebar(page: Page) -> None:
@@ -148,6 +158,18 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
         trip.scroll_into_view_if_needed()
         trip.click()
         page.wait_for_timeout(1000)
+
+        # WHY: Default year is current (2026) which may have no trips.
+        # Switch to 2025 for a better screenshot with detected trips.
+        year_combo = page.get_by_role("combobox", name="Year")
+        if year_combo.is_visible(timeout=3000):
+            year_combo.click()
+            page.wait_for_timeout(300)
+            y2025 = page.get_by_role("option", name="2025")
+            if y2025.is_visible(timeout=2000):
+                y2025.click()
+                page.wait_for_timeout(1000)
+
         _prep(page)
         _save(page, d, _name("trip-preset", theme))
         _save(page, d, _name("type-trip", theme))
@@ -167,6 +189,28 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
     if year_btn.is_visible(timeout=3000):
         year_btn.click()
         page.wait_for_timeout(500)
+
+    # WHY: Low target duration prevents "exceeds available content" warning in step2.
+    # NiceGUI/Quasar inputs need JS injection — get_by_label + fill doesn't trigger state.
+    page.evaluate("""() => {
+        const fields = document.querySelectorAll('.q-field');
+        for (const field of fields) {
+            const label = field.querySelector('.q-field__label');
+            if (label && label.textContent.includes('Target Duration')) {
+                const input = field.querySelector('input');
+                if (input) {
+                    const nativeSet = Object.getOwnPropertyDescriptor(
+                        HTMLInputElement.prototype, 'value'
+                    ).set;
+                    nativeSet.call(input, '1');
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                break;
+            }
+        }
+    }""")
+    page.wait_for_timeout(500)
 
     # ════════════════════════════════════════════════════════════════
     # STEP 2: Clip Review
@@ -204,23 +248,34 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
     _save(page, d, _name("hero-step2", theme))
     _show_sidebar(page)
 
-    # Grid view
+    # Grid view — scroll past controls to show clip thumbnails
     grid_btn = page.locator('button:has(i:text("grid_view"))')
     if grid_btn.is_visible(timeout=3000):
         grid_btn.evaluate("el => el.click()")
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(2000)
+        _wait(page)
+        # WHY: The clips section is below the fold; scroll the grid toggle into view
+        new_grid_btn = page.locator('button:has(i:text("grid_view"))')
+        if new_grid_btn.is_visible(timeout=5000):
+            new_grid_btn.scroll_into_view_if_needed()
+            page.wait_for_timeout(1000)
         _prep(page)
         _save(page, d, _name("step2-grid", theme))
 
-    # List view
+    # List view — scroll past controls to show month expansions
     list_btn = page.locator('button:has(i:text("view_list"))')
     if list_btn.is_visible(timeout=3000):
         list_btn.evaluate("el => el.click()")
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(2000)
+        _wait(page)
+        new_list_btn = page.locator('button:has(i:text("view_list"))')
+        if new_list_btn.is_visible(timeout=5000):
+            new_list_btn.scroll_into_view_if_needed()
+            page.wait_for_timeout(1000)
         _prep(page)
         _save(page, d, _name("step2-list", theme))
 
-    # Expand first month
+    # Expand first month in list view
     month_button = page.locator("button").filter(has_text=r"\(\d+ clips?\)").first
     if month_button.is_visible():
         month_button.scroll_into_view_if_needed()
@@ -250,6 +305,32 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
         cont.evaluate("el => el.click()")
         page.wait_for_url("**/step3", timeout=30_000)
         _wait(page)
+
+        # WHY: No LLM runs during screenshot tests, so title fields are empty.
+        # Inject realistic values via JS to show the cinematic title screen feature.
+        page.evaluate("""() => {
+            const nativeSet = Object.getOwnPropertyDescriptor(
+                HTMLInputElement.prototype, 'value'
+            ).set;
+            const fields = document.querySelectorAll('.q-field');
+            for (const field of fields) {
+                const label = field.querySelector('.q-field__label');
+                const input = field.querySelector('input');
+                if (!label || !input) continue;
+                const text = label.textContent.trim();
+                if (text === 'Title') {
+                    nativeSet.call(input, 'Summer in Provence');
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                } else if (text === 'Subtitle') {
+                    nativeSet.call(input, 'June – August 2025');
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+        }""")
+        page.wait_for_timeout(500)
+
+        page.evaluate("window.scrollTo(0, 0)")
+        page.wait_for_timeout(300)
         _prep(page)
         _save(page, d, _name("step3-options", theme))
         _save(page, d, _name("step3-basic", theme))
@@ -264,9 +345,9 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
             _save(page, d, _name("step3-advanced", theme))
 
         # LLM title fields
-        title_input = page.get_by_label("Title")
-        if title_input.is_visible(timeout=3000):
-            title_input.scroll_into_view_if_needed()
+        title_field = page.get_by_label("Title")
+        if title_field.is_visible(timeout=3000):
+            title_field.scroll_into_view_if_needed()
             _prep(page)
             _save(page, d, _name("llm-title-step3", theme))
 

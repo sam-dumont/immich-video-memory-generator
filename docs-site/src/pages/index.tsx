@@ -140,7 +140,7 @@ const showcaseItems: ShowcaseItem[] = [
   {
     title: 'AI music generation',
     description: 'A vision LLM detects the mood of your clips. ACE-Step or MusicGen creates an original soundtrack. Audio ducking lowers music during speech.',
-    image: '/img/screenshots/step3-music-preview.png',
+    image: '/img/screenshots/step3-options.png',
     alt: 'Music preview and generation options',
   },
 ];
