@@ -154,7 +154,10 @@ class RunTracker:
             extra_metrics=extra_metrics or {},
         )
 
-        self.db.save_phase_stats(self.run_id, stats)
+        try:
+            self.db.save_phase_stats(self.run_id, stats)
+        except Exception as exc:
+            logger.warning("Failed to save phase stats for '%s': %s", stats.phase_name, exc)
 
         logger.debug(
             f"Completed phase: {self._current_phase} "
