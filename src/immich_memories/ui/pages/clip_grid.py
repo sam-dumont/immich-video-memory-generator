@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import base64
 from collections import defaultdict
+from datetime import datetime
 
 from nicegui import ui
 
-from immich_memories.api.models import VideoClipInfo
+from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.ui.components import im_badge
 from immich_memories.ui.pages.step2_helpers import (
     format_duration,
@@ -16,6 +17,23 @@ from immich_memories.ui.pages.step2_helpers import (
 from immich_memories.ui.state import get_app_state
 
 CLIPS_PER_PAGE = 20
+
+# Union type for items in the mixed grid
+GridItem = VideoClipInfo | Asset
+
+
+def grid_item_date(item: GridItem) -> datetime:
+    """Extract file_created_at from either a VideoClipInfo or an Asset."""
+    if isinstance(item, VideoClipInfo):
+        return item.asset.file_created_at
+    return item.file_created_at
+
+
+def grid_item_id(item: GridItem) -> str:
+    """Extract the asset ID from either a VideoClipInfo or an Asset."""
+    if isinstance(item, VideoClipInfo):
+        return item.asset.id
+    return item.id
 
 
 def clip_quality_score(c: VideoClipInfo) -> tuple[int, int, int, int]:
@@ -282,6 +300,102 @@ def _render_clip_card(
         checkbox.on_value_change(make_toggle_handler(clip.asset.id))
 
 
+def _render_photo_card(
+    photo: Asset,
+    state,
+    all_clips: list[VideoClipInfo],
+    summary_container: ui.element,
+) -> None:
+    """Render a single photo card in the list view."""
+    is_selected = photo.id in state.selected_photo_ids
+
+    with (
+        ui.card()
+        .classes("p-2 rounded-xl")
+        .style("background-color: var(--im-bg-elevated); border: 1px solid var(--im-border)")
+    ):
+        _render_clip_thumbnail(photo.id)
+
+        with ui.row().classes("gap-1 flex-wrap"):
+            im_badge("Photo", variant="analysis")
+            if photo.is_favorite:
+                ui.icon("star").classes("text-xs").style("color: var(--im-warning)")
+
+        date_str = photo.file_created_at.strftime("%b %d %H:%M")
+        ui.label(date_str).classes("font-semibold text-sm").style("color: var(--im-text)")
+
+        filename = photo.original_file_name or "Unknown"
+        if len(filename) > 20:
+            filename = filename[:17] + "..."
+        ui.label(filename).classes("text-xs truncate").style("color: var(--im-text-secondary)")
+
+        def make_photo_toggle(photo_id: str):
+            def toggle(e):
+                value = e.value if hasattr(e, "value") else e
+                if value:
+                    state.selected_photo_ids.add(photo_id)
+                else:
+                    state.selected_photo_ids.discard(photo_id)
+                _update_duration_summary(all_clips, summary_container)
+
+            return toggle
+
+        checkbox = ui.checkbox("Include", value=is_selected)
+        checkbox.on_value_change(make_photo_toggle(photo.id))
+
+
+def _render_compact_photo_thumbnail(
+    photo: Asset,
+    state,
+    all_clips: list[VideoClipInfo],
+    summary_container: ui.element,
+) -> None:
+    """Render a single compact photo thumbnail cell with selection overlay."""
+    is_selected = photo.id in state.selected_photo_ids
+    tooltip = f"Photo | {photo.file_created_at.strftime('%b %d, %Y %H:%M')}"
+
+    def make_click_handler(photo_id: str):
+        def toggle():
+            if photo_id in state.selected_photo_ids:
+                state.selected_photo_ids.discard(photo_id)
+            else:
+                state.selected_photo_ids.add(photo_id)
+            _update_duration_summary(all_clips, summary_container)
+            ui.navigate.to("/step2")
+
+        return toggle
+
+    border = "2px solid var(--im-primary)" if is_selected else "1px solid var(--im-border)"
+    with (
+        ui.element("div")
+        .classes("relative cursor-pointer aspect-video rounded-lg overflow-hidden")
+        .style(f"border: {border}")
+        .tooltip(tooltip)
+        .on("click", make_click_handler(photo.id))
+    ):
+        thumb = get_thumbnail(photo.id)
+        if thumb:
+            b64 = base64.b64encode(thumb).decode()
+            ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-full object-cover")
+        else:
+            ui.element("div").classes("w-full h-full flex items-center justify-center").style(
+                "background-color: var(--im-bg-surface)"
+            )
+
+        # Camera icon badge in top-left to distinguish from videos
+        ui.icon("photo_camera", color="white", size="16px").classes("absolute top-1 left-1").style(
+            "filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5))"
+        )
+
+        if is_selected:
+            ui.element("div").classes("absolute inset-0").style(
+                "background: rgba(66, 80, 175, 0.25)"
+            )
+            ui.icon("check_circle", color="white", size="20px").classes(
+                "absolute top-1 right-1"
+            ).style("filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5))")
+
+
 def _build_clip_tooltip(clip: VideoClipInfo) -> str:
     """Build hover tooltip text for compact grid view."""
     parts = []
@@ -455,6 +569,133 @@ def _render_clip_grid_paginated(
                         summary_container,
                     )
                 still_remaining = remaining_clips[page_size:]
+                if still_remaining:
+                    with btn_ctr:
+                        ui.button(
+                            f"Show more ({len(still_remaining)} remaining)",
+                            on_click=lambda sr=still_remaining: load_more(sr, parent, btn_ctr),
+                        ).props("outline")
+
+            ui.button(
+                f"Show more ({len(remaining)} remaining)",
+                on_click=load_more,
+            ).props("outline")
+
+
+def _render_mixed_grid(
+    items: list[GridItem],
+    duplicate_ids: set[str],
+    lower_quality_ids: set[str],
+    summary_container: ui.element,
+) -> None:
+    """Render a mixed grid of video clips and photos, sorted chronologically."""
+    state = get_app_state()
+    all_clips = state.clips
+
+    with ui.element("div").classes(
+        "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
+    ):
+        for item in items:
+            if isinstance(item, VideoClipInfo):
+                _render_clip_card(
+                    item, state, all_clips, duplicate_ids, lower_quality_ids, summary_container
+                )
+            else:
+                _render_photo_card(item, state, all_clips, summary_container)
+
+
+def _render_mixed_grid_paginated(
+    items: list[GridItem],
+    duplicate_ids: set[str],
+    lower_quality_ids: set[str],
+    summary_container: ui.element,
+    page_size: int = CLIPS_PER_PAGE,
+) -> None:
+    """Render a paginated mixed grid of video clips and photos."""
+    if len(items) <= page_size:
+        _render_mixed_grid(items, duplicate_ids, lower_quality_ids, summary_container)
+        return
+
+    grid_container = ui.column().classes("w-full")
+    with grid_container:
+        _render_mixed_grid(items[:page_size], duplicate_ids, lower_quality_ids, summary_container)
+
+    remaining = items[page_size:]
+    if remaining:
+        btn_container = ui.row().classes("w-full justify-center mt-2")
+        with btn_container:
+
+            def load_more(
+                remaining_items=remaining,
+                parent=grid_container,
+                btn_ctr=btn_container,
+            ):
+                btn_ctr.clear()
+                with parent:
+                    _render_mixed_grid(
+                        remaining_items[:page_size],
+                        duplicate_ids,
+                        lower_quality_ids,
+                        summary_container,
+                    )
+                still_remaining = remaining_items[page_size:]
+                if still_remaining:
+                    with btn_ctr:
+                        ui.button(
+                            f"Show more ({len(still_remaining)} remaining)",
+                            on_click=lambda sr=still_remaining: load_more(sr, parent, btn_ctr),
+                        ).props("outline")
+
+            ui.button(
+                f"Show more ({len(remaining)} remaining)",
+                on_click=load_more,
+            ).props("outline")
+
+
+def _render_compact_mixed_grid(
+    items: list[GridItem],
+    summary_container: ui.element,
+) -> None:
+    """Render a compact mixed grid of video clips and photos."""
+    state = get_app_state()
+    all_clips = state.clips
+
+    with ui.element("div").classes("grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 gap-2"):
+        for item in items:
+            if isinstance(item, VideoClipInfo):
+                _render_compact_thumbnail(item, state, all_clips, summary_container)
+            else:
+                _render_compact_photo_thumbnail(item, state, all_clips, summary_container)
+
+
+def _render_compact_mixed_grid_paginated(
+    items: list[GridItem],
+    summary_container: ui.element,
+    page_size: int = CLIPS_PER_PAGE,
+) -> None:
+    """Render a paginated compact mixed grid."""
+    if len(items) <= page_size:
+        _render_compact_mixed_grid(items, summary_container)
+        return
+
+    grid_container = ui.column().classes("w-full")
+    with grid_container:
+        _render_compact_mixed_grid(items[:page_size], summary_container)
+
+    remaining = items[page_size:]
+    if remaining:
+        btn_container = ui.row().classes("w-full justify-center mt-2")
+        with btn_container:
+
+            def load_more(
+                remaining_items=remaining,
+                parent=grid_container,
+                btn_ctr=btn_container,
+            ):
+                btn_ctr.clear()
+                with parent:
+                    _render_compact_mixed_grid(remaining_items[:page_size], summary_container)
+                still_remaining = remaining_items[page_size:]
                 if still_remaining:
                     with btn_ctr:
                         ui.button(

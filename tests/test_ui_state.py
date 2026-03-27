@@ -106,6 +106,16 @@ class TestAppStateIncludePhotos:
         state = AppState()
         assert state.photo_assets == []
 
+    def test_selected_photo_ids_starts_empty(self):
+        state = AppState()
+        assert state.selected_photo_ids == set()
+
+    def test_reset_clips_clears_selected_photo_ids(self):
+        state = AppState()
+        state.selected_photo_ids = {"p1", "p2"}
+        state.reset_clips()
+        assert state.selected_photo_ids == set()
+
 
 class TestAppStateGetSelectedClips:
     """Test get_selected_clips() method."""

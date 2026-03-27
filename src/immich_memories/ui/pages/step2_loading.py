@@ -171,6 +171,7 @@ def _load_clips() -> None:
                 status_label.set_text("Fetching photos...")
                 photo_assets = await run.io_bound(_fetch_photos, state, date_range)
                 state.photo_assets = photo_assets
+                state.selected_photo_ids = {a.id for a in photo_assets}
                 if photo_assets:
                     logger.info(f"Found {len(photo_assets)} photos")
 
@@ -178,9 +179,16 @@ def _load_clips() -> None:
             state.clips = clips
             _set_initial_selection(clips, state)
 
-            status_label.set_text(f"Found {len(clips)} videos. Loading thumbnails...")
+            photo_count = len(state.photo_assets) if state.include_photos else 0
+            total_msg = f"Found {len(clips)} videos"
+            if photo_count:
+                total_msg += f" and {photo_count} photos"
+            status_label.set_text(f"{total_msg}. Loading thumbnails...")
             progress_bar.value = 0.1
             await _load_thumbnails_and_metadata_async(clips, status_label, progress_bar)
+
+            if state.include_photos and state.photo_assets:
+                await _load_photo_thumbnails_async(state.photo_assets, status_label)
 
             loading_dialog.close()
             ui.navigate.to("/step2")
@@ -348,6 +356,39 @@ def _probe_and_cache_metadata(clip, client, state, analysis_cache) -> None:
             )
     except Exception as e:
         logger.debug(f"Failed to probe video metadata: {e}")
+
+
+async def _load_photo_thumbnails_async(
+    photo_assets: list,
+    status_label: ui.label,
+) -> None:
+    """Load thumbnails for photo assets from Immich."""
+    state = get_app_state()
+    thumbnail_cache = state.thumbnail_cache
+    if thumbnail_cache is None:
+        return
+
+    photo_ids = [a.id for a in photo_assets]
+    cached = set(thumbnail_cache.get_batch(photo_ids, "preview").keys())
+    need = [a for a in photo_assets if a.id not in cached]
+
+    if not need:
+        return
+
+    batch_size = 10
+    for i in range(0, len(need), batch_size):
+        batch = need[i : i + batch_size]
+
+        def fetch_batch(assets_batch=batch):
+            with SyncImmichClient(state.immich_url, state.immich_api_key) as client:
+                for asset in assets_batch:
+                    with contextlib.suppress(Exception):
+                        thumb = client.get_asset_thumbnail(asset.id, size="preview")
+                        if thumb:
+                            thumbnail_cache.put(asset.id, "preview", thumb)
+
+        await run.io_bound(fetch_batch)
+        status_label.set_text(f"Photo thumbnails: {min(i + batch_size, len(need))}/{len(need)}")
 
 
 def _render_cached_analysis_summary(clips: list[VideoClipInfo]) -> None:

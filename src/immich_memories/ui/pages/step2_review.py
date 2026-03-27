@@ -15,11 +15,15 @@ from immich_memories.ui.components import (
     im_separator,
 )
 from immich_memories.ui.pages.clip_grid import (
+    GridItem,
     _detect_duplicates,
     _group_clips_by_datetime,
     _render_clip_grid_paginated,
     _render_compact_grid_paginated,
+    _render_compact_mixed_grid_paginated,
+    _render_mixed_grid_paginated,
     _update_duration_summary,
+    grid_item_date,
 )
 from immich_memories.ui.pages.clip_pipeline import (
     _render_pipeline_progress_ui,
@@ -350,13 +354,30 @@ def _render_view_toggle(state) -> None:
         list_btn.tooltip("Detailed list view")
 
 
+def _build_header_label(clips: list[VideoClipInfo], state) -> str:
+    """Build the header label showing video and photo counts."""
+    photo_count = len(state.photo_assets) if state.include_photos and state.photo_assets else 0
+    if photo_count:
+        return f"{len(clips)} Videos, {photo_count} Photos Found"
+    return f"{len(clips)} Videos Found"
+
+
+def _build_mixed_items(clips: list[VideoClipInfo], state) -> list[GridItem]:
+    """Merge clips and photos into a single chronologically sorted list."""
+    if not state.include_photos or not state.photo_assets:
+        return clips.copy()  # type: ignore[return-value]
+    items: list[GridItem] = [*clips, *state.photo_assets]
+    items.sort(key=grid_item_date)
+    return items
+
+
 def _render_step2_content(
     state,
     clips: list[VideoClipInfo],
     summary_container: ui.element,
 ) -> None:
     """Render the clip grid and navigation section."""
-    im_section_header(f"{len(clips)} Videos Found", icon="video_library")
+    im_section_header(_build_header_label(clips, state), icon="video_library")
 
     duplicate_ids, lower_quality_ids = _detect_duplicates(clips)
     _auto_deselect_duplicates(state, lower_quality_ids)
@@ -376,15 +397,21 @@ def _render_step2_content(
 
         def select_all():
             state.selected_clip_ids = {c.asset.id for c in clips}
+            if state.include_photos and state.photo_assets:
+                state.selected_photo_ids = {a.id for a in state.photo_assets}
             ui.navigate.to("/step2")
 
         def deselect_all():
             state.selected_clip_ids = set()
+            state.selected_photo_ids = set()
             ui.navigate.to("/step2")
 
         def invert_selection():
             all_ids = {c.asset.id for c in clips}
             state.selected_clip_ids = all_ids - state.selected_clip_ids
+            if state.include_photos and state.photo_assets:
+                all_photo_ids = {a.id for a in state.photo_assets}
+                state.selected_photo_ids = all_photo_ids - state.selected_photo_ids
             ui.navigate.to("/step2")
 
         im_button("Select All", variant="secondary", on_click=select_all).props("dense")
@@ -393,7 +420,17 @@ def _render_step2_content(
         ui.element("div").classes("flex-grow")
         _render_view_toggle(state)
 
-    if state.clip_view_mode == "grid":
+    has_photos = state.include_photos and bool(state.photo_assets)
+
+    if has_photos:
+        mixed_items = _build_mixed_items(clips, state)
+        if state.clip_view_mode == "grid":
+            _render_compact_mixed_grid_paginated(mixed_items, summary_container)
+        else:
+            _render_mixed_grid_paginated(
+                mixed_items, duplicate_ids, lower_quality_ids, summary_container
+            )
+    elif state.clip_view_mode == "grid":
         _render_compact_grid_paginated(clips, summary_container)
     else:
         _render_period_expansions(clips, duplicate_ids, lower_quality_ids, summary_container)
@@ -446,11 +483,11 @@ def _render_step2_nav(state) -> None:
             ui.navigate.to("/")
 
         def go_next():
-            if state.selected_clip_ids:
+            if state.selected_clip_ids or state.selected_photo_ids:
                 state.review_selected_mode = True
                 ui.navigate.to("/step2")
             else:
-                ui.notify("Please select at least one clip", type="warning")
+                ui.notify("Please select at least one clip or photo", type="warning")
 
         im_button("Back to Configuration", variant="secondary", on_click=go_back, icon="arrow_back")
         im_button("Next: Refine Moments", variant="primary", on_click=go_next, icon="arrow_forward")
