@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from immich_memories.analysis.unified_budget import BudgetCandidate
 from immich_memories.api.models import Asset
@@ -113,3 +113,130 @@ class TestScoreAndSelectPhotos:
         # Total photo duration should fit within remaining budget
         total_photo_duration = len(result.selection.selected_photo_ids) * 4.0
         assert total_photo_duration <= 60.0
+
+
+class TestPreSelectionShortCircuit:
+    """_add_photos_if_enabled() skips scoring when selected_photo_ids is set."""
+
+    def test_pre_selected_skips_budget(self):
+        """When selected_photo_ids is set, skip _apply_unified_budget entirely."""
+        from immich_memories.generate import GenerationParams, _add_photos_if_enabled
+        from immich_memories.processing.assembly_config import AssemblyClip
+
+        video_clip = AssemblyClip(
+            path=MagicMock(),
+            duration=10.0,
+            date="2025-07-15T12:00:00",
+            asset_id="v1",
+        )
+
+        asset_p1 = _make_asset("p1", favorite=True)
+        asset_p2 = _make_asset("p2")
+
+        config = MagicMock()
+        config.photos = PhotoConfig()
+        config.photos.duration = 4.0
+        config.output.resolution_tuple = (1920, 1080)
+
+        params = GenerationParams(
+            clips=[MagicMock(width=1920, height=1080)],
+            output_path=MagicMock(),
+            config=config,
+            client=MagicMock(),
+            photo_assets=[asset_p1, asset_p2],
+            include_photos=True,
+            target_duration_seconds=30.0,
+            selected_photo_ids={"p1"},
+        )
+        params.client.download_asset = MagicMock()
+        params.client.get_asset_thumbnail = MagicMock()
+
+        rendered_clip = AssemblyClip(
+            path=MagicMock(),
+            duration=4.0,
+            date="2025-07-15T12:00:00",
+            asset_id="p1",
+            is_photo=True,
+        )
+
+        # WHY: mock render_photo_clips — testing pre-selection logic, not FFmpeg
+        with (
+            patch(
+                "immich_memories.photos.photo_pipeline.render_photo_clips",
+                return_value=[rendered_clip],
+            ) as mock_render,
+            patch(
+                "immich_memories.generate._apply_unified_budget",
+            ) as mock_budget,
+        ):
+            _add_photos_if_enabled([video_clip], params, MagicMock())
+
+        # Budget should NOT be called — pre-selected path
+        mock_budget.assert_not_called()
+        # render_photo_clips should be called with only asset p1
+        assert mock_render.call_count == 1
+        rendered_assets = mock_render.call_args.kwargs["assets"]
+        assert len(rendered_assets) == 1
+        assert rendered_assets[0].id == "p1"
+
+    def test_no_pre_selection_falls_through(self):
+        """When selected_photo_ids is None, use existing _apply_unified_budget path."""
+        from immich_memories.generate import GenerationParams, _add_photos_if_enabled
+        from immich_memories.processing.assembly_config import AssemblyClip
+
+        video_clip = AssemblyClip(
+            path=MagicMock(),
+            duration=10.0,
+            date="2025-07-15T12:00:00",
+            asset_id="v1",
+        )
+
+        config = MagicMock()
+        config.photos = PhotoConfig()
+        config.photos.duration = 4.0
+
+        params = GenerationParams(
+            clips=[MagicMock(width=1920, height=1080)],
+            output_path=MagicMock(),
+            config=config,
+            client=MagicMock(),
+            photo_assets=[_make_asset("p1")],
+            include_photos=True,
+            target_duration_seconds=30.0,
+            selected_photo_ids=None,
+        )
+
+        # WHY: mock _apply_unified_budget — testing routing logic, not budget math
+        with patch(
+            "immich_memories.generate._apply_unified_budget",
+            return_value=([video_clip], []),
+        ) as mock_budget:
+            _add_photos_if_enabled([video_clip], params, MagicMock())
+
+        mock_budget.assert_called_once()
+
+
+class TestAppStatePhotoFields:
+    """AppState has photo scoring/selection fields."""
+
+    def test_state_has_photo_selection_fields(self):
+        from immich_memories.ui.state import AppState
+
+        state = AppState()
+        assert state.scored_photos == []
+        assert state.selected_photo_ids == set()
+        assert state.photo_budget_result is None
+
+    def test_reset_clips_clears_photo_selection(self):
+        from immich_memories.ui.state import AppState
+
+        state = AppState()
+        state.scored_photos = [("fake_asset", 0.8)]
+        state.selected_photo_ids = {"p1", "p2"}
+        state.photo_budget_result = "fake_result"
+
+        state.reset_clips()
+
+        assert state.scored_photos == []
+        assert state.selected_photo_ids == set()
+        assert state.photo_budget_result is None
