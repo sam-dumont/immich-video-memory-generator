@@ -228,6 +228,9 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
         return
     try:
         page.wait_for_selector('[role="dialog"]', timeout=5_000)
+        # Capture loading/analysis state while dialog is visible
+        _prep(page)
+        _save(page, d, _name("step2-fresh-analysis", theme))
     except Exception:
         pass
     page.wait_for_function(
@@ -375,6 +378,35 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
         _hide_sidebar(page)
         _save(page, d, _name("hero-step4", theme))
         _show_sidebar(page)
+    except Exception:
+        pass
+
+    # ════════════════════════════════════════════════════════════════
+    # STEP 4: Generation (requires FFmpeg — captures generating + complete)
+    # ════════════════════════════════════════════════════════════════
+    try:
+        gen_btn = page.get_by_role("button", name="Generate")
+        if gen_btn.is_visible(timeout=3000):
+            gen_btn.click()
+            # Wait for progress to appear
+            page.wait_for_timeout(3000)
+            _prep(page)
+            _save(page, d, _name("step4-generating", theme))
+            _save(page, d, _name("pipeline-loading", theme))
+
+            # Wait for generation to complete (up to 10 minutes)
+            try:
+                page.wait_for_selector("text=Generation complete", timeout=600_000)
+                page.wait_for_timeout(1000)
+                _prep(page)
+                _save(page, d, _name("step4-complete", theme))
+
+                # Hero: no sidebar
+                _hide_sidebar(page)
+                _save(page, d, _name("hero-step4-complete", theme))
+                _show_sidebar(page)
+            except Exception:
+                pass  # Generation may timeout — pre-generate screenshots still captured
     except Exception:
         pass
 

@@ -5,9 +5,32 @@ title: Automated Generation
 
 # Automated Generation
 
-Once you know your preferred settings, automate the whole thing. Two paths: the built-in scheduler daemon (recommended) or classic cron/scripts.
+Once you know your preferred settings, automate the whole thing. Three paths: smart automation (recommended), the built-in scheduler daemon, or classic cron/scripts.
 
-## Built-in Scheduler (Recommended)
+## Smart Automation (Recommended)
+
+The `auto` system scans your library, detects what's worth turning into a memory video, and generates the best candidate. It runs 8 detectors (monthly, yearly, trips, person spotlights, birthdays, activity bursts, on-this-day, multi-person pairs) and picks the highest-scoring one.
+
+```bash
+# See what it would generate
+immich-memories auto suggest
+
+# Generate the top candidate
+immich-memories auto run
+
+# Set up daily automatic runs (launchd on macOS, systemd on Linux)
+immich-memories auto install --hour 9
+```
+
+Each run generates one memory, then applies cooldowns so the next run picks something different. Over a week of daily runs, you get a diverse mix: monthlies, birthday videos, trip compilations, year-in-reviews.
+
+See [auto CLI docs](../cli/auto.md) for the full reference including detector details and scoring.
+
+## Built-in Scheduler
+
+:::tip Use smart automation instead
+Most users should use the `auto` system above — it figures out what to generate automatically. The scheduler below is for Docker/K8s deployments or when you need exact control over what generates when (specific memory types on specific dates).
+:::
 
 The scheduler daemon runs inside immich-memories and handles timezone-aware cron, auto-resolved date parameters, and upload-back. No shell scripting required.
 
@@ -59,9 +82,9 @@ immich-memories generate \
   --resolution 1080p
 ```
 
-## Cron Job
+## Cron Job (Legacy)
 
-Old-school but works. Generate a yearly memory video every January 1st:
+Old-school but works. Consider `auto install` instead — it generates the right cron/launchd/systemd config for you. Generate a yearly memory video every January 1st:
 
 ```bash
 # crontab -e

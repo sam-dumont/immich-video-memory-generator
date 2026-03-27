@@ -76,6 +76,7 @@ immich-memories generate [OPTIONS]
 | `--privacy-mode` | — | flag | — | Blur all video and mute speech |
 | `--include-live-photos` | — | flag | — | Include Live Photo video clips (merged when burst-captured) |
 | `--keep-intermediates` | — | flag | — | Keep intermediate files for debugging |
+| `--quiet` | — | flag | — | Suppress interactive progress, emit log lines only |
 
 ### Upload
 
