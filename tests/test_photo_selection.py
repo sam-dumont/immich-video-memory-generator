@@ -240,3 +240,109 @@ class TestAppStatePhotoFields:
         assert state.scored_photos == []
         assert state.selected_photo_ids == set()
         assert state.photo_budget_result is None
+
+
+class TestStep4PassesPreSelectedPhotos:
+    """Step 4 passes selected_photo_ids from state to GenerationParams."""
+
+    def test_build_generation_params_includes_selected_photo_ids(self):
+        state = MagicMock()
+        state.generation_options = {}
+        state.selected_person = None
+        state.date_range = None
+        state.include_photos = True
+        state.photo_assets = [_make_asset("p1")]
+        state.photo_duration = 4.0
+        state.config = MagicMock()
+        state.config.photos.duration = 4.0
+        state.immich_url = "http://localhost:2283"
+        state.immich_api_key = "test-key"
+        state.demo_mode = False
+        state.memory_type = None
+        state.memory_preset_params = {}
+        state.title_suggestion_title = None
+        state.title_suggestion_subtitle = None
+        state.clip_segments = {}
+        state.clip_rotations = {}
+        state.target_duration = 10
+        state.selected_photo_ids = {"p1"}
+
+        with patch("immich_memories.api.immich.SyncImmichClient"):
+            from immich_memories.ui.pages._step4_generate import _build_generation_params
+
+            params = _build_generation_params(state, [], MagicMock())
+
+        assert params.selected_photo_ids == {"p1"}
+
+    def test_build_generation_params_none_when_empty_selection(self):
+        state = MagicMock()
+        state.generation_options = {}
+        state.selected_person = None
+        state.date_range = None
+        state.include_photos = True
+        state.photo_assets = [_make_asset("p1")]
+        state.photo_duration = 4.0
+        state.config = MagicMock()
+        state.config.photos.duration = 4.0
+        state.immich_url = "http://localhost:2283"
+        state.immich_api_key = "test-key"
+        state.demo_mode = False
+        state.memory_type = None
+        state.memory_preset_params = {}
+        state.title_suggestion_title = None
+        state.title_suggestion_subtitle = None
+        state.clip_segments = {}
+        state.clip_rotations = {}
+        state.target_duration = 10
+        state.selected_photo_ids = set()
+
+        with patch("immich_memories.api.immich.SyncImmichClient"):
+            from immich_memories.ui.pages._step4_generate import _build_generation_params
+
+            params = _build_generation_params(state, [], MagicMock())
+
+        assert params.selected_photo_ids is None
+
+
+class TestEndToEndPhotoFlow:
+    """Full flow: score → store on state → pass to generation → skip re-scoring."""
+
+    def test_full_ui_photo_flow(self, tmp_path):
+        from immich_memories.generate import GenerationParams
+
+        assets = [_make_asset("p1", favorite=True), _make_asset("p2"), _make_asset("p3")]
+        video_candidates = [_make_video_candidate("v1", 10.0), _make_video_candidate("v2", 8.0)]
+
+        config = MagicMock()
+        config.photos = PhotoConfig()
+        config.photos.duration = 4.0
+        config.photos.max_ratio = 0.50
+        config.title_screens.enabled = False
+
+        result = score_and_select_photos(
+            photo_assets=assets,
+            video_candidates=video_candidates,
+            config=config,
+            target_duration=60.0,
+            work_dir=tmp_path,
+            download_fn=MagicMock(),
+        )
+
+        assert len(result.scored_photos) > 0
+        selected_ids = set(result.selection.selected_photo_ids)
+        assert len(selected_ids) > 0
+
+        config.output = MagicMock()
+        config.output.resolution_tuple = (1920, 1080)
+        params = GenerationParams(
+            clips=[MagicMock(width=1920, height=1080)],
+            output_path=tmp_path / "output.mp4",
+            config=config,
+            include_photos=True,
+            photo_assets=assets,
+            target_duration_seconds=60.0,
+            selected_photo_ids=selected_ids,
+        )
+
+        assert params.selected_photo_ids == selected_ids
+        assert params.selected_photo_ids is not None
