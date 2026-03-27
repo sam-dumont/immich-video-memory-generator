@@ -118,3 +118,5 @@ var/
 venv.bak/
 venv/
 wheels/
+.superpowers/
+.nicegui/

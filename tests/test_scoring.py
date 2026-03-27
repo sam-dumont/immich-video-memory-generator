@@ -17,12 +17,15 @@ try:
 except ImportError:
     pytest.skip("cv2/numpy not available", allow_module_level=True)
 
+from immich_memories.analysis.scenes import Scene
 from immich_memories.analysis.scoring import (
     MomentScore,
     SceneScorer,
     compute_duration_score,
     compute_face_score,
     compute_motion_metrics,
+    generate_segments,
+    subdivide_scene,
 )
 from immich_memories.config_models import AnalysisConfig, ContentAnalysisConfig
 
@@ -404,3 +407,159 @@ class TestSceneScorerIntegration:
 
         assert len(moments) >= 1
         assert all(isinstance(m, MomentScore) for m in moments)
+
+
+# ---------------------------------------------------------------------------
+# Gap coverage: duration scaling, subdivision, weight normalization
+# ---------------------------------------------------------------------------
+
+
+class TestDurationScoreLongSource:
+    def test_long_source_scales_optimal_up(self):
+        """A 70s source video should shift optimal above base, penalizing short clips."""
+        score_short_source = compute_duration_score(
+            duration=5.0,
+            source_duration=15.0,
+            optimal_duration=5.0,
+            max_optimal_duration=10.0,
+            target_extraction_ratio=0.15,
+            min_duration=2.0,
+        )
+        score_long_source = compute_duration_score(
+            duration=5.0,
+            source_duration=70.0,
+            optimal_duration=5.0,
+            max_optimal_duration=10.0,
+            target_extraction_ratio=0.15,
+            min_duration=2.0,
+        )
+
+        # 5s is optimal for short source but below optimal for long source
+        assert score_short_source > score_long_source
+
+    def test_very_long_clip_penalized(self):
+        """A 20s clip should score lower than a 5s clip for a normal source."""
+        short = compute_duration_score(
+            duration=5.0,
+            source_duration=15.0,
+            optimal_duration=5.0,
+            max_optimal_duration=10.0,
+            target_extraction_ratio=0.15,
+            min_duration=2.0,
+        )
+        long = compute_duration_score(
+            duration=20.0,
+            source_duration=15.0,
+            optimal_duration=5.0,
+            max_optimal_duration=10.0,
+            target_extraction_ratio=0.15,
+            min_duration=2.0,
+        )
+
+        assert short > long
+
+
+class TestSubdivideScene:
+    def test_stays_within_scene_bounds(self):
+        """All sub-segments must be within the original scene's time range."""
+        scene = Scene(start_time=10.0, end_time=30.0, start_frame=300, end_frame=900)
+        subs = subdivide_scene(scene, target_duration=5.0, overlap=0.5, fps=30.0)
+
+        for s in subs:
+            assert s.start_time >= 10.0
+            assert s.end_time <= 30.0
+
+    def test_overlap_produces_shared_time(self):
+        """50% overlap means second segment starts halfway through first."""
+        scene = Scene(start_time=0.0, end_time=20.0, start_frame=0, end_frame=600)
+        subs = subdivide_scene(scene, target_duration=5.0, overlap=0.5, fps=30.0)
+
+        assert len(subs) >= 2
+        assert abs(subs[1].start_time - 2.5) < 0.01
+
+
+class TestWeightNormalization:
+    def test_weights_summing_to_two_get_normalized(self):
+        """Weights that don't sum to 1.0 should be auto-normalized."""
+        from immich_memories.config_loader import Config
+
+        config = Config()
+        scorer = SceneScorer(
+            face_weight=0.7,
+            motion_weight=0.4,
+            stability_weight=0.3,
+            audio_weight=0.3,
+            content_weight=0.0,
+            duration_weight=0.3,
+            content_analysis_config=config.content_analysis,
+            analysis_config=config.analysis,
+        )
+        total = (
+            scorer.face_weight
+            + scorer.motion_weight
+            + scorer.stability_weight
+            + scorer.audio_weight
+            + scorer.content_weight
+            + scorer.duration_weight
+        )
+
+        assert abs(total - 1.0) < 0.001
+
+
+class TestGenerateSegmentsEdgeCases:
+    def test_short_video_single_segment(self, tmp_path):
+        """Video shorter than segment_duration produces one full-length segment."""
+        clip = tmp_path / "short.mp4"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=320x240:rate=30:duration=2",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                str(clip),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=15,
+        )
+
+        segments = generate_segments(clip, segment_duration=5.0, overlap=0.5)
+
+        assert len(segments) == 1
+        assert segments[0].start_time == 0
+        assert abs(segments[0].end_time - 2.0) < 0.5
+
+    def test_partial_final_segment_included(self, tmp_path):
+        """Final partial segment >= 50% of segment_duration should be included."""
+        clip = tmp_path / "medium.mp4"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=320x240:rate=30:duration=8",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                str(clip),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=15,
+        )
+
+        segments = generate_segments(clip, segment_duration=5.0, overlap=0.5)
+
+        assert len(segments) >= 2
+        for s in segments:
+            assert s.start_time >= 0
+            assert s.end_time <= 8.5
