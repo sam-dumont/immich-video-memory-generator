@@ -68,6 +68,7 @@ photos:
   enabled: true           # Include photos in memories
   max_ratio: 0.50         # Max 50% of clips can be photos
   duration: 4.0           # Seconds per photo clip
+  collage_duration: 6.0   # Seconds per collage clip
   animation_mode: auto    # auto | ken_burns | face_zoom | blur_bg
   enable_collage: true    # Group series as collages
   series_gap_seconds: 60  # Max gap to group as series

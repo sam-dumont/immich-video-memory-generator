@@ -13,7 +13,7 @@ Title screens are the structural connective tissue: animated intro cards, month 
 
 Depending on the memory type, title screens include some or all of:
 
-- **Intro card**: animated gradient background, stylized title text with entrance animation, optional subtitle (person name, date range). 3.5 seconds.
+- **Intro card**: content-backed background (blurred + darkened frame from your footage), white title text with entrance animation, optional subtitle (person name, date range). 3.5 seconds.
 - **Month dividers**: for yearly memories, each month section gets a divider card. Keeps the viewer oriented in a 10-minute video.
 - **Trip map animation**: satellite fly-over from home to destination using Van Wijk zoom. Replaces the generic intro for trip memories.
 - **Globe rendering**: for long-distance trips, a rotating 3D globe with departure and arrival points. Built in Taichi, runs on GPU when available.
@@ -32,19 +32,42 @@ The system picks the best renderer available on your hardware:
 
 The renderer selection is automatic. You don't need to configure anything: if you have a GPU, you get particles and animations. If you don't, you get clean static cards. Both look intentional.
 
+## Content-backed backgrounds
+
+By default, title screens use a frame from your actual footage as the background. The system extracts a frame at the 1/3 mark of the first clip, applies a heavy blur (40px) and darkens it (45%), then renders white text on top. This means every title screen looks like it belongs to the video it introduces, rather than using a generic gradient.
+
+An optional slow-motion background effect uses Catmull-Rom interpolation with cubic ease-in timing to animate the blurred background during the title card. Falls back to a static blurred frame when disabled.
+
 ## Visual styles
 
-Five built-in styles, each with its own color palette, font pairing, and animation character:
+All styles use dark cinematic palettes with white text. No pastel or bright backgrounds. Five named styles are available:
 
-| Style | Vibe |
-|-------|------|
-| `modern_warm` | Warm amber gradients, clean sans-serif |
-| `elegant_minimal` | Dark backgrounds, thin serif, subtle particle drift |
-| `vintage_charm` | Muted earth tones, slightly textured |
-| `playful_bright` | Saturated colors, bouncy text animations |
-| `soft_romantic` | Pastel gradients, gentle fades |
+| Style | Palette | Character |
+|-------|---------|-----------|
+| `modern_warm` | Warm charcoal/stone | Bold, semibold Montserrat. Amber accents. |
+| `elegant_minimal` | Deep navy/black | Clean, medium weight. Cyan accents. |
+| `vintage_charm` | Warm charcoal | Nostalgic feel. Amber/gold accents. |
+| `playful_bright` | Midnight slate | Energetic, semibold. Purple accents. |
+| `soft_romantic` | Warm stone/zinc | Gentle fades. Warm amber accents. |
 
-Set a style in config or pass `--style` to the titles CLI. Default is `random` (picks one per generation).
+### Mood-based selection (default)
+
+By default (`style_mode: auto`), the system picks the style based on the video's detected mood. Each mood maps to a color palette, font family, animation preset, and font weight:
+
+| Mood | Palette | Font | Animation |
+|------|---------|------|-----------|
+| happy | warm_dark | Quicksand | fade_up |
+| calm | deep_teal | Raleway | slow_fade |
+| energetic | midnight | Outfit | smooth_slide |
+| nostalgic | warm_dark | Josefin Sans | slow_fade |
+| romantic | warm_dark | Josefin Sans | gentle_scale |
+| playful | midnight | Quicksand | fade_up |
+| peaceful | deep_teal | Raleway | slow_fade |
+| exciting | cinematic_dark | Outfit | smooth_slide |
+
+Four color palettes are available: `cinematic_dark` (deep navy), `warm_dark` (warm stone/charcoal), `deep_teal` (ocean blue/teal), `midnight` (slate). All use white or near-white text.
+
+Set `style_mode: random` to pick a named style at random instead of using mood detection. Or pass `--style elegant_minimal` to the titles CLI to force a specific style.
 
 ## Map Animation
 
@@ -100,6 +123,7 @@ title_screens:
   animated_background: true     # GPU-accelerated backgrounds (auto-detected)
   title_duration: 3.5           # seconds per title card
   locale: auto                  # auto, en, or fr
+  show_decorative_lines: false  # subtle line accents
   show_month_dividers: true     # month dividers in yearly memories
   use_first_name_only: true     # "Emma" instead of "Emma Dumont"
 ```

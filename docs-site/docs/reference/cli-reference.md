@@ -103,19 +103,96 @@ immich-memories generate [OPTIONS]
 | `--start` | text | - | Start date (YYYY-MM-DD or DD/MM/YYYY) |
 | `--end` | text | - | End date (use with --start) |
 | `--period` | text | - | Period from start date (e.g., 6m, 1y, 2w) |
-| `--birthday`, `-b` | text | - | Birthday date for year calculation (use with --year) |
-| `--person`, `-p` | text | - | Person name to filter by |
+| `--birthday`, `-b` | flag/text | - | Birthday-based year. Bare flag auto-detects from Immich; or pass MM/DD |
+| `--memory-type` | choice | - | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `trip` |
+| `--person`, `-p` | text | - | Person name to filter by (repeatable) |
+| `--season` | choice | - | `spring`, `summer`, `fall`, `autumn`, `winter` |
+| `--month` | integer | - | Month 1-12 (narrows yearly types; selects trip by month) |
+| `--hemisphere` | choice | north | `north` or `south` (for season calculation) |
+| `--years-back` | integer | all | Years to look back for `on_this_day` |
 | `--duration`, `-d` | integer | - | Target duration in seconds |
 | `--orientation`, `-o` | choice | landscape | Output orientation |
+| `--resolution`, `-r` | choice | auto | `auto`, `4k`, `1080p`, `720p` |
 | `--scale-mode`, `-s` | choice | blur | Scaling mode |
 | `--transition`, `-t` | choice | smart | Transition style |
 | `--quality` | choice | high | Output quality (high, medium, low) |
+| `--format` | choice | mp4 | `mp4` or `prores` |
 | `--output`, `-O` | path | - | Output file path |
-| `--music`, `-m` | path | - | Background music file |
-| `--analysis-depth` | choice | fast | Analysis depth: `fast` (LLM for favorites only) or `thorough` (LLM for top candidates) |
-| `--include-photos` | boolean | false | Include photos alongside videos |
+| `--title` | text | - | Override title screen text |
+| `--subtitle` | text | - | Override subtitle text |
+| `--add-date` | flag | false | Add date overlay to clips |
+| `--music`, `-m` | text | - | Path to audio file, or `auto` to generate |
+| `--no-music` | flag | false | Disable all music |
+| `--music-volume` | float | 0.5 | Music volume 0.0-1.0 |
+| `--analysis-depth` | choice | fast | `fast` (LLM for favorites only) or `thorough` (LLM for top candidates) |
+| `--include-photos` | flag | false | Include photos alongside videos |
 | `--photo-duration` | float | 4.0 | Seconds per photo clip |
-| `--dry-run` | boolean | false | Show what would be done without generating |
+| `--include-live-photos` | flag | false | Include Live Photo video clips |
+| `--privacy-mode` | flag | false | Blur all video and mute speech |
+| `--keep-intermediates` | flag | false | Keep intermediate files for debugging |
+| `--upload-to-immich` | flag | false | Upload generated video back to Immich |
+| `--album` | text | - | Album name for uploaded video |
+| `--trip-index` | integer | - | Select a specific trip by index |
+| `--all-trips` | flag | false | Generate for every detected trip |
+| `--near-date` | text | - | Select trip closest to this date (YYYY-MM-DD) |
+| `--dry-run` | flag | false | Show what would be done without generating |
+| `--quiet` | flag | false | Suppress interactive progress, emit log lines |
+
+## `auto`
+
+Smart automation: detect, score, and generate memory candidates from your library.
+
+```bash
+immich-memories auto [COMMAND]
+```
+
+### `auto suggest`
+
+Show ranked memory candidates with scores and reasons.
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--json` | flag | false | Machine-readable JSON output |
+| `--limit` | integer | 10 | Max candidates to show |
+| `--type` | text | all | Filter by memory type |
+
+### `auto run`
+
+Generate the top-ranked candidate.
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--dry-run` | flag | false | Show what would be generated |
+| `--force` | flag | false | Skip cooldown check |
+| `--cooldown` | integer | 24 | Min hours since last auto-run |
+| `--upload` | flag | false | Upload result to Immich |
+| `--quiet` | flag | false | Machine-friendly output |
+
+### `auto install`
+
+Set up OS scheduler (launchd/systemd/cron).
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--hour` | integer | 9 | Hour to run (0-23) |
+| `--minute` | integer | 0 | Minute to run (0-59) |
+| `--cooldown` | integer | 24 | Cooldown hours between runs |
+| `--uninstall` | flag | false | Remove installed scheduler |
+| `--show` | flag | false | Print config without installing |
+
+### `auto history`
+
+Show recent auto-generated memories.
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--limit` | integer | 10 | Max entries to show |
+
+### `auto test-notification`
+
+Send a test notification through configured Apprise URLs.
+
+See [auto CLI docs](../create/cli/auto.md) for detailed usage and detector documentation.
 
 ## `hardware`
 

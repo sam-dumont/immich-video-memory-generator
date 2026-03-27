@@ -94,10 +94,9 @@ photos:
   animation_mode: auto           # auto | ken_burns | face_zoom | blur_bg
   enable_collage: true           # Group series as collages
   series_gap_seconds: 60         # Max gap to group as series
+  collage_duration: 6.0          # Seconds per collage clip (2-15s)
   zoom_factor: 1.15              # Ken Burns zoom amount (15%)
   score_penalty: 0.2             # Photos score 80% of equivalent videos
-  hdr_enabled: true              # Apply HDR gain maps for iPhone/Android
-  split_screen_enabled: true     # Apple Photos-style grid layouts
 ```
 
 ## Hardware acceleration
@@ -136,7 +135,7 @@ musicgen:
 
 ace_step:
   enabled: false
-  mode: "lib"                    # lib (local) or api (remote)
+  mode: "api"                    # api (remote REST server) or lib (local, requires Python 3.12)
   api_url: "http://localhost:8000"
   model_variant: "turbo"         # turbo (fast) or base (quality)
   lm_model_size: "1.7B"
@@ -204,9 +203,9 @@ title_screens:
   locale: "auto"                 # en, fr, or auto-detect
   style_mode: "auto"             # auto (mood-based) or random
   animated_background: true
-  show_decorative_lines: true
-  avoid_dark_colors: true
-  minimum_brightness: 100
+  show_decorative_lines: false
+  avoid_dark_colors: false
+  minimum_brightness: 0
   show_month_dividers: true
   month_divider_threshold: 2
   use_first_name_only: true
