@@ -275,6 +275,25 @@ class ACEStepBackend(MusicGenerator):
 
         def _run_pipeline():
             assert self._pipeline is not None
+
+            # WHY: ACE-Step uses torchaudio.save() which hard-requires torchcodec
+            # in torchaudio 2.10+. Replace the pipeline's save method with one
+            # that uses soundfile directly — same format, no torchcodec dependency.
+            import soundfile as sf
+
+            def _soundfile_save(target_wav, idx, save_path=None, sample_rate=48000, format="wav"):
+                if save_path is None:
+                    save_path = str(output_path)
+                elif os.path.isdir(save_path):
+                    save_path = os.path.join(save_path, f"output_{idx}.{format}")
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                audio_np = target_wav.cpu().float().numpy().T
+                sf.write(save_path, audio_np, sample_rate, format=format.upper())
+                logger.info(f"Saved audio with soundfile: {save_path}")
+                return save_path
+
+            self._pipeline.save_wav_file = _soundfile_save
+
             return self._pipeline(
                 audio_duration=float(duration),
                 prompt=caption_result.caption,
@@ -293,19 +312,7 @@ class ACEStepBackend(MusicGenerator):
             )
 
         loop = asyncio.get_event_loop()
-        try:
-            await loop.run_in_executor(None, _run_pipeline)
-        except Exception as exc:
-            # WHY: ACE-Step saves audio via soundfile BEFORE attempting
-            # torchcodec post-processing. If torchcodec fails (missing
-            # libtorchcodec, ABI mismatch), the wav is already on disk.
-            if output_path.exists() and output_path.stat().st_size > 0:
-                logger.warning(
-                    "ACE-Step post-processing failed (%s) but audio was saved — continuing",
-                    exc,
-                )
-            else:
-                raise
+        await loop.run_in_executor(None, _run_pipeline)
 
         if not output_path.exists():
             raise RuntimeError(f"ACE-Step did not produce output at {output_path}")
