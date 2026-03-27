@@ -85,6 +85,7 @@ class AppState:
     include_live_photos: bool = False
     include_photos: bool = False
     photo_assets: list[Any] = field(default_factory=list)
+    selected_photo_ids: set[str] = field(default_factory=set)
     photo_duration: float = 4.0
 
     # Analysis depth (fast or thorough)
@@ -131,6 +132,7 @@ class AppState:
         """Reset clip-related state when changing configuration."""
         self.clips = []
         self.selected_clip_ids = set()
+        self.selected_photo_ids = set()
         self.clip_segments = {}
         self.clip_rotations = {}
         self.pipeline_result = None
