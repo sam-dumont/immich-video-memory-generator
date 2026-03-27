@@ -57,6 +57,8 @@ class TestGenerateMemoryRealImmich:
         config.title_screens.ending_duration = 2.0
         output = tmp_path / "output" / "titled_memory.mp4"
 
+        from datetime import date
+
         params = GenerationParams(
             clips=clips[:2],
             output_path=output,
@@ -66,6 +68,9 @@ class TestGenerateMemoryRealImmich:
             transition="crossfade",
             output_resolution="720p",
             person_name="Test Person",
+            memory_type="yearly",
+            date_start=date(2025, 1, 1),
+            date_end=date(2025, 12, 31),
         )
         result = generate_memory(params)
 
