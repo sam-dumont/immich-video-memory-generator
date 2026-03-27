@@ -16,7 +16,7 @@ def im_card(interactive: bool = False, **kwargs) -> ui.card:
 
 def im_section_header(title: str, icon: str | None = None) -> ui.row:
     """Section title with optional leading icon."""
-    with ui.row().classes("items-center gap-2 mt-4 mb-2") as row:
+    with ui.row().classes("items-center gap-2 mt-3 mb-1") as row:
         if icon:
             ui.icon(icon).classes("text-lg").style("color: var(--im-primary)")
         ui.label(title).classes("text-base font-semibold").style("color: var(--im-text)")
@@ -26,11 +26,11 @@ def im_section_header(title: str, icon: str | None = None) -> ui.row:
 def im_stat_card(label: str, value: str, icon: str | None = None) -> ui.card:
     """Compact metric card for summary displays."""
     with im_card() as card:
-        card.classes("p-3")
+        card.classes("p-2")
         with ui.column().classes("items-center gap-1"):
             if icon:
                 ui.icon(icon).classes("text-xl").style("color: var(--im-primary)")
-            ui.label(value).classes("text-xl font-bold").style("color: var(--im-text)")
+            ui.label(value).classes("text-lg font-bold").style("color: var(--im-text)")
             ui.label(label).classes("text-xs").style("color: var(--im-text-secondary)")
     return card
 
@@ -71,7 +71,7 @@ def im_info_card(
         else "im-alert-info"
     )
 
-    with ui.element("div").classes(f"w-full rounded-lg p-3 {bg_class}") as container:
+    with ui.element("div").classes(f"w-full rounded-lg p-2 px-3 {bg_class}") as container:
         ui.label(text).classes("text-sm").style(f"color: {text_color}")
     return container
 
@@ -100,6 +100,6 @@ def im_separator() -> ui.element:
     """Themed horizontal separator — thin line."""
     return (
         ui.element("div")
-        .classes("w-full my-4")
+        .classes("w-full my-2")
         .style("height: 1px; background: var(--im-border-light)")
     )

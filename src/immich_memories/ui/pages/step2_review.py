@@ -30,10 +30,7 @@ from immich_memories.ui.pages.clip_pipeline import (
     render_pipeline_summary,
 )
 from immich_memories.ui.pages.clip_review import _render_review_selected_clips
-from immich_memories.ui.pages.step2_loading import (
-    _load_clips,
-    _render_cached_analysis_summary,
-)
+from immich_memories.ui.pages.step2_loading import _load_clips
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
@@ -62,11 +59,6 @@ def _render_step2_header(state) -> bool:
             icon="arrow_back",
         )
         return True
-
-    # Show current date range
-    ui.label(str(state.date_range.description)).classes("text-sm mb-4").style(
-        "color: var(--im-text-secondary)"
-    )
 
     # Initialize caches if not done
     if state.analysis_cache is None:
@@ -144,161 +136,125 @@ def _render_step2_header(state) -> bool:
     return False
 
 
-def _render_duration_and_clip_row(state, clips: list[VideoClipInfo]) -> int:
-    """Render duration/clips-needed inputs. Returns clips_needed."""
+def _render_compact_stats_bar(state, clips: list[VideoClipInfo]) -> None:
+    """Compact inline stats — renders labels into parent container (no wrapper)."""
     hdr_count = sum(1 for c in clips if c.is_hdr)
     fav_count = sum(1 for c in clips if c.asset.is_favorite)
+    total_dur = sum(c.duration_seconds or 0 for c in clips)
+    minutes = int(total_dur // 60)
+    secs = int(total_dur % 60)
 
-    clips_needed = max(1, int((state.target_duration * 60) / state.avg_clip_duration))
-
-    with ui.row().classes("w-full gap-4 items-end"):
-        target_duration_input = ui.number(
-            "Target duration (min)", value=state.target_duration, min=1, max=60
-        ).classes("w-40")
-
-        def on_target_change(e):
-            state.target_duration = int(e.value if hasattr(e, "value") else e)
-
-        target_duration_input.on_value_change(on_target_change)
-
-        avg_clip_input = ui.number(
-            "Avg seconds per clip", value=state.avg_clip_duration, min=2, max=30
-        ).classes("w-40")
-
-        def on_avg_change(e):
-            state.avg_clip_duration = int(e.value if hasattr(e, "value") else e)
-
-        avg_clip_input.on_value_change(on_avg_change)
-
-        with ui.column().classes("items-center"):
-            ui.label("Clips needed").classes("text-sm").style("color: var(--im-text-secondary)")
-            ui.label(str(clips_needed)).classes("text-xl font-bold").style("color: var(--im-text)")
-
-        ui.label(f"{len(clips)} clips ({hdr_count} HDR, {fav_count} favorites)").classes(
-            "text-sm"
-        ).style("color: var(--im-text-secondary)")
-
-    return clips_needed
-
-
-def _render_selection_options(state, hdr_count: int) -> None:
-    """Render HDR / favorites / analyze-all checkboxes."""
-    with ui.row().classes("w-full gap-6 mt-4"):
-        hdr_checkbox = ui.checkbox("HDR clips only", value=state.hdr_only)
-
-        def on_hdr_change(e):
-            state.hdr_only = e.value if hasattr(e, "value") else e
-
-        hdr_checkbox.on_value_change(on_hdr_change)
-
-        fav_checkbox = ui.checkbox("Prioritize favorites", value=state.prioritize_favorites)
-
-        def on_fav_change(e):
-            state.prioritize_favorites = e.value if hasattr(e, "value") else e
-
-        fav_checkbox.on_value_change(on_fav_change)
-
-        analyze_checkbox = ui.checkbox("Analyze all videos", value=state.analyze_all)
-
-        def on_analyze_change(e):
-            state.analyze_all = e.value if hasattr(e, "value") else e
-
-        analyze_checkbox.on_value_change(on_analyze_change)
-
-    if state.hdr_only and hdr_count == 0:
-        im_info_card(
-            "No HDR clips found. Disable 'HDR clips only' to select clips.", variant="warning"
+    if state.date_range:
+        ui.label(str(state.date_range.description)).classes("text-sm").style(
+            "color: var(--im-text-secondary)"
         )
-
-    if state.prioritize_favorites:
-        with ui.row().classes("w-full items-center gap-4 mt-2"):
-            ui.label("Max non-favorites:").classes("text-sm")
-            max_nonfav_slider = ui.slider(
-                min=0, max=100, step=5, value=state.max_non_favorite_pct
-            ).classes("w-64")
-
-            def on_nonfav_change(e):
-                value = e.value if hasattr(e, "value") else e
-                state.max_non_favorite_pct = int(value)
-                state.max_non_favorite_ratio = value / 100.0
-
-            max_nonfav_slider.on_value_change(on_nonfav_change)
-            ui.label(f"{state.max_non_favorite_pct}%").bind_text_from(
-                max_nonfav_slider, "value", lambda v: f"{int(v)}%"
-            )
+    ui.label(f"{len(clips)} clips").classes("text-sm font-semibold").style("color: var(--im-text)")
+    ui.label(f"{minutes}:{secs:02d} total").classes("text-sm").style(
+        "color: var(--im-text-secondary)"
+    )
+    if hdr_count:
+        ui.label(f"{hdr_count} HDR").classes("text-sm").style("color: var(--im-text-secondary)")
+    if fav_count:
+        ui.label(f"{fav_count} favorites").classes("text-sm").style(
+            "color: var(--im-text-secondary)"
+        )
 
 
 def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
-    """Render the Generate Memories controls section."""
-    im_section_header("Generate Memories", icon="auto_awesome")
-
+    """Render the Generate Memories controls in a collapsible panel."""
     hdr_count = sum(1 for c in clips if c.is_hdr)
-    clips_needed = _render_duration_and_clip_row(state, clips)
-    _render_selection_options(state, hdr_count)
+    fav_count = sum(1 for c in clips if c.asset.is_favorite)
+    clips_needed = max(1, int((state.target_duration * 60) / state.avg_clip_duration))
 
-    total_available_duration = sum(c.duration_seconds or 0 for c in clips)
-    target_duration_sec = state.target_duration * 60
-    if target_duration_sec > total_available_duration:
-        available_min = total_available_duration / 60
-        im_info_card(
-            f"Target ({state.target_duration} min) exceeds available content "
-            f"({available_min:.1f} min). Consider reducing the target duration.",
-            variant="warning",
-        )
+    with ui.expansion("Generate Memories", icon="auto_awesome", value=True).classes("w-full"):
+        # All controls in one flowing row
+        with ui.row().classes("w-full gap-4 items-end flex-wrap"):
+            ui.number("Target duration (min)", value=state.target_duration, min=1, max=60).classes(
+                "w-32"
+            ).on_value_change(
+                lambda e: setattr(
+                    state, "target_duration", int(e.value if hasattr(e, "value") else e)
+                )
+            )
+            ui.number("Avg seconds per clip", value=state.avg_clip_duration, min=2, max=30).classes(
+                "w-32"
+            ).on_value_change(
+                lambda e: setattr(
+                    state, "avg_clip_duration", int(e.value if hasattr(e, "value") else e)
+                )
+            )
+            with ui.column().classes("items-center"):
+                ui.label("Clips needed").classes("text-sm").style("color: var(--im-text-secondary)")
+                ui.label(str(clips_needed)).classes("text-lg font-bold").style(
+                    "color: var(--im-text)"
+                )
+            ui.label(f"{len(clips)} clips ({hdr_count} HDR, {fav_count} favorites)").classes(
+                "text-sm"
+            ).style("color: var(--im-text-secondary)")
 
-    ui.label(
-        f"To fit {state.target_duration} minutes with ~{state.avg_clip_duration}s per clip, "
-        f"you need approximately {clips_needed} clips."
-    ).classes("text-sm mt-2").style("color: var(--im-text-secondary)")
+            # Checkboxes inline in the same row
+            ui.checkbox("HDR clips only", value=state.hdr_only).on_value_change(
+                lambda e: setattr(state, "hdr_only", e.value if hasattr(e, "value") else e)
+            )
+            ui.checkbox("Prioritize favorites", value=state.prioritize_favorites).on_value_change(
+                lambda e: setattr(
+                    state, "prioritize_favorites", e.value if hasattr(e, "value") else e
+                )
+            )
+            ui.checkbox("Analyze all videos", value=state.analyze_all).on_value_change(
+                lambda e: setattr(state, "analyze_all", e.value if hasattr(e, "value") else e)
+            )
 
-    def start_generate():
-        clips_needed_now = max(1, int((state.target_duration * 60) / state.avg_clip_duration))
-        state.pipeline_running = True
-        state.pipeline_config = {
-            "target_clips": clips_needed_now,
-            "avg_clip_duration": float(state.avg_clip_duration),
-            "hdr_only": state.hdr_only,
-            "prioritize_favorites": state.prioritize_favorites,
-            "max_non_favorite_ratio": state.max_non_favorite_ratio,
-            "analyze_all": state.analyze_all,
-        }
-        ui.navigate.to("/step2")
+        if state.hdr_only and hdr_count == 0:
+            im_info_card(
+                "No HDR clips found. Disable 'HDR clips only' to select clips.", variant="warning"
+            )
 
-    im_button(
-        "Generate Memories",
-        variant="primary",
-        on_click=start_generate,
-        icon="auto_awesome",
-    ).classes("w-full mt-4")
+        if state.prioritize_favorites:
+            with ui.row().classes("w-full items-center gap-4 mt-1"):
+                ui.label("Max non-favorites:").classes("text-sm")
+                max_nonfav_slider = ui.slider(
+                    min=0, max=100, step=5, value=state.max_non_favorite_pct
+                ).classes("flex-1")
 
-    im_separator()
+                def on_nonfav_change(e):
+                    value = e.value if hasattr(e, "value") else e
+                    state.max_non_favorite_pct = int(value)
+                    state.max_non_favorite_ratio = value / 100.0
 
-    with ui.row().classes("w-full gap-2"):
+                max_nonfav_slider.on_value_change(on_nonfav_change)
+                ui.label(f"{state.max_non_favorite_pct}%").bind_text_from(
+                    max_nonfav_slider, "value", lambda v: f"{int(v)}%"
+                )
 
-        def select_all():
-            state.selected_clip_ids = {c.asset.id for c in clips}
-            if state.include_photos and state.photo_assets:
-                state.selected_photo_ids = {a.id for a in state.photo_assets}
+        total_available_duration = sum(c.duration_seconds or 0 for c in clips)
+        if state.target_duration * 60 > total_available_duration:
+            available_min = total_available_duration / 60
+            im_info_card(
+                f"Target ({state.target_duration} min) exceeds available content "
+                f"({available_min:.1f} min). Consider reducing the target duration.",
+                variant="warning",
+            )
+
+        def start_generate():
+            clips_needed_now = max(1, int((state.target_duration * 60) / state.avg_clip_duration))
+            state.pipeline_running = True
+            state.pipeline_config = {
+                "target_clips": clips_needed_now,
+                "avg_clip_duration": float(state.avg_clip_duration),
+                "hdr_only": state.hdr_only,
+                "prioritize_favorites": state.prioritize_favorites,
+                "max_non_favorite_ratio": state.max_non_favorite_ratio,
+                "analyze_all": state.analyze_all,
+            }
             ui.navigate.to("/step2")
 
-        def deselect_all():
-            state.selected_clip_ids = set()
-            state.selected_photo_ids = set()
-            ui.navigate.to("/step2")
-
-        def invert_selection():
-            all_ids = {c.asset.id for c in clips}
-            state.selected_clip_ids = all_ids - state.selected_clip_ids
-            if state.include_photos and state.photo_assets:
-                all_photo_ids = {a.id for a in state.photo_assets}
-                state.selected_photo_ids = all_photo_ids - state.selected_photo_ids
-            ui.navigate.to("/step2")
-
-        im_button("Select All", variant="secondary", on_click=select_all)
-        im_button("Deselect All", variant="secondary", on_click=deselect_all)
-        im_button("Invert Selection", variant="secondary", on_click=invert_selection)
-
-    im_separator()
+        im_button(
+            "Generate Memories",
+            variant="primary",
+            on_click=start_generate,
+            icon="auto_awesome",
+        ).classes("w-full mt-2")
 
 
 def _auto_deselect_duplicates(state, lower_quality_ids: set[str]) -> None:
@@ -355,7 +311,8 @@ def _render_period_expansions(
 
     span_years = len({ym[0] for ym in clips_by_period}) > 1
 
-    for year_month in sorted(clips_by_period.keys()):
+    sorted_periods = sorted(clips_by_period.keys())
+    for idx, year_month in enumerate(sorted_periods):
         period_clips = clips_by_period[year_month]
         year, month = year_month
         month_name = cal.month_name[month]
@@ -364,10 +321,18 @@ def _render_period_expansions(
             if span_years
             else f"{month_name} ({len(period_clips)} clips)"
         )
-        expansion = ui.expansion(label, icon="calendar_month", value=False).classes("w-full")
-        _make_lazy_loader(
-            expansion, period_clips, duplicate_ids, lower_quality_ids, summary_container
-        )
+        is_first = idx == 0
+        expansion = ui.expansion(label, icon="calendar_month", value=is_first).classes("w-full")
+        if is_first:
+            # Render first month eagerly (lazy loader won't fire for initial value=True)
+            with expansion:
+                _render_clip_grid_paginated(
+                    period_clips, duplicate_ids, lower_quality_ids, summary_container
+                )
+        else:
+            _make_lazy_loader(
+                expansion, period_clips, duplicate_ids, lower_quality_ids, summary_container
+            )
 
 
 def _render_view_toggle(state) -> None:
@@ -378,7 +343,7 @@ def _render_view_toggle(state) -> None:
         state.clip_view_mode = mode
         ui.navigate.to("/step2")
 
-    with ui.row().classes("gap-1 mb-2"):
+    with ui.row().classes("gap-1"):
         grid_btn = ui.button(icon="grid_view", on_click=lambda: set_view("grid")).props(
             "dense flat" if not is_grid else "dense unelevated"
         )
@@ -427,7 +392,33 @@ def _render_step2_content(
             variant="info",
         )
 
-    _render_view_toggle(state)
+    # Toolbar row: bulk actions + view toggle
+    with ui.row().classes("w-full items-center gap-2 mb-2"):
+
+        def select_all():
+            state.selected_clip_ids = {c.asset.id for c in clips}
+            if state.include_photos and state.photo_assets:
+                state.selected_photo_ids = {a.id for a in state.photo_assets}
+            ui.navigate.to("/step2")
+
+        def deselect_all():
+            state.selected_clip_ids = set()
+            state.selected_photo_ids = set()
+            ui.navigate.to("/step2")
+
+        def invert_selection():
+            all_ids = {c.asset.id for c in clips}
+            state.selected_clip_ids = all_ids - state.selected_clip_ids
+            if state.include_photos and state.photo_assets:
+                all_photo_ids = {a.id for a in state.photo_assets}
+                state.selected_photo_ids = all_photo_ids - state.selected_photo_ids
+            ui.navigate.to("/step2")
+
+        im_button("Select All", variant="secondary", on_click=select_all).props("dense")
+        im_button("Deselect All", variant="secondary", on_click=deselect_all).props("dense")
+        im_button("Invert Selection", variant="secondary", on_click=invert_selection).props("dense")
+        ui.element("div").classes("flex-grow")
+        _render_view_toggle(state)
 
     has_photos = state.include_photos and bool(state.photo_assets)
 
@@ -444,8 +435,47 @@ def _render_step2_content(
     else:
         _render_period_expansions(clips, duplicate_ids, lower_quality_ids, summary_container)
 
-    im_separator()
+    # Show included photos if enabled
+    if state.include_photos and state.photo_assets:
+        _render_photo_preview(state)
 
+
+def _render_photo_preview(state) -> None:
+    """Show a compact preview grid of photos that will be included."""
+    import base64
+
+    from immich_memories.ui.pages.step2_helpers import get_thumbnail
+
+    photos = state.photo_assets
+    im_section_header(f"{len(photos)} Photos Included", icon="photo_library")
+
+    max_preview = 30
+    with (
+        ui.element("div")
+        .classes("w-full grid gap-2")
+        .style("grid-template-columns: repeat(auto-fill, minmax(80px, 1fr))")
+    ):
+        for photo in photos[:max_preview]:
+            thumb = get_thumbnail(photo.id)
+            if thumb:
+                b64 = base64.b64encode(thumb).decode()
+                ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full rounded").style(
+                    "aspect-ratio: 1; object-fit: cover"
+                ).tooltip(photo.original_file_name or photo.id)
+            else:
+                ui.element("div").classes("w-full rounded").style(
+                    "aspect-ratio: 1; background: var(--im-bg-surface)"
+                )
+
+    if len(photos) > max_preview:
+        ui.label(f"+ {len(photos) - max_preview} more photos").classes("text-sm mt-1").style(
+            "color: var(--im-text-secondary)"
+        )
+
+
+def _render_step2_nav(state) -> None:
+    """Render navigation buttons at the bottom."""
+    im_separator()
     with ui.row().classes("w-full gap-4"):
 
         def go_back():
@@ -453,7 +483,7 @@ def _render_step2_content(
             ui.navigate.to("/")
 
         def go_next():
-            if state.selected_clip_ids or (has_photos and state.selected_photo_ids):
+            if state.selected_clip_ids or state.selected_photo_ids:
                 state.review_selected_mode = True
                 ui.navigate.to("/step2")
             else:
@@ -472,11 +502,17 @@ def render_step2() -> None:
 
     clips = state.clips
 
-    summary_container = ui.row().classes("w-full mb-4")
-    _update_duration_summary(clips, summary_container)
+    # Compact stats + duration summary in one flowing row
+    with ui.row().classes("w-full items-center gap-6 flex-wrap mb-2"):
+        _render_compact_stats_bar(state, clips)
+        summary_container = ui.element("div")
+        _update_duration_summary(clips, summary_container)
 
-    im_separator()
-
-    _render_cached_analysis_summary(clips)
+    # Generate Memories controls (expanded, prominent) — cache info inside
     _render_step2_controls(state, clips)
+
+    # Clip grid/list
     _render_step2_content(state, clips, summary_container)
+
+    # Navigation at the very bottom
+    _render_step2_nav(state)

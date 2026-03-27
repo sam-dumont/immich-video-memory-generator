@@ -90,17 +90,17 @@ def _render_year_selector_row(state, update_fn) -> tuple:
 def _render_year_tab(state, tab, update_fn) -> None:
     """Render the Year tab panel."""
     with ui.tab_panel(tab):
-        with ui.row().classes("w-full gap-4 items-end"):
+        with ui.row().classes("w-full gap-3 items-end"):
             calendar_btn, birthday_btn = _render_year_selector_row(state, update_fn)
 
-        birthday_container = ui.column().classes("mt-4")
+        birthday_container = ui.column().classes("mt-2")
         _render_year_type_buttons(state, calendar_btn, birthday_btn, birthday_container, update_fn)
         _render_birthday_picker(state, update_fn, birthday_container)
 
 
 def _render_duration_tab(state, tab, update_fn) -> None:
     """Render the Duration tab panel."""
-    with ui.tab_panel(tab), ui.row().classes("w-full gap-4 items-end"):
+    with ui.tab_panel(tab), ui.row().classes("w-full gap-3 items-end"):
         duration_input = ui.number("Duration", value=state.period_value, min=1, max=24).classes(
             "w-24"
         )
@@ -148,7 +148,7 @@ def _render_duration_tab(state, tab, update_fn) -> None:
 
 def _render_custom_tab(state, tab, update_fn) -> None:
     """Render the Custom Range tab panel."""
-    with ui.tab_panel(tab), ui.row().classes("w-full gap-4 items-end"):
+    with ui.tab_panel(tab), ui.row().classes("w-full gap-3 items-end"):
         start_val = state.custom_start or date.today().replace(month=1, day=1)
         _render_custom_start_picker(state, update_fn, start_val)
         end_val = state.custom_end or date.today()

@@ -198,7 +198,7 @@ def _render_audio_categories(clip: VideoClipInfo) -> None:
         for cat in clip.audio_categories:
             css_var = _CATEGORY_COLORS.get(cat, "--im-text-secondary")
             ui.badge(cat).classes("text-xs").style(
-                f"background: color-mix(in srgb, var({css_var}) 15%, transparent); "
+                f"background: color-mix(in srgb, var({css_var}) 20%, var(--im-bg-elevated)); "
                 f"color: var({css_var})"
             )
 
@@ -221,10 +221,12 @@ def _render_clip_thumbnail(asset_id: str) -> None:
     thumb = get_thumbnail(asset_id)
     if thumb:
         b64 = base64.b64encode(thumb).decode()
-        ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full h-24 object-cover rounded-lg")
+        ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full rounded-lg").style(
+            "aspect-ratio: 16/9; object-fit: cover"
+        )
     else:
-        ui.element("div").classes("w-full h-24 rounded-lg flex items-center justify-center").style(
-            "background-color: var(--im-bg-surface)"
+        ui.element("div").classes("w-full rounded-lg").style(
+            "aspect-ratio: 16/9; background: var(--im-bg-surface)"
         )
 
 
@@ -461,7 +463,11 @@ def _render_compact_grid(
     state = get_app_state()
     all_clips = state.clips
 
-    with ui.element("div").classes("grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 gap-2"):
+    with (
+        ui.element("div")
+        .classes("w-full grid gap-2")
+        .style("grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))")
+    ):
         for clip in clips:
             _render_compact_thumbnail(clip, state, all_clips, summary_container)
 
@@ -517,8 +523,10 @@ def _render_clip_grid(
     state = get_app_state()
     all_clips = state.clips
 
-    with ui.element("div").classes(
-        "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
+    with (
+        ui.element("div")
+        .classes("w-full grid gap-3")
+        .style("grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))")
     ):
         for clip in clips:
             _render_clip_card(
