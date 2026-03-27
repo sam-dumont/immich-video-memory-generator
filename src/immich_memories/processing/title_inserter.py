@@ -186,6 +186,8 @@ class TitleInserter:
             month_divider_threshold=title_settings.month_divider_threshold,
             orientation=orientation,
             resolution=resolution_tier,
+            resolution_width=target_w,
+            resolution_height=target_h,
             fps=float(fps),
             hdr=hdr,
             title_override=title_settings.title_override,
