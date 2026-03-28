@@ -634,3 +634,9 @@ demo-assemble:  ## Post-process recordings into polished demo video
 	uv run python scripts/assemble-demo.py
 
 demo: demo-record demo-assemble  ## Record + assemble demo video (select music first)
+
+demo-cli-sim:  ## Run CLI demo simulation (no recording, for iteration)
+	uv run python scripts/simulate-cli-demo.py
+
+demo-cli:  ## Record CLI demo via VHS → GIF + MP4
+	vhs docs-site/scripts/demo-cli.tape
