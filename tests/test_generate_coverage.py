@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from datetime import UTC, date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -939,3 +940,1167 @@ class TestBuildAssemblySettingsExtraBranches:
         )
         settings = _build_assembly_settings(params, [])
         assert settings.output_crf == 18
+
+
+# ---------------------------------------------------------------------------
+# _build_memory_key
+# ---------------------------------------------------------------------------
+
+
+class TestBuildMemoryKey:
+    def test_returns_key_when_all_fields_present(self):
+        from immich_memories.generate import _build_memory_key
+
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/o.mp4"),
+            config=Config(),
+            memory_type="month",
+            date_start=date(2025, 7, 1),
+            date_end=date(2025, 7, 31),
+        )
+        key = _build_memory_key(params)
+        assert key is not None
+        assert "month" in key
+
+    def test_returns_none_when_memory_type_missing(self):
+        from immich_memories.generate import _build_memory_key
+
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/o.mp4"),
+            config=Config(),
+            memory_type=None,
+            date_start=date(2025, 7, 1),
+            date_end=date(2025, 7, 31),
+        )
+        assert _build_memory_key(params) is None
+
+    def test_returns_none_when_date_start_missing(self):
+        from immich_memories.generate import _build_memory_key
+
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/o.mp4"),
+            config=Config(),
+            memory_type="month",
+            date_start=None,
+            date_end=date(2025, 7, 31),
+        )
+        assert _build_memory_key(params) is None
+
+    def test_returns_none_when_date_end_missing(self):
+        from immich_memories.generate import _build_memory_key
+
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/o.mp4"),
+            config=Config(),
+            memory_type="month",
+            date_start=date(2025, 7, 1),
+            date_end=None,
+        )
+        assert _build_memory_key(params) is None
+
+    def test_includes_person_name_when_present(self):
+        from immich_memories.generate import _build_memory_key
+
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/o.mp4"),
+            config=Config(),
+            memory_type="month",
+            date_start=date(2025, 7, 1),
+            date_end=date(2025, 7, 31),
+            person_name="Alice",
+        )
+        key = _build_memory_key(params)
+        assert key is not None
+        assert "alice" in key.lower()
+
+
+# ---------------------------------------------------------------------------
+# _generate_memory_inner — main orchestrator
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateMemoryInner:
+    def _make_params(self, tmp_path, **overrides):
+        clip = make_clip("clip-1", duration=5.0)
+        defaults = {
+            "clips": [clip],
+            "output_path": tmp_path / "output" / "memory.mp4",
+            "config": Config(),
+            "client": MagicMock(),
+            "no_music": True,
+        }
+        defaults.update(overrides)
+        return GenerationParams(**defaults)
+
+    def _patch_inner_deps(self, tmp_path):
+        """Return a context manager that patches all external boundaries in _generate_memory_inner."""
+        result_path = tmp_path / "result.mp4"
+        result_path.write_bytes(b"fake video")
+
+        assembly_clip = AssemblyClip(
+            path=result_path, duration=5.0, asset_id="clip-1", date="2025-07-15"
+        )
+
+        mock_assembler = MagicMock()
+        mock_assembler.assemble_with_titles.return_value = result_path
+
+        patches = {
+            # WHY: VideoDownloadCache hits filesystem for video caching
+            "cache": patch(
+                "immich_memories.cache.video_cache.VideoDownloadCache",
+                return_value=MagicMock(),
+            ),
+            # WHY: RunTracker writes to SQLite database
+            "tracker": patch(
+                "immich_memories.tracking.RunTracker",
+                return_value=MagicMock(),
+            ),
+            # WHY: generate_run_id generates unique IDs from OS random
+            "run_id": patch(
+                "immich_memories.tracking.generate_run_id",
+                return_value="20250715_120000_abcd",
+            ),
+            # WHY: set_current_run_id sets thread-local state
+            "set_run_id": patch("immich_memories.logging_config.set_current_run_id"),
+            # WHY: check_disk_space calls shutil.disk_usage
+            "disk": patch("immich_memories.generate.check_disk_space"),
+            # WHY: _extract_clips downloads from Immich + runs FFmpeg
+            "extract": patch(
+                "immich_memories.generate._extract_clips",
+                return_value=[assembly_clip],
+            ),
+            # WHY: _add_photos_if_enabled renders photos via FFmpeg
+            "photos": patch(
+                "immich_memories.generate._add_photos_if_enabled",
+                return_value=[assembly_clip],
+            ),
+            # WHY: validate_clips checks file existence on disk
+            "validate": patch(
+                "immich_memories.generate.validate_clips",
+                return_value=([assembly_clip], []),
+            ),
+            # WHY: _create_assembler creates VideoAssembler with FFmpeg deps
+            "assembler": patch(
+                "immich_memories.generate._create_assembler",
+                return_value=mock_assembler,
+            ),
+            # WHY: _run_music_phase calls external music generation APIs
+            "music": patch("immich_memories.generate._run_music_phase"),
+            # WHY: sanitize_filename is a security utility
+            "sanitize": patch(
+                "immich_memories.security.sanitize_filename",
+                side_effect=lambda x: x,
+            ),
+        }
+        return patches, result_path, assembly_clip
+
+    def test_happy_path_returns_result_path(self, tmp_path):
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path)
+        patches, result_path, _ = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            {name: stack.enter_context(p) for name, p in patches.items()}
+            result = _generate_memory_inner(params)
+
+        assert result == result_path
+
+    def test_calls_extract_then_assemble_in_order(self, tmp_path):
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path)
+        patches, result_path, _ = self._patch_inner_deps(tmp_path)
+        call_order = []
+
+        with contextlib.ExitStack() as stack:
+            mocks = {name: stack.enter_context(p) for name, p in patches.items()}
+            mocks["extract"].side_effect = lambda *_a, **_kw: (  # noqa: ARG005
+                call_order.append("extract"),
+                [AssemblyClip(path=result_path, duration=5.0, asset_id="c1", date="2025-07-15")],
+            )[1]
+            mocks["assembler"].return_value.assemble_with_titles.side_effect = lambda *_a, **_kw: (  # noqa: ARG005
+                call_order.append("assemble"),
+                result_path,
+            )[1]
+            _generate_memory_inner(params)
+
+        assert call_order == ["extract", "assemble"]
+
+    def test_no_clips_after_extraction_raises(self, tmp_path):
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path)
+        patches, _, _ = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            mocks = {name: stack.enter_context(p) for name, p in patches.items()}
+            mocks["extract"].return_value = []
+            mocks["validate"].return_value = ([], [])
+
+            with pytest.raises(GenerationError, match="No clips could be processed"):
+                _generate_memory_inner(params)
+
+    def test_privacy_mode_anonymizes_clips(self, tmp_path):
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path, privacy_mode=True, person_name="Alice")
+        patches, result_path, assembly_clip = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            {name: stack.enter_context(p) for name, p in patches.items()}
+            anon_mock = stack.enter_context(
+                patch(
+                    "immich_memories.generate.anonymize_clips_for_privacy",
+                    return_value=[assembly_clip],
+                )
+            )
+            preset_mock = stack.enter_context(
+                patch("immich_memories.generate.anonymize_preset_params", return_value={})
+            )
+            name_mock = stack.enter_context(
+                patch("immich_memories.generate.anonymize_name", return_value="Anon")
+            )
+            _generate_memory_inner(params)
+
+        anon_mock.assert_called_once()
+        preset_mock.assert_called_once()
+        name_mock.assert_called_once_with("Alice")
+
+    def test_upload_called_when_enabled(self, tmp_path):
+        from immich_memories.generate import _generate_memory_inner
+
+        mock_client = MagicMock()
+        params = self._make_params(
+            tmp_path, upload_enabled=True, upload_album="test-album", client=mock_client
+        )
+        patches, result_path, _ = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            {name: stack.enter_context(p) for name, p in patches.items()}
+            upload_mock = stack.enter_context(patch("immich_memories.generate._upload_to_immich"))
+            _generate_memory_inner(params)
+
+        upload_mock.assert_called_once_with(mock_client, result_path, "test-album")
+
+    def test_upload_not_called_when_disabled(self, tmp_path):
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path, upload_enabled=False)
+        patches, _, _ = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            {name: stack.enter_context(p) for name, p in patches.items()}
+            upload_mock = stack.enter_context(patch("immich_memories.generate._upload_to_immich"))
+            _generate_memory_inner(params)
+
+        upload_mock.assert_not_called()
+
+    def test_unexpected_exception_wrapped_in_generation_error(self, tmp_path):
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path)
+        patches, _, _ = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            mocks = {name: stack.enter_context(p) for name, p in patches.items()}
+            mocks["extract"].side_effect = RuntimeError("something broke")
+
+            with pytest.raises(GenerationError, match="Generation failed"):
+                _generate_memory_inner(params)
+
+    def test_generation_error_not_re_wrapped(self, tmp_path):
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path)
+        patches, _, _ = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            mocks = {name: stack.enter_context(p) for name, p in patches.items()}
+            mocks["extract"].side_effect = GenerationError("intentional")
+
+            with pytest.raises(GenerationError, match="intentional"):
+                _generate_memory_inner(params)
+
+    def test_set_current_run_id_cleared_in_finally(self, tmp_path):
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path)
+        patches, _, _ = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            mocks = {name: stack.enter_context(p) for name, p in patches.items()}
+            _generate_memory_inner(params)
+
+        # set_current_run_id called with the run_id first, then None in finally
+        calls = mocks["set_run_id"].call_args_list
+        assert calls[-1].args == (None,)
+
+    def test_debug_mode_preserves_intermediates(self, tmp_path):
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path, debug_preserve_intermediates=True)
+        patches, _, _ = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            {name: stack.enter_context(p) for name, p in patches.items()}
+            cleanup_mock = stack.enter_context(patch("immich_memories.generate._cleanup_temp_dirs"))
+            _generate_memory_inner(params)
+
+        cleanup_mock.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# generate_memory (lock + inner call integration)
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateMemoryLockIntegration:
+    def test_acquires_lock_and_calls_inner(self, tmp_path):
+        clip = make_clip("c1", duration=5.0)
+        result_path = tmp_path / "result.mp4"
+        result_path.write_bytes(b"video")
+
+        params = GenerationParams(
+            clips=[clip],
+            output_path=tmp_path / "output.mp4",
+            config=Config(),
+        )
+
+        # WHY: PipelineLock acquires OS-level file lock
+        with (
+            patch("immich_memories.generate.PipelineLock"),
+            patch(
+                "immich_memories.generate._generate_memory_inner",
+                return_value=result_path,
+            ) as mock_inner,
+        ):
+            result = generate_memory(params)
+
+        mock_inner.assert_called_once_with(params)
+        assert result == result_path
+
+
+# ---------------------------------------------------------------------------
+# _create_assembler
+# ---------------------------------------------------------------------------
+
+
+class TestCreateAssembler:
+    def test_creates_video_assembler_with_settings(self, tmp_path):
+        from immich_memories.generate import _create_assembler
+
+        config = Config()
+        config.cache.database = str(tmp_path / "cache.db")
+
+        settings = MagicMock()
+        # WHY: VideoAssembler.__init__ requires FFmpeg; mock the import
+        with patch("immich_memories.processing.video_assembler.VideoAssembler") as mock_cls:
+            _create_assembler(settings, "run-123", config)
+
+        mock_cls.assert_called_once()
+        call_kwargs = mock_cls.call_args
+        assert call_kwargs.kwargs["run_id"] == "run-123"
+
+
+# ---------------------------------------------------------------------------
+# _run_music_phase
+# ---------------------------------------------------------------------------
+
+
+class TestRunMusicPhase:
+    def test_skips_when_no_music_resolved(self, tmp_path):
+        from immich_memories.generate import _run_music_phase
+
+        params = GenerationParams(
+            clips=[], output_path=Path("/tmp/o.mp4"), config=Config(), no_music=True
+        )
+        mock_tracker = MagicMock()
+
+        # WHY: resolve_music_file checks filesystem for music files
+        with patch(
+            "immich_memories.generate.resolve_music_file", return_value=None
+        ) as mock_resolve:
+            _run_music_phase(params, [], tmp_path / "result.mp4", tmp_path, mock_tracker)
+
+        mock_resolve.assert_called_once()
+        mock_tracker.start_phase.assert_not_called()
+
+    def test_applies_music_when_resolved(self, tmp_path):
+        from immich_memories.generate import _run_music_phase
+
+        music_file = tmp_path / "music.mp3"
+        music_file.write_bytes(b"music")
+        result_path = tmp_path / "result.mp4"
+        result_path.write_bytes(b"video")
+
+        params = GenerationParams(
+            clips=[], output_path=Path("/tmp/o.mp4"), config=Config(), music_volume=0.7
+        )
+        mock_tracker = MagicMock()
+
+        # WHY: resolve_music_file and apply_music_file touch filesystem + FFmpeg
+        with (
+            patch("immich_memories.generate.resolve_music_file", return_value=music_file),
+            patch("immich_memories.generate.apply_music_file") as mock_apply,
+        ):
+            _run_music_phase(params, [], result_path, tmp_path, mock_tracker)
+
+        mock_apply.assert_called_once_with(result_path, music_file, 0.7)
+        mock_tracker.start_phase.assert_called_once_with("music", 1)
+        mock_tracker.complete_phase.assert_called_once_with(items_processed=1)
+
+    def test_report_fn_delegates_to_progress_callback(self, tmp_path):
+        from immich_memories.generate import _run_music_phase
+
+        calls = []
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/o.mp4"),
+            config=Config(),
+            progress_callback=lambda p, pct, m: calls.append((p, pct, m)),
+        )
+        mock_tracker = MagicMock()
+
+        # WHY: resolve_music_file accesses the filesystem
+        with patch(
+            "immich_memories.generate.resolve_music_file", return_value=None
+        ) as mock_resolve:
+            _run_music_phase(params, [], tmp_path / "r.mp4", tmp_path, mock_tracker)
+
+        # Verify resolve_music_file received a report_fn callback
+        call_kwargs = mock_resolve.call_args
+        assert (
+            call_kwargs.kwargs.get("report_fn") is not None
+            or call_kwargs[1].get("report_fn") is not None
+        )
+
+
+# ---------------------------------------------------------------------------
+# _upload_to_immich
+# ---------------------------------------------------------------------------
+
+
+class TestUploadToImmich:
+    def test_calls_client_upload(self, tmp_path):
+        from immich_memories.generate import _upload_to_immich
+
+        video_path = tmp_path / "video.mp4"
+        video_path.write_bytes(b"video")
+        # WHY: SyncImmichClient.upload_memory hits the Immich REST API
+        mock_client = MagicMock()
+        mock_client.upload_memory.return_value = {"asset_id": "abc123"}
+
+        result = _upload_to_immich(mock_client, video_path, "My Album")
+
+        mock_client.upload_memory.assert_called_once_with(
+            video_path=video_path, album_name="My Album"
+        )
+        assert result["asset_id"] == "abc123"
+
+    def test_none_album_name(self, tmp_path):
+        from immich_memories.generate import _upload_to_immich
+
+        video_path = tmp_path / "video.mp4"
+        video_path.write_bytes(b"video")
+        mock_client = MagicMock()
+        mock_client.upload_memory.return_value = {}
+
+        _upload_to_immich(mock_client, video_path, None)
+        mock_client.upload_memory.assert_called_once_with(video_path=video_path, album_name=None)
+
+
+# ---------------------------------------------------------------------------
+# _apply_unified_budget
+# ---------------------------------------------------------------------------
+
+
+class TestApplyUnifiedBudget:
+    def test_no_client_returns_clips_unchanged(self, tmp_path):
+        from immich_memories.generate import _apply_unified_budget
+
+        clips = [AssemblyClip(path=Path("/a.mp4"), duration=5.0, asset_id="v1")]
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/o.mp4"),
+            config=Config(),
+            client=None,
+            include_photos=True,
+            photo_assets=[make_asset("p1")],
+            target_duration_seconds=60.0,
+        )
+        videos, photos = _apply_unified_budget(clips, params, tmp_path)
+        assert videos is clips
+        assert photos == []
+
+    def test_with_client_calls_scoring_pipeline(self, tmp_path):
+        from immich_memories.generate import _apply_unified_budget
+
+        clips = [AssemblyClip(path=Path("/a.mp4"), duration=5.0, asset_id="v1", date="2025-07-15")]
+        mock_client = MagicMock()
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/o.mp4"),
+            config=Config(),
+            client=mock_client,
+            include_photos=True,
+            photo_assets=[make_asset("p1")],
+            target_duration_seconds=60.0,
+        )
+
+        mock_selection = MagicMock()
+        mock_selection.content_duration = 55.0
+        mock_selection.kept_video_ids = {"v1"}
+        mock_selection.selected_photo_ids = []
+
+        mock_result = MagicMock()
+        mock_result.selection = mock_selection
+        mock_result.scored_photos = []
+
+        # WHY: score_and_select_photos runs expensive analysis + scoring
+        with (
+            patch(
+                "immich_memories.photos.photo_pipeline.score_and_select_photos",
+                return_value=mock_result,
+            ),
+            patch("immich_memories.photos.photo_pipeline.render_photo_clips", return_value=[]),
+        ):
+            videos, photos = _apply_unified_budget(clips, params, tmp_path, target_override=60.0)
+
+        assert len(videos) == 1
+        assert videos[0].asset_id == "v1"
+
+
+# ===========================================================================
+# generate_downloads.py
+# ===========================================================================
+
+
+class TestDownloadClip:
+    def test_local_path_exists_skips_download(self, tmp_path):
+        from immich_memories.generate_downloads import download_clip
+
+        local_file = tmp_path / "local.mp4"
+        local_file.write_bytes(b"data")
+
+        clip = MagicMock()
+        clip.local_path = str(local_file)
+
+        result = download_clip(MagicMock(), MagicMock(), clip, tmp_path)
+        assert result == local_file
+
+    def test_local_path_nonexistent_proceeds_to_download(self, tmp_path):
+        from immich_memories.generate_downloads import download_clip
+
+        clip = MagicMock()
+        clip.local_path = str(tmp_path / "nonexistent.mp4")
+        clip.live_burst_video_ids = None
+        clip.live_burst_trim_points = None
+
+        mock_cache = MagicMock()
+        cached_path = tmp_path / "cached.mp4"
+        mock_cache.download_or_get.return_value = cached_path
+
+        # WHY: SyncImmichClient downloads from Immich REST API
+        result = download_clip(MagicMock(), mock_cache, clip, tmp_path)
+        assert result == cached_path
+
+    def test_none_client_returns_none(self, tmp_path):
+        from immich_memories.generate_downloads import download_clip
+
+        clip = MagicMock()
+        clip.local_path = None
+
+        result = download_clip(None, MagicMock(), clip, tmp_path)
+        assert result is None
+
+    def test_live_burst_delegates_to_merge(self, tmp_path):
+        from immich_memories.generate_downloads import download_clip
+
+        clip = MagicMock()
+        clip.local_path = None
+        clip.live_burst_video_ids = ["vid-a", "vid-b"]
+        clip.live_burst_trim_points = [(0.0, 1.0), (0.0, 1.5)]
+
+        mock_client = MagicMock()
+        merged = tmp_path / "merged.mp4"
+
+        # WHY: _download_and_merge_burst runs FFmpeg for burst merging
+        with patch(
+            "immich_memories.generate_downloads._download_and_merge_burst",
+            return_value=merged,
+        ) as mock_merge:
+            result = download_clip(mock_client, MagicMock(), clip, tmp_path)
+
+        mock_merge.assert_called_once()
+        assert result == merged
+
+    def test_no_local_path_no_burst_uses_cache(self, tmp_path):
+        from immich_memories.generate_downloads import download_clip
+
+        clip = MagicMock()
+        clip.local_path = None
+        clip.live_burst_video_ids = None
+        clip.live_burst_trim_points = None
+
+        cached = tmp_path / "cached.mp4"
+        mock_cache = MagicMock()
+        mock_cache.download_or_get.return_value = cached
+
+        result = download_clip(MagicMock(), mock_cache, clip, tmp_path)
+        assert result == cached
+
+
+class TestDownloadAndMergeBurst:
+    def test_cached_merged_file_returned_immediately(self, tmp_path):
+        from immich_memories.generate_downloads import _download_and_merge_burst
+
+        clip = MagicMock()
+        clip.asset.id = "asset-1"
+        clip.live_burst_video_ids = ["v1", "v2"]
+        clip.live_burst_trim_points = [(0.0, 1.0), (0.0, 1.5)]
+        clip.live_burst_shutter_timestamps = None
+
+        merge_dir = tmp_path / ".live_merges"
+        merge_dir.mkdir(parents=True)
+        merged = merge_dir / "asset-1_merged.mp4"
+        merged.write_bytes(b"x" * 2000)
+
+        result = _download_and_merge_burst(MagicMock(), MagicMock(), clip, tmp_path)
+        assert result == merged
+
+    def test_no_burst_clips_downloaded_falls_back_to_cache(self, tmp_path):
+        from immich_memories.generate_downloads import _download_and_merge_burst
+
+        clip = MagicMock()
+        clip.asset.id = "asset-1"
+        clip.live_burst_video_ids = ["v1"]
+        clip.live_burst_trim_points = [(0.0, 1.0)]
+        clip.live_burst_shutter_timestamps = None
+
+        mock_cache = MagicMock()
+        fallback = tmp_path / "fallback.mp4"
+        mock_cache.download_or_get.return_value = fallback
+        mock_cache.cache_dir = tmp_path / "cache"
+
+        # WHY: _download_burst_clips downloads individual burst videos from Immich
+        with patch(
+            "immich_memories.generate_downloads._download_burst_clips",
+            return_value=[],
+        ):
+            result = _download_and_merge_burst(MagicMock(), mock_cache, clip, tmp_path)
+
+        assert result == fallback
+
+    def test_partial_downloads_aligns_then_merges(self, tmp_path):
+        from immich_memories.generate_downloads import _download_and_merge_burst
+
+        clip = MagicMock()
+        clip.asset.id = "asset-1"
+        clip.live_burst_video_ids = ["v1", "v2"]
+        clip.live_burst_trim_points = [(0.0, 1.0), (0.0, 1.5)]
+        clip.live_burst_shutter_timestamps = None
+
+        # Only one clip downloaded (mismatched count)
+        v1_path = tmp_path / "v1.MOV"
+        v1_path.write_bytes(b"video1")
+
+        mock_cache = MagicMock()
+        mock_cache.cache_dir = tmp_path / "cache"
+        merged = tmp_path / ".live_merges" / "asset-1_merged.mp4"
+
+        with (
+            patch(
+                "immich_memories.generate_downloads._download_burst_clips",
+                return_value=[v1_path],
+            ),
+            patch(
+                "immich_memories.generate_downloads._align_burst_subset",
+                return_value=([v1_path], [(0.0, 1.0)]),
+            ),
+            patch(
+                "immich_memories.generate_downloads._try_merge_burst",
+                return_value=merged,
+            ) as mock_merge,
+        ):
+            result = _download_and_merge_burst(MagicMock(), mock_cache, clip, tmp_path)
+
+        mock_merge.assert_called_once()
+        assert result == merged
+
+    def test_merge_failure_falls_back_to_cache(self, tmp_path):
+        from immich_memories.generate_downloads import _download_and_merge_burst
+
+        clip = MagicMock()
+        clip.asset.id = "asset-1"
+        clip.live_burst_video_ids = ["v1"]
+        clip.live_burst_trim_points = [(0.0, 1.0)]
+        clip.live_burst_shutter_timestamps = [0.5]
+
+        v1_path = tmp_path / "v1.MOV"
+        v1_path.write_bytes(b"video1")
+
+        mock_cache = MagicMock()
+        mock_cache.cache_dir = tmp_path / "cache"
+        fallback = tmp_path / "fallback.mp4"
+        mock_cache.download_or_get.return_value = fallback
+
+        with (
+            patch(
+                "immich_memories.generate_downloads._download_burst_clips",
+                return_value=[v1_path],
+            ),
+            patch(
+                "immich_memories.generate_downloads._try_merge_burst",
+                return_value=None,
+            ),
+        ):
+            result = _download_and_merge_burst(MagicMock(), mock_cache, clip, tmp_path)
+
+        assert result == fallback
+
+
+class TestDownloadBurstClips:
+    def test_cached_clips_returned_without_download(self, tmp_path):
+        from immich_memories.generate_downloads import _download_burst_clips
+
+        cache_dir = tmp_path / "cache"
+        subdir = cache_dir / "ab"
+        subdir.mkdir(parents=True)
+        clip_file = subdir / "abcdef.MOV"
+        clip_file.write_bytes(b"video")
+
+        result = _download_burst_clips(MagicMock(), cache_dir, ["abcdef"])
+        assert result == [clip_file]
+
+    def test_download_failure_skips_clip(self, tmp_path):
+        from immich_memories.generate_downloads import _download_burst_clips
+
+        cache_dir = tmp_path / "cache"
+        # WHY: client.download_asset makes HTTP requests to Immich
+        mock_client = MagicMock()
+        mock_client.download_asset.side_effect = ConnectionError("network failure")
+
+        result = _download_burst_clips(mock_client, cache_dir, ["abcdef"])
+        assert result == []
+
+    def test_successful_download_appended(self, tmp_path):
+        from immich_memories.generate_downloads import _download_burst_clips
+
+        cache_dir = tmp_path / "cache"
+
+        def fake_download(vid, dest):
+            dest.write_bytes(b"downloaded")
+
+        # WHY: client.download_asset makes HTTP requests to Immich
+        mock_client = MagicMock()
+        mock_client.download_asset.side_effect = fake_download
+
+        result = _download_burst_clips(mock_client, cache_dir, ["abcdef"])
+        assert len(result) == 1
+        assert result[0].name == "abcdef.MOV"
+
+    def test_short_burst_id_uses_fallback_subdir(self, tmp_path):
+        from immich_memories.generate_downloads import _download_burst_clips
+
+        cache_dir = tmp_path / "cache"
+
+        def fake_download(vid, dest):
+            dest.write_bytes(b"data")
+
+        mock_client = MagicMock()
+        mock_client.download_asset.side_effect = fake_download
+
+        result = _download_burst_clips(mock_client, cache_dir, ["x"])
+        assert len(result) == 1
+        # Short ID (<2 chars) uses "00" as subdir
+        assert "00" in str(result[0].parent)
+
+
+class TestAlignBurstSubset:
+    def test_full_match(self):
+        from immich_memories.generate_downloads import _align_burst_subset
+
+        p1 = Path("/cache/v1.MOV")
+        p2 = Path("/cache/v2.MOV")
+        paths, trims = _align_burst_subset([p1, p2], ["v1", "v2"], [(0.0, 1.0), (0.5, 2.0)])
+        assert paths == [p1, p2]
+        assert trims == [(0.0, 1.0), (0.5, 2.0)]
+
+    def test_partial_match(self):
+        from immich_memories.generate_downloads import _align_burst_subset
+
+        p2 = Path("/cache/v2.MOV")
+        paths, trims = _align_burst_subset([p2], ["v1", "v2"], [(0.0, 1.0), (0.5, 2.0)])
+        assert paths == [p2]
+        assert trims == [(0.5, 2.0)]
+
+    def test_no_match_returns_empty(self):
+        from immich_memories.generate_downloads import _align_burst_subset
+
+        p_other = Path("/cache/other.MOV")
+        paths, trims = _align_burst_subset([p_other], ["v1", "v2"], [(0.0, 1.0), (0.5, 2.0)])
+        assert paths == []
+        assert trims == []
+
+
+class TestTryMergeBurst:
+    def test_no_valid_clips_returns_none(self, tmp_path):
+        from immich_memories.generate_downloads import _try_merge_burst
+
+        # WHY: filter_valid_clips probes video streams with ffprobe
+        with patch(
+            "immich_memories.processing.live_photo_merger.filter_valid_clips",
+            return_value=([], []),
+        ):
+            result = _try_merge_burst([], [], tmp_path / "merged.mp4")
+
+        assert result is None
+
+    def test_successful_merge_returns_path(self, tmp_path):
+        from immich_memories.generate_downloads import _try_merge_burst
+
+        clip_path = tmp_path / "clip.MOV"
+        clip_path.write_bytes(b"video")
+        merged_path = tmp_path / "merged.mp4"
+
+        # WHY: filter_valid_clips, probe_clip_has_audio, build_merge_command use ffprobe/ffmpeg
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.filter_valid_clips",
+                return_value=([clip_path], [(0.0, 1.0)]),
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_audio",
+                return_value=False,
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger.build_merge_command",
+                return_value=["echo", "ok"],
+            ),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            merged_path.write_bytes(b"merged")  # Simulate FFmpeg output
+            result = _try_merge_burst([clip_path], [(0.0, 1.0)], merged_path)
+
+        assert result == merged_path
+
+    def test_merge_command_failure_returns_none(self, tmp_path):
+        from immich_memories.generate_downloads import _try_merge_burst
+
+        clip_path = tmp_path / "clip.MOV"
+        clip_path.write_bytes(b"video")
+        merged_path = tmp_path / "merged.mp4"
+
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.filter_valid_clips",
+                return_value=([clip_path], [(0.0, 1.0)]),
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_audio",
+                return_value=False,
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger.build_merge_command",
+                return_value=["false"],
+            ),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=1, stderr="error")
+            result = _try_merge_burst([clip_path], [(0.0, 1.0)], merged_path)
+
+        assert result is None
+
+    def test_with_audio_and_shutter_timestamps_attempts_spectrogram(self, tmp_path):
+        from immich_memories.generate_downloads import _try_merge_burst
+
+        c1 = tmp_path / "c1.MOV"
+        c2 = tmp_path / "c2.MOV"
+        c1.write_bytes(b"v1")
+        c2.write_bytes(b"v2")
+        merged_path = tmp_path / "merged.mp4"
+
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.filter_valid_clips",
+                return_value=([c1, c2], [(0.0, 1.0), (0.0, 1.5)]),
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_audio",
+                return_value=True,
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger.build_merge_command",
+                return_value=["echo", "ok"],
+            ),
+            # WHY: subprocess.run calls ffprobe for duration probing
+            patch("subprocess.run") as mock_run,
+            # WHY: align_clips_spectrogram runs expensive cross-correlation
+            patch(
+                "immich_memories.processing.live_photo_merger.align_clips_spectrogram",
+                return_value=([(0.1, 0.9), (0.1, 1.4)], [(0.05, 0.95), (0.05, 1.45)]),
+            ) as mock_align,
+        ):
+            # Simulate ffprobe returning duration JSON
+            probe_result = MagicMock(stdout='{"format":{"duration":"2.0"}}')
+            run_result = MagicMock(returncode=0)
+            mock_run.side_effect = [probe_result, probe_result, run_result]
+            merged_path.write_bytes(b"merged")
+
+            result = _try_merge_burst(
+                [c1, c2],
+                [(0.0, 1.0), (0.0, 1.5)],
+                merged_path,
+                shutter_timestamps=[0.3, 0.7],
+            )
+
+        mock_align.assert_called_once()
+        assert result == merged_path
+
+    def test_spectrogram_failure_falls_back_to_timestamp_trims(self, tmp_path):
+        from immich_memories.generate_downloads import _try_merge_burst
+
+        c1 = tmp_path / "c1.MOV"
+        c2 = tmp_path / "c2.MOV"
+        c1.write_bytes(b"v1")
+        c2.write_bytes(b"v2")
+        merged_path = tmp_path / "merged.mp4"
+
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.filter_valid_clips",
+                return_value=([c1, c2], [(0.0, 1.0), (0.0, 1.5)]),
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_audio",
+                return_value=True,
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger.build_merge_command",
+                return_value=["echo", "ok"],
+            ),
+            patch("subprocess.run") as mock_run,
+            # WHY: align_clips_spectrogram runs cross-correlation that can fail
+            patch(
+                "immich_memories.processing.live_photo_merger.align_clips_spectrogram",
+                side_effect=RuntimeError("alignment failed"),
+            ),
+        ):
+            probe_result = MagicMock(stdout='{"format":{"duration":"2.0"}}')
+            run_result = MagicMock(returncode=0)
+            mock_run.side_effect = [probe_result, probe_result, run_result]
+            merged_path.write_bytes(b"merged")
+
+            result = _try_merge_burst(
+                [c1, c2],
+                [(0.0, 1.0), (0.0, 1.5)],
+                merged_path,
+                shutter_timestamps=[0.3, 0.7],
+            )
+
+        # Falls back and still succeeds with timestamp trims
+        assert result == merged_path
+
+    def test_merge_exception_returns_none(self, tmp_path):
+        from immich_memories.generate_downloads import _try_merge_burst
+
+        clip_path = tmp_path / "clip.MOV"
+        clip_path.write_bytes(b"video")
+        merged_path = tmp_path / "merged.mp4"
+
+        with (
+            patch(
+                "immich_memories.processing.live_photo_merger.filter_valid_clips",
+                return_value=([clip_path], [(0.0, 1.0)]),
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger.probe_clip_has_audio",
+                return_value=False,
+            ),
+            patch(
+                "immich_memories.processing.live_photo_merger.build_merge_command",
+                return_value=["bad_command"],
+            ),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.side_effect = OSError("command not found")
+            result = _try_merge_burst([clip_path], [(0.0, 1.0)], merged_path)
+
+        assert result is None
+
+
+# ===========================================================================
+# generate_music.py
+# ===========================================================================
+
+
+class TestResolveMusicFile:
+    def test_no_music_flag_returns_none(self, tmp_path):
+        from immich_memories.generate_music import resolve_music_file
+
+        result = resolve_music_file(
+            config=Config(),
+            music_path=None,
+            no_music=True,
+            assembly_clips=[],
+            run_output_dir=tmp_path,
+            memory_type=None,
+        )
+        assert result is None
+
+    def test_explicit_music_path_returned(self, tmp_path):
+        from immich_memories.generate_music import resolve_music_file
+
+        music = tmp_path / "song.mp3"
+        music.write_bytes(b"audio")
+        result = resolve_music_file(
+            config=Config(),
+            music_path=music,
+            no_music=False,
+            assembly_clips=[],
+            run_output_dir=tmp_path,
+            memory_type=None,
+        )
+        assert result == music
+
+    def test_explicit_path_nonexistent_returns_none(self, tmp_path):
+        from immich_memories.generate_music import resolve_music_file
+
+        result = resolve_music_file(
+            config=Config(),
+            music_path=tmp_path / "nonexistent.mp3",
+            no_music=False,
+            assembly_clips=[],
+            run_output_dir=tmp_path,
+            memory_type=None,
+        )
+        assert result is None
+
+    def test_auto_generate_when_no_path_and_config_available(self, tmp_path):
+        from immich_memories.generate_music import resolve_music_file
+
+        config = Config()
+        calls = []
+
+        # WHY: music_config_available checks external music generation services
+        with (
+            patch("immich_memories.generate_music.music_config_available", return_value=True),
+            patch(
+                "immich_memories.generate_music.auto_generate_music",
+                return_value=tmp_path / "generated.mp3",
+            ) as mock_gen,
+        ):
+
+            def report_fn(p, pct, m):
+                return calls.append((p, pct, m))
+
+            result = resolve_music_file(
+                config=config,
+                music_path=None,
+                no_music=False,
+                assembly_clips=[],
+                run_output_dir=tmp_path,
+                memory_type="month",
+                report_fn=report_fn,
+            )
+
+        mock_gen.assert_called_once()
+        assert result == tmp_path / "generated.mp3"
+        # report_fn should have been called with music progress
+        assert any(c[0] == "music" for c in calls)
+
+    def test_no_path_no_config_returns_none(self, tmp_path):
+        from immich_memories.generate_music import resolve_music_file
+
+        # WHY: music_config_available checks external service configs
+        with patch("immich_memories.generate_music.music_config_available", return_value=False):
+            result = resolve_music_file(
+                config=Config(),
+                music_path=None,
+                no_music=False,
+                assembly_clips=[],
+                run_output_dir=tmp_path,
+                memory_type=None,
+            )
+        assert result is None
+
+
+class TestClipMonthFromDate:
+    def test_valid_date(self):
+        from immich_memories.generate_music import _clip_month_from_date
+
+        assert _clip_month_from_date("2025-07-15") == 7
+
+    def test_none_returns_none(self):
+        from immich_memories.generate_music import _clip_month_from_date
+
+        assert _clip_month_from_date(None) is None
+
+    def test_invalid_format_returns_none(self):
+        from immich_memories.generate_music import _clip_month_from_date
+
+        assert _clip_month_from_date("not-a-date") is None
+
+    def test_no_month_part_returns_none(self):
+        from immich_memories.generate_music import _clip_month_from_date
+
+        assert _clip_month_from_date("2025") is None
+
+
+class TestAutoGenerateMusic:
+    def test_no_config_returns_none(self, tmp_path):
+        from immich_memories.generate_music import auto_generate_music
+
+        config = Config()
+        # WHY: music_config_available checks MusicGen/ACE-Step service configs
+        with patch("immich_memories.generate_music.music_config_available", return_value=False):
+            result = auto_generate_music(config, [], tmp_path, None)
+        assert result is None
+
+    def test_generation_exception_returns_none(self, tmp_path):
+        from immich_memories.generate_music import auto_generate_music
+
+        config = Config()
+        with (
+            patch("immich_memories.generate_music.music_config_available", return_value=True),
+            # WHY: generate_music_for_video calls external MusicGen/ACE-Step APIs
+            patch(
+                "immich_memories.audio.music_generator.generate_music_for_video",
+                side_effect=RuntimeError("API down"),
+            ),
+        ):
+            result = auto_generate_music(config, [], tmp_path, "month")
+        assert result is None
+
+
+class TestMusicConfigAvailable:
+    def test_ace_step_enabled(self):
+        from immich_memories.generate_music import music_config_available
+
+        config = MagicMock()
+        config.ace_step.enabled = True
+        config.musicgen = None
+        assert music_config_available(config) is True
+
+    def test_musicgen_enabled(self):
+        from immich_memories.generate_music import music_config_available
+
+        config = MagicMock()
+        config.ace_step = None
+        config.musicgen.enabled = True
+        assert music_config_available(config) is True
+
+    def test_nothing_enabled(self):
+        from immich_memories.generate_music import music_config_available
+
+        config = MagicMock()
+        config.ace_step = None
+        config.musicgen = None
+        assert music_config_available(config) is False

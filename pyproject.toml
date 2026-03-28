@@ -582,10 +582,10 @@ omit = [
 ]
 
 [tool.coverage.report]
-# Unit tests alone reach ~48%. Integration XMLs push core to 60%.
+# Unit tests alone reach ~64%. Integration XMLs push higher.
 # This floor prevents erosion — the REAL check is diff-cover at 80% per PR.
 # UI pages are excluded (see [tool.coverage.run].omit) until Playwright E2E (#37).
-fail_under = 45
+fail_under = 60
 show_missing = true
 exclude_lines = [
     "pragma: no cover",

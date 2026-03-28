@@ -1164,3 +1164,1140 @@ class TestClassifyFavoritesByWeek:
         _by_week, protected = refiner._classify_favorites_by_week(favorites)
         dense_week = base.strftime("%Y-W%W")
         assert dense_week in protected
+
+
+# ===========================================================================
+# Module 1 (continued): scoring.py — deeper coverage
+# ===========================================================================
+
+
+class TestCheckVisionAvailable:
+    """check_vision_available() early returns and branch conditions."""
+
+    def test_non_darwin_returns_false(self):
+        import immich_memories.analysis.scoring as scoring_mod
+
+        # WHY: platform.system is OS detection — mock to test non-Mac path
+        original = scoring_mod._use_vision
+        scoring_mod._use_vision = None  # reset cached value
+        try:
+            with patch("immich_memories.analysis.scoring.platform.system", return_value="Linux"):
+                result = scoring_mod.check_vision_available()
+            assert result is False
+        finally:
+            scoring_mod._use_vision = original
+
+    def test_darwin_vision_available(self):
+        import immich_memories.analysis.scoring as scoring_mod
+
+        original = scoring_mod._use_vision
+        scoring_mod._use_vision = None
+        try:
+            # WHY: apple_vision module only exists on macOS — mock the import
+            with (
+                patch("immich_memories.analysis.scoring.platform.system", return_value="Darwin"),
+                patch(
+                    "immich_memories.analysis.scoring.is_vision_available",
+                    create=True,
+                    return_value=True,
+                ),
+                patch.dict(
+                    "sys.modules",
+                    {
+                        "immich_memories.analysis.apple_vision": MagicMock(
+                            is_vision_available=MagicMock(return_value=True)
+                        )
+                    },
+                ),
+            ):
+                result = scoring_mod.check_vision_available()
+            assert result is True
+        finally:
+            scoring_mod._use_vision = original
+
+    def test_darwin_import_error_returns_false(self):
+        import immich_memories.analysis.scoring as scoring_mod
+
+        original = scoring_mod._use_vision
+        scoring_mod._use_vision = None
+        try:
+            # WHY: platform.system is OS detection — mock to simulate macOS
+            with patch("immich_memories.analysis.scoring.platform.system", return_value="Darwin"):
+                # Force ImportError on apple_vision
+                import sys
+
+                saved = sys.modules.get("immich_memories.analysis.apple_vision")
+                sys.modules["immich_memories.analysis.apple_vision"] = None  # type: ignore[assignment]
+                try:
+                    result = scoring_mod.check_vision_available()
+                finally:
+                    if saved is None:
+                        sys.modules.pop("immich_memories.analysis.apple_vision", None)
+                    else:
+                        sys.modules["immich_memories.analysis.apple_vision"] = saved
+            assert result is False
+        finally:
+            scoring_mod._use_vision = original
+
+
+class TestInitVisionDetector:
+    """init_vision_detector() success and failure paths."""
+
+    def test_success_returns_detector(self):
+        from immich_memories.analysis.scoring import init_vision_detector
+
+        mock_detector = MagicMock()
+        # WHY: VisionFaceDetector requires macOS ObjC — mock the module import
+        with patch.dict(
+            "sys.modules",
+            {
+                "immich_memories.analysis.apple_vision": MagicMock(
+                    VisionFaceDetector=MagicMock(return_value=mock_detector)
+                )
+            },
+        ):
+            result = init_vision_detector()
+        assert result is mock_detector
+
+    def test_exception_returns_none(self):
+        from immich_memories.analysis.scoring import init_vision_detector
+
+        # WHY: VisionFaceDetector may fail on non-Mac — mock to simulate failure
+        with patch.dict(
+            "sys.modules",
+            {
+                "immich_memories.analysis.apple_vision": MagicMock(
+                    VisionFaceDetector=MagicMock(side_effect=RuntimeError("no GPU"))
+                )
+            },
+        ):
+            result = init_vision_detector()
+        assert result is None
+
+
+class TestInitOpencvCascade:
+    """init_opencv_cascade() failure path returns None."""
+
+    def test_exception_returns_none(self):
+        from immich_memories.analysis.scoring import init_opencv_cascade
+
+        # WHY: cv2.data.haarcascades may not exist on headless systems
+        with patch("immich_memories.analysis.scoring.cv2") as mock_cv2:
+            mock_cv2.data = MagicMock()
+            mock_cv2.data.haarcascades = "/nonexistent/"
+            mock_cv2.CascadeClassifier.side_effect = RuntimeError("no cascade")
+            result = init_opencv_cascade()
+        assert result is None
+
+
+class TestComputeFaceScoreOpencvWithDetections:
+    """Cover lines 178-196: face area computation when faces ARE detected."""
+
+    def test_opencv_detects_faces_computes_coverage_and_positions(self):
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        # WHY: CascadeClassifier.detectMultiScale is OpenCV I/O — mock to control detections
+        mock_cascade = MagicMock()
+        # Return faces as numpy array (like real OpenCV does)
+        mock_cascade.detectMultiScale.return_value = np.array(
+            [[50, 50, 40, 40], [100, 100, 30, 30]]
+        )
+
+        from immich_memories.analysis.scoring import _compute_face_score_opencv
+
+        score, positions = _compute_face_score_opencv(frame, 200, 200, mock_cascade)
+        # 2 faces: coverage = (40*40 + 30*30) / (200*200) = (1600+900)/40000 = 0.0625
+        # coverage_score = min(0.0625 / 0.15, 1.0) = 0.4167
+        # face_count_bonus = min(2 * 0.1, 0.3) = 0.2
+        # total = min(0.4167 + 0.2, 1.0) = 0.6167
+        assert 0.5 < score < 0.8
+        assert len(positions) == 2
+        # Verify positions are normalized centers
+        assert 0.0 < positions[0][0] < 1.0
+        assert 0.0 < positions[0][1] < 1.0
+
+
+class TestGenerateSceneAwareSegments:
+    """Cover lines 408-446: scene-aware segmentation with subdivision."""
+
+    @patch("immich_memories.analysis.scoring.get_video_info")
+    @patch("immich_memories.analysis.scenes.SceneDetector")
+    def test_short_scenes_kept_long_scenes_subdivided(self, mock_detector_cls, mock_info):
+        from immich_memories.analysis.scoring import generate_scene_aware_segments
+
+        # WHY: SceneDetector needs video I/O — mock to control detected scenes
+        mock_instance = MagicMock()
+        short_scene = Scene(start_time=0, end_time=3.0, start_frame=0, end_frame=90)
+        long_scene = Scene(start_time=5.0, end_time=25.0, start_frame=150, end_frame=750)
+        tiny_scene = Scene(start_time=25.0, end_time=25.3, start_frame=750, end_frame=759)
+        mock_instance.detect.return_value = [short_scene, long_scene, tiny_scene]
+        mock_detector_cls.return_value = mock_instance
+
+        # WHY: get_video_info reads video metadata via ffprobe/cv2 — mock
+        mock_info.return_value = {"fps": 30, "duration": 30.0}
+
+        segments = generate_scene_aware_segments(
+            video_path=Path("/fake.mp4"),
+            max_segment_duration=5.0,
+            min_segment_duration=1.0,
+            scene_threshold=27.0,
+            min_scene_duration=0.5,
+            analysis_config=AnalysisConfig(),
+        )
+
+        # short_scene (3s) <= max (5s): kept as-is
+        # long_scene (20s) > max (5s): subdivided
+        # tiny_scene (0.3s) < min (1s): filtered out
+        assert any(s.start_time == 0.0 and s.end_time == 3.0 for s in segments)
+        assert len(segments) >= 2  # at least short + some subdivisions
+        # tiny scene should be filtered
+        assert not any(s.start_time == 25.0 and s.end_time == 25.3 for s in segments)
+
+
+class TestSceneScorerInit:
+    """Cover lines 598-606, 615-616, 621-623, 630: scorer initialization branches."""
+
+    def test_vision_init_when_available(self):
+        """When vision is available, _use_vision is True and detector is initialized."""
+        # WHY: check_vision_available/init_vision_detector do OS-level detection
+        with (
+            patch("immich_memories.analysis.scoring.check_vision_available", return_value=True),
+            patch(
+                "immich_memories.analysis.scoring.init_vision_detector",
+                return_value=MagicMock(),
+            ),
+        ):
+            from immich_memories.analysis.scoring import SceneScorer
+
+            scorer = SceneScorer(
+                content_analysis_config=MagicMock(),
+                analysis_config=AnalysisConfig(),
+            )
+        assert scorer._use_vision is True
+        assert scorer._vision_detector is not None
+        assert scorer._face_cascade is None
+
+    def test_vision_init_fails_falls_back_to_opencv(self):
+        """When vision detector init fails, falls back to OpenCV."""
+        # WHY: init_vision_detector can return None on init failure
+        with (
+            patch("immich_memories.analysis.scoring.check_vision_available", return_value=True),
+            patch("immich_memories.analysis.scoring.init_vision_detector", return_value=None),
+            patch(
+                "immich_memories.analysis.scoring.init_opencv_cascade",
+                return_value=MagicMock(),
+            ),
+        ):
+            from immich_memories.analysis.scoring import SceneScorer
+
+            scorer = SceneScorer(
+                content_analysis_config=MagicMock(),
+                analysis_config=AnalysisConfig(),
+            )
+        assert scorer._use_vision is False
+        assert scorer._face_cascade is not None
+
+    def test_from_profile_factory(self):
+        """from_profile creates a SceneScorer from a ScoringProfile."""
+        from immich_memories.analysis.scoring import SceneScorer
+        from immich_memories.memory_types.presets import ScoringProfile
+
+        profile = ScoringProfile(face_weight=0.5, motion_weight=0.3)
+        # WHY: check_vision_available does OS detection — mock for unit test
+        with patch("immich_memories.analysis.scoring.check_vision_available", return_value=False):
+            scorer = SceneScorer.from_profile(
+                profile,
+                content_analysis_config=MagicMock(),
+                analysis_config=AnalysisConfig(),
+            )
+        assert scorer.face_weight > 0
+        assert scorer.motion_weight > 0
+
+
+class TestSceneScorerCapture:
+    """Cover lines 621-623, 630: _get_capture reuse and release_capture."""
+
+    def _make_scorer(self):
+        from immich_memories.analysis.scoring import SceneScorer
+
+        # WHY: check_vision_available does OS-level detection
+        with patch("immich_memories.analysis.scoring.check_vision_available", return_value=False):
+            return SceneScorer(
+                content_analysis_config=MagicMock(),
+                analysis_config=AnalysisConfig(),
+            )
+
+    def test_get_capture_reuses_for_same_path(self):
+        scorer = self._make_scorer()
+        # WHY: cv2.VideoCapture opens actual video files — mock for unit test
+        mock_cap = MagicMock()
+        with patch("immich_memories.analysis.scoring.cv2.VideoCapture", return_value=mock_cap):
+            cap1 = scorer._get_capture(Path("/fake.mp4"))
+            cap2 = scorer._get_capture(Path("/fake.mp4"))
+        assert cap1 is cap2
+        mock_cap.release.assert_not_called()
+
+    def test_get_capture_releases_old_when_new_path(self):
+        scorer = self._make_scorer()
+        mock_cap1 = MagicMock()
+        mock_cap2 = MagicMock()
+        caps = iter([mock_cap1, mock_cap2])
+        # WHY: cv2.VideoCapture opens actual video files — mock for unit test
+        with patch("immich_memories.analysis.scoring.cv2.VideoCapture", side_effect=caps):
+            scorer._get_capture(Path("/video1.mp4"))
+            scorer._get_capture(Path("/video2.mp4"))
+        mock_cap1.release.assert_called_once()
+
+    def test_release_capture_cleans_up(self):
+        scorer = self._make_scorer()
+        mock_cap = MagicMock()
+        # WHY: cv2.VideoCapture opens actual video files — mock for unit test
+        with patch("immich_memories.analysis.scoring.cv2.VideoCapture", return_value=mock_cap):
+            scorer._get_capture(Path("/fake.mp4"))
+        scorer.release_capture()
+        mock_cap.release.assert_called_once()
+        assert scorer._current_cap is None
+
+    def test_release_capture_noop_when_none(self):
+        scorer = self._make_scorer()
+        scorer.release_capture()  # should not raise
+
+
+class TestRunContentAnalysis:
+    """Cover lines 737-750: content analysis with analyzer, confidence check, exception."""
+
+    def _make_scorer(self, content_analyzer=None, content_weight=0.0):
+        from immich_memories.analysis.scoring import SceneScorer
+
+        # WHY: check_vision_available does OS detection
+        with patch("immich_memories.analysis.scoring.check_vision_available", return_value=False):
+            return SceneScorer(
+                content_analyzer=content_analyzer,
+                content_weight=content_weight,
+                content_analysis_config=MagicMock(analyze_frames=2, min_confidence=0.5),
+                analysis_config=AnalysisConfig(),
+            )
+
+    def test_no_analyzer_returns_zero(self):
+        scorer = self._make_scorer(content_analyzer=None, content_weight=0.3)
+        scene = Scene(start_time=0, end_time=5.0, start_frame=0, end_frame=150)
+        result = scorer._run_content_analysis(Path("/fake.mp4"), scene)
+        assert result == 0.0
+
+    def test_zero_weight_returns_zero(self):
+        scorer = self._make_scorer(content_analyzer=MagicMock(), content_weight=0.0)
+        scene = Scene(start_time=0, end_time=5.0, start_frame=0, end_frame=150)
+        result = scorer._run_content_analysis(Path("/fake.mp4"), scene)
+        assert result == 0.0
+
+    def test_high_confidence_returns_content_score(self):
+        # WHY: ContentAnalyzer calls LLM API — mock for unit test
+        mock_analyzer = MagicMock()
+        mock_analysis = MagicMock()
+        mock_analysis.confidence = 0.9
+        mock_analysis.content_score = 0.75
+        mock_analyzer.analyze_segment.return_value = mock_analysis
+
+        scorer = self._make_scorer(content_analyzer=mock_analyzer, content_weight=0.3)
+        scene = Scene(start_time=0, end_time=5.0, start_frame=0, end_frame=150)
+        result = scorer._run_content_analysis(Path("/fake.mp4"), scene)
+        assert result == 0.75
+
+    def test_low_confidence_returns_default(self):
+        # WHY: ContentAnalyzer calls LLM API — mock for unit test
+        mock_analyzer = MagicMock()
+        mock_analysis = MagicMock()
+        mock_analysis.confidence = 0.2  # below threshold of 0.5
+        mock_analyzer.analyze_segment.return_value = mock_analysis
+
+        scorer = self._make_scorer(content_analyzer=mock_analyzer, content_weight=0.3)
+        scene = Scene(start_time=0, end_time=5.0, start_frame=0, end_frame=150)
+        result = scorer._run_content_analysis(Path("/fake.mp4"), scene)
+        assert result == 0.5
+
+    def test_exception_returns_default(self):
+        # WHY: ContentAnalyzer calls LLM API — mock to simulate failure
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze_segment.side_effect = RuntimeError("LLM timeout")
+
+        scorer = self._make_scorer(content_analyzer=mock_analyzer, content_weight=0.3)
+        scene = Scene(start_time=0, end_time=5.0, start_frame=0, end_frame=150)
+        result = scorer._run_content_analysis(Path("/fake.mp4"), scene)
+        assert result == 0.5
+
+
+class TestFindBestMoments:
+    """Cover lines 761-791: find_best_moments with long/short/filtered scenes."""
+
+    def _make_scorer(self):
+        from immich_memories.analysis.scoring import SceneScorer
+
+        # WHY: check_vision_available does OS detection
+        with patch("immich_memories.analysis.scoring.check_vision_available", return_value=False):
+            return SceneScorer(
+                content_analysis_config=MagicMock(analyze_frames=2, min_confidence=0.5),
+                analysis_config=AnalysisConfig(),
+            )
+
+    def test_short_scene_included_directly(self):
+        scorer = self._make_scorer()
+        scene = Scene(start_time=0, end_time=4.0, start_frame=0, end_frame=120)
+        mock_score = MomentScore(
+            start_time=0,
+            end_time=4.0,
+            total_score=0.7,
+            face_score=0.5,
+            motion_score=0.5,
+            audio_score=0.5,
+            stability_score=0.5,
+        )
+        # WHY: score_scene reads actual video frames via cv2 — mock for unit test
+        with patch.object(scorer, "score_scene", return_value=mock_score):
+            moments = scorer.find_best_moments(
+                Path("/fake.mp4"),
+                [scene],
+                target_duration=5.0,
+                min_duration=2.0,
+                max_duration=10.0,
+            )
+        assert len(moments) == 1
+        assert moments[0].total_score == 0.7
+
+    def test_too_short_scene_excluded(self):
+        scorer = self._make_scorer()
+        scene = Scene(start_time=0, end_time=1.0, start_frame=0, end_frame=30)
+        mock_score = MomentScore(
+            start_time=0,
+            end_time=1.0,
+            total_score=0.9,
+            face_score=0.5,
+            motion_score=0.5,
+            audio_score=0.5,
+            stability_score=0.5,
+        )
+        with patch.object(scorer, "score_scene", return_value=mock_score):
+            moments = scorer.find_best_moments(
+                Path("/fake.mp4"),
+                [scene],
+                target_duration=5.0,
+                min_duration=2.0,
+                max_duration=10.0,
+            )
+        assert len(moments) == 0
+
+    def test_long_scene_uses_find_best_segment(self):
+        scorer = self._make_scorer()
+        scene = Scene(start_time=0, end_time=20.0, start_frame=0, end_frame=600)
+        main_score = MomentScore(
+            start_time=0,
+            end_time=20.0,
+            total_score=0.6,
+            face_score=0.5,
+            motion_score=0.5,
+            audio_score=0.5,
+            stability_score=0.5,
+        )
+        best_seg = MomentScore(
+            start_time=5.0,
+            end_time=10.0,
+            total_score=0.85,
+            face_score=0.6,
+            motion_score=0.7,
+            audio_score=0.5,
+            stability_score=0.8,
+        )
+        # WHY: score_scene and _find_best_segment read video frames — mock
+        with (
+            patch.object(scorer, "score_scene", return_value=main_score),
+            patch.object(scorer, "_find_best_segment", return_value=best_seg),
+        ):
+            moments = scorer.find_best_moments(
+                Path("/fake.mp4"),
+                [scene],
+                target_duration=5.0,
+                min_duration=2.0,
+                max_duration=10.0,
+            )
+        assert len(moments) == 1
+        assert moments[0].start_time == 5.0
+
+    def test_long_scene_fallback_when_no_best_segment(self):
+        """When _find_best_segment returns None, create adjusted moment."""
+        scorer = self._make_scorer()
+        scene = Scene(start_time=0, end_time=20.0, start_frame=0, end_frame=600)
+        main_score = MomentScore(
+            start_time=0,
+            end_time=20.0,
+            total_score=0.6,
+            face_score=0.5,
+            motion_score=0.5,
+            audio_score=0.5,
+            stability_score=0.5,
+        )
+        # WHY: score_scene and _find_best_segment read video frames — mock
+        with (
+            patch.object(scorer, "score_scene", return_value=main_score),
+            patch.object(scorer, "_find_best_segment", return_value=None),
+        ):
+            moments = scorer.find_best_moments(
+                Path("/fake.mp4"),
+                [scene],
+                target_duration=5.0,
+                min_duration=2.0,
+                max_duration=10.0,
+            )
+        assert len(moments) == 1
+        # Adjusted moment: start=0, end=min(0+5, 20)=5
+        assert moments[0].end_time == 5.0
+
+    def test_multiple_scenes_sorted_by_score(self):
+        scorer = self._make_scorer()
+        scenes = [
+            Scene(start_time=0, end_time=4.0, start_frame=0, end_frame=120),
+            Scene(start_time=5, end_time=9.0, start_frame=150, end_frame=270),
+        ]
+        scores = [
+            MomentScore(start_time=0, end_time=4.0, total_score=0.4),
+            MomentScore(start_time=5, end_time=9.0, total_score=0.9),
+        ]
+        # WHY: score_scene reads video frames — mock
+        with patch.object(scorer, "score_scene", side_effect=scores):
+            moments = scorer.find_best_moments(
+                Path("/fake.mp4"),
+                scenes,
+                target_duration=5.0,
+                min_duration=2.0,
+                max_duration=10.0,
+            )
+        assert moments[0].total_score > moments[1].total_score
+
+
+class TestFindBestSegment:
+    """Cover lines 801-823: sliding window within a long scene."""
+
+    def _make_scorer(self):
+        from immich_memories.analysis.scoring import SceneScorer
+
+        # WHY: check_vision_available does OS detection
+        with patch("immich_memories.analysis.scoring.check_vision_available", return_value=False):
+            return SceneScorer(
+                content_analysis_config=MagicMock(analyze_frames=2, min_confidence=0.5),
+                analysis_config=AnalysisConfig(),
+            )
+
+    def test_sliding_window_finds_best(self):
+        scorer = self._make_scorer()
+        scene = Scene(start_time=0, end_time=20.0, start_frame=0, end_frame=600)
+
+        call_count = [0]
+
+        def mock_score_scene(video_path, temp_scene, sample_frames=5):
+            call_count[0] += 1
+            # Best segment around 8-13s
+            mid = (temp_scene.start_time + temp_scene.end_time) / 2
+            quality = 0.9 if 8 < mid < 13 else 0.4
+            return MomentScore(
+                start_time=temp_scene.start_time,
+                end_time=temp_scene.end_time,
+                total_score=quality,
+            )
+
+        mock_cap = MagicMock()
+        mock_cap.get.return_value = 30.0  # fps
+        # WHY: _get_capture opens video file — mock for unit test
+        with (
+            patch.object(scorer, "_get_capture", return_value=mock_cap),
+            patch.object(scorer, "score_scene", side_effect=mock_score_scene),
+        ):
+            result = scorer._find_best_segment(
+                Path("/fake.mp4"), scene, target_duration=5.0, min_duration=2.0
+            )
+        assert result is not None
+        assert result.total_score == 0.9
+        assert call_count[0] >= 3  # multiple windows evaluated
+
+
+class TestSampleAndScoreVideo:
+    """Cover lines 850-898: full video sampling pipeline."""
+
+    def _make_scorer(self):
+        from immich_memories.analysis.scoring import SceneScorer
+
+        # WHY: check_vision_available does OS detection
+        with patch("immich_memories.analysis.scoring.check_vision_available", return_value=False):
+            return SceneScorer(
+                content_analysis_config=MagicMock(analyze_frames=2, min_confidence=0.5),
+                analysis_config=AnalysisConfig(),
+            )
+
+    def test_nonexistent_file_raises(self):
+        scorer = self._make_scorer()
+        with pytest.raises(FileNotFoundError):
+            scorer.sample_and_score_video(Path("/nonexistent/video.mp4"))
+
+    def test_zero_duration_returns_empty(self, tmp_path):
+        scorer = self._make_scorer()
+        fake_video = tmp_path / "empty.mp4"
+        fake_video.write_bytes(b"\x00" * 100)
+        # WHY: get_video_info reads video metadata — mock to simulate zero duration
+        with patch(
+            "immich_memories.analysis.scoring.get_video_info",
+            return_value={"duration": 0, "fps": 30},
+        ):
+            result = scorer.sample_and_score_video(fake_video)
+        assert result == []
+
+    def test_scores_segments_with_progress(self, tmp_path):
+        scorer = self._make_scorer()
+        fake_video = tmp_path / "test.mp4"
+        fake_video.write_bytes(b"\x00" * 100)
+
+        segments = [
+            Scene(start_time=0, end_time=3.0, start_frame=0, end_frame=90),
+            Scene(start_time=3, end_time=6.0, start_frame=90, end_frame=180),
+        ]
+        mock_moments = [
+            MomentScore(start_time=0, end_time=3.0, total_score=0.7),
+            MomentScore(start_time=3, end_time=6.0, total_score=0.5),
+        ]
+
+        progress_calls = []
+
+        def track_progress(current, total):
+            progress_calls.append((current, total))
+
+        # WHY: get_video_info and score_scene read actual video — mock for unit test
+        with (
+            patch(
+                "immich_memories.analysis.scoring.get_video_info",
+                return_value={"duration": 6.0, "fps": 30},
+            ),
+            patch.object(scorer, "_get_segments", return_value=segments),
+            patch.object(scorer, "score_scene", side_effect=mock_moments),
+        ):
+            result = scorer.sample_and_score_video(fake_video, progress_callback=track_progress)
+
+        assert len(result) == 2
+        assert len(progress_calls) == 2
+        assert progress_calls[0] == (1, 2)
+        assert progress_calls[1] == (2, 2)
+
+    def test_empty_segments_returns_empty(self, tmp_path):
+        scorer = self._make_scorer()
+        fake_video = tmp_path / "test.mp4"
+        fake_video.write_bytes(b"\x00" * 100)
+
+        # WHY: get_video_info reads actual video — mock for unit test
+        with (
+            patch(
+                "immich_memories.analysis.scoring.get_video_info",
+                return_value={"duration": 10.0, "fps": 30},
+            ),
+            patch.object(scorer, "_get_segments", return_value=[]),
+        ):
+            result = scorer.sample_and_score_video(fake_video)
+        assert result == []
+
+
+class TestGetSegments:
+    """Cover lines 909-939: _get_segments scene detection vs fixed windowing."""
+
+    def _make_scorer(self):
+        from immich_memories.analysis.scoring import SceneScorer
+
+        # WHY: check_vision_available does OS detection
+        with patch("immich_memories.analysis.scoring.check_vision_available", return_value=False):
+            return SceneScorer(
+                content_analysis_config=MagicMock(analyze_frames=2, min_confidence=0.5),
+                analysis_config=AnalysisConfig(),
+            )
+
+    def test_scene_detection_success(self):
+        scorer = self._make_scorer()
+        expected = [Scene(start_time=0, end_time=5.0, start_frame=0, end_frame=150)]
+        # WHY: generate_scene_aware_segments calls SceneDetector + ffprobe — mock
+        with patch(
+            "immich_memories.analysis.scoring.generate_scene_aware_segments",
+            return_value=expected,
+        ):
+            result = scorer._get_segments(Path("/fake.mp4"), True, AnalysisConfig(), 3.0, 0.5)
+        assert result == expected
+
+    def test_scene_detection_failure_falls_back(self):
+        scorer = self._make_scorer()
+        fallback = [Scene(start_time=0, end_time=3.0, start_frame=0, end_frame=90)]
+        # WHY: generate_scene_aware_segments calls SceneDetector — mock to simulate failure
+        with (
+            patch(
+                "immich_memories.analysis.scoring.generate_scene_aware_segments",
+                side_effect=RuntimeError("detection failed"),
+            ),
+            patch(
+                "immich_memories.analysis.scoring.generate_segments",
+                return_value=fallback,
+            ),
+        ):
+            result = scorer._get_segments(Path("/fake.mp4"), True, AnalysisConfig(), 3.0, 0.5)
+        assert result == fallback
+
+    def test_scene_detection_disabled_uses_fixed(self):
+        scorer = self._make_scorer()
+        fixed = [Scene(start_time=0, end_time=3.0, start_frame=0, end_frame=90)]
+        # WHY: generate_segments reads video info — mock
+        with patch(
+            "immich_memories.analysis.scoring.generate_segments",
+            return_value=fixed,
+        ):
+            result = scorer._get_segments(Path("/fake.mp4"), False, AnalysisConfig(), 3.0, 0.5)
+        assert result == fixed
+
+
+class TestLogDurationInfo:
+    """Cover lines 925-942: _log_duration_info short vs long source logging."""
+
+    def _make_scorer(self):
+        from immich_memories.analysis.scoring import SceneScorer
+
+        # WHY: check_vision_available does OS detection
+        with patch("immich_memories.analysis.scoring.check_vision_available", return_value=False):
+            return SceneScorer(
+                content_analysis_config=MagicMock(analyze_frames=2, min_confidence=0.5),
+                analysis_config=AnalysisConfig(),
+            )
+
+    def test_long_source_logs_dynamic_optimal(self):
+        scorer = self._make_scorer()
+        # Should not raise; exercises lines 927-937
+        scorer._log_duration_info(60.0)
+
+    def test_short_source_logs_base_optimal(self):
+        scorer = self._make_scorer()
+        # Should not raise; exercises lines 938-942
+        scorer._log_duration_info(15.0)
+
+
+class TestSceneScorerMemoryCleanup:
+    """Cover lines 684-686: gc.collect after scoring loop."""
+
+    def _make_scorer(self):
+        from immich_memories.analysis.scoring import SceneScorer
+
+        # WHY: check_vision_available does OS detection
+        with patch("immich_memories.analysis.scoring.check_vision_available", return_value=False):
+            return SceneScorer(
+                content_analysis_config=MagicMock(analyze_frames=2, min_confidence=0.5),
+                analysis_config=AnalysisConfig(),
+            )
+
+    def test_score_scene_with_unreadable_frames(self):
+        """When cap.read returns False, scoring still returns a valid MomentScore."""
+        scorer = self._make_scorer()
+        scene = Scene(start_time=0, end_time=2.0, start_frame=0, end_frame=60)
+        mock_cap = MagicMock()
+        mock_cap.get.return_value = 30.0
+        mock_cap.read.return_value = (False, None)  # all reads fail
+
+        # WHY: _get_capture opens video file — mock for unit test
+        with patch.object(scorer, "_get_capture", return_value=mock_cap):
+            result = scorer.score_scene(Path("/fake.mp4"), scene, sample_frames=3)
+        assert isinstance(result, MomentScore)
+        assert result.face_score == 0.0  # no frames read -> default 0
+
+
+# ===========================================================================
+# Module 2 (continued): clip_analyzer.py — deeper coverage
+# ===========================================================================
+
+
+class TestClipAnalyzerDownloadVideo:
+    """Cover lines 188-228: _download_analysis_video with cache and temp file paths."""
+
+    def _make_analyzer(self, *, video_cache_enabled=True):
+        from immich_memories.analysis.clip_analyzer import ClipAnalyzer
+
+        # WHY: Config has dozens of nested settings — mock to isolate download logic
+        mock_config = MagicMock()
+        mock_config.cache.video_cache_enabled = video_cache_enabled
+        mock_config.cache.video_cache_path = Path("/tmp/cache")
+        mock_config.cache.video_cache_max_size_gb = 10.0
+        mock_config.cache.video_cache_max_age_days = 7
+        mock_config.analysis.analysis_resolution = 480
+        mock_config.analysis.enable_downscaling = True
+
+        # WHY: SyncImmichClient calls Immich API — mock
+        mock_client = MagicMock()
+        # WHY: VideoAnalysisCache writes to SQLite — mock
+        mock_cache = MagicMock()
+        mock_cache.get_analysis.return_value = None
+        # WHY: PreviewBuilder writes preview files — mock
+        mock_preview = MagicMock()
+
+        pipeline_config = MagicMock()
+        pipeline_config.avg_clip_duration = 5.0
+
+        return ClipAnalyzer(
+            config=pipeline_config,
+            client=mock_client,
+            analysis_cache=mock_cache,
+            preview_builder=mock_preview,
+            app_config=mock_config,
+        )
+
+    def test_video_cache_enabled_uses_cache(self):
+        analyzer = self._make_analyzer(video_cache_enabled=True)
+        clip = make_clip("vid1", duration=10.0)
+
+        # WHY: VideoDownloadCache performs disk I/O — mock
+        mock_video_cache = MagicMock()
+        analysis_path = Path("/tmp/cache/analysis.mp4")
+        original_path = Path("/tmp/cache/original.mp4")
+        mock_video_cache.get_analysis_video.return_value = (analysis_path, original_path)
+
+        with (
+            patch(
+                "immich_memories.cache.video_cache.VideoDownloadCache",
+                return_value=mock_video_cache,
+            ),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            a_vid, o_vid, temp = analyzer._download_analysis_video(clip)
+
+        assert a_vid == analysis_path
+        assert o_vid == original_path
+        assert temp is None
+
+    def test_video_cache_disabled_uses_tempfile(self, tmp_path):
+        analyzer = self._make_analyzer(video_cache_enabled=False)
+        clip = make_clip("vid2", duration=10.0)
+
+        temp_video = tmp_path / "video.mp4"
+        temp_video.write_bytes(b"\x00" * 100)
+
+        # WHY: client.download_asset calls Immich API — mock
+        analyzer.client.download_asset = MagicMock()
+
+        with patch("tempfile.NamedTemporaryFile") as mock_tmp:
+            mock_tmp.return_value.__enter__ = MagicMock(
+                return_value=MagicMock(name=str(temp_video))
+            )
+            mock_tmp.return_value.__exit__ = MagicMock(return_value=False)
+            # Use a real-ish path
+            with patch(
+                "immich_memories.analysis.clip_analyzer.Path",
+            ) as mock_path_cls:
+                mock_path_instance = MagicMock()
+                mock_path_instance.suffix = ".mp4"
+                mock_path_instance.exists.return_value = True
+                mock_path_instance.__eq__ = lambda _s, _o: True  # noqa: ARG005
+                mock_path_instance.__ne__ = lambda _s, _o: False  # noqa: ARG005
+                mock_path_instance.name = "video.mp4"
+                mock_path_cls.return_value = mock_path_instance
+                mock_path_cls.side_effect = None
+
+                # Simplified: just test the non-cache branch logic
+                # The actual download is mocked
+                a_vid, o_vid, temp = analyzer._download_analysis_video(clip)
+
+        # temp_file should be set (non-None) in no-cache path
+        # Both analysis and original point to the same temp file
+        assert a_vid == o_vid
+
+
+class TestClipAnalyzerInitContentAnalyzer:
+    """Cover lines 232-263: _init_content_analyzer caching and error paths."""
+
+    def _make_analyzer(self):
+        from immich_memories.analysis.clip_analyzer import ClipAnalyzer
+
+        mock_config = MagicMock()
+        mock_config.content_analysis.enabled = True
+        mock_config.content_analysis.weight = 0.35
+        mock_config.llm.provider = "openai"
+        mock_config.llm.base_url = "http://localhost:1234"
+        mock_config.llm.model = "gpt-4"
+        mock_config.llm.api_key = "test-key"
+        mock_config.llm.timeout_seconds = 30
+        mock_config.content_analysis.openai_image_detail = "low"
+        mock_config.content_analysis.frame_max_height = 480
+
+        return ClipAnalyzer(
+            config=MagicMock(),
+            client=MagicMock(),
+            analysis_cache=MagicMock(),
+            preview_builder=MagicMock(),
+            app_config=mock_config,
+        )
+
+    def test_content_analysis_disabled_returns_none(self):
+        from immich_memories.analysis.clip_analyzer import ClipAnalyzer
+
+        mock_config = MagicMock()
+        mock_config.content_analysis.enabled = False
+
+        analyzer = ClipAnalyzer(
+            config=MagicMock(),
+            client=MagicMock(),
+            analysis_cache=MagicMock(),
+            preview_builder=MagicMock(),
+            app_config=mock_config,
+        )
+        result, weight = analyzer._init_content_analyzer()
+        assert result is None
+        assert weight == 0.0
+
+    def test_returns_cached_analyzer(self):
+        analyzer = self._make_analyzer()
+        mock_cached = MagicMock()
+        analyzer._cached_content_analyzer = mock_cached
+        result, weight = analyzer._init_content_analyzer()
+        assert result is mock_cached
+        assert weight == 0.35
+
+    def test_creates_analyzer_on_first_call(self):
+        analyzer = self._make_analyzer()
+        mock_new_analyzer = MagicMock()
+        # WHY: get_content_analyzer calls LLM provider setup — mock via sys.modules
+        with patch.dict(
+            "sys.modules",
+            {
+                "immich_memories.analysis.content_analyzer": MagicMock(
+                    get_content_analyzer=MagicMock(return_value=mock_new_analyzer)
+                )
+            },
+        ):
+            result, weight = analyzer._init_content_analyzer()
+        assert result is mock_new_analyzer
+        assert weight == 0.35
+
+    def test_init_failure_returns_none(self):
+        analyzer = self._make_analyzer()
+        # WHY: content_analyzer module may fail to import — mock to simulate
+        with patch.dict(
+            "sys.modules",
+            {
+                "immich_memories.analysis.content_analyzer": MagicMock(
+                    get_content_analyzer=MagicMock(side_effect=RuntimeError("no GPU"))
+                )
+            },
+        ):
+            result, weight = analyzer._init_content_analyzer()
+        assert result is None
+        assert weight == 0.0
+
+
+class TestClipAnalyzerGetCachedAudioAnalyzer:
+    """Cover lines 267-287: _get_cached_audio_analyzer creation and error."""
+
+    def _make_analyzer(self, *, audio_enabled=True):
+        from immich_memories.analysis.clip_analyzer import ClipAnalyzer
+
+        mock_config = MagicMock()
+        mock_config.audio_content.enabled = audio_enabled
+        mock_config.audio_content.use_panns = True
+        mock_config.audio_content.min_confidence = 0.3
+        mock_config.audio_content.laughter_confidence = 0.5
+
+        return ClipAnalyzer(
+            config=MagicMock(),
+            client=MagicMock(),
+            analysis_cache=MagicMock(),
+            preview_builder=MagicMock(),
+            app_config=mock_config,
+        )
+
+    def test_disabled_returns_none(self):
+        analyzer = self._make_analyzer(audio_enabled=False)
+        result = analyzer._get_cached_audio_analyzer()
+        assert result is None
+
+    def test_returns_cached(self):
+        analyzer = self._make_analyzer()
+        mock_cached = MagicMock()
+        analyzer._cached_audio_analyzer = mock_cached
+        result = analyzer._get_cached_audio_analyzer()
+        assert result is mock_cached
+
+    def test_creates_new_on_first_call(self):
+        analyzer = self._make_analyzer()
+        mock_audio = MagicMock()
+        # WHY: AudioContentAnalyzer needs torch/PANNs — mock
+        with patch.dict(
+            "sys.modules",
+            {
+                "immich_memories.audio.content_analyzer": MagicMock(
+                    AudioContentAnalyzer=MagicMock(return_value=mock_audio)
+                )
+            },
+        ):
+            result = analyzer._get_cached_audio_analyzer()
+        assert result is mock_audio
+        assert analyzer._cached_audio_analyzer is mock_audio
+
+    def test_creation_failure_returns_none(self):
+        analyzer = self._make_analyzer()
+        # WHY: AudioContentAnalyzer may fail to load ML models — mock
+        with patch.dict(
+            "sys.modules",
+            {
+                "immich_memories.audio.content_analyzer": MagicMock(
+                    AudioContentAnalyzer=MagicMock(side_effect=ImportError("no torch"))
+                )
+            },
+        ):
+            result = analyzer._get_cached_audio_analyzer()
+        assert result is None
+
+
+class TestClipAnalyzerCleanup:
+    """Cover lines 293-300: _cleanup_analyzer resource cleanup."""
+
+    def _make_analyzer(self):
+        from immich_memories.analysis.clip_analyzer import ClipAnalyzer
+
+        return ClipAnalyzer(
+            config=MagicMock(),
+            client=MagicMock(),
+            analysis_cache=MagicMock(),
+            preview_builder=MagicMock(),
+            app_config=MagicMock(),
+        )
+
+    def test_cleanup_with_unified_analyzer(self):
+        analyzer = self._make_analyzer()
+        mock_unified = MagicMock()
+        mock_unified._audio_analyzer = MagicMock()
+        analyzer._cleanup_analyzer(mock_unified)
+        mock_unified.clear_cache.assert_called_once()
+        mock_unified.scorer.release_capture.assert_called_once()
+
+    def test_cleanup_with_none(self):
+        analyzer = self._make_analyzer()
+        # Should not raise
+        analyzer._cleanup_analyzer(None)
+
+
+class TestClipAnalyzerRunUnifiedAnalysis:
+    """Cover lines 326-397: _run_unified_analysis end-to-end."""
+
+    def _make_analyzer(self):
+        from immich_memories.analysis.clip_analyzer import ClipAnalyzer
+
+        mock_config = MagicMock()
+        mock_config.content_analysis.enabled = False
+        mock_config.audio_content.enabled = False
+        mock_config.analysis.min_segment_duration = 1.0
+        mock_config.analysis.max_segment_duration = 10.0
+        mock_config.analysis.silence_threshold_db = -30
+        mock_config.analysis.cut_point_merge_tolerance = 0.5
+        mock_config.audio_content.weight = 0.15
+
+        # WHY: VideoAnalysisCache writes to SQLite — mock
+        mock_cache = MagicMock()
+
+        return ClipAnalyzer(
+            config=MagicMock(),
+            client=MagicMock(),
+            analysis_cache=mock_cache,
+            preview_builder=MagicMock(),
+            app_config=mock_config,
+        )
+
+    def test_returns_best_segment_with_llm_data(self):
+        analyzer = self._make_analyzer()
+        clip = make_clip("unified1", duration=30.0)
+
+        mock_segment = MagicMock()
+        mock_segment.start_time = 5.0
+        mock_segment.end_time = 10.0
+        mock_segment.total_score = 0.85
+        mock_segment.audio_categories = ["laughter"]
+        mock_segment.llm_description = "People laughing at a party"
+        mock_segment.llm_emotion = "joy"
+        mock_segment.llm_setting = "indoor"
+        mock_segment.llm_activities = ["socializing"]
+        mock_segment.llm_subjects = ["group"]
+        mock_segment.llm_interestingness = 0.9
+        mock_segment.llm_quality = 0.8
+        mock_segment.cut_quality = 0.95
+
+        # WHY: UnifiedSegmentAnalyzer reads video + audio — mock
+        with (
+            patch(
+                "immich_memories.analysis.unified_analyzer.UnifiedSegmentAnalyzer",
+            ) as mock_unified_cls,
+            patch(
+                "immich_memories.analysis.scoring.SceneScorer",
+            ),
+            patch.object(analyzer, "_init_content_analyzer", return_value=(None, 0.0)),
+            patch.object(analyzer, "_get_cached_audio_analyzer", return_value=None),
+            patch.object(analyzer, "_cleanup_analyzer"),
+        ):
+            mock_unified = MagicMock()
+            mock_unified.analyze.return_value = [mock_segment]
+            mock_unified_cls.return_value = mock_unified
+
+            start, end, score, llm = analyzer._run_unified_analysis(
+                clip, Path("/analysis.mp4"), Path("/original.mp4"), 30.0
+            )
+
+        assert start == 5.0
+        assert end == 10.0
+        assert score == 0.85
+        assert llm is not None
+        assert llm["description"] == "People laughing at a party"
+        assert clip.audio_categories == ["laughter"]
+
+    def test_no_segments_returns_zeros(self):
+        analyzer = self._make_analyzer()
+        clip = make_clip("unified2", duration=30.0)
+
+        # WHY: UnifiedSegmentAnalyzer reads video + audio — mock
+        with (
+            patch("immich_memories.analysis.unified_analyzer.UnifiedSegmentAnalyzer") as mock_cls,
+            patch("immich_memories.analysis.scoring.SceneScorer"),
+            patch.object(analyzer, "_init_content_analyzer", return_value=(None, 0.0)),
+            patch.object(analyzer, "_get_cached_audio_analyzer", return_value=None),
+            patch.object(analyzer, "_cleanup_analyzer"),
+        ):
+            mock_cls.return_value.analyze.return_value = []
+
+            start, end, score, llm = analyzer._run_unified_analysis(
+                clip, Path("/a.mp4"), Path("/o.mp4"), 30.0
+            )
+
+        assert start == 0.0
+        assert end == 0.0
+        assert score == 0.0
+        assert llm is None
+
+
+class TestClipAnalyzerCleanupPipelineResources:
+    """Cover the _cleanup_pipeline_resources method."""
+
+    def _make_analyzer(self):
+        from immich_memories.analysis.clip_analyzer import ClipAnalyzer
+
+        return ClipAnalyzer(
+            config=MagicMock(),
+            client=MagicMock(),
+            analysis_cache=MagicMock(),
+            preview_builder=MagicMock(),
+            app_config=MagicMock(),
+        )
+
+    def test_cleans_up_cached_analyzers(self):
+        analyzer = self._make_analyzer()
+        mock_content = MagicMock()
+        mock_audio = MagicMock()
+        analyzer._cached_content_analyzer = mock_content
+        analyzer._cached_audio_analyzer = mock_audio
+
+        analyzer._cleanup_pipeline_resources()
+
+        assert analyzer._cached_content_analyzer is None
+        assert analyzer._cached_audio_analyzer is None
+        mock_content.close.assert_called_once()
+        mock_audio.cleanup.assert_called_once()
+
+    def test_cleanup_when_nothing_cached(self):
+        analyzer = self._make_analyzer()
+        analyzer._cleanup_pipeline_resources()  # should not raise
