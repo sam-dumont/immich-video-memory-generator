@@ -77,23 +77,40 @@ _GENERIC_NAMES = [
 ]
 
 
+def _safe_evaluate(page: Page, expression: str, arg: object = None) -> None:
+    """Run page.evaluate with retry on context destruction.
+
+    NiceGUI's reactive rendering can destroy the JS execution context
+    mid-evaluation. We retry once after a short wait.
+    """
+    for attempt in range(3):
+        try:
+            if arg is not None:
+                page.evaluate(expression, arg)
+            else:
+                page.evaluate(expression)
+            return
+        except Exception as exc:
+            if "Execution context was destroyed" in str(exc) and attempt < 2:
+                page.wait_for_timeout(500)
+                continue
+            raise
+
+
 def redact_inputs(page: Page) -> None:
     """Replace sensitive input field values with fake data."""
+    # WHY: Use locator.fill() where possible — it auto-waits for element
+    # stability, avoiding the "execution context destroyed" crash that
+    # raw page.evaluate() hits during NiceGUI re-renders.
     for selector, value in _INPUT_REDACTIONS:
-        page.evaluate(
-            """({sel, val}) => {
-                const el = document.querySelector(sel);
-                if (el) {
-                    el.value = val;
-                    // Quasar wraps inputs — also set the inner control's value
-                    const native = el.closest('.q-field')?.querySelector('input');
-                    if (native && native !== el) native.value = val;
-                }
-            }""",
-            {"sel": selector, "val": value},
-        )
+        loc = page.locator(selector).first
+        if loc.is_visible(timeout=1000):
+            loc.fill(value)
+
     # Catch any remaining IP:port patterns in ALL input elements
-    page.evaluate("""() => {
+    _safe_evaluate(
+        page,
+        """() => {
         document.querySelectorAll('input').forEach(el => {
             if (/\\d+\\.\\d+\\.\\d+\\.\\d+/.test(el.value)) {
                 el.value = el.value.replace(
@@ -102,13 +119,15 @@ def redact_inputs(page: Page) -> None:
                 );
             }
         });
-    }""")
+    }""",
+    )
 
 
 def redact_text_nodes(page: Page) -> None:
     """Walk visible text nodes and replace patterns matching personal data."""
     for pattern, replacement in _TEXT_REDACTIONS:
-        page.evaluate(
+        _safe_evaluate(
+            page,
             """({pattern, repl}) => {
                 const regex = new RegExp(pattern);
                 const walker = document.createTreeWalker(
@@ -132,7 +151,8 @@ def redact_person_names(page: Page) -> None:
     The CSS approach hides real text (font-size: 0) and overlays fake names
     via ::after pseudo-elements, which Vue cannot clobber.
     """
-    page.evaluate(
+    _safe_evaluate(
+        page,
         """(names) => {
             let css = '';
             const options = document.querySelectorAll('[role="option"]');

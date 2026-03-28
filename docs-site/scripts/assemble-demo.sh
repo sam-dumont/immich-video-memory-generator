@@ -25,11 +25,12 @@ ok()  { echo -e "${GREEN}[assemble]${NC} $*"; }
 # Verify inputs
 # ---------------------------------------------------------------------------
 
-SECTIONS=(section1-config section2-review section3-options section4-export)
+# Segments from Playwright recording (make demo-record)
+SEGMENTS=(segment1-config segment2-navigate segment3-grid segment4-options segment5-progress)
 
-for s in "${SECTIONS[@]}"; do
+for s in "${SEGMENTS[@]}"; do
     if [[ ! -f "$RAW_DIR/$s.webm" ]]; then
-        echo "ERROR: Missing $RAW_DIR/$s.webm — run record-demo.ts first"
+        echo "ERROR: Missing $RAW_DIR/$s.webm — run 'make demo-record' first"
         exit 1
     fi
 done
@@ -41,33 +42,39 @@ mkdir -p "$WORK_DIR"
 # ---------------------------------------------------------------------------
 log "Stage 1: Speed-ramping sections..."
 
-# Section 1 — Config: 2x speed (boring setup)
-ffmpeg -y -i "$RAW_DIR/section1-config.webm" \
-    -filter:v "setpts=0.5*PTS" -an \
+# Segment 1 — Config: 3x speed (boring setup)
+ffmpeg -y -i "$RAW_DIR/segment1-config.webm" \
+    -filter:v "setpts=0.33*PTS" -an \
     -c:v libx264 -crf 20 -preset fast \
     "$WORK_DIR/s1_fast.mp4" 2>/dev/null
-ok "  section1: 2x speed"
+ok "  segment1: 3x speed"
 
-# Section 2 — Clip review: 1.5x speed (interesting content)
-ffmpeg -y -i "$RAW_DIR/section2-review.webm" \
-    -filter:v "setpts=0.67*PTS" -an \
+# Segment 2 — Navigate: 3x speed (loading transition)
+ffmpeg -y -i "$RAW_DIR/segment2-navigate.webm" \
+    -filter:v "setpts=0.33*PTS" -an \
     -c:v libx264 -crf 20 -preset fast \
     "$WORK_DIR/s2_fast.mp4" 2>/dev/null
-ok "  section2: 1.5x speed"
+ok "  segment2: 3x speed"
 
-# Section 3 — Options: 1.5x speed (showing features)
-ffmpeg -y -i "$RAW_DIR/section3-options.webm" \
-    -filter:v "setpts=0.67*PTS" -an \
-    -c:v libx264 -crf 20 -preset fast \
+# Segment 3 — Clip grid: 1x speed (highlight: scrolling thumbnails)
+ffmpeg -y -i "$RAW_DIR/segment3-grid.webm" \
+    -an -c:v libx264 -crf 20 -preset fast \
     "$WORK_DIR/s3_fast.mp4" 2>/dev/null
-ok "  section3: 1.5x speed"
+ok "  segment3: 1x speed (highlight)"
 
-# Section 4 — Export: 2x speed (quick wrap-up)
-ffmpeg -y -i "$RAW_DIR/section4-export.webm" \
+# Segment 4 — Options: 2x speed (settings overview)
+ffmpeg -y -i "$RAW_DIR/segment4-options.webm" \
     -filter:v "setpts=0.5*PTS" -an \
     -c:v libx264 -crf 20 -preset fast \
     "$WORK_DIR/s4_fast.mp4" 2>/dev/null
-ok "  section4: 2x speed"
+ok "  segment4: 2x speed"
+
+# Segment 5 — Progress: 1.5x speed (highlight: progress bar)
+ffmpeg -y -i "$RAW_DIR/segment5-progress.webm" \
+    -filter:v "setpts=0.67*PTS" -an \
+    -c:v libx264 -crf 20 -preset fast \
+    "$WORK_DIR/s5_fast.mp4" 2>/dev/null
+ok "  segment5: 1.5x speed (highlight)"
 
 # ---------------------------------------------------------------------------
 # Stage 2: Add section title overlays (lower-third labels)
@@ -76,9 +83,10 @@ log "Stage 2: Adding section title overlays..."
 
 TITLES=(
     "Step 1 · Configuration"
+    "Step 1 · Loading Clips"
     "Step 2 · Review Clips"
     "Step 3 · Generation Options"
-    "Step 4 · Preview & Export"
+    "Step 4 · Generating"
 )
 
 # Use a system font that FFmpeg can find — fontfile path varies by OS
@@ -88,7 +96,7 @@ else
     FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 fi
 
-for i in 1 2 3 4; do
+for i in 1 2 3 4 5; do
     title="${TITLES[$((i-1))]}"
     ffmpeg -y -i "$WORK_DIR/s${i}_fast.mp4" \
         -vf "drawtext=text='${title}':fontfile=${FONT}:fontsize=42:fontcolor=white:borderw=2:bordercolor=black@0.6:x=(w-tw)/2:y=h-80:enable='between(t,0,2.5)'" \
@@ -113,7 +121,7 @@ ok "  intro card (2.5s)"
 # Outro card: dark background with call-to-action (3 seconds)
 ffmpeg -y -f lavfi \
     -i "color=c=0x1a1a2e:s=1920x1080:d=3:r=30" \
-    -vf "drawtext=text='Try it yourself':fontfile=${FONT}:fontsize=56:fontcolor=white:x=(w-tw)/2:y=(h-th)/2-60,drawtext=text='github.com/samuelMusic/immich-memories':fontfile=${FONT}:fontsize=32:fontcolor=0x6C8EBF:x=(w-tw)/2:y=(h-th)/2+20,drawtext=text='Open source · Self-hosted · Privacy-first':fontfile=${FONT}:fontsize=24:fontcolor=0x888888:x=(w-tw)/2:y=(h-th)/2+80" \
+    -vf "drawtext=text='Try it yourself':fontfile=${FONT}:fontsize=56:fontcolor=white:x=(w-tw)/2:y=(h-th)/2-60,drawtext=text='github.com/sam-dumont/immich-video-memory-generator':fontfile=${FONT}:fontsize=32:fontcolor=0x6C8EBF:x=(w-tw)/2:y=(h-th)/2+20,drawtext=text='Open source · Self-hosted · Privacy-first':fontfile=${FONT}:fontsize=24:fontcolor=0x888888:x=(w-tw)/2:y=(h-th)/2+80" \
     -c:v libx264 -crf 18 -preset fast -pix_fmt yuv420p \
     "$WORK_DIR/outro.mp4" 2>/dev/null
 ok "  outro card (3s)"
@@ -135,6 +143,7 @@ INPUTS=(
     "$WORK_DIR/s2_titled.mp4"
     "$WORK_DIR/s3_titled.mp4"
     "$WORK_DIR/s4_titled.mp4"
+    "$WORK_DIR/s5_titled.mp4"
     "$WORK_DIR/outro.mp4"
 )
 

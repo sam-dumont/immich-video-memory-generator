@@ -84,6 +84,12 @@ def _setup_step1(page: Page, app_url: str) -> None:
     redact_page(page)
 
 
+def _wait_for_stable(page: Page) -> None:
+    """Wait for NiceGUI to finish rendering before DOM manipulation."""
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(500)
+
+
 def _navigate_to_step2(page: Page) -> None:
     """Click Next to load clips."""
     next_btn = page.locator("button:has-text('Next')").first
@@ -91,6 +97,7 @@ def _navigate_to_step2(page: Page) -> None:
         next_btn.click()
     page.locator(".q-card, .clip-card, [class*='clip']").first.wait_for(timeout=_CLIP_LOAD_TIMEOUT)
     page.wait_for_timeout(1500)
+    _wait_for_stable(page)
     redact_page(page)
 
 
@@ -100,6 +107,7 @@ def _navigate_to_step3(page: Page) -> None:
     if next_btn.is_visible(timeout=3000):
         next_btn.click()
     page.wait_for_timeout(2000)
+    _wait_for_stable(page)
     redact_page(page)
 
 
