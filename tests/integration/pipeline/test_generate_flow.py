@@ -6,6 +6,7 @@ external boundaries (Immich download/upload, music generation).
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,6 +19,14 @@ from tests.conftest import make_clip
 from tests.integration.conftest import ffprobe_json, get_duration, has_stream, requires_ffmpeg
 
 pytestmark = [pytest.mark.integration, requires_ffmpeg]
+
+
+def _copy_clip(src: Path, dst_dir: Path) -> Path:
+    """Copy a fixture clip into a local directory to isolate from cleanup."""
+    dst = dst_dir / src.name
+    if not dst.exists():
+        shutil.copy2(src, dst)
+    return dst
 
 
 def _mock_extract(clips_with_paths: list[tuple[Path, str, float]]):
@@ -40,13 +49,14 @@ def _mock_extract(clips_with_paths: list[tuple[Path, str, float]]):
 class TestGenerateFlowHappyPath:
     def test_single_clip_produces_valid_video(self, test_clip_720p, tmp_path):
         """One clip in -> valid video out with video stream and nonzero duration."""
+        # WHY: copy fixture to tmp_path to isolate from cross-test cleanup on CI
+        local_clip = _copy_clip(test_clip_720p, tmp_path)
         clip = make_clip("clip-a", width=1280, height=720, duration=3.0)
         config = Config()
         config.title_screens.enabled = False
         output = tmp_path / "output" / "memory.mp4"
 
-        # WHY: mock _extract_clips to return our local test clip instead of hitting Immich
-        with _mock_extract([(test_clip_720p, "clip-a", 3.0)]):
+        with _mock_extract([(local_clip, "clip-a", 3.0)]):
             params = GenerationParams(
                 clips=[clip],
                 output_path=output,
@@ -63,6 +73,9 @@ class TestGenerateFlowHappyPath:
 
     def test_multiple_clips_merged(self, test_clip_720p, test_clip_720p_b, tmp_path):
         """Two clips should produce output with duration roughly equal to sum minus crossfade."""
+        # WHY: copy fixtures to tmp_path to isolate from cross-test cleanup on CI
+        local_a = _copy_clip(test_clip_720p, tmp_path)
+        local_b = _copy_clip(test_clip_720p_b, tmp_path)
         clips = [
             make_clip("a", width=1280, height=720, duration=3.0),
             make_clip("b", width=1280, height=720, duration=3.0),
@@ -71,7 +84,7 @@ class TestGenerateFlowHappyPath:
         config.title_screens.enabled = False
         output = tmp_path / "output" / "merged.mp4"
 
-        with _mock_extract([(test_clip_720p, "a", 3.0), (test_clip_720p_b, "b", 3.0)]):
+        with _mock_extract([(local_a, "a", 3.0), (local_b, "b", 3.0)]):
             params = GenerationParams(
                 clips=clips,
                 output_path=output,
@@ -142,6 +155,8 @@ class TestGenerateFlowErrors:
 class TestGenerateFlowProgress:
     def test_progress_is_monotonically_increasing(self, test_clip_720p, tmp_path):
         """All progress callback values should be >= the previous value."""
+        # WHY: copy fixture to tmp_path to isolate from cross-test cleanup on CI
+        local_clip = _copy_clip(test_clip_720p, tmp_path)
         clip = make_clip("a", width=1280, height=720, duration=3.0)
         config = Config()
         config.title_screens.enabled = False
@@ -151,7 +166,7 @@ class TestGenerateFlowProgress:
         def capture_progress(phase: str, progress: float, msg: str) -> None:
             progress_values.append(progress)
 
-        with _mock_extract([(test_clip_720p, "a", 3.0)]):
+        with _mock_extract([(local_clip, "a", 3.0)]):
             params = GenerationParams(
                 clips=[clip],
                 output_path=output,
