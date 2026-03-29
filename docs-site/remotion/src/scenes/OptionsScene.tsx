@@ -25,11 +25,11 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
   const { fps } = useVideoConfig();
 
   // Staggered spring reveals for each section
-  const s1 = spring({ frame, fps, config: { damping: 200 }, delay: 5 });
-  const s2 = spring({ frame, fps, config: { damping: 200 }, delay: 18 });
-  const s3 = spring({ frame, fps, config: { damping: 200 }, delay: 30 });
-  const s4 = spring({ frame, fps, config: { damping: 200 }, delay: 42 });
-  const s5 = spring({ frame, fps, config: { damping: 200 }, delay: 54 });
+  const s1 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 5 });
+  const s2 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 25 });
+  const s3 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 50 });
+  const s4 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 70 });
+  const s5 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 90 });
 
   const makeStyle = (s: number): React.CSSProperties => ({
     opacity: interpolate(s, [0, 1], [0, 1]),

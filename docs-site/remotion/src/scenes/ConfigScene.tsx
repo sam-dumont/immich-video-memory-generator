@@ -72,26 +72,26 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
   const connectionReveal = spring({
     frame,
     fps,
-    config: { damping: 200 },
-    delay: 10,
+    config: { damping: 15, stiffness: 120 },
+    delay: 8,
   });
   const presetsReveal = spring({
     frame,
     fps,
-    config: { damping: 200 },
-    delay: 25,
+    config: { damping: 15, stiffness: 120 },
+    delay: 30,
   });
   const optionsReveal = spring({
     frame,
     fps,
-    config: { damping: 200 },
-    delay: 40,
+    config: { damping: 15, stiffness: 120 },
+    delay: 55,
   });
   const bottomReveal = spring({
     frame,
     fps,
-    config: { damping: 200 },
-    delay: 55,
+    config: { damping: 15, stiffness: 120 },
+    delay: 80,
   });
 
   // Person Spotlight gets selected at ~frame 70

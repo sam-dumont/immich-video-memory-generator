@@ -161,7 +161,7 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
 
   // Staggered reveals via spring
   const reveal = (delay: number) => {
-    const s = spring({ frame, fps, config: { damping: 18, stiffness: 160 }, delay });
+    const s = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay });
     return {
       opacity: interpolate(s, [0, 1], [0, 1]),
       translateY: interpolate(s, [0, 1], [14, 0]),
@@ -169,19 +169,19 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
   };
 
   const r0 = reveal(0);
-  const r1 = reveal(5);
-  const r2 = reveal(10);
-  const r3 = reveal(15);
-  const r4 = reveal(20);
-  const r5 = reveal(25);
-  const r6 = reveal(30);
-  const r7 = reveal(35);
-  const r8 = reveal(40);
-  const r9 = reveal(45);
-  const r10 = reveal(50);
+  const r1 = reveal(20);
+  const r2 = reveal(40);
+  const r3 = reveal(60);
+  const r4 = reveal(80);
+  const r5 = reveal(100);
+  const r6 = reveal(120);
+  const r7 = reveal(140);
+  const r8 = reveal(160);
+  const r9 = reveal(180);
+  const r10 = reveal(200);
 
-  // Scroll down to show more content
-  const scrollY = interpolate(frame, [50, 140], [0, 120], {
+  // Scroll down to show more content (starts after most reveals have landed)
+  const scrollY = interpolate(frame, [120, 220], [0, 120], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.inOut(Easing.cubic),

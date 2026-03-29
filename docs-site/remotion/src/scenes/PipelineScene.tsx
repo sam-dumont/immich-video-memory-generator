@@ -12,6 +12,7 @@ import { COLORS } from "../theme";
 import { fontFamily } from "../fonts";
 import { WindowFrame } from "../components/WindowFrame";
 import { Sidebar } from "../components/Sidebar";
+import { ImBadge } from "../components/ImBadge";
 import { ImButton } from "../components/ImButton";
 import { ImProgressBar } from "../components/ImProgressBar";
 
@@ -360,6 +361,40 @@ export const PipelineScene: React.FC<Props> = ({ bassIntensity }) => {
                 >
                   IMG_3678.MOV
                 </div>
+                {/* Analyzing indicator */}
+                <div
+                  style={{
+                    padding: "4px 12px 10px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    opacity: interpolate(
+                      (frame % 30) / 30,
+                      [0, 0.5, 1],
+                      [0.4, 1, 0.4],
+                    ),
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 14,
+                      display: "inline-block",
+                      transform: `rotate(${(frame % 30) * 12}deg)`,
+                    }}
+                  >
+                    &#x27F3;
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.primary,
+                      fontFamily,
+                      fontWeight: 500,
+                    }}
+                  >
+                    Analyzing...
+                  </span>
+                </div>
               </div>
 
               {/* Last Analyzed */}
@@ -402,6 +437,49 @@ export const PipelineScene: React.FC<Props> = ({ bassIntensity }) => {
                   }}
                 >
                   IMG_3452.MOV
+                </div>
+                {/* Analysis results */}
+                <div style={{ padding: "4px 12px 10px" }}>
+                  {/* LLM description */}
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.text,
+                      fontFamily,
+                      lineHeight: 1.4,
+                      marginBottom: 8,
+                      opacity: p1Reveal(35).opacity,
+                      transform: `translateY(${p1Reveal(35).translateY}px)`,
+                    }}
+                  >
+                    A child blowing candles on a birthday cake, family gathered
+                    around
+                  </div>
+                  {/* Badges */}
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      marginBottom: 6,
+                      opacity: p1Reveal(45).opacity,
+                      transform: `translateY(${p1Reveal(45).translateY}px)`,
+                    }}
+                  >
+                    <ImBadge text="emotion=joyful" variant="success" />
+                    <ImBadge text="score=0.82" variant="info" />
+                  </div>
+                  {/* Face detection */}
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: COLORS.textSecondary,
+                      fontFamily,
+                      opacity: p1Reveal(50).opacity,
+                      transform: `translateY(${p1Reveal(50).translateY}px)`,
+                    }}
+                  >
+                    2 faces detected
+                  </div>
                 </div>
               </div>
             </div>

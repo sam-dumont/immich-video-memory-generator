@@ -85,7 +85,8 @@ const ClipRow: React.FC<{
   expanded: boolean;
   opacity: number;
   translateY: number;
-}> = ({ clip, expanded, opacity, translateY }) => {
+  thumbnailSrc?: string;
+}> = ({ clip, expanded, opacity, translateY, thumbnailSrc }) => {
   const checkboxColor = COLORS.primary;
   return (
     <div
@@ -183,7 +184,7 @@ const ClipRow: React.FC<{
             }}
           >
             <Img
-              src={staticFile("stock/thumb-14.jpg")}
+              src={staticFile(thumbnailSrc ?? "stock/thumb-14.jpg")}
               style={{
                 width: "100%",
                 height: "100%",
@@ -352,17 +353,17 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
   };
 
   const r0 = reveal(0);
-  const r1 = reveal(5);
-  const r2 = reveal(8);
-  const r3 = reveal(12);
+  const r1 = reveal(15);
+  const r2 = reveal(25);
+  const r3 = reveal(25);
 
   // Clip rows stagger from frame 15
   const clipReveal = (index: number) => {
     const s = spring({
       frame,
       fps,
-      config: { damping: 18, stiffness: 160 },
-      delay: 15 + index * 2,
+      config: { damping: 15, stiffness: 120 },
+      delay: 15 + index * 4,
     });
     return {
       opacity: interpolate(s, [0, 1], [0, 1]),
@@ -370,8 +371,23 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
     };
   };
 
+  // Which rows are expanded (driven by frame thresholds)
+  const isExpanded = (index: number) => {
+    if (index === 0) return frame > 30;
+    if (index === 1) return frame > 50;
+    if (index === 2) return frame > 65;
+    return false;
+  };
+
+  // Thumbnail for each expanded row
+  const expandedThumbnails: Record<number, string> = {
+    0: "stock/thumb-14.jpg",
+    1: "stock/thumb-17.jpg",
+    2: "stock/thumb-20.jpg",
+  };
+
   // Scroll: content scrolls down to reveal more rows
-  const scrollY = interpolate(frame, [40, 150], [0, 350], {
+  const scrollY = interpolate(frame, [40, 180], [0, 500], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.inOut(Easing.cubic),
@@ -523,9 +539,10 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
                   <ClipRow
                     key={i}
                     clip={clip}
-                    expanded={i === 0}
+                    expanded={isExpanded(i)}
                     opacity={cr.opacity}
                     translateY={cr.translateY}
+                    thumbnailSrc={expandedThumbnails[i]}
                   />
                 );
               })}

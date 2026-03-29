@@ -36,10 +36,10 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
   const isGenerating = frame >= 40;
 
   // Spring reveals for initial state
-  const s1 = spring({ frame, fps, config: { damping: 200 }, delay: 5 });
-  const s2 = spring({ frame, fps, config: { damping: 200 }, delay: 15 });
-  const s3 = spring({ frame, fps, config: { damping: 200 }, delay: 25 });
-  const s4 = spring({ frame, fps, config: { damping: 200 }, delay: 35 });
+  const s1 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 5 });
+  const s2 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 25 });
+  const s3 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 45 });
+  const s4 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 60 });
 
   const makeStyle = (s: number): React.CSSProperties => ({
     opacity: interpolate(s, [0, 1], [0, 1]),
@@ -62,7 +62,7 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
   const progressReveal = spring({
     frame: Math.max(0, frame - 40),
     fps,
-    config: { damping: 200 },
+    config: { damping: 15, stiffness: 120 },
     delay: 5,
   });
 
