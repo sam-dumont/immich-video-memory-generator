@@ -202,7 +202,7 @@ jobs:
         uses: codecov/codecov-action@v5
         if: always()
         with:
-          files: tests/assembly-coverage.xml,tests/audio-coverage.xml,tests/auth-coverage.xml,tests/automation-coverage.xml,tests/cli-coverage.xml,tests/e2e-coverage.xml,tests/live-photos-coverage.xml,tests/photos-coverage.xml,tests/pipeline-coverage.xml,tests/titles-coverage.xml
+          files: tests/assembly-coverage.xml,tests/audio-coverage.xml,tests/auth-coverage.xml,tests/automation-coverage.xml,tests/cli-coverage.xml,tests/e2e-coverage.xml,tests/live-photos-coverage.xml,tests/photos-coverage.xml,tests/pipeline-coverage.xml,tests/processing-coverage.xml,tests/titles-coverage.xml
           flags: integration-linux
           disable_search: true
           override_commit: ${{ steps.params.outputs.sha }}
