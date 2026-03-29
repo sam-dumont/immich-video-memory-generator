@@ -359,11 +359,11 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
     expandedThumbnails[i] = `stock/thumb-${i + 1}.jpg`;
   }
 
-  // Scroll: fast scroll with acceleration (starts slow, gets fast)
-  const scrollY = interpolate(frame, [30, 140], [0, 1200], {
+  // Scroll: ease in-out (slow start, fast middle, slow landing on button)
+  const scrollY = interpolate(frame, [30, 145], [0, 4000], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
-    easing: Easing.in(Easing.cubic),
+    easing: Easing.inOut(Easing.cubic),
   });
 
   return (
@@ -586,8 +586,8 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
           {/* Cursor: appears at CONTINUE button, then clicks */}
           <AnimatedCursor
             steps={[
-              { frame: 130, x: 850, y: 700 },
-              { frame: 140, x: 850, y: 700, click: true },
+              { frame: 148, x: 850, y: 750 },
+              { frame: 155, x: 850, y: 750, click: true },
             ]}
           />
         </div>

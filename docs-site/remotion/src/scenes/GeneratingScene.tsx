@@ -41,7 +41,7 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
   // Progress bar animation (starts at frame 15)
   const genProgress = interpolate(
     frame,
-    [15, 40, 70, 110, 150],
+    [15, 50, 90, 140, 200],
     [0, 15, 45, 75, 100],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.quad) },
   );
@@ -275,7 +275,7 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
               )}
             </div>
 
-            {/* Frame preview area (appears during generation) */}
+            {/* Frame preview (appears during generation — raw image below status) */}
             {previewIndex >= 0 && (
               <div
                 style={{
@@ -283,50 +283,15 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
                   transform: `translateY(${interpolate(previewReveal, [0, 1], [8, 0])}px)`,
                 }}
               >
-                <ImCard>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      marginBottom: 8,
-                    }}
-                  >
-                    <MaterialIcon
-                      name="image"
-                      size={18}
-                      color={COLORS.primary}
-                    />
-                    <span
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: COLORS.text,
-                        fontFamily,
-                      }}
-                    >
-                      Preview
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      width: 400,
-                      height: 225,
-                      borderRadius: 6,
-                      overflow: "hidden",
-                      border: `1px solid ${COLORS.border}`,
-                    }}
-                  >
-                    <Img
-                      src={staticFile(`stock/thumb-${previewIndex}.jpg`)}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  </div>
-                </ImCard>
+                <Img
+                  src={staticFile(`stock/thumb-${previewIndex}.jpg`)}
+                  style={{
+                    width: "100%",
+                    maxHeight: 400,
+                    objectFit: "contain",
+                    borderRadius: 10,
+                  }}
+                />
               </div>
             )}
 

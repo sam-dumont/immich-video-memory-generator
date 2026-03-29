@@ -28,7 +28,7 @@ export const DemoVideo: React.FC = () => {
 
   // Music volume: fade out in last 8 seconds
   const musicVolume = (f: number) =>
-    interpolate(f, [1260, 1440], [0.7, 0], {
+    interpolate(f, [1260, 1500], [0.7, 0], {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     });
@@ -38,8 +38,8 @@ export const DemoVideo: React.FC = () => {
       <Audio src={staticFile("demo-music.wav")} volume={musicVolume} />
 
       <TransitionSeries>
-        {/* 1. Title (0 → 5.3s) */}
-        <TransitionSeries.Sequence durationInFrames={158}>
+        {/* 1. Title (5s) */}
+        <TransitionSeries.Sequence durationInFrames={150}>
           <TitleScene />
         </TransitionSeries.Sequence>
 
@@ -59,7 +59,7 @@ export const DemoVideo: React.FC = () => {
         />
 
         {/* 2. ConfigScene — select Person Spotlight, click Next */}
-        <TransitionSeries.Sequence durationInFrames={120}>
+        <TransitionSeries.Sequence durationInFrames={180}>
           <ConfigScene bassIntensity={bass} />
         </TransitionSeries.Sequence>
 
@@ -79,7 +79,7 @@ export const DemoVideo: React.FC = () => {
         />
 
         {/* 3. GenerateMemories — click Generate */}
-        <TransitionSeries.Sequence durationInFrames={90}>
+        <TransitionSeries.Sequence durationInFrames={110}>
           <GenerateMemoriesScene bassIntensity={bass} />
         </TransitionSeries.Sequence>
 
@@ -89,7 +89,7 @@ export const DemoVideo: React.FC = () => {
         />
 
         {/* 4. Pipeline running → complete */}
-        <TransitionSeries.Sequence durationInFrames={150}>
+        <TransitionSeries.Sequence durationInFrames={180}>
           <PipelineScene bassIntensity={bass} />
         </TransitionSeries.Sequence>
 
@@ -99,7 +99,7 @@ export const DemoVideo: React.FC = () => {
         />
 
         {/* 5. Refine — open all clips, scroll, click Continue */}
-        <TransitionSeries.Sequence durationInFrames={160}>
+        <TransitionSeries.Sequence durationInFrames={220}>
           <RefineScene bassIntensity={bass} />
         </TransitionSeries.Sequence>
 
@@ -139,7 +139,7 @@ export const DemoVideo: React.FC = () => {
         />
 
         {/* 7. Generating — click Generate Video, progress + frame preview */}
-        <TransitionSeries.Sequence durationInFrames={150}>
+        <TransitionSeries.Sequence durationInFrames={200}>
           <GeneratingScene bassIntensity={bass} />
         </TransitionSeries.Sequence>
 
@@ -159,7 +159,7 @@ export const DemoVideo: React.FC = () => {
         />
 
         {/* 9. CLI demo — 5x playback */}
-        <TransitionSeries.Sequence durationInFrames={150}>
+        <TransitionSeries.Sequence durationInFrames={160}>
           <CliScene />
         </TransitionSeries.Sequence>
 
@@ -169,7 +169,7 @@ export const DemoVideo: React.FC = () => {
         />
 
         {/* 10. Outro */}
-        <TransitionSeries.Sequence durationInFrames={280}>
+        <TransitionSeries.Sequence durationInFrames={180}>
           <OutroScene />
         </TransitionSeries.Sequence>
       </TransitionSeries>

@@ -1,6 +1,7 @@
 import React from "react";
 import {
   AbsoluteFill,
+  interpolate,
   spring,
   useCurrentFrame,
   useVideoConfig,
@@ -62,11 +63,23 @@ const PRESETS = [
   },
 ];
 
+const PERSON_NAMES = ["Alice", "Bob", "Charlie", "Diana", "Eve"];
+
+// Unhurried timing across full 120 frames:
+// frame  0: page visible, cursor fades in
+// frame 25: cursor arrives at Person Spotlight card
+// frame 30: click → card selected with blue glow
+// frame 40: cursor moves to Person select field, dropdown opens
+// frame 55: cursor clicks "Alice" → dropdown closes, field shows "Alice"
+// frame 80: cursor arrives at Next button
+// frame 90: click Next button
 const cursorSteps = [
   { frame: 25, x: 850, y: 440, click: false },
-  { frame: 35, x: 850, y: 440, click: true },
-  { frame: 55, x: 700, y: 720, click: false },
-  { frame: 65, x: 700, y: 720, click: true },
+  { frame: 30, x: 850, y: 440, click: true },
+  { frame: 40, x: 700, y: 530, click: true },
+  { frame: 55, x: 700, y: 570, click: true },
+  { frame: 80, x: 700, y: 720, click: false },
+  { frame: 90, x: 700, y: 720, click: true },
 ];
 
 type Props = { bassIntensity?: number };
@@ -75,14 +88,37 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Person Spotlight gets selected when cursor clicks at frame 35
-  const selectedPreset = frame >= 35 ? 2 : -1;
+  // Person Spotlight gets selected when cursor clicks at frame 30
+  const selectedPreset = frame >= 30 ? 2 : -1;
   const selectionGlow = spring({
     frame,
     fps,
     config: { damping: 14, stiffness: 120 },
-    delay: 35,
+    delay: 30,
   });
+
+  // Person select field appears after preset selection (slide down)
+  const personFieldVisible = frame >= 30;
+  const personFieldReveal = spring({
+    frame,
+    fps,
+    config: { damping: 18, stiffness: 100 },
+    delay: 32,
+  });
+
+  // Dropdown: visible between frame 40 and frame 55
+  const dropdownOpacity = interpolate(
+    frame,
+    [39, 42, 53, 56],
+    [0, 1, 1, 0],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+
+  // After clicking "Alice" at frame 55, show her name in the field
+  const personSelected = frame >= 55;
+
+  // Highlight "Alice" row when cursor is near (frames 48-55)
+  const aliceHighlight = frame >= 48 && frame < 56;
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
@@ -112,7 +148,7 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
           </h1>
 
           {/* Scrollable content area */}
-          <div style={{ flex: 1, overflow: "hidden" }}>
+          <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
             {/* Section 1: Immich Connection */}
             <div>
               <ImSectionHeader icon="cloud" title="Immich Connection" />
@@ -234,6 +270,73 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
                   );
                 })}
               </div>
+
+              {/* Person select field — appears after Person Spotlight is selected */}
+              {personFieldVisible && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    opacity: personFieldReveal,
+                    transform: `translateY(${(1 - personFieldReveal) * 8}px)`,
+                    position: "relative",
+                  }}
+                >
+                  <ImSelect
+                    label="Person"
+                    value={personSelected ? "Alice" : "Select a person…"}
+                  />
+
+                  {/* Dropdown overlay — Quasar q-menu style */}
+                  {dropdownOpacity > 0 && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "100%",
+                        left: 0,
+                        right: 0,
+                        maxWidth: 280,
+                        marginTop: 4,
+                        backgroundColor: COLORS.elevated,
+                        border: `1px solid ${COLORS.border}`,
+                        borderRadius: 10,
+                        opacity: dropdownOpacity,
+                        transform: `translateY(${(1 - dropdownOpacity) * -6}px)`,
+                        zIndex: 100,
+                        overflow: "hidden",
+                        boxShadow:
+                          "0 8px 24px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.3)",
+                      }}
+                    >
+                      {PERSON_NAMES.map((name) => {
+                        const isAlice = name === "Alice";
+                        const highlighted = isAlice && aliceHighlight;
+                        return (
+                          <div
+                            key={name}
+                            style={{
+                              padding: "8px 16px",
+                              fontSize: 14,
+                              fontFamily,
+                              color: highlighted
+                                ? COLORS.text
+                                : COLORS.text,
+                              backgroundColor: highlighted
+                                ? "rgba(107, 143, 232, 0.15)"
+                                : "transparent",
+                              cursor: "pointer",
+                              borderLeft: highlighted
+                                ? `3px solid ${COLORS.primary}`
+                                : "3px solid transparent",
+                            }}
+                          >
+                            {name}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Section 3: Options */}
