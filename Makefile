@@ -616,27 +616,17 @@ docs-check:
 	fi; \
 	echo "Docs build passed."
 
-# Record and assemble a product demo video from the live UI
-demo-video: docs-install
-	@echo "Recording UI demo (requires running UI on port 8099)..."
-	cd docs-site && npx tsx scripts/record-demo.ts
-	@echo "Assembling final video..."
-	cd docs-site && bash scripts/assemble-demo.sh
-	@echo "Demo video saved to docs-site/static/demo/demo.mp4"
-
 demo-music:  ## Generate 12 ACE-Step candidate tracks for demo video
 	uv run python scripts/generate-demo-music.py
-
-demo-record:  ## Record demo segments via Playwright (requires running UI on :8099)
-	uv run pytest tests/e2e/test_demo_recording.py -v -m e2e --log-cli-level=INFO --tb=short
-
-demo-assemble:  ## Post-process recordings into polished demo video
-	uv run python scripts/assemble-demo.py
-
-demo: demo-record demo-assemble  ## Record + assemble demo video (select music first)
 
 demo-cli-sim:  ## Run CLI demo simulation (no recording, for iteration)
 	uv run python scripts/simulate-cli-demo.py
 
 demo-cli:  ## Record CLI demo via VHS → GIF + MP4
 	vhs docs-site/scripts/demo-cli.tape
+
+demo-ui-dev:  ## Start Remotion Studio for live demo preview
+	cd docs-site/remotion && npm run dev
+
+demo-ui:  ## Render Remotion demo → docs-site/static/demo/demo.mp4
+	cd docs-site/remotion && npx remotion render src/index.ts DemoVideo ../../static/demo/demo.mp4 --codec h264 --crf 18
