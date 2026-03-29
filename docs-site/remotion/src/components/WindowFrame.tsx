@@ -47,8 +47,8 @@ export const WindowFrame: React.FC<Props> = ({
     extrapolateRight: "clamp",
   });
 
-  // Subtle float
-  const floatY = Math.sin(frame * 0.04) * 3;
+  // No float — stable window
+  const floatY = 0;
 
   // Camera zoom (whole window scales)
   let camScale = 1;

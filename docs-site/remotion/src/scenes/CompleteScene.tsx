@@ -21,7 +21,7 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Success banner springs in
+  // Success banner celebration effect (scale pop)
   const bannerEntry = spring({
     frame,
     fps,
@@ -31,7 +31,7 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity }) => {
   const bannerScale = interpolate(bannerEntry, [0, 1], [0.92, 1]);
   const bannerOpacity = interpolate(bannerEntry, [0, 1], [0, 1]);
 
-  // Video preview fades in after banner
+  // Video preview fades in slightly delayed (simulating video player loading)
   const videoEntry = spring({
     frame,
     fps,
@@ -39,14 +39,6 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity }) => {
     delay: 20,
   });
   const videoOpacity = interpolate(videoEntry, [0, 1], [0, 1]);
-
-  // Buttons fade in last
-  const buttonsEntry = spring({
-    frame,
-    fps,
-    config: { damping: 200 },
-    delay: 35,
-  });
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
@@ -172,8 +164,6 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity }) => {
               justifyContent: "space-between",
               alignItems: "center",
               paddingTop: 16,
-              opacity: interpolate(buttonsEntry, [0, 1], [0, 1]),
-              transform: `translateY(${interpolate(buttonsEntry, [0, 1], [8, 0])}px)`,
             }}
           >
             <ImButton

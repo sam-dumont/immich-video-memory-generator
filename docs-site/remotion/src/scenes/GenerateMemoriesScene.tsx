@@ -1,9 +1,6 @@
 import React from "react";
 import {
   AbsoluteFill,
-  Easing,
-  interpolate,
-  spring,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
@@ -14,6 +11,7 @@ import { Sidebar } from "../components/Sidebar";
 import { MaterialIcon } from "../components/MaterialIcon";
 import { ImButton } from "../components/ImButton";
 import { ImSectionHeader } from "../components/ImSectionHeader";
+import { AnimatedCursor } from "../components/AnimatedCursor";
 
 type Props = { bassIntensity?: number };
 
@@ -117,16 +115,12 @@ const Slider: React.FC<{
 const StatBox: React.FC<{
   label: string;
   value: string;
-  opacity: number;
-  translateY: number;
-}> = ({ label, value, opacity, translateY }) => (
+}> = ({ label, value }) => (
   <div
     style={{
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
-      opacity,
-      transform: `translateY(${translateY}px)`,
     }}
   >
     <span
@@ -157,35 +151,18 @@ const StatBox: React.FC<{
 
 export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps: _fps } = useVideoConfig();
 
-  // Staggered reveals via spring
-  const reveal = (delay: number) => {
-    const s = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay });
-    return {
-      opacity: interpolate(s, [0, 1], [0, 1]),
-      translateY: interpolate(s, [0, 1], [14, 0]),
-    };
-  };
+  // Button pressed state: scale down briefly on click at frame 40
+  const buttonPressed =
+    frame >= 40 && frame < 46
+      ? 0.97
+      : 1;
 
-  const r0 = reveal(0);
-  const r1 = reveal(20);
-  const r2 = reveal(40);
-  const r3 = reveal(60);
-  const r4 = reveal(80);
-  const r5 = reveal(100);
-  const r6 = reveal(120);
-  const r7 = reveal(140);
-  const r8 = reveal(160);
-  const r9 = reveal(180);
-  const r10 = reveal(200);
-
-  // Scroll down to show more content (starts after most reveals have landed)
-  const scrollY = interpolate(frame, [120, 220], [0, 120], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-    easing: Easing.inOut(Easing.cubic),
-  });
+  const cursorSteps = [
+    { frame: 30, x: 700, y: 620, click: false },
+    { frame: 40, x: 700, y: 620, click: true },
+  ];
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
@@ -194,18 +171,12 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
           <div
             style={{
-              transform: `translateY(-${scrollY}px)`,
-              padding: "24px 32px",
+              padding: "18px 32px",
               fontFamily,
             }}
           >
             {/* Page title */}
-            <div
-              style={{
-                opacity: r0.opacity,
-                transform: `translateY(${r0.translateY}px)`,
-              }}
-            >
+            <div>
               <h1
                 style={{
                   fontSize: 22,
@@ -225,9 +196,7 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
                 fontSize: 13,
                 color: COLORS.textSecondary,
                 marginTop: 4,
-                marginBottom: 16,
-                opacity: r0.opacity,
-                transform: `translateY(${r0.translateY}px)`,
+                marginBottom: 12,
                 fontFamily,
               }}
             >
@@ -239,13 +208,11 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
               style={{
                 display: "flex",
                 gap: 32,
-                marginBottom: 16,
-                opacity: r1.opacity,
-                transform: `translateY(${r1.translateY}px)`,
+                marginBottom: 12,
               }}
             >
-              <StatBox label="Selected Clips" value="60" opacity={1} translateY={0} />
-              <StatBox label="Total Duration" value="4:44" opacity={1} translateY={0} />
+              <StatBox label="Selected Clips" value="60" />
+              <StatBox label="Total Duration" value="4:44" />
             </div>
 
             {/* Cache notice — blue info card */}
@@ -254,10 +221,8 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
                 backgroundColor: "rgba(107, 143, 232, 0.08)",
                 border: `1px solid rgba(107, 143, 232, 0.25)`,
                 borderRadius: 8,
-                padding: "12px 16px",
-                marginBottom: 20,
-                opacity: r2.opacity,
-                transform: `translateY(${r2.translateY}px)`,
+                padding: "10px 16px",
+                marginBottom: 14,
               }}
             >
               <div
@@ -292,12 +257,7 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
             </div>
 
             {/* Section: Generate Memories */}
-            <div
-              style={{
-                opacity: r3.opacity,
-                transform: `translateY(${r3.translateY}px)`,
-              }}
-            >
+            <div>
               <ImSectionHeader icon="auto_awesome" title="Generate Memories" />
             </div>
 
@@ -307,9 +267,7 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
                 display: "flex",
                 gap: 16,
                 alignItems: "flex-end",
-                marginBottom: 12,
-                opacity: r4.opacity,
-                transform: `translateY(${r4.translateY}px)`,
+                marginBottom: 8,
               }}
             >
               {/* Target duration */}
@@ -372,9 +330,7 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
               style={{
                 fontSize: 13,
                 color: COLORS.textSecondary,
-                marginBottom: 12,
-                opacity: r5.opacity,
-                transform: `translateY(${r5.translateY}px)`,
+                marginBottom: 8,
                 fontFamily,
               }}
             >
@@ -386,9 +342,7 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
               style={{
                 display: "flex",
                 gap: 24,
-                marginBottom: 12,
-                opacity: r5.opacity,
-                transform: `translateY(${r5.translateY}px)`,
+                marginBottom: 8,
               }}
             >
               <Checkbox checked={false} label="HDR clips only" />
@@ -400,9 +354,7 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
             <div
               style={{
                 maxWidth: 400,
-                marginBottom: 16,
-                opacity: r6.opacity,
-                transform: `translateY(${r6.translateY}px)`,
+                marginBottom: 10,
               }}
             >
               <Slider label="Max non-favorites:" value="25%" percent={25} />
@@ -413,9 +365,7 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
               style={{
                 fontSize: 13,
                 color: COLORS.textSecondary,
-                marginBottom: 16,
-                opacity: r7.opacity,
-                transform: `translateY(${r7.translateY}px)`,
+                marginBottom: 10,
                 fontFamily,
               }}
             >
@@ -426,9 +376,9 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
             {/* Generate button */}
             <div
               style={{
-                marginBottom: 16,
-                opacity: r8.opacity,
-                transform: `translateY(${r8.translateY}px)`,
+                marginBottom: 12,
+                transform: `scale(${buttonPressed})`,
+                transformOrigin: "center center",
               }}
             >
               <ImButton
@@ -444,9 +394,7 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
               style={{
                 display: "flex",
                 gap: 10,
-                marginBottom: 20,
-                opacity: r9.opacity,
-                transform: `translateY(${r9.translateY}px)`,
+                marginBottom: 14,
               }}
             >
               <ImButton text="SELECT ALL" variant="secondary" />
@@ -455,17 +403,13 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
             </div>
 
             {/* Videos Found header */}
-            <div
-              style={{
-                opacity: r10.opacity,
-                transform: `translateY(${r10.translateY}px)`,
-              }}
-            >
+            <div>
               <ImSectionHeader icon="video_library" title="117 Videos Found" />
             </div>
           </div>
         </div>
       </WindowFrame>
+      <AnimatedCursor steps={cursorSteps} />
     </AbsoluteFill>
   );
 };

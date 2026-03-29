@@ -1,13 +1,16 @@
 export const COLORS = {
   bg: "#09090b",
   surface: "#111113",
+  elevated: "#1a1a1e",
   primary: "#6B8FE8",
   text: "#dbdbdb",
-  textSecondary: "#a1a1aa",
+  textSecondary: "#d4d4d4",
+  textMuted: "#a1a1a1",
   success: "#4ade80",
   warning: "#fbbf24",
   error: "#f87171",
   border: "rgba(255, 255, 255, 0.08)",
+  borderLight: "rgba(255, 255, 255, 0.06)",
   titleBar: "#1c1c2e",
   terminalTitleBar: "#161b22",
 } as const;

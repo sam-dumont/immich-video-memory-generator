@@ -4,10 +4,8 @@ import {
   Easing,
   Img,
   interpolate,
-  spring,
   staticFile,
   useCurrentFrame,
-  useVideoConfig,
 } from "remotion";
 import { COLORS } from "../theme";
 import { fontFamily } from "../fonts";
@@ -15,6 +13,7 @@ import { WindowFrame } from "../components/WindowFrame";
 import { Sidebar } from "../components/Sidebar";
 import { MaterialIcon } from "../components/MaterialIcon";
 import { ImButton } from "../components/ImButton";
+import { AnimatedCursor } from "../components/AnimatedCursor";
 
 type Props = { bassIntensity?: number };
 
@@ -341,56 +340,30 @@ const ClipRow: React.FC<{
 
 export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
 
-  // Staggered reveals
-  const reveal = (delay: number) => {
-    const s = spring({ frame, fps, config: { damping: 18, stiffness: 160 }, delay });
-    return {
-      opacity: interpolate(s, [0, 1], [0, 1]),
-      translateY: interpolate(s, [0, 1], [14, 0]),
-    };
-  };
+  // All clips visible from frame 0, collapsed
+  const clipReveal = (_index: number) => ({
+    opacity: 1,
+    translateY: 0,
+  });
 
-  const r0 = reveal(0);
-  const r1 = reveal(15);
-  const r2 = reveal(25);
-  const r3 = reveal(25);
-
-  // Clip rows stagger from frame 15
-  const clipReveal = (index: number) => {
-    const s = spring({
-      frame,
-      fps,
-      config: { damping: 15, stiffness: 120 },
-      delay: 15 + index * 4,
-    });
-    return {
-      opacity: interpolate(s, [0, 1], [0, 1]),
-      translateY: interpolate(s, [0, 1], [10, 0]),
-    };
-  };
-
-  // Which rows are expanded (driven by frame thresholds)
+  // Clips expand one by one: clip 0 at frame 5, clip 1 at frame 9, ..., clip 14 at frame 61
   const isExpanded = (index: number) => {
-    if (index === 0) return frame > 30;
-    if (index === 1) return frame > 50;
-    if (index === 2) return frame > 65;
-    return false;
+    const expandFrame = 5 + index * 4;
+    return frame >= expandFrame;
   };
 
-  // Thumbnail for each expanded row
-  const expandedThumbnails: Record<number, string> = {
-    0: "stock/thumb-14.jpg",
-    1: "stock/thumb-17.jpg",
-    2: "stock/thumb-20.jpg",
-  };
+  // Each expanded row uses a different stock photo (thumb-1 through thumb-15)
+  const expandedThumbnails: Record<number, string> = {};
+  for (let i = 0; i < 15; i++) {
+    expandedThumbnails[i] = `stock/thumb-${i + 1}.jpg`;
+  }
 
-  // Scroll: content scrolls down to reveal more rows
-  const scrollY = interpolate(frame, [40, 180], [0, 500], {
+  // Scroll: fast scroll with acceleration (starts slow, gets fast)
+  const scrollY = interpolate(frame, [30, 140], [0, 1200], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
-    easing: Easing.inOut(Easing.cubic),
+    easing: Easing.in(Easing.cubic),
   });
 
   return (
@@ -413,8 +386,6 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
                 color: COLORS.text,
                 margin: 0,
                 fontFamily,
-                opacity: r0.opacity,
-                transform: `translateY(${r0.translateY}px)`,
               }}
             >
               Clip Review
@@ -425,8 +396,6 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
                 color: COLORS.textSecondary,
                 marginTop: 4,
                 fontFamily,
-                opacity: r0.opacity,
-                transform: `translateY(${r0.translateY}px)`,
               }}
             >
               Person Spotlight — 2025
@@ -441,8 +410,6 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
                 marginTop: 16,
                 marginBottom: 4,
                 fontFamily,
-                opacity: r1.opacity,
-                transform: `translateY(${r1.translateY}px)`,
               }}
             >
               Review & Refine Selected Clips
@@ -453,8 +420,6 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
                 color: COLORS.textSecondary,
                 marginBottom: 16,
                 fontFamily,
-                opacity: r1.opacity,
-                transform: `translateY(${r1.translateY}px)`,
               }}
             >
               Adjust time segments, preview clips, and remove any unwanted
@@ -467,8 +432,6 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
                 display: "flex",
                 gap: 32,
                 marginBottom: 16,
-                opacity: r2.opacity,
-                transform: `translateY(${r2.translateY}px)`,
               }}
             >
               <StatBox label="Selected Clips" value="15" />
@@ -484,8 +447,6 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
                 gap: 8,
                 alignItems: "center",
                 marginBottom: 16,
-                opacity: r3.opacity,
-                transform: `translateY(${r3.translateY}px)`,
               }}
             >
               <ImButton
@@ -621,6 +582,14 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
               />
             </div>
           </div>
+
+          {/* Cursor: appears at CONTINUE button, then clicks */}
+          <AnimatedCursor
+            steps={[
+              { frame: 130, x: 850, y: 700 },
+              { frame: 140, x: 850, y: 700, click: true },
+            ]}
+          />
         </div>
       </WindowFrame>
     </AbsoluteFill>

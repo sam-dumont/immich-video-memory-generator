@@ -6,7 +6,7 @@ type Props = { children: React.ReactNode; style?: React.CSSProperties };
 export const ImCard: React.FC<Props> = ({ children, style }) => (
   <div
     style={{
-      backgroundColor: COLORS.surface,
+      backgroundColor: COLORS.elevated,
       border: `1px solid ${COLORS.border}`,
       borderRadius: 10,
       padding: 20,

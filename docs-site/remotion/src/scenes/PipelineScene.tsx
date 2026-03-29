@@ -452,8 +452,7 @@ export const PipelineScene: React.FC<Props> = ({ bassIntensity }) => {
                       transform: `translateY(${p1Reveal(35).translateY}px)`,
                     }}
                   >
-                    A child blowing candles on a birthday cake, family gathered
-                    around
+                    A family hiking through mountain scenery at golden hour
                   </div>
                   {/* Badges */}
                   <div
@@ -465,7 +464,7 @@ export const PipelineScene: React.FC<Props> = ({ bassIntensity }) => {
                       transform: `translateY(${p1Reveal(45).translateY}px)`,
                     }}
                   >
-                    <ImBadge text="emotion=joyful" variant="success" />
+                    <ImBadge text="emotion=serene" variant="success" />
                     <ImBadge text="score=0.82" variant="info" />
                   </div>
                   {/* Face detection */}
@@ -478,7 +477,7 @@ export const PipelineScene: React.FC<Props> = ({ bassIntensity }) => {
                       transform: `translateY(${p1Reveal(50).translateY}px)`,
                     }}
                   >
-                    2 faces detected
+                    3 faces detected
                   </div>
                 </div>
               </div>

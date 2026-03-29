@@ -25,7 +25,7 @@ export const CliScene: React.FC = () => {
   const entryOpacity = interpolate(frame, [0, 8], [0, 1], {
     extrapolateRight: "clamp",
   });
-  const floatY = Math.sin(frame * 0.04) * 2;
+  const floatY = 0;
 
   // "Also available as CLI" label
   const labelOpacity = interpolate(frame, [8, 25], [0, 1], {

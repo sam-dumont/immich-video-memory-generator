@@ -68,7 +68,7 @@ export const TitleScene: React.FC = () => {
         >
           <div
             style={{
-              fontSize: 68,
+              fontSize: 88,
               fontWeight: 700,
               color: "white",
               fontFamily,
@@ -81,8 +81,8 @@ export const TitleScene: React.FC = () => {
           </div>
           <div
             style={{
-              fontSize: 26,
-              color: COLORS.textSecondary,
+              fontSize: 28,
+              color: COLORS.text,
               fontFamily,
               fontWeight: 400,
               opacity: subOpacity,

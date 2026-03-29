@@ -1,7 +1,6 @@
 import React from "react";
 import {
   AbsoluteFill,
-  interpolate,
   spring,
   useCurrentFrame,
   useVideoConfig,
@@ -18,6 +17,7 @@ import { ImSectionHeader } from "../components/ImSectionHeader";
 import { ImToggle } from "../components/ImToggle";
 import { ImSelect } from "../components/ImSelect";
 import { MaterialIcon } from "../components/MaterialIcon";
+import { AnimatedCursor } from "../components/AnimatedCursor";
 
 const PRESETS = [
   {
@@ -62,45 +62,26 @@ const PRESETS = [
   },
 ];
 
+const cursorSteps = [
+  { frame: 25, x: 850, y: 440, click: false },
+  { frame: 35, x: 850, y: 440, click: true },
+  { frame: 55, x: 700, y: 720, click: false },
+  { frame: 65, x: 700, y: 720, click: true },
+];
+
 type Props = { bassIntensity?: number };
 
 export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Stagger reveals for each section
-  const connectionReveal = spring({
-    frame,
-    fps,
-    config: { damping: 15, stiffness: 120 },
-    delay: 8,
-  });
-  const presetsReveal = spring({
-    frame,
-    fps,
-    config: { damping: 15, stiffness: 120 },
-    delay: 30,
-  });
-  const optionsReveal = spring({
-    frame,
-    fps,
-    config: { damping: 15, stiffness: 120 },
-    delay: 55,
-  });
-  const bottomReveal = spring({
-    frame,
-    fps,
-    config: { damping: 15, stiffness: 120 },
-    delay: 80,
-  });
-
-  // Person Spotlight gets selected at ~frame 70
-  const selectedPreset = frame > 70 ? 2 : -1;
+  // Person Spotlight gets selected when cursor clicks at frame 35
+  const selectedPreset = frame >= 35 ? 2 : -1;
   const selectionGlow = spring({
     frame,
     fps,
     config: { damping: 14, stiffness: 120 },
-    delay: 70,
+    delay: 35,
   });
 
   return (
@@ -110,7 +91,7 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
         <div
           style={{
             flex: 1,
-            padding: "20px 28px",
+            padding: "16px 28px",
             overflow: "hidden",
             fontFamily,
             display: "flex",
@@ -124,7 +105,7 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
               fontWeight: 700,
               color: COLORS.text,
               fontFamily,
-              margin: "0 0 20px 0",
+              margin: "0 0 14px 0",
             }}
           >
             Configuration
@@ -133,12 +114,7 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
           {/* Scrollable content area */}
           <div style={{ flex: 1, overflow: "hidden" }}>
             {/* Section 1: Immich Connection */}
-            <div
-              style={{
-                opacity: connectionReveal,
-                transform: `translateY(${interpolate(connectionReveal, [0, 1], [12, 0])}px)`,
-              }}
-            >
+            <div>
               <ImSectionHeader icon="cloud" title="Immich Connection" />
               <ImCard>
                 {/* Connected badge */}
@@ -190,9 +166,7 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
             {/* Section 2: Memory Type */}
             <div
               style={{
-                marginTop: 20,
-                opacity: presetsReveal,
-                transform: `translateY(${interpolate(presetsReveal, [0, 1], [12, 0])}px)`,
+                marginTop: 16,
               }}
             >
               <ImSectionHeader icon="auto_awesome" title="Memory Type" />
@@ -265,9 +239,7 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
             {/* Section 3: Options */}
             <div
               style={{
-                marginTop: 20,
-                opacity: optionsReveal,
-                transform: `translateY(${interpolate(optionsReveal, [0, 1], [12, 0])}px)`,
+                marginTop: 16,
               }}
             >
               <ImSectionHeader icon="settings" title="Options" />
@@ -319,9 +291,7 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
             {/* Bottom: Next button */}
             <div
               style={{
-                marginTop: 20,
-                opacity: bottomReveal,
-                transform: `translateY(${interpolate(bottomReveal, [0, 1], [12, 0])}px)`,
+                marginTop: 16,
               }}
             >
               <ImButton
@@ -334,6 +304,7 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
           </div>
         </div>
       </WindowFrame>
+      <AnimatedCursor steps={cursorSteps} />
     </AbsoluteFill>
   );
 };

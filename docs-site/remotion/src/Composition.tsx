@@ -4,10 +4,10 @@ import { staticFile, interpolate } from "remotion";
 import { TransitionSeries, linearTiming } from "@remotion/transitions";
 import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
-import { COLORS, BEATS, FPS } from "./theme";
+import { COLORS, FPS } from "./theme";
 import { useBassIntensity } from "./hooks/useBassIntensity";
-import { SceneLabel } from "./components/SceneLabel";
 import { TitleScene } from "./scenes/TitleScene";
+import { StepTitleCard } from "./scenes/StepTitleCard";
 import { ConfigScene } from "./scenes/ConfigScene";
 import { GenerateMemoriesScene } from "./scenes/GenerateMemoriesScene";
 import { PipelineScene } from "./scenes/PipelineScene";
@@ -18,16 +18,17 @@ import { CompleteScene } from "./scenes/CompleteScene";
 import { CliScene } from "./scenes/CliScene";
 import { OutroScene } from "./scenes/OutroScene";
 
-const FADE = Math.round(FPS * 0.5);
-const SLIDE = Math.round(FPS * 0.4);
+const FADE = Math.round(FPS * 0.5); // 15 frames
+const SLIDE = Math.round(FPS * 0.4); // 12 frames
+const TITLE_CARD = 30; // 1 second
 
 export const DemoVideo: React.FC = () => {
   const frame = useCurrentFrame();
   const bass = useBassIntensity(frame);
 
-  // Music volume: full until outro, then fade out
+  // Music volume: fade out in last 8 seconds
   const musicVolume = (f: number) =>
-    interpolate(f, [BEATS.bar15, BEATS.end], [0.7, 0], {
+    interpolate(f, [1260, 1440], [0.7, 0], {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     });
@@ -38,7 +39,7 @@ export const DemoVideo: React.FC = () => {
 
       <TransitionSeries>
         {/* 1. Title (0 → 5.3s) */}
-        <TransitionSeries.Sequence durationInFrames={BEATS.bar3}>
+        <TransitionSeries.Sequence durationInFrames={158}>
           <TitleScene />
         </TransitionSeries.Sequence>
 
@@ -47,25 +48,39 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 2. Step 1: Config (5.3 → 10.3s) */}
-        <TransitionSeries.Sequence
-          durationInFrames={BEATS.bar5 - BEATS.bar3}
-        >
+        {/* Step 1 title card */}
+        <TransitionSeries.Sequence durationInFrames={TITLE_CARD}>
+          <StepTitleCard step={1} title="Configuration" />
+        </TransitionSeries.Sequence>
+
+        <TransitionSeries.Transition
+          presentation={fade()}
+          timing={linearTiming({ durationInFrames: FADE })}
+        />
+
+        {/* 2. ConfigScene — select Person Spotlight, click Next */}
+        <TransitionSeries.Sequence durationInFrames={120}>
           <ConfigScene bassIntensity={bass} />
-          <SceneLabel text="Step 1 · Configuration" />
         </TransitionSeries.Sequence>
 
         <TransitionSeries.Transition
-          presentation={slide({ direction: "from-right" })}
-          timing={linearTiming({ durationInFrames: SLIDE })}
+          presentation={fade()}
+          timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 3. Step 2: Generate Memories (10.3 → 14.5s) */}
-        <TransitionSeries.Sequence
-          durationInFrames={Math.round(4.2 * FPS)}
-        >
+        {/* Step 2 title card */}
+        <TransitionSeries.Sequence durationInFrames={TITLE_CARD}>
+          <StepTitleCard step={2} title="Clip Review" />
+        </TransitionSeries.Sequence>
+
+        <TransitionSeries.Transition
+          presentation={fade()}
+          timing={linearTiming({ durationInFrames: FADE })}
+        />
+
+        {/* 3. GenerateMemories — click Generate */}
+        <TransitionSeries.Sequence durationInFrames={90}>
           <GenerateMemoriesScene bassIntensity={bass} />
-          <SceneLabel text="Step 2 · Generate Memories" />
         </TransitionSeries.Sequence>
 
         <TransitionSeries.Transition
@@ -73,12 +88,9 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 4. Step 2: Pipeline running + complete (14.5 → 19.5s) */}
-        <TransitionSeries.Sequence
-          durationInFrames={Math.round(5.0 * FPS)}
-        >
+        {/* 4. Pipeline running → complete */}
+        <TransitionSeries.Sequence durationInFrames={150}>
           <PipelineScene bassIntensity={bass} />
-          <SceneLabel text="Generating Memories" />
         </TransitionSeries.Sequence>
 
         <TransitionSeries.Transition
@@ -86,12 +98,9 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 5. Step 2: Refine (19.5 → 23.0s) */}
-        <TransitionSeries.Sequence
-          durationInFrames={BEATS.bar10 - Math.round(19.5 * FPS)}
-        >
+        {/* 5. Refine — open all clips, scroll, click Continue */}
+        <TransitionSeries.Sequence durationInFrames={160}>
           <RefineScene bassIntensity={bass} />
-          <SceneLabel text="Review & Refine" />
         </TransitionSeries.Sequence>
 
         <TransitionSeries.Transition
@@ -99,12 +108,19 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: SLIDE })}
         />
 
-        {/* 6. Step 3: Options (23.0 → 25.5s) */}
-        <TransitionSeries.Sequence
-          durationInFrames={BEATS.bar11 - BEATS.bar10}
-        >
+        {/* Step 3 title card */}
+        <TransitionSeries.Sequence durationInFrames={TITLE_CARD}>
+          <StepTitleCard step={3} title="Generation Options" />
+        </TransitionSeries.Sequence>
+
+        <TransitionSeries.Transition
+          presentation={fade()}
+          timing={linearTiming({ durationInFrames: FADE })}
+        />
+
+        {/* 6. Options — expand advanced, click Next */}
+        <TransitionSeries.Sequence durationInFrames={100}>
           <OptionsScene bassIntensity={bass} />
-          <SceneLabel text="Step 3 · Generation Options" />
         </TransitionSeries.Sequence>
 
         <TransitionSeries.Transition
@@ -112,12 +128,19 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 7. Step 4: Generating (25.5 → 30.5s) */}
-        <TransitionSeries.Sequence
-          durationInFrames={BEATS.bar13 - BEATS.bar11}
-        >
+        {/* Step 4 title card */}
+        <TransitionSeries.Sequence durationInFrames={TITLE_CARD}>
+          <StepTitleCard step={4} title="Preview & Export" />
+        </TransitionSeries.Sequence>
+
+        <TransitionSeries.Transition
+          presentation={fade()}
+          timing={linearTiming({ durationInFrames: FADE })}
+        />
+
+        {/* 7. Generating — click Generate Video, progress + frame preview */}
+        <TransitionSeries.Sequence durationInFrames={150}>
           <GeneratingScene bassIntensity={bass} />
-          <SceneLabel text="Step 4 · Preview & Export" />
         </TransitionSeries.Sequence>
 
         <TransitionSeries.Transition
@@ -125,12 +148,9 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 8. Step 4: Complete (30.5 → 33.5s) */}
-        <TransitionSeries.Sequence
-          durationInFrames={BEATS.bar14 - BEATS.bar13}
-        >
+        {/* 8. Complete — success state */}
+        <TransitionSeries.Sequence durationInFrames={75}>
           <CompleteScene bassIntensity={bass} />
-          <SceneLabel text="Your memory is ready!" />
         </TransitionSeries.Sequence>
 
         <TransitionSeries.Transition
@@ -138,10 +158,8 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 9. CLI demo (33.5 → 38.5s) */}
-        <TransitionSeries.Sequence
-          durationInFrames={BEATS.bar15 - BEATS.bar14}
-        >
+        {/* 9. CLI demo — 5x playback */}
+        <TransitionSeries.Sequence durationInFrames={150}>
           <CliScene />
         </TransitionSeries.Sequence>
 
@@ -150,10 +168,8 @@ export const DemoVideo: React.FC = () => {
           timing={linearTiming({ durationInFrames: FADE })}
         />
 
-        {/* 10. Outro (38.5 → 50s) */}
-        <TransitionSeries.Sequence
-          durationInFrames={BEATS.musicEnd - BEATS.bar15}
-        >
+        {/* 10. Outro */}
+        <TransitionSeries.Sequence durationInFrames={280}>
           <OutroScene />
         </TransitionSeries.Sequence>
       </TransitionSeries>

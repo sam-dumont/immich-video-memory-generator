@@ -17,6 +17,7 @@ import { ImStatCard } from "../components/ImStatCard";
 import { ImButton } from "../components/ImButton";
 import { ImProgressBar } from "../components/ImProgressBar";
 import { MaterialIcon } from "../components/MaterialIcon";
+import { AnimatedCursor } from "../components/AnimatedCursor";
 
 type Props = { bassIntensity?: number };
 
@@ -24,23 +25,22 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Staggered spring reveals for each section
-  const s1 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 5 });
-  const s2 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 25 });
-  const s3 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 50 });
-  const s4 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 70 });
-  const s5 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 90 });
-
-  const makeStyle = (s: number): React.CSSProperties => ({
-    opacity: interpolate(s, [0, 1], [0, 1]),
-    transform: `translateY(${interpolate(s, [0, 1], [12, 0])}px)`,
-  });
-
   // Music generation progress (animates over time)
   const musicProgress = interpolate(frame, [30, 90], [0, 45], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
+
+  // Advanced options expand animation (starts at frame 15)
+  const advancedExpand = spring({
+    frame,
+    fps,
+    config: { damping: 15, stiffness: 120 },
+    delay: 15,
+  });
+  const chevronRotation = interpolate(advancedExpand, [0, 1], [0, 180]);
+  const advancedContentHeight = interpolate(advancedExpand, [0, 1], [0, 60]);
+  const advancedContentOpacity = interpolate(advancedExpand, [0, 1], [0, 1]);
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
@@ -63,7 +63,6 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
               fontWeight: 600,
               color: COLORS.text,
               marginBottom: 18,
-              ...makeStyle(s1),
             }}
           >
             Generation Options
@@ -80,7 +79,7 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
             }}
           >
             {/* Section 1: Output Settings */}
-            <div style={makeStyle(s1)}>
+            <div>
               <div
                 style={{
                   display: "flex",
@@ -143,13 +142,40 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
                     name="keyboard_arrow_down"
                     size={22}
                     color={COLORS.textSecondary}
+                    style={{
+                      transform: `rotate(${chevronRotation}deg)`,
+                      transformOrigin: "center center",
+                    }}
                   />
+                </div>
+                {/* Advanced options expanded content */}
+                <div
+                  style={{
+                    height: advancedContentHeight,
+                    opacity: advancedContentOpacity,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 16, paddingTop: 4 }}>
+                    <ImSelect
+                      label="CRF Quality"
+                      value="18 (high)"
+                      style={{ flex: 1 }}
+                      small
+                    />
+                    <ImSelect
+                      label="HDR Mode"
+                      value="Auto-detect"
+                      style={{ flex: 1 }}
+                      small
+                    />
+                  </div>
                 </div>
               </ImCard>
             </div>
 
             {/* Section 2: Title */}
-            <div style={makeStyle(s2)}>
+            <div>
               <div
                 style={{
                   display: "flex",
@@ -193,7 +219,7 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
             </div>
 
             {/* Section 3: Music */}
-            <div style={makeStyle(s3)}>
+            <div>
               <div
                 style={{
                   display: "flex",
@@ -335,7 +361,7 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
             </div>
 
             {/* Section 4: Summary */}
-            <div style={makeStyle(s4)}>
+            <div>
               <div
                 style={{
                   display: "flex",
@@ -378,7 +404,6 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
                 justifyContent: "space-between",
                 alignItems: "center",
                 paddingTop: 4,
-                ...makeStyle(s5),
               }}
             >
               <ImButton
@@ -394,6 +419,14 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
             </div>
           </div>
         </div>
+
+        {/* Cursor: moves to NEXT button, then clicks */}
+        <AnimatedCursor
+          steps={[
+            { frame: 45, x: 650, y: 720 },
+            { frame: 55, x: 650, y: 720, click: true },
+          ]}
+        />
       </WindowFrame>
     </AbsoluteFill>
   );

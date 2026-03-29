@@ -2,8 +2,10 @@ import React from "react";
 import {
   AbsoluteFill,
   Easing,
+  Img,
   interpolate,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
@@ -17,6 +19,7 @@ import { ImStatCard } from "../components/ImStatCard";
 import { ImButton } from "../components/ImButton";
 import { ImToggle } from "../components/ImToggle";
 import { MaterialIcon } from "../components/MaterialIcon";
+import { AnimatedCursor } from "../components/AnimatedCursor";
 
 const STATUS_PHASES = [
   { at: 0, label: "Downloading clips..." },
@@ -31,25 +34,14 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Phase 1: Initial state (frames 0-40)
-  // Phase 2: Generating (frames 40-150)
-  const isGenerating = frame >= 40;
+  // Phase 1: Initial state (frames 0-15)
+  // Phase 2: Generating (frames 15+, triggered by cursor click)
+  const isGenerating = frame >= 15;
 
-  // Spring reveals for initial state
-  const s1 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 5 });
-  const s2 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 25 });
-  const s3 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 45 });
-  const s4 = spring({ frame, fps, config: { damping: 15, stiffness: 120 }, delay: 60 });
-
-  const makeStyle = (s: number): React.CSSProperties => ({
-    opacity: interpolate(s, [0, 1], [0, 1]),
-    transform: `translateY(${interpolate(s, [0, 1], [12, 0])}px)`,
-  });
-
-  // Progress bar animation (starts at frame 40)
+  // Progress bar animation (starts at frame 15)
   const genProgress = interpolate(
     frame,
-    [40, 60, 90, 120, 150],
+    [15, 40, 70, 110, 150],
     [0, 15, 45, 75, 100],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.quad) },
   );
@@ -60,10 +52,21 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
 
   // Progress bar reveal spring
   const progressReveal = spring({
-    frame: Math.max(0, frame - 40),
+    frame: Math.max(0, frame - 15),
     fps,
     config: { damping: 15, stiffness: 120 },
     delay: 5,
+  });
+
+  // Preview image cycling (starts at frame 40, cycles every 8 frames)
+  const previewIndex = frame >= 40 ? 13 + Math.floor((frame - 40) / 8) % 12 : -1;
+
+  // Preview area fade-in
+  const previewReveal = spring({
+    frame: Math.max(0, frame - 40),
+    fps,
+    config: { damping: 15, stiffness: 120 },
+    delay: 3,
   });
 
   return (
@@ -87,7 +90,6 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
               fontWeight: 600,
               color: COLORS.text,
               marginBottom: 18,
-              ...makeStyle(s1),
             }}
           >
             Preview & Export
@@ -103,7 +105,7 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
             }}
           >
             {/* Section: Summary */}
-            <div style={makeStyle(s1)}>
+            <div>
               <div
                 style={{
                   display: "flex",
@@ -135,7 +137,7 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
             </div>
 
             {/* Section: Output */}
-            <div style={makeStyle(s2)}>
+            <div>
               <div
                 style={{
                   display: "flex",
@@ -174,7 +176,7 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
             </div>
 
             {/* Section: Upload to Immich */}
-            <div style={makeStyle(s3)}>
+            <div>
               <div
                 style={{
                   display: "flex",
@@ -224,7 +226,7 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
             </div>
 
             {/* Generate button OR progress */}
-            <div style={makeStyle(s4)}>
+            <div>
               {!isGenerating ? (
                 <ImButton
                   text="GENERATE VIDEO"
@@ -273,6 +275,61 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
               )}
             </div>
 
+            {/* Frame preview area (appears during generation) */}
+            {previewIndex >= 0 && (
+              <div
+                style={{
+                  opacity: interpolate(previewReveal, [0, 1], [0, 1]),
+                  transform: `translateY(${interpolate(previewReveal, [0, 1], [8, 0])}px)`,
+                }}
+              >
+                <ImCard>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <MaterialIcon
+                      name="image"
+                      size={18}
+                      color={COLORS.primary}
+                    />
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: COLORS.text,
+                        fontFamily,
+                      }}
+                    >
+                      Preview
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      width: 400,
+                      height: 225,
+                      borderRadius: 6,
+                      overflow: "hidden",
+                      border: `1px solid ${COLORS.border}`,
+                    }}
+                  >
+                    <Img
+                      src={staticFile(`stock/thumb-${previewIndex}.jpg`)}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  </div>
+                </ImCard>
+              </div>
+            )}
+
             {/* Spacer */}
             <div style={{ flex: 1 }} />
 
@@ -282,7 +339,6 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                ...makeStyle(s4),
               }}
             >
               <ImButton
@@ -308,6 +364,14 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
             </div>
           </div>
         </div>
+
+        {/* Cursor: moves to GENERATE VIDEO button, then clicks */}
+        <AnimatedCursor
+          steps={[
+            { frame: 8, x: 700, y: 650 },
+            { frame: 15, x: 700, y: 650, click: true },
+          ]}
+        />
       </WindowFrame>
     </AbsoluteFill>
   );
