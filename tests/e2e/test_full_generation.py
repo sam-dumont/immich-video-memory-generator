@@ -167,7 +167,8 @@ def test_full_generation_pipeline(
 
     # ── Step 2b: Run smart pipeline ──
     print("🔵 [4/7] Clicking 'Generate Memories' to run smart pipeline...")
-    gen_memories = page.get_by_role("button", name="Generate Memories")
+    # WHY: exact=True avoids matching the collapsible section header with same text
+    gen_memories = page.get_by_role("button", name="Generate Memories", exact=True)
     if not gen_memories.is_visible(timeout=5000):
         pytest.skip("Generate Memories button not visible")
     gen_memories.click()
