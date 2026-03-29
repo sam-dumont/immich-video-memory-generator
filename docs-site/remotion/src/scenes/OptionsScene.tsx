@@ -1,6 +1,7 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Easing,
   interpolate,
   spring,
   useCurrentFrame,
@@ -42,6 +43,13 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
   const advancedContentHeight = interpolate(advancedExpand, [0, 1], [0, 60]);
   const advancedContentOpacity = interpolate(advancedExpand, [0, 1], [0, 1]);
 
+  // Scroll down after clicking Generate Music (frames 35-60)
+  const scrollY = interpolate(frame, [35, 60], [0, 300], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.inOut(Easing.cubic),
+  });
+
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <WindowFrame bassIntensity={bassIntensity}>
@@ -68,14 +76,21 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
             Generation Options
           </div>
 
-          {/* Scrollable content area */}
+          {/* Scrollable content area (clip container) */}
           <div
             style={{
               flex: 1,
               overflow: "hidden",
+              position: "relative",
+            }}
+          >
+          {/* Inner content that scrolls via translateY */}
+          <div
+            style={{
               display: "flex",
               flexDirection: "column",
               gap: 18,
+              transform: `translateY(-${scrollY}px)`,
             }}
           >
             {/* Section 1: Output Settings */}
@@ -418,13 +433,16 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
               />
             </div>
           </div>
+          </div>
         </div>
 
-        {/* Cursor: moves to NEXT button, then clicks */}
+        {/* Cursor: clicks Generate Music, scrolls, then clicks Next */}
         <AnimatedCursor
           steps={[
-            { frame: 45, x: 650, y: 720 },
-            { frame: 55, x: 650, y: 720, click: true },
+            { frame: 25, x: 400, y: 620 },
+            { frame: 32, x: 400, y: 620, click: true },
+            { frame: 70, x: 650, y: 720 },
+            { frame: 80, x: 650, y: 720, click: true },
           ]}
         />
       </WindowFrame>

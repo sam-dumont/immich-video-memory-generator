@@ -58,15 +58,24 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
     delay: 5,
   });
 
-  // Preview image cycling (starts at frame 40, cycles every 8 frames)
-  const previewIndex = frame >= 40 ? 13 + Math.floor((frame - 40) / 8) % 12 : -1;
+  // Single photo with Ken Burns effect (slow zoom + pan)
+  const kenBurnsScale = interpolate(frame, [50, 200], [1.0, 1.15], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const kenBurnsX = interpolate(frame, [50, 200], [0, -15], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const kenBurnsY = interpolate(frame, [50, 200], [0, -8], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
 
-  // Preview area fade-in
-  const previewReveal = spring({
-    frame: Math.max(0, frame - 40),
-    fps,
-    config: { damping: 15, stiffness: 120 },
-    delay: 3,
+  // Progressive reveal (simulates frame-by-frame rendering)
+  const renderOpacity = interpolate(frame, [50, 70], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
   });
 
   return (
@@ -275,21 +284,24 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
               )}
             </div>
 
-            {/* Frame preview (appears during generation — raw image below status) */}
-            {previewIndex >= 0 && (
+            {/* Frame preview (appears during generation — single photo with Ken Burns) */}
+            {frame >= 50 && (
               <div
                 style={{
-                  opacity: interpolate(previewReveal, [0, 1], [0, 1]),
-                  transform: `translateY(${interpolate(previewReveal, [0, 1], [8, 0])}px)`,
+                  width: "100%",
+                  height: 350,
+                  borderRadius: 10,
+                  overflow: "hidden",
+                  opacity: renderOpacity,
                 }}
               >
                 <Img
-                  src={staticFile(`stock/thumb-${previewIndex}.jpg`)}
+                  src={staticFile("stock/thumb-21.jpg")}
                   style={{
-                    width: "100%",
-                    maxHeight: 400,
-                    objectFit: "contain",
-                    borderRadius: 10,
+                    width: "110%",
+                    height: "110%",
+                    objectFit: "cover",
+                    transform: `scale(${kenBurnsScale}) translate(${kenBurnsX}px, ${kenBurnsY}px)`,
                   }}
                 />
               </div>

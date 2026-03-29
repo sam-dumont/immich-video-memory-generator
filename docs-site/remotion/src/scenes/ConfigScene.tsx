@@ -74,12 +74,12 @@ const PERSON_NAMES = ["Alice", "Bob", "Charlie", "Diana", "Eve"];
 // frame 80: cursor arrives at Next button
 // frame 90: click Next button
 const cursorSteps = [
-  { frame: 25, x: 850, y: 440, click: false },
-  { frame: 30, x: 850, y: 440, click: true },
-  { frame: 40, x: 700, y: 530, click: true },
-  { frame: 55, x: 700, y: 570, click: true },
-  { frame: 80, x: 700, y: 720, click: false },
-  { frame: 90, x: 700, y: 720, click: true },
+  { frame: 25, x: 1230, y: 426, click: false },
+  { frame: 30, x: 1230, y: 426, click: true },
+  { frame: 40, x: 600, y: 530, click: true },
+  { frame: 55, x: 600, y: 560, click: true },
+  { frame: 80, x: 1060, y: 900, click: false },
+  { frame: 90, x: 1060, y: 900, click: true },
 ];
 
 type Props = { bassIntensity?: number };

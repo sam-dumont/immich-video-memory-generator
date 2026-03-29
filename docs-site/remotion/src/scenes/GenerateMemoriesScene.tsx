@@ -160,8 +160,8 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
       : 1;
 
   const cursorSteps = [
-    { frame: 30, x: 700, y: 620, click: false },
-    { frame: 40, x: 700, y: 620, click: true },
+    { frame: 30, x: 1060, y: 650, click: false },
+    { frame: 40, x: 1060, y: 650, click: true },
   ];
 
   return (

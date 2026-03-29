@@ -586,8 +586,8 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
           {/* Cursor: appears at CONTINUE button, then clicks */}
           <AnimatedCursor
             steps={[
-              { frame: 148, x: 850, y: 750 },
-              { frame: 155, x: 850, y: 750, click: true },
+              { frame: 148, x: 1100, y: 850 },
+              { frame: 155, x: 1100, y: 850, click: true },
             ]}
           />
         </div>
