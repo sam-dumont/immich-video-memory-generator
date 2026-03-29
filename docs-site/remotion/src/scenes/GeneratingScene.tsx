@@ -3,6 +3,7 @@ import {
   AbsoluteFill,
   Easing,
   interpolate,
+  spring,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
@@ -11,23 +12,17 @@ import { fontFamily } from "../fonts";
 import { WindowFrame } from "../components/WindowFrame";
 import { Sidebar } from "../components/Sidebar";
 import { ImCard } from "../components/ImCard";
-import { ImProgressBar } from "../components/ImProgressBar";
+import { ImInput } from "../components/ImInput";
+import { ImStatCard } from "../components/ImStatCard";
+import { ImButton } from "../components/ImButton";
+import { ImToggle } from "../components/ImToggle";
+import { MaterialIcon } from "../components/MaterialIcon";
 
-const PHASES = [
-  { at: 0, label: "Analyzing clips..." },
-  { at: 15, label: "Rendering title screen..." },
-  { at: 40, label: "Encoding video..." },
-  { at: 85, label: "Mixing audio..." },
-  { at: 100, label: "Complete!" },
-];
-
-const LOG_LINES = [
-  "Phase 1: Clustered 177 → 173 clips (4 duplicates)",
-  "Quality gate: removed 101 clips (below 1425px)",
-  "TaichiTitleRenderer: 2160×3840 @ 60fps",
-  "Streaming assembly: 12 clips at 1920×1080",
-  "HLG HDR preservation enabled",
-  "Assembly complete: 12 clips → output.mp4",
+const STATUS_PHASES = [
+  { at: 0, label: "Downloading clips..." },
+  { at: 30, label: "Downloading: IMG_3959.HEIC" },
+  { at: 50, label: "Assembling video..." },
+  { at: 80, label: "Encoding..." },
 ];
 
 type Props = { bassIntensity?: number };
@@ -35,101 +30,283 @@ type Props = { bassIntensity?: number };
 export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const totalFrames = fps * 5; // 5 seconds
 
-  // Exponential progress: 5 → 10 → 25 → 55 → 100
-  const progress = interpolate(
+  // Phase 1: Initial state (frames 0-40)
+  // Phase 2: Generating (frames 40-150)
+  const isGenerating = frame >= 40;
+
+  // Spring reveals for initial state
+  const s1 = spring({ frame, fps, config: { damping: 200 }, delay: 5 });
+  const s2 = spring({ frame, fps, config: { damping: 200 }, delay: 15 });
+  const s3 = spring({ frame, fps, config: { damping: 200 }, delay: 25 });
+  const s4 = spring({ frame, fps, config: { damping: 200 }, delay: 35 });
+
+  const makeStyle = (s: number): React.CSSProperties => ({
+    opacity: interpolate(s, [0, 1], [0, 1]),
+    transform: `translateY(${interpolate(s, [0, 1], [12, 0])}px)`,
+  });
+
+  // Progress bar animation (starts at frame 40)
+  const genProgress = interpolate(
     frame,
-    [
-      0,
-      totalFrames * 0.15,
-      totalFrames * 0.35,
-      totalFrames * 0.6,
-      totalFrames * 0.8,
-      totalFrames * 0.95,
-    ],
-    [0, 5, 10, 25, 55, 100],
-    {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-      easing: Easing.out(Easing.quad),
-    },
+    [40, 60, 90, 120, 150],
+    [0, 15, 45, 75, 100],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.quad) },
   );
 
   const currentPhase =
-    PHASES.findLast((p) => progress >= p.at) ?? PHASES[0];
+    [...STATUS_PHASES].reverse().find((p) => genProgress >= p.at) ??
+    STATUS_PHASES[0];
 
-  // Log lines appear progressively
-  const logCount = Math.min(
-    LOG_LINES.length,
-    Math.floor(
-      interpolate(
-        frame,
-        [10, totalFrames * 0.9],
-        [0, LOG_LINES.length],
-        {
-          extrapolateLeft: "clamp",
-          extrapolateRight: "clamp",
-        },
-      ),
-    ),
-  );
-  const visibleLogs = LOG_LINES.slice(
-    Math.max(0, logCount - 3),
-    logCount,
-  );
+  // Progress bar reveal spring
+  const progressReveal = spring({
+    frame: Math.max(0, frame - 40),
+    fps,
+    config: { damping: 200 },
+    delay: 5,
+  });
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
-      <WindowFrame
-        bassIntensity={bassIntensity}
-        zoom={{
-          targetX: 0.55,
-          targetY: 0.4,
-          scale: 1.4,
-          startFrame: 10,
-          durationFrames: 50,
-        }}
-      >
+      <WindowFrame bassIntensity={bassIntensity}>
         <Sidebar activeStep={4} completedSteps={[1, 2, 3]} />
         <div
           style={{
             flex: 1,
-            padding: 24,
+            padding: "20px 28px",
             fontFamily,
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          <ImCard>
-            <div
-              style={{
-                marginBottom: 16,
-                fontSize: 15,
-                fontWeight: 600,
-                color: COLORS.text,
-              }}
-            >
-              {currentPhase.label}
-            </div>
-            <ImProgressBar progress={progress} />
+          {/* Page title */}
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 600,
+              color: COLORS.text,
+              marginBottom: 18,
+              ...makeStyle(s1),
+            }}
+          >
+            Preview & Export
+          </div>
 
-            {/* Log lines */}
-            <div style={{ marginTop: 16 }}>
-              {visibleLogs.map((log) => (
+          <div
+            style={{
+              flex: 1,
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              gap: 18,
+            }}
+          >
+            {/* Section: Summary */}
+            <div style={makeStyle(s1)}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 10,
+                }}
+              >
+                <MaterialIcon
+                  name="summarize"
+                  size={20}
+                  color={COLORS.primary}
+                />
+                <span
+                  style={{ fontSize: 15, fontWeight: 600, color: COLORS.text }}
+                >
+                  Summary
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <ImStatCard icon="movie" value="15" label="Clips" />
+                <ImStatCard icon="timer" value="2:02" label="Duration" />
+                <ImStatCard
+                  icon="video_file"
+                  value="MP4 (H.264)"
+                  label="Format"
+                />
+              </div>
+            </div>
+
+            {/* Section: Output */}
+            <div style={makeStyle(s2)}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 10,
+                }}
+              >
+                <MaterialIcon
+                  name="folder"
+                  size={20}
+                  color={COLORS.primary}
+                />
+                <span
+                  style={{ fontSize: 15, fontWeight: 600, color: COLORS.text }}
+                >
+                  Output
+                </span>
+              </div>
+              <ImCard>
+                <ImInput
+                  label="Output filename"
+                  value="alice_2025_memories.mp4"
+                />
                 <div
-                  key={log}
                   style={{
                     fontSize: 12,
                     color: COLORS.textSecondary,
-                    lineHeight: 1.8,
-                    fontFamily: "monospace",
+                    fontFamily,
+                    marginTop: 8,
                   }}
                 >
-                  │ {log}
+                  Will be saved to: ~/Videos/Memories/alice_2025_memories.mp4
                 </div>
-              ))}
+              </ImCard>
             </div>
-          </ImCard>
+
+            {/* Section: Upload to Immich */}
+            <div style={makeStyle(s3)}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 10,
+                }}
+              >
+                <MaterialIcon
+                  name="cloud_upload"
+                  size={20}
+                  color={COLORS.primary}
+                />
+                <span
+                  style={{ fontSize: 15, fontWeight: 600, color: COLORS.text }}
+                >
+                  Upload to Immich
+                </span>
+              </div>
+              <ImCard>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: 8,
+                  }}
+                >
+                  <MaterialIcon
+                    name="cloud_upload"
+                    size={22}
+                    color={COLORS.primary}
+                  />
+                  <span
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: COLORS.text,
+                      fontFamily,
+                    }}
+                  >
+                    Upload to Immich
+                  </span>
+                </div>
+                <ImToggle label="Upload after generation" checked={false} />
+              </ImCard>
+            </div>
+
+            {/* Generate button OR progress */}
+            <div style={makeStyle(s4)}>
+              {!isGenerating ? (
+                <ImButton
+                  text="GENERATE VIDEO"
+                  variant="primary"
+                  icon="movie"
+                  fullWidth
+                  style={{ fontSize: 14, padding: "14px 20px" }}
+                />
+              ) : (
+                <div
+                  style={{
+                    opacity: interpolate(progressReveal, [0, 1], [0, 1]),
+                    transform: `translateY(${interpolate(progressReveal, [0, 1], [8, 0])}px)`,
+                  }}
+                >
+                  {/* Progress bar */}
+                  <div
+                    style={{
+                      width: "100%",
+                      height: 6,
+                      backgroundColor: "rgba(255,255,255,0.06)",
+                      borderRadius: 3,
+                      overflow: "hidden",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${Math.min(genProgress, 100)}%`,
+                        height: "100%",
+                        backgroundColor: COLORS.primary,
+                        borderRadius: 3,
+                      }}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: COLORS.textSecondary,
+                      fontFamily,
+                    }}
+                  >
+                    {currentPhase.label}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Spacer */}
+            <div style={{ flex: 1 }} />
+
+            {/* Bottom buttons */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                ...makeStyle(s4),
+              }}
+            >
+              <ImButton
+                text="BACK TO GENERATION OPTIONS"
+                variant="secondary"
+                icon="arrow_back"
+              />
+              {!isGenerating && (
+                <ImButton
+                  text="START NEW PROJECT"
+                  variant="ghost"
+                  icon="refresh"
+                />
+              )}
+              {isGenerating && (
+                <ImButton
+                  text="CANCEL"
+                  variant="ghost"
+                  icon="cancel"
+                  style={{ color: COLORS.error }}
+                />
+              )}
+            </div>
+          </div>
         </div>
       </WindowFrame>
     </AbsoluteFill>

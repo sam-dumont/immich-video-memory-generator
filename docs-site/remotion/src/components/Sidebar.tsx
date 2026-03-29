@@ -1,6 +1,7 @@
 import React from "react";
 import { COLORS } from "../theme";
 import { fontFamily } from "../fonts";
+import { MaterialIcon } from "./MaterialIcon";
 
 type StepStatus = "completed" | "active" | "upcoming";
 
@@ -9,12 +10,19 @@ type Props = {
   completedSteps?: number[];
 };
 
-const STEPS = [
-  { icon: "⚙️", label: "Configuration" },
-  { icon: "🎬", label: "Clip Review" },
-  { icon: "🎛️", label: "Options" },
-  { icon: "📥", label: "Export" },
+const NAV_STEPS = [
+  { icon: "settings", label: "Configuration" },
+  { icon: "video_library", label: "Clip Review" },
+  { icon: "tune", label: "Options" },
+  { icon: "download", label: "Export" },
 ];
+
+const BOTTOM_NAV = [
+  { icon: "description", label: "Config" },
+  { icon: "cached", label: "Cache" },
+];
+
+const THEME_ICONS = ["light_mode", "brightness_auto", "dark_mode"];
 
 export const Sidebar: React.FC<Props> = ({
   activeStep,
@@ -32,7 +40,6 @@ export const Sidebar: React.FC<Props> = ({
         width: 200,
         backgroundColor: COLORS.bg,
         borderRight: `1px solid ${COLORS.border}`,
-        padding: "16px 0",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
@@ -42,15 +49,14 @@ export const Sidebar: React.FC<Props> = ({
       {/* Branding */}
       <div
         style={{
-          padding: "0 16px 16px",
+          padding: "14px 16px",
           display: "flex",
           alignItems: "center",
           gap: 8,
           borderBottom: `1px solid ${COLORS.border}`,
-          marginBottom: 12,
         }}
       >
-        <span style={{ fontSize: 20 }}>🎬</span>
+        <MaterialIcon name="movie" size={22} color={COLORS.primary} />
         <span
           style={{
             fontSize: 14,
@@ -63,45 +69,145 @@ export const Sidebar: React.FC<Props> = ({
         </span>
       </div>
 
-      {/* Steps */}
-      {STEPS.map((step, i) => {
-        const num = i + 1;
-        const status = getStatus(num);
-        const isActive = status === "active";
-        const isCompleted = status === "completed";
+      {/* Main nav steps */}
+      <div style={{ padding: "8px 0" }}>
+        {NAV_STEPS.map((step, i) => {
+          const num = i + 1;
+          const status = getStatus(num);
+          const isActive = status === "active";
+          const isCompleted = status === "completed";
 
-        return (
+          return (
+            <div
+              key={step.label}
+              style={{
+                padding: "9px 14px",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                backgroundColor: isActive
+                  ? "rgba(107, 143, 232, 0.1)"
+                  : "transparent",
+                borderLeft: isActive
+                  ? `3px solid ${COLORS.primary}`
+                  : "3px solid transparent",
+              }}
+            >
+              <MaterialIcon
+                name={step.icon}
+                size={20}
+                color={
+                  isActive
+                    ? COLORS.primary
+                    : isCompleted
+                      ? COLORS.textSecondary
+                      : COLORS.textSecondary
+                }
+              />
+              <span
+                style={{
+                  fontSize: 13,
+                  fontFamily,
+                  fontWeight: isActive ? 600 : 400,
+                  color: isActive ? COLORS.primary : COLORS.textSecondary,
+                  flex: 1,
+                }}
+              >
+                {step.label}
+              </span>
+              {isCompleted && (
+                <MaterialIcon
+                  name="check_circle"
+                  size={16}
+                  color={COLORS.success}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Spacer */}
+      <div style={{ flex: 1 }} />
+
+      {/* Bottom nav separator */}
+      <div
+        style={{
+          height: 1,
+          backgroundColor: COLORS.border,
+          margin: "0 14px",
+        }}
+      />
+
+      {/* Bottom nav items */}
+      <div style={{ padding: "8px 0" }}>
+        {BOTTOM_NAV.map((item) => (
           <div
-            key={step.label}
+            key={item.label}
             style={{
-              padding: "10px 16px",
+              padding: "9px 14px",
               display: "flex",
               alignItems: "center",
               gap: 10,
-              backgroundColor: isActive
-                ? "rgba(107, 143, 232, 0.1)"
-                : "transparent",
-              borderLeft: isActive
-                ? `3px solid ${COLORS.primary}`
-                : "3px solid transparent",
+              borderLeft: "3px solid transparent",
             }}
           >
-            <span style={{ fontSize: 16 }}>
-              {isCompleted ? "✅" : step.icon}
-            </span>
+            <MaterialIcon
+              name={item.icon}
+              size={20}
+              color={COLORS.textSecondary}
+            />
             <span
               style={{
                 fontSize: 13,
                 fontFamily,
-                fontWeight: isActive ? 600 : 400,
-                color: isActive ? COLORS.text : COLORS.textSecondary,
+                fontWeight: 400,
+                color: COLORS.textSecondary,
               }}
             >
-              {step.label}
+              {item.label}
             </span>
           </div>
-        );
-      })}
+        ))}
+      </div>
+
+      {/* Theme toggle buttons */}
+      <div
+        style={{
+          padding: "8px 14px 12px",
+          display: "flex",
+          gap: 4,
+          borderTop: `1px solid ${COLORS.border}`,
+        }}
+      >
+        {THEME_ICONS.map((icon, i) => {
+          const isSelected = i === 2; // dark_mode selected
+          return (
+            <div
+              key={icon}
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "6px 0",
+                borderRadius: 6,
+                backgroundColor: isSelected
+                  ? "rgba(107, 143, 232, 0.15)"
+                  : "transparent",
+              }}
+            >
+              <MaterialIcon
+                name={icon}
+                size={18}
+                color={
+                  isSelected ? COLORS.primary : COLORS.textSecondary
+                }
+              />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };

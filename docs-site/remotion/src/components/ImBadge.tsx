@@ -1,10 +1,12 @@
 import React from "react";
 import { COLORS } from "../theme";
 import { fontFamily } from "../fonts";
+import { MaterialIcon } from "./MaterialIcon";
 
 type Props = {
   text: string;
   variant: "success" | "warning" | "error" | "info";
+  icon?: string;
 };
 
 const BADGE_COLORS = {
@@ -14,7 +16,7 @@ const BADGE_COLORS = {
   info: { bg: "rgba(107, 143, 232, 0.15)", text: COLORS.primary },
 };
 
-export const ImBadge: React.FC<Props> = ({ text, variant }) => {
+export const ImBadge: React.FC<Props> = ({ text, variant, icon }) => {
   const c = BADGE_COLORS[variant];
   return (
     <span
@@ -24,11 +26,14 @@ export const ImBadge: React.FC<Props> = ({ text, variant }) => {
         fontSize: 12,
         fontWeight: 500,
         fontFamily,
-        padding: "3px 10px",
+        padding: "4px 12px",
         borderRadius: 12,
-        display: "inline-block",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
       }}
     >
+      {icon && <MaterialIcon name={icon} size={14} color={c.text} />}
       {text}
     </span>
   );

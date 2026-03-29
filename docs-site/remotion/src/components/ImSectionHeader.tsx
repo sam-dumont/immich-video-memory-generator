@@ -1,6 +1,7 @@
 import React from "react";
 import { COLORS } from "../theme";
 import { fontFamily } from "../fonts";
+import { MaterialIcon } from "./MaterialIcon";
 
 type Props = { icon: string; title: string };
 
@@ -13,7 +14,7 @@ export const ImSectionHeader: React.FC<Props> = ({ icon, title }) => (
       marginBottom: 12,
     }}
   >
-    <span style={{ fontSize: 18, color: COLORS.primary }}>{icon}</span>
+    <MaterialIcon name={icon} size={20} color={COLORS.primary} />
     <span
       style={{
         fontSize: 16,

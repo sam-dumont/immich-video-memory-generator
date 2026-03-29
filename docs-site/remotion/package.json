@@ -7,6 +7,7 @@
   "private": true,
   "dependencies": {
     "@remotion/cli": "4.0.441",
+    "@remotion/fonts": "4.0.441",
     "@remotion/google-fonts": "^4.0.441",
     "@remotion/media": "^4.0.441",
     "@remotion/media-utils": "^4.0.441",

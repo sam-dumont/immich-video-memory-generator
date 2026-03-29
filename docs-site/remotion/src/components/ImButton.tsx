@@ -1,6 +1,7 @@
 import React from "react";
 import { COLORS } from "../theme";
 import { fontFamily } from "../fonts";
+import { MaterialIcon } from "./MaterialIcon";
 
 type Props = {
   text: string;
@@ -21,8 +22,9 @@ export const ImButton: React.FC<Props> = ({
 }) => {
   const base: React.CSSProperties = {
     fontFamily,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 600,
+    letterSpacing: 0.5,
     padding: "10px 20px",
     borderRadius: 8,
     display: "inline-flex",
@@ -32,6 +34,7 @@ export const ImButton: React.FC<Props> = ({
     width: fullWidth ? "100%" : undefined,
     opacity: disabled ? 0.5 : 1,
     cursor: "default",
+    textTransform: "uppercase",
   };
 
   const variants: Record<string, React.CSSProperties> = {
@@ -54,7 +57,13 @@ export const ImButton: React.FC<Props> = ({
 
   return (
     <div style={{ ...base, ...variants[variant], ...style }}>
-      {icon && <span style={{ fontSize: 18 }}>{icon}</span>}
+      {icon && (
+        <MaterialIcon
+          name={icon}
+          size={18}
+          color={variant === "primary" ? "white" : COLORS.primary}
+        />
+      )}
       {text}
     </div>
   );
