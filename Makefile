@@ -206,9 +206,15 @@ test-integration-titles:  ## Run ONLY title screen pixel tests (~30s, FFmpeg onl
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/titles-coverage.xml --cov-fail-under=0 \
 		--junitxml=tests/titles-junit.xml
 
+test-integration-processing:  ## Run ONLY processing probing/runner/filter tests (~15s, FFmpeg only)
+	uv run pytest tests/integration/processing/ -v -s -m integration --log-cli-level=INFO --tb=short \
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/processing-coverage.xml --cov-fail-under=0 \
+		--junitxml=tests/processing-junit.xml
+
 test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immich), saves per-suite coverage XMLs
 	$(MAKE) test-integration-auth
 	$(MAKE) test-integration-assembly
+	$(MAKE) test-integration-processing
 	$(MAKE) test-integration-titles
 	$(MAKE) test-integration-photos
 	$(MAKE) test-integration-pipeline
@@ -217,7 +223,7 @@ test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immic
 	@# already covered by test-integration-pipeline. Run separately: make test-integration-cli
 	@# Merge per-suite JUnit XMLs into one (no re-run needed)
 	@python3 scripts/merge_junit_xml.py tests/integration-junit.xml \
-		tests/auth-junit.xml tests/assembly-junit.xml tests/titles-junit.xml tests/photos-junit.xml \
+		tests/auth-junit.xml tests/assembly-junit.xml tests/processing-junit.xml tests/titles-junit.xml tests/photos-junit.xml \
 		tests/pipeline-junit.xml tests/live-photos-junit.xml tests/audio-junit.xml 2>/dev/null || true
 	@echo ""
 	@echo "═══════════════════════════════════════════════════"
