@@ -312,8 +312,19 @@ jobs:
 
       - run: make dev-test
 
-      - name: Run tests with coverage
+      - name: Run unit tests with coverage
         run: make test-cov-xml
+
+      # WHY: Run ALL integration tests in CI so coverage is generated on the SAME
+      # platform+Python as unit tests. Mixing macOS-generated XMLs with Linux
+      # unit coverage inflates the line count (platform-conditional code produces
+      # different coverable lines per platform).
+      - name: Run integration tests with coverage
+        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
+        run: |
+          uv run pytest tests/integration/ \
+            -v -m integration --tb=short \
+            --cov=src/immich_memories --cov-branch --cov-report=xml:integration-coverage.xml --cov-fail-under=0
 
       - name: Diff coverage (≥80% on changed lines)
         if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
@@ -323,7 +334,7 @@ jobs:
           make diff-cover-ci
 
           # Post diff-cover report as PR comment
-          COVERAGE_FILES="coverage.xml"
+          COVERAGE_FILES="coverage.xml integration-coverage.xml"
           for f in tests/*-coverage.xml; do
             [ -f "$f" ] && COVERAGE_FILES="$COVERAGE_FILES $f"
           done
@@ -344,18 +355,12 @@ jobs:
           fi
 
       - name: Normalize coverage XML paths and freshen timestamps
-        # WHY: Unit test coverage.xml uses absolute <source> paths (e.g.
-        # /home/runner/.../src/immich_memories) while integration XMLs use
-        # relative paths (src/immich_memories). Codecov can't merge them
-        # unless the <source> tags match. Normalize all to relative paths.
-        # Also freshen timestamps — Codecov rejects reports >12h old.
         if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
         run: |
           python3 -c "
           import glob, re, time, pathlib
           now = str(int(time.time() * 1000))
-          # Normalize all coverage XMLs (unit + integration) to relative source paths
-          for f in ['coverage.xml'] + glob.glob('tests/*-coverage.xml'):
+          for f in ['coverage.xml', 'integration-coverage.xml'] + glob.glob('tests/*-coverage.xml'):
               p = pathlib.Path(f)
               if not p.exists():
                   continue
@@ -366,22 +371,12 @@ jobs:
               print(f'  normalized {f}')
           "
 
-      - name: Upload unit test coverage to Codecov
+      - name: Upload combined coverage to Codecov
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
         with:
-          files: coverage.xml
-          flags: unittests
-          disable_search: true
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-
-      - name: Upload integration coverage to Codecov
-        uses: codecov/codecov-action@v5
-        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
-        with:
-          files: tests/assembly-coverage.xml,tests/audio-coverage.xml,tests/auth-coverage.xml,tests/automation-coverage.xml,tests/cli-coverage.xml,tests/e2e-coverage.xml,tests/live-photos-coverage.xml,tests/photos-coverage.xml,tests/pipeline-coverage.xml,tests/processing-coverage.xml,tests/titles-coverage.xml
-          flags: integration
+          files: coverage.xml,integration-coverage.xml
+          flags: unittests,integration
           disable_search: true
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
@@ -390,7 +385,7 @@ jobs:
         uses: codecov/codecov-action@v5
         if: ${{ !cancelled() && matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest' }}
         with:
-          files: junit.xml,tests/integration-junit.xml
+          files: junit.xml
           token: ${{ secrets.CODECOV_TOKEN }}
           report_type: test_results
           fail_ci_if_error: false
