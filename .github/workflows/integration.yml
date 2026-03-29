@@ -31,7 +31,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PYTHON_VERSION: "3.13"
+  # WHY: Coverage XMLs are generated locally on Python 3.12. Using the same
+  # version here ensures line numbers match — Python 3.13's bytecode compiler
+  # reports different coverable lines, causing Codecov merge mismatches.
+  PYTHON_VERSION: "3.12"
   # PVC mounted at /home/runner/.cache/uv by ARC (see rancher-cluster/55-github-arc)
   UV_CACHE_DIR: /home/runner/.cache/uv
   UV_LINK_MODE: copy

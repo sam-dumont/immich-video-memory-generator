@@ -316,7 +316,7 @@ jobs:
         run: make test-cov-xml
 
       - name: Diff coverage (≥80% on changed lines)
-        if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
+        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -349,7 +349,7 @@ jobs:
         # relative paths (src/immich_memories). Codecov can't merge them
         # unless the <source> tags match. Normalize all to relative paths.
         # Also freshen timestamps — Codecov rejects reports >12h old.
-        if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
+        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
         run: |
           python3 -c "
           import glob, re, time, pathlib
@@ -368,7 +368,7 @@ jobs:
 
       - name: Upload unit test coverage to Codecov
         uses: codecov/codecov-action@v5
-        if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
+        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
         with:
           files: coverage.xml
           flags: unittests
@@ -378,7 +378,7 @@ jobs:
 
       - name: Upload integration coverage to Codecov
         uses: codecov/codecov-action@v5
-        if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
+        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
         with:
           files: tests/assembly-coverage.xml,tests/audio-coverage.xml,tests/auth-coverage.xml,tests/automation-coverage.xml,tests/cli-coverage.xml,tests/e2e-coverage.xml,tests/live-photos-coverage.xml,tests/photos-coverage.xml,tests/pipeline-coverage.xml,tests/processing-coverage.xml,tests/titles-coverage.xml
           flags: integration
@@ -388,7 +388,7 @@ jobs:
 
       - name: Upload test results to Codecov
         uses: codecov/codecov-action@v5
-        if: ${{ !cancelled() && matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest' }}
+        if: ${{ !cancelled() && matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest' }}
         with:
           files: junit.xml,tests/integration-junit.xml
           token: ${{ secrets.CODECOV_TOKEN }}
