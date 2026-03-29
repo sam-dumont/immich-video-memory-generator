@@ -6,22 +6,23 @@ codecov:
   # but this disables the server-side check as a safety net.
   max_report_age: off
 
-# WHY: Without flag definitions, Codecov auto-creates flags but doesn't
-# carry them forward — so a commit touching only unit tests would show 0%
-# integration coverage instead of keeping the last known value.
+# WHY: All three flags (unittests, integration, integration-linux) are uploaded
+# on every CI run — unit tests run fresh, integration XMLs are committed.
+# carryforward is OFF so stale data from a different Python version doesn't
+# pollute the line count (3.12 vs 3.13 have different coverable lines).
 flags:
   unittests:
     paths:
       - src/immich_memories/
-    carryforward: true
+    carryforward: false
   integration:
     paths:
       - src/immich_memories/
-    carryforward: true
+    carryforward: false
   integration-linux:
     paths:
       - src/immich_memories/
-    carryforward: true
+    carryforward: false
 
 coverage:
   status:
