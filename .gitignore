@@ -129,3 +129,6 @@ docs-site/static/demo/work/
 docs-site/static/demo/music-candidates/
 # CLI demo outputs (regenerated via make demo-cli)
 docs-site/static/demo/cli-demo.gif
+
+# Remotion demo assets (required for rendering, not generated)
+!docs-site/remotion/public/cli-demo.mp4
