@@ -625,8 +625,12 @@ demo-cli-sim:  ## Run CLI demo simulation (no recording, for iteration)
 demo-cli:  ## Record CLI demo via VHS → GIF + MP4
 	vhs docs-site/scripts/demo-cli.tape
 
-demo-ui-dev:  ## Start Remotion Studio for live demo preview
+demo-ui-install:  ## Install Remotion demo dependencies
+	cd docs-site/remotion && npm ci
+
+demo-ui-dev: demo-ui-install  ## Start Remotion Studio for live demo preview
 	cd docs-site/remotion && npm run dev
 
-demo-ui:  ## Render Remotion demo → docs-site/static/demo/demo.mp4
+demo-ui: demo-ui-install  ## Render Remotion demo → docs-site/static/demo/demo.mp4
+	@mkdir -p docs-site/static/demo
 	cd docs-site/remotion && npx remotion render src/index.ts DemoVideo ../../static/demo/demo.mp4 --codec h264 --crf 18
