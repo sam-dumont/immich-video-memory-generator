@@ -188,6 +188,16 @@ class TestQuietDisplay:
 # ---------------------------------------------------------------------------
 
 
+def _has_soundfile() -> bool:
+    try:
+        import soundfile  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+@pytest.mark.skipif(not _has_soundfile(), reason="soundfile not installed (audio-ml extra)")
 class TestPreprocessPrivacyAudio:
     """Full chain: extract audio, reverse segments, save WAV."""
 
@@ -253,6 +263,7 @@ class TestPreprocessPrivacyAudio:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(not _has_soundfile(), reason="soundfile not installed (audio-ml extra)")
 class TestApplyPrivacyAudio:
     """apply_privacy_audio extracts, reverses, and saves."""
 
