@@ -285,23 +285,28 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
               )}
             </div>
 
-            {/* Frame preview (appears during generation — single photo with Ken Burns) */}
+            {/* Frame preview (letterboxed 16:9, same content as output video) */}
             {frame >= 77 && (
               <div
                 style={{
                   width: "100%",
-                  height: 350,
+                  aspectRatio: "16 / 9",
+                  maxHeight: 320,
                   borderRadius: 10,
                   overflow: "hidden",
                   opacity: renderOpacity,
+                  backgroundColor: "#000",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
                 <Img
                   src={staticFile("stock/thumb-21.jpg")}
                   style={{
-                    width: "110%",
-                    height: "110%",
-                    objectFit: "cover",
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                    objectFit: "contain",
                     transform: `scale(${kenBurnsScale}) translate(${kenBurnsX}px, ${kenBurnsY}px)`,
                   }}
                 />

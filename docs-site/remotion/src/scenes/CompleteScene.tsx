@@ -111,7 +111,7 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity }) => {
             </div>
           </div>
 
-          {/* Video player preview */}
+          {/* Video player preview (same content as output, letterboxed) */}
           <div
             style={{
               flex: 1,
@@ -121,14 +121,18 @@ export const CompleteScene: React.FC<Props> = ({ bassIntensity }) => {
               position: "relative",
               opacity: videoOpacity,
               minHeight: 0,
+              backgroundColor: "#000",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
             <Img
-              src={staticFile("stock/thumb-4.jpg")}
+              src={staticFile("stock/thumb-21.jpg")}
               style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
+                maxWidth: "100%",
+                maxHeight: "100%",
+                objectFit: "contain",
               }}
             />
             {/* Play button overlay */}
