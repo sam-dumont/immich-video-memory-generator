@@ -49,7 +49,11 @@ class FilterBuilder:
             rotation_filter = _get_rotation_filter(clip.rotation_override) + ","
             logger.info(f"Applying {clip.rotation_override} rotation to clip {i}")
         if self.settings.privacy_mode and not clip.is_title_screen and not skip_privacy_blur:
-            rotation_filter += "gblur=sigma=80,"
+            # WHY: frosted glass — blur + noise texture + smooth
+            res = self.settings.target_resolution
+            short_side = min(res) if res else 1080
+            sigma = int(short_side * 0.035)
+            rotation_filter += f"gblur=sigma={sigma},noise=alls=15:allf=t,gblur=sigma=10,"
         return rotation_filter
 
     def _build_hdr_conversion(self, i: int, ctx: AssemblyContext) -> str:
@@ -84,7 +88,7 @@ class FilterBuilder:
         ar_diff = abs(src_w / src_h - ctx.target_w / ctx.target_h) / max(
             src_w / src_h, ctx.target_w / ctx.target_h
         )
-        if ar_diff <= 0.05:
+        if ar_diff <= 0.07:
             return None
         face_center = self.face_center_fn(clip.path)
         if face_center:
@@ -147,9 +151,9 @@ class FilterBuilder:
         filter_parts: list[str] = []
         audio_labels: list[str] = []
 
-        # WHY: lowpass at 200Hz keeps only deep bass rumble — all speech
-        # intelligibility is above 300Hz so this makes words fully unintelligible
-        privacy_muffle = ",lowpass=f=200" if self.settings.privacy_mode else ""
+        # WHY: lowpass at 300Hz + segment reversal creates a warm "mumble" —
+        # you hear people talking but can't understand words
+        privacy_muffle = ",lowpass=f=300" if self.settings.privacy_mode else ""
 
         for i, clip in enumerate(clips):
             clip_loudnorm = loudnorm if not clip.is_title_screen else ""

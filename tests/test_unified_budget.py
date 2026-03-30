@@ -273,19 +273,32 @@ class TestSelectWithinBudgetMixed:
         assert "v_weak" not in result.kept_video_ids
         assert "p_strong" in result.selected_photo_ids
 
-    def test_max_photo_ratio_enforced(self):
-        """Photos capped at max_photo_ratio of total selected items."""
+    def test_max_photo_ratio_enforced_when_videos_plentiful(self):
+        """Photos capped at max_photo_ratio when videos fill most of the budget."""
+        # WHY: 8 videos × 5s = 40s fills 80% of 50s budget → videos are NOT scarce
+        videos = [
+            _make_video(f"v{i}", 5.0, 0.6, date=datetime(2025, 7, i + 1, tzinfo=UTC))
+            for i in range(8)
+        ]
+        photos = [
+            _make_photo(f"p{i}", 4.0, 0.5 + i * 0.01, date=datetime(2025, 7, i + 1, tzinfo=UTC))
+            for i in range(10)
+        ]
+        result = select_within_budget(videos, photos, content_budget=50.0, max_photo_ratio=0.25)
+        total = len(result.kept_video_ids) + len(result.selected_photo_ids)
+        photo_ratio = len(result.selected_photo_ids) / total if total else 0
+        assert photo_ratio <= 0.25 + 0.01  # Allow rounding
+
+    def test_photos_fill_freely_when_videos_scarce(self):
+        """When videos don't fill half the budget, photos fill without ratio cap."""
         videos = [_make_video("v1", 5.0, 0.6)]
         photos = [
             _make_photo(f"p{i}", 4.0, 0.5 + i * 0.01, date=datetime(2025, 7, i + 1, tzinfo=UTC))
             for i in range(10)
         ]
-        # Budget 50s: 1 video (5s) + up to ~11 photos (44s) would fit
-        # But max_photo_ratio=0.25 → photos can be at most 25% of total count
+        # Budget 50s: 1 video (5s) = 10% of budget → scarce → photos fill freely
         result = select_within_budget(videos, photos, content_budget=50.0, max_photo_ratio=0.25)
-        total = len(result.kept_video_ids) + len(result.selected_photo_ids)
-        photo_ratio = len(result.selected_photo_ids) / total if total else 0
-        assert photo_ratio <= 0.25 + 0.01  # Allow rounding
+        assert len(result.selected_photo_ids) > 1, "Photos should fill when videos are scarce"
 
     def test_temporal_distribution_across_months(self):
         """Selected items spread across date range, not clustered."""

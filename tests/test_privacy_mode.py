@@ -52,11 +52,12 @@ class TestPrivacyVideoBlur:
         return fb, ctx
 
     def test_blur_strong_enough_when_privacy_on(self):
-        """Blur must be heavy enough that faces/people are unrecognizable."""
+        """Blur must be present and scale with resolution."""
         fb, ctx = self._make_filter_builder(privacy_mode=True)
         clip = AssemblyClip(path=Path("/tmp/a.mp4"), duration=3.0)
         result = fb.build_clip_video_filter(0, clip, ctx)
-        assert "gblur=sigma=80" in result
+        # default_resolution=None → fallback 1080, 1080 * 0.025 = 27
+        assert "gblur=sigma=37" in result
 
     def test_no_blur_when_privacy_off(self):
         fb, ctx = self._make_filter_builder(privacy_mode=False)
