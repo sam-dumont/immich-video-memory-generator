@@ -6,23 +6,18 @@ codecov:
   # but this disables the server-side check as a safety net.
   max_report_age: off
 
-# WHY: All three flags (unittests, integration, integration-linux) are uploaded
-# on every CI run — unit tests run fresh, integration XMLs are committed.
-# carryforward is OFF so stale data from a different Python version doesn't
-# pollute the line count (3.12 vs 3.13 have different coverable lines).
+# Unit tests run in public CI (every commit). Integration tests run on GPU
+# runner (triggered by mirror). carryforward keeps integration coverage
+# between GPU runs so it's not lost when only unit tests re-upload.
 flags:
   unittests:
-    paths:
-      - src/immich_memories/
-    carryforward: false
-  integration:
     paths:
       - src/immich_memories/
     carryforward: false
   integration-linux:
     paths:
       - src/immich_memories/
-    carryforward: false
+    carryforward: true
 
 coverage:
   status:
