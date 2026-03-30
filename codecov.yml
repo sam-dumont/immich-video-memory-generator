@@ -6,19 +6,18 @@ codecov:
   # but this disables the server-side check as a safety net.
   max_report_age: off
 
-# WHY: Both unit + integration coverage are generated in CI on Linux 3.12.
-# No carryforward needed — both flags are uploaded fresh on every run.
-# No platform-specific flags — everything runs on one platform to avoid
-# coverable-line mismatches from conditional imports.
+# Unit tests run in public CI (every commit). Integration tests run on GPU
+# runner (triggered by mirror). carryforward keeps integration coverage
+# between GPU runs so it's not lost when only unit tests re-upload.
 flags:
   unittests:
     paths:
       - src/immich_memories/
     carryforward: false
-  integration:
+  integration-linux:
     paths:
       - src/immich_memories/
-    carryforward: false
+    carryforward: true
 
 coverage:
   status:

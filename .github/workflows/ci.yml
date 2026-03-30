@@ -312,19 +312,8 @@ jobs:
 
       - run: make dev-test
 
-      - name: Run unit tests with coverage
+      - name: Run tests with coverage
         run: make test-cov-xml
-
-      # WHY: Run ALL integration tests in CI so coverage is generated on the SAME
-      # platform+Python as unit tests. Mixing macOS-generated XMLs with Linux
-      # unit coverage inflates the line count (platform-conditional code produces
-      # different coverable lines per platform).
-      - name: Run integration tests with coverage
-        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
-        run: |
-          uv run pytest tests/integration/ \
-            -v -m integration --tb=short \
-            --cov=src/immich_memories --cov-branch --cov-report=xml:integration-coverage.xml --cov-fail-under=0
 
       - name: Diff coverage (≥80% on changed lines)
         if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
@@ -334,7 +323,7 @@ jobs:
           make diff-cover-ci
 
           # Post diff-cover report as PR comment
-          COVERAGE_FILES="coverage.xml integration-coverage.xml"
+          COVERAGE_FILES="coverage.xml"
           for f in tests/*-coverage.xml; do
             [ -f "$f" ] && COVERAGE_FILES="$COVERAGE_FILES $f"
           done
@@ -354,32 +343,18 @@ jobs:
             echo "diff-cover-report.md is empty, skipping PR comment"
           fi
 
-      - name: Normalize coverage XML paths and freshen timestamps
-        if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
-        run: |
-          python3 -c "
-          import glob, re, time, pathlib
-          now = str(int(time.time() * 1000))
-          for f in ['coverage.xml', 'integration-coverage.xml'] + glob.glob('tests/*-coverage.xml'):
-              p = pathlib.Path(f)
-              if not p.exists():
-                  continue
-              txt = p.read_text()
-              txt = re.sub(r'<source>.*/src/immich_memories</source>', '<source>src/immich_memories</source>', txt)
-              txt = re.sub(r'timestamp=\"[0-9]+\"', f'timestamp=\"{now}\"', txt)
-              p.write_text(txt)
-              print(f'  normalized {f}')
-          "
-
-      - name: Upload combined coverage to Codecov
+      - name: Upload unit test coverage to Codecov
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
         with:
-          files: coverage.xml,integration-coverage.xml
-          flags: unittests,integration
+          files: coverage.xml
+          flags: unittests
           disable_search: true
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+
+      # Integration coverage is uploaded by the GPU runner (integration.yml)
+      # which runs real FFmpeg with hardware encoding on a self-hosted runner.
 
       - name: Upload test results to Codecov
         uses: codecov/codecov-action@v5
