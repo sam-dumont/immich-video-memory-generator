@@ -13,31 +13,41 @@ import pytest
 
 from immich_memories.processing.assembly_config import AssemblyClip
 
+
+def _has_torch_and_torchcodec() -> bool:
+    try:
+        import torch  # noqa: F401
+        import torchcodec  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 # ---------------------------------------------------------------------------
-# _validate_torchcodec — real version check
+# _validate_torchcodec — real version check (skipped when torch not installed)
 # ---------------------------------------------------------------------------
 
-torch = pytest.importorskip("torch")
-torchcodec = pytest.importorskip("torchcodec")
 
-
+@pytest.mark.skipif(
+    not _has_torch_and_torchcodec(),
+    reason="torch + torchcodec not installed",
+)
 class TestValidateTorchcodec:
     """Real torchcodec validation with actually-installed packages."""
 
     def test_passes_when_versions_match(self):
         from immich_memories.audio.generators.ace_step_backend import _validate_torchcodec
 
-        # Should not raise — we have matching torch + torchcodec installed
         _validate_torchcodec()
 
     def test_version_extraction(self):
-        """The validation compares minor versions correctly."""
+        import torch  # type: ignore[import-not-found]
+        import torchcodec  # type: ignore[import-not-found]
+
         torch_minor = torch.__version__.split(".")[1]
         tc_minor = torchcodec.__version__.split(".")[1]
-        assert torch_minor == tc_minor, (
-            f"torch {torch.__version__} and torchcodec {torchcodec.__version__} "
-            f"minor versions don't match — install torchcodec==0.{torch_minor}.*"
-        )
+        assert torch_minor == tc_minor
 
 
 # ---------------------------------------------------------------------------
