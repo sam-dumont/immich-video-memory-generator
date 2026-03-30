@@ -183,7 +183,7 @@ locally, CI will pass too. Use conventional commit message format (see above).
 
 **Coverage upload flow:**
 - Public CI uploads unit coverage (`coverage.xml`) as `unittests` flag
-- GPU runner uploads integration coverage as `integration-linux` flag (carryforward enabled)
+- GPU runner uploads integration coverage as `integration-linux` flag
 - Codecov merges both flags for total coverage
 
 **Integration test folders:**
