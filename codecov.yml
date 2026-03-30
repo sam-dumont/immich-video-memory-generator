@@ -6,9 +6,8 @@ codecov:
   # but this disables the server-side check as a safety net.
   max_report_age: off
 
-# Unit tests run in public CI (every commit). Integration tests run on GPU
-# runner (triggered by mirror). carryforward keeps integration coverage
-# between GPU runs so it's not lost when only unit tests re-upload.
+# Unit tests: public CI (every commit). Integration: GPU runner (every commit via mirror).
+# carryforward OFF on both — no stale data from different Python versions.
 flags:
   unittests:
     paths:
@@ -17,7 +16,7 @@ flags:
   integration-linux:
     paths:
       - src/immich_memories/
-    carryforward: true
+    carryforward: false
 
 coverage:
   status:
