@@ -172,20 +172,19 @@ locally, CI will pass too. Use conventional commit message format (see above).
 |------|---------|---------|---------------|-------|
 | Unit | CI + local | `make test` | Pure logic, scoring math, config, helpers | Nothing external |
 | Integration | Local only | `make test-integration` | Real FFmpeg assembly, real Immich reads, real pipeline | FFmpeg + Immich |
-| Coverage merge | CI | `make diff-cover-ci` | Merges unit (CI) + integration (local, per-suite XMLs) | `tests/*-coverage.xml` committed |
+| Integration | GPU runner | `make test-integration` | Real FFmpeg assembly, Immich reads, pipeline | FFmpeg + Immich |
 
 **Coverage targets:**
-- Core (non-UI): **60%** — enforced by `fail_under = 55` (unit) + integration XMLs push to 60%+
+- Core (non-UI): **60%** — enforced by `fail_under = 55` (unit) + GPU runner integration pushes higher
 - UI pages are **excluded** from coverage (`pyproject.toml [tool.coverage.run].omit`) — NiceGUI
   presentation code (widgets, progress bars, video player) needs a browser to test. Will be
   covered when Playwright E2E tests are added (#37).
 - Diff-cover: **80%** on changed lines per PR
 
-**Integration test workflow:**
-1. Change processing/analysis/titles code
-2. Run `make test-integration` locally (requires FFmpeg + Immich)
-3. Commit the updated `tests/*-coverage.xml` files (pre-commit hook auto-fixes paths)
-4. Push — CI merges all coverage XMLs for diff-cover
+**Coverage upload flow:**
+- Public CI uploads unit coverage (`coverage.xml`) as `unittests` flag
+- GPU runner uploads integration coverage as `integration-linux` flag (carryforward enabled)
+- Codecov merges both flags for total coverage
 
 **Integration test folders:**
 ```

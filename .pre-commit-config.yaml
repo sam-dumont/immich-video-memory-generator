@@ -101,12 +101,6 @@ repos:
         pass_filenames: false
         types: [python]
 
-      - id: fix-coverage-xml-paths
-        name: Fix absolute paths in coverage XMLs
-        entry: bash -c 'for f in tests/*-coverage.xml; do [ -f "$f" ] && sed -i.bak "s|<source>.*src/immich_memories</source>|<source>src/immich_memories</source>|g" "$f" && rm -f "${f}.bak" && git add "$f"; done || true'
-        language: system
-        pass_filenames: false
-        always_run: true
 
       - id: diff-cover-check
         name: Diff coverage check (≥80% on changed lines)
