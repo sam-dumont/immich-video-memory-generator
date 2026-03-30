@@ -132,6 +132,8 @@ dev = [
     "oidc-provider-mock>=0.3",
     # E2E browser tests
     "pytest-playwright>=0.5",
+    # Privacy audio tests (lightweight, no torch needed)
+    "soundfile>=0.12",
 ]
 
 [project.scripts]
