@@ -17,14 +17,14 @@ export const TitleScene: React.FC = () => {
   const titleProgress = spring({
     frame,
     fps,
-    config: { damping: 200 },
-    delay: 15,
+    config: { damping: 18, stiffness: 120 },
+    delay: 5,
   });
   const subProgress = spring({
     frame,
     fps,
-    config: { damping: 200 },
-    delay: 30,
+    config: { damping: 18, stiffness: 120 },
+    delay: 18,
   });
 
   const titleOpacity = interpolate(titleProgress, [0, 1], [0, 1]);
@@ -35,7 +35,7 @@ export const TitleScene: React.FC = () => {
   const bgScale = interpolate(frame, [0, 158], [1.05, 1.12], {
     extrapolateRight: "clamp",
   });
-  const bgOpacity = interpolate(frame, [0, 30], [0, 0.2], {
+  const bgOpacity = interpolate(frame, [0, 20], [0, 0.35], {
     extrapolateRight: "clamp",
   });
 
