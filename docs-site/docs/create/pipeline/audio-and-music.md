@@ -119,7 +119,9 @@ Install the packages:
 ```bash
 pip install 'immich-memories[demucs]'
 pip install 'ace-step @ git+https://github.com/ace-step/ACE-Step.git'
-pip install 'torchcodec>=0.1'
+# torchcodec minor version MUST match torch (e.g. torch 2.10 → torchcodec 0.10)
+TORCH_MINOR=$(python -c "import torch; print(torch.__version__.split('.')[1])")
+pip install "torchcodec==0.${TORCH_MINOR}.*"
 ```
 
 ## Configuration

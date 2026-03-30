@@ -554,8 +554,9 @@ class TestFrameDecoderFilterChain:
             Path("/fake.mp4"), width=1920, height=1080, fps=30, privacy_blur=True
         )
         vf = decoder._build_vf()
-        # 1080 * 0.075 = 81
-        assert "gblur=sigma=81" in vf
+        # min(1920,1080) * 0.04 = 43, frosted glass chain
+        assert "gblur=sigma=37" in vf
+        assert "noise=alls=15" in vf
 
     def test_hdr_not_in_decoder(self) -> None:
         """HDR conversion must NOT be in the decoder — it happens on the encoder side.
@@ -629,7 +630,7 @@ class TestAudioFilterChain:
             AssemblyClip(path=Path("/b.mp4"), duration=3.0),
         ]
         graph = _build_audio_filter_graph(clips, ["fade"], 0.5, privacy_mode=True)
-        assert "lowpass=f=200" in graph
+        assert "lowpass=f=300" in graph
 
     def test_title_screen_gets_null_audio(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip
@@ -681,7 +682,7 @@ class TestMakeDecoderIntegration:
         decoder = _make_decoder(clip, 0, 1920, 1080, 30, privacy_mode=True)
 
         assert decoder._privacy_blur is True
-        assert "gblur=sigma=81" in decoder._build_vf()
+        assert "gblur=sigma=37" in decoder._build_vf()
 
     def test_privacy_mode_not_applied_to_title_screen(self) -> None:
         from immich_memories.processing.assembly_config import AssemblyClip

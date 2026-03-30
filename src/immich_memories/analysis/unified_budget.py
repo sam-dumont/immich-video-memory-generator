@@ -128,6 +128,8 @@ def select_within_budget(
             remaining_for_photos,
             video_count=len(kept_videos),
             max_photo_ratio=max_photo_ratio,
+            content_budget=content_budget,
+            video_duration=video_duration,
         )
         photo_ids = [p.asset_id for p in selected_photos]
         running_duration = video_duration + sum(p.duration for p in selected_photos)
@@ -188,9 +190,20 @@ def _fill_with_photos(
     remaining_budget: float,
     video_count: int,
     max_photo_ratio: float,
+    content_budget: float = 0.0,
+    video_duration: float = 0.0,
 ) -> list[BudgetCandidate]:
-    """Fill remaining budget with highest-scored photos, respecting ratio cap."""
+    """Fill remaining budget with highest-scored photos.
+
+    When videos fill the budget, the photo ratio cap limits photo count.
+    When videos UNDER-fill the budget, photos fill freely — no point
+    having empty time when photos are available.
+    """
     ranked = sorted(photos, key=lambda p: p.score, reverse=True)
+
+    # WHY: if videos use less than half the content budget, videos are scarce
+    # and photos should fill freely without ratio cap
+    videos_are_scarce = content_budget > 0 and video_duration < content_budget * 0.5
 
     selected: list[BudgetCandidate] = []
     running = 0.0
@@ -199,9 +212,8 @@ def _fill_with_photos(
         if running + photo.duration > remaining_budget:
             continue
 
-        # Check ratio: (selected_photos + 1) / (videos + selected_photos + 1) <= ratio
-        # WHY: skip ratio check when no videos — can't improve ratio by dropping photos
-        if video_count > 0:
+        # Only enforce ratio cap when there are enough videos to fill the budget
+        if video_count > 0 and not videos_are_scarce:
             total_after = video_count + len(selected) + 1
             photo_ratio_after = (len(selected) + 1) / total_after
             if photo_ratio_after > max_photo_ratio:
