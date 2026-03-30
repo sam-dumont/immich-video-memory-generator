@@ -65,21 +65,15 @@ const PRESETS = [
 
 const PERSON_NAMES = ["Alice", "Bob", "Charlie", "Diana", "Eve"];
 
-// Unhurried timing across full 120 frames:
-// frame  0: page visible, cursor fades in
-// frame 25: cursor arrives at Person Spotlight card
-// frame 30: click → card selected with blue glow
-// frame 40: cursor moves to Person select field, dropdown opens
-// frame 55: cursor clicks "Alice" → dropdown closes, field shows "Alice"
-// frame 80: cursor arrives at Next button
-// frame 90: click Next button
+// Viewport coordinates: content area origin = (360, 126)
+// Window entry animation settles ~frame 30, so cursor starts at frame 35
 const cursorSteps = [
-  { frame: 25, x: 1230, y: 426, click: false },
-  { frame: 30, x: 1230, y: 426, click: true },
-  { frame: 40, x: 600, y: 530, click: true },
-  { frame: 55, x: 600, y: 560, click: true },
-  { frame: 80, x: 1060, y: 900, click: false },
-  { frame: 90, x: 1060, y: 900, click: true },
+  { frame: 35, x: 1080, y: 366, click: false },
+  { frame: 42, x: 1080, y: 366, click: true },
+  { frame: 52, x: 560, y: 486, click: true },
+  { frame: 65, x: 560, y: 521, click: true },
+  { frame: 85, x: 1040, y: 866, click: false },
+  { frame: 95, x: 1040, y: 866, click: true },
 ];
 
 type Props = { bassIntensity?: number };
@@ -88,37 +82,37 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Person Spotlight gets selected when cursor clicks at frame 30
-  const selectedPreset = frame >= 30 ? 2 : -1;
+  // Person Spotlight gets selected when cursor clicks at frame 42
+  const selectedPreset = frame >= 42 ? 2 : -1;
   const selectionGlow = spring({
     frame,
     fps,
     config: { damping: 14, stiffness: 120 },
-    delay: 30,
+    delay: 42,
   });
 
   // Person select field appears after preset selection (slide down)
-  const personFieldVisible = frame >= 30;
+  const personFieldVisible = frame >= 42;
   const personFieldReveal = spring({
     frame,
     fps,
     config: { damping: 18, stiffness: 100 },
-    delay: 32,
+    delay: 44,
   });
 
-  // Dropdown: visible between frame 40 and frame 55
+  // Dropdown: visible between frame 52 and frame 65
   const dropdownOpacity = interpolate(
     frame,
-    [39, 42, 53, 56],
+    [51, 54, 63, 66],
     [0, 1, 1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
 
-  // After clicking "Alice" at frame 55, show her name in the field
-  const personSelected = frame >= 55;
+  // After clicking "Alice" at frame 65, show her name in the field
+  const personSelected = frame >= 65;
 
-  // Highlight "Alice" row when cursor is near (frames 48-55)
-  const aliceHighlight = frame >= 48 && frame < 56;
+  // Highlight "Alice" row when cursor is near (frames 60-65)
+  const aliceHighlight = frame >= 60 && frame < 66;
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
@@ -132,6 +126,7 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
             fontFamily,
             display: "flex",
             flexDirection: "column",
+            position: "relative",
           }}
         >
           {/* Page title */}

@@ -34,14 +34,14 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Phase 1: Initial state (frames 0-15)
-  // Phase 2: Generating (frames 15+, triggered by cursor click)
-  const isGenerating = frame >= 15;
+  // Phase 1: Initial state (frames 0-42)
+  // Phase 2: Generating (frames 42+, triggered by cursor click)
+  const isGenerating = frame >= 42;
 
-  // Progress bar animation (starts at frame 15)
+  // Progress bar animation (starts at frame 42)
   const genProgress = interpolate(
     frame,
-    [15, 50, 90, 140, 200],
+    [42, 77, 117, 167, 200],
     [0, 15, 45, 75, 100],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.quad) },
   );
@@ -52,28 +52,28 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
 
   // Progress bar reveal spring
   const progressReveal = spring({
-    frame: Math.max(0, frame - 15),
+    frame: Math.max(0, frame - 42),
     fps,
     config: { damping: 15, stiffness: 120 },
     delay: 5,
   });
 
   // Single photo with Ken Burns effect (slow zoom + pan)
-  const kenBurnsScale = interpolate(frame, [50, 200], [1.0, 1.15], {
+  const kenBurnsScale = interpolate(frame, [77, 200], [1.0, 1.15], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
-  const kenBurnsX = interpolate(frame, [50, 200], [0, -15], {
+  const kenBurnsX = interpolate(frame, [77, 200], [0, -15], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
-  const kenBurnsY = interpolate(frame, [50, 200], [0, -8], {
+  const kenBurnsY = interpolate(frame, [77, 200], [0, -8], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
 
   // Progressive reveal (simulates frame-by-frame rendering)
-  const renderOpacity = interpolate(frame, [50, 70], [0, 1], {
+  const renderOpacity = interpolate(frame, [77, 97], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
@@ -90,6 +90,7 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
+            position: "relative",
           }}
         >
           {/* Page title */}
@@ -285,7 +286,7 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
             </div>
 
             {/* Frame preview (appears during generation — single photo with Ken Burns) */}
-            {frame >= 50 && (
+            {frame >= 77 && (
               <div
                 style={{
                   width: "100%",
@@ -340,16 +341,16 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
               )}
             </div>
           </div>
-        </div>
 
-        {/* Cursor: moves to GENERATE VIDEO button, then clicks */}
-        <AnimatedCursor
-          steps={[
-            { frame: 8, x: 700, y: 650 },
-            { frame: 15, x: 700, y: 650, click: true },
-          ]}
-        />
+        </div>
       </WindowFrame>
+      {/* Cursor: viewport coords, clicks GENERATE VIDEO */}
+      <AnimatedCursor
+        steps={[
+          { frame: 35, x: 1040, y: 626 },
+          { frame: 42, x: 1040, y: 626, click: true },
+        ]}
+      />
     </AbsoluteFill>
   );
 };

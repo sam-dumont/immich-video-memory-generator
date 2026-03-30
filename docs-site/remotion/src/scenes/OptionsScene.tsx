@@ -26,8 +26,8 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Music generation progress (animates over time)
-  const musicProgress = interpolate(frame, [30, 90], [0, 45], {
+  // Music generation progress (starts after cursor clicks Generate Music at frame 42)
+  const musicProgress = interpolate(frame, [42, 90], [0, 45], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
@@ -43,8 +43,8 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
   const advancedContentHeight = interpolate(advancedExpand, [0, 1], [0, 60]);
   const advancedContentOpacity = interpolate(advancedExpand, [0, 1], [0, 1]);
 
-  // Scroll down after clicking Generate Music (frames 35-60)
-  const scrollY = interpolate(frame, [35, 60], [0, 300], {
+  // Scroll down after clicking Generate Music (frames 45-70)
+  const scrollY = interpolate(frame, [45, 70], [0, 300], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.inOut(Easing.cubic),
@@ -62,6 +62,7 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
+            position: "relative",
           }}
         >
           {/* Page title */}
@@ -434,18 +435,18 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
             </div>
           </div>
           </div>
-        </div>
 
-        {/* Cursor: clicks Generate Music, scrolls, then clicks Next */}
-        <AnimatedCursor
-          steps={[
-            { frame: 25, x: 400, y: 620 },
-            { frame: 32, x: 400, y: 620, click: true },
-            { frame: 70, x: 650, y: 720 },
-            { frame: 80, x: 650, y: 720, click: true },
-          ]}
-        />
+        </div>
       </WindowFrame>
+      {/* Cursor: viewport coords, clicks Generate Music then Next */}
+      <AnimatedCursor
+        steps={[
+          { frame: 35, x: 560, y: 626 },
+          { frame: 42, x: 560, y: 626, click: true },
+          { frame: 75, x: 920, y: 806 },
+          { frame: 85, x: 920, y: 806, click: true },
+        ]}
+      />
     </AbsoluteFill>
   );
 };

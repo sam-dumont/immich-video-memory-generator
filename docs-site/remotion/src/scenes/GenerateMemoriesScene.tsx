@@ -153,15 +153,17 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
   const frame = useCurrentFrame();
   const { fps: _fps } = useVideoConfig();
 
-  // Button pressed state: scale down briefly on click at frame 40
+  // Button pressed state: scale down briefly on click at frame 50
   const buttonPressed =
-    frame >= 40 && frame < 46
+    frame >= 50 && frame < 56
       ? 0.97
       : 1;
 
+  // Viewport coordinates: content area origin = (360, 126)
+  // Window entry animation settles ~frame 30, so cursor starts at frame 40
   const cursorSteps = [
-    { frame: 30, x: 1060, y: 650, click: false },
-    { frame: 40, x: 1060, y: 650, click: true },
+    { frame: 40, x: 1040, y: 586, click: false },
+    { frame: 50, x: 1040, y: 586, click: true },
   ];
 
   return (
