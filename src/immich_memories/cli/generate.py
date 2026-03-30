@@ -359,9 +359,7 @@ def register_generate_commands(main: click.Group) -> None:
           --start 2024-01-01 --end 2024-06-30   Custom range
           --start 2024-01-01 --period 6m        Period from start
         """
-        from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
-
-        from immich_memories.cli._live_display import LiveDisplay, ProgressDisplay
+        from immich_memories.cli._live_display import LiveDisplay, ProgressDisplay, QuietDisplay
 
         config = ctx.obj["config"]
 
@@ -452,9 +450,10 @@ def register_generate_commands(main: click.Group) -> None:
                 )
             output_path = output_dir / f"{person_slug}_{type_slug}_{date_slug}.mp4"
 
-        console.print()
-        console.print("[bold]Immich Memories Generator[/bold]")
-        console.print()
+        if not quiet:
+            console.print()
+            console.print("[bold]Immich Memories Generator[/bold]")
+            console.print()
 
         # Resolve live photos: CLI flag OR config
         use_live_photos = include_live_photos or config.analysis.include_live_photos
@@ -500,7 +499,11 @@ def register_generate_commands(main: click.Group) -> None:
             no_music=no_music,
         )
         show_interactive = not quiet and sys.stdout.isatty()
-        if show_interactive:
+        if not show_interactive:
+            from immich_memories.cli._helpers import set_quiet_mode
+
+            set_quiet_mode(True)
+        else:
             console.print(table)
             console.print()
 
@@ -517,13 +520,7 @@ def register_generate_commands(main: click.Group) -> None:
             def _make_progress(interactive: bool) -> ProgressDisplay:
                 if interactive:
                     return LiveDisplay(console=console)
-                return Progress(
-                    SpinnerColumn(),
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(),
-                    TaskProgressColumn(),
-                    console=console,
-                )
+                return QuietDisplay()
 
             with _make_progress(show_interactive) as progress:
                 # Connect to Immich

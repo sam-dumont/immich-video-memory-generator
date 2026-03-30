@@ -48,6 +48,67 @@ def _is_ace_step_importable() -> bool:
         return False
 
 
+def _validate_torchcodec() -> None:
+    """Verify torchcodec is installed and version-compatible with torch.
+
+    torchaudio 2.9+ delegates all I/O to torchcodec. The torchcodec minor
+    version must match the torch minor version (e.g. torch 2.10 → torchcodec 0.10).
+    """
+    try:
+        import torchcodec  # type: ignore[import-untyped,import-not-found]
+    except ImportError:
+        raise RuntimeError(
+            "torchcodec is required for ACE-Step lib mode (torchaudio 2.9+ "
+            "delegates all audio I/O to torchcodec). Install the version that "
+            "matches your torch: pip install 'torchcodec==0.<torch_minor>.*' "
+            "(e.g. torchcodec==0.10.* for torch 2.10)"
+        ) from None
+
+    import torch
+
+    torch_minor = torch.__version__.split(".")[1]
+    tc_minor = torchcodec.__version__.split(".")[1]
+    if torch_minor != tc_minor:
+        raise RuntimeError(
+            f"torchcodec {torchcodec.__version__} is incompatible with "
+            f"torch {torch.__version__} (minor versions must match). "
+            f"Fix: pip install 'torchcodec==0.{torch_minor}.*'"
+        )
+
+
+def _run_with_suppressed_output(pipeline_fn, **kwargs):
+    """Run ACE-Step pipeline with loguru, tqdm, and FutureWarnings suppressed.
+
+    ACE-Step uses loguru (not stdlib logging) and tqdm progress bars that
+    bypass our logging config. Suppress them at the FD level during generation.
+    """
+    import warnings
+
+    # WHY: torch.nn.utils.weight_norm emits a FutureWarning on every model load
+    warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
+
+    # WHY: ACE-Step uses loguru, which ignores stdlib logging config
+    try:
+        from loguru import logger as loguru_logger  # type: ignore[import-not-found]
+
+        loguru_logger.disable("acestep")
+    except ImportError:
+        loguru_logger = None  # type: ignore[assignment]
+
+    # WHY: tqdm writes progress bars to stderr, bypassing Python logging
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    saved_err = os.dup(2)
+    try:
+        os.dup2(devnull_fd, 2)
+        return pipeline_fn(**kwargs)
+    finally:
+        os.dup2(saved_err, 2)
+        os.close(saved_err)
+        os.close(devnull_fd)
+        if loguru_logger is not None:
+            loguru_logger.enable("acestep")
+
+
 @dataclass
 class ACEStepConfig:
     """Configuration for ACE-Step backend."""
@@ -192,6 +253,8 @@ class ACEStepBackend(MusicGenerator):
             return
 
         try:
+            _validate_torchcodec()
+
             # Official ACE-Step package uses pipeline_ace_step module
             from acestep.pipeline_ace_step import ACEStepPipeline  # type: ignore[import-not-found]
 
@@ -275,26 +338,8 @@ class ACEStepBackend(MusicGenerator):
 
         def _run_pipeline():
             assert self._pipeline is not None
-
-            # WHY: ACE-Step uses torchaudio.save() which hard-requires torchcodec
-            # in torchaudio 2.10+. Replace the pipeline's save method with one
-            # that uses soundfile directly — same format, no torchcodec dependency.
-            import soundfile as sf
-
-            def _soundfile_save(target_wav, idx, save_path=None, sample_rate=48000, format="wav"):
-                if save_path is None:
-                    save_path = str(output_path)
-                elif os.path.isdir(save_path):
-                    save_path = os.path.join(save_path, f"output_{idx}.{format}")
-                Path(os.path.dirname(save_path)).mkdir(parents=True, exist_ok=True)
-                audio_np = target_wav.cpu().float().numpy().T
-                sf.write(save_path, audio_np, sample_rate, format=format.upper())
-                logger.info(f"Saved audio with soundfile: {save_path}")
-                return save_path
-
-            self._pipeline.save_wav_file = _soundfile_save
-
-            return self._pipeline(
+            return _run_with_suppressed_output(
+                self._pipeline,
                 audio_duration=float(duration),
                 prompt=caption_result.caption,
                 lyrics=caption_result.lyrics,
@@ -512,23 +557,6 @@ class ACEStepBackend(MusicGenerator):
             pct = min(89, int(80 + (elapsed - 30) * 0.3))
 
         progress_callback(phase, pct, {})
-
-    @staticmethod
-    def _save_audio(audio_data, sample_rate: int, output_path: Path):
-        """Save audio numpy array to WAV file."""
-        import numpy as np
-
-        try:
-            import soundfile as sf  # type: ignore[import-not-found]
-
-            sf.write(str(output_path), audio_data, sample_rate)
-        except ImportError:
-            # Fallback: use scipy if available
-            from scipy.io import wavfile  # type: ignore[import-untyped]
-
-            if isinstance(audio_data, np.ndarray) and audio_data.dtype in (np.float32, np.float64):
-                audio_data = (audio_data * 32767).astype(np.int16)
-            wavfile.write(str(output_path), sample_rate, audio_data)
 
     async def health_check(self) -> dict[str, Any]:
         """Check ACE-Step availability and configuration."""

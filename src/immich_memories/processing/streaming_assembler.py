@@ -104,9 +104,13 @@ class FrameDecoder:
         elif self._rotation == 270:
             parts.append("transpose=2")
 
-        # WHY: privacy blur scales with resolution so faces stay unidentifiable
+        # WHY: frosted glass effect — gaussian blur + noise texture + smooth.
+        # Looks cinematic/artistic rather than surveillance-like pixelation.
+        # Scales with shorter dimension so portrait/landscape match.
         if self._privacy_blur:
-            parts.append(f"gblur=sigma={int(self._height * 0.075)}")
+            short_side = min(self._width, self._height)
+            sigma = int(short_side * 0.035)
+            parts.append(f"gblur=sigma={sigma},noise=alls=15:allf=t,gblur=sigma=10")
 
         # PTS reset — critical for multi-clip concat
         parts.append("setpts=PTS-STARTPTS")
@@ -116,11 +120,14 @@ class FrameDecoder:
             # WHY: Blur background fills the entire frame with a blurred, zoomed version
             # of the source, then overlays the sharp scaled version centered on top.
             # Uses split to avoid re-reading the source.
+            # When privacy blur is active, skip the extra sigma=30 on the background
+            # because the frame is already blurred — adding more makes it unrecognizable.
+            bg_blur = "" if self._privacy_blur else ",gblur=sigma=30"
             parts.extend(
                 (
                     "split[_bg][_fg]",
                     f"[_bg]scale={self._width}:{self._height}:force_original_aspect_ratio=increase:flags=lanczos,"
-                    f"crop={self._width}:{self._height},gblur=sigma=30[_blurred]",
+                    f"crop={self._width}:{self._height}{bg_blur}[_blurred]",
                     f"[_fg]scale={self._width}:{self._height}:force_original_aspect_ratio=decrease:flags=lanczos[_sharp]",
                     "[_blurred][_sharp]overlay=(W-w)/2:(H-h)/2",
                 )
@@ -767,14 +774,14 @@ def streaming_assemble_full(
 
     try:
         if progress_callback:
-            progress_callback(0.05, "Streaming video assembly...")
+            progress_callback(0.07, "Streaming video assembly...")
 
-        # WHY: Scale frame-level progress into [0.05, 0.85) range so the caller
+        # WHY: Scale frame-level progress into [0.07, 0.85) range so the caller
         # sees continuous updates during the heavy encode phase.
         def _frame_progress(frames_done: int, frames_total: int) -> None:
             if progress_callback and frames_total > 0:
                 frac = frames_done / frames_total
-                scaled = 0.05 + frac * 0.80
+                scaled = 0.07 + frac * 0.80
                 total_secs = frames_total / fps if fps > 0 else 0
                 done_secs = frames_done / fps if fps > 0 else 0
                 time_done = f"{int(done_secs // 60)}:{int(done_secs % 60):02d}"

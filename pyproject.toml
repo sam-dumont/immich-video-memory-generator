@@ -132,6 +132,8 @@ dev = [
     "oidc-provider-mock>=0.3",
     # E2E browser tests
     "pytest-playwright>=0.5",
+    # Privacy audio tests (lightweight, no torch needed)
+    "soundfile>=0.12",
 ]
 
 [project.scripts]
@@ -505,7 +507,7 @@ DEP002 = [
 DEP001 = [
     "cv2", "Quartz", "Vision", "Metal", "CoreImage",   # Platform/alt-name imports
     "yaml", "acestep", "soundfile", "scipy",            # Optional deps imported conditionally
-    "torchaudio", "demucs",                             # Optional: local audio pipeline
+    "torchaudio", "demucs", "torchcodec", "loguru",      # Optional: local audio pipeline
     "PIL", "av", "freetype", "streamlit",               # Alt package names (Pillow→PIL, pyav→av)
     "starlette",                                        # Transitive via nicegui→fastapi→starlette
 ]

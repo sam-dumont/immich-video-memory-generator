@@ -26,7 +26,10 @@ def _build_audio_filter_graph(
     """
     audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
     loudnorm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if normalize_audio else ""
-    privacy_muffle = ",lowpass=f=200" if privacy_mode else ""
+    # WHY: lowpass=300 on top of segment-wise reversal creates a warm "mumble" —
+    # you hear people talking but can't understand words. The reversal destroys
+    # phoneme order; the lowpass removes remaining high-freq consonant artifacts.
+    privacy_muffle = ",lowpass=f=300" if privacy_mode else ""
 
     filter_parts: list[str] = []
     for i, clip in enumerate(clips):
@@ -116,17 +119,28 @@ def extract_and_mix_audio(
     Memory usage is negligible (audio is tiny compared to video frames).
     Output bitrate matches the highest source bitrate (no quality downgrade).
     Applies loudnorm and privacy muffle matching the old filter graph pipeline.
+
+    When privacy_mode is on, audio is pre-processed with segment-wise waveform
+    reversal (makes speech unintelligible) before the FFmpeg lowpass mumble filter.
     """
     audio_bitrate = _probe_max_audio_bitrate(clips)
     logger.info(f"Audio output bitrate: {audio_bitrate} (matched to source max)")
 
+    # WHY: Segment-wise reversal reverses audio in 200ms chunks, destroying
+    # phoneme order and making speech unintelligible while preserving rhythm.
+    # The reversed audio is saved to temp WAVs that replace clip inputs.
+    reversed_paths: list[Path] = []
+    if privacy_mode:
+        reversed_paths = _preprocess_privacy_audio(clips, output_path.parent)
+
     if len(clips) == 1:
+        audio_src = str(reversed_paths[0]) if reversed_paths else str(clips[0].path)
         result = subprocess.run(  # noqa: S603, S607
             [
                 "ffmpeg",
                 "-y",
                 "-i",
-                str(clips[0].path),
+                audio_src,
                 "-vn",
                 "-c:a",
                 "aac",
@@ -138,6 +152,7 @@ def extract_and_mix_audio(
             text=True,
             timeout=120,
         )
+        _cleanup_temp_files(reversed_paths)
         if result.returncode != 0:
             raise RuntimeError(f"Audio extraction failed: {result.stderr[-500:]}")
         return
@@ -145,10 +160,14 @@ def extract_and_mix_audio(
     # WHY: Title screens have no audio file — we generate silence via lavfi.
     # Use -f lavfi for title screen inputs, -i for real clips.
     inputs: list[str] = []
+    rev_idx = 0
     for clip in clips:
         is_title = getattr(clip, "is_title_screen", False)
         if is_title:
             inputs.extend(["-f", "lavfi", "-i", f"anullsrc=r=48000:cl=stereo:d={clip.duration}"])
+        elif reversed_paths:
+            inputs.extend(["-i", str(reversed_paths[rev_idx])])
+            rev_idx += 1
         else:
             inputs.extend(["-i", str(clip.path)])
 
@@ -171,8 +190,33 @@ def extract_and_mix_audio(
         str(output_path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603
+    _cleanup_temp_files(reversed_paths)
     if result.returncode != 0:
         raise RuntimeError(f"Audio mixing failed: {result.stderr[-500:]}")
+
+
+def _preprocess_privacy_audio(clips: list, work_dir: Path) -> list[Path]:
+    """Pre-process non-title clip audio with segment-wise reversal.
+
+    Returns list of WAV paths (one per non-title clip) in clip order.
+    """
+    from immich_memories.processing.privacy_audio import apply_privacy_audio
+
+    paths: list[Path] = []
+    for i, clip in enumerate(clips):
+        if getattr(clip, "is_title_screen", False):
+            continue
+        out = work_dir / f".privacy_audio_{i}.wav"
+        apply_privacy_audio(clip.path, out)
+        paths.append(out)
+    return paths
+
+
+def _cleanup_temp_files(paths: list[Path]) -> None:
+    for p in paths:
+        p.unlink(missing_ok=True)
+        # Also clean up the intermediate .raw.wav if it wasn't deleted
+        p.with_suffix(".raw.wav").unlink(missing_ok=True)
 
 
 def _probe_duration(path: Path) -> float:

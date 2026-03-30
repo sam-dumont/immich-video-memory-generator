@@ -302,7 +302,12 @@ class SmartPipeline:
 
         if min_res > 0:
             before = len(filtered)
-            filtered = [c for c in filtered if max(c.width, c.height) >= min_res]
+            # WHY: 0x0 = unknown resolution (live photo video components) — let them through
+            filtered = [
+                c
+                for c in filtered
+                if max(c.width, c.height) >= min_res or max(c.width, c.height) == 0
+            ]
             logger.info(
                 f"Resolution filter on non-favorites: {before} -> {len(filtered)} "
                 f"(min {min_res}px for {self.config.output_resolution}p output)"
@@ -441,14 +446,22 @@ class SmartPipeline:
         """Filter non-camera and low-res clips from density budget entries.
 
         Favorites always pass. Non-favorites must have camera EXIF and meet
-        the resolution threshold (2/3 of output height, floor 540px).
+        the resolution threshold (1/2 of output height, floor 540px).
+        Clips with unknown resolution (0x0, common for live photo video
+        components) pass the resolution check — their parent photo is hi-res.
         """
         before = len(entries)
-        min_res = max(540, int(self.config.output_resolution * 0.66))
+        min_res = max(540, int(self.config.output_resolution * 0.50))
         filtered = [
             e
             for e in entries
-            if e.is_favorite or (e.is_camera_original and max(e.width, e.height) >= min_res)
+            if e.is_favorite
+            or (
+                e.is_camera_original
+                # WHY: 0x0 = unknown resolution (live photo video components).
+                # These come from real camera shots — don't filter them.
+                and (max(e.width, e.height) >= min_res or max(e.width, e.height) == 0)
+            )
         ]
         removed = before - len(filtered)
         if removed > 0:

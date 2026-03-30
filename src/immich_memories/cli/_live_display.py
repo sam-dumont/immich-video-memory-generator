@@ -47,6 +47,53 @@ class ProgressDisplay(Protocol):
     def stop(self) -> None: ...
 
 
+class QuietDisplay:
+    """Non-interactive display that only emits log lines. No Rich TUI."""
+
+    def __init__(self) -> None:
+        self._logger = logging.getLogger("immich_memories.progress")
+        self._tasks: dict[TaskID, str] = {}
+        self._next_id = 0
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: type[BaseException] | None,
+        _exc_val: BaseException | None,
+        _exc_tb: TracebackType | None,
+    ) -> None:
+        pass
+
+    def add_task(
+        self,
+        description: str,
+        start: bool = True,
+        total: float | None = None,
+        completed: int = 0,
+        visible: bool = True,
+        **fields: Any,
+    ) -> TaskID:
+        tid = TaskID(self._next_id)
+        self._next_id += 1
+        self._tasks[tid] = description
+        self._logger.info(description)
+        return tid
+
+    def update(self, task_id: TaskID, **kwargs: Any) -> None:
+        if "description" in kwargs:
+            self._tasks[task_id] = kwargs["description"]
+            self._logger.info(kwargs["description"])
+        if kwargs.get("completed"):
+            desc = self._tasks.get(task_id, "")
+            if desc and "description" not in kwargs:
+                self._logger.info(f"Done: {desc}")
+
+    def stop(self) -> None:
+        pass
+
+
 # Sentinel for "no value passed"
 _MISSING: object = object()
 

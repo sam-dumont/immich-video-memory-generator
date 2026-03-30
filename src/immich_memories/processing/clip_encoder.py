@@ -204,11 +204,13 @@ class ClipEncoder:
         common_suffix: str,
         audio_filter: str,
     ) -> str:
-        # WHY: privacy blur scales with resolution so faces stay unidentifiable,
-        # matching streaming_assembler.py's gblur formula
+        # WHY: frosted glass effect — blur + noise texture + smooth.
+        # Cinematic look, not surveillance. Scales with shorter dimension.
         privacy_filter = ""
         if self.settings.privacy_mode and not clip.is_title_screen:
-            privacy_filter = f"gblur=sigma={int(target_h * 0.075)},"
+            short_side = min(target_w, target_h)
+            sigma = int(short_side * 0.035)
+            privacy_filter = f"gblur=sigma={sigma},noise=alls=15:allf=t,gblur=sigma=10,"
 
         use_blur = self.settings.scale_mode == "blur" and not clip.is_title_screen
         use_smart_zoom = self.settings.scale_mode == "smart_zoom" and not clip.is_title_screen

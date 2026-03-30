@@ -49,7 +49,6 @@ def resolve_target_resolution(
     if settings.target_resolution:
         target_w, target_h = settings.target_resolution
         logger.info(f"Using specified resolution {target_w}x{target_h}")
-        target_w, target_h = _swap_if_portrait(prober, clips, target_w, target_h)
     elif settings.auto_resolution:
         target_w, target_h = prober.detect_best_resolution(clips)
     elif settings.default_resolution:
