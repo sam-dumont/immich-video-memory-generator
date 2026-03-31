@@ -622,7 +622,8 @@ def _extract_clips(
     video_cache: VideoDownloadCache,
     output_dir: Path,
 ) -> list[AssemblyClip]:
-    """Download videos and extract clip segments."""
+    """Download videos and extract clip segments. Renders IMAGE clips as photo animations."""
+    from immich_memories.api.models import AssetType
     from immich_memories.processing.clips import extract_clip
 
     assembly_clips: list[AssemblyClip] = []
@@ -634,6 +635,13 @@ def _extract_clips(
         _report(params, "extract", progress, f"Downloading: {clip_name}")
 
         try:
+            # IMAGE-type clips come from the unified selection pool
+            if clip.asset.type == AssetType.IMAGE:
+                photo_clip = _render_photo_as_clip(clip, params, output_dir)
+                if photo_clip:
+                    assembly_clips.append(photo_clip)
+                continue
+
             from immich_memories.generate_downloads import download_clip
 
             video_path = download_clip(params.client, video_cache, clip, output_dir)
@@ -669,6 +677,42 @@ def _extract_clips(
             continue
 
     return assembly_clips
+
+
+def _render_photo_as_clip(
+    clip: VideoClipInfo,
+    params: GenerationParams,
+    output_dir: Path,
+) -> AssemblyClip | None:
+    """Download and render a photo as an animated video clip for assembly.
+
+    Uses the same rendering pipeline as photo_pipeline._render_single_photo:
+    downloads from Immich, prepares the source (HEIC decode, gain map),
+    then streams Ken Burns frames to FFmpeg.
+    """
+    from immich_memories.photos.photo_pipeline import _render_single_photo
+
+    if not params.client:
+        logger.warning("No Immich client — cannot render photo clip")
+        return None
+
+    photo_dir = output_dir / "photos"
+    photo_dir.mkdir(exist_ok=True)
+
+    target_w, target_h = _detect_photo_resolution(params)
+    photo_config = params.config.photos
+
+    result = _render_single_photo(
+        asset=clip.asset,
+        config=photo_config,
+        target_w=target_w,
+        target_h=target_h,
+        work_dir=photo_dir,
+        download_fn=params.client.download_asset,
+    )
+    if result is None:
+        logger.warning(f"Failed to render photo {clip.asset.id}")
+    return result
 
 
 def _build_assembly_settings(

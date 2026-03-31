@@ -112,7 +112,21 @@ def run_pipeline_and_generate(
             description=f"Analyzing: {phase_name}",
         )
 
-    pipeline_result = pipeline.run(clips, progress_callback=pipeline_progress)
+    # Phase 1-3: Analyze video clips
+    analyzed_videos = pipeline.run_analysis(clips, progress_callback=pipeline_progress)
+
+    # Merge photos into the unified selection pool (if enabled)
+    all_candidates = _merge_photos_into_pool(
+        analyzed_videos,
+        photo_assets=photo_assets,
+        include_photos=include_photos,
+        config=config,
+        client=client,
+        work_dir=output_path.parent,
+    )
+
+    # Phase 4: Unified selection (videos + photos compete together)
+    pipeline_result = pipeline.run_selection(all_candidates)
     _analysis_time = _time.monotonic() - _pipeline_start
     selected_clips = pipeline_result.selected_clips
     clip_segments = pipeline_result.clip_segments
@@ -131,6 +145,9 @@ def run_pipeline_and_generate(
         scaled = 20 + int(frac * 80)
         progress.update(task, completed=scaled, description=msg)
 
+    # WHY: Photos are now in selected_clips as IMAGE-type assets.
+    # generate.py's _extract_clips will detect IMAGE type and render them.
+    # Setting include_photos=False prevents the old _add_photos_if_enabled path.
     gen_params = GenerationParams(
         clips=selected_clips,
         output_path=output_path,
@@ -155,8 +172,8 @@ def run_pipeline_and_generate(
         person_name=person_name,
         date_start=date_range.start,
         date_end=date_range.end,
-        include_photos=include_photos,
-        photo_assets=photo_assets,
+        include_photos=False,
+        photo_assets=None,
         target_duration_seconds=duration,
         progress_callback=gen_progress,
         memory_preset_params=memory_preset_params or {},
@@ -179,6 +196,73 @@ def run_pipeline_and_generate(
     )
 
     return result_path, should_upload, album_name
+
+
+def _merge_photos_into_pool(
+    analyzed_videos: list,
+    *,
+    photo_assets: list | None,
+    include_photos: bool,
+    config: Config,
+    client: SyncImmichClient,
+    work_dir: Path,
+) -> list:
+    """Score photos and merge them as ClipWithSegment into the video pool.
+
+    Returns the combined list of video + photo candidates for unified selection.
+    When photos are disabled or absent, returns the video list unchanged.
+    """
+    if not include_photos or not photo_assets:
+        return analyzed_videos
+
+    import logging
+
+    from immich_memories.analysis.smart_pipeline import ClipWithSegment
+    from immich_memories.api.models import VideoClipInfo
+    from immich_memories.photos.photo_pipeline import score_photos
+
+    _logger = logging.getLogger(__name__)
+
+    photo_dir = work_dir / "photos"
+    photo_dir.mkdir(parents=True, exist_ok=True)
+
+    download_fn = client.download_asset
+    thumbnail_fn = client.get_asset_thumbnail
+    photo_duration = config.photos.duration
+
+    scored = score_photos(
+        assets=photo_assets,
+        config=config.photos,
+        video_clip_count=len(analyzed_videos),
+        work_dir=photo_dir,
+        download_fn=download_fn,
+        db_path=config.cache.database_path,
+        app_config=config,
+        thumbnail_fn=thumbnail_fn,
+    )
+
+    photo_candidates = []
+    for asset, photo_score in scored:
+        clip = VideoClipInfo(
+            asset=asset,
+            duration_seconds=photo_duration,
+            width=asset.width,
+            height=asset.height,
+        )
+        photo_candidates.append(
+            ClipWithSegment(
+                clip=clip,
+                start_time=0.0,
+                end_time=photo_duration,
+                score=photo_score,
+            )
+        )
+
+    _logger.info(
+        f"Unified pool: {len(analyzed_videos)} video + {len(photo_candidates)} photo candidates"
+    )
+
+    return analyzed_videos + photo_candidates
 
 
 def fetch_videos_and_live_photos(

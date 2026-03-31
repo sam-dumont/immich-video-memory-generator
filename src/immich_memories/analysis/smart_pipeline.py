@@ -192,7 +192,21 @@ class SmartPipeline:
         clips: list[VideoClipInfo],
         progress_callback: Callable[[dict], None] | None = None,
     ) -> PipelineResult:
-        """Run the full pipeline."""
+        """Run the full pipeline (phases 1-4)."""
+        analyzed = self.run_analysis(clips, progress_callback)
+        result = self.run_selection(analyzed)
+        return result
+
+    def run_analysis(
+        self,
+        clips: list[VideoClipInfo],
+        progress_callback: Callable[[dict], None] | None = None,
+    ) -> list[ClipWithSegment]:
+        """Run phases 1-3 (cluster, filter, analyze). Returns analyzed clips.
+
+        Does NOT call tracker.finish() — the caller (run() or external code)
+        is responsible for finishing the tracker after run_selection().
+        """
         if progress_callback:
             self.tracker.add_callback(
                 lambda _: progress_callback(self.tracker.get_status_summary())
@@ -215,11 +229,7 @@ class SmartPipeline:
             analyzed = self.analyzer.phase_analyze(candidates, self.tracker, self._check_cancelled)
             self._check_cancelled()
 
-            # Phase 4: Refine final selection
-            result = self.refiner.phase_refine(analyzed, self.tracker)
-
-            self.tracker.finish()
-            return result
+            return analyzed
 
         except JobCancelledException:
             logger.info("Pipeline cancelled by user")
@@ -227,6 +237,26 @@ class SmartPipeline:
             raise
         except Exception as e:
             logger.error(f"Pipeline failed: {e}")
+            self.tracker.finish()
+            raise
+
+    def run_selection(
+        self,
+        analyzed: list[ClipWithSegment],
+        progress_callback: Callable[[dict], None] | None = None,
+    ) -> PipelineResult:
+        """Run phase 4 (refine) on pre-analyzed clips. Finishes the tracker."""
+        if progress_callback:
+            self.tracker.add_callback(
+                lambda _: progress_callback(self.tracker.get_status_summary())
+            )
+
+        try:
+            result = self.refiner.phase_refine(analyzed, self.tracker)
+            self.tracker.finish()
+            return result
+        except Exception as e:
+            logger.error(f"Selection failed: {e}")
             self.tracker.finish()
             raise
 
