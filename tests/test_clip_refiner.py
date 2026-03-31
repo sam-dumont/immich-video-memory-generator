@@ -189,6 +189,55 @@ class TestTemporalCoverage:
         q3 = months & {7, 8, 9}
         assert q3, f"Q3 missing. Selected: {selected_ids}, months: {sorted(months)}"
 
+    def test_reserved_slots_survive_duration_scaling(self):
+        """Coverage clips must survive the full phase_refine pipeline.
+
+        The real scenario: favorites fill the budget, then scale_to_target_duration
+        trims lowest-scored clips — which are the coverage non-favorites.
+        Fix: coverage clips need protection through the full pipeline.
+        """
+        from unittest.mock import MagicMock
+
+        from immich_memories.analysis.clip_refiner import ClipRefiner
+        from immich_memories.analysis.clip_scaler import ClipScaler
+        from immich_memories.analysis.smart_pipeline import PipelineConfig
+
+        clips = []
+        # Favorites in 6 months — 18 clips * 5s = 90s
+        for month, day_start in [(1, 5), (4, 10), (5, 15), (7, 20), (9, 1), (12, 20)]:
+            for d in range(3):
+                clips.append(
+                    _make_clip(
+                        f"fav_{month}_{d}",
+                        datetime(2023, month, day_start + d, tzinfo=UTC),
+                        score=0.8 + d * 0.02,
+                        is_favorite=True,
+                    )
+                )
+
+        # Non-favorites in EMPTY months (Mar, Aug, Oct) — these must survive
+        clips.append(_make_clip("mar", datetime(2023, 3, 15, tzinfo=UTC), score=0.3))
+        clips.append(_make_clip("aug", datetime(2023, 8, 10, tzinfo=UTC), score=0.35))
+        clips.append(_make_clip("oct", datetime(2023, 10, 5, tzinfo=UTC), score=0.32))
+
+        # Target: 12 clips * 5s = 60s budget. 18 favorites exceed it.
+        config = PipelineConfig(target_clips=12, avg_clip_duration=5.0)
+        refiner = ClipRefiner(config, ClipScaler())
+
+        # WHY: mock tracker — we're testing selection logic, not progress tracking
+        tracker = MagicMock()
+        tracker.progress = MagicMock()
+        tracker.progress.errors = []
+
+        result = refiner.phase_refine(clips, tracker)
+
+        months = {c.asset.file_created_at.month for c in result.selected_clips}
+
+        # Mar, Aug, Oct must survive the full pipeline
+        assert 3 in months, f"March missing. Months: {sorted(months)}"
+        assert 8 in months, f"August missing. Months: {sorted(months)}"
+        assert 10 in months, f"October missing. Months: {sorted(months)}"
+
     def test_no_favorites_still_gets_temporal_coverage(self):
         """Zero favorites — selection should still spread across time periods."""
         from immich_memories.analysis.clip_refiner import ClipRefiner

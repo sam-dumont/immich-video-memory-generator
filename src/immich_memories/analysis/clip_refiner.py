@@ -364,6 +364,7 @@ class ClipRefiner:
             selected_ids = {c.clip.asset.id for c in selected}
             coverage = self._ensure_temporal_coverage(selected, clips, selected_ids)
             selected.extend(coverage)
+            self._coverage_ids = {c.clip.asset.id for c in coverage}
             return selected[:target_count]
 
         _favorites_by_week, protected_weeks = self._classify_favorites_by_week(favorites)
@@ -388,6 +389,7 @@ class ClipRefiner:
         # Ensure every time period has at least 1 clip
         coverage = self._ensure_temporal_coverage(selected, clips, selected_ids)
         selected.extend(coverage)
+        self._coverage_ids = {c.clip.asset.id for c in coverage}
 
         final_favorites = sum(1 for c in selected if c.clip.asset.is_favorite)
         final_non_favorites = len(selected) - final_favorites
@@ -462,7 +464,10 @@ class ClipRefiner:
             selected = self.select_clips_distributed_by_date(analyzed, target_with_buffer)
 
         target_duration = self.config.target_clips * self.config.avg_clip_duration
-        selected = self.scaler.scale_to_target_duration(selected, target_duration)
+        coverage_ids: set[str] = getattr(self, "_coverage_ids", set())
+        selected = self.scaler.scale_to_target_duration(
+            selected, target_duration, protected_ids=coverage_ids
+        )
 
         if self.config.temporal_dedup_window_minutes > 0:
             selected = self.scaler.deduplicate_temporal_clusters(
