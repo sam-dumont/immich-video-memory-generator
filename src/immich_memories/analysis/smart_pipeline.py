@@ -394,6 +394,7 @@ class SmartPipeline:
                 date=c.asset.file_created_at,
                 duration=c.duration_seconds or 5.0,
                 is_favorite=c.asset.is_favorite,
+                score=c.quality_score,
                 width=c.width,
                 height=c.height,
                 is_camera_original=c.is_camera_original,
