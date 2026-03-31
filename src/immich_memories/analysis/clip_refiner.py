@@ -18,6 +18,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _period_key(dt: datetime, span_days: int) -> str:
+    """Bucket key adaptive to date range: weeks for short, months for medium, quarters for long."""
+    if span_days <= 30:
+        return dt.strftime("%Y-%m-%d")  # daily for ≤1 month
+    if span_days <= 90:
+        iso = dt.isocalendar()
+        return f"{iso[0]}-W{iso[1]:02d}"  # weekly for ≤3 months
+    if span_days <= 365:
+        return dt.strftime("%Y-%m")  # monthly for ≤1 year
+    return f"{dt.year}-Q{(dt.month - 1) // 3 + 1}"  # quarterly for >1 year
+
+
 def enforce_photo_cap(
     clips: list[ClipWithSegment],
     max_ratio: float,
@@ -284,6 +296,49 @@ class ClipRefiner:
             f"Added {min(remaining_slots, len(remaining_non_favs))} additional non-favorites"
         )
 
+    def _ensure_temporal_coverage(
+        self,
+        selected: list[ClipWithSegment],
+        all_clips: list[ClipWithSegment],
+        selected_ids: set[str],
+    ) -> list[ClipWithSegment]:
+        """Guarantee at least 1 clip per time period across the full date range.
+
+        Adaptive granularity: daily for ≤1 month, weekly for ≤3 months,
+        monthly for ≤1 year, quarterly for >1 year.
+        """
+        if not all_clips:
+            return []
+
+        dates = [c.clip.asset.file_created_at for c in all_clips]
+        span_days = (max(dates) - min(dates)).days
+
+        covered = {_period_key(c.clip.asset.file_created_at, span_days) for c in selected}
+
+        unselected_by_period: dict[str, list[ClipWithSegment]] = defaultdict(list)
+        for c in all_clips:
+            if c.clip.asset.id not in selected_ids:
+                key = _period_key(c.clip.asset.file_created_at, span_days)
+                unselected_by_period[key].append(c)
+
+        gap_fillers: list[ClipWithSegment] = []
+        for period in sorted(unselected_by_period):
+            if period not in covered:
+                candidates = unselected_by_period[period]
+                candidates.sort(key=lambda c: c.score, reverse=True)
+                best = candidates[0]
+                gap_fillers.append(best)
+                selected_ids.add(best.clip.asset.id)
+                covered.add(period)
+
+        if gap_fillers:
+            logger.info(
+                f"Temporal coverage: added {len(gap_fillers)} clips "
+                f"to fill {len(gap_fillers)} empty periods (granularity: {span_days}d span)"
+            )
+
+        return gap_fillers
+
     def select_clips_distributed_by_date(
         self,
         clips: list[ClipWithSegment],
@@ -305,12 +360,16 @@ class ClipRefiner:
 
         if not favorites:
             non_favorites.sort(key=lambda c: c.score, reverse=True)
-            return non_favorites[:target_count]
+            selected = non_favorites[:target_count]
+            selected_ids = {c.clip.asset.id for c in selected}
+            coverage = self._ensure_temporal_coverage(selected, clips, selected_ids)
+            selected.extend(coverage)
+            return selected[:target_count]
 
         _favorites_by_week, protected_weeks = self._classify_favorites_by_week(favorites)
 
         selected_favorites = favorites.copy()
-        selected_ids: set[str] = {c.clip.asset.id for c in favorites}
+        selected_ids = {c.clip.asset.id for c in favorites}
         logger.info(f"Starting with ALL {len(selected_favorites)} favorites")
 
         target_duration = target_count * 5.0
@@ -325,6 +384,10 @@ class ClipRefiner:
 
         selected = selected_favorites + gap_fillers
         self._fill_remaining_slots(selected, non_favorites, target_count, selected_ids)
+
+        # Ensure every time period has at least 1 clip
+        coverage = self._ensure_temporal_coverage(selected, clips, selected_ids)
+        selected.extend(coverage)
 
         final_favorites = sum(1 for c in selected if c.clip.asset.is_favorite)
         final_non_favorites = len(selected) - final_favorites
