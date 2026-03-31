@@ -21,11 +21,14 @@ logger = logging.getLogger(__name__)
 def enforce_photo_cap(
     clips: list[ClipWithSegment],
     max_ratio: float,
+    videos_scarce: bool = False,
 ) -> list[ClipWithSegment]:
     """Drop lowest-scored photos until photo ratio <= max_ratio.
 
     Videos are never dropped. If only photos exist (no videos),
     all are kept since the ratio can't be improved by dropping.
+    When videos_scarce is True, the cap is bypassed entirely —
+    photos fill the budget freely (matches unified_budget PR #224).
     """
     from immich_memories.api.models import AssetType
 
@@ -33,7 +36,9 @@ def enforce_photo_cap(
     photos = [c for c in clips if c.clip.asset.type == AssetType.IMAGE]
 
     if not photos or not videos:
-        # No photos to cap, or no videos to establish ratio against
+        return clips
+
+    if videos_scarce:
         return clips
 
     max_photos = int(len(clips) * max_ratio)
@@ -422,7 +427,15 @@ class ClipRefiner:
 
         # Enforce photo ratio cap (drop lowest-scored photos if over limit)
         if self.config.photo_max_ratio < 1.0:
-            selected = enforce_photo_cap(selected, self.config.photo_max_ratio)
+            from immich_memories.api.models import AssetType
+
+            video_count = sum(1 for c in selected if c.clip.asset.type != AssetType.IMAGE)
+            # WHY: Match unified_budget's scarcity logic — videos can't fill
+            # half the content budget. At 30% or below, photos fill freely.
+            videos_scarce = len(selected) > 0 and video_count < len(selected) * 0.3
+            selected = enforce_photo_cap(
+                selected, self.config.photo_max_ratio, videos_scarce=videos_scarce
+            )
 
         selected.sort(key=lambda c: c.clip.asset.file_created_at or datetime.min)
 
