@@ -76,20 +76,39 @@ Live photos go through the same pipeline as videos after burst merging. A 0.9x p
 
 **Favorite inheritance**: If ANY photo in a burst cluster is favorited, the entire merged live photo clip inherits the favorite flag.
 
-## Selection Process
+## Selection Process: Unified Pool
+
+Videos, live photos, and regular photos all compete in a single selection pool. There are no separate pipelines — temporal dedup, duration scaling, and all caps apply to the combined pool.
 
 ```
-1. Fetch ALL assets (videos + photos + live photos)
-2. Thumbnail clustering → deduplicate near-identical clips
-3. Compute density budget (quota per month/week)
-4. Fill each bucket:
-   a. Favorites first (capped at 1.5× quota to save LLM calls)
-   b. Gap-fill with non-favorites ranked by score
-5. Scene detection on selected clips (find best segments)
-6. LLM analysis on favorites (rate interest/quality)
-7. Final refinement: distribute by date, scale to target duration
-8. Enforce photo cap (default 50% max)
+1. Fetch videos + live photo video components
+2. Fetch regular photos (IMAGE assets, excluding live photos)
+3. VIDEOS: SmartPipeline Phases 1-3
+   a. Thumbnail clustering → deduplicate near-identical clips
+   b. Density budget → select candidates proportional to timeline density
+   c. Download + analyze selected clips (scoring, scene detection, LLM)
+4. PHOTOS: Metadata + LLM thumbnail scoring (fast, no download)
+5. MERGE: Convert scored photos to clip candidates, merge with analyzed videos
+6. UNIFIED Phase 4: Select from the combined pool
+   a. Favorites first, then fill gaps by score
+   b. Temporal coverage: ensure every month/week has ≥1 clip
+   c. Scale to target duration (sole monthly representatives protected)
+   d. Temporal dedup (same-moment clips across ALL types)
+   e. Interleave types (max 2 consecutive photos or videos in a row)
 ```
+
+### Sparse Content Adaptations
+
+When content is limited, the pipeline adapts automatically:
+
+- **Adaptive target**: If available clips are less than half the target count, the target reduces to match. A library with 8 clips won't try to fill a 120-clip video — it targets 8 clips instead, producing a shorter but better video.
+- **Auto-thorough LLM**: When favorites are too few to anchor selection (fewer than 5 per 60 seconds of target duration), the pipeline switches from fast to thorough mode — running LLM analysis on all clips, not just favorites.
+- **Temporal coverage**: Every time period gets at least one clip. Sole monthly representatives are protected from removal during duration scaling, even if they score lower than favorites in other months.
+- **Photo scarcity bypass**: When videos make up less than 30% of selected clips, the photo ratio cap is skipped — photos fill the budget freely.
+
+### Live Photo Rendering
+
+When a live photo (IMAGE asset with a video component) is selected, the actual video component is used — 2-7 seconds of real camera motion. Only truly static photos (no video component) get the Ken Burns animation treatment.
 
 ## Analysis Depth
 
@@ -98,9 +117,12 @@ How much analysis effort to spend:
 | Mode | Favorites | Gap-fillers | Speed |
 |------|-----------|-------------|-------|
 | **Fast** (default) | Full analysis + LLM | Metadata score only | Quick |
-| **Thorough** | Full analysis + LLM | Top-3 per bucket get LLM too | Slower, better |
+| **Thorough** | Full analysis + LLM | Full analysis + LLM | Slower, better |
+| **Auto** | Switches to thorough when < 5 favorites per 60s of target | | Adaptive |
 
 CLI: `--analysis-depth fast|thorough`
+
+The auto-switch happens transparently — you don't need to set it. If you have enough favorites (> 5 per minute of target video), fast mode is sufficient because favorites drive the selection. Below that threshold, all clips need LLM scoring to distinguish quality.
 
 ## Performance: 480p Downscaling
 

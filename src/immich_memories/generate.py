@@ -302,6 +302,7 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         _t = _time.monotonic()
         pp.report("photos", 0.0, "Selecting and rendering photos...")
         assembly_clips = _add_photos_if_enabled(assembly_clips, params, run_output_dir)
+        assembly_clips = _interleave_clip_types(assembly_clips)
         _phase_times["photos"] = _time.monotonic() - _t
         pp.report("photos", 1.0, "Photos ready")
 
@@ -617,12 +618,59 @@ def _merge_by_date(
     return all_clips
 
 
+def _interleave_clip_types(
+    clips: list[AssemblyClip],
+    max_consecutive: int = 2,
+) -> list[AssemblyClip]:
+    """Break up consecutive same-type clips by swapping with nearest different type.
+
+    Preserves approximate chronological order while ensuring no more than
+    max_consecutive clips of the same type (photo vs video) appear in a row.
+    Uses a forward pass for head/middle runs and a tail fix for end runs.
+    """
+    if len(clips) <= max_consecutive:
+        return clips
+
+    result = clips.copy()
+
+    # Forward pass: fix runs in the head and middle
+    for i in range(max_consecutive, len(result)):
+        current = result[i].is_photo
+        if all(result[i - k].is_photo == current for k in range(1, max_consecutive + 1)):
+            for j in range(i + 1, len(result)):
+                if result[j].is_photo != current:
+                    result[i], result[j] = result[j], result[i]
+                    break
+
+    # Tail fix: if the last N clips are all the same type and N > max,
+    # pull a different-type clip from earlier into the tail to break it
+    tail_type = result[-1].is_photo
+    tail_run = 0
+    for k in range(len(result) - 1, -1, -1):
+        if result[k].is_photo == tail_type:
+            tail_run += 1
+        else:
+            break
+
+    if tail_run > max_consecutive:
+        swap_from = len(result) - tail_run
+        for j in range(swap_from, -1, -1):
+            if result[j].is_photo != tail_type:
+                clip = result.pop(j)
+                insert_at = len(result) - max_consecutive
+                result.insert(insert_at, clip)
+                break
+
+    return result
+
+
 def _extract_clips(
     params: GenerationParams,
     video_cache: VideoDownloadCache,
     output_dir: Path,
 ) -> list[AssemblyClip]:
-    """Download videos and extract clip segments."""
+    """Download videos and extract clip segments. Renders IMAGE clips as photo animations."""
+    from immich_memories.api.models import AssetType
     from immich_memories.processing.clips import extract_clip
 
     assembly_clips: list[AssemblyClip] = []
@@ -634,6 +682,15 @@ def _extract_clips(
         _report(params, "extract", progress, f"Downloading: {clip_name}")
 
         try:
+            # IMAGE-type clips from the unified selection pool:
+            # - Live photos (has video component) → download video, extract segment
+            # - Static photos → render as Ken Burns animation
+            if clip.asset.type == AssetType.IMAGE and not clip.asset.live_photo_video_id:
+                photo_clip = _render_photo_as_clip(clip, params, output_dir)
+                if photo_clip:
+                    assembly_clips.append(photo_clip)
+                continue
+
             from immich_memories.generate_downloads import download_clip
 
             video_path = download_clip(params.client, video_cache, clip, output_dir)
@@ -669,6 +726,42 @@ def _extract_clips(
             continue
 
     return assembly_clips
+
+
+def _render_photo_as_clip(
+    clip: VideoClipInfo,
+    params: GenerationParams,
+    output_dir: Path,
+) -> AssemblyClip | None:
+    """Download and render a photo as an animated video clip for assembly.
+
+    Uses the same rendering pipeline as photo_pipeline._render_single_photo:
+    downloads from Immich, prepares the source (HEIC decode, gain map),
+    then streams Ken Burns frames to FFmpeg.
+    """
+    from immich_memories.photos.photo_pipeline import _render_single_photo
+
+    if not params.client:
+        logger.warning("No Immich client — cannot render photo clip")
+        return None
+
+    photo_dir = output_dir / "photos"
+    photo_dir.mkdir(exist_ok=True)
+
+    target_w, target_h = _detect_photo_resolution(params)
+    photo_config = params.config.photos
+
+    result = _render_single_photo(
+        asset=clip.asset,
+        config=photo_config,
+        target_w=target_w,
+        target_h=target_h,
+        work_dir=photo_dir,
+        download_fn=params.client.download_asset,
+    )
+    if result is None:
+        logger.warning(f"Failed to render photo {clip.asset.id}")
+    return result
 
 
 def _build_assembly_settings(
