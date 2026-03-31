@@ -349,6 +349,30 @@ class SmartPipeline:
 
         return gap_fillers
 
+    def _adapt_target_for_content(self, clips: list[VideoClipInfo]) -> None:
+        """Reduce target_clips when available content is sparse."""
+        unique_count = len(clips)
+        if unique_count < self.config.target_clips * 0.5:
+            original = self.config.target_clips
+            self.config.target_clips = max(unique_count, 5)
+            logger.info(
+                f"Sparse content: adapted target {original} -> {self.config.target_clips} "
+                f"({unique_count} clips available)"
+            )
+
+    def _maybe_switch_to_thorough(self, clips: list[VideoClipInfo]) -> None:
+        """Switch to thorough LLM analysis when favorites can't drive selection.
+
+        Below 5 favorites, the favorites alone can't anchor the selection —
+        LLM scoring on everything is needed to distinguish quality.
+        """
+        if self.config.analysis_depth != "fast":
+            return
+        fav_count = sum(1 for c in clips if c.asset.is_favorite)
+        if fav_count < 5:
+            self.config.analysis_depth = "thorough"
+            logger.info(f"Only {fav_count} favorites — switching to thorough LLM analysis")
+
     def _phase_filter(self, clips: list[VideoClipInfo]) -> list[VideoClipInfo]:
         """Phase 2: Select clips for analysis using density-proportional budget.
 
@@ -377,6 +401,8 @@ class SmartPipeline:
                 f"Duration filter: removed {too_short_count} clips shorter than "
                 f"{min_duration:.1f}s minimum"
             )
+
+        self._adapt_target_for_content(clips)
 
         # Analyze-all mode: skip budget, send everything
         if self.config.analyze_all:
@@ -432,6 +458,8 @@ class SmartPipeline:
 
         fav_count = sum(1 for c in selected if c.asset.is_favorite)
         gap_count = len(selected) - fav_count
+
+        self._maybe_switch_to_thorough(selected)
 
         self.tracker.complete_item("filters")
         self.tracker.complete_phase()
