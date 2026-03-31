@@ -302,6 +302,7 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         _t = _time.monotonic()
         pp.report("photos", 0.0, "Selecting and rendering photos...")
         assembly_clips = _add_photos_if_enabled(assembly_clips, params, run_output_dir)
+        assembly_clips = _interleave_clip_types(assembly_clips)
         _phase_times["photos"] = _time.monotonic() - _t
         pp.report("photos", 1.0, "Photos ready")
 
@@ -615,6 +616,52 @@ def _merge_by_date(
     all_clips = video_clips + photo_clips
     all_clips.sort(key=lambda c: c.date or "")
     return all_clips
+
+
+def _interleave_clip_types(
+    clips: list[AssemblyClip],
+    max_consecutive: int = 2,
+) -> list[AssemblyClip]:
+    """Break up consecutive same-type clips by swapping with nearest different type.
+
+    Preserves approximate chronological order while ensuring no more than
+    max_consecutive clips of the same type (photo vs video) appear in a row.
+    Uses a forward pass for head/middle runs and a tail fix for end runs.
+    """
+    if len(clips) <= max_consecutive:
+        return clips
+
+    result = clips.copy()
+
+    # Forward pass: fix runs in the head and middle
+    for i in range(max_consecutive, len(result)):
+        current = result[i].is_photo
+        if all(result[i - k].is_photo == current for k in range(1, max_consecutive + 1)):
+            for j in range(i + 1, len(result)):
+                if result[j].is_photo != current:
+                    result[i], result[j] = result[j], result[i]
+                    break
+
+    # Tail fix: if the last N clips are all the same type and N > max,
+    # pull a different-type clip from earlier into the tail to break it
+    tail_type = result[-1].is_photo
+    tail_run = 0
+    for k in range(len(result) - 1, -1, -1):
+        if result[k].is_photo == tail_type:
+            tail_run += 1
+        else:
+            break
+
+    if tail_run > max_consecutive:
+        swap_from = len(result) - tail_run
+        for j in range(swap_from, -1, -1):
+            if result[j].is_photo != tail_type:
+                clip = result.pop(j)
+                insert_at = len(result) - max_consecutive
+                result.insert(insert_at, clip)
+                break
+
+    return result
 
 
 def _extract_clips(
