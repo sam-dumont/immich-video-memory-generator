@@ -13,6 +13,30 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _find_sole_month_representatives(
+    clips: list[ClipWithSegment],
+    extra_ids: set[str] | None = None,
+) -> tuple[list[ClipWithSegment], list[ClipWithSegment]]:
+    """Split clips into sole monthly representatives and the rest.
+
+    Returns (sole_reps, regular). Sole reps are clips that are the only
+    one from their month — removing them would create a temporal gap.
+    """
+    month_counts: dict[str, int] = defaultdict(int)
+    for c in clips:
+        month_counts[c.clip.asset.file_created_at.strftime("%Y-%m")] += 1
+
+    protected_ids = {
+        c.clip.asset.id
+        for c in clips
+        if month_counts[c.clip.asset.file_created_at.strftime("%Y-%m")] == 1
+    } | (extra_ids or set())
+
+    sole = [c for c in clips if c.clip.asset.id in protected_ids]
+    regular = [c for c in clips if c.clip.asset.id not in protected_ids]
+    return sole, regular
+
+
 class ClipScaler:
     """Scales clip selections to target durations and removes temporal duplicates."""
 
@@ -20,12 +44,17 @@ class ClipScaler:
         self,
         clips: list[ClipWithSegment],
         target_duration: float,
+        protected_ids: set[str] | None = None,
     ) -> list[ClipWithSegment]:
         """Scale down selection to fit target duration.
 
         Removes lowest-scored clips (non-favorites first) until total
-        duration is within target + 10%.
+        duration is within target + 10%. Clips in protected_ids are
+        treated as protected (same priority as high-density week clips).
         """
+        if not clips:
+            return clips
+
         if not clips:
             return clips
 
@@ -40,15 +69,26 @@ class ClipScaler:
             f"Duration {total:.0f}s exceeds target {target_duration:.0f}s, removing clips..."
         )
 
+        sole_reps, regular = _find_sole_month_representatives(clips, protected_ids)
+        sole_duration = sum(c.end_time - c.start_time for c in sole_reps)
+
+        if sole_reps:
+            logger.info(
+                f"Protected {len(sole_reps)} sole monthly representatives "
+                f"({sole_duration:.0f}s reserved)"
+            )
+
         favorites_by_week: dict[str, list[ClipWithSegment]] = defaultdict(list)
-        for c in clips:
+        for c in regular:
             if c.clip.asset.is_favorite:
                 week = c.clip.asset.file_created_at.strftime("%Y-W%W")
                 favorites_by_week[week].append(c)
 
         num_favorite_weeks = len(favorites_by_week)
         if num_favorite_weeks > 0:
-            avg_per_week = len([c for c in clips if c.clip.asset.is_favorite]) / num_favorite_weeks
+            avg_per_week = (
+                len([c for c in regular if c.clip.asset.is_favorite]) / num_favorite_weeks
+            )
             protected_weeks = {
                 w
                 for w, clips_list in favorites_by_week.items()
@@ -62,21 +102,19 @@ class ClipScaler:
             protected_weeks.add(sorted_weeks[0])
             protected_weeks.add(sorted_weeks[-1])
 
-        logger.debug(f"Protected weeks: {sorted(protected_weeks)}")
-
         def removability_score(c: ClipWithSegment) -> tuple:
             is_fav = c.clip.asset.is_favorite
             week = c.clip.asset.file_created_at.strftime("%Y-W%W")
             is_protected = week in protected_weeks
             return (is_fav, is_protected, c.score)
 
-        clips_sorted = sorted(clips, key=removability_score)
+        regular_sorted = sorted(regular, key=removability_score)
 
-        result = []
-        running_total = 0.0
+        result = sole_reps.copy()
+        running_total = sole_duration
         removed_count = 0
 
-        for c in reversed(clips_sorted):
+        for c in reversed(regular_sorted):
             clip_duration = c.end_time - c.start_time
             if running_total + clip_duration <= max_allowed:
                 result.append(c)

@@ -192,7 +192,21 @@ class SmartPipeline:
         clips: list[VideoClipInfo],
         progress_callback: Callable[[dict], None] | None = None,
     ) -> PipelineResult:
-        """Run the full pipeline."""
+        """Run the full pipeline (phases 1-4)."""
+        analyzed = self.run_analysis(clips, progress_callback)
+        result = self.run_selection(analyzed)
+        return result
+
+    def run_analysis(
+        self,
+        clips: list[VideoClipInfo],
+        progress_callback: Callable[[dict], None] | None = None,
+    ) -> list[ClipWithSegment]:
+        """Run phases 1-3 (cluster, filter, analyze). Returns analyzed clips.
+
+        Does NOT call tracker.finish() — the caller (run() or external code)
+        is responsible for finishing the tracker after run_selection().
+        """
         if progress_callback:
             self.tracker.add_callback(
                 lambda _: progress_callback(self.tracker.get_status_summary())
@@ -215,11 +229,7 @@ class SmartPipeline:
             analyzed = self.analyzer.phase_analyze(candidates, self.tracker, self._check_cancelled)
             self._check_cancelled()
 
-            # Phase 4: Refine final selection
-            result = self.refiner.phase_refine(analyzed, self.tracker)
-
-            self.tracker.finish()
-            return result
+            return analyzed
 
         except JobCancelledException:
             logger.info("Pipeline cancelled by user")
@@ -227,6 +237,26 @@ class SmartPipeline:
             raise
         except Exception as e:
             logger.error(f"Pipeline failed: {e}")
+            self.tracker.finish()
+            raise
+
+    def run_selection(
+        self,
+        analyzed: list[ClipWithSegment],
+        progress_callback: Callable[[dict], None] | None = None,
+    ) -> PipelineResult:
+        """Run phase 4 (refine) on pre-analyzed clips. Finishes the tracker."""
+        if progress_callback:
+            self.tracker.add_callback(
+                lambda _: progress_callback(self.tracker.get_status_summary())
+            )
+
+        try:
+            result = self.refiner.phase_refine(analyzed, self.tracker)
+            self.tracker.finish()
+            return result
+        except Exception as e:
+            logger.error(f"Selection failed: {e}")
             self.tracker.finish()
             raise
 
@@ -349,6 +379,37 @@ class SmartPipeline:
 
         return gap_fillers
 
+    def _adapt_target_for_content(self, clips: list[VideoClipInfo]) -> None:
+        """Reduce target_clips when available content is sparse."""
+        unique_count = len(clips)
+        if unique_count < self.config.target_clips * 0.5:
+            original = self.config.target_clips
+            self.config.target_clips = max(unique_count, 5)
+            logger.info(
+                f"Sparse content: adapted target {original} -> {self.config.target_clips} "
+                f"({unique_count} clips available)"
+            )
+
+    def _maybe_switch_to_thorough(self, clips: list[VideoClipInfo]) -> None:
+        """Switch to thorough LLM analysis when favorites can't drive selection.
+
+        Threshold scales with target duration: 5 favorites per 60s.
+        A 5-minute video needs ~25 favorites to stay in fast mode.
+        A 30-second video only needs ~3.
+        """
+        if self.config.analysis_depth != "fast":
+            return
+        target_seconds = self.config.target_clips * self.config.avg_clip_duration
+        # WHY: 5 per 60s — below that, favorites alone can't anchor selection
+        threshold = max(2, int(5 * target_seconds / 60))
+        fav_count = sum(1 for c in clips if c.asset.is_favorite)
+        if fav_count < threshold:
+            self.config.analysis_depth = "thorough"
+            logger.info(
+                f"Only {fav_count} favorites (need {threshold} for {target_seconds:.0f}s) "
+                f"— switching to thorough LLM analysis"
+            )
+
     def _phase_filter(self, clips: list[VideoClipInfo]) -> list[VideoClipInfo]:
         """Phase 2: Select clips for analysis using density-proportional budget.
 
@@ -378,6 +439,8 @@ class SmartPipeline:
                 f"{min_duration:.1f}s minimum"
             )
 
+        self._adapt_target_for_content(clips)
+
         # Analyze-all mode: skip budget, send everything
         if self.config.analyze_all:
             self._available_non_favorites = []
@@ -394,6 +457,7 @@ class SmartPipeline:
                 date=c.asset.file_created_at,
                 duration=c.duration_seconds or 5.0,
                 is_favorite=c.asset.is_favorite,
+                score=c.quality_score,
                 width=c.width,
                 height=c.height,
                 is_camera_original=c.is_camera_original,
@@ -431,6 +495,8 @@ class SmartPipeline:
 
         fav_count = sum(1 for c in selected if c.asset.is_favorite)
         gap_count = len(selected) - fav_count
+
+        self._maybe_switch_to_thorough(selected)
 
         self.tracker.complete_item("filters")
         self.tracker.complete_phase()
