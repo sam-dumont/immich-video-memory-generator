@@ -393,15 +393,22 @@ class SmartPipeline:
     def _maybe_switch_to_thorough(self, clips: list[VideoClipInfo]) -> None:
         """Switch to thorough LLM analysis when favorites can't drive selection.
 
-        Below 5 favorites, the favorites alone can't anchor the selection —
-        LLM scoring on everything is needed to distinguish quality.
+        Threshold scales with target duration: 5 favorites per 60s.
+        A 5-minute video needs ~25 favorites to stay in fast mode.
+        A 30-second video only needs ~3.
         """
         if self.config.analysis_depth != "fast":
             return
+        target_seconds = self.config.target_clips * self.config.avg_clip_duration
+        # WHY: 5 per 60s — below that, favorites alone can't anchor selection
+        threshold = max(2, int(5 * target_seconds / 60))
         fav_count = sum(1 for c in clips if c.asset.is_favorite)
-        if fav_count < 5:
+        if fav_count < threshold:
             self.config.analysis_depth = "thorough"
-            logger.info(f"Only {fav_count} favorites — switching to thorough LLM analysis")
+            logger.info(
+                f"Only {fav_count} favorites (need {threshold} for {target_seconds:.0f}s) "
+                f"— switching to thorough LLM analysis"
+            )
 
     def _phase_filter(self, clips: list[VideoClipInfo]) -> list[VideoClipInfo]:
         """Phase 2: Select clips for analysis using density-proportional budget.

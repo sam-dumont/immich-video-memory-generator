@@ -141,6 +141,25 @@ class TestThoroughLLMThreshold:
 
         assert config.analysis_depth == "fast"
 
+    def test_threshold_scales_with_duration(self):
+        """5min video (60 clips) needs ~25 favorites to stay fast. 5 isn't enough."""
+        config = PipelineConfig(target_clips=60, avg_clip_duration=5.0, analysis_depth="fast")
+        pipeline = SmartPipeline.__new__(SmartPipeline)
+        pipeline.config = config
+
+        # 5 favorites for a 300s video → threshold = max(2, int(5*300/60)) = 25
+        clips = [
+            _make_clip(f"fav{i}", datetime(2021, 7, 1 + i, tzinfo=UTC), is_favorite=True)
+            for i in range(5)
+        ] + [
+            _make_clip(f"nf{i}", datetime(2021, 1, 1, tzinfo=UTC), is_favorite=False)
+            for i in range(50)
+        ]
+
+        pipeline._maybe_switch_to_thorough(clips)
+
+        assert config.analysis_depth == "thorough"
+
     def test_already_thorough_no_change(self):
         """Already thorough mode → stays thorough regardless of favorites."""
         config = PipelineConfig(target_clips=10, analysis_depth="thorough")
