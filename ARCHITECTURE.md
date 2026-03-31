@@ -290,22 +290,36 @@ src/immich_memories/
 
 ## Key Classes & Their Relationships
 
-### Pipeline Flow
+### Pipeline Flow (Unified Selection)
+
+Videos and photos compete in a single selection pool:
 
 ```
-SmartPipeline.run()
-  ├── _phase_cluster()     → ClipExtractor.extract() → Immich API
-  ├── _phase_filter()      → quality/resolution/HDR filtering
-  ├── _phase_analyze()     → ClipAnalyzer.analyze()
-  │                            via UnifiedSegmentAnalyzer:
-  │                            ├── boundary detection
-  │                            ├── candidate generation
-  │                            ├── visual + LLM scoring
-  │                            └── best segment selection
-  └── _phase_refine()      → ClipRefiner.refine()
-                               ├── favorites-first selection
-                               ├── date distribution
-                               └── ClipScaler: duration scaling
+SmartPipeline.run_analysis()           (Phases 1-3: videos only)
+  ├── _phase_cluster()     → thumbnail dedup → Immich API
+  ├── _phase_filter()      → density budget, quality gate, adaptive target
+  │                            ├── _adapt_target_for_content() → sparse content detection
+  │                            └── _maybe_switch_to_thorough() → auto LLM depth
+  └── _phase_analyze()     → ClipAnalyzer.analyze()
+                               via UnifiedSegmentAnalyzer:
+                               ├── boundary detection
+                               ├── candidate generation
+                               ├── visual + LLM scoring
+                               └── best segment selection
+
+score_photos()                         (Photos: metadata + LLM thumbnails)
+  ├── metadata scoring (favorites, faces, camera)
+  └── LLM enhancement on shortlist
+
+MERGE → all candidates as ClipWithSegment
+
+SmartPipeline.run_selection()          (Phase 4: unified pool)
+  └── ClipRefiner.phase_refine()
+       ├── favorites-first selection
+       ├── temporal coverage (1 clip per month/week guaranteed)
+       ├── ClipScaler: duration scaling (sole reps protected)
+       ├── temporal dedup (photos + videos together)
+       └── type interleaving (max 2 consecutive same type)
 ```
 
 ### Assembly Flow

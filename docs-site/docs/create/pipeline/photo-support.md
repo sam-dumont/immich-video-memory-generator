@@ -9,13 +9,16 @@ Include photos alongside videos in your memory compilations. Photos are converte
 
 ## How It Works
 
-1. **Fetch**: Photos (IMAGE assets, excluding live photos) are fetched from Immich alongside videos
-2. **Group**: Consecutive photos within 60 seconds are grouped as a "series"
-3. **Score**: Photos are ranked by favorites, face detection, camera metadata
-4. **Animate**: Each photo becomes a 4-second animated video clip
-5. **Assemble**: Photo clips are interleaved with video clips by date
+Photos compete in the same selection pool as videos and live photos. There's no separate "photo pipeline" — everything goes through unified selection.
 
-Photos are capped at 50% of the final video by default, ensuring videos always dominate when available.
+1. **Fetch**: Photos (IMAGE assets, excluding live photos) are fetched from Immich
+2. **Score**: Metadata scoring (favorites, faces, camera) + optional LLM visual analysis on thumbnails
+3. **Merge**: Scored photos are converted to clip candidates and merged with analyzed video clips
+4. **Select**: Unified Phase 4 picks from the combined pool — temporal dedup, duration scaling, and coverage guarantees apply to photos AND videos equally
+5. **Render**: Selected photos are animated as Ken Burns clips at assembly time
+6. **Interleave**: No more than 2 consecutive clips of the same type (photo or video)
+
+Photos are capped at 50% of the final video when videos are plentiful. When videos are scarce (< 30% of selected clips), photos fill the budget freely.
 
 ## Animation Effects
 
