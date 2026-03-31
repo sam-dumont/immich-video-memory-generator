@@ -682,8 +682,10 @@ def _extract_clips(
         _report(params, "extract", progress, f"Downloading: {clip_name}")
 
         try:
-            # IMAGE-type clips come from the unified selection pool
-            if clip.asset.type == AssetType.IMAGE:
+            # IMAGE-type clips from the unified selection pool:
+            # - Live photos (has video component) → download video, extract segment
+            # - Static photos → render as Ken Burns animation
+            if clip.asset.type == AssetType.IMAGE and not clip.asset.live_photo_video_id:
                 photo_clip = _render_photo_as_clip(clip, params, output_dir)
                 if photo_clip:
                     assembly_clips.append(photo_clip)
