@@ -105,10 +105,13 @@ def _build_generation_params(state, selected_clips, output_path):
         subtitle=state.title_suggestion_subtitle,
         clip_segments=state.clip_segments,
         clip_rotations=state.clip_rotations,
-        include_photos=state.include_photos and bool(state.photo_assets),
-        photo_assets=_filter_selected_photos(state),
+        # WHY: Photos are already in selected_clips as IMAGE-type assets
+        # from the unified selection pool. Setting include_photos=False
+        # prevents _add_photos_if_enabled from re-adding them.
+        include_photos=False,
+        photo_assets=None,
         target_duration_seconds=state.target_duration * 60,
-        selected_photo_ids=state.selected_photo_ids if state.selected_photo_ids else None,
+        selected_photo_ids=None,
         # Music and upload handled separately by UI (AI gen, 4-stem ducking, NiceGUI progress)
         music_path=None,
         upload_enabled=False,
