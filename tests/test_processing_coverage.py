@@ -1443,6 +1443,12 @@ class TestGetGpuEncoderArgs:
 
 
 class TestCheckZscaleAvailable:
+    def setup_method(self):
+        # WHY: check_zscale_available caches its result — reset between tests
+        import immich_memories.processing.hdr_utilities as hdr_mod
+
+        hdr_mod._zscale_cache = None
+
     def test_available(self):
         # WHY: subprocess.run checks ffmpeg filters
         with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
@@ -1457,3 +1463,105 @@ class TestCheckZscaleAvailable:
     def test_error_returns_false(self):
         with patch("immich_memories.processing.hdr_utilities.subprocess.run", side_effect=OSError):
             assert _check_zscale_available() is False
+
+
+class TestZscaleFallbackBehavior:
+    """When zscale is unavailable, photo rendering falls back to SDR."""
+
+    def setup_method(self):
+        import immich_memories.processing.hdr_utilities as hdr_mod
+
+        hdr_mod._zscale_cache = None
+
+    def test_photo_sdr_encoder_args_are_h264(self):
+        """SDR fallback should use H.264 (not HEVC HDR)."""
+        from immich_memories.photos.photo_pipeline import _get_sdr_encoder_args
+
+        args = _get_sdr_encoder_args()
+        assert "-c:v" in args
+        assert "libx264" in args
+        assert "yuv420p" in args
+
+    def test_photo_pipeline_uses_sdr_when_no_zscale(self):
+        """Without zscale, _stream_render_to_mp4 should use SDR filter (not crash)."""
+        from immich_memories.photos.photo_pipeline import _get_sdr_encoder_args
+
+        # WHY: mock check_zscale_available — we're testing the fallback decision
+        with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout="scale only")
+            from immich_memories.processing.hdr_utilities import check_zscale_available
+
+            assert check_zscale_available() is False
+
+        # Verify SDR args don't include HDR metadata
+        args = _get_sdr_encoder_args()
+        assert "bt2020" not in " ".join(args)
+        assert "arib-std-b67" not in " ".join(args)
+
+    def test_photo_stream_render_sdr_fallback_for_gain_map(self):
+        """HDR gain map photo should fall back to SDR pix_fmt when no zscale."""
+        import immich_memories.processing.hdr_utilities as hdr_mod
+
+        hdr_mod._zscale_cache = False  # Force no-zscale
+
+        from immich_memories.photos.photo_pipeline import _stream_render_to_mp4
+
+        # WHY: mock subprocess.Popen — we're testing filter selection, not FFmpeg
+        with (
+            patch("immich_memories.photos.photo_pipeline.subprocess.Popen") as mock_popen,
+            patch(
+                "immich_memories.photos.photo_pipeline.render_ken_burns_streaming", return_value=[]
+            ),
+        ):
+            mock_proc = MagicMock()
+            mock_proc.returncode = 0
+            mock_proc.stdin = MagicMock()
+            mock_popen.return_value = mock_proc
+
+            import numpy as np
+
+            from immich_memories.photos.renderer import KenBurnsParams
+
+            img = np.zeros((100, 100, 3), dtype=np.uint8)
+            params = KenBurnsParams(duration=1.0, fps=1)
+
+            _stream_render_to_mp4(img, params, Path("/tmp/test.mp4"), 100, 100, gain_map_hdr=True)
+
+            call_args = mock_popen.call_args[0][0]
+            # Should use rgb24 (SDR) not rgb48le (HDR) and format=yuv420p not yuv420p10le
+            assert "rgb24" in call_args
+            assert "format=yuv420p" in call_args
+
+    def test_photo_stream_render_sdr_fallback_for_sdr_source(self):
+        """SDR photo should use simple format filter when no zscale."""
+        import immich_memories.processing.hdr_utilities as hdr_mod
+
+        hdr_mod._zscale_cache = False
+
+        from immich_memories.photos.photo_pipeline import _stream_render_to_mp4
+
+        with (
+            patch("immich_memories.photos.photo_pipeline.subprocess.Popen") as mock_popen,
+            patch(
+                "immich_memories.photos.photo_pipeline.render_ken_burns_streaming", return_value=[]
+            ),
+        ):
+            mock_proc = MagicMock()
+            mock_proc.returncode = 0
+            mock_proc.stdin = MagicMock()
+            mock_popen.return_value = mock_proc
+
+            import numpy as np
+
+            from immich_memories.photos.renderer import KenBurnsParams
+
+            img = np.zeros((100, 100, 3), dtype=np.uint8)
+            params = KenBurnsParams(duration=1.0, fps=1)
+
+            _stream_render_to_mp4(img, params, Path("/tmp/test.mp4"), 100, 100, gain_map_hdr=False)
+
+            call_args = mock_popen.call_args[0][0]
+            assert "rgb24" in call_args
+            assert "format=yuv420p" in call_args
+            # Must NOT contain zscale
+            assert not any("zscale" in str(a) for a in call_args)
