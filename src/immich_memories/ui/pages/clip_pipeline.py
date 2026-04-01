@@ -183,10 +183,31 @@ def _run_pipeline_blocking(
                 analysis_config=app_config.analysis,
                 app_config=app_config,
             )
-            result = pipeline.run(
+
+            # Unified selection: analyze videos, score photos, merge, select
+            analyzed = pipeline.run_analysis(
                 clips=clips,
                 progress_callback=_make_progress_callback(progress_state),
             )
+
+            # Merge photos into the unified pool (same as CLI path)
+            all_candidates = analyzed
+            if state.include_photos and state.photo_assets:
+                from pathlib import Path
+
+                from immich_memories.cli._pipeline_runner import _merge_photos_into_pool
+
+                all_candidates = _merge_photos_into_pool(
+                    analyzed,
+                    photo_assets=state.photo_assets,
+                    include_photos=True,
+                    config=app_config,
+                    client=client,
+                    work_dir=Path(app_config.cache.cache_path) / "photo_scoring",
+                )
+
+            result = pipeline.run_selection(all_candidates)
+
             state.pipeline_result = {
                 "selected_clips": result.selected_clips,
                 "clip_segments": result.clip_segments,
@@ -196,42 +217,16 @@ def _run_pipeline_blocking(
             state.selected_clip_ids = {c.asset.id for c in result.selected_clips}
             state.clip_segments = result.clip_segments
 
-            # Score photos using unified budget (same logic as CLI)
+            # Photos are now in selected_clips as IMAGE-type assets
+            # Tell Step 4 not to re-add them via the old path
             if state.include_photos and state.photo_assets:
-                from pathlib import Path
+                from immich_memories.api.models import AssetType
 
-                from immich_memories.analysis.unified_budget import BudgetCandidate
-                from immich_memories.photos.photo_pipeline import score_and_select_photos
-
-                video_candidates = [
-                    BudgetCandidate(
-                        asset_id=c.asset.id,
-                        duration=c.duration_seconds,
-                        score=0.5,
-                        candidate_type="video",
-                        date=c.asset.file_created_at,
-                        is_favorite=c.asset.is_favorite,
-                    )
-                    for c in result.selected_clips
-                ]
-
-                photo_work_dir = Path(app_config.cache.cache_path) / "photo_scoring"
-                photo_work_dir.mkdir(parents=True, exist_ok=True)
-
-                photo_result = score_and_select_photos(
-                    photo_assets=state.photo_assets,
-                    video_candidates=video_candidates,
-                    config=app_config,
-                    target_duration=state.target_duration * 60,
-                    work_dir=photo_work_dir,
-                    download_fn=client.download_asset,
-                    thumbnail_fn=client.get_asset_thumbnail,
-                    memory_type=state.memory_type,
-                )
-
-                state.scored_photos = photo_result.scored_photos
-                state.selected_photo_ids = set(photo_result.selection.selected_photo_ids)
-                state.photo_budget_result = photo_result.selection
+                state.selected_photo_ids = {
+                    c.asset.id for c in result.selected_clips if c.asset.type == AssetType.IMAGE
+                }
+                state.scored_photos = []
+                state.photo_budget_result = None
 
             state.pipeline_running = False
             progress_state["done"] = True

@@ -243,9 +243,11 @@ class TestAppStatePhotoFields:
 
 
 class TestStep4PassesPreSelectedPhotos:
-    """Step 4 passes selected_photo_ids from state to GenerationParams."""
+    """Step 4 disables old photo path — photos are in selected_clips via unified pool."""
 
-    def test_build_generation_params_includes_selected_photo_ids(self):
+    def test_build_generation_params_disables_photo_path(self):
+        """Photos are in selected_clips as IMAGE assets. The old _add_photos_if_enabled
+        path must be disabled to avoid double-adding them."""
         state = MagicMock()
         state.generation_options = {}
         state.selected_person = None
@@ -272,35 +274,9 @@ class TestStep4PassesPreSelectedPhotos:
 
             params = _build_generation_params(state, [], MagicMock())
 
-        assert params.selected_photo_ids == {"p1"}
-
-    def test_build_generation_params_none_when_empty_selection(self):
-        state = MagicMock()
-        state.generation_options = {}
-        state.selected_person = None
-        state.date_range = None
-        state.include_photos = True
-        state.photo_assets = [_make_asset("p1")]
-        state.photo_duration = 4.0
-        state.config = MagicMock()
-        state.config.photos.duration = 4.0
-        state.immich_url = "http://localhost:2283"
-        state.immich_api_key = "test-key"
-        state.demo_mode = False
-        state.memory_type = None
-        state.memory_preset_params = {}
-        state.title_suggestion_title = None
-        state.title_suggestion_subtitle = None
-        state.clip_segments = {}
-        state.clip_rotations = {}
-        state.target_duration = 10
-        state.selected_photo_ids = set()
-
-        with patch("immich_memories.api.immich.SyncImmichClient"):
-            from immich_memories.ui.pages._step4_generate import _build_generation_params
-
-            params = _build_generation_params(state, [], MagicMock())
-
+        # Unified pool: photos already in selected_clips, old path disabled
+        assert params.include_photos is False
+        assert params.photo_assets is None
         assert params.selected_photo_ids is None
 
 
