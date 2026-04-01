@@ -302,7 +302,6 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         _t = _time.monotonic()
         pp.report("photos", 0.0, "Selecting and rendering photos...")
         assembly_clips = _add_photos_if_enabled(assembly_clips, params, run_output_dir)
-        assembly_clips = _interleave_clip_types(assembly_clips)
         _phase_times["photos"] = _time.monotonic() - _t
         pp.report("photos", 1.0, "Photos ready")
 
