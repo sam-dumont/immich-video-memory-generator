@@ -537,12 +537,18 @@ class PhotoAnimator:
 
         # Gain-mapped source is linear light — add zscale PQ conversion
         if gain_map_hdr:
-            vf += (
-                ",zscale=transfer=smpte2084:transferin=linear"
-                ":primaries=bt2020:primariesin=bt709"
-                ":matrix=bt2020nc:matrixin=bt709"
-                ",format=yuv420p10le"
-            )
+            from immich_memories.processing.hdr_utilities import check_zscale_available
+
+            if check_zscale_available():
+                vf += (
+                    ",zscale=transfer=smpte2084:transferin=linear"
+                    ":primaries=bt2020:primariesin=bt709"
+                    ":matrix=bt2020nc:matrixin=bt709"
+                    ",format=yuv420p10le"
+                )
+            else:
+                logger.warning("zscale not available — HDR gain map photo rendered as SDR")
+                vf += ",format=yuv420p"
 
         return self._build_vf_command(source_path, output_path, duration, encoder_args, vf)
 

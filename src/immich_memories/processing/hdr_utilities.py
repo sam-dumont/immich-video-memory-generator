@@ -175,17 +175,28 @@ def _get_colorspace_filter(hdr_type: str) -> str:
     return ",setparams=colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67"
 
 
-def _check_zscale_available() -> bool:
-    """Return True if FFmpeg has the zscale filter available."""
+_zscale_cache: bool | None = None
+
+
+def check_zscale_available() -> bool:
+    """Return True if FFmpeg has the zscale filter available. Result is cached."""
+    global _zscale_cache  # noqa: PLW0603
+    if _zscale_cache is not None:
+        return _zscale_cache
     try:
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-filters"],
             capture_output=True,
             text=True,
         )
-        return "zscale" in result.stdout
+        _zscale_cache = "zscale" in result.stdout
     except Exception:
-        return False
+        _zscale_cache = False
+    return _zscale_cache
+
+
+# Keep private alias for backward compat within this module
+_check_zscale_available = check_zscale_available
 
 
 def _get_sdr_to_hdr_filter(

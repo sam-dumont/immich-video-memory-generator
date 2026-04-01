@@ -465,29 +465,42 @@ def _stream_render_to_mp4(
 
     Streams one frame at a time — O(1) memory.
     """
-    encoder_args = _get_photo_encoder_args()
+    from immich_memories.processing.hdr_utilities import check_zscale_available
+
+    has_zscale = check_zscale_available()
+    encoder_args = _get_photo_encoder_args() if has_zscale else _get_sdr_encoder_args()
 
     if gain_map_hdr:
-        # Gain-mapped source: 16-bit linear light → HLG
-        # npl must match the peak baked into the uint16 normalization
         pix_fmt = "rgb48le"
-        vf = (
-            f"zscale=t=arib-std-b67:tin=linear"
-            f":p=bt2020:pin=bt709"
-            f":m=bt2020nc:min=bt709"
-            f":npl={peak_nits}"
-            f",format=yuv420p10le"
-        )
+        if has_zscale:
+            vf = (
+                f"zscale=t=arib-std-b67:tin=linear"
+                f":p=bt2020:pin=bt709"
+                f":m=bt2020nc:min=bt709"
+                f":npl={peak_nits}"
+                f",format=yuv420p10le"
+            )
+        else:
+            # WHY: Without zscale, HDR gain map data can't be properly
+            # converted. Fall back to SDR: drop to 8-bit, skip HDR metadata.
+            logger.warning("zscale not available — rendering photo as SDR (HDR gain map ignored)")
+            pix_fmt = "rgb24"
+            vf = "format=yuv420p"
     else:
-        # SDR source: 8-bit sRGB → HLG
         pix_fmt = "rgb24"
-        vf = (
-            "zscale=t=arib-std-b67:tin=iec61966-2-1"
-            ":p=bt2020:pin=bt709"
-            ":m=bt2020nc:min=bt709"
-            ":npl=203"
-            ",format=yuv420p10le"
-        )
+        if has_zscale:
+            vf = (
+                "zscale=t=arib-std-b67:tin=iec61966-2-1"
+                ":p=bt2020:pin=bt709"
+                ":m=bt2020nc:min=bt709"
+                ":npl=203"
+                ",format=yuv420p10le"
+            )
+        else:
+            # WHY: Without zscale, render as plain SDR. Colors are correct
+            # but no HDR metadata — the photo won't match HDR video clips.
+            logger.warning("zscale not available — rendering photo as SDR")
+            vf = "format=yuv420p"
 
     proc = subprocess.Popen(
         [
@@ -525,8 +538,9 @@ def _stream_render_to_mp4(
     )
 
     assert proc.stdin is not None
+    use_16bit = pix_fmt == "rgb48le"
     for frame in render_ken_burns_streaming(img, target_w, target_h, params):
-        if gain_map_hdr:
+        if use_16bit:
             frame_bytes = (np.clip(frame * 65535, 0, 65535).astype(np.uint16)).tobytes()
         else:
             frame_bytes = (np.clip(frame * 255, 0, 255).astype(np.uint8)).tobytes()
@@ -593,3 +607,8 @@ def _get_photo_encoder_args() -> list[str]:
         "-x265-params",
         "hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
     ]
+
+
+def _get_sdr_encoder_args() -> list[str]:
+    """SDR encoder args for when zscale is unavailable."""
+    return ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p"]
