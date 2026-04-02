@@ -351,9 +351,14 @@ def _emit_body_frames(
     """
     from immich_memories.processing.frame_preview import _maybe_emit_preview
 
-    for _ in range(max(count, 0)):
+    for emitted in range(max(count, 0)):
         frame = next(active_iter, None)
         if frame is None:
+            if emitted < count:
+                logger.warning(
+                    f"Frame underrun: expected {count} frames, got {emitted} "
+                    f"(missing {count - emitted} frames = {(count - emitted) / max(total_frames, 1) * 100:.1f}%)"
+                )
             break
         encoder.write_frame(frame)
         frames_written += 1
