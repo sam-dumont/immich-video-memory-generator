@@ -52,7 +52,14 @@ def _build_audio_filter_graph(
     for i, transition in enumerate(transitions):
         next_label = f"a{i + 1}"
         out_label = f"mix{i}" if i < len(transitions) - 1 else "aout"
-        if transition == "fade":
+
+        # WHY: acrossfade from silence (title/divider) into clip audio blends
+        # 0.5s of silence into the clip's start, making audio begin late.
+        # Use concat (hard join) for title→clip so audio starts immediately.
+        clip_before_is_title = getattr(clips[i], "is_title_screen", False)
+        use_concat = transition != "fade" or clip_before_is_title
+
+        if not use_concat:
             filter_parts.append(
                 f"[{current_label}][{next_label}]"
                 f"acrossfade=d={fade_duration}:c1=tri:c2=tri[{out_label}]"
