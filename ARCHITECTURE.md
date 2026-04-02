@@ -279,8 +279,11 @@ src/immich_memories/
 ├── config_loader.py            # Config loading logic
 ├── config_models.py            # Config data models
 ├── config_models_extra.py      # Additional config models
+├── generate_clips.py           # Clip extraction, probing, cleanup
 ├── generate_music.py           # Music resolution, AI generation, audio mixing
+├── generate_photos.py          # Photo rendering, budget allocation, clip merging
 ├── generate_privacy.py         # GPS anonymization, fake names/cities, trip titles
+├── generate_settings.py        # Assembly/title settings, assembler creation, music, upload
 ├── timeperiod.py               # Date range utilities
 ├── security.py                 # Input sanitization
 ├── i18n.py                     # Internationalization

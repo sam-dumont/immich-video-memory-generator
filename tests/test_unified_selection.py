@@ -511,7 +511,7 @@ class TestExtractClipsHandlesImages:
         mock_video_cache = MagicMock()
 
         with patch(
-            "immich_memories.generate._render_photo_as_clip",
+            "immich_memories.generate_photos._render_photo_as_clip",
             return_value=mock_assembly_clip,
         ):
             result = _extract_clips(params, mock_video_cache, tmp_path)
