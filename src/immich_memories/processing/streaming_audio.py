@@ -13,16 +13,14 @@ def _build_audio_filter_graph(
     clips: list,
     transitions: list[str],
     fade_duration: float,
+    fps: int,
     normalize_audio: bool = True,
     privacy_mode: bool = False,
 ) -> str:
     """Build FFmpeg filter_complex string for audio crossfade/concat chain.
 
-    Matches filter_builder.build_audio_prep_filters():
-    - loudnorm per clip (EBU R128, I=-16, TP=-1.5, LRA=11)
-    - Privacy muffle (lowpass=f=200 — makes speech unintelligible)
-    - Title screens get null audio source
-    - aresample=async=1 + apad for duration safety
+    Uses frame-aligned durations (int(dur * fps) / fps) so audio timing
+    matches the video frame count exactly — prevents cumulative drift.
     """
     audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
     loudnorm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if normalize_audio else ""
@@ -35,17 +33,28 @@ def _build_audio_filter_graph(
     for i, clip in enumerate(clips):
         is_title = getattr(clip, "is_title_screen", False)
         clip_loudnorm = loudnorm if not is_title else ""
+        # WHY: The video consumes int(clip.duration * fps) frames per clip.
+        # Audio must match this exact frame-aligned duration, not clip.duration.
+        # Without this, int() truncation loses ~0.017s/clip → ~1.2s drift at 70 clips.
+        frame_dur = int(clip.duration * fps) / fps
 
         if is_title:
-            # Title screens have no audio — generate silence
             filter_parts.append(
-                f"anullsrc=r=48000:cl=stereo,atrim=0:{clip.duration},{audio_format}[a{i}]"
+                f"anullsrc=r=48000:cl=stereo,atrim=0:{frame_dur},{audio_format}[a{i}]"
             )
         else:
+            # WHY: apad/atrim sandwiches loudnorm on BOTH sides.
+            # Before: loudnorm one-pass mode loses ~35ms/clip at boundaries
+            #   (cumulative: ~2.5s over 70 clips if only trimmed before).
+            # After: loudnorm's limiter release adds a small silence tail
+            #   (~25ms/clip, only visible with concat transitions, not acrossfade).
+            # Double atrim guarantees exact frame-aligned duration regardless.
             filter_parts.append(
                 f"[{i}:a]{audio_format},aresample=async=1,"
-                f"asetpts=PTS-STARTPTS{clip_loudnorm}{privacy_muffle},"
-                f"apad=whole_dur={clip.duration},atrim=0:{clip.duration}[a{i}]"
+                f"asetpts=PTS-STARTPTS,"
+                f"apad=whole_dur={frame_dur},atrim=0:{frame_dur}"
+                f"{clip_loudnorm}{privacy_muffle},"
+                f"atrim=0:{frame_dur}[a{i}]"
             )
 
     current_label = "a0"
@@ -110,8 +119,11 @@ def extract_and_mix_audio(
     transitions: list[str],
     output_path: Path,
     fade_duration: float = 0.5,
+    fps: int = 30,
     normalize_audio: bool = True,
     privacy_mode: bool = False,
+    pre_extracted_audio: list[Path] | None = None,
+    video_duration: float | None = None,
 ) -> None:
     """Extract audio from clips and mix with crossfade transitions.
 
@@ -122,6 +134,10 @@ def extract_and_mix_audio(
 
     When privacy_mode is on, audio is pre-processed with segment-wise waveform
     reversal (makes speech unintelligible) before the FFmpeg lowpass mumble filter.
+
+    When pre_extracted_audio is provided, uses those WAV files instead of
+    reading audio from the original clip files — avoids a redundant decode pass
+    and guarantees audio/video timing alignment.
     """
     audio_bitrate = _probe_max_audio_bitrate(clips)
     logger.info(f"Audio output bitrate: {audio_bitrate} (matched to source max)")
@@ -134,7 +150,7 @@ def extract_and_mix_audio(
         reversed_paths = _preprocess_privacy_audio(clips, output_path.parent)
 
     if len(clips) == 1:
-        audio_src = str(reversed_paths[0]) if reversed_paths else str(clips[0].path)
+        audio_src = _resolve_single_clip_audio(clips[0], reversed_paths, pre_extracted_audio)
         result = subprocess.run(  # noqa: S603, S607
             [
                 "ffmpeg",
@@ -157,13 +173,23 @@ def extract_and_mix_audio(
             raise RuntimeError(f"Audio extraction failed: {result.stderr[-500:]}")
         return
 
-    # WHY: Title screens have no audio file — we generate silence via lavfi.
-    # Use -f lavfi for title screen inputs, -i for real clips.
+    # WHY: Build FFmpeg inputs from the best available audio source per clip.
+    # Pre-extracted WAVs (from video decode pass) have exact frame-level timing;
+    # reversed paths are privacy-processed; original clip paths are the fallback.
     inputs: list[str] = []
     rev_idx = 0
-    for clip in clips:
+    for i, clip in enumerate(clips):
         is_title = getattr(clip, "is_title_screen", False)
-        if is_title:
+        has_pre = (
+            pre_extracted_audio
+            and not privacy_mode
+            and i < len(pre_extracted_audio)
+            and pre_extracted_audio[i].name
+            and pre_extracted_audio[i].exists()
+        )
+        if has_pre and pre_extracted_audio:
+            inputs.extend(["-i", str(pre_extracted_audio[i])])
+        elif is_title:
             inputs.extend(["-f", "lavfi", "-i", f"anullsrc=r=48000:cl=stereo:d={clip.duration}"])
         elif reversed_paths:
             inputs.extend(["-i", str(reversed_paths[rev_idx])])
@@ -172,8 +198,23 @@ def extract_and_mix_audio(
             inputs.extend(["-i", str(clip.path)])
 
     filter_complex = _build_audio_filter_graph(
-        clips, transitions, fade_duration, normalize_audio, privacy_mode
+        clips,
+        transitions,
+        fade_duration,
+        fps,
+        normalize_audio,
+        privacy_mode,
     )
+
+    # WHY: Clamp final audio to video duration INSIDE the filter graph,
+    # so the AAC encode produces the exact right length. This avoids
+    # re-encoding in the mux step (double AAC encode adds ~200ms of
+    # priming delay that varies by hardware encoder).
+    if video_duration:
+        filter_complex += f";[aout]apad=whole_dur={video_duration},atrim=0:{video_duration}[afinal]"
+        map_label = "[afinal]"
+    else:
+        map_label = "[aout]"
 
     cmd = [
         "ffmpeg",
@@ -182,7 +223,7 @@ def extract_and_mix_audio(
         "-filter_complex",
         filter_complex,
         "-map",
-        "[aout]",
+        map_label,
         "-c:a",
         "aac",
         "-b:a",
@@ -193,6 +234,18 @@ def extract_and_mix_audio(
     _cleanup_temp_files(reversed_paths)
     if result.returncode != 0:
         raise RuntimeError(f"Audio mixing failed: {result.stderr[-500:]}")
+
+
+def _resolve_single_clip_audio(
+    clip: object, reversed_paths: list[Path], pre_extracted: list[Path] | None
+) -> str:
+    """Pick the audio source path for a single-clip assembly."""
+    is_title = getattr(clip, "is_title_screen", False)
+    if reversed_paths:
+        return str(reversed_paths[0])
+    if pre_extracted and not is_title and pre_extracted[0].name:
+        return str(pre_extracted[0])
+    return str(getattr(clip, "path", ""))
 
 
 def _preprocess_privacy_audio(clips: list, work_dir: Path) -> list[Path]:
@@ -237,13 +290,11 @@ def mux_video_audio(
 ) -> None:
     """Mux video and audio streams into final output.
 
-    Pads or trims audio to match video duration to prevent desync from
-    frame count rounding differences between video and audio passes.
+    Uses -c:a copy to avoid double AAC encoding. Re-encoding audio in the
+    mux step adds ~200ms of priming sample drift (encoder-dependent), which
+    would require a hardware-specific offset to compensate. Stream copy
+    preserves the exact timing from the filter graph.
     """
-    video_dur = _probe_duration(video_path)
-    # WHY: Audio and video passes produce slightly different durations due to
-    # frame count rounding. Use apad+atrim to force audio to exact video length.
-    # apad extends if audio is shorter, atrim trims if longer.
     cmd = [
         "ffmpeg",
         "-y",
@@ -253,12 +304,8 @@ def mux_video_audio(
         str(audio_path),
         "-c:v",
         "copy",
-        "-af",
-        f"apad=whole_dur={video_dur},atrim=0:{video_dur}",
         "-c:a",
-        "aac",
-        "-b:a",
-        "320k",
+        "copy",
         "-movflags",
         "+faststart",
         str(output_path),

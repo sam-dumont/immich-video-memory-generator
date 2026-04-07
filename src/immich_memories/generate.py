@@ -6,30 +6,45 @@ All UI interaction is replaced by a progress callback.
 
 from __future__ import annotations
 
-import contextlib
 import io
 import logging
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from immich_memories.generate_music import apply_music_file, resolve_music_file
+from immich_memories.generate_clips import (
+    MIN_CLIP_DURATION,
+    _cleanup_temp_clips,
+    _cleanup_temp_dirs,
+    _extract_clips,
+    _probe_file_duration,
+    assets_to_clips,
+)
+from immich_memories.generate_photos import (
+    _add_photos_if_enabled,
+    _apply_unified_budget,
+    _build_title_settings_for_overhead,
+    _detect_photo_resolution,
+    _interleave_clip_types,
+    _merge_by_date,
+    _parse_clip_date,
+    _render_photo_as_clip,
+    _render_photos,
+)
 from immich_memories.generate_privacy import (
     anonymize_clips_for_privacy,
     anonymize_name,
     anonymize_preset_params,
-    clip_location_name,
-    extract_trip_locations,
-    generate_trip_title_text,
 )
-from immich_memories.processing.assembly_config import (
-    AssemblyClip,
-    AssemblySettings,
-    TitleScreenSettings,
-    TransitionType,
+from immich_memories.generate_settings import (
+    _build_assembly_settings,
+    _build_title_settings,
+    _create_assembler,
+    _run_music_phase,
+    _upload_to_immich,
 )
 from immich_memories.processing.clip_validation import validate_clips
 from immich_memories.security import sanitize_error_message
@@ -37,14 +52,38 @@ from immich_memories.security import sanitize_error_message
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import VideoClipInfo
-    from immich_memories.cache.video_cache import VideoDownloadCache
     from immich_memories.config_loader import Config
-    from immich_memories.tracking import RunTracker
 
 logger = logging.getLogger(__name__)
 
-# Minimum clip duration filter (matches UI pipeline)
-MIN_CLIP_DURATION = 1.5
+# Re-export all extracted symbols so existing callers continue to work
+__all__ = [
+    "GenerationParams",
+    "GenerationError",
+    "PipelineLock",
+    "generate_memory",
+    "check_disk_space",
+    "assets_to_clips",
+    "MIN_CLIP_DURATION",
+    "_add_photos_if_enabled",
+    "_apply_unified_budget",
+    "_build_title_settings_for_overhead",
+    "_detect_photo_resolution",
+    "_interleave_clip_types",
+    "_merge_by_date",
+    "_parse_clip_date",
+    "_render_photo_as_clip",
+    "_render_photos",
+    "_probe_file_duration",
+    "_extract_clips",
+    "_cleanup_temp_clips",
+    "_cleanup_temp_dirs",
+    "_build_assembly_settings",
+    "_build_title_settings",
+    "_create_assembler",
+    "_run_music_phase",
+    "_upload_to_immich",
+]
 
 
 @dataclass
@@ -302,7 +341,6 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         _t = _time.monotonic()
         pp.report("photos", 0.0, "Selecting and rendering photos...")
         assembly_clips = _add_photos_if_enabled(assembly_clips, params, run_output_dir)
-        assembly_clips = _interleave_clip_types(assembly_clips)
         _phase_times["photos"] = _time.monotonic() - _t
         pp.report("photos", 1.0, "Photos ready")
 
@@ -397,578 +435,3 @@ def _total_clip_duration(params: GenerationParams) -> int:
         else:
             total += clip.duration_seconds or 5.0
     return int(total)
-
-
-def _add_photos_if_enabled(
-    assembly_clips: list[AssemblyClip],
-    params: GenerationParams,
-    run_output_dir: Path,
-) -> list[AssemblyClip]:
-    """Add photo clips to assembly if photo support is enabled."""
-    if not params.include_photos or not params.photo_assets:
-        return assembly_clips
-
-    # Pre-selected path: skip scoring, render only selected photos
-    if params.selected_photo_ids is not None:
-        from immich_memories.photos.photo_pipeline import render_photo_clips
-
-        selected_assets = [a for a in params.photo_assets if a.id in params.selected_photo_ids]
-        if not selected_assets:
-            return assembly_clips
-
-        photo_dir = run_output_dir / "photos"
-        photo_dir.mkdir(exist_ok=True)
-
-        download_fn = params.client.download_asset if params.client else None
-        thumbnail_fn = params.client.get_asset_thumbnail if params.client else None
-        if not download_fn:
-            logger.warning("No Immich client — cannot download photos")
-            return assembly_clips
-
-        target_w, target_h = _detect_photo_resolution(params)
-        photo_clips = render_photo_clips(
-            assets=selected_assets,
-            config=params.config.photos,
-            target_w=target_w,
-            target_h=target_h,
-            work_dir=photo_dir,
-            download_fn=download_fn,
-            video_clip_count=len(assembly_clips),
-            thumbnail_fn=thumbnail_fn,
-        )
-        return _merge_by_date(assembly_clips, photo_clips)
-
-    # Fallback: full scoring + budget at generation time (CLI path)
-    effective_duration = params.target_duration_seconds
-    if effective_duration is None:
-        effective_duration = sum(c.duration for c in assembly_clips) * 1.25
-
-    video_clips, photo_clips = _apply_unified_budget(
-        assembly_clips, params, run_output_dir, target_override=effective_duration
-    )
-
-    return _merge_by_date(video_clips, photo_clips)
-
-
-def _detect_photo_resolution(params: GenerationParams) -> tuple[int, int]:
-    """Detect the correct resolution for photo rendering.
-
-    WHY: config.output.resolution_tuple always returns landscape (1920x1080).
-    But if the majority of video clips are portrait, the assembly pipeline
-    will swap to portrait (1080x1920). Photos must match or they get
-    double-blur-backgrounded — once by the renderer, once by the assembler.
-    """
-    target_w, target_h = params.config.output.resolution_tuple
-    portrait_count = sum(1 for c in params.clips if c.height > c.width)
-    if portrait_count > len(params.clips) // 2 and target_w > target_h:
-        target_w, target_h = target_h, target_w
-        logger.info(f"Photos: detected portrait orientation, rendering to {target_w}x{target_h}")
-    return target_w, target_h
-
-
-def _render_photos(
-    params: GenerationParams, output_dir: Path, video_clip_count: int
-) -> list[AssemblyClip]:
-    """Render photo assets as animated video clips for assembly."""
-    from immich_memories.photos.photo_pipeline import render_photo_clips
-
-    photo_dir = output_dir / "photos"
-    photo_dir.mkdir(exist_ok=True)
-
-    target_w, target_h = _detect_photo_resolution(params)
-    download_fn = params.client.download_asset if params.client else None
-    thumbnail_fn = params.client.get_asset_thumbnail if params.client else None
-    if not download_fn:
-        logger.warning("No Immich client — cannot download photos")
-        return []
-
-    return render_photo_clips(
-        assets=params.photo_assets or [],
-        config=params.config.photos,
-        target_w=target_w,
-        target_h=target_h,
-        work_dir=photo_dir,
-        download_fn=download_fn,
-        video_clip_count=video_clip_count,
-        thumbnail_fn=thumbnail_fn,
-    )
-
-
-def _apply_unified_budget(
-    assembly_clips: list[AssemblyClip],
-    params: GenerationParams,
-    output_dir: Path,
-    target_override: float | None = None,
-) -> tuple[list[AssemblyClip], list[AssemblyClip]]:
-    """Apply unified budget: score photos, select within budget, render selected.
-
-    Returns (filtered_video_clips, rendered_photo_clips).
-    """
-    from immich_memories.analysis.unified_budget import BudgetCandidate
-    from immich_memories.photos.photo_pipeline import render_photo_clips, score_and_select_photos
-
-    target = target_override or params.target_duration_seconds
-    assert target is not None
-    photo_dir = output_dir / "photos"
-    photo_dir.mkdir(exist_ok=True)
-
-    download_fn = params.client.download_asset if params.client else None
-    thumbnail_fn = params.client.get_asset_thumbnail if params.client else None
-    if not download_fn:
-        logger.warning("No Immich client — cannot download photos")
-        return assembly_clips, []
-
-    # Build video candidates from assembly clips
-    video_candidates = [
-        BudgetCandidate(
-            asset_id=c.asset_id,
-            duration=c.duration,
-            score=0.5,  # Videos already selected by SmartPipeline — uniform base
-            candidate_type="video",
-            date=_parse_clip_date(c.date),
-            is_favorite=False,
-        )
-        for c in assembly_clips
-    ]
-
-    title_settings = _build_title_settings_for_overhead(params)
-    clip_dates = [c.date or "" for c in assembly_clips]
-
-    photo_result = score_and_select_photos(
-        photo_assets=params.photo_assets or [],
-        video_candidates=video_candidates,
-        config=params.config,
-        target_duration=target,
-        work_dir=photo_dir,
-        download_fn=download_fn,
-        thumbnail_fn=thumbnail_fn,
-        title_settings=title_settings,
-        clip_dates=clip_dates,
-        memory_type=params.memory_type,
-        transition_duration=params.transition_duration,
-    )
-
-    selection = photo_result.selection
-
-    logger.info(f"Unified budget: target={target:.0f}s, content={selection.content_duration:.1f}s")
-
-    # Filter video clips to kept set
-    filtered_videos = [c for c in assembly_clips if c.asset_id in selection.kept_video_ids]
-
-    # Render only selected photos
-    selected_photo_ids_set = set(selection.selected_photo_ids)
-    selected_assets = [
-        asset for asset, _ in photo_result.scored_photos if asset.id in selected_photo_ids_set
-    ]
-
-    target_w, target_h = _detect_photo_resolution(params)
-    photo_clips = render_photo_clips(
-        assets=selected_assets,
-        config=params.config.photos,
-        target_w=target_w,
-        target_h=target_h,
-        work_dir=photo_dir,
-        download_fn=download_fn,
-        video_clip_count=len(filtered_videos),
-        thumbnail_fn=thumbnail_fn,
-    )
-
-    logger.info(
-        f"Unified selection: {len(filtered_videos)} videos + "
-        f"{len(photo_clips)} photos = {selection.content_duration:.0f}s content"
-    )
-
-    return filtered_videos, photo_clips
-
-
-def _parse_clip_date(date_str: str | None) -> datetime:
-    """Parse a date string from AssemblyClip into datetime."""
-    from datetime import UTC
-
-    if not date_str:
-        return datetime(2000, 1, 1, tzinfo=UTC)
-    try:
-        return datetime.fromisoformat(date_str).replace(tzinfo=UTC)
-    except (ValueError, TypeError):
-        return datetime(2000, 1, 1, tzinfo=UTC)
-
-
-def _build_title_settings_for_overhead(params: GenerationParams):
-    """Build minimal TitleScreenSettings for overhead estimation."""
-    from immich_memories.processing.assembly_config import TitleScreenSettings
-
-    if not params.config.title_screens.enabled:
-        return None
-    return TitleScreenSettings(
-        enabled=True,
-        title_duration=params.config.title_screens.title_duration,
-        month_divider_duration=params.config.title_screens.month_divider_duration,
-        ending_duration=params.config.title_screens.ending_duration,
-        show_month_dividers=params.config.title_screens.show_month_dividers,
-        month_divider_threshold=params.config.title_screens.month_divider_threshold,
-    )
-
-
-def _merge_by_date(
-    video_clips: list[AssemblyClip], photo_clips: list[AssemblyClip]
-) -> list[AssemblyClip]:
-    """Interleave video and photo clips by date, videos first for ties."""
-    all_clips = video_clips + photo_clips
-    all_clips.sort(key=lambda c: c.date or "")
-    return all_clips
-
-
-def _interleave_clip_types(
-    clips: list[AssemblyClip],
-    max_consecutive: int = 2,
-) -> list[AssemblyClip]:
-    """Break up consecutive same-type clips by swapping with nearest different type.
-
-    Preserves approximate chronological order while ensuring no more than
-    max_consecutive clips of the same type (photo vs video) appear in a row.
-    Uses a forward pass for head/middle runs and a tail fix for end runs.
-    """
-    if len(clips) <= max_consecutive:
-        return clips
-
-    result = clips.copy()
-
-    # Forward pass: fix runs in the head and middle
-    for i in range(max_consecutive, len(result)):
-        current = result[i].is_photo
-        if all(result[i - k].is_photo == current for k in range(1, max_consecutive + 1)):
-            for j in range(i + 1, len(result)):
-                if result[j].is_photo != current:
-                    result[i], result[j] = result[j], result[i]
-                    break
-
-    # Tail fix: if the last N clips are all the same type and N > max,
-    # pull a different-type clip from earlier into the tail to break it
-    tail_type = result[-1].is_photo
-    tail_run = 0
-    for k in range(len(result) - 1, -1, -1):
-        if result[k].is_photo == tail_type:
-            tail_run += 1
-        else:
-            break
-
-    if tail_run > max_consecutive:
-        swap_from = len(result) - tail_run
-        for j in range(swap_from, -1, -1):
-            if result[j].is_photo != tail_type:
-                clip = result.pop(j)
-                insert_at = len(result) - max_consecutive
-                result.insert(insert_at, clip)
-                break
-
-    return result
-
-
-def _extract_clips(
-    params: GenerationParams,
-    video_cache: VideoDownloadCache,
-    output_dir: Path,
-) -> list[AssemblyClip]:
-    """Download videos and extract clip segments. Renders IMAGE clips as photo animations."""
-    from immich_memories.api.models import AssetType
-    from immich_memories.processing.clips import extract_clip
-
-    assembly_clips: list[AssemblyClip] = []
-    total = len(params.clips)
-
-    for i, clip in enumerate(params.clips):
-        progress = (i / total) * 0.7
-        clip_name = clip.asset.original_file_name or clip.asset.id[:8]
-        _report(params, "extract", progress, f"Downloading: {clip_name}")
-
-        try:
-            # IMAGE-type clips from the unified selection pool:
-            # - Live photos (has video component) → download video, extract segment
-            # - Static photos → render as Ken Burns animation
-            if clip.asset.type == AssetType.IMAGE and not clip.asset.live_photo_video_id:
-                photo_clip = _render_photo_as_clip(clip, params, output_dir)
-                if photo_clip:
-                    assembly_clips.append(photo_clip)
-                continue
-
-            from immich_memories.generate_downloads import download_clip
-
-            video_path = download_clip(params.client, video_cache, clip, output_dir)
-            if not video_path or not video_path.exists():
-                logger.warning(f"Failed to download {clip.asset.id}, skipping")
-                continue
-
-            start_time, end_time = params.clip_segments.get(
-                clip.asset.id, (0.0, clip.duration_seconds or 5.0)
-            )
-
-            _report(params, "extract", progress, f"Extracting segment: {clip_name}")
-            segment_path = extract_clip(
-                video_path, start_time=start_time, end_time=end_time, config=params.config
-            )
-
-            exif = clip.asset.exif_info
-            assembly_clips.append(
-                AssemblyClip(
-                    path=segment_path,
-                    duration=end_time - start_time,
-                    date=clip.asset.file_created_at.strftime("%Y-%m-%d"),
-                    asset_id=clip.asset.id,
-                    rotation_override=params.clip_rotations.get(clip.asset.id),
-                    llm_emotion=clip.llm_emotion,
-                    latitude=exif.latitude if exif else None,
-                    longitude=exif.longitude if exif else None,
-                    location_name=clip_location_name(exif),
-                )
-            )
-        except Exception as e:
-            logger.warning(f"Failed to process {clip.asset.id}: {e}")
-            continue
-
-    return assembly_clips
-
-
-def _render_photo_as_clip(
-    clip: VideoClipInfo,
-    params: GenerationParams,
-    output_dir: Path,
-) -> AssemblyClip | None:
-    """Download and render a photo as an animated video clip for assembly.
-
-    Uses the same rendering pipeline as photo_pipeline._render_single_photo:
-    downloads from Immich, prepares the source (HEIC decode, gain map),
-    then streams Ken Burns frames to FFmpeg.
-    """
-    from immich_memories.photos.photo_pipeline import _render_single_photo
-
-    if not params.client:
-        logger.warning("No Immich client — cannot render photo clip")
-        return None
-
-    photo_dir = output_dir / "photos"
-    photo_dir.mkdir(exist_ok=True)
-
-    target_w, target_h = _detect_photo_resolution(params)
-    photo_config = params.config.photos
-
-    result = _render_single_photo(
-        asset=clip.asset,
-        config=photo_config,
-        target_w=target_w,
-        target_h=target_h,
-        work_dir=photo_dir,
-        download_fn=params.client.download_asset,
-    )
-    if result is None:
-        logger.warning(f"Failed to render photo {clip.asset.id}")
-    return result
-
-
-def _build_assembly_settings(
-    params: GenerationParams,
-    assembly_clips: list[AssemblyClip],
-) -> AssemblySettings:
-    """Build AssemblySettings from GenerationParams."""
-    config = params.config
-
-    transition_type = {
-        "smart": TransitionType.SMART,
-        "crossfade": TransitionType.CROSSFADE,
-        "cut": TransitionType.CUT,
-        "none": TransitionType.NONE,
-    }.get(params.transition.lower(), TransitionType.CROSSFADE)
-
-    resolution_map = {"4k": (3840, 2160), "1080p": (1920, 1080), "720p": (1280, 720)}
-    res = params.output_resolution
-    if res is not None and res.lower() == "auto":
-        # Explicit "auto": detect from source clips
-        auto_resolution = True
-        target_resolution = None
-    elif res is not None:
-        # Explicit resolution (4k/1080p/720p)
-        auto_resolution = False
-        target_resolution = resolution_map.get(res.lower())
-    else:
-        # No resolution specified: use config default
-        auto_resolution = False
-        target_resolution = config.output.resolution_tuple
-
-    title_screen_settings = _build_title_settings(params, config, assembly_clips)
-
-    # Scale mode: CLI/param > config > default
-    effective_scale_mode = params.scale_mode or config.defaults.scale_mode
-
-    # Output format → codec mapping
-    _format_to_codec = {"mp4": "h264", "prores": "prores"}
-    output_codec: str = (
-        _format_to_codec.get(params.output_format.lower(), config.output.codec)
-        if params.output_format
-        else config.output.codec
-    )
-
-    return AssemblySettings(
-        transition=transition_type,
-        transition_duration=params.transition_duration,
-        output_crf=params.output_crf or config.output.effective_crf,
-        auto_resolution=auto_resolution,
-        target_resolution=target_resolution,
-        title_screens=title_screen_settings,
-        scale_mode=effective_scale_mode,
-        output_codec=output_codec,
-        add_date_overlay=params.add_date_overlay,
-        debug_preserve_intermediates=params.debug_preserve_intermediates,
-        privacy_mode=params.privacy_mode,
-    )
-
-
-def _build_title_settings(
-    params: GenerationParams,
-    config: Config,
-    assembly_clips: list[AssemblyClip],
-) -> TitleScreenSettings | None:
-    """Build TitleScreenSettings if title screens are enabled in config."""
-    if not config.title_screens.enabled:
-        return None
-
-    from immich_memories.filename_builder import build_title_person_name, get_divider_mode
-
-    title_person_name = build_title_person_name(
-        memory_type=params.memory_type,
-        preset_params=params.memory_preset_params,
-        person_name=params.person_name,
-        use_first_name_only=config.title_screens.use_first_name_only,
-    )
-
-    divider_mode = get_divider_mode(
-        memory_type=params.memory_type,
-        date_start=params.date_start,
-        date_end=params.date_end,
-    )
-    if not config.title_screens.show_month_dividers:
-        divider_mode = "none"
-
-    # Trip-specific title settings
-    trip_locations = None
-    trip_title_text = None
-    if params.memory_type == "trip":
-        trip_locations = extract_trip_locations(assembly_clips)
-        trip_title_text = generate_trip_title_text(params.memory_preset_params)
-
-    settings = TitleScreenSettings(
-        enabled=True,
-        person_name=title_person_name,
-        start_date=params.date_start,
-        end_date=params.date_end,
-        locale=config.title_screens.locale,
-        style_mode=config.title_screens.style_mode,
-        title_duration=config.title_screens.title_duration,
-        month_divider_duration=config.title_screens.month_divider_duration,
-        ending_duration=config.title_screens.ending_duration,
-        show_month_dividers=divider_mode == "month",
-        divider_mode=divider_mode,
-        month_divider_threshold=config.title_screens.month_divider_threshold,
-        use_first_name_only=config.title_screens.use_first_name_only,
-        memory_type=params.memory_type,
-        trip_locations=trip_locations,
-        trip_title_text=trip_title_text,
-        home_lat=params.memory_preset_params.get("home_lat"),
-        home_lon=params.memory_preset_params.get("home_lon"),
-    )
-
-    # Apply LLM-generated title overrides
-    if params.title:
-        settings.title_override = params.title
-        settings.subtitle_override = params.subtitle
-
-    return settings
-
-
-def _create_assembler(settings: AssemblySettings, run_id: str, config: Config):
-    """Create a VideoAssembler with the given settings."""
-    from immich_memories.processing.video_assembler import VideoAssembler
-
-    return VideoAssembler(
-        settings,
-        run_id=run_id,
-        output_crf=config.output.effective_crf,
-        default_transition_duration=config.defaults.transition_duration,
-        default_resolution=config.output.resolution_tuple,
-        db_path=Path(config.cache.database).expanduser(),
-    )
-
-
-def _run_music_phase(
-    params: GenerationParams,
-    assembly_clips: list[AssemblyClip],
-    result_path: Path,
-    run_output_dir: Path,
-    run_tracker: RunTracker,
-) -> None:
-    """Resolve and apply music to the assembled video."""
-
-    def _report_fn(phase: str, progress: float, msg: str) -> None:
-        _report(params, phase, progress, msg)
-
-    music_file = resolve_music_file(
-        config=params.config,
-        music_path=params.music_path,
-        no_music=params.no_music,
-        assembly_clips=assembly_clips,
-        run_output_dir=run_output_dir,
-        memory_type=params.memory_type,
-        report_fn=_report_fn,
-    )
-    if not music_file:
-        return
-    _report(params, "music", 0.9, "Mixing music...")
-    run_tracker.start_phase("music", 1)
-    apply_music_file(result_path, music_file, params.music_volume)
-    run_tracker.complete_phase(items_processed=1)
-
-
-def _upload_to_immich(
-    client: SyncImmichClient,
-    video_path: Path,
-    album_name: str | None,
-) -> dict:
-    result = client.upload_memory(video_path=video_path, album_name=album_name)
-    logger.info(f"Uploaded to Immich: asset={result.get('asset_id')}, album={album_name}")
-    return result
-
-
-def _cleanup_temp_clips(assembly_clips: list[AssemblyClip]) -> None:
-    for clip in assembly_clips:
-        with contextlib.suppress(Exception):
-            if clip.path.exists() and "tmp" in str(clip.path).lower():
-                clip.path.unlink()
-
-
-def _cleanup_temp_dirs(output_dir: Path) -> None:
-    """Remove intermediate directories created during generation."""
-    import shutil
-
-    for subdir in (".title_screens", ".intermediates", ".live_merges", ".assembly_temps", "photos"):
-        path = output_dir / subdir
-        if path.exists():
-            with contextlib.suppress(Exception):
-                shutil.rmtree(path)
-
-
-def assets_to_clips(assets: list) -> list:
-    """Convert raw Asset objects to VideoClipInfo, filtering short clips."""
-    from immich_memories.api.models import VideoClipInfo
-
-    clips = []
-    for asset in assets:
-        duration = asset.duration_seconds or 0
-        if duration < MIN_CLIP_DURATION:
-            continue
-        clips.append(
-            VideoClipInfo(
-                asset=asset,
-                duration_seconds=duration,
-                width=asset.width,
-                height=asset.height,
-            )
-        )
-    return clips

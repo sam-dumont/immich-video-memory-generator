@@ -305,6 +305,7 @@ module = [
     # Optional audio dependencies
     "soundfile.*",
     "acestep.*",
+    "loguru.*",
     # SDF font rendering
     "freetype.*",
     # PyAV (optional video processing)

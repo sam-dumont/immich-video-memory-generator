@@ -208,7 +208,7 @@ class TestPreSelectionShortCircuit:
 
         # WHY: mock _apply_unified_budget — testing routing logic, not budget math
         with patch(
-            "immich_memories.generate._apply_unified_budget",
+            "immich_memories.generate_photos._apply_unified_budget",
             return_value=([video_clip], []),
         ) as mock_budget:
             _add_photos_if_enabled([video_clip], params, MagicMock())
