@@ -320,9 +320,14 @@ class StreamingEncoder:
         assert self._proc.stdin is not None  # noqa: S101
         with contextlib.suppress(BrokenPipeError):
             self._proc.stdin.close()
+        # WHY: Popen.wait() with stderr=PIPE deadlocks when FFmpeg fills the
+        # 64KB OS pipe buffer with progress/warnings. Drain stderr first —
+        # read() blocks until FFmpeg exits and closes its end of the pipe,
+        # which is fine since stdin is already closed (FFmpeg will finish).
+        stderr_bytes = self._proc.stderr.read() if self._proc.stderr else b""
         self._proc.wait(timeout=3600)
         if self._proc.returncode != 0:
-            stderr = self._proc.stderr.read().decode(errors="replace") if self._proc.stderr else ""
+            stderr = stderr_bytes.decode(errors="replace")
             raise RuntimeError(
                 f"Streaming encode failed (exit {self._proc.returncode}): {stderr[-500:]}"
             )
@@ -711,13 +716,6 @@ def _encode_clip_sequence(
             active_iter = None
             skip_frames = 0
 
-    # WHY: The last FrameDecoder's FFmpeg process inherits the encoder's
-    # stdin pipe FD. If not closed before encoder.finish(), the pipe never
-    # sees EOF and the encoder hangs waiting for input. Force-close the
-    # last iterator to trigger FrameDecoder.__iter__'s finally block
-    # (proc.terminate + wait), ensuring the FD is released.
-    if active_iter is not None and hasattr(active_iter, "close"):
-        active_iter.close()
     return frames_written
 
 

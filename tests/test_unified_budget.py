@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 from immich_memories.analysis.unified_budget import (
     BudgetCandidate,
+    _fill_with_photos,
     estimate_title_overhead,
     select_within_budget,
 )
@@ -315,6 +316,122 @@ class TestSelectWithinBudgetMixed:
         all_ids = result.kept_video_ids | set(result.selected_photo_ids)
         # September should be represented via p_sep
         assert "p_sep" in all_ids
+
+
+class TestPhotoTemporalSpread:
+    """Photos should spread across days, not stack on the highest-scoring day."""
+
+    def test_dense_day_does_not_dominate_selection(self):
+        """6 high-scoring photos from one day + 2 from other days.
+
+        The Brussels 20K scenario: all race photos score high, but selection
+        should cover multiple days first rather than taking all 6 from one day.
+        """
+        base_date = datetime(2023, 5, 28, tzinfo=UTC)  # Brussels 20K race day
+        photos = [
+            # 6 high-scoring photos from race day (all score 0.7-0.9)
+            _make_photo("race1", 4.0, 0.90, date=base_date),
+            _make_photo("race2", 4.0, 0.88, date=base_date + timedelta(minutes=10)),
+            _make_photo("race3", 4.0, 0.85, date=base_date + timedelta(minutes=20)),
+            _make_photo("race4", 4.0, 0.83, date=base_date + timedelta(minutes=30)),
+            _make_photo("race5", 4.0, 0.80, date=base_date + timedelta(minutes=45)),
+            _make_photo("race6", 4.0, 0.78, date=base_date + timedelta(minutes=60)),
+            # 2 lower-scoring photos from other days
+            _make_photo("beach", 4.0, 0.60, date=base_date - timedelta(days=5)),
+            _make_photo("dinner", 4.0, 0.55, date=base_date + timedelta(days=3)),
+        ]
+        # Budget for 5 photos (20s). Old behavior: takes top-5 by score = all race.
+        result = _fill_with_photos(
+            photos,
+            remaining_budget=20.0,
+            video_count=3,
+            max_photo_ratio=1.0,
+            content_budget=60.0,
+            video_duration=30.0,
+        )
+        selected_ids = {p.asset_id for p in result}
+        days_covered = {p.date.date() for p in result}
+
+        # Must cover at least 2 different days (not all from race day)
+        assert len(days_covered) >= 2, (
+            f"Only {len(days_covered)} day(s) covered: {days_covered}. Selected: {selected_ids}"
+        )
+        # Beach and dinner should be present (different days)
+        assert "beach" in selected_ids or "dinner" in selected_ids, (
+            f"No photos from other days selected: {selected_ids}"
+        )
+
+    def test_all_days_covered_before_dense_day_gets_extras(self):
+        """3 days with photos, budget for 5: cover all 3 days first, then backfill."""
+        photos = [
+            # Day 1: 4 photos (dense)
+            _make_photo("d1a", 4.0, 0.9, date=datetime(2023, 5, 1, tzinfo=UTC)),
+            _make_photo("d1b", 4.0, 0.85, date=datetime(2023, 5, 1, 10, tzinfo=UTC)),
+            _make_photo("d1c", 4.0, 0.80, date=datetime(2023, 5, 1, 14, tzinfo=UTC)),
+            _make_photo("d1d", 4.0, 0.75, date=datetime(2023, 5, 1, 18, tzinfo=UTC)),
+            # Day 2: 1 photo
+            _make_photo("d2a", 4.0, 0.60, date=datetime(2023, 5, 10, tzinfo=UTC)),
+            # Day 3: 1 photo
+            _make_photo("d3a", 4.0, 0.55, date=datetime(2023, 5, 20, tzinfo=UTC)),
+        ]
+        result = _fill_with_photos(
+            photos,
+            remaining_budget=20.0,  # fits 5 photos
+            video_count=2,
+            max_photo_ratio=1.0,
+            content_budget=60.0,
+            video_duration=20.0,
+        )
+        days_covered = {p.date.date() for p in result}
+
+        # All 3 days must be covered
+        assert len(days_covered) == 3, f"Expected 3 days, got {len(days_covered)}: {days_covered}"
+
+    def test_single_day_respects_per_day_cap(self):
+        """When all photos are from 1 day, per-day cap still applies (1-2/day)."""
+        photos = [
+            _make_photo("p1", 4.0, 0.9, date=datetime(2023, 5, 1, 10, tzinfo=UTC)),
+            _make_photo("p2", 4.0, 0.8, date=datetime(2023, 5, 1, 12, tzinfo=UTC)),
+            _make_photo("p3", 4.0, 0.7, date=datetime(2023, 5, 1, 14, tzinfo=UTC)),
+        ]
+        result = _fill_with_photos(
+            photos,
+            remaining_budget=16.0,
+            video_count=2,
+            max_photo_ratio=1.0,
+            content_budget=60.0,
+            video_duration=20.0,
+        )
+        # Cap of 2/day: only best 2 selected even with budget for 4
+        assert len(result) == 2
+        assert {p.asset_id for p in result} == {"p1", "p2"}
+
+    def test_brussels_20k_photos_dont_crowd_videos(self):
+        """Full Brussels 20K scenario through select_within_budget.
+
+        6 high-scoring race photos from May 28 + videos from May 20 (bike),
+        May 25, and June 1. Photos should not crowd out all video diversity.
+        """
+        videos = [
+            _make_video("bike", 8.0, 0.75, date=datetime(2023, 5, 20, tzinfo=UTC)),
+            _make_video("walk", 6.0, 0.65, date=datetime(2023, 5, 25, tzinfo=UTC)),
+            _make_video("park", 7.0, 0.70, date=datetime(2023, 6, 1, tzinfo=UTC)),
+        ]
+        race_day = datetime(2023, 5, 28, tzinfo=UTC)
+        photos = [
+            _make_photo(f"race{i}", 4.0, 0.90 - i * 0.02, date=race_day + timedelta(minutes=i * 15))
+            for i in range(6)
+        ]
+        # Budget 50s. Videos = 21s. Remaining ~29s = 7 photos fit.
+        # But we should NOT get all 6 race photos. Max ~2 from race day.
+        result = select_within_budget(videos, photos, content_budget=50.0)
+        race_photos = [pid for pid in result.selected_photo_ids if pid.startswith("race")]
+
+        # At most 2 photos from race day in first two rounds of spread
+        assert len(race_photos) <= 3, (
+            f"Too many race photos ({len(race_photos)}): {race_photos}. "
+            f"Expected ≤3 to leave room for temporal spread."
+        )
 
 
 class TestSelectWithinBudgetAdaptive:

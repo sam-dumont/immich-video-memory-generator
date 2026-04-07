@@ -30,6 +30,47 @@ def _period_key(dt: datetime, span_days: int) -> str:
     return f"{dt.year}-Q{(dt.month - 1) // 3 + 1}"  # quarterly for >1 year
 
 
+_MAX_PHOTOS_PER_DAY = 2
+
+
+def limit_photos_per_day(
+    clips: list[ClipWithSegment],
+    max_per_day: int = _MAX_PHOTOS_PER_DAY,
+) -> list[ClipWithSegment]:
+    """Keep at most max_per_day photos from the same calendar day.
+
+    Videos are never dropped. Within each day, highest-scored photos are kept.
+    """
+    from immich_memories.api.models import AssetType
+
+    videos = [c for c in clips if c.clip.asset.type != AssetType.IMAGE]
+    photos = [c for c in clips if c.clip.asset.type == AssetType.IMAGE]
+
+    if not photos:
+        return clips
+
+    # Group photos by day, keep best N per day
+    by_day: dict[str, list[ClipWithSegment]] = defaultdict(list)
+    for p in photos:
+        day_key = p.clip.asset.file_created_at.strftime("%Y-%m-%d")
+        by_day[day_key].append(p)
+
+    kept_photos: list[ClipWithSegment] = []
+    dropped = 0
+    for day_key in sorted(by_day):
+        day_photos = sorted(by_day[day_key], key=lambda c: c.score, reverse=True)
+        kept_photos.extend(day_photos[:max_per_day])
+        dropped += max(0, len(day_photos) - max_per_day)
+
+    if dropped > 0:
+        logger.info(
+            f"Same-day photo limit: dropped {dropped} photos "
+            f"(max {max_per_day}/day across {len(by_day)} days)"
+        )
+
+    return videos + kept_photos
+
+
 def enforce_photo_cap(
     clips: list[ClipWithSegment],
     max_ratio: float,
@@ -455,6 +496,10 @@ class ClipRefiner:
 
         tracker.start_phase(PipelinePhase.REFINING, 1)
         tracker.start_item("Refining selection")
+
+        # Pre-filter: cap same-day photos in the candidate pool so the
+        # selection picks other content instead of stacking one event.
+        analyzed = limit_photos_per_day(analyzed)
 
         target_with_buffer = int(self.config.target_clips * 1.2)
 
