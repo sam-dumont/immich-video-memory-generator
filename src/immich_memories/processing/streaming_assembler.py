@@ -1,11 +1,4 @@
-"""Streaming video assembler — constant-memory frame blending.
-
-Decodes clips one at a time, blends crossfade transitions with numpy,
-and pipes frames to a single FFmpeg encode process. Memory stays constant
-regardless of clip count (~550 MB at 4K, ~300 MB at 1080p).
-
-Extends the proven photo pipeline pattern (photos/renderer.py + photo_pipeline.py).
-"""
+"""Streaming video assembler — constant-memory frame blending."""
 
 from __future__ import annotations
 
@@ -19,7 +12,9 @@ from typing import Any
 
 import numpy as np
 
+from immich_memories.processing.hdr_utilities import _resolve_clip_hdr
 from immich_memories.processing.streaming_audio import (
+    _probe_duration,
     extract_and_mix_audio,
     mux_video_audio,
 )
@@ -34,11 +29,7 @@ def blend_crossfade(
     out: np.ndarray,
     temp: np.ndarray,
 ) -> None:
-    """Blend two frames for crossfade transition. Fully in-place — zero allocation.
-
-    alpha=0.0 → frame_a, alpha=1.0 → frame_b.
-    Both `out` and `temp` must be pre-allocated with the same shape as the frames.
-    """
+    """In-place crossfade blend: alpha=0 → frame_a, alpha=1 → frame_b."""
     # WHY: Two pre-allocated buffers avoid ALL temporaries during the blend.
     # At 4K (3840*2160*3 = 25 MB), even one temporary doubles memory per frame.
     inv_alpha = 1.0 - alpha
@@ -48,15 +39,7 @@ def blend_crossfade(
 
 
 class FrameDecoder:
-    """Decode a video clip to raw frames via FFmpeg stdout pipe.
-
-    Yields one numpy frame (H, W, 3, uint8) at a time. Only one FFmpeg
-    process is alive per decoder instance.
-
-    Applies per-clip normalization: rotation, privacy blur, PTS reset,
-    scale/pad, fps, timebase, and format conversion — matching the old
-    filter graph pipeline (filter_builder.build_clip_video_filter).
-    """
+    """Decode a video clip to raw frames via FFmpeg stdout pipe."""
 
     def __init__(
         self,
@@ -73,9 +56,11 @@ class FrameDecoder:
         scale_mode: str = "black",
         sdr_to_hdr_filter: str = "",
         input_seek: float = 0.0,
+        audio_output: Path | None = None,
     ) -> None:
         self._clip_path = clip_path
         self._input_seek = input_seek
+        self._audio_output = audio_output
         self._width = width
         self._height = height
         self._fps = fps
@@ -166,6 +151,24 @@ class FrameDecoder:
             filter_args = ["-vf", vf]
 
         seek_args = ["-ss", str(self._input_seek)] if self._input_seek > 0 else []
+
+        # WHY: Extract audio alongside video in the same FFmpeg pass.
+        # Audio timing matches the decoded video frames exactly, preventing
+        # the cumulative drift from independent video/audio assembly.
+        audio_args: list[str] = []
+        if self._audio_output:
+            audio_args = [
+                "-map",
+                "0:a?",
+                "-c:a",
+                "pcm_s16le",
+                "-ar",
+                "48000",
+                "-ac",
+                "2",
+                str(self._audio_output),
+            ]
+
         cmd = [
             "ffmpeg",
             *seek_args,
@@ -181,6 +184,7 @@ class FrameDecoder:
             "-r",
             str(self._fps),
             "pipe:1",
+            *audio_args,
         ]
         logger.debug(f"FrameDecoder cmd: {' '.join(cmd)}")
         proc = subprocess.Popen(  # noqa: S603, S607
@@ -211,14 +215,7 @@ class FrameDecoder:
 
 
 class StreamingEncoder:
-    """Encode raw frames to video via FFmpeg stdin pipe.
-
-    Uses ndarray.data (memoryview) for zero-copy writes — saves ~25 MB
-    per frame at 4K vs .tobytes().
-
-    Accepts encoder_args from _get_gpu_encoder_args() for GPU acceleration
-    and HDR support (VideoToolbox, NVENC, VAAPI, or CPU fallback).
-    """
+    """Encode raw frames to video via FFmpeg stdin pipe."""
 
     def __init__(
         self,
@@ -458,57 +455,6 @@ def _emit_crossfade(
     return last_preview_time
 
 
-def _resolve_clip_hdr(
-    clip_idx: int, ctx: Any | None, hdr_type: str | None
-) -> tuple[str, str, str, str, bool]:
-    """Resolve per-clip HDR settings from AssemblyContext.
-
-    Returns (hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, clip_is_hdr).
-    """
-    hdr_conversion = ""
-    colorspace_filter = ""
-    output_pix_fmt = ""
-    clip_is_hdr = False
-
-    if ctx is not None:
-        output_pix_fmt = getattr(ctx, "pix_fmt", "")
-        colorspace_filter = getattr(ctx, "colorspace_filter", "")
-        clip_hdr_types = getattr(ctx, "clip_hdr_types", [])
-        clip_primaries = getattr(ctx, "clip_primaries", [])
-        dominant_hdr = getattr(ctx, "hdr_type", "")
-
-        if clip_idx < len(clip_hdr_types):
-            clip_is_hdr = clip_hdr_types[clip_idx] is not None
-            if clip_hdr_types[clip_idx] != dominant_hdr:
-                from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
-
-                source_pri = clip_primaries[clip_idx] if clip_idx < len(clip_primaries) else None
-                hdr_conversion = _get_hdr_conversion_filter(
-                    clip_hdr_types[clip_idx], dominant_hdr, source_primaries=source_pri
-                )
-
-    # WHY: SDR clip in HDR output needs zscale sRGB→HLG/PQ conversion.
-    # Without this, SDR full-range data tagged as TV-range HLG = red tint.
-    sdr_to_hdr_filter = ""
-    if hdr_type and not clip_is_hdr:
-        trc = "arib-std-b67" if hdr_type == "hlg" else "smpte2084"
-        # WHY: format=yuv420p normalizes yuvj444p (full range, 4:4:4) to
-        # yuv420p (TV range, 4:2:0) BEFORE the zscale HDR conversion.
-        # Without this, different SDR formats (yuvj444p from live merges
-        # vs yuv420p from regular clips) produce different chroma values
-        # after conversion → green flash during crossfade.
-        sdr_to_hdr_filter = (
-            "format=yuv420p,"
-            f"zscale=t={trc}:tin=iec61966-2-1"
-            ":p=bt2020:pin=bt709"
-            ":m=bt2020nc:min=bt709"
-            ":npl=203"
-            ",format=yuv420p10le"
-        )
-
-    return hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, clip_is_hdr
-
-
 def _make_decoder(
     clip: Any,
     clip_idx: int,
@@ -519,6 +465,7 @@ def _make_decoder(
     privacy_mode: bool = False,
     scale_mode: str = "black",
     hdr_type: str | None = None,
+    audio_work_dir: Path | None = None,
 ) -> FrameDecoder:
     """Create a FrameDecoder with per-clip normalization filters."""
     rotation = 0
@@ -546,6 +493,10 @@ def _make_decoder(
         f"sdr2hdr={bool(sdr_to_hdr_filter)} {clip.path.name}"
     )
 
+    audio_output = None
+    if audio_work_dir:
+        audio_output = audio_work_dir / f"clip_{clip_idx}_audio.wav"
+
     return FrameDecoder(
         clip_path=clip.path,
         width=width,
@@ -560,6 +511,7 @@ def _make_decoder(
         scale_mode=scale_mode,
         sdr_to_hdr_filter=sdr_to_hdr_filter,
         input_seek=getattr(clip, "input_seek", 0.0),
+        audio_output=audio_output,
     )
 
 
@@ -601,16 +553,11 @@ def assemble_streaming(
     scale_mode: str = "blur",
     progress_callback: Callable[[int, int], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
-) -> None:
-    """Assemble clips via streaming frame blending. Constant memory.
+    audio_work_dir: Path | None = None,
+) -> list[Path]:
+    """Assemble clips via streaming frame blending (constant memory).
 
-    Decodes one clip at a time (two during crossfade zones), blends
-    frames with numpy, and pipes to a single FFmpeg encode process.
-
-    Per-clip normalization (rotation, HDR, privacy, PTS, scale) is applied
-    in the FrameDecoder filter chain — matching the old filter graph pipeline.
-
-    Does NOT mutate the input clips list.
+    Returns list of per-clip audio WAV paths extracted during decoding.
     """
     if len(transitions) != len(clips) - 1:
         raise ValueError(f"Expected {len(clips) - 1} transitions, got {len(transitions)}")
@@ -644,6 +591,7 @@ def assemble_streaming(
             hdr_type,
             progress_callback,
             frame_preview_callback,
+            audio_work_dir=audio_work_dir,
         )
         encoder.finish()
         if progress_callback:
@@ -652,6 +600,17 @@ def assemble_streaming(
     except Exception:
         encoder.finish()
         raise
+
+    # Collect audio WAV files extracted by FrameDecoder during the encode pass
+    audio_paths: list[Path] = []
+    if audio_work_dir:
+        for clip_idx in range(len(clips)):
+            wav = audio_work_dir / f"clip_{clip_idx}_audio.wav"
+            if wav.exists():
+                audio_paths.append(wav)
+            else:
+                audio_paths.append(Path())
+    return audio_paths
 
 
 def _encode_clip_sequence(
@@ -672,6 +631,7 @@ def _encode_clip_sequence(
     hdr_type: str | None,
     progress_callback: Callable[[int, int], None] | None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
+    audio_work_dir: Path | None = None,
 ) -> int:
     """Encode all clips with transitions, tracking frame count for progress."""
     active_iter: Iterator[np.ndarray] | None = None
@@ -683,7 +643,16 @@ def _encode_clip_sequence(
     for clip_idx, clip in enumerate(clips):
         if active_iter is None:
             decoder = _make_decoder(
-                clip, clip_idx, width, height, fps, ctx, privacy_mode, scale_mode, hdr_type
+                clip,
+                clip_idx,
+                width,
+                height,
+                fps,
+                ctx,
+                privacy_mode,
+                scale_mode,
+                hdr_type,
+                audio_work_dir=audio_work_dir,
             )
             active_iter = iter(decoder)
 
@@ -717,6 +686,7 @@ def _encode_clip_sequence(
                 privacy_mode,
                 scale_mode,
                 hdr_type,
+                audio_work_dir=audio_work_dir,
             )
             next_iter = iter(next_decoder)
             last_preview_time = _emit_crossfade(
@@ -741,6 +711,13 @@ def _encode_clip_sequence(
             active_iter = None
             skip_frames = 0
 
+    # WHY: The last FrameDecoder's FFmpeg process inherits the encoder's
+    # stdin pipe FD. If not closed before encoder.finish(), the pipe never
+    # sees EOF and the encoder hangs waiting for input. Force-close the
+    # last iterator to trigger FrameDecoder.__iter__'s finally block
+    # (proc.terminate + wait), ensuring the FD is released.
+    if active_iter is not None and hasattr(active_iter, "close"):
+        active_iter.close()
     return frames_written
 
 
@@ -761,21 +738,14 @@ def streaming_assemble_full(
     progress_callback: Callable[[float, str], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
 ) -> Path:
-    """Full streaming assembly: video + audio → final MP4.
-
-    Three phases:
-    1. Streaming video encode (frame-by-frame, constant memory)
-    2. Audio extraction + mixing (separate FFmpeg pass, lightweight)
-    3. Mux video + audio (trim audio to video duration for sync)
-
-    Supports GPU encoding, HDR preservation, rotation, loudnorm, and
-    privacy mode — full parity with the old filter graph pipeline.
-    """
+    """Full streaming assembly: video encode + audio mix + mux → final MP4."""
     work_dir = output_path.parent / ".streaming_work"
     work_dir.mkdir(parents=True, exist_ok=True)
 
     video_only = work_dir / "video.mp4"
     audio_only = work_dir / "audio.m4a"
+    audio_work_dir = work_dir / "audio_clips"
+    audio_work_dir.mkdir(exist_ok=True)
 
     try:
         if progress_callback:
@@ -796,7 +766,10 @@ def streaming_assemble_full(
                     f"Encoding ({time_done} / {time_total}) — {frac * 100:.0f}%",
                 )
 
-        assemble_streaming(
+        # WHY: Extract audio in the same FFmpeg pass as video decoding.
+        # This eliminates the separate audio extraction pass and ensures
+        # audio timing matches decoded video frames exactly.
+        clip_audio_paths = assemble_streaming(
             clips=clips,
             transitions=transitions,
             output_path=video_only,
@@ -811,18 +784,27 @@ def streaming_assemble_full(
             scale_mode=scale_mode,
             progress_callback=_frame_progress,
             frame_preview_callback=frame_preview_callback,
+            audio_work_dir=audio_work_dir,
         )
 
         if progress_callback:
             progress_callback(0.85, "Mixing audio...")
+
+        # WHY: Probe actual video duration so the audio filter graph can
+        # clamp its output to match. This avoids re-encoding audio in the
+        # mux step (which would cause double-AAC priming delay).
+        video_dur = _probe_duration(video_only)
 
         extract_and_mix_audio(
             clips=clips,
             transitions=transitions,
             output_path=audio_only,
             fade_duration=fade_duration,
+            fps=fps,
             normalize_audio=normalize_audio,
             privacy_mode=privacy_mode,
+            pre_extracted_audio=clip_audio_paths,
+            video_duration=video_dur,
         )
 
         if progress_callback:

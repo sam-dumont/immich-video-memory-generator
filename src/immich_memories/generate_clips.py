@@ -95,17 +95,16 @@ def _extract_clips(
                 video_path, start_time=start_time, end_time=end_time, config=params.config
             )
 
-            # WHY: extract_clip with -c copy truncates at keyframes. The actual
-            # file can be shorter than end_time - start_time. Using actual duration
-            # prevents audio/video drift in the streaming assembler.
-            actual_duration = _probe_file_duration(segment_path)
+            # WHY: extract_clip with -c copy can produce files shorter OR longer
+            # than requested due to keyframe boundaries. Use min(actual, nominal)
+            # so we never claim more duration than the file actually has (prevents
+            # frame underruns) but also never more than what was requested
+            # (prevents audio starting early).
             nominal_duration = end_time - start_time
-            duration = actual_duration if actual_duration else nominal_duration
-            if actual_duration and abs(actual_duration - nominal_duration) > 0.1:
-                logger.debug(
-                    f"Clip {clip.asset.id[:8]}: actual={actual_duration:.2f}s vs "
-                    f"nominal={nominal_duration:.2f}s (diff={actual_duration - nominal_duration:+.2f}s)"
-                )
+            actual_duration = _probe_file_duration(segment_path)
+            duration = (
+                min(actual_duration, nominal_duration) if actual_duration else nominal_duration
+            )
 
             exif = clip.asset.exif_info
             assembly_clips.append(

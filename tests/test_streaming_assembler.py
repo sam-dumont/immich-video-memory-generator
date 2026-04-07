@@ -607,7 +607,7 @@ class TestAudioFilterChain:
             AssemblyClip(path=Path("/a.mp4"), duration=3.0),
             AssemblyClip(path=Path("/b.mp4"), duration=3.0),
         ]
-        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, normalize_audio=True)
+        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, fps=30, normalize_audio=True)
         assert "loudnorm=I=-16:TP=-1.5:LRA=11" in graph
 
     def test_loudnorm_excluded_when_normalize_false(self) -> None:
@@ -618,7 +618,7 @@ class TestAudioFilterChain:
             AssemblyClip(path=Path("/a.mp4"), duration=3.0),
             AssemblyClip(path=Path("/b.mp4"), duration=3.0),
         ]
-        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, normalize_audio=False)
+        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, fps=30, normalize_audio=False)
         assert "loudnorm" not in graph
 
     def test_privacy_muffle_included(self) -> None:
@@ -629,7 +629,7 @@ class TestAudioFilterChain:
             AssemblyClip(path=Path("/a.mp4"), duration=3.0),
             AssemblyClip(path=Path("/b.mp4"), duration=3.0),
         ]
-        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, privacy_mode=True)
+        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, fps=30, privacy_mode=True)
         assert "lowpass=f=300" in graph
 
     def test_title_screen_gets_null_audio(self) -> None:
@@ -640,7 +640,7 @@ class TestAudioFilterChain:
             AssemblyClip(path=Path("/title.mp4"), duration=3.0, is_title_screen=True),
             AssemblyClip(path=Path("/b.mp4"), duration=3.0),
         ]
-        graph = _build_audio_filter_graph(clips, ["fade"], 0.5)
+        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, fps=30)
         assert "anullsrc" in graph
 
     def test_loudnorm_not_applied_to_title_screens(self) -> None:
@@ -651,7 +651,7 @@ class TestAudioFilterChain:
             AssemblyClip(path=Path("/title.mp4"), duration=3.0, is_title_screen=True),
             AssemblyClip(path=Path("/b.mp4"), duration=3.0),
         ]
-        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, normalize_audio=True)
+        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, fps=30, normalize_audio=True)
         # Title screen (a0) should use anullsrc, not loudnorm
         # Content clip (a1) should have loudnorm
         parts = graph.split(";")
@@ -659,6 +659,215 @@ class TestAudioFilterChain:
         content_part = [p for p in parts if "[a1]" in p][0]
         assert "loudnorm" not in title_part
         assert "loudnorm" in content_part
+
+    def test_pre_extracted_audio_with_crossfade_uses_acrossfade(self, tmp_path: Path) -> None:
+        """Pre-extracted audio with fade transitions must route through
+        filter graph with acrossfade, not concat demuxer (which ignores
+        crossfade overlap and causes audio drift)."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_audio import extract_and_mix_audio
+
+        wav_a = tmp_path / "clip_0_audio.wav"
+        wav_b = tmp_path / "clip_1_audio.wav"
+        wav_a.write_bytes(b"\x00" * 100)
+        wav_b.write_bytes(b"\x00" * 100)
+
+        clips = [
+            AssemblyClip(path=Path("/a.mp4"), duration=3.0),
+            AssemblyClip(path=Path("/b.mp4"), duration=3.0),
+        ]
+        output = tmp_path / "audio.m4a"
+
+        captured_cmds: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> MagicMock:
+            captured_cmds.append(cmd)
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "192000"
+            result.stderr = ""
+            return result
+
+        # WHY: subprocess.run is the FFmpeg/ffprobe process boundary
+        with patch(
+            "immich_memories.processing.streaming_audio.subprocess.run",
+            side_effect=fake_run,
+        ):
+            extract_and_mix_audio(
+                clips=clips,
+                transitions=["fade"],
+                output_path=output,
+                fade_duration=0.5,
+                pre_extracted_audio=[wav_a, wav_b],
+            )
+
+        ffmpeg_cmds = [c for c in captured_cmds if c[0] == "ffmpeg"]
+        assert ffmpeg_cmds, "Expected at least one FFmpeg command"
+
+        main_cmd_str = " ".join(str(c) for c in ffmpeg_cmds[0])
+        assert "acrossfade" in main_cmd_str, (
+            "Expected acrossfade filter to handle crossfade overlap. "
+            "Concat demuxer duplicates overlap audio causing drift."
+        )
+
+    def test_pre_extracted_audio_inputs_use_wav_paths(self, tmp_path: Path) -> None:
+        """FFmpeg inputs should reference pre-extracted WAV files,
+        not the original clip video paths."""
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_audio import extract_and_mix_audio
+
+        wav_a = tmp_path / "clip_0_audio.wav"
+        wav_b = tmp_path / "clip_1_audio.wav"
+        wav_a.write_bytes(b"\x00" * 100)
+        wav_b.write_bytes(b"\x00" * 100)
+
+        clips = [
+            AssemblyClip(path=Path("/a.mp4"), duration=3.0),
+            AssemblyClip(path=Path("/b.mp4"), duration=3.0),
+        ]
+        output = tmp_path / "audio.m4a"
+
+        captured_cmds: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> MagicMock:
+            captured_cmds.append(cmd)
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "192000"
+            result.stderr = ""
+            return result
+
+        # WHY: subprocess.run is the FFmpeg/ffprobe process boundary
+        with patch(
+            "immich_memories.processing.streaming_audio.subprocess.run",
+            side_effect=fake_run,
+        ):
+            extract_and_mix_audio(
+                clips=clips,
+                transitions=["fade"],
+                output_path=output,
+                fade_duration=0.5,
+                pre_extracted_audio=[wav_a, wav_b],
+            )
+
+        ffmpeg_cmds = [c for c in captured_cmds if c[0] == "ffmpeg"]
+        main_cmd_str = " ".join(str(c) for c in ffmpeg_cmds[0])
+        assert str(wav_a) in main_cmd_str, "Expected WAV path as FFmpeg input"
+        assert str(wav_b) in main_cmd_str, "Expected WAV path as FFmpeg input"
+
+    def test_pre_extracted_audio_gets_frame_aligned_atrim(self) -> None:
+        """Audio atrim must use frame-aligned duration (int(dur*fps)/fps),
+        not raw clip.duration. Without this, int() truncation in the video
+        frame count causes ~0.017s/clip drift → ~1.2s at 70 clips."""
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
+
+        clips = [
+            AssemblyClip(path=Path("/a.mp4"), duration=3.017),
+            AssemblyClip(path=Path("/b.mp4"), duration=4.517),
+        ]
+        graph = _build_audio_filter_graph(clips, ["fade"], 0.5, fps=30)
+        # Frame-aligned: int(3.017*30)/30 = 90/30 = 3.0
+        #                int(4.517*30)/30 = 135/30 = 4.5
+        assert "atrim=0:3.0" in graph, f"Expected frame-aligned 3.0, got: {graph}"
+        assert "atrim=0:4.5" in graph, f"Expected frame-aligned 4.5, got: {graph}"
+        # NOT the raw clip.duration
+        assert "atrim=0:3.017" not in graph
+        assert "atrim=0:4.517" not in graph
+
+    @requires_ffmpeg
+    def test_loudnorm_does_not_eat_duration_at_scale(self, tmp_path: Path) -> None:
+        """loudnorm in one-pass mode loses ~35ms/clip at filter boundaries.
+        Over 30 clips this accumulates to >0.5s of drift — enough to detect.
+        Regression test: atrim must come BEFORE loudnorm to clamp duration."""
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_audio import _build_audio_filter_graph
+
+        n_clips = 30
+        fps = 30
+        clip_dur = 2.0
+        fade_dur = 0.5
+        frame_dur = int(clip_dur * fps) / fps
+
+        # Create short WAV files
+        wavs: list[Path] = []
+        for i in range(n_clips):
+            wav = tmp_path / f"clip_{i}.wav"
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    f"sine=frequency={300 + i * 40}:duration={clip_dur}",
+                    "-ar",
+                    "48000",
+                    "-ac",
+                    "2",
+                    str(wav),
+                ],
+                capture_output=True,
+                timeout=5,
+            )
+            wavs.append(wav)
+
+        clips = [AssemblyClip(path=wavs[i], duration=clip_dur) for i in range(n_clips)]
+        transitions = ["fade"] * (n_clips - 1)
+        graph = _build_audio_filter_graph(clips, transitions, fade_dur, fps=fps)
+
+        inputs: list[str] = []
+        for wav in wavs:
+            inputs.extend(["-i", str(wav)])
+
+        out = tmp_path / "mixed.m4a"
+        result = subprocess.run(  # noqa: S603, S607
+            [
+                "ffmpeg",
+                "-y",
+                *inputs,
+                "-filter_complex",
+                graph,
+                "-map",
+                "[aout]",
+                "-c:a",
+                "aac",
+                str(out),
+            ],
+            capture_output=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, f"FFmpeg failed: {result.stderr[-300:]}"
+
+        dur_result = subprocess.run(  # noqa: S603, S607
+            [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
+                str(out),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        actual = float(dur_result.stdout.strip())
+        expected = n_clips * frame_dur - (n_clips - 1) * fade_dur
+
+        # WHY: loudnorm loses ~35ms/clip. At 30 clips that's ~1s.
+        # With correct filter ordering (atrim before loudnorm), drift is <50ms.
+        assert abs(actual - expected) < 0.05, (
+            f"Audio duration drift: {actual:.3f}s vs expected {expected:.3f}s "
+            f"(diff={actual - expected:+.3f}s). "
+            f"loudnorm may be eating samples — check filter ordering."
+        )
 
 
 class TestMakeDecoderIntegration:
