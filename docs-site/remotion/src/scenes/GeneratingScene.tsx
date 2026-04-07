@@ -302,7 +302,7 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
                 }}
               >
                 <Img
-                  src={staticFile("stock/thumb-21.jpg")}
+                  src={staticFile("output-frame.jpg")}
                   style={{
                     maxWidth: "100%",
                     maxHeight: "100%",

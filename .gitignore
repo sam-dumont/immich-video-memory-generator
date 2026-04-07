@@ -132,3 +132,4 @@ docs-site/static/demo/cli-demo.gif
 
 # Remotion demo assets (required for rendering, not generated)
 !docs-site/remotion/public/cli-demo.mp4
+!docs-site/remotion/public/output-preview.mp4
