@@ -135,7 +135,7 @@ class TestUnifiedPhotoBudget:
         params.progress_callback = None
 
         with patch(
-            "immich_memories.generate._apply_unified_budget",
+            "immich_memories.generate_photos._apply_unified_budget",
             return_value=(clips, []),
         ) as mock_unified:
             _add_photos_if_enabled(clips, params, MagicMock())
@@ -164,7 +164,7 @@ class TestUnifiedPhotoBudget:
         params.progress_callback = None
 
         with patch(
-            "immich_memories.generate._apply_unified_budget",
+            "immich_memories.generate_photos._apply_unified_budget",
             return_value=(clips, []),
         ) as mock_unified:
             _add_photos_if_enabled(clips, params, MagicMock())

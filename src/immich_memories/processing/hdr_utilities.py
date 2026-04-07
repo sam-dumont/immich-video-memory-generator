@@ -6,6 +6,7 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from immich_memories.security import validate_video_path
 
@@ -17,6 +18,7 @@ __all__ = [
     "_get_hdr_conversion_filter",
     "_get_clip_hdr_types",
     "_get_gpu_encoder_args",
+    "_resolve_clip_hdr",
     "quality_to_crf",
 ]
 
@@ -406,3 +408,52 @@ def _get_gpu_encoder_args(
         return nvenc
 
     return _encoder_args_cpu(crf, preserve_hdr, color_trc, hdr_type)
+
+
+def _resolve_clip_hdr(
+    clip_idx: int, ctx: Any | None, hdr_type: str | None
+) -> tuple[str, str, str, str, bool]:
+    """Resolve per-clip HDR settings from AssemblyContext.
+
+    Returns (hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, clip_is_hdr).
+    """
+    hdr_conversion = ""
+    colorspace_filter = ""
+    output_pix_fmt = ""
+    clip_is_hdr = False
+
+    if ctx is not None:
+        output_pix_fmt = getattr(ctx, "pix_fmt", "")
+        colorspace_filter = getattr(ctx, "colorspace_filter", "")
+        clip_hdr_types = getattr(ctx, "clip_hdr_types", [])
+        clip_primaries = getattr(ctx, "clip_primaries", [])
+        dominant_hdr = getattr(ctx, "hdr_type", "")
+
+        if clip_idx < len(clip_hdr_types):
+            clip_is_hdr = clip_hdr_types[clip_idx] is not None
+            if clip_hdr_types[clip_idx] != dominant_hdr:
+                source_pri = clip_primaries[clip_idx] if clip_idx < len(clip_primaries) else None
+                hdr_conversion = _get_hdr_conversion_filter(
+                    clip_hdr_types[clip_idx], dominant_hdr, source_primaries=source_pri
+                )
+
+    # WHY: SDR clip in HDR output needs zscale sRGB→HLG/PQ conversion.
+    # Without this, SDR full-range data tagged as TV-range HLG = red tint.
+    sdr_to_hdr_filter = ""
+    if hdr_type and not clip_is_hdr:
+        trc = "arib-std-b67" if hdr_type == "hlg" else "smpte2084"
+        # WHY: format=yuv420p normalizes yuvj444p (full range, 4:4:4) to
+        # yuv420p (TV range, 4:2:0) BEFORE the zscale HDR conversion.
+        # Without this, different SDR formats (yuvj444p from live merges
+        # vs yuv420p from regular clips) produce different chroma values
+        # after conversion → green flash during crossfade.
+        sdr_to_hdr_filter = (
+            "format=yuv420p,"
+            f"zscale=t={trc}:tin=iec61966-2-1"
+            ":p=bt2020:pin=bt709"
+            ":m=bt2020nc:min=bt709"
+            ":npl=203"
+            ",format=yuv420p10le"
+        )
+
+    return hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, clip_is_hdr

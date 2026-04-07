@@ -311,7 +311,7 @@ class TestAddPhotosIfEnabled:
         )
 
         # WHY: mock the budget function to avoid real photo scoring logic
-        with patch("immich_memories.generate._apply_unified_budget") as mock_budget:
+        with patch("immich_memories.generate_photos._apply_unified_budget") as mock_budget:
             mock_budget.return_value = (clips, [])
             _add_photos_if_enabled(clips, params, tmp_path)
 
@@ -335,7 +335,7 @@ class TestAddPhotosIfEnabled:
         )
 
         # WHY: mock the budget function to avoid real photo scoring logic
-        with patch("immich_memories.generate._apply_unified_budget") as mock_budget:
+        with patch("immich_memories.generate_photos._apply_unified_budget") as mock_budget:
             mock_budget.return_value = (clips, [])
             _add_photos_if_enabled(clips, params, tmp_path)
 
@@ -1324,7 +1324,7 @@ class TestRunMusicPhase:
 
         # WHY: resolve_music_file checks filesystem for music files
         with patch(
-            "immich_memories.generate.resolve_music_file", return_value=None
+            "immich_memories.generate_music.resolve_music_file", return_value=None
         ) as mock_resolve:
             _run_music_phase(params, [], tmp_path / "result.mp4", tmp_path, mock_tracker)
 
@@ -1346,8 +1346,8 @@ class TestRunMusicPhase:
 
         # WHY: resolve_music_file and apply_music_file touch filesystem + FFmpeg
         with (
-            patch("immich_memories.generate.resolve_music_file", return_value=music_file),
-            patch("immich_memories.generate.apply_music_file") as mock_apply,
+            patch("immich_memories.generate_music.resolve_music_file", return_value=music_file),
+            patch("immich_memories.generate_music.apply_music_file") as mock_apply,
         ):
             _run_music_phase(params, [], result_path, tmp_path, mock_tracker)
 
@@ -1369,7 +1369,7 @@ class TestRunMusicPhase:
 
         # WHY: resolve_music_file accesses the filesystem
         with patch(
-            "immich_memories.generate.resolve_music_file", return_value=None
+            "immich_memories.generate_music.resolve_music_file", return_value=None
         ) as mock_resolve:
             _run_music_phase(params, [], tmp_path / "r.mp4", tmp_path, mock_tracker)
 

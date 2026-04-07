@@ -355,9 +355,14 @@ class FFmpegProber:
         return None
 
     def detect_max_framerate(self, clips: list[AssemblyClip]) -> int:
-        """Max frame rate across clips, rounded to nearest common value (24/30/50/60)."""
+        """Max frame rate across content clips, rounded to nearest common value (24/30/50/60).
+
+        Title screens are excluded — they're generated at the detected FPS,
+        not the other way around.
+        """
         max_fps = 30.0
-        for clip in clips[:20]:  # Sample first 20 clips for speed
+        content_clips = [c for c in clips if not getattr(c, "is_title_screen", False)]
+        for clip in content_clips[:20]:
             fps = self.detect_framerate(clip.path)
             if fps and fps > max_fps:
                 max_fps = fps
