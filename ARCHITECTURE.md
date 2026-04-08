@@ -92,7 +92,6 @@ src/immich_memories/
 │   ├── clip_analyzer.py        # ClipAnalyzer: download + analyze + score
 │   ├── clip_refiner.py         # ClipRefiner: final selection + distribution
 │   ├── clip_scaler.py          # ClipScaler: duration scaling + dedup
-│   ├── clip_scaling.py         # Duration scaling helpers
 │   ├── clip_selection.py       # Standalone clip selection functions
 │   ├── preview_builder.py      # PreviewBuilder: preview segment extraction
 │   ├── progress.py             # Progress tracking helpers
