@@ -1254,6 +1254,88 @@ class TestGenerateMemoryInner:
 
         cleanup_mock.assert_not_called()
 
+    def test_cleanup_runs_even_on_error(self, tmp_path):
+        """Temp cleanup must run in finally, even when the pipeline fails."""
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path)
+        patches, _, _ = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            mocks = {name: stack.enter_context(p) for name, p in patches.items()}
+            mocks["extract"].side_effect = RuntimeError("boom")
+            cleanup_clips_mock = stack.enter_context(
+                patch("immich_memories.generate._cleanup_temp_clips")
+            )
+            cleanup_dirs_mock = stack.enter_context(
+                patch("immich_memories.generate._cleanup_temp_dirs")
+            )
+
+            with pytest.raises(GenerationError):
+                _generate_memory_inner(params)
+
+        # WHY: cleanup must run in finally even when pipeline raises
+        cleanup_clips_mock.assert_called_once()
+        cleanup_dirs_mock.assert_called_once()
+
+    def test_cleanup_failure_does_not_mask_pipeline_error(self, tmp_path):
+        """If cleanup itself raises, the original pipeline error still propagates."""
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path)
+        patches, _, _ = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            mocks = {name: stack.enter_context(p) for name, p in patches.items()}
+            mocks["extract"].side_effect = RuntimeError("pipeline broke")
+            stack.enter_context(
+                patch(
+                    "immich_memories.generate._cleanup_temp_clips",
+                    side_effect=OSError("cleanup also broke"),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "immich_memories.generate._cleanup_temp_dirs",
+                    side_effect=OSError("dir cleanup broke"),
+                )
+            )
+
+            with pytest.raises(GenerationError, match="pipeline broke"):
+                _generate_memory_inner(params)
+
+    def test_fail_run_called_on_generation_error(self, tmp_path):
+        """fail_run() is called when GenerationError is raised."""
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path)
+        patches, _, _ = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            mocks = {name: stack.enter_context(p) for name, p in patches.items()}
+            mocks["extract"].side_effect = GenerationError("intentional")
+
+            with pytest.raises(GenerationError):
+                _generate_memory_inner(params)
+
+        mocks["tracker"].return_value.fail_run.assert_called_once()
+
+    def test_fail_run_called_on_unexpected_error(self, tmp_path):
+        """fail_run() is called when unexpected exception is raised."""
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path)
+        patches, _, _ = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            mocks = {name: stack.enter_context(p) for name, p in patches.items()}
+            mocks["extract"].side_effect = RuntimeError("surprise")
+
+            with pytest.raises(GenerationError):
+                _generate_memory_inner(params)
+
+        mocks["tracker"].return_value.fail_run.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # generate_memory (lock + inner call integration)

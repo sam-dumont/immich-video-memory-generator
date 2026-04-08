@@ -314,6 +314,7 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         memory_key=_build_memory_key(params),
     )
 
+    assembly_clips: list = []  # WHY: populated in try, needed in finally for cleanup
     try:
         import time as _time
 
@@ -400,18 +401,26 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
             clips_selected=len(assembly_clips),
         )
 
-        _cleanup_temp_clips(assembly_clips)
-        if not params.debug_preserve_intermediates:
-            _cleanup_temp_dirs(run_output_dir)
         return result_path
 
-    except GenerationError:
+    except GenerationError as e:
+        run_tracker.fail_run(str(e))
         raise
     except Exception as e:
         logger.exception("Video generation failed")
         safe_msg = sanitize_error_message(str(e))
+        run_tracker.fail_run(safe_msg)
         raise GenerationError(f"Generation failed: {safe_msg}") from e
     finally:
+        try:
+            _cleanup_temp_clips(assembly_clips)
+        except Exception:
+            logger.debug("Temp clip cleanup failed", exc_info=True)
+        try:
+            if not params.debug_preserve_intermediates:
+                _cleanup_temp_dirs(run_output_dir)
+        except Exception:
+            logger.debug("Temp dir cleanup failed", exc_info=True)
         set_current_run_id(None)
 
 
