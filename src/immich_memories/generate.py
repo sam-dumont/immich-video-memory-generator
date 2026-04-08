@@ -405,11 +405,13 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
             _cleanup_temp_dirs(run_output_dir)
         return result_path
 
-    except GenerationError:
+    except GenerationError as e:
+        run_tracker.fail_run(str(e))
         raise
     except Exception as e:
         logger.exception("Video generation failed")
         safe_msg = sanitize_error_message(str(e))
+        run_tracker.fail_run(safe_msg)
         raise GenerationError(f"Generation failed: {safe_msg}") from e
     finally:
         set_current_run_id(None)
