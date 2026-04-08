@@ -195,9 +195,9 @@ class TestGetOrdinalEdgeCases:
         """English ordinals handle teens and irregular suffixes."""
         assert get_ordinal(n, "en") == expected
 
-    def test_unknown_locale_returns_plain_number(self):
-        """Unknown locale returns just the number as string."""
-        assert get_ordinal(5, "zz") == "5"
+    def test_unknown_locale_falls_back_to_english(self):
+        """Unknown locale falls back to English ordinal."""
+        assert get_ordinal(5, "zz") == "5th"
 
 
 class TestInferSelectionTypeEdgeCases:
