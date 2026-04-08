@@ -62,8 +62,9 @@ def run_pipeline_and_generate(
     clips = assets_to_clips(assets)
     if live_photo_clips:
         clips.extend(live_photo_clips)
-    if not clips:
-        print_error("No usable video clips (all too short)")
+    has_photos = include_photos and photo_assets
+    if not clips and not has_photos:
+        print_error("No usable content (no video clips or photos)")
         sys.exit(1)
 
     import logging
