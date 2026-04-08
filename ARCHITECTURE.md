@@ -109,7 +109,6 @@ src/immich_memories/
 │   ├── duplicate_hashing.py    # Perceptual hashing for duplicates
 │   ├── thumbnail_clustering.py # Thumbnail-based clustering
 │   ├── scoring.py              # Quality scoring (face, motion, duration, segments)
-│   ├── scoring_factory.py      # Scorer factory & sampling
 │   ├── scenes.py               # Scene detection
 │   ├── silence_detection.py    # Audio silence detection
 │   ├── apple_vision.py         # macOS Vision framework integration

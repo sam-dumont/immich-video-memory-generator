@@ -65,7 +65,7 @@ _SUBMODULE_MAP = {
     "SceneDetector": "immich_memories.analysis.scenes",
     "detect_scenes": "immich_memories.analysis.scenes",
     "MomentScore": "immich_memories.analysis.scoring",
-    "create_analyzer_from_config": "immich_memories.analysis.scoring_factory",
+    "create_analyzer_from_config": "immich_memories.analysis.analyzer_factory",
     "PipelineConfig": "immich_memories.analysis.smart_pipeline",
     "PipelineResult": "immich_memories.analysis.smart_pipeline",
     "SmartPipeline": "immich_memories.analysis.smart_pipeline",

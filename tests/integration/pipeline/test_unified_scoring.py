@@ -21,7 +21,7 @@ def analyzed_clip(immich_short_clips):
 
     Returns (segments, clip, config) — session-scoped to avoid re-downloading.
     """
-    from immich_memories.analysis.scoring_factory import create_analyzer_from_config
+    from immich_memories.analysis.analyzer_factory import create_analyzer_from_config
 
     clips, config, client = immich_short_clips
     clip = clips[0]
@@ -111,7 +111,7 @@ class TestCreateAnalyzerFromConfigEndToEnd:
     """E2E: verify the factory creates a properly configured analyzer."""
 
     def test_factory_returns_working_analyzer(self, immich_short_clips):
-        from immich_memories.analysis.scoring_factory import create_analyzer_from_config
+        from immich_memories.analysis.analyzer_factory import create_analyzer_from_config
         from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
 
         _, config, _ = immich_short_clips
@@ -120,7 +120,7 @@ class TestCreateAnalyzerFromConfigEndToEnd:
         assert analyzer.scorer is not None
 
     def test_audio_content_config_propagated(self, immich_short_clips):
-        from immich_memories.analysis.scoring_factory import create_analyzer_from_config
+        from immich_memories.analysis.analyzer_factory import create_analyzer_from_config
 
         _, config, _ = immich_short_clips
         analyzer = create_analyzer_from_config(config)

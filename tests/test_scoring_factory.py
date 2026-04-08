@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from immich_memories.analysis.scoring_factory import create_analyzer_from_config
+from immich_memories.analysis.analyzer_factory import create_analyzer_from_config
 from immich_memories.config_loader import Config
 
 
