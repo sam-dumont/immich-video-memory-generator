@@ -124,13 +124,13 @@ def handle_trip_generation(
             use_live_photos=use_live_photos,
         )
 
-        if not trip_assets and not trip_live:
-            print_error(f"No videos found for trip: {trip.location_name}")
-            continue
-
         trip_photos: list = []
         if use_photos:
             trip_photos = client.get_photos_for_date_range(trip_date_range)
+
+        if not trip_assets and not trip_live and not trip_photos:
+            print_error(f"No content found for trip: {trip.location_name}")
+            continue
 
         effective_transition = transition if transition != "smart" else config.defaults.transition
         resolved_music = resolve_music_arg(music)

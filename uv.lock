@@ -1793,6 +1793,7 @@ dev = [
     { name = "python-semantic-release", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "refurb", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "ruff", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "soundfile", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "types-croniter", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "types-pyyaml", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
@@ -1875,6 +1876,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1" },
     { name = "scenedetect", extras = ["opencv"], specifier = ">=0.6" },
+    { name = "soundfile", marker = "extra == 'dev'", specifier = ">=0.12" },
     { name = "staticmap", specifier = ">=0.5" },
     { name = "taichi", marker = "extra == 'all'", specifier = ">=1.7.0" },
     { name = "taichi", marker = "extra == 'all-mac'", specifier = ">=1.7.0" },
