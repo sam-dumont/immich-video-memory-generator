@@ -30,6 +30,10 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: read
+  statuses: write
+
 jobs:
   mirror:
     name: Mirror & Trigger GPU Tests
@@ -37,18 +41,18 @@ jobs:
     if: github.repository == 'sam-dumont/immich-video-memory-generator'
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
           ref: ${{ inputs.branch || github.sha }}
       - name: Create LFS cache key
         run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
       - name: Cache LFS objects
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .git/lfs
           key: lfs-${{ hashFiles('.lfs-assets-id') }}

@@ -9,12 +9,60 @@ from __future__ import annotations
 import ipaddress
 import logging
 import secrets
+import threading
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
 
 from immich_memories.config_models_auth import AuthConfig
 
 logger = logging.getLogger(__name__)
+
+# ---------- brute-force rate limiter ----------
+
+_MAX_ATTEMPTS = 5
+_WINDOW_SECONDS = 600  # 10 minutes
+
+# {ip: list[datetime]} — guarded by _rate_lock
+_failed_attempts: dict[str, list[datetime]] = {}
+_rate_lock = threading.Lock()
+
+
+def _cleanup_stale_entries(now: datetime) -> None:
+    """Remove entries whose timestamps are all outside the window."""
+    cutoff = now.timestamp() - _WINDOW_SECONDS
+    stale_keys = [
+        ip
+        for ip, timestamps in _failed_attempts.items()
+        if all(ts.timestamp() < cutoff for ts in timestamps)
+    ]
+    for key in stale_keys:
+        del _failed_attempts[key]
+
+
+def record_failed_login(ip: str) -> None:
+    """Record a failed login attempt from *ip*."""
+    now = datetime.now(UTC)
+    with _rate_lock:
+        _cleanup_stale_entries(now)
+        _failed_attempts.setdefault(ip, []).append(now)
+
+
+def is_rate_limited(ip: str) -> bool:
+    """Return True if *ip* has exceeded the failure threshold."""
+    now = datetime.now(UTC)
+    cutoff = now.timestamp() - _WINDOW_SECONDS
+    with _rate_lock:
+        attempts = _failed_attempts.get(ip, [])
+        recent = [ts for ts in attempts if ts.timestamp() >= cutoff]
+        _failed_attempts[ip] = recent
+        return len(recent) >= _MAX_ATTEMPTS
+
+
+def reset_rate_limiter() -> None:
+    """Clear all rate-limit state -- for tests only."""
+    with _rate_lock:
+        _failed_attempts.clear()
+
 
 _BYPASS_PREFIXES = ("/_nicegui/",)
 _BYPASS_EXACT = frozenset({"/health", "/login", "/logout", "/auth/callback", "/auth/authorize"})

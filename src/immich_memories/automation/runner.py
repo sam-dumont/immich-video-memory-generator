@@ -50,6 +50,7 @@ def _build_last_runs_by_type(db: RunDatabase) -> dict[str, date]:
 def _build_generate_command(candidate: MemoryCandidate, upload: bool) -> list[str]:
     """Build CLI subprocess command from a candidate."""
     cmd = ["immich-memories", "generate"]
+    person_names: list[str] = []
 
     mem_type = candidate.memory_type
     if mem_type == "monthly_highlights":
@@ -62,22 +63,23 @@ def _build_generate_command(candidate: MemoryCandidate, upload: bool) -> list[st
     elif mem_type == "person_spotlight":
         cmd.extend(["--memory-type", "person_spotlight"])
         cmd.extend(["--year", str(candidate.date_range_start.year)])
-        for name in candidate.person_names:
-            cmd.extend(["--person", name])
+        person_names = candidate.person_names.copy()
     elif mem_type == "trip":
         cmd.extend(["--memory-type", "trip"])
         cmd.extend(["--year", str(candidate.date_range_start.year)])
-        # Trip detection will re-detect; pass start date as hint
         cmd.extend(["--start", candidate.date_range_start.isoformat()])
         cmd.extend(["--end", candidate.date_range_end.isoformat()])
     elif mem_type == "multi_person":
         cmd.extend(["--memory-type", "person_spotlight"])
         cmd.extend(["--year", str(candidate.date_range_start.year)])
-        for name in candidate.person_names:
-            cmd.extend(["--person", name])
+        person_names = candidate.person_names.copy()
 
     if upload:
         cmd.append("--upload-to-immich")
+
+    for name in person_names:
+        # WHY: `=` syntax prevents names starting with `-` from being parsed as flags
+        cmd.append(f"--person={name}")
 
     return cmd
 

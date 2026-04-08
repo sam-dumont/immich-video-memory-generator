@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from authlib.integrations.starlette_client import OAuth  # type: ignore[import-untyped]
+    from starlette.requests import Request
 
     from immich_memories.config_models_auth import AuthConfig
 
@@ -86,6 +88,26 @@ def get_end_session_url(auth_config: AuthConfig) -> str | None:
         return metadata.get("end_session_endpoint")  # type: ignore[no-any-return]
     except (AttributeError, TypeError):
         return None
+
+
+def validate_callback_origin(request: Request) -> bool:
+    """Ensure the OIDC callback URL belongs to the same origin as the app.
+
+    Rejects callbacks where the Host header doesn't match the request URL,
+    which would indicate an open-redirect attack via a crafted redirect_uri.
+    """
+    callback_url = str(request.url)
+    parsed = urlparse(callback_url)
+
+    expected_host = request.headers.get("host", "")
+    # Strip port from parsed netloc for comparison
+    callback_host = parsed.netloc
+
+    if not expected_host or not callback_host:
+        return False
+
+    # WHY: compare full netloc (host:port) to handle non-standard ports
+    return callback_host == expected_host
 
 
 def reset_oidc_client() -> None:

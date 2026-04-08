@@ -140,3 +140,29 @@ class TestDaemonLoop:
         ):
             # Should not raise — graceful shutdown
             run_daemon_loop(config, db_path=Path("/tmp/test_daemon.db"))
+
+    def test_person_names_use_equals_syntax(self):
+        """Person names should use --person=Name to prevent flag injection."""
+        from immich_memories.scheduling.daemon import execute_job
+        from immich_memories.scheduling.engine import PendingJob
+
+        entry = ScheduleEntry(
+            name="spotlight",
+            memory_type="person_spotlight",
+            cron="0 6 1 * *",
+            person_names=["Alice", "--evil-flag"],
+        )
+        job = PendingJob(
+            schedule=entry,
+            fire_time=datetime(2026, 3, 1, 6, 0, tzinfo=UTC),
+        )
+
+        with patch("immich_memories.scheduling.daemon.subprocess") as mock_sub:
+            mock_sub.run.return_value = MagicMock(returncode=0)
+            execute_job(job)
+
+        cmd = mock_sub.run.call_args[0][0]
+        assert "--person=Alice" in cmd
+        assert "--person=--evil-flag" in cmd
+        # Verify the name is never a standalone arg
+        assert "--evil-flag" not in [c for c in cmd if c != "--person=--evil-flag"]

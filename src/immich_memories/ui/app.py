@@ -10,11 +10,15 @@ import secrets
 import socket
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from immich_memories.config_models_auth import AuthConfig
 
 import httpx
 from nicegui import app, ui
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse
+from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from immich_memories import __version__
 from immich_memories.config import get_config, init_config_dir
@@ -22,6 +26,7 @@ from immich_memories.ui.auth import (
     clear_session,
     is_auth_enabled,
     is_bypass_path,
+    is_rate_limited,
     is_trusted_proxy,
     set_session,
 )
@@ -369,6 +374,40 @@ app.add_api_route("/health", _health_handler, methods=["GET"])
 # ============================================================================
 
 
+def _check_login_rate_limit(request: Request) -> JSONResponse | None:
+    """Stash client IP and return 429 if rate-limited."""
+    client_ip = request.client.host if request.client else "unknown"
+    app.storage.user["_client_ip"] = client_ip
+    if is_rate_limited(client_ip):
+        return JSONResponse({"detail": "Too many failed login attempts"}, status_code=429)
+    return None
+
+
+def _try_header_auth(request: Request, auth_config: AuthConfig) -> None:
+    """Auto-create session from trusted proxy header."""
+    client_ip = request.client.host if request.client else ""
+    if not is_trusted_proxy(client_ip, auth_config.trusted_proxies):
+        return
+    user = request.headers.get(auth_config.user_header, "")
+    if user and not app.storage.user.get("authenticated"):
+        email = request.headers.get(auth_config.email_header, "")
+        set_session(app.storage.user, username=user, provider="header", email=email)
+
+
+def _check_session_ttl(ttl_hours: int) -> RedirectResponse | None:
+    """Return redirect if session has expired."""
+    from datetime import UTC, datetime, timedelta
+
+    authenticated_at_str = app.storage.user.get("authenticated_at")
+    if not authenticated_at_str:
+        return None
+    authenticated_at = datetime.fromisoformat(authenticated_at_str)
+    if datetime.now(UTC) > authenticated_at + timedelta(hours=ttl_hours):
+        clear_session(app.storage.user)
+        return RedirectResponse("/login", status_code=307)
+    return None
+
+
 @app.middleware("http")
 async def _auth_middleware(request: Request, call_next):
     """Provider-agnostic auth check using NiceGUI's app.storage.user.
@@ -382,29 +421,21 @@ async def _auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     if is_bypass_path(request.url.path):
+        if request.url.path == "/login":
+            blocked = _check_login_rate_limit(request)
+            if blocked:
+                return blocked
         return await call_next(request)
 
-    # Header auth: auto-session from trusted proxy
     if config.auth.provider == "header":
-        client_ip = request.client.host if request.client else ""
-        if is_trusted_proxy(client_ip, config.auth.trusted_proxies):
-            user = request.headers.get(config.auth.user_header, "")
-            if user and not app.storage.user.get("authenticated"):
-                email = request.headers.get(config.auth.email_header, "")
-                set_session(app.storage.user, username=user, provider="header", email=email)
+        _try_header_auth(request, config.auth)
 
     if not app.storage.user.get("authenticated"):
         return RedirectResponse("/login", status_code=307)
 
-    # Session TTL check
-    from datetime import UTC, datetime, timedelta
-
-    authenticated_at_str = app.storage.user.get("authenticated_at")
-    if authenticated_at_str:
-        authenticated_at = datetime.fromisoformat(authenticated_at_str)
-        if datetime.now(UTC) > authenticated_at + timedelta(hours=config.auth.session_ttl_hours):
-            clear_session(app.storage.user)
-            return RedirectResponse("/login", status_code=307)
+    expired = _check_session_ttl(config.auth.session_ttl_hours)
+    if expired:
+        return expired
 
     return await call_next(request)
 
@@ -458,10 +489,18 @@ async def _oidc_authorize(request: Request) -> RedirectResponse:
     return await oauth.oidc.authorize_redirect(request, redirect_uri)  # type: ignore[return-value]
 
 
-async def _oidc_callback(request: Request) -> RedirectResponse:
+async def _oidc_callback(request: Request) -> Response:
     """Handle OIDC callback — exchange code for tokens and create session."""
     config = get_config()
-    from immich_memories.ui.auth_oidc import create_oidc_client, extract_user_from_token
+    from immich_memories.ui.auth_oidc import (
+        create_oidc_client,
+        extract_user_from_token,
+        validate_callback_origin,
+    )
+
+    if not validate_callback_origin(request):
+        logger.warning("OIDC callback origin mismatch: %s", request.url)
+        return JSONResponse({"detail": "Invalid callback origin"}, status_code=400)
 
     oauth = create_oidc_client(config.auth)
     # WHY: authlib uses request.session for OIDC state/PKCE internally.

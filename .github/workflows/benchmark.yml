@@ -72,11 +72,11 @@ jobs:
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Create LFS cache key
         run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
       - name: Cache LFS objects
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .git/lfs
           key: lfs-${{ hashFiles('.lfs-assets-id') }}
@@ -84,7 +84,7 @@ jobs:
       - name: Pull LFS files
         run: git lfs pull
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: true
           prune-cache: false
@@ -127,7 +127,7 @@ jobs:
 
       # WHY: restore BEFORE benchmark-action so it has historical data to compare against
       - name: Restore benchmark cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ./cache
           key: benchmark-linux-ci-main-
@@ -135,7 +135,7 @@ jobs:
             benchmark-linux-ci-main-
 
       - name: Compare against baseline
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1
         with:
           tool: customSmallerIsBetter
           output-file-path: tests/benchmark-results.json
@@ -147,13 +147,13 @@ jobs:
 
       - name: Save benchmark cache
         if: github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ./cache
           key: benchmark-linux-ci-main-${{ github.run_id }}
 
       - name: Upload benchmark artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
         with:
           name: benchmark-linux-ci
@@ -166,7 +166,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Write results to file
         run: |
@@ -178,7 +178,7 @@ jobs:
           python3 -c "import json; d=json.load(open('tests/benchmark-results.json')); print(f'{len(d)} benchmark entries')"
 
       - name: Restore benchmark cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ./cache
           key: benchmark-${{ github.event.inputs.runner }}-main-
@@ -186,7 +186,7 @@ jobs:
             benchmark-${{ github.event.inputs.runner }}-main-
 
       - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1
         with:
           tool: customSmallerIsBetter
           output-file-path: tests/benchmark-results.json
@@ -196,7 +196,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Save benchmark cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ./cache
           key: benchmark-${{ github.event.inputs.runner }}-main-${{ github.run_id }}

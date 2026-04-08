@@ -2,7 +2,8 @@
 # Multi-stage build for smaller final image
 
 # Stage 1: Build dependencies
-FROM python:3.11-slim AS builder
+# WHY: pinned to digest to prevent supply-chain attacks via tag mutation
+FROM python:3.11-slim@sha256:b1b81d67b8df73bf6067191790c233ef9e598b863fc1ccf447956138ca466d99 AS builder
 
 WORKDIR /app
 
@@ -29,7 +30,7 @@ RUN pip install --no-cache-dir build && \
 
 
 # Stage 2: Runtime image
-FROM python:3.11-slim
+FROM python:3.11-slim@sha256:b1b81d67b8df73bf6067191790c233ef9e598b863fc1ccf447956138ca466d99
 
 LABEL maintainer="Immich Memories Contributors"
 LABEL description="Create video compilations from your Immich library"

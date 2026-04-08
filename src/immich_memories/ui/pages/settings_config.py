@@ -13,7 +13,16 @@ from immich_memories.ui.components import im_button, im_info_card, im_section_he
 logger = logging.getLogger(__name__)
 
 # Fields that contain secrets — redacted in display
-_SENSITIVE_KEYS = {"api_key", "api_keys", "password", "secret", "token"}
+# WHY: notification URLs often embed credentials (e.g. apprise://user:pass@host)
+_SENSITIVE_KEYS = {
+    "api_key",
+    "api_keys",
+    "client_secret",
+    "password",
+    "secret",
+    "token",
+    "urls",
+}
 
 
 def _redact(data: Any, _key: str = "") -> Any:
