@@ -65,6 +65,7 @@ def handle_trip_generation(
     subtitle_override: str | None,
     upload_to_immich: bool,
     album: str | None,
+    duration: float | int | None = None,
 ) -> None:
     """Detect trips, select, and generate video for each."""
     from datetime import datetime as dt_cls
@@ -105,7 +106,7 @@ def handle_trip_generation(
             end=dt_cls.combine(trip.end_date, dt_cls.max.time()),
         )
         trip_days = (trip.end_date - trip.start_date).days + 1
-        trip_duration = float(max(60, min(600, trip_days * 35)))
+        trip_duration = float(duration or max(60, min(600, trip_days * 35)))
 
         trip_slug = trip.location_name.lower().replace(" ", "_")[:30]
         trip_output = output_path.parent / f"trip_{trip_slug}_{trip.start_date.isoformat()}.mp4"
