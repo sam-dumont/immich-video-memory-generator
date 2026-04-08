@@ -63,7 +63,7 @@ def score_photo_with_llm(
     Sends the photo to the configured VLM (same as video content analysis)
     and gets an interest + quality rating. Blends with metadata score.
     """
-    if not app_config.content_analysis.enabled:
+    if app_config is None or not app_config.content_analysis.enabled:
         return metadata_score
 
     llm_score = _query_photo_llm(photo_path, app_config)
