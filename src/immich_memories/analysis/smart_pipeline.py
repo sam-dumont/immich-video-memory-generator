@@ -19,7 +19,6 @@ from immich_memories.analysis.clip_refiner import ClipRefiner
 from immich_memories.analysis.clip_scaler import ClipScaler
 from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
-from immich_memories.tracking.run_database import RunDatabase
 
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
@@ -30,12 +29,6 @@ if TYPE_CHECKING:
     from immich_memories.config_models import AnalysisConfig
 
 logger = logging.getLogger(__name__)
-
-
-class JobCancelledException(Exception):
-    """Raised when a job is cancelled by user request."""
-
-    pass
 
 
 def _cap_analysis_candidates(
@@ -160,7 +153,6 @@ class SmartPipeline:
         self.config = config or PipelineConfig()
         self.tracker = ProgressTracker(total_phases=4)
         self.run_id = run_id
-        self._run_db: RunDatabase | None = None
         self._analysis_config = analysis_config
         self._app_config = app_config
 
@@ -176,16 +168,6 @@ class SmartPipeline:
         )
         self.scaler = ClipScaler()
         self.refiner = ClipRefiner(self.config, self.scaler)
-
-    def _check_cancelled(self) -> None:
-        """Check if job cancellation was requested and raise if so."""
-        if not self.run_id:
-            return
-        if self._run_db is None:
-            self._run_db = RunDatabase(db_path=self._app_config.cache.database_path)
-        if self._run_db.is_cancel_requested(self.run_id):
-            logger.info(f"Job {self.run_id} cancelled by user request")
-            raise JobCancelledException(f"Job {self.run_id} cancelled")
 
     def run(
         self,
@@ -215,26 +197,17 @@ class SmartPipeline:
         self.tracker.start()
 
         try:
-            self._check_cancelled()
-
             # Phase 1: Cluster by thumbnail
             deduplicated = self._phase_cluster(clips)
-            self._check_cancelled()
 
             # Phase 2: Filter and pre-select
             candidates = self._phase_filter(deduplicated)
-            self._check_cancelled()
 
             # Phase 3: Analyze selected clips
-            analyzed = self.analyzer.phase_analyze(candidates, self.tracker, self._check_cancelled)
-            self._check_cancelled()
+            analyzed = self.analyzer.phase_analyze(candidates, self.tracker)
 
             return analyzed
 
-        except JobCancelledException:
-            logger.info("Pipeline cancelled by user")
-            self.tracker.finish()
-            raise
         except Exception as e:
             logger.error(f"Pipeline failed: {e}")
             self.tracker.finish()

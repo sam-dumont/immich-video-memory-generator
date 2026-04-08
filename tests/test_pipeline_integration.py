@@ -10,10 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
-import pytest
-
 from immich_memories.analysis.smart_pipeline import (
-    JobCancelledException,
     PipelineConfig,
     PipelineResult,
     SmartPipeline,
@@ -200,24 +197,6 @@ class TestSmartPipelineIntegration:
             assert all(0 <= v <= 1.0 for v in float_values), (
                 f"Progress values should be 0-1, got {float_values}"
             )
-
-    def test_cancellation_raises_exception(
-        self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache, sample_config
-    ):
-        """Cancellation request raises JobCancelledException."""
-        pipeline = self._make_pipeline(
-            mock_immich_client,
-            mock_analysis_cache,
-            mock_thumbnail_cache,
-        )
-        pipeline.run_id = "test-run-123"
-
-        mock_run_db = MagicMock()
-        mock_run_db.is_cancel_requested.return_value = True
-        pipeline._run_db = mock_run_db
-
-        with pytest.raises(JobCancelledException):
-            pipeline.run(_make_clips(5, is_favorite=True))
 
     def test_analyze_all_sends_all_clips_to_analysis(
         self,

@@ -16,18 +16,11 @@ from immich_memories.processing.clips import ClipSegment
 __all__ = [
     "AssemblyClip",
     "AssemblySettings",
-    "JobCancelledException",
     "MAX_FACE_CACHE_SIZE",
     "TitleScreenSettings",
     "TransitionType",
     "_get_rotation_filter",
 ]
-
-
-class JobCancelledException(Exception):
-    """Raised when a job is cancelled by user request."""
-
-    pass
 
 
 MAX_FACE_CACHE_SIZE = 50  # Max entries in face detection cache to prevent unbounded growth

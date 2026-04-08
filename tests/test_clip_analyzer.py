@@ -215,9 +215,7 @@ class TestPhaseAnalyzeFiltering:
             return_value=(0.0, 3.0, 0.7, "/tmp/p.mp4", None)
         )
 
-        results = analyzer.phase_analyze(
-            [short_clip, valid_clip], tracker, check_cancelled=lambda: None
-        )
+        results = analyzer.phase_analyze([short_clip, valid_clip], tracker)
 
         assert len(results) == 1
         assert results[0].clip.asset.id == "valid"
@@ -234,7 +232,7 @@ class TestPhaseAnalyzeFiltering:
         tracker = _make_tracker()
         analyzer._analyze_clip_with_preview = MagicMock(return_value=(0.0, 3.0, 0.5, None, None))
 
-        analyzer.phase_analyze(clips, tracker, check_cancelled=lambda: None)
+        analyzer.phase_analyze(clips, tracker)
 
         # start_phase should be called with PipelinePhase.ANALYZING and 2 valid clips
         call_args = tracker.start_phase.call_args
@@ -246,7 +244,7 @@ class TestPhaseAnalyzeFiltering:
         clips = [make_clip("tiny", duration=0.3)]
         tracker = _make_tracker()
 
-        results = analyzer.phase_analyze(clips, tracker, check_cancelled=lambda: None)
+        results = analyzer.phase_analyze(clips, tracker)
 
         assert results == []
 
@@ -258,7 +256,7 @@ class TestPhaseAnalyzeFiltering:
         tracker = _make_tracker()
         analyzer._analyze_clip_with_preview = MagicMock(return_value=(0.0, 1.5, 0.4, None, None))
 
-        results = analyzer.phase_analyze([clip], tracker, check_cancelled=lambda: None)
+        results = analyzer.phase_analyze([clip], tracker)
 
         assert len(results) == 1
 
@@ -277,7 +275,7 @@ class TestPhaseAnalyzeErrorFallback:
 
         analyzer._analyze_clip_with_preview = MagicMock(side_effect=RuntimeError("FFmpeg crashed"))
 
-        results = analyzer.phase_analyze([clip], tracker, check_cancelled=lambda: None)
+        results = analyzer.phase_analyze([clip], tracker)
 
         assert len(results) == 1
         r = results[0]
@@ -293,7 +291,7 @@ class TestPhaseAnalyzeErrorFallback:
 
         analyzer._analyze_clip_with_preview = MagicMock(side_effect=ValueError("bad video"))
 
-        results = analyzer.phase_analyze([clip], tracker, check_cancelled=lambda: None)
+        results = analyzer.phase_analyze([clip], tracker)
 
         assert results[0].end_time == 3.0  # min(3.0, avg_clip_duration=10.0)
 
@@ -305,7 +303,7 @@ class TestPhaseAnalyzeErrorFallback:
 
         analyzer._analyze_clip_with_preview = MagicMock(side_effect=RuntimeError("disk full"))
 
-        results = analyzer.phase_analyze([clip], tracker, check_cancelled=lambda: None)
+        results = analyzer.phase_analyze([clip], tracker)
 
         # Verify fallback segment was still produced despite the error
         assert len(results) == 1
@@ -324,20 +322,7 @@ class TestPhaseAnalyzeErrorFallback:
 
         analyzer._analyze_clip_with_preview = MagicMock(side_effect=RuntimeError("crash"))
 
-        # Override after creation so the clip passes the 1.5s filter but
-        # the error handler sees falsy duration
-        original_phase = analyzer.phase_analyze
-
-        def patched_phase(clips, trk, check_cancelled):
-            # Set duration to 0 right before the error handler runs
-            for c in clips:
-                c.duration_seconds = 0
-            return original_phase(clips, trk, check_cancelled)
-
-        # Simpler approach: just test that a positive duration passes through
-        # correctly — the `or 10` path is tested via the production code
-        # when duration_seconds is 0. Instead, let's verify min() behavior directly.
-        results = analyzer.phase_analyze([clip], tracker, check_cancelled=lambda: None)
+        results = analyzer.phase_analyze([clip], tracker)
 
         # duration=3.0, avg=5.0 → min(3.0, 5.0) = 3.0
         assert results[0].end_time == 3.0
@@ -368,7 +353,7 @@ class TestPhaseAnalyzeLLMMapping:
             return_value=(1.0, 6.0, 0.85, "/tmp/preview.mp4", llm_data)
         )
 
-        results = analyzer.phase_analyze([clip], tracker, check_cancelled=lambda: None)
+        results = analyzer.phase_analyze([clip], tracker)
 
         result_clip = results[0].clip
         assert result_clip.llm_description == "Sunset over the ocean"
@@ -387,7 +372,7 @@ class TestPhaseAnalyzeLLMMapping:
 
         analyzer._analyze_clip_with_preview = MagicMock(return_value=(0.0, 3.0, 0.5, None, None))
 
-        results = analyzer.phase_analyze([clip], tracker, check_cancelled=lambda: None)
+        results = analyzer.phase_analyze([clip], tracker)
 
         result_clip = results[0].clip
         assert result_clip.llm_description is None
@@ -410,33 +395,13 @@ class TestPhaseAnalyzeLLMMapping:
             return_value=(0.5, 4.0, 0.65, "/tmp/p.mp4", llm_data)
         )
 
-        analyzer.phase_analyze([clip], tracker, check_cancelled=lambda: None)
+        analyzer.phase_analyze([clip], tracker)
 
         call_kwargs = tracker.complete_item.call_args[1]
         assert call_kwargs["llm_description"] == "People dancing"
         assert call_kwargs["llm_emotion"] == "happy"
         assert call_kwargs["llm_interestingness"] == 0.7
         assert call_kwargs["llm_quality"] == 0.6
-
-
-# ---------------------------------------------------------------------------
-# phase_analyze — check_cancelled is called
-# ---------------------------------------------------------------------------
-
-
-class TestPhaseAnalyzeCancellation:
-    @patch("immich_memories.analysis.content_analyzer.ContentAnalyzer")
-    def test_check_cancelled_called_after_each_clip(self, mock_ca_cls):
-        analyzer, _, _, _ = _make_analyzer()
-        clips = [make_clip(f"c{i}", duration=5.0) for i in range(3)]
-        tracker = _make_tracker()
-        cancel_fn = MagicMock()
-
-        analyzer._analyze_clip_with_preview = MagicMock(return_value=(0.0, 3.0, 0.5, None, None))
-
-        analyzer.phase_analyze(clips, tracker, check_cancelled=cancel_fn)
-
-        assert cancel_fn.call_count == 3
 
 
 # ---------------------------------------------------------------------------
@@ -669,7 +634,7 @@ class TestPhaseAnalyzeOrchestration:
             return_value=(2.0, 7.0, 0.85, "/tmp/p.mp4", None)
         )
 
-        results = analyzer.phase_analyze([clip], tracker, check_cancelled=lambda: None)
+        results = analyzer.phase_analyze([clip], tracker)
 
         assert len(results) == 1
         assert isinstance(results[0], ClipWithSegment)
@@ -692,9 +657,7 @@ class TestPhaseAnalyzeOrchestration:
 
         analyzer._analyze_clip_with_preview = MagicMock(side_effect=side_effect)
 
-        results = analyzer.phase_analyze(
-            [ok_clip, fail_clip], tracker, check_cancelled=lambda: None
-        )
+        results = analyzer.phase_analyze([ok_clip, fail_clip], tracker)
 
         assert len(results) == 2
         # Successful clip
@@ -711,9 +674,7 @@ class TestPhaseAnalyzeOrchestration:
 
         analyzer._analyze_clip_with_preview = MagicMock(return_value=(0.0, 3.0, 0.5, None, None))
 
-        results = analyzer.phase_analyze(
-            [make_clip("x", duration=5.0)], tracker, check_cancelled=lambda: None
-        )
+        results = analyzer.phase_analyze([make_clip("x", duration=5.0)], tracker)
 
         # Phase produced the expected result count
         assert len(results) == 1
@@ -734,9 +695,7 @@ class TestPhaseAnalyzeOrchestration:
 
         analyzer._analyze_clip_with_preview = MagicMock(return_value=(0.0, 3.0, 0.5, None, None))
 
-        analyzer.phase_analyze(
-            [make_clip("y", duration=5.0)], tracker, check_cancelled=lambda: None
-        )
+        analyzer.phase_analyze([make_clip("y", duration=5.0)], tracker)
 
         # Verify cleanup actually cleared the cached analyzers
         assert analyzer._cached_content_analyzer is None

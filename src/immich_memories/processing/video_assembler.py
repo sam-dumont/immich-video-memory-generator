@@ -23,7 +23,6 @@ from immich_memories.processing.scaling_utilities import (
     _detect_face_center_in_video,
 )
 from immich_memories.processing.title_inserter import TitleInserter
-from immich_memories.tracking.run_database import RunDatabase
 
 if TYPE_CHECKING:
     from immich_memories.config_loader import Config
@@ -51,17 +50,12 @@ class VideoAssembler:
     def __init__(
         self,
         settings: AssemblySettings | None = None,
-        run_id: str | None = None,
         *,
         output_crf: int = 23,
         default_transition_duration: float = 0.5,
         default_resolution: tuple[int, int] = (1920, 1080),
-        db_path: Path | None = None,
     ):
         self.settings = settings or AssemblySettings()
-        self.run_id = run_id
-        self._run_db: RunDatabase | None = None
-        self._db_path = db_path
 
         # Face detection cache: path -> (center_x, center_y) or None
         self._face_cache: OrderedDict[Path, tuple[float, float] | None] = OrderedDict()
@@ -88,30 +82,9 @@ class VideoAssembler:
             self.prober,
             self.encoder,
             self.filter_builder,
-            self._check_cancelled,
         )
         self.audio_mixer = AudioMixerService(self.settings)
         self.title_inserter = TitleInserter(self.settings, self.prober)
-
-    def _check_cancelled(self) -> None:
-        """Check if job cancellation was requested and raise if so."""
-        if not self.run_id:
-            return
-        from immich_memories.processing.assembly_config import JobCancelledException
-
-        try:
-            if self._run_db is None:
-                if self._db_path is None:
-                    return
-                self._run_db = RunDatabase(self._db_path)
-            if self._run_db.is_cancel_requested(self.run_id):
-                logger.info(f"Assembly job {self.run_id} cancelled by user request")
-                raise JobCancelledException(f"Job {self.run_id} cancelled")
-        except JobCancelledException:
-            raise
-        except Exception:
-            # active_jobs table may not exist if DB wasn't initialized for job tracking
-            pass
 
     def _get_face_center(self, video_path: Path) -> tuple[float, float] | None:
         if video_path in self._face_cache:

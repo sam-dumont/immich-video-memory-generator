@@ -254,7 +254,6 @@ src/immich_memories/
 │   ├── run_queries.py          # Database query helpers
 │   ├── run_tracker.py          # Pipeline run tracking
 │   ├── run_id.py               # Run ID generation
-│   ├── active_jobs_mixin.py    # Active jobs tracking mixin
 │   ├── models.py               # Run/phase data models
 │   └── system_info.py          # System info collection
 │

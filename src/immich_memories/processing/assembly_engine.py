@@ -167,13 +167,11 @@ class AssemblyEngine:
         prober: FFmpegProber,
         encoder: ClipEncoder,
         filter_builder: FilterBuilder,
-        check_cancelled_fn: Callable[[], None],
     ) -> None:
         self.settings = settings
         self.prober = prober
         self.encoder = encoder
         self.filter_builder = filter_builder
-        self.check_cancelled_fn = check_cancelled_fn
         self.concat = ConcatService(settings, prober, encoder, filter_builder)
 
     def assemble_scalable(
