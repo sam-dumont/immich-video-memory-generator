@@ -5,10 +5,12 @@ Handles trip detection, selection, and per-trip video generation.
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.analysis.trip_detection import DetectedTrip, haversine_km
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
 from immich_memories.cli._pipeline_runner import (
     fetch_videos_and_live_photos,
@@ -18,8 +20,36 @@ from immich_memories.timeperiod import DateRange
 
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
+    from immich_memories.api.models import Asset
     from immich_memories.cli._live_display import ProgressDisplay
     from immich_memories.config_loader import Config
+
+logger = logging.getLogger(__name__)
+
+
+def _filter_photos_near_trip(
+    photos: list[Asset], trip: DetectedTrip, config: Config
+) -> list[Asset]:
+    """Keep only geotagged photos near the trip centroid (>min_distance_km from home)."""
+    home_lat = config.trips.homebase_latitude
+    home_lon = config.trips.homebase_longitude
+    min_km = config.trips.min_distance_km
+
+    result = []
+    for p in photos:
+        exif = p.exif_info
+        if not exif or exif.latitude is None or exif.longitude is None:
+            continue
+        dist_from_home = haversine_km(home_lat, home_lon, exif.latitude, exif.longitude)
+        if dist_from_home >= min_km:
+            result.append(p)
+
+    dropped = len(photos) - len(result)
+    if dropped:
+        logger.info(
+            f"Trip photo filter: kept {len(result)}, dropped {dropped} (no GPS or near home)"
+        )
+    return result
 
 
 def resolve_music_arg(music: str | None) -> str | None:
@@ -65,6 +95,7 @@ def handle_trip_generation(
     subtitle_override: str | None,
     upload_to_immich: bool,
     album: str | None,
+    duration: float | int | None = None,
 ) -> None:
     """Detect trips, select, and generate video for each."""
     from datetime import datetime as dt_cls
@@ -105,7 +136,7 @@ def handle_trip_generation(
             end=dt_cls.combine(trip.end_date, dt_cls.max.time()),
         )
         trip_days = (trip.end_date - trip.start_date).days + 1
-        trip_duration = float(max(60, min(600, trip_days * 35)))
+        trip_duration = float(duration or max(60, min(600, trip_days * 35)))
 
         trip_slug = trip.location_name.lower().replace(" ", "_")[:30]
         trip_output = output_path.parent / f"trip_{trip_slug}_{trip.start_date.isoformat()}.mp4"
@@ -126,7 +157,10 @@ def handle_trip_generation(
 
         trip_photos: list = []
         if use_photos:
-            trip_photos = client.get_photos_for_date_range(trip_date_range)
+            all_photos = client.get_photos_for_date_range(trip_date_range)
+            # WHY: photos are fetched by date only — filter to geotagged ones
+            # near the trip centroid so home photos don't leak into trip memories
+            trip_photos = _filter_photos_near_trip(all_photos, trip, config)
 
         if not trip_assets and not trip_live and not trip_photos:
             print_error(f"No content found for trip: {trip.location_name}")

@@ -107,7 +107,11 @@ class TestTripGenerationPhotoFetch:
         )
 
         mock_client = MagicMock()
-        mock_client.get_photos_for_date_range.return_value = [MagicMock()]
+        # WHY: photo must have GPS far from home to survive the trip filter
+        mock_photo = MagicMock()
+        mock_photo.exif_info.latitude = 45.7
+        mock_photo.exif_info.longitude = 7.3
+        mock_client.get_photos_for_date_range.return_value = [mock_photo]
 
         with (
             patch(
@@ -134,9 +138,15 @@ class TestTripGenerationPhotoFetch:
 
             mock_generate.return_value = (MagicMock(), False, None)
 
+            mock_config = MagicMock()
+            mock_config.trips.homebase_latitude = 50.85
+            mock_config.trips.homebase_longitude = 4.35
+            mock_config.trips.min_distance_km = 50
+            mock_config.defaults.transition = "smart"
+
             handle_trip_generation(
                 client=mock_client,
-                config=MagicMock(),
+                config=mock_config,
                 progress=MagicMock(),
                 year=2021,
                 month=7,

@@ -561,6 +561,7 @@ def register_generate_commands(main: click.Group) -> None:
                             subtitle_override=subtitle_override,
                             upload_to_immich=upload_to_immich,
                             album=album,
+                            duration=duration,
                         )
                         return
 

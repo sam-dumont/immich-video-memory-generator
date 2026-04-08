@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import random
-from dataclasses import replace
 
 from immich_memories.processing.assembly_config import AssemblyClip
 
@@ -59,16 +58,16 @@ def pick_fake_city() -> tuple[str, float, float]:
 
 
 def anonymize_preset_params(preset_params: dict) -> dict:
-    """Anonymize trip-related preset params (home GPS, location name)."""
+    """Anonymize trip home base only — keep real destination location."""
     result = preset_params.copy()
-    fake_name, fake_lat, fake_lon = pick_fake_city()
+    _, fake_lat, fake_lon = pick_fake_city()
 
-    # WHY: shift home to the fake city center so map fly starts from there
+    # WHY: only shift the HOME origin so the map fly-in starts from a fake
+    # city. The destination (location_name, trip locations) stays real —
+    # that's the whole point of a trip memory.
     if "home_lat" in result and result["home_lat"] is not None:
         result["home_lat"] = fake_lat - 1.5  # Offset from city so route is visible
         result["home_lon"] = fake_lon - 1.0
-    if "location_name" in result:
-        result["location_name"] = fake_name
 
     return result
 
@@ -76,30 +75,14 @@ def anonymize_preset_params(preset_params: dict) -> dict:
 def anonymize_clips_for_privacy(
     clips: list[AssemblyClip],
 ) -> list[AssemblyClip]:
-    """Relocate all GPS coords to a fake city (preserves cluster shape)."""
-    fake_name, fake_lat, fake_lon = pick_fake_city()
+    """Privacy mode: keep real clip locations, only home base is faked.
 
-    # Find centroid of real GPS coords
-    gps_clips = [(c.latitude, c.longitude) for c in clips if c.latitude and c.longitude]
-    if not gps_clips:
-        return clips
-
-    real_center_lat = sum(lat for lat, _ in gps_clips) / len(gps_clips)
-    real_center_lon = sum(lon for _, lon in gps_clips) / len(gps_clips)
-
-    # WHY: offset = fake city - real centroid, so cluster lands ON the fake city
-    lat_offset = fake_lat - real_center_lat
-    lon_offset = fake_lon - real_center_lon
-
-    result = []
-    for clip in clips:
-        if clip.latitude is not None and clip.longitude is not None:
-            new_lat = max(-90, min(90, clip.latitude + lat_offset))
-            new_lon = ((clip.longitude + lon_offset + 180) % 360) - 180
-
-            clip = replace(clip, latitude=new_lat, longitude=new_lon, location_name=fake_name)
-        result.append(clip)
-    return result
+    WHY: clip GPS and location_name stay real so trip maps, location cards,
+    and titles show the actual destination. Only the home base (preset params)
+    is shifted to a fake city — that's handled by anonymize_preset_params.
+    Face blur and speech mute are handled separately by the assembler.
+    """
+    return clips
 
 
 def clip_location_name(exif) -> str | None:
