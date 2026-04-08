@@ -76,7 +76,6 @@ def auth_config(oidc_server: werkzeug.serving.BaseWSGIServer) -> AuthConfig:
         client_id="test-client",
         client_secret="test-secret",  # noqa: S106
         scope="openid email profile",
-        allow_insecure_issuer=True,
     )
 
 

@@ -26,7 +26,6 @@ class AuthConfig(BaseModel):
     client_secret: str = ""
     scope: str = "openid email profile"
     auto_launch: bool = False
-    allow_insecure_issuer: bool = False
     button_text: str = "Sign in with SSO"
 
     # Trusted header SSO
