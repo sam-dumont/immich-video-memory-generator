@@ -620,7 +620,7 @@ class TestDetectAudioBoundariesException:
     def test_audio_detection_failure_returns_empty(self):
         with patch(
             "immich_memories.analysis.segment_generation.detect_silence_gaps",
-            side_effect=RuntimeError("ffmpeg missing"),
+            side_effect=OSError("ffmpeg missing"),
         ):
             result = detect_audio_boundaries(Path("/fake.mp4"), -30.0, 0.3)
         assert result == []

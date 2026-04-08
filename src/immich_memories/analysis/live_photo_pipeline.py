@@ -172,8 +172,8 @@ def fetch_live_photo_clips(
             person_ids=person_ids,
             merge_window_seconds=merge_window,
         )
-    except Exception:
-        logger.warning("Failed to fetch live photos", exc_info=True)
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.warning("Failed to fetch live photos: %s", e, exc_info=True)
         return [], set()
 
     if not live_assets:

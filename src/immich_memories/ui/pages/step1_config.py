@@ -122,7 +122,7 @@ def _render_immich_config_section(state) -> None:
                 except ImmichAPIError as e:
                     status_label.set_text(f"Connection failed: {sanitize_error_message(str(e))}")
                     status_label.style("color: var(--im-error)")
-                except Exception as e:
+                except Exception as e:  # WHY: UI graceful degradation
                     status_label.set_text(f"Error: {sanitize_error_message(str(e))}")
                     status_label.style("color: var(--im-error)")
 
@@ -190,7 +190,7 @@ def _make_date_range_updater(
             state.target_duration = auto_duration
             if duration_input_ref[0] is not None and duration_input_ref[0].value != auto_duration:
                 duration_input_ref[0].value = auto_duration
-        except Exception as e:
+        except Exception as e:  # WHY: UI graceful degradation
             date_range_label.set_text(f"Invalid date range: {e}")
             date_range_label.style("color: var(--im-error); background: rgba(239,68,68,0.1)")
 

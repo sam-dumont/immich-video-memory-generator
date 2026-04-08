@@ -125,7 +125,7 @@ def _validate_url(url: str) -> str:
     # Parse and validate URL structure
     try:
         parsed = urlparse(url)
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         raise ValueError(f"Invalid URL format: {e}") from e
 
     # Only allow http/https schemes

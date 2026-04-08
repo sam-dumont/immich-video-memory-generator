@@ -115,8 +115,10 @@ def auto_generate_music(
                 logger.info(f"Auto-generated music: {selected.full_mix}")
                 return selected.full_mix
 
-    except Exception:
-        logger.warning("Auto music generation failed, continuing without music", exc_info=True)
+    except (RuntimeError, OSError) as e:
+        logger.warning(
+            "Auto music generation failed, continuing without music: %s", e, exc_info=True
+        )
 
     return None
 

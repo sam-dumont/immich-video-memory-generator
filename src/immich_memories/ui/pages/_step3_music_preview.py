@@ -121,7 +121,7 @@ async def _generate_music(
 
         ui.notify("Music generated successfully!", type="positive")
 
-    except Exception as e:
+    except Exception as e:  # WHY: UI graceful degradation
         logger.warning(f"Music preview generation failed: {e}")
         status_label.set_text(f"Failed: {sanitize_error_message(str(e))}")
         ui.notify(

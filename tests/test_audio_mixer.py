@@ -190,7 +190,7 @@ class TestFallbackBehavior:
             ) as mock_simple,
             patch(
                 "immich_memories.audio.mixer_helpers.mix_audio_with_4stem_ducking",
-                side_effect=RuntimeError("FFmpeg failed"),
+                side_effect=OSError("FFmpeg failed"),
             ),
         ):
             result = svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")
@@ -213,7 +213,7 @@ class TestFallbackBehavior:
             ) as mock_simple,
             patch(
                 "immich_memories.audio.mixer_helpers.mix_audio_with_stem_ducking",
-                side_effect=RuntimeError("FFmpeg failed"),
+                side_effect=OSError("FFmpeg failed"),
             ),
         ):
             result = svc.add_music(tmp_path / "video.mp4", tmp_path / "out.mp4")

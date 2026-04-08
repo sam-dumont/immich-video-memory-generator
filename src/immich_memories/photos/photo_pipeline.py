@@ -327,13 +327,13 @@ def _llm_score_photo(
         try:
             thumb_bytes = thumbnail_fn(asset.id, size="preview")
             thumb_path.write_bytes(thumb_bytes)
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             thumbnail_fn = None  # Fall back to full download
 
     if thumb_path.exists():
         try:
             return score_photo_with_llm(thumb_path, meta_score, config, app_config)
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             return meta_score
 
     # Fallback: download full file (old behavior)
@@ -342,7 +342,7 @@ def _llm_score_photo(
     if not raw_path.exists():
         try:
             download_fn(asset.id, raw_path)
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             return meta_score
 
     try:
@@ -350,7 +350,7 @@ def _llm_score_photo(
 
         prepared = prepare_photo_source(raw_path, work_dir)
         return score_photo_with_llm(prepared.path, meta_score, config, app_config)
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return meta_score
 
 
@@ -360,7 +360,7 @@ def _get_score_cache(db_path: Path):
         from immich_memories.cache.asset_score_cache import AssetScoreCache
 
         return AssetScoreCache(db_path=db_path)
-    except Exception:
+    except (ImportError, OSError):
         return None
 
 
@@ -441,7 +441,7 @@ def _render_single_photo(
             location_name=asset.exif_info.city if asset.exif_info else None,
         )
 
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
         logger.warning(f"Failed to render photo {asset.id}: {e}")
         return None
 
@@ -566,7 +566,7 @@ def _get_photo_encoder_args() -> list[str]:
             ["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True, timeout=5
         )
         has_vt = "hevc_videotoolbox" in result.stdout
-    except Exception:
+    except (OSError, subprocess.SubprocessError, ValueError):
         has_vt = False
 
     # WHY: zscale in the filter already converts to yuv420p10le with

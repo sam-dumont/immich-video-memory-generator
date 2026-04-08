@@ -880,7 +880,7 @@ class TaichiTitleRenderer:
 
         try:
             font = ImageFont.truetype(font_path, font_size)
-        except Exception:
+        except (OSError, ValueError):
             font = ImageFont.load_default()
 
         safe_width = w * 0.88

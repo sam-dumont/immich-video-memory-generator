@@ -406,7 +406,9 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
     except GenerationError as e:
         run_tracker.fail_run(str(e))
         raise
-    except Exception as e:
+    except (
+        Exception
+    ) as e:  # WHY: top-level generation boundary — converts unknown errors to GenerationError
         logger.exception("Video generation failed")
         safe_msg = sanitize_error_message(str(e))
         run_tracker.fail_run(safe_msg)
@@ -414,12 +416,12 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
     finally:
         try:
             _cleanup_temp_clips(assembly_clips)
-        except Exception:
+        except OSError:
             logger.debug("Temp clip cleanup failed", exc_info=True)
         try:
             if not params.debug_preserve_intermediates:
                 _cleanup_temp_dirs(run_output_dir)
-        except Exception:
+        except OSError:
             logger.debug("Temp dir cleanup failed", exc_info=True)
         set_current_run_id(None)
 

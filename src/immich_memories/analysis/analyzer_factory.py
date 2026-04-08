@@ -50,7 +50,7 @@ def create_unified_analyzer_from_config(config: Config):
                 content_weight = config.content_analysis.weight
             else:
                 logger.warning("Content analysis enabled but no analyzer available")
-        except Exception as e:
+        except (ImportError, RuntimeError, ValueError) as e:
             logger.warning(f"Failed to initialize content analyzer: {e}")
 
     # Get audio content analysis settings

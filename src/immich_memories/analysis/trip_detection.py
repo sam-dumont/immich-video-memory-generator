@@ -358,8 +358,10 @@ def reverse_geocode(lat: float, lon: float, spread_km: float | None = None) -> s
                 return country
             return f"{region}, {country}"
         return None
-    except Exception:
-        logger.debug("Reverse geocoding failed for (%s, %s)", lat, lon)
+    except (OSError, ValueError) as e:
+        # WHY: geopy Nominatim can raise GeocoderServiceError (OSError subclass)
+        # or various parsing errors from network/response issues
+        logger.debug("Reverse geocoding failed for (%s, %s): %s", lat, lon, e)
     return None
 
 

@@ -38,8 +38,8 @@ def notify_job_complete(
 
     try:
         result = bool(apobj.notify(title=title, body=body))
-    except Exception:
-        logger.exception("Notification delivery error")
+    except (OSError, RuntimeError) as e:
+        logger.exception("Notification delivery error: %s", e)
         return False
 
     if result:

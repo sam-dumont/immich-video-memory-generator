@@ -9,6 +9,7 @@ from __future__ import annotations
 import gc
 import logging
 import platform
+import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -82,7 +83,7 @@ def init_vision_detector():
         detector = VisionFaceDetector(detect_landmarks=False)
         logger.info("Using Apple Vision for GPU-accelerated face detection")
         return detector
-    except Exception as e:
+    except (ImportError, RuntimeError, OSError) as e:
         logger.warning(f"Failed to initialize Vision detector: {e}")
         return None
 
@@ -96,7 +97,7 @@ def init_opencv_cascade() -> cv2.CascadeClassifier | None:
     try:
         cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         return cv2.CascadeClassifier(cascade_path)
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         logger.warning(f"Could not load face cascade: {e}")
         return None
 
@@ -745,7 +746,7 @@ class SceneScorer:
             if analysis.confidence >= ca_config.min_confidence:
                 return analysis.content_score
             return 0.5
-        except Exception as e:
+        except (RuntimeError, ValueError, OSError) as e:
             logger.debug(f"Content analysis failed: {e}")
             return 0.5
 
@@ -918,7 +919,7 @@ class SceneScorer:
                 )
                 logger.debug(f"Scene detection: {len(segments)} segments from natural boundaries")
                 return segments
-            except Exception as e:
+            except (RuntimeError, OSError, subprocess.SubprocessError, ValueError) as e:
                 logger.warning(f"Scene detection failed, falling back to fixed segments: {e}")
         return generate_segments(video_path, segment_duration, overlap)
 

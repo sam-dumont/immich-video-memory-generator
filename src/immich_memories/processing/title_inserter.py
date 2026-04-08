@@ -89,7 +89,8 @@ class TitleInserter:
                 preserve_hdr=preserve_hdr,
                 hdr_type=hdr_type or "hlg",
             )
-        except Exception:
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("GPU encoder probe failed, using libx264: %s", e)
             encoder_args = ["-c:v", "libx264", "-crf", "12"]
 
         pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
@@ -136,8 +137,8 @@ class TitleInserter:
                 return output_path
             stderr = proc.stderr.read().decode()[-200:] if proc.stderr else ""
             logger.warning(f"Pre-render encode failed: {stderr}")
-        except Exception:
-            logger.warning("Failed to pre-render first clip", exc_info=True)
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
+            logger.warning("Failed to pre-render first clip: %s", e, exc_info=True)
         return None
 
     @staticmethod
@@ -323,7 +324,8 @@ class TitleInserter:
                 preserve_hdr=preserve_hdr,
                 hdr_type=hdr_type or "hlg",
             )
-        except Exception:
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("GPU encoder probe failed, using libx264: %s", e)
             encoder_args = ["-c:v", "libx264", "-crf", "12"]
 
         pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
@@ -372,8 +374,8 @@ class TitleInserter:
             if proc.returncode == 0 and output_path.exists():
                 logger.info(f"Pre-rendered last clip for ending: {output_path}")
                 return output_path
-        except Exception:
-            logger.warning("Failed to pre-render last clip", exc_info=True)
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
+            logger.warning("Failed to pre-render last clip: %s", e, exc_info=True)
         return None
 
     # ------------------------------------------------------------------

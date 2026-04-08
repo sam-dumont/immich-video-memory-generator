@@ -10,6 +10,7 @@ This module provides:
 from __future__ import annotations
 
 import colorsys
+import subprocess
 import tempfile
 from collections import Counter
 from pathlib import Path
@@ -240,7 +241,7 @@ def extract_dominant_color(
             for frame in frames:
                 colors = extract_colors_from_image(frame, num_colors=5)
                 all_colors.extend(colors)
-        except Exception:
+        except (OSError, subprocess.SubprocessError, ValueError):
             # Skip videos that fail to extract
             continue
 
@@ -316,7 +317,7 @@ def extract_keyframes_from_video(
                 timeout=10,
             )
             duration = float(result.stdout.strip() or "10")
-        except Exception:
+        except (OSError, subprocess.SubprocessError, ValueError):
             duration = 10.0
 
         # Calculate timestamps for even distribution
@@ -353,7 +354,7 @@ def extract_keyframes_from_video(
                     frames.append(img.copy())
                     img.close()
 
-            except Exception:
+            except (OSError, subprocess.SubprocessError):
                 continue
 
     return frames

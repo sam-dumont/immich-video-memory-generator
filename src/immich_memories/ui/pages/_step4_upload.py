@@ -92,7 +92,7 @@ async def upload_to_immich(
         )
         logger.info(f"Upload complete: asset={result.get('asset_id')}, album={album_name}")
 
-    except Exception as e:
+    except Exception as e:  # WHY: UI graceful degradation
         logger.warning(f"Upload to Immich failed: {e}")
         safe_msg = sanitize_error_message(str(e))
         ui.notify(f"Upload failed: {safe_msg}", type="warning")

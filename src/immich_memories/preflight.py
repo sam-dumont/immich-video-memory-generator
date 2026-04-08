@@ -71,7 +71,7 @@ def check_immich(config: Config) -> CheckResult:
                 message=f"Connected as {user.name or user.email}",
                 details=f"Server: {config.immich.url}",
             )
-    except Exception as e:
+    except (httpx.TimeoutException, httpx.HTTPStatusError, OSError) as e:
         return CheckResult(
             name="Immich",
             status=CheckStatus.ERROR,
@@ -125,7 +125,7 @@ def _check_ollama(base_url: str, model: str) -> CheckResult:
             message="Cannot connect",
             details=f"Server not reachable at {base_url}",
         )
-    except Exception as e:
+    except (httpx.TimeoutException, httpx.HTTPStatusError, OSError) as e:
         return CheckResult(
             name="LLM",
             status=CheckStatus.WARNING,
@@ -184,7 +184,7 @@ def _check_openai_compatible(base_url: str, model: str, api_key: str) -> CheckRe
             message="Cannot connect",
             details=f"Server not reachable at {base_url}",
         )
-    except Exception as e:
+    except (httpx.TimeoutException, httpx.HTTPStatusError, OSError) as e:
         return CheckResult(
             name="LLM",
             status=CheckStatus.WARNING,
@@ -267,7 +267,7 @@ def check_hardware() -> CheckResult:
             details=", ".join(features) if features else "Basic acceleration",
         )
 
-    except Exception as e:
+    except (ImportError, RuntimeError, OSError) as e:
         return CheckResult(
             name="Hardware",
             status=CheckStatus.WARNING,

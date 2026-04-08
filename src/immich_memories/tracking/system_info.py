@@ -84,7 +84,7 @@ def _get_cpu_brand() -> str | None:
         system = platform.system().lower()
         fn = _cpu_brand_funcs.get(system)
         return fn() if fn else None
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         logger.debug(f"Failed to get CPU brand: {e}")
     return None
 
@@ -139,7 +139,7 @@ def _get_ram_gb() -> float:
         system = platform.system().lower()
         fn = _ram_funcs.get(system)
         return fn() if fn else 0.0
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
         logger.debug(f"Failed to get RAM: {e}")
     return 0.0
 
@@ -152,7 +152,7 @@ def _get_hw_accel_backend() -> str | None:
         hw_caps = detect_hardware_acceleration()
         if hw_caps and hw_caps.backend:
             return hw_caps.backend.value
-    except Exception as e:
+    except (ImportError, RuntimeError, OSError) as e:
         logger.debug(f"Failed to detect HW acceleration: {e}")
 
     return None
@@ -215,7 +215,7 @@ def _get_gpu_name() -> str | None:
         system = platform.system().lower()
         fn = _gpu_name_funcs.get(system)
         return fn() if fn else None
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
         logger.debug(f"Failed to get GPU name: {e}")
     return None
 
@@ -235,7 +235,7 @@ def _get_vram_mb() -> int:
             if result.returncode == 0:
                 return int(result.stdout.strip().split("\n")[0])
 
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
         logger.debug(f"Failed to get VRAM: {e}")
 
     return 0
@@ -256,7 +256,7 @@ def _get_ffmpeg_version() -> str | None:
             parts = first_line.split()
             if len(parts) >= 3:
                 return parts[2]
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         logger.debug(f"Failed to get FFmpeg version: {e}")
 
     return None
@@ -295,5 +295,5 @@ def _check_taichi() -> bool:
             os.close(saved_err)
             os.close(devnull_fd)
         return True
-    except Exception:
+    except (RuntimeError, OSError):
         return False

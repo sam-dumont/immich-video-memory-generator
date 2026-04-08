@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -120,7 +121,7 @@ def _extract_clips(
                     location_name=clip_location_name(exif),
                 )
             )
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.warning(f"Failed to process {clip.asset.id}: {e}")
             continue
 

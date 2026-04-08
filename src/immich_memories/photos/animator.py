@@ -222,7 +222,7 @@ def _try_ultrahdr_extraction(source_path: Path, work_dir: Path) -> PreparedPhoto
             path=out_path, width=w, height=h, has_gain_map=True, peak_nits=peak_nits
         )
 
-    except Exception as e:
+    except (ValueError, OSError) as e:
         logger.debug(f"UltraHDR extraction failed for {source_path.name}: {e}")
         return None
 
@@ -266,7 +266,7 @@ def _convert_heif(source_path: Path, work_dir: Path) -> PreparedPhoto:
             return _apply_hdr_gain_map(
                 img, primary, gain_map_item_id, w, h, work_dir, source_path, headroom
             )
-        except Exception as e:
+        except (ValueError, OSError) as e:
             logger.warning(f"Gain map extraction failed, falling back to SDR: {e}")
 
     out_path = work_dir / f"{source_path.stem}_converted.jpg"
@@ -389,7 +389,7 @@ def _is_display_p3(icc_profile: bytes) -> bool:
         profile = ImageCms.ImageCmsProfile(BytesIO(icc_profile))
         desc = ImageCms.getProfileDescription(profile).strip().lower()
         return "p3" in desc
-    except Exception:
+    except (OSError, ValueError):
         return False
 
 
@@ -404,7 +404,7 @@ def _convert_p3_to_srgb(img: PILImage.Image, icc_profile: bytes) -> PILImage.Ima
         srgb_profile = ImageCms.createProfile("sRGB")
         result = ImageCms.profileToProfile(img, p3_profile, srgb_profile, outputMode="RGB")
         return result  # type: ignore[return-value]
-    except Exception as e:
+    except (OSError, ValueError) as e:
         logger.debug(f"P3→sRGB conversion failed, using original: {e}")
         return img
 
@@ -443,7 +443,7 @@ def detect_photo_hdr_type(photo_path: Path) -> str | None:
                     return "hlg"
                 if color_trc in ("smpte2084", "bt2020-10", "bt2020-12"):
                     return "pq"
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
         logger.debug(f"HDR detection failed for {photo_path}: {e}")
     return None
 

@@ -194,7 +194,7 @@ def _gather_trip_context(state: AppState) -> _TripContext:
         daily = _build_daily_summaries(by_date)
         ctx.daily_locations = daily or None
         ctx.country = _extract_single_country(state)
-    except Exception:
+    except Exception:  # WHY: UI graceful degradation
         logger.debug("Trip context gathering failed", exc_info=True)
     return ctx
 
@@ -270,7 +270,7 @@ async def generate_title_after_pipeline(state: AppState) -> None:
             clip_descriptions=_collect_clip_descriptions(state) or None,
             llm_config=llm_cfg,
         )
-    except Exception:
+    except Exception:  # WHY: UI graceful degradation
         logger.warning("LLM title generation failed — keeping template title", exc_info=True)
         return
 

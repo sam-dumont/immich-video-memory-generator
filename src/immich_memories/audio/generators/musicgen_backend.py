@@ -10,6 +10,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from immich_memories.audio.generators.base import (
     GenerationRequest,
     GenerationResult,
@@ -66,12 +68,12 @@ class MusicGenBackend(MusicGenerator):
                 try:
                     await client.health_check()
                     return True
-                except Exception:
+                except (OSError, RuntimeError, httpx.HTTPError):
                     return False
         try:
             await self._client.health_check()
             return True
-        except Exception:
+        except (OSError, RuntimeError, httpx.HTTPError):
             return False
 
     async def generate(
@@ -158,5 +160,5 @@ class MusicGenBackend(MusicGenerator):
                 "device": health.get("device", "unknown"),
                 "status": health.get("status", "unknown"),
             }
-        except Exception as e:
+        except (OSError, RuntimeError, httpx.HTTPError) as e:
             return {"backend": self.name, "available": False, "error": str(e)}

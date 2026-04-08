@@ -7,6 +7,7 @@ video creation methods for titles and map backgrounds.
 from __future__ import annotations
 
 import logging
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -218,8 +219,6 @@ class RenderingService:
 
         Falls back to None if extraction fails (caller uses gradient instead).
         """
-        import subprocess
-
         try:
             # Extract mid-frame as raw RGB
             result = subprocess.run(
@@ -246,7 +245,7 @@ class RenderingService:
             frame = np.frombuffer(result.stdout, dtype=np.uint8).reshape(height, width, 3)
             # Darken to 40% so white text pops (same as Taichi path)
             return frame.astype(np.float32) / 255.0 * 0.4
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.debug(f"Failed to extract blurred frame for PIL fallback: {e}")
             return None
 

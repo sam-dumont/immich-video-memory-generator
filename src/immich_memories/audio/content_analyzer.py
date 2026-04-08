@@ -134,7 +134,7 @@ class AudioContentAnalyzer:
 
             return audio_array, sample_rate
 
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.debug(f"Audio extraction error: {e}")
             return None
 
@@ -226,7 +226,7 @@ class AudioContentAnalyzer:
             logger.info("PANNs audio classification available (%d classes)", len(labels))
             return True
 
-        except Exception as e:
+        except (ImportError, RuntimeError, OSError) as e:
             logger.warning(f"PANNs audio classification not available: {e}")
             logger.warning(
                 "Falling back to energy-based detection (less accurate for speech/laughter)"
@@ -416,7 +416,7 @@ class AudioContentAnalyzer:
                 protected_ranges=protected_ranges,
             )
 
-        except Exception as e:
+        except (RuntimeError, ValueError) as e:
             logger.warning(f"PANNs analysis failed: {e}")
             return self._analyze_with_energy(audio_array, sample_rate, max_duration)
 

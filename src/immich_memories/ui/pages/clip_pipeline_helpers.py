@@ -138,7 +138,7 @@ def _try_render_video_preview(preview_path: str | None, _rendered_state: dict[st
             "max-height: 180px; max-width: 100%; object-fit: contain"
         )
         return True
-    except Exception:
+    except Exception:  # WHY: UI graceful degradation
         return False
 
 

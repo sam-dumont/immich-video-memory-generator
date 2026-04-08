@@ -108,7 +108,7 @@ class TestDetectHdrType:
         # WHY: mock subprocess.run raising — verify graceful fallback when ffprobe is missing
         with patch(
             "immich_memories.processing.hdr_utilities.subprocess.run",
-            side_effect=Exception("ffprobe not found"),
+            side_effect=FileNotFoundError("ffprobe not found"),
         ):
             result = _detect_hdr_type(video)
 
@@ -145,7 +145,7 @@ class TestDetectColorPrimaries:
         # WHY: mock subprocess.run raising — verify graceful fallback when ffprobe is missing
         with patch(
             "immich_memories.processing.hdr_utilities.subprocess.run",
-            side_effect=Exception("ffprobe not found"),
+            side_effect=FileNotFoundError("ffprobe not found"),
         ):
             result = _detect_color_primaries("/fake/path.mp4")
 

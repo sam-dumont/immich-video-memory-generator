@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -76,7 +77,7 @@ class RunTracker:
         if self._capture_system:
             try:
                 system_info = capture_system_info()
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError, RuntimeError) as e:
                 logger.warning(f"Failed to capture system info: {e}")
 
         self._run = RunMetadata(
@@ -156,7 +157,7 @@ class RunTracker:
 
         try:
             self.db.save_phase_stats(self.run_id, stats)
-        except Exception as exc:
+        except (OSError, RuntimeError) as exc:
             logger.warning("Failed to save phase stats for '%s': %s", stats.phase_name, exc)
 
         logger.debug(
@@ -308,7 +309,7 @@ class RunTracker:
             if result.returncode == 0:
                 data = json.loads(result.stdout)
                 return float(data.get("format", {}).get("duration", 0))
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.debug(f"Failed to get video duration: {e}")
 
         return 0.0
@@ -324,7 +325,7 @@ class RunTracker:
             metadata_path = output_dir / "run_metadata.json"
             metadata_path.write_text(run.to_json())
             logger.debug(f"Saved run metadata to {metadata_path}")
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.warning(f"Failed to save run metadata: {e}")
 
     @property

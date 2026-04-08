@@ -400,7 +400,7 @@ class TestExtractClips:
             patch("immich_memories.generate_downloads.download_clip", return_value=video_file),
             patch(
                 "immich_memories.processing.clips.extract_clip",
-                side_effect=RuntimeError("FFmpeg error"),
+                side_effect=OSError("FFmpeg error"),
             ),
         ):
             mock_cache = MagicMock()
@@ -1970,7 +1970,7 @@ class TestTryMergeBurst:
             # WHY: align_clips_spectrogram runs cross-correlation that can fail
             patch(
                 "immich_memories.processing.live_photo_merger.align_clips_spectrogram",
-                side_effect=RuntimeError("alignment failed"),
+                side_effect=ValueError("alignment failed"),
             ),
         ):
             probe_result = MagicMock(stdout='{"format":{"duration":"2.0"}}')

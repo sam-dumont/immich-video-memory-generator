@@ -10,6 +10,7 @@ from __future__ import annotations
 import gc
 import logging
 import operator
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -507,7 +508,7 @@ class UnifiedSegmentAnalyzer:
             self._audio_analysis_cache[cache_key] = result
             return result
 
-        except Exception as e:
+        except (ImportError, RuntimeError, OSError, subprocess.SubprocessError) as e:
             logger.warning(f"Audio content analysis failed: {e}")
             return None
 
@@ -642,7 +643,7 @@ class UnifiedSegmentAnalyzer:
                 segment.llm_quality = analysis.quality
 
             return analysis.content_score
-        except Exception as e:
+        except (RuntimeError, ValueError, OSError) as e:
             logger.debug(f"Content analysis failed: {e}")
             return 0.5
 
@@ -733,7 +734,7 @@ class UnifiedSegmentAnalyzer:
                 segment.motion_score = visual_scores.get("motion", 0.0)
                 segment.stability_score = visual_scores.get("stability", 0.0)
                 segment.visual_score = visual_scores.get("total", 0.0)
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError) as e:
                 logger.warning(f"Visual scoring failed: {e}")
                 segment.visual_score = 0.5  # Neutral fallback
 
@@ -795,7 +796,7 @@ class UnifiedSegmentAnalyzer:
                     audio_video, segment.start_time, segment.end_time, segment=segment
                 )
                 segment.total_score = self._compute_total_score(segment)
-            except Exception as e:
+            except (RuntimeError, ValueError, OSError) as e:
                 logger.warning(f"  -> LLM analysis failed: {e}")
                 segment.content_score = 0.5
 

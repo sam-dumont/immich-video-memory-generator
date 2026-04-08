@@ -68,7 +68,7 @@ def _render_glyph(face, char: str) -> tuple[str, np.ndarray, GlyphMetrics] | Non
 
         return (char, buffer, metrics)
 
-    except Exception as e:
+    except (RuntimeError, ValueError) as e:
         logger.debug(f"Failed to render glyph '{char}': {e}")
         return None
 

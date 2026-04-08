@@ -218,7 +218,7 @@ def downscale_video(
     except subprocess.TimeoutExpired:
         logger.warning(f"Downscaling timed out for {source_path.name}")
         return source_path
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         logger.warning(f"Downscaling error: {e}")
         return source_path
 

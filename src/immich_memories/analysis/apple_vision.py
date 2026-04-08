@@ -390,7 +390,7 @@ def create_face_detector() -> object:
     if is_vision_available():
         try:
             return VisionFaceDetectorCV()
-        except Exception as e:
+        except (ImportError, RuntimeError, OSError) as e:
             logger.warning(f"Failed to create Vision detector: {e}")
 
     # Fallback to OpenCV

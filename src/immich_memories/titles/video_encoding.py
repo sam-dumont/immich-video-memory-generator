@@ -223,7 +223,7 @@ def create_title_video(
                     break
                 process.stdin.write(frame_bytes)
             process.stdin.close()
-        except Exception as e:
+        except OSError as e:
             write_error.append(e)
 
     process = subprocess.Popen(

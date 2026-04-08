@@ -63,7 +63,7 @@ class FFmpegProber:
                 if streams:
                     stream = max(streams, key=lambda s: s.get("width", 0) * s.get("height", 0))
                     return self.parse_resolution_from_stream(stream)
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.debug(f"Failed to detect resolution: {e}")
         return None
 
@@ -350,7 +350,7 @@ class FFmpegProber:
                 if streams:
                     best = max(streams, key=lambda s: s.get("width", 0) * s.get("height", 0))
                     return self.parse_fps_str(best.get("r_frame_rate", ""))
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.debug(f"Failed to detect frame rate: {e}")
         return None
 

@@ -75,7 +75,7 @@ def _detect_hdr_type(video_path: Path) -> str | None:
                     return "hlg"
                 elif color_trc in ("smpte2084", "bt2020-10", "bt2020-12"):
                     return "pq"
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
         logger.debug(f"HDR detection failed for {video_path}: {e}")
     return None
 
@@ -111,7 +111,7 @@ def _detect_color_primaries(video_path: Path | str) -> str | None:
             streams = data.get("streams", [])
             if streams:
                 return streams[0].get("color_primaries") or None
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
         logger.debug(f"Color primaries detection failed for {video_path}: {e}")
     return None
 
@@ -192,7 +192,7 @@ def check_zscale_available() -> bool:
             text=True,
         )
         _zscale_cache = "zscale" in result.stdout
-    except Exception:
+    except (OSError, subprocess.SubprocessError, ValueError):
         _zscale_cache = False
     return _zscale_cache
 
@@ -339,7 +339,7 @@ def _encoder_args_nvenc(crf: int, preserve_hdr: bool, color_trc: str) -> list[st
         )
         if "hevc_nvenc" not in result.stdout:
             return None
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return None
     base = [
         "-c:v",

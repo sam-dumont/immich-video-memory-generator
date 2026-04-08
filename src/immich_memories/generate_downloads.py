@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -89,8 +90,8 @@ def _download_burst_clips(
             client.download_asset(vid, dest)
             if dest.exists() and dest.stat().st_size > 0:
                 clip_paths.append(dest)
-        except Exception:
-            logger.warning(f"Failed to download burst video {vid}", exc_info=True)
+        except (OSError, RuntimeError) as e:
+            logger.warning(f"Failed to download burst video {vid}: {e}", exc_info=True)
     return clip_paths
 
 
@@ -129,8 +130,6 @@ def _try_merge_burst(
     for sample-accurate alignment. Otherwise falls back to timestamp-based
     trim points.
     """
-    import subprocess
-
     from immich_memories.processing.live_photo_merger import (
         align_clips_spectrogram,
         build_merge_command,
@@ -175,7 +174,7 @@ def _try_merge_burst(
                 valid_paths, shutter_timestamps[: len(valid_paths)], durations
             )
             valid_trims = video_trims  # Use frame-aligned trims for video
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.warning(f"Spectrogram alignment failed, using timestamp trims: {e}")
             audio_trims = None
 
@@ -185,7 +184,7 @@ def _try_merge_burst(
         if result.returncode == 0 and merged_path.exists():
             return merged_path
         logger.warning(f"Live photo merge failed: {result.stderr[:500]}")
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         logger.warning(f"Live photo merge error: {e}")
 
     return None
