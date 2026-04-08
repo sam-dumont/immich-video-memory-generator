@@ -17,8 +17,9 @@ ConnectionError: Cannot connect to Immich at https://photos.example.com
 ## No Videos Found
 
 - Check the person name matches exactly what Immich has. Face recognition names are case-sensitive.
-- Check the time period actually contains videos. A year with only photos won't produce anything.
-- If you're not using `--person`, make sure there are videos (not just photos) in the selected time range.
+- If photo support is enabled (`photos.enabled: true` or `--include-photos`), videos and photos compete in a unified selection pool. A time period with only photos is valid and will produce a memory.
+- If photo support is **not** enabled, the selected time range must contain at least one video.
+- If you're filtering by `--person`, make sure that person has tagged assets in the time range.
 
 ## Slow Analysis
 

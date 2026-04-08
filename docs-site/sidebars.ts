@@ -99,6 +99,7 @@ const sidebars: SidebarsConfig = {
             'deploy/configuration/config-file',
             'deploy/configuration/environment-variables',
             'deploy/configuration/authentication',
+            'deploy/configuration/network-and-privacy',
           ],
         },
         {

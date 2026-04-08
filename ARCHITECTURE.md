@@ -32,11 +32,12 @@ The four core orchestrators and their composed services:
 - `AudioMixerService` (audio_mixer_service.py): background music mixing
 - `TitleInserter` (title_inserter.py): title screen concatenation
 
-**SmartPipeline** (analysis/smart_pipeline.py) composes 4 services:
+**SmartPipeline** (analysis/smart_pipeline.py) composes 5 services:
 - `ClipAnalyzer` (clip_analyzer.py): download, analyze, and score clips
 - `PreviewBuilder` (preview_builder.py): extract preview segments
 - `ClipRefiner` (clip_refiner.py): select and distribute final clips
 - `ClipScaler` (clip_scaler.py): scale to target duration, deduplicate
+- `DensityBudget` (density_budget.py): density-proportional asset budget
 
 **ImmichClient** (api/immich.py) composes 5 services:
 - `SearchService` (search_service.py): video search and time bucket queries
@@ -50,10 +51,13 @@ The four core orchestrators and their composed services:
 - `EndingService` (ending_service.py): fade-to-white ending generation
 - `TripService` (trip_service.py): trip map and location card screens
 
-Resolution/context setup lives in standalone functions:
-- `assembly_context_builder.py`: `resolve_target_resolution()`, `create_assembly_context()`
-
-not a top-level orchestrator.
+**GenerationPipeline** (generate.py) orchestrates the end-to-end flow:
+- `generate_downloads.py`: parallel asset downloads
+- `generate_clips.py`: clip extraction, probing, cleanup
+- `generate_photos.py`: photo rendering, budget allocation, clip merging
+- `generate_music.py`: music resolution, AI generation, audio mixing
+- `generate_privacy.py`: GPS anonymization, fake names/cities, trip titles
+- `generate_settings.py`: assembly/title settings, assembler creation
 
 ## Package Structure
 
@@ -74,6 +78,7 @@ src/immich_memories/
 │   ├── models.py               # AnimationMode enum, PhotoClipInfo, PhotoGroup
 │   ├── renderer.py             # Frame-by-frame renderer: Ken Burns, slide-in, collage, face_aware_pan
 │   ├── animator.py             # PhotoAnimator: FFmpeg command builder, HEIC decode, HDR detection
+│   ├── photo_pipeline.py       # PhotoPipeline: end-to-end photo processing orchestrator
 │   ├── ultrahdr.py             # Ultra HDR JPEG (Android/Pixel): MPF parser, gain map, ISO 21496-1
 │   ├── filter_expressions.py   # LEGACY FFmpeg filter strings (superseded by renderer.py)
 │   ├── grouper.py              # PhotoGrouper: temporal clustering, series detection
@@ -87,16 +92,16 @@ src/immich_memories/
 │   └── factory.py              # Registry + 6 built-in preset factories
 │
 ├── analysis/                   # Video analysis & clip selection
-│   ├── smart_pipeline.py       # SmartPipeline (composes 4 services)
+│   ├── smart_pipeline.py       # SmartPipeline (composes 5 services)
 │   ├── pipeline.py             # Pipeline base/helpers
 │   ├── clip_analyzer.py        # ClipAnalyzer: download + analyze + score
 │   ├── clip_refiner.py         # ClipRefiner: final selection + distribution
 │   ├── clip_scaler.py          # ClipScaler: duration scaling + dedup
 │   ├── clip_selection.py       # Standalone clip selection functions
+│   ├── density_budget.py       # DensityBudget: density-proportional asset budget
 │   ├── preview_builder.py      # PreviewBuilder: preview segment extraction
 │   ├── progress.py             # Progress tracking helpers
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
-│   ├── trip_scoring.py         # Location diversity scoring for trip clips
 │   ├── unified_analyzer.py     # UnifiedSegmentAnalyzer (all methods merged, no mixins)
 │   ├── unified_budget.py       # Unified photo+video budget selection (merge-then-fit)
 │   ├── segment_generation.py   # Boundary detection, candidate segment generation
@@ -121,16 +126,19 @@ src/immich_memories/
 │   ├── assembly_engine.py      # AssemblyEngine (composes ConcatService)
 │   ├── ffmpeg_filter_graph.py  # ConcatService: batch merge/direct assembly
 │   ├── assembly_config.py      # Dataclasses: AssemblySettings, AssemblyClip, etc.
-│   ├── assembly_context_builder.py # Standalone: resolve_target_resolution(), create_assembly_context()
+│   ├── streaming_assembler.py  # StreamingAssembler: low-memory 4K assembly via frame blending
+│   ├── streaming_audio.py      # Streaming audio processing helpers
 │   ├── ffmpeg_prober.py        # FFmpegProber: ffprobe-based duration/resolution
 │   ├── filter_builder.py       # FilterBuilder: FFmpeg filter graph construction
 │   ├── clip_encoder.py         # ClipEncoder: per-clip trimming/re-encoding
-│   ├── clip_encoding.py        # Clip encoding helpers
 │   ├── clip_probing.py         # Clip probing helpers
 │   ├── clip_transitions.py     # Clip transition helpers
+│   ├── clip_validation.py      # Clip validation helpers
 │   ├── clips.py                # ClipExtractor: download & re-encode
 │   ├── title_inserter.py       # TitleInserter: title screen concatenation
 │   ├── audio_mixer_service.py  # AudioMixerService: background music mixing
+│   ├── privacy_audio.py        # Privacy mode audio processing (lowpass filter)
+│   ├── frame_preview.py        # Frame extraction for previews
 │   ├── downscaler.py           # Resolution downscaling
 │   ├── hdr_utilities.py        # HDR detection & conversion filters
 │   ├── scaling_utilities.py    # Resolution, aspect ratio, smart crop
@@ -145,8 +153,6 @@ src/immich_memories/
 │
 ├── audio/                      # Audio processing
 │   ├── content_analyzer.py     # PANNs audio classification
-│   ├── panns_analysis.py       # PANNs (PyTorch AudioSet) helpers
-│   ├── energy_analysis.py      # Audio energy analysis
 │   ├── audio_models.py         # Audio data models
 │   ├── mixer.py                # Audio mixing & ducking
 │   ├── mixer_class.py          # AudioMixer class
@@ -177,13 +183,11 @@ src/immich_memories/
 │   ├── encoding.py             # Title video encoding
 │   ├── video_encoding.py       # Video encoding helpers
 │   ├── text_builder.py         # Text layout & positioning
-│   ├── text_rendering.py       # Text rendering helpers
+│   ├── content_background.py   # Content-aware background generation
 │   ├── renderer_pil.py         # PIL-based renderer
 │   ├── renderer_taichi.py      # Taichi GPU renderer
 │   ├── renderer_ffmpeg.py      # FFmpeg-based renderer
 │   ├── taichi_kernels.py       # Taichi GPU kernels
-│   ├── taichi_particles.py     # Taichi particle systems
-│   ├── taichi_text.py          # Taichi text rendering
 │   ├── taichi_video.py         # Taichi video creation
 │   ├── taichi_globe.py         # Taichi globe rendering
 │   ├── globe_renderer.py       # Globe renderer
@@ -206,6 +210,8 @@ src/immich_memories/
 │   ├── generate.py             # `generate`, `analyze`, `export-project`
 │   ├── config_cmd.py           # `config`, `people`, `years`, `preflight`
 │   ├── scheduler_cmd.py        # `scheduler start/stop/status/list`
+│   ├── auto_cmd.py             # `auto suggest/run/install/history/test-notification`
+│   ├── cache_cmd.py            # `cache stats/export/import/backup`
 │   ├── titles.py               # `titles test`, `titles fonts`
 │   ├── runs.py                 # `runs list`, `runs show`, `runs stats`
 │   ├── music_cmd.py            # `music search`, `music analyze`
@@ -216,7 +222,9 @@ src/immich_memories/
 │   ├── _pipeline_runner.py     # Fetch assets + run SmartPipeline + generate
 │   ├── _trip_generation.py     # Trip detection, selection, per-trip generation
 │   ├── _trip_display.py        # Trip table formatting & selection logic
-│   └── _date_resolution.py     # Date range resolution for memory types
+│   ├── _date_resolution.py     # Date range resolution for memory types
+│   ├── _live_display.py        # Rich Live interactive progress display
+│   └── _progress.py            # Progress tracking helpers
 │
 ├── ui/                         # NiceGUI web interface
 │   ├── app.py                  # App setup & routing
@@ -225,7 +233,6 @@ src/immich_memories/
 │   ├── state.py                # Shared UI state
 │   ├── theme.py                # UI theme
 │   ├── components.py           # Shared UI components
-│   ├── filename_builder.py     # Output filename generation
 │   └── pages/
 │       ├── login.py                # Login page (basic form + OIDC SSO button)
 │       ├── step1_config.py         # Connection & time period config
@@ -235,7 +242,6 @@ src/immich_memories/
 │       ├── step2_review.py         # Clip review orchestration
 │       ├── step2_loading.py        # Loading state UI
 │       ├── step2_helpers.py        # Shared step2 utilities
-│       ├── _step2_live_photos.py   # Re-exports from analysis/live_photo_pipeline
 │       ├── clip_grid.py            # Clip card grid display
 │       ├── clip_review.py          # Clip refinement controls
 │       ├── clip_pipeline.py        # Pipeline execution UI
@@ -251,7 +257,6 @@ src/immich_memories/
 │
 ├── tracking/                   # Run history & telemetry
 │   ├── run_database.py         # SQLite run storage
-│   ├── run_queries.py          # Database query helpers
 │   ├── run_tracker.py          # Pipeline run tracking
 │   ├── run_id.py               # Run ID generation
 │   ├── models.py               # Run/phase data models
@@ -261,8 +266,7 @@ src/immich_memories/
 │   ├── __init__.py             # Re-exports public API
 │   ├── database.py             # VideoAnalysisCache class
 │   ├── database_models.py      # CachedSegment, CachedVideoAnalysis, SimilarVideo
-│   ├── database_migrations.py  # Schema migrations (v1-v5)
-│   ├── database_queries.py     # Read/query methods
+│   ├── asset_score_cache.py    # Asset score persistence (photo/video scores)
 │   ├── thumbnail_cache.py      # File-based thumbnail storage
 │   └── video_cache.py          # Downloaded video file cache
 │
@@ -272,15 +276,28 @@ src/immich_memories/
 │   ├── daemon.py               # Daemon loop (foreground, SIGINT/SIGTERM)
 │   └── models.py               # Scheduling data models
 │
+├── automation/                 # Smart automation (auto suggest/run)
+│   ├── __init__.py             # Public API re-exports
+│   ├── candidates.py           # Memory candidate detection
+│   ├── candidate_scorer.py     # Candidate scoring & ranking
+│   ├── event_detectors.py      # Event-based detectors (activity bursts)
+│   ├── calendar_detectors.py   # Calendar-based detectors (monthly, yearly)
+│   ├── notifications.py        # Apprise notification integration
+│   ├── runner.py               # Auto-run orchestrator
+│   └── system_scheduler.py     # OS scheduler integration (launchd/systemd/cron)
+│
 ├── config.py                   # YAML configuration management (re-exports)
 ├── config_loader.py            # Config loading logic
 ├── config_models.py            # Config data models
-├── config_models_extra.py      # Additional config models
+├── config_models_auth.py       # Authentication config model (basic, OIDC, header)
+├── generate.py                 # End-to-end generation orchestrator
 ├── generate_clips.py           # Clip extraction, probing, cleanup
+├── generate_downloads.py       # Parallel asset downloads
 ├── generate_music.py           # Music resolution, AI generation, audio mixing
 ├── generate_photos.py          # Photo rendering, budget allocation, clip merging
 ├── generate_privacy.py         # GPS anonymization, fake names/cities, trip titles
 ├── generate_settings.py        # Assembly/title settings, assembler creation, music, upload
+├── filename_builder.py         # Output filename generation
 ├── timeperiod.py               # Date range utilities
 ├── security.py                 # Input sanitization
 ├── i18n.py                     # Internationalization

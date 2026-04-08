@@ -8,6 +8,16 @@ sidebar_label: CLI Reference
 This page is auto-generated from the Click command definitions.
 Run `make docs-cli` to regenerate.
 
+## Global options
+
+These apply to every subcommand:
+
+| Flag | Type | Description |
+| --- | --- | --- |
+| `--config`, `-c` | path | Path to config file (default: `~/.immich-memories/config.yaml`) |
+| `--version` | flag | Show version and exit |
+| `--help` | flag | Show help and exit |
+
 ## `cache`
 
 Manage the analysis cache (LLM scores, video metadata).
@@ -112,10 +122,10 @@ immich-memories generate [OPTIONS]
 | `--years-back` | integer | all | Years to look back for `on_this_day` |
 | `--duration`, `-d` | integer | - | Target duration in seconds |
 | `--orientation`, `-o` | choice | landscape | Output orientation |
-| `--resolution`, `-r` | choice | auto | `auto`, `4k`, `1080p`, `720p` |
+| `--resolution`, `-r` | choice | config | `auto`, `4k`, `1080p`, `720p` (default: from config, or `auto` to match source) |
 | `--scale-mode`, `-s` | choice | blur | Scaling mode |
 | `--transition`, `-t` | choice | smart | Transition style |
-| `--quality` | choice | high | Output quality (high, medium, low) |
+| `--quality`, `-q` | choice | high | Output quality (high, medium, low) |
 | `--format` | choice | mp4 | `mp4` or `prores` |
 | `--output`, `-O` | path | - | Output file path |
 | `--title` | text | - | Override title screen text |
@@ -124,7 +134,7 @@ immich-memories generate [OPTIONS]
 | `--music`, `-m` | text | - | Path to audio file, or `auto` to generate |
 | `--no-music` | flag | false | Disable all music |
 | `--music-volume` | float | 0.5 | Music volume 0.0-1.0 |
-| `--analysis-depth` | choice | fast | `fast` (LLM for favorites only) or `thorough` (LLM for top candidates) |
+| `--analysis-depth` | choice | fast | `fast` (metadata gap-fill) or `thorough` (LLM gap-fill for top candidates) |
 | `--include-photos` | flag | false | Include photos alongside videos |
 | `--photo-duration` | float | 4.0 | Seconds per photo clip |
 | `--include-live-photos` | flag | false | Include Live Photo video clips |
