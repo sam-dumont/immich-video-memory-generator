@@ -320,9 +320,14 @@ class StreamingEncoder:
         assert self._proc.stdin is not None  # noqa: S101
         with contextlib.suppress(BrokenPipeError):
             self._proc.stdin.close()
+        # WHY: Popen.wait() with stderr=PIPE deadlocks when FFmpeg fills the
+        # 64KB OS pipe buffer with progress/warnings. Drain stderr first —
+        # read() blocks until FFmpeg exits and closes its end of the pipe,
+        # which is fine since stdin is already closed (FFmpeg will finish).
+        stderr_bytes = self._proc.stderr.read() if self._proc.stderr else b""
         self._proc.wait(timeout=3600)
         if self._proc.returncode != 0:
-            stderr = self._proc.stderr.read().decode(errors="replace") if self._proc.stderr else ""
+            stderr = stderr_bytes.decode(errors="replace")
             raise RuntimeError(
                 f"Streaming encode failed (exit {self._proc.returncode}): {stderr[-500:]}"
             )

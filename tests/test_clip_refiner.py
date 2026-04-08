@@ -87,6 +87,115 @@ class TestPhotoCapScarcity:
         assert len(result) == 5
 
 
+class TestSameDayPhotoLimit:
+    """Photos from the same day should be limited to avoid one event dominating."""
+
+    def test_six_race_photos_capped_to_two(self):
+        """Brussels 20K: 6 photos from race day → at most 2 survive phase_refine."""
+        from unittest.mock import MagicMock
+
+        from immich_memories.analysis.clip_refiner import ClipRefiner
+        from immich_memories.analysis.clip_scaler import ClipScaler
+        from immich_memories.analysis.smart_pipeline import PipelineConfig
+
+        race_day = datetime(2023, 5, 28, tzinfo=UTC)
+        clips = [
+            # 6 high-scoring race photos from same day
+            _make_clip(
+                f"race{i}",
+                race_day + timedelta(minutes=i * 15),
+                score=0.90 - i * 0.02,
+                duration=4.0,
+                is_favorite=True,
+                asset_type=AssetType.IMAGE,
+            )
+            for i in range(6)
+        ] + [
+            # Videos from other days
+            _make_clip("bike", datetime(2023, 5, 20, tzinfo=UTC), score=0.75, duration=5.0),
+            _make_clip("walk", datetime(2023, 6, 10, tzinfo=UTC), score=0.65, duration=5.0),
+            _make_clip("park", datetime(2023, 7, 15, tzinfo=UTC), score=0.70, duration=5.0),
+            _make_clip("swim", datetime(2023, 8, 5, tzinfo=UTC), score=0.60, duration=5.0),
+        ]
+
+        config = PipelineConfig(target_clips=8, avg_clip_duration=4.0)
+        refiner = ClipRefiner(config, ClipScaler())
+
+        tracker = MagicMock()
+        tracker.progress = MagicMock()
+        tracker.progress.errors = []
+
+        result = refiner.phase_refine(clips, tracker)
+
+        race_photos = [c for c in result.selected_clips if c.asset.id.startswith("race")]
+        assert len(race_photos) <= 2, (
+            f"Too many race photos ({len(race_photos)}): "
+            f"{[c.asset.id for c in race_photos]}. Expected ≤2."
+        )
+
+    def test_photos_from_different_days_not_limited(self):
+        """Photos spread across days should all survive (no false positives)."""
+        from unittest.mock import MagicMock
+
+        from immich_memories.analysis.clip_refiner import ClipRefiner
+        from immich_memories.analysis.clip_scaler import ClipScaler
+        from immich_memories.analysis.smart_pipeline import PipelineConfig
+
+        clips = [
+            _make_clip(
+                "jan_photo",
+                datetime(2023, 1, 15, tzinfo=UTC),
+                score=0.7,
+                duration=4.0,
+                is_favorite=True,
+                asset_type=AssetType.IMAGE,
+            ),
+            _make_clip(
+                "mar_photo",
+                datetime(2023, 3, 10, tzinfo=UTC),
+                score=0.65,
+                duration=4.0,
+                is_favorite=True,
+                asset_type=AssetType.IMAGE,
+            ),
+            _make_clip(
+                "may_photo",
+                datetime(2023, 5, 20, tzinfo=UTC),
+                score=0.75,
+                duration=4.0,
+                is_favorite=True,
+                asset_type=AssetType.IMAGE,
+            ),
+            _make_clip(
+                "jul_photo",
+                datetime(2023, 7, 5, tzinfo=UTC),
+                score=0.60,
+                duration=4.0,
+                is_favorite=True,
+                asset_type=AssetType.IMAGE,
+            ),
+            # Videos
+            _make_clip("vid1", datetime(2023, 2, 10, tzinfo=UTC), score=0.7, duration=5.0),
+            _make_clip("vid2", datetime(2023, 6, 15, tzinfo=UTC), score=0.65, duration=5.0),
+        ]
+
+        config = PipelineConfig(target_clips=6, avg_clip_duration=4.0)
+        refiner = ClipRefiner(config, ClipScaler())
+
+        tracker = MagicMock()
+        tracker.progress = MagicMock()
+        tracker.progress.errors = []
+
+        result = refiner.phase_refine(clips, tracker)
+
+        photo_ids = {c.asset.id for c in result.selected_clips if c.asset.type == AssetType.IMAGE}
+        # All 4 photos from different days should survive
+        assert len(photo_ids) >= 3, (
+            f"Only {len(photo_ids)} photos survived: {photo_ids}. "
+            f"Photos from different days should not be capped."
+        )
+
+
 class TestTemporalCoverage:
     """Ensure at least 1 clip per time period across the full date range."""
 

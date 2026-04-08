@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Target 1-2 photos per day to avoid one event dominating.
+_MAX_PHOTOS_PER_DAY = 2
+
 
 @dataclass
 class BudgetCandidate:
@@ -185,6 +188,20 @@ def _trim_videos_to_budget(videos: list[BudgetCandidate], budget: float) -> list
     return kept
 
 
+def _passes_ratio_check(
+    video_count: int,
+    selected_count: int,
+    max_photo_ratio: float,
+    videos_are_scarce: bool,
+) -> bool:
+    """Check if adding one more photo stays within the ratio cap."""
+    if video_count == 0 or videos_are_scarce:
+        return True
+    total_after = video_count + selected_count + 1
+    photo_ratio_after = (selected_count + 1) / total_after
+    return photo_ratio_after <= max_photo_ratio
+
+
 def _fill_with_photos(
     photos: list[BudgetCandidate],
     remaining_budget: float,
@@ -193,35 +210,71 @@ def _fill_with_photos(
     content_budget: float = 0.0,
     video_duration: float = 0.0,
 ) -> list[BudgetCandidate]:
-    """Fill remaining budget with highest-scored photos.
+    """Fill remaining budget with temporally-spread photos.
 
-    When videos fill the budget, the photo ratio cap limits photo count.
-    When videos UNDER-fill the budget, photos fill freely — no point
-    having empty time when photos are available.
+    Uses multi-pass selection to cover unique days first, then densify:
+    1. Best photo per day (temporal spread)
+    2. Second-best per day
+    3. Remaining by score (still capped at 2/day)
     """
-    ranked = sorted(photos, key=lambda p: p.score, reverse=True)
+    if not photos:
+        return []
 
     # WHY: if videos use less than half the content budget, videos are scarce
     # and photos should fill freely without ratio cap
     videos_are_scarce = content_budget > 0 and video_duration < content_budget * 0.5
 
+    # Group photos by day, each day sorted by score descending
+    by_day: dict[str, list[BudgetCandidate]] = defaultdict(list)
+    for p in photos:
+        by_day[p.date.strftime("%Y-%m-%d")].append(p)
+    for day_photos in by_day.values():
+        day_photos.sort(key=lambda p: p.score, reverse=True)
+
     selected: list[BudgetCandidate] = []
+    used_ids: set[str] = set()
     running = 0.0
 
-    for photo in ranked:
+    def _try_add(photo: BudgetCandidate) -> bool:
+        nonlocal running
+        if photo.asset_id in used_ids:
+            return False
         if running + photo.duration > remaining_budget:
-            continue
-
-        # Only enforce ratio cap when there are enough videos to fill the budget
-        if video_count > 0 and not videos_are_scarce:
-            total_after = video_count + len(selected) + 1
-            photo_ratio_after = (len(selected) + 1) / total_after
-            if photo_ratio_after > max_photo_ratio:
-                continue
-
+            return False
+        if not _passes_ratio_check(video_count, len(selected), max_photo_ratio, videos_are_scarce):
+            return False
         selected.append(photo)
+        used_ids.add(photo.asset_id)
         running += photo.duration
+        return True
 
-    # Sort by date for chronological ordering
+    # Round 1: best photo from each day (covers maximum unique days)
+    days_sorted = sorted(by_day.keys())
+    for day in days_sorted:
+        if by_day[day]:
+            _try_add(by_day[day][0])
+
+    # Round 2: second-best per day (soft cap of 2 per day)
+    for day in days_sorted:
+        if len(by_day[day]) > 1:
+            _try_add(by_day[day][1])
+
+    # Round 3: remaining photos ranked by score, still capped at 2/day.
+    # WHY: prevents one event from dominating (e.g., 6 race photos from 1 day).
+    # The cap is soft: rounds 1+2 already placed up to 2/day, round 3 only
+    # adds more if some days haven't hit the cap yet.
+    day_counts: dict[str, int] = defaultdict(int)
+    for p in selected:
+        day_counts[p.date.strftime("%Y-%m-%d")] += 1
+
+    remaining = [p for p in photos if p.asset_id not in used_ids]
+    remaining.sort(key=lambda p: p.score, reverse=True)
+    for photo in remaining:
+        day_key = photo.date.strftime("%Y-%m-%d")
+        if day_counts[day_key] >= _MAX_PHOTOS_PER_DAY:
+            continue
+        if _try_add(photo):
+            day_counts[day_key] += 1
+
     selected.sort(key=lambda p: p.date)
     return selected
