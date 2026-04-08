@@ -307,6 +307,37 @@ automation:
   burst_threshold: 2.0            # multiplier above rolling average to trigger burst
 ```
 
+## Authentication
+
+Protects the web UI. See the [Authentication guide](../deploy/configuration/authentication.mdx) for provider-specific setup (OIDC examples, header proxy config, etc.).
+
+```yaml
+auth:
+  enabled: false
+  provider: basic                # basic, oidc, or header
+  session_ttl_hours: 24          # 1-720
+
+  # Basic auth
+  username: ""
+  password: ""                   # Supports ${ENV_VAR} expansion
+
+  # OIDC / SSO
+  issuer_url: ""                 # Auto-discovers via /.well-known/openid-configuration
+  client_id: ""
+  client_secret: ""              # Supports ${ENV_VAR} expansion; empty for public clients
+  scope: "openid email profile"
+  auto_launch: false             # Skip login page, redirect straight to IdP
+  allow_insecure_issuer: false   # Allow http:// issuer URLs (dev only)
+  button_text: "Sign in with SSO"
+
+  # Trusted header (reverse proxy)
+  user_header: "Remote-User"
+  email_header: "Remote-Email"
+  trusted_proxies: []            # Required for header provider — IPs/CIDRs of your proxy
+```
+
+Place under `advanced:` in your config file (like all Tier 2 sections).
+
 ## Notifications
 
 Get notified when auto-generation or scheduled jobs complete. Uses [Apprise](https://github.com/caronc/apprise) (130+ services: ntfy, Discord, Telegram, Slack, email, webhooks).
