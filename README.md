@@ -8,9 +8,9 @@
 [![License](https://img.shields.io/github/license/sam-dumont/immich-video-memory-generator)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-Docusaurus-blue)](https://sam-dumont.github.io/immich-video-memory-generator/)
 
-**Create beautiful yearly video compilations from your [Immich](https://immich.app/) photo library.**
+**Turn your [Immich](https://immich.app/) photo library into video memory compilations with music, title screens, and smart cuts.**
 
-Immich Memories connects to your self-hosted Immich server, intelligently selects the best moments from your videos, and compiles them into shareable memory videos — perfect for year-end recaps or celebrating specific people in your life.
+Immich Memories connects to your self-hosted Immich server, selects the best moments from your videos *and* photos, and compiles them into shareable memory videos. Year-end recaps, trip highlights, person spotlights, seasonal compilations, monthly highlights, "on this day" flashbacks -- all from a single tool.
 
 > **Full documentation**: [sam-dumont.github.io/immich-video-memory-generator](https://sam-dumont.github.io/immich-video-memory-generator/)
 
@@ -122,12 +122,16 @@ immich-memories generate --year 2024 --person "John" --output ~/Videos/john_2024
 
 ## Key Features
 
-- **Immich Integration** — Direct REST API connection with face recognition support
-- **Smart Clip Selection** — Scene detection, interest scoring, duplicate filtering
+- **Videos + Photos** — Unified selection pool: videos, photos (Ken Burns / face-aware pan), and Live Photos
+- **7 Memory Types** — Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Trip
+- **Smart Clip Selection** — Scene detection, interest scoring, duplicate filtering, temporal coverage
+- **Cinematic Titles** — GPU-rendered title screens with globe animations, satellite maps, month dividers
 - **Face-Aware Cropping** — Keeps faces centered when converting aspect ratios
 - **Hardware Acceleration** — NVIDIA NVENC, Apple VideoToolbox, Intel QSV, AMD VAAPI
-- **AI Music Generation** — ACE-Step or MusicGen with automatic mood detection
-- **Audio Ducking** — Music lowers automatically during speech
+- **AI Music Generation** — ACE-Step or MusicGen with automatic mood detection and audio ducking
+- **Privacy Mode** — Blur all video, muffle audio, anonymize GPS/names for demos
+- **Smart Automation** — `auto suggest` detects interesting memories, `auto run` generates them on a schedule
+- **Authentication** — Basic auth, OIDC/SSO (Auth0, Authelia, Keycloak), or trusted header proxy
 - **Web UI + CLI** — 4-step wizard or headless automation
 - **Docker & Kubernetes** — Containerized deployment with GPU support
 
@@ -157,7 +161,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## Built with AI
 
 > This entire codebase was written with AI (Claude) as an experiment in building complex
-> software cleanly with AI assistance. 1,100+ tests, strict quality gates, the works.
+> software cleanly with AI assistance. 3,900+ tests, 20+ CI quality gates, 225 source modules.
 > See [DISCLAIMER.md](DISCLAIMER.md) for the full story.
 
 ## License
