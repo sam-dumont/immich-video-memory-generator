@@ -142,9 +142,7 @@ def register_config_commands(main: click.Group) -> None:
 
         Checks:
         - Immich server connection and API key
-        - Ollama availability (for mood/content analysis)
-        - OpenAI API key (fallback for analysis)
-        - Pixabay API key (for music search)
+        - LLM availability (Ollama or OpenAI-compatible)
         - Hardware acceleration
         """
         from immich_memories.preflight import CheckStatus, run_preflight_checks
