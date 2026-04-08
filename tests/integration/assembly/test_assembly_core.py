@@ -67,10 +67,6 @@ def _noop_face_center(_path: Path) -> tuple[float, float] | None:
     return None
 
 
-def _noop_cancel() -> None:
-    pass
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -130,7 +126,7 @@ class TestAssemblyEngineScalable:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         output = tmp_path / "two_clips.mp4"
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
@@ -154,7 +150,7 @@ class TestAssemblyEngineScalable:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         output = tmp_path / "single.mp4"
         clips = [_make_clip(test_clip_720p)]
@@ -176,7 +172,7 @@ class TestAssemblyEngineScalable:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         output = tmp_path / "res_override.mp4"
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
@@ -198,7 +194,7 @@ class TestAssemblyEngineScalable:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         with pytest.raises(ValueError, match="No clips"):
             engine.assemble_scalable([], Path("/tmp/out.mp4"))
@@ -217,7 +213,7 @@ class TestAssemblyEngineScalable:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         output = tmp_path / "cuts.mp4"
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
@@ -807,7 +803,7 @@ class TestTransitionDecisions:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
         transitions = engine.get_transition_types(clips)
@@ -825,7 +821,7 @@ class TestTransitionDecisions:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
         transitions = engine.get_transition_types(clips)
@@ -843,7 +839,7 @@ class TestTransitionDecisions:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         clips = [
             _make_clip(test_clip_720p, is_title_screen=True),
@@ -863,7 +859,7 @@ class TestTransitionDecisions:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         transitions = ["fade"]
         # Clip durations too short for 0.5s fade (min = 1.0s needed)
@@ -882,7 +878,7 @@ class TestTransitionDecisions:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
         transitions = engine.decide_transitions(clips)
@@ -900,7 +896,7 @@ class TestTransitionDecisions:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         assert engine.decide_transitions([]) == []
 
@@ -914,7 +910,7 @@ class TestTransitionDecisions:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
         transitions = engine.get_transition_types(clips)
@@ -941,7 +937,7 @@ class TestAssemblyEngineMethods:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         output = tmp_path / "cuts.mp4"
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
@@ -965,7 +961,7 @@ class TestAssemblyEngineMethods:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         output = tmp_path / "xfade.mp4"
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
@@ -989,7 +985,7 @@ class TestAssemblyEngineMethods:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         output = tmp_path / "smart.mp4"
         clips = [_make_clip(test_clip_720p), _make_clip(test_clip_720p_b)]
@@ -1010,7 +1006,7 @@ class TestAssemblyEngineMethods:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         with pytest.raises(ValueError, match="No clips"):
             engine.assemble_with_cuts([], Path("/tmp/out.mp4"))
@@ -1025,7 +1021,7 @@ class TestAssemblyEngineMethods:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         with pytest.raises(ValueError, match="at least 2"):
             engine.assemble_with_crossfade([_make_clip(test_clip_720p)], Path("/tmp/out.mp4"))
@@ -1040,7 +1036,7 @@ class TestAssemblyEngineMethods:
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
         fb = FilterBuilder(settings, prober, _noop_face_center)
-        engine = AssemblyEngine(settings, prober, encoder, fb, _noop_cancel)
+        engine = AssemblyEngine(settings, prober, encoder, fb)
 
         progress_calls = []
 
