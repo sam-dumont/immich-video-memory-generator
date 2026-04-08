@@ -136,7 +136,7 @@ class ImmichClient:
             try:
                 error_data = response.json()
                 message = error_data.get("message", response.text)
-            except Exception:
+            except (ValueError, TypeError):
                 message = response.text
             raise ImmichAPIError(message, status_code=response.status_code)
 

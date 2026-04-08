@@ -402,7 +402,7 @@ def _render_trip_params() -> None:
 
             detected = await run.io_bound(do_detect)
             state.detected_trips = detected
-        except Exception as exc:
+        except Exception as exc:  # WHY: UI graceful degradation
             logger.warning("Trip detection failed: %s", exc)
             trip_container.clear()
             with trip_container:

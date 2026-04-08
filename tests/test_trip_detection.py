@@ -479,7 +479,7 @@ class TestReverseGeocode:
         from immich_memories.analysis.trip_detection import reverse_geocode
 
         with patch("immich_memories.analysis.trip_detection.Nominatim") as mock_nom:
-            mock_nom.return_value.reverse.side_effect = Exception("Network error")
+            mock_nom.return_value.reverse.side_effect = OSError("Network error")
             result = reverse_geocode(45.95, -1.15)
 
         assert result is None

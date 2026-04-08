@@ -118,7 +118,7 @@ def _detect_thumbnail_duplicates(
                 if clip_id != cluster.representative_id:
                     lower_quality_ids.add(clip_id)
 
-    except Exception:
+    except Exception:  # WHY: UI graceful degradation
         import logging
 
         logging.getLogger(__name__).debug(

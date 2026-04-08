@@ -129,8 +129,8 @@ def render_equirectangular_map(
 
     try:
         image = m.render()
-    except Exception:
-        logger.warning("Equirectangular tile fetch failed, using dark fallback")
+    except (OSError, RuntimeError) as e:
+        logger.warning("Equirectangular tile fetch failed, using dark fallback: %s", e)
         dark = np.full((height, width, 3), 0.15, dtype=np.float32)
         return dark
 
@@ -161,8 +161,8 @@ def _render_base_map(
 
     try:
         image = m.render()
-    except Exception:
-        logger.warning("Map tile fetch failed, using solid background")
+    except (OSError, RuntimeError) as e:
+        logger.warning("Map tile fetch failed, using solid background: %s", e)
         image = Image.new("RGB", (width, height), color=(40, 50, 60))
         return image, None
 
@@ -407,8 +407,8 @@ def _ensure_montserrat() -> bool:
         ok = download_font("Montserrat")
         _montserrat_checked = ok
         return ok
-    except Exception:
-        logger.warning("Could not auto-download Montserrat font")
+    except (ImportError, OSError, RuntimeError) as e:
+        logger.warning("Could not auto-download Montserrat font: %s", e)
         return False
 
 

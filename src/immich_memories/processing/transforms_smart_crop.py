@@ -73,7 +73,7 @@ def init_face_detectors() -> tuple[bool, object | None, object | None]:
             vision_detector = VisionFaceDetector(detect_landmarks=False)
             use_vision = True
             logger.info("Using Apple Vision for smart crop face detection")
-        except Exception as e:
+        except (ImportError, RuntimeError, OSError) as e:
             logger.debug(f"Vision detector not available: {e}")
 
     # Fallback to OpenCV
@@ -81,7 +81,7 @@ def init_face_detectors() -> tuple[bool, object | None, object | None]:
         try:
             cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
             face_cascade = cv2.CascadeClassifier(cascade_path)
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logger.warning(f"Could not load face cascade: {e}")
 
     return use_vision, vision_detector, face_cascade

@@ -46,7 +46,7 @@ def _probe_duration(clip_path: Path) -> float:
             timeout=10,
         )
         return float(probe.stdout.strip() or "3")
-    except Exception:
+    except (OSError, subprocess.SubprocessError, ValueError):
         return 3.0
 
 
@@ -102,8 +102,8 @@ def extract_representative_frame(
         raw = np.frombuffer(result.stdout[:expected_size], dtype=np.uint8)
         return raw.reshape((height, width, 3)).astype(np.float32) / 255.0
 
-    except Exception:
-        logger.debug(f"Failed to extract frame from {clip_path}", exc_info=True)
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.debug(f"Failed to extract frame from {clip_path}: {e}")
         return None
 
 
@@ -199,8 +199,8 @@ class SlowmoBackgroundReader:
 
         try:
             result = subprocess.run(cmd, capture_output=True, timeout=30)
-        except Exception:
-            logger.debug(f"Failed to extract frames from {clip_path}", exc_info=True)
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug(f"Failed to extract frames from {clip_path}: {e}")
             return
 
         if result.returncode != 0:

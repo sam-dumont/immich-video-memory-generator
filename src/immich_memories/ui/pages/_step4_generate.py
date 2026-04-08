@@ -213,7 +213,7 @@ async def run_generation(
 
         _show_output(output_container, result_path)
 
-    except Exception as e:
+    except Exception as e:  # WHY: UI graceful degradation
         logger.exception("Video generation failed")
         safe_msg = sanitize_error_message(str(e))
         ui.notify(f"Generation failed: {safe_msg}", type="negative")

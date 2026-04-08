@@ -26,7 +26,7 @@ def get_thumbnail(asset_id: str) -> bytes | None:
         return None
     try:
         return state.thumbnail_cache.get(asset_id, "preview")
-    except Exception:
+    except Exception:  # WHY: UI graceful degradation
         return None
 
 
@@ -118,7 +118,7 @@ def _get_preview_path(asset_id: str, *, config=None) -> Path | None:
         if result.returncode == 0 and preview_path.exists():
             return preview_path
         logger.warning(f"Preview transcode failed for {asset_id}: {result.stderr[-200:]}")
-    except Exception as e:
+    except Exception as e:  # WHY: UI graceful degradation
         logger.warning(f"Preview transcode error for {asset_id}: {e}")
 
     return None
@@ -154,7 +154,7 @@ def _download_immich_preview(asset_id: str, *, config=None) -> Path | None:
             preview_path.write_bytes(video_bytes)
             return preview_path
         logger.warning(f"Immich preview too small for {asset_id}: {len(video_bytes)} bytes")
-    except Exception as e:
+    except Exception as e:  # WHY: UI graceful degradation
         logger.warning(f"Failed to download preview from Immich for {asset_id}: {e}")
 
     return None

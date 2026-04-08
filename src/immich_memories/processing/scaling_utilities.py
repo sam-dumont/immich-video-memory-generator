@@ -296,7 +296,7 @@ def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None
                 all_face_positions.extend(_detect_faces_opencv(frame_path))
 
             frame_path.unlink(missing_ok=True)
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, RuntimeError, ValueError) as e:
             logger.debug(f"Face detection failed for frame at {sample_time}s: {e}")
             continue
 

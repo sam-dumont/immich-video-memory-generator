@@ -208,7 +208,9 @@ class SmartPipeline:
 
             return analyzed
 
-        except Exception as e:
+        except (
+            Exception
+        ) as e:  # WHY: top-level pipeline boundary — logs + cleans up tracker before re-raise
             logger.error(f"Pipeline failed: {e}")
             self.tracker.finish()
             raise
@@ -228,7 +230,9 @@ class SmartPipeline:
             result = self.refiner.phase_refine(analyzed, self.tracker)
             self.tracker.finish()
             return result
-        except Exception as e:
+        except (
+            Exception
+        ) as e:  # WHY: top-level pipeline boundary — logs + cleans up tracker before re-raise
             logger.error(f"Selection failed: {e}")
             self.tracker.finish()
             raise

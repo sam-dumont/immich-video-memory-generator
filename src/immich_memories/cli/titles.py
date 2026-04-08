@@ -301,7 +301,7 @@ def register_titles_commands(main: click.Group) -> None:
 
                 progress.update(task, completed=True)
 
-            except Exception as e:
+            except Exception as e:  # WHY: CLI error display boundary
                 print_error(f"Generation failed: {e}")
                 raise
 

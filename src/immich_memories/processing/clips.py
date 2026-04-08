@@ -269,7 +269,7 @@ class ClipExtractor:
                         buffer_seconds=buffer_seconds,
                     )
                 results.append(path)
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError, ValueError) as e:
                 logger.error(f"Failed to extract segment {segment.asset_id}: {e}")
                 failures.append((segment.asset_id, str(e)))
                 continue

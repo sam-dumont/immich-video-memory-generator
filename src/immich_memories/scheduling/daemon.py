@@ -148,7 +148,7 @@ def _notify_if_configured(
 
     try:
         config = get_config()
-    except Exception:
+    except Exception:  # WHY: daemon top-level safety net — must not crash the scheduler
         return
 
     notif = config.notifications

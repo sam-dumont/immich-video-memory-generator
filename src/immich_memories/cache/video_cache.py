@@ -86,8 +86,8 @@ class VideoDownloadCache:
                 return dest
             logger.warning("Downloaded file empty or missing: %s", dest)
             dest.unlink(missing_ok=True)
-        except Exception:
-            logger.warning("Failed to download video %s", download_id, exc_info=True)
+        except (OSError, RuntimeError) as e:
+            logger.warning("Failed to download video %s: %s", download_id, e)
             dest.unlink(missing_ok=True)
 
         return None
@@ -160,8 +160,8 @@ class VideoDownloadCache:
             if downscaled.exists():
                 downscaled.unlink()  # Remove corrupted file
                 logger.warning("Downscaled file too small/corrupt for %s, using original", asset.id)
-        except Exception:
-            logger.debug("Downscaling failed for %s, using original", asset.id)
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("Downscaling failed for %s: %s, using original", asset.id, e)
             if downscaled.exists():
                 downscaled.unlink()
 

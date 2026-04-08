@@ -226,7 +226,8 @@ class ACEStepBackend(MusicGenerator):
                     resp.status_code,
                 )
                 return False
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, ExceptionGroup) as exc:
+            # WHY: anyio wraps connection failures in ExceptionGroup on Linux
             logger.warning("ACE-Step API at %s unreachable: %s", self.config.api_url, exc)
             return False
 
@@ -274,7 +275,7 @@ class ACEStepBackend(MusicGenerator):
             )
 
             logger.info(f"ACE-Step pipeline initialized: dtype={dtype}")
-        except Exception as e:
+        except Exception as e:  # WHY: plugin boundary — ACE-Step init can fail in many ways
             logger.error(f"Failed to initialize ACE-Step pipeline: {e}")
             raise
 

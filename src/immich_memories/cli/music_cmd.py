@@ -128,7 +128,7 @@ def register_music_commands(main: click.Group) -> None:
             try:
                 mood = asyncio.get_event_loop().run_until_complete(analyze())
                 progress.update(task, completed=True)
-            except Exception as e:
+            except Exception as e:  # WHY: CLI error display boundary
                 print_error(f"Analysis failed: {e}")
                 return
 
@@ -224,7 +224,7 @@ def register_music_commands(main: click.Group) -> None:
             try:
                 result = asyncio.get_event_loop().run_until_complete(add_music())
                 progress.update(task, completed=True)
-            except Exception as e:
+            except Exception as e:  # WHY: CLI error display boundary
                 print_error(f"Failed: {e}")
                 return
 

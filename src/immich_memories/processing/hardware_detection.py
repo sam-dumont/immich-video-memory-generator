@@ -300,7 +300,7 @@ def detect_hardware_acceleration() -> HWAccelCapabilities:
             if caps and caps.has_encoding:
                 logger.info(f"Detected {name} hardware acceleration: {caps}")
                 return caps
-        except Exception as e:
+        except (RuntimeError, OSError, subprocess.SubprocessError) as e:
             logger.debug(f"Error detecting {name}: {e}")
 
     logger.info("No hardware acceleration detected, using software encoding")

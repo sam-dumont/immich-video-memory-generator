@@ -75,7 +75,7 @@ def _extract_audio_with_ffmpeg(video_path: Path) -> tuple[np.ndarray, int] | Non
 
         return audio_array, sample_rate
 
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
         logger.debug(f"Audio extraction error: {e}")
         return None
 
@@ -247,7 +247,7 @@ def _detect_silence_gaps_moviepy(
                 audio_array, int(fps), threshold_db, min_silence_duration, window_size
             )
 
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         logger.debug(f"moviepy silence detection failed: {e}")
         return []
 

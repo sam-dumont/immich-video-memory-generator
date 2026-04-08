@@ -234,7 +234,7 @@ def _run_pipeline_blocking(
         logger.info("Pipeline cancelled by user")
         state.pipeline_running = False
         progress_state["done"] = True
-    except Exception as e:
+    except Exception as e:  # WHY: UI graceful degradation
         logger.exception("Pipeline error")
         state.pipeline_running = False
         progress_state["error"] = str(e)
@@ -250,7 +250,7 @@ def _detect_overnight_bases(state: Any) -> list | None:
 
         trip_assets = [c.asset for c in state.clips]
         return detect_overnight_stops(trip_assets) or None
-    except Exception:
+    except Exception:  # WHY: UI graceful degradation
         logger.debug("Trip segment detection failed", exc_info=True)
         return None
 

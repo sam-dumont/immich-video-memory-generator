@@ -10,6 +10,7 @@ Works for ANY phone/camera — uses audio fingerprint, not Apple metadata.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -190,7 +191,8 @@ def probe_clip_has_video(clip_path: Path) -> bool:
             timeout=5,
         )
         return "video" in result.stdout.strip()
-    except Exception:
+    except (OSError, subprocess.SubprocessError) as e:
+        logging.getLogger(__name__).debug("ffprobe video check failed: %s", e)
         return False
 
 
@@ -309,7 +311,8 @@ def probe_clip_has_audio(clip_path: Path) -> bool:
             timeout=10,
         )
         return result.stdout.strip() == "audio"
-    except Exception:
+    except (OSError, subprocess.SubprocessError) as e:
+        logging.getLogger(__name__).debug("ffprobe audio check failed: %s", e)
         return False
 
 
@@ -337,7 +340,8 @@ def _detect_clip_hdr(clip_path: Path) -> bool:
         )
         transfer = result.stdout.strip().lower()
         return transfer in ("arib-std-b67", "smpte2084")
-    except Exception:
+    except (OSError, subprocess.SubprocessError) as e:
+        logging.getLogger(__name__).debug("ffprobe HDR check failed: %s", e)
         return False
 
 

@@ -210,7 +210,7 @@ class TestClipExtractorBatchExtract:
         source.write_bytes(b"\x00")
 
         mock_extract.side_effect = [
-            RuntimeError("ffmpeg crash"),
+            OSError("ffmpeg crash"),
             tmp_path / "b.mp4",
         ]
         segs = [
@@ -230,7 +230,7 @@ class TestClipExtractorBatchExtract:
         source = tmp_path / "src.mp4"
         source.write_bytes(b"\x00")
 
-        mock_extract.side_effect = RuntimeError("fail")
+        mock_extract.side_effect = OSError("fail")
         segs = [
             ClipSegment(source_path=source, start_time=0, end_time=5, asset_id="a"),
         ]

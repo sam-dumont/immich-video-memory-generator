@@ -104,7 +104,7 @@ def init_taichi() -> str | None:
             _taichi_initialized = True
             _taichi_backend = name
             return name
-        except Exception as e:
+        except (RuntimeError, OSError) as e:
             last_error = e
             logger.debug(f"Failed to init Taichi with {name}: {e}")
             continue

@@ -99,7 +99,7 @@ class TestDownloadOrGet:
     def test_handles_download_failure(self, cache, mock_asset):
         """Returns None when download fails."""
         client = MagicMock()
-        client.download_asset = MagicMock(side_effect=Exception("network error"))
+        client.download_asset = MagicMock(side_effect=OSError("network error"))
 
         path = cache.download_or_get(client, mock_asset)
         assert path is None

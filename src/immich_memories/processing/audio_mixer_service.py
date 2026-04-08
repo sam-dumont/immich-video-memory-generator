@@ -94,7 +94,7 @@ class AudioMixerService:
                 config=config,
                 duck_vocals_db=-12.0,
             )
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.warning(f"Stem-based mixing failed, falling back to simple mix: {e}")
             return self._add_music_simple(video_path, output_path)
 
@@ -149,7 +149,7 @@ class AudioMixerService:
                 config=config,
                 ducking_levels=ducking_levels,
             )
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.warning(f"4-stem mixing failed, falling back to simple mix: {e}")
             return self._add_music_simple(video_path, output_path)
 

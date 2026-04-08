@@ -268,7 +268,7 @@ def download_font(
     except httpx.HTTPStatusError as e:
         logger.error(f"HTTP error downloading {font_family}: {e}")
         return False
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         logger.error(f"Error downloading {font_family}: {e}")
         return False
 

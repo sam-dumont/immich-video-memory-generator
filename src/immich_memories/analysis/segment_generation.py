@@ -7,6 +7,7 @@ generation, and audio-related scoring helpers.
 from __future__ import annotations
 
 import logging
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -44,7 +45,7 @@ def detect_visual_boundaries(
 
         return sorted(boundaries)
 
-    except Exception as e:
+    except (RuntimeError, OSError, ValueError) as e:
         logger.warning(f"Visual scene detection failed: {e}")
         return []
 
@@ -85,7 +86,7 @@ def detect_audio_boundaries(
         )
         return sorted_boundaries
 
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
         logger.warning(f"Audio boundary detection failed: {e}")
         return []
 

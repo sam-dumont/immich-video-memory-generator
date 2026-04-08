@@ -155,7 +155,7 @@ async def apply_ai_music(
 
         run_tracker.complete_phase(items_processed=1)
 
-    except Exception as e:
+    except Exception as e:  # WHY: UI graceful degradation
         logger.warning(f"Music generation failed: {e}")
         ui.notify(
             f"Music generation failed: {sanitize_error_message(str(e))}. Video saved without music.",
@@ -219,7 +219,7 @@ async def apply_uploaded_music(
 
         run_tracker.complete_phase(items_processed=1)
 
-    except Exception as e:
+    except Exception as e:  # WHY: UI graceful degradation
         logger.warning(f"Music mixing failed: {e}")
         ui.notify(
             f"Music mixing failed: {sanitize_error_message(str(e))}. Video saved without music.",

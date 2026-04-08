@@ -193,7 +193,7 @@ def _load_clips() -> None:
             loading_dialog.close()
             ui.navigate.to("/step2")
 
-        except Exception as e:
+        except Exception as e:  # WHY: UI graceful degradation
             loading_dialog.close()
             ui.notify(f"Failed to load videos: {sanitize_error_message(str(e))}", type="negative")
             logger.exception("Failed to load clips")
@@ -354,7 +354,7 @@ def _probe_and_cache_metadata(clip, client, state, analysis_cache) -> None:
                 color_primaries=clip.color_primaries,
                 bit_depth=clip.bit_depth,
             )
-    except Exception as e:
+    except Exception as e:  # WHY: UI graceful degradation
         logger.debug(f"Failed to probe video metadata: {e}")
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess as _subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -27,6 +28,7 @@ class TestGetCpuBrand:
         self, mock_subprocess: MagicMock, mock_platform: MagicMock, tmp_path
     ):
         """Linux reads CPU brand from /proc/cpuinfo."""
+        mock_subprocess.SubprocessError = _subprocess.SubprocessError
         mock_platform.system.return_value = "Linux"
         cpuinfo = "processor\t: 0\nmodel name\t: Intel Core i7-12700K\nstepping\t: 0\n"
         with patch("builtins.open", create=True) as mock_open:
@@ -41,6 +43,7 @@ class TestGetCpuBrand:
     @patch("immich_memories.tracking.system_info.subprocess")
     def test_darwin_uses_sysctl(self, mock_subprocess: MagicMock, mock_platform: MagicMock):
         """macOS uses sysctl to get CPU brand."""
+        mock_subprocess.SubprocessError = _subprocess.SubprocessError
         mock_platform.system.return_value = "Darwin"
         mock_subprocess.run.return_value = MagicMock(returncode=0, stdout="Apple M2 Pro\n")
         result = _get_cpu_brand()
@@ -50,7 +53,7 @@ class TestGetCpuBrand:
     @patch("immich_memories.tracking.system_info.platform")
     def test_exception_returns_none(self, mock_platform: MagicMock):
         """Exception during detection returns None."""
-        mock_platform.system.side_effect = RuntimeError("boom")
+        mock_platform.system.side_effect = OSError("boom")
         assert _get_cpu_brand() is None
 
 
@@ -63,6 +66,7 @@ class TestGetRamGb:
     @patch("immich_memories.tracking.system_info.subprocess")
     def test_darwin_parses_memsize(self, mock_subprocess: MagicMock, mock_platform: MagicMock):
         """macOS parses hw.memsize from sysctl."""
+        mock_subprocess.SubprocessError = _subprocess.SubprocessError
         mock_platform.system.return_value = "Darwin"
         # 16 GB in bytes
         mock_subprocess.run.return_value = MagicMock(returncode=0, stdout=str(16 * 1024**3) + "\n")
@@ -73,7 +77,7 @@ class TestGetRamGb:
     @patch("immich_memories.tracking.system_info.platform")
     def test_exception_returns_zero(self, mock_platform: MagicMock):
         """Exception during detection returns 0.0."""
-        mock_platform.system.side_effect = RuntimeError("boom")
+        mock_platform.system.side_effect = OSError("boom")
         assert _get_ram_gb() == 0.0
 
 
@@ -84,6 +88,7 @@ class TestGetFfmpegVersion:
     @patch("immich_memories.tracking.system_info.subprocess")
     def test_parses_version_string(self, mock_subprocess: MagicMock):
         """Extracts version number from ffmpeg -version output."""
+        mock_subprocess.SubprocessError = _subprocess.SubprocessError
         mock_subprocess.run.return_value = MagicMock(
             returncode=0,
             stdout="ffmpeg version 7.0.1 Copyright (c) 2000-2024 the FFmpeg developers\n",
@@ -94,6 +99,7 @@ class TestGetFfmpegVersion:
     @patch("immich_memories.tracking.system_info.subprocess")
     def test_returns_none_on_failure(self, mock_subprocess: MagicMock):
         """Returns None when ffmpeg is not installed."""
+        mock_subprocess.SubprocessError = _subprocess.SubprocessError
         mock_subprocess.run.side_effect = FileNotFoundError()
         assert _get_ffmpeg_version() is None
 
@@ -101,6 +107,7 @@ class TestGetFfmpegVersion:
     @patch("immich_memories.tracking.system_info.subprocess")
     def test_returns_none_on_nonzero_exit(self, mock_subprocess: MagicMock):
         """Returns None when ffmpeg exits with error."""
+        mock_subprocess.SubprocessError = _subprocess.SubprocessError
         mock_subprocess.run.return_value = MagicMock(returncode=1, stdout="")
         assert _get_ffmpeg_version() is None
 
@@ -137,6 +144,7 @@ class TestGetGpuName:
     @patch("immich_memories.tracking.system_info.subprocess")
     def test_linux_nvidia_smi(self, mock_subprocess: MagicMock, mock_platform: MagicMock):
         """Linux detects NVIDIA GPU via nvidia-smi."""
+        mock_subprocess.SubprocessError = _subprocess.SubprocessError
         mock_platform.system.return_value = "Linux"
         mock_subprocess.run.return_value = MagicMock(
             returncode=0, stdout="NVIDIA GeForce RTX 4090\n"
@@ -147,7 +155,7 @@ class TestGetGpuName:
     @patch("immich_memories.tracking.system_info.platform")
     def test_exception_returns_none(self, mock_platform: MagicMock):
         """Exception during detection returns None."""
-        mock_platform.system.side_effect = RuntimeError("boom")
+        mock_platform.system.side_effect = OSError("boom")
         assert _get_gpu_name() is None
 
 
@@ -160,6 +168,7 @@ class TestGetVramMb:
     @patch("immich_memories.tracking.system_info.subprocess")
     def test_linux_nvidia_vram(self, mock_subprocess: MagicMock, mock_platform: MagicMock):
         """Linux reads VRAM from nvidia-smi."""
+        mock_subprocess.SubprocessError = _subprocess.SubprocessError
         mock_platform.system.return_value = "Linux"
         mock_subprocess.run.return_value = MagicMock(returncode=0, stdout="24576\n")
         assert _get_vram_mb() == 24576
@@ -168,5 +177,5 @@ class TestGetVramMb:
     @patch("immich_memories.tracking.system_info.platform")
     def test_exception_returns_zero(self, mock_platform: MagicMock):
         """Exception during detection returns 0."""
-        mock_platform.system.side_effect = RuntimeError("boom")
+        mock_platform.system.side_effect = OSError("boom")
         assert _get_vram_mb() == 0

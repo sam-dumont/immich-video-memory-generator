@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -75,7 +76,7 @@ class PreviewBuilder:
             if preview_path and Path(preview_path).exists():
                 logger.debug(f"Built preview for cached clip {asset_id}")
                 return preview_path
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.debug(f"Could not build preview for cached {asset_id}: {e}")
 
         return None
@@ -184,7 +185,7 @@ class PreviewBuilder:
                 return preview_path
             logger.warning(f"Preview file not created for {clip.asset.id}")
             return None
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.warning(f"Failed to extract preview for {clip.asset.id}: {e}")
             return None
 
@@ -231,7 +232,7 @@ class PreviewBuilder:
                 timeout=30,
             )
             video_duration = float(result.stdout.strip())
-        except Exception:
+        except (OSError, subprocess.SubprocessError, ValueError):
             video_duration = 60.0
 
         segment_duration = end - start

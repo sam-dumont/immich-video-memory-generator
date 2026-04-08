@@ -602,7 +602,9 @@ def assemble_streaming(
         if progress_callback:
             progress_callback(total_frames, total_frames)
         logger.info(f"Streaming assembly complete: {len(clips)} clips → {output_path.name}")
-    except Exception:
+    except (
+        Exception
+    ):  # WHY: cleanup safety net — ensures encoder.finish() even on unexpected errors
         encoder.finish()
         raise
 

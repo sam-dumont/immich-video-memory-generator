@@ -134,7 +134,7 @@ class AudioMixer:
                 genre = video_mood.genre_suggestions[0] if video_mood.genre_suggestions else genre
                 tempo = video_mood.tempo_suggestion
                 logger.info(f"Detected mood: {mood}, genre: {genre}, tempo: {tempo}")
-            except Exception as e:
+            except (RuntimeError, ImportError, OSError) as e:
                 logger.warning(f"Mood analysis failed: {e}, using defaults")
                 mood = "calm"
                 genre = "ambient"

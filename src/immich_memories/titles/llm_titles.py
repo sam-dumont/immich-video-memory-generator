@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+import httpx
+
 from immich_memories.analysis.llm_query import query_llm
 
 if TYPE_CHECKING:
@@ -208,6 +210,6 @@ async def generate_title_with_llm(
             timeout_seconds=300,
         )
         return parse_title_response(raw)
-    except Exception:
-        logger.warning("LLM title generation failed", exc_info=True)
+    except (httpx.HTTPError, RuntimeError, ValueError, OSError) as e:
+        logger.warning("LLM title generation failed: %s", e, exc_info=True)
         return None

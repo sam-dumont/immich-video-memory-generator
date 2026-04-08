@@ -187,8 +187,8 @@ def _render_satellite(lat: float, lon: float, zoom: float, w: int, h: int) -> Im
 
     try:
         img = sm.render(zoom=z_int, center=[lon, lat])
-    except Exception:
-        logger.warning("Tile fetch failed z=%d (%.2f,%.2f)", z_int, lat, lon)
+    except (OSError, RuntimeError) as e:
+        logger.warning("Tile fetch failed z=%d (%.2f,%.2f): %s", z_int, lat, lon, e)
         img = Image.new("RGB", (rw, rh), (40, 50, 60))
 
     if img.size != (w, h):

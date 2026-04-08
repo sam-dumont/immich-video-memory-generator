@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import gc
 import logging
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -113,7 +114,7 @@ class ClipAnalyzer:
                     audio_categories=clip.audio_categories,
                 )
 
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as e:
                 error_msg = str(e)
                 logger.error(f"Failed to analyze {clip.asset.id}: {error_msg}")
                 tracker.complete_item(clip.asset.id, success=False, error=error_msg)
@@ -256,7 +257,7 @@ class ClipAnalyzer:
             else:
                 logger.warning("Content analysis enabled but no analyzer available")
             return analyzer, weight
-        except Exception as e:
+        except (ImportError, RuntimeError, ValueError) as e:
             logger.warning(f"Failed to initialize content analyzer: {e}")
             return None, 0.0
 
@@ -280,7 +281,7 @@ class ClipAnalyzer:
             self._cached_audio_analyzer = analyzer
             logger.info("Audio content analyzer cached at pipeline level")
             return analyzer
-        except Exception as e:
+        except (ImportError, RuntimeError, OSError) as e:
             logger.warning(f"Failed to create audio analyzer: {e}")
             return None
 
@@ -411,7 +412,7 @@ class ClipAnalyzer:
                 start, end, score, llm_analysis = self._run_unified_analysis(
                     clip, analysis_video, original_video, video_duration
                 )
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as e:
                 logger.warning(f"Unified analysis failed: {e}, using legacy approach")
 
         if score == 0.0:

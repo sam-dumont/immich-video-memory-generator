@@ -294,7 +294,7 @@ class TestEquirectangularMap:
         from immich_memories.titles.map_renderer import render_equirectangular_map
 
         with patch("immich_memories.titles.map_renderer.StaticMap") as mock_sm:
-            mock_sm.return_value.render.side_effect = Exception("Network error")
+            mock_sm.return_value.render.side_effect = OSError("Network error")
             result = render_equirectangular_map(
                 center_lat=45.0,
                 center_lon=2.0,

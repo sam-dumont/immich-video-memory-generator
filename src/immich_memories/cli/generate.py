@@ -691,7 +691,7 @@ def register_generate_commands(main: click.Group) -> None:
         except GenerationError as e:
             print_error(str(e))
             sys.exit(1)
-        except Exception as e:
+        except Exception as e:  # WHY: CLI top-level error boundary — sanitizes and displays error
             from immich_memories.security import sanitize_error_message
 
             print_error(f"Error: {sanitize_error_message(str(e))}")
