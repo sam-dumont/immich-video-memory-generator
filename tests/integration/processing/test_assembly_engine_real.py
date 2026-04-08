@@ -46,7 +46,6 @@ def _make_engine(settings=None):
         prober=prober,
         encoder=encoder,
         filter_builder=filter_builder,
-        check_cancelled_fn=lambda: None,
     )
 
 

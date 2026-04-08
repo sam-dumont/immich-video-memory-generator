@@ -16,10 +16,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    pass
+from immich_memories.i18n import get_month_name as _i18n_get_month_name
+from immich_memories.i18n import get_ordinal as _i18n_get_ordinal
 
 
 class SelectionType(Enum):
@@ -44,38 +43,6 @@ class TitleInfo:
     subtitle: str | None = None
     selection_type: SelectionType = SelectionType.CALENDAR_YEAR
 
-
-# Month names by locale
-MONTH_NAMES: dict[str, list[str]] = {
-    "en": [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    ],
-    "fr": [
-        "Janvier",
-        "Février",
-        "Mars",
-        "Avril",
-        "Mai",
-        "Juin",
-        "Juillet",
-        "Août",
-        "Septembre",
-        "Octobre",
-        "Novembre",
-        "Décembre",
-    ],
-}
 
 # Season names by locale
 SEASON_NAMES: dict[str, dict[str, str]] = {
@@ -123,22 +90,8 @@ TITLE_PATTERNS: dict[str, dict[str, str]] = {
 
 
 def get_month_name(month: int, locale: str = "en") -> str:
-    """Get the localized month name.
-
-    Args:
-        month: Month number (1-12).
-        locale: Language code ("en", "fr").
-
-    Returns:
-        Localized month name.
-    """
-    if locale not in MONTH_NAMES:
-        locale = "en"
-
-    if not 1 <= month <= 12:
-        raise ValueError(f"Month must be 1-12, got {month}")
-
-    return MONTH_NAMES[locale][month - 1]
+    """Get the localized month name. Delegates to i18n module."""
+    return _i18n_get_month_name(month, locale)
 
 
 def get_season_name(season: str, locale: str = "en") -> str:
@@ -164,26 +117,8 @@ def get_season_name(season: str, locale: str = "en") -> str:
 
 
 def get_ordinal(n: int, locale: str = "en") -> str:
-    """Get the localized ordinal string for a number.
-
-    Args:
-        n: The number to convert to ordinal.
-        locale: Language code ("en", "fr").
-
-    Returns:
-        Ordinal string (e.g., "1st", "2nd", "1ère", "2ème").
-    """
-    if locale == "en":
-        # English ordinals
-        suffix = "th" if 11 <= n % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
-        return f"{n}{suffix}"
-    elif locale == "fr":
-        # French ordinals
-        if n == 1:
-            return "1ère"
-        return f"{n}ème"
-    # Fallback to just the number
-    return str(n)
+    """Get the localized ordinal string for a number. Delegates to i18n module."""
+    return _i18n_get_ordinal(n, locale)
 
 
 def _title_calendar_year(**kwargs) -> TitleInfo:

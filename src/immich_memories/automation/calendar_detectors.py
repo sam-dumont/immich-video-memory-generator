@@ -11,6 +11,7 @@ from datetime import date
 
 from immich_memories.automation.candidates import MemoryCandidate, make_memory_key
 from immich_memories.config_loader import Config
+from immich_memories.i18n import get_ordinal
 
 
 class MonthlyDetector:
@@ -181,7 +182,7 @@ class PersonSpotlightDetector:
             )
             score = self.BASE_SCORE * max(0.2, appearance_ratio)
 
-            ordinal = _ordinal(rank + 1)
+            ordinal = get_ordinal(rank + 1)
             count_str = f", {asset_count} assets" if asset_count else ""
             reason = f"{ordinal} most featured person{count_str}"
 
@@ -348,9 +349,3 @@ def _years_from_assets(assets_by_month: dict[str, int]) -> set[int]:
         except (ValueError, IndexError):
             continue
     return years
-
-
-def _ordinal(n: int) -> str:
-    # WHY: custom instead of inflect — single use, not worth a dependency
-    suffix = "th" if 11 <= n % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
-    return f"{n}{suffix}"

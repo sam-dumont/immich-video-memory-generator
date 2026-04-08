@@ -16,6 +16,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def create_analyzer_from_config(config: Config):
+    """Create an analyzer from config — convenience alias."""
+    return create_unified_analyzer_from_config(config)
+
+
 def create_unified_analyzer_from_config(config: Config):
     """Create a UnifiedSegmentAnalyzer from current configuration.
 

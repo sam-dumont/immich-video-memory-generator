@@ -25,7 +25,6 @@ from immich_memories.analysis.segment_generation import (
     score_segment_audio,
 )
 from immich_memories.analysis.smart_pipeline import (
-    JobCancelledException,
     PipelineConfig,
     SmartPipeline,
     _cap_analysis_candidates,
@@ -127,34 +126,6 @@ class TestCapAnalysisCandidates:
         result = _cap_analysis_candidates(favorites, target_clips=4)
         max_candidates = int(4 * 1.5)
         assert len(result) == max_candidates
-
-
-class TestSmartPipelineCancellation:
-    """Lines 184-186: _check_cancelled lazy-creates RunDatabase and raises."""
-
-    def test_check_cancelled_raises_when_db_says_cancel(
-        self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
-    ):
-        pipeline = _make_pipeline(
-            mock_immich_client, mock_analysis_cache, mock_thumbnail_cache, run_id="job-42"
-        )
-
-        with patch("immich_memories.analysis.smart_pipeline.RunDatabase") as MockRunDB:
-            # WHY: RunDatabase is a DB write/read boundary
-            mock_db = MagicMock()
-            mock_db.is_cancel_requested.return_value = True
-            MockRunDB.return_value = mock_db
-
-            with pytest.raises(JobCancelledException, match="job-42"):
-                pipeline._check_cancelled()
-
-    def test_check_cancelled_noop_without_run_id(
-        self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
-    ):
-        pipeline = _make_pipeline(
-            mock_immich_client, mock_analysis_cache, mock_thumbnail_cache, run_id=None
-        )
-        pipeline._check_cancelled()
 
 
 class TestPipelineRunExceptionBranches:

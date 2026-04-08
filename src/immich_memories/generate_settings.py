@@ -145,17 +145,15 @@ def _build_title_settings(
     return settings
 
 
-def _create_assembler(settings: AssemblySettings, run_id: str, config: Config):
+def _create_assembler(settings: AssemblySettings, config: Config):
     """Create a VideoAssembler with the given settings."""
     from immich_memories.processing.video_assembler import VideoAssembler
 
     return VideoAssembler(
         settings,
-        run_id=run_id,
         output_crf=config.output.effective_crf,
         default_transition_duration=config.defaults.transition_duration,
         default_resolution=config.output.resolution_tuple,
-        db_path=Path(config.cache.database).expanduser(),
     )
 
 

@@ -92,7 +92,6 @@ src/immich_memories/
 │   ├── clip_analyzer.py        # ClipAnalyzer: download + analyze + score
 │   ├── clip_refiner.py         # ClipRefiner: final selection + distribution
 │   ├── clip_scaler.py          # ClipScaler: duration scaling + dedup
-│   ├── clip_scaling.py         # Duration scaling helpers
 │   ├── clip_selection.py       # Standalone clip selection functions
 │   ├── preview_builder.py      # PreviewBuilder: preview segment extraction
 │   ├── progress.py             # Progress tracking helpers
@@ -110,7 +109,6 @@ src/immich_memories/
 │   ├── duplicate_hashing.py    # Perceptual hashing for duplicates
 │   ├── thumbnail_clustering.py # Thumbnail-based clustering
 │   ├── scoring.py              # Quality scoring (face, motion, duration, segments)
-│   ├── scoring_factory.py      # Scorer factory & sampling
 │   ├── scenes.py               # Scene detection
 │   ├── silence_detection.py    # Audio silence detection
 │   ├── apple_vision.py         # macOS Vision framework integration
@@ -256,7 +254,6 @@ src/immich_memories/
 │   ├── run_queries.py          # Database query helpers
 │   ├── run_tracker.py          # Pipeline run tracking
 │   ├── run_id.py               # Run ID generation
-│   ├── active_jobs_mixin.py    # Active jobs tracking mixin
 │   ├── models.py               # Run/phase data models
 │   └── system_info.py          # System info collection
 │

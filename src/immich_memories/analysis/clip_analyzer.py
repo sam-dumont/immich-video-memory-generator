@@ -49,7 +49,6 @@ class ClipAnalyzer:
         self,
         clips: list[VideoClipInfo],
         tracker: ProgressTracker,
-        check_cancelled: object,
     ) -> list[ClipWithSegment]:
         """Phase 3: Analyze clips for best segments."""
         from immich_memories.analysis.progress import PipelinePhase
@@ -130,7 +129,6 @@ class ClipAnalyzer:
                 )
 
             gc.collect()
-            check_cancelled()
 
         tracker.complete_phase()
         self._cleanup_pipeline_resources()

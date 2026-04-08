@@ -369,7 +369,7 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         run_tracker.start_phase("assembly", len(assembly_clips))
 
         settings = _build_assembly_settings(params, assembly_clips)
-        assembler = _create_assembler(settings, run_id, params.config)
+        assembler = _create_assembler(settings, params.config)
         result_path = assembler.assemble_with_titles(
             assembly_clips,
             result_output_path,

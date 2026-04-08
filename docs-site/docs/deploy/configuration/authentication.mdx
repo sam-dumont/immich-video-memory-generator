@@ -79,7 +79,6 @@ advanced:
     scope: openid email profile            # default
     session_ttl_hours: 24                  # default
     auto_launch: false    # if true, redirect directly to IdP (skips the login page)
-    allow_insecure_issuer: false  # set true only for local dev (http:// issuer)
     button_text: "Sign in with SSO"  # text shown on the login button
 ```
 
@@ -240,7 +239,6 @@ All fields under `advanced.auth` with their defaults:
 | `client_secret` | `""` | OIDC: client secret (empty for public clients; supports `${ENV_VAR}`) |
 | `scope` | `openid email profile` | OIDC: requested scopes |
 | `auto_launch` | `false` | OIDC: redirect directly to IdP (skip the login page) |
-| `allow_insecure_issuer` | `false` | OIDC: allow `http://` issuer URLs (dev only) |
 | `button_text` | `Sign in with SSO` | OIDC: login button label |
 | `user_header` | `Remote-User` | Header: header name for the username |
 | `email_header` | `Remote-Email` | Header: header name for the email |

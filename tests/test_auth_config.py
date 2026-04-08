@@ -36,10 +36,6 @@ class TestAuthConfigDefaults:
         cfg = AuthConfig()
         assert cfg.auto_launch is False
 
-    def test_insecure_issuer_default(self):
-        cfg = AuthConfig()
-        assert cfg.allow_insecure_issuer is False
-
 
 class TestAuthConfigValidation:
     """AuthConfig validates provider requirements when enabled."""

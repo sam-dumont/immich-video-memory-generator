@@ -1383,11 +1383,9 @@ class TestCreateAssembler:
         settings = MagicMock()
         # WHY: VideoAssembler.__init__ requires FFmpeg; mock the import
         with patch("immich_memories.processing.video_assembler.VideoAssembler") as mock_cls:
-            _create_assembler(settings, "run-123", config)
+            _create_assembler(settings, config)
 
         mock_cls.assert_called_once()
-        call_kwargs = mock_cls.call_args
-        assert call_kwargs.kwargs["run_id"] == "run-123"
 
 
 # ---------------------------------------------------------------------------
