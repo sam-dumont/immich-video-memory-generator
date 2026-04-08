@@ -716,6 +716,13 @@ def _encode_clip_sequence(
             active_iter = None
             skip_frames = 0
 
+    # WHY: The last FrameDecoder's FFmpeg process inherits the encoder's
+    # stdin pipe FD. If not closed before encoder.finish(), the pipe never
+    # sees EOF and the encoder hangs waiting for input. Force-close the
+    # last iterator to trigger FrameDecoder.__iter__'s finally block
+    # (proc.terminate + wait), ensuring the FD is released.
+    if active_iter is not None and hasattr(active_iter, "close"):
+        active_iter.close()
     return frames_written
 
 
