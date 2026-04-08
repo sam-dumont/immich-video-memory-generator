@@ -68,12 +68,14 @@ class MusicGenBackend(MusicGenerator):
                 try:
                     await client.health_check()
                     return True
-                except (OSError, RuntimeError, httpx.HTTPError):
+                except (OSError, RuntimeError, httpx.HTTPError, ExceptionGroup):
+                    # WHY: anyio wraps connection failures in ExceptionGroup on Linux
                     return False
         try:
             await self._client.health_check()
             return True
-        except (OSError, RuntimeError, httpx.HTTPError):
+        except (OSError, RuntimeError, httpx.HTTPError, ExceptionGroup):
+            # WHY: anyio wraps connection failures in ExceptionGroup on Linux
             return False
 
     async def generate(
@@ -160,5 +162,6 @@ class MusicGenBackend(MusicGenerator):
                 "device": health.get("device", "unknown"),
                 "status": health.get("status", "unknown"),
             }
-        except (OSError, RuntimeError, httpx.HTTPError) as e:
+        except (OSError, RuntimeError, httpx.HTTPError, ExceptionGroup) as e:
+            # WHY: anyio wraps connection failures in ExceptionGroup on Linux
             return {"backend": self.name, "available": False, "error": str(e)}

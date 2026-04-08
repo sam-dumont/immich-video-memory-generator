@@ -226,7 +226,8 @@ class ACEStepBackend(MusicGenerator):
                     resp.status_code,
                 )
                 return False
-        except (OSError, RuntimeError, ValueError) as exc:
+        except (OSError, RuntimeError, ValueError, ExceptionGroup) as exc:
+            # WHY: anyio wraps connection failures in ExceptionGroup on Linux
             logger.warning("ACE-Step API at %s unreachable: %s", self.config.api_url, exc)
             return False
 
