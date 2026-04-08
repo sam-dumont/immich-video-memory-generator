@@ -105,7 +105,8 @@ def execute_job(job: PendingJob, timeout_seconds: int = 3600) -> None:
     if params.get("duration_minutes"):
         cmd.extend(["--duration", str(params["duration_minutes"])])
     for name in params.get("person_names", []):
-        cmd.extend(["--person", name])
+        # WHY: `=` syntax prevents names starting with `-` from being parsed as flags
+        cmd.append(f"--person={name}")
 
     logger.info(f"Running: {' '.join(cmd)}")
     start = time.monotonic()

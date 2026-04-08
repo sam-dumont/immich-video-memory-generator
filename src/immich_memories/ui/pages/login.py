@@ -7,7 +7,12 @@ import logging
 from nicegui import app, ui
 
 from immich_memories.config_models_auth import AuthConfig
-from immich_memories.ui.auth import set_session, verify_credentials
+from immich_memories.ui.auth import (
+    is_rate_limited,
+    record_failed_login,
+    set_session,
+    verify_credentials,
+)
 from immich_memories.ui.theme import apply_theme
 
 logger = logging.getLogger(__name__)
@@ -47,6 +52,15 @@ def _render_basic_form(auth_config: AuthConfig) -> None:
     error_label = ui.label("").classes("text-xs").style("color: var(--im-error); display: none")
 
     async def attempt_login() -> None:
+        # WHY: the HTTP middleware stashes client IP in storage on /login load
+        # because NiceGUI button callbacks run over websockets, not HTTP.
+        client_ip = app.storage.user.get("_client_ip", "unknown")
+
+        if is_rate_limited(client_ip):
+            error_label.style("display: block")
+            error_label.set_text("Too many failed attempts. Try again later.")
+            return
+
         user = username_input.value.strip()
         pwd = password_input.value
         if verify_credentials(user, pwd, auth_config):
@@ -55,6 +69,7 @@ def _render_basic_form(auth_config: AuthConfig) -> None:
             set_session(app.storage.user, username=user, provider="basic")
             ui.navigate.to("/")
         else:
+            record_failed_login(client_ip)
             error_label.style("display: block")
             error_label.set_text("Invalid username or password")
 

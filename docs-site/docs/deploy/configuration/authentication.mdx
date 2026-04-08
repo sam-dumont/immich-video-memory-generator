@@ -217,9 +217,27 @@ In your config YAML, set `trusted_proxies` to Traefik's container IP or Docker n
 
 ## Session
 
-- Sessions last 24 hours by default (`session_ttl_hours`). Range: 1–720 hours.
+- Sessions last 24 hours by default (`session_ttl_hours`). Range: 1--720 hours.
 - Logout via the sidebar button or by navigating to `/logout`.
 - OIDC logout redirects to the IdP's `end_session_endpoint` when available (the IdP terminates the SSO session too). Falls back to a local-only logout if the IdP doesn't advertise that endpoint.
+
+:::warning Secure cookies over HTTPS
+
+If you run behind a reverse proxy with HTTPS (Traefik, Caddy, nginx -- most setups do), make sure the proxy sets `X-Forwarded-Proto: https` so the app knows the connection is encrypted. Without this, the session cookie may be sent over plain HTTP on internal hops, which means an attacker on the same network could intercept it and hijack the session.
+
+Most reverse proxies set this header by default. If yours doesn't, add it explicitly:
+
+```nginx
+# nginx example
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+```yaml
+# Traefik — enabled by default when using entrypoints with TLS
+```
+
+When running without a reverse proxy (e.g. direct access on localhost for development), this is not a concern.
+:::
 
 ---
 

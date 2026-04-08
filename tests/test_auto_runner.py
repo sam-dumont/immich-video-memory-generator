@@ -185,8 +185,7 @@ class TestBuildGenerateCommand:
         )
         cmd = _build_generate_command(candidate, upload=True)
         assert "--upload-to-immich" in cmd
-        assert "--person" in cmd
-        assert "Alice" in cmd
+        assert "--person=Alice" in cmd
 
     def test_year_in_review_command(self) -> None:
         candidate = MemoryCandidate(
@@ -225,3 +224,19 @@ class TestBuildGenerateCommand:
         assert "2025-07-10" in cmd
         assert "--end" in cmd
         assert "2025-07-17" in cmd
+
+    def test_multi_person_uses_equals_syntax(self) -> None:
+        """Person names use --person=Name to prevent flag injection."""
+        candidate = MemoryCandidate(
+            memory_type="multi_person",
+            date_range_start=date(2025, 1, 1),
+            date_range_end=date(2025, 12, 31),
+            person_names=["Alice", "--evil"],
+            memory_key="multi_person:2025-01-01:2025-12-31:alice:--evil",
+            score=0.5,
+            reason="pair",
+            asset_count=50,
+        )
+        cmd = _build_generate_command(candidate, upload=False)
+        assert "--person=Alice" in cmd
+        assert "--person=--evil" in cmd

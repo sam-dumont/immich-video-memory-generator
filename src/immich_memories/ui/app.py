@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 from nicegui import app, ui
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse
+from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from immich_memories import __version__
 from immich_memories.config import get_config, init_config_dir
@@ -22,6 +22,7 @@ from immich_memories.ui.auth import (
     clear_session,
     is_auth_enabled,
     is_bypass_path,
+    is_rate_limited,
     is_trusted_proxy,
     set_session,
 )
@@ -382,6 +383,16 @@ async def _auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     if is_bypass_path(request.url.path):
+        # WHY: stash client IP so NiceGUI page callbacks (websocket-based)
+        # can use it for rate limiting without access to the HTTP request.
+        if request.url.path == "/login":
+            client_ip = request.client.host if request.client else "unknown"
+            app.storage.user["_client_ip"] = client_ip
+            if is_rate_limited(client_ip):
+                return JSONResponse(
+                    {"detail": "Too many failed login attempts"},
+                    status_code=429,
+                )
         return await call_next(request)
 
     # Header auth: auto-session from trusted proxy
@@ -458,10 +469,18 @@ async def _oidc_authorize(request: Request) -> RedirectResponse:
     return await oauth.oidc.authorize_redirect(request, redirect_uri)  # type: ignore[return-value]
 
 
-async def _oidc_callback(request: Request) -> RedirectResponse:
+async def _oidc_callback(request: Request) -> Response:
     """Handle OIDC callback — exchange code for tokens and create session."""
     config = get_config()
-    from immich_memories.ui.auth_oidc import create_oidc_client, extract_user_from_token
+    from immich_memories.ui.auth_oidc import (
+        create_oidc_client,
+        extract_user_from_token,
+        validate_callback_origin,
+    )
+
+    if not validate_callback_origin(request):
+        logger.warning("OIDC callback origin mismatch: %s", request.url)
+        return JSONResponse({"detail": "Invalid callback origin"}, status_code=400)
 
     oauth = create_oidc_client(config.auth)
     # WHY: authlib uses request.session for OIDC state/PKCE internally.
