@@ -134,3 +134,5 @@ docs-site/static/demo/cli-demo.gif
 # Remotion demo assets (required for rendering, not generated)
 !docs-site/remotion/public/cli-demo.mp4
 !docs-site/remotion/public/output-preview.mp4
+# Rendered demo video (embedded on docs landing page, tracked in LFS)
+!docs-site/static/demo/demo.mp4

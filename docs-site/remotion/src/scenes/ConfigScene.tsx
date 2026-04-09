@@ -65,15 +65,18 @@ const PRESETS = [
 
 const PERSON_NAMES = ["Alice", "Bob", "Charlie", "Diana", "Eve"];
 
-// Viewport coordinates: content area origin = (360, 126)
-// Window entry animation settles ~frame 30, so cursor starts at frame 35
+// Measured from 1920x1080 still renders with grid overlay:
+// Person Spotlight card center: (1175, 360)
+// Person select field: (560, 490)
+// Alice dropdown item: (560, 530)
+// Next button (blue bar at bottom): (900, 850)
 const cursorSteps = [
-  { frame: 35, x: 1080, y: 366, click: false },
-  { frame: 42, x: 1080, y: 366, click: true },
-  { frame: 52, x: 560, y: 486, click: true },
-  { frame: 65, x: 560, y: 521, click: true },
-  { frame: 85, x: 1040, y: 866, click: false },
-  { frame: 95, x: 1040, y: 866, click: true },
+  { frame: 35, x: 1175, y: 300, click: false },
+  { frame: 42, x: 1175, y: 360, click: true },
+  { frame: 52, x: 560, y: 490, click: true },
+  { frame: 65, x: 560, y: 530, click: true },
+  { frame: 85, x: 900, y: 850, click: false },
+  { frame: 95, x: 900, y: 850, click: true },
 ];
 
 type Props = { bassIntensity?: number };
@@ -144,53 +147,15 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
 
           {/* Scrollable content area */}
           <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-            {/* Section 1: Immich Connection */}
+            {/* Section 1: Immich Connection — collapsed to badge for space */}
             <div>
               <ImSectionHeader icon="cloud" title="Immich Connection" />
-              <ImCard>
-                {/* Connected badge */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    marginBottom: 14,
-                  }}
-                >
-                  <ImBadge
-                    text="Connected as: user@example.com"
-                    variant="success"
-                    icon="check_circle"
-                  />
-                </div>
-
-                {/* URL + API key inputs */}
-                <div style={{ display: "flex", gap: 12 }}>
-                  <ImInput
-                    label="Immich Server URL"
-                    value="https://photos.example.com"
-                    style={{ flex: 1 }}
-                  />
-                  <ImInput
-                    label="API Key"
-                    value="••••••••••••••••"
-                    style={{ flex: 1 }}
-                  />
-                </div>
-
-                {/* Action buttons */}
-                <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                  <ImButton
-                    text="Test Connection"
-                    variant="secondary"
-                    icon="wifi"
-                  />
-                  <ImButton
-                    text="Save Config"
-                    variant="secondary"
-                    icon="save"
-                  />
-                </div>
+              <ImCard style={{ padding: "10px 16px" }}>
+                <ImBadge
+                  text="Connected as: user@example.com"
+                  variant="success"
+                  icon="check_circle"
+                />
               </ImCard>
             </div>
 

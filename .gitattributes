@@ -11,3 +11,4 @@
 tests/fixtures/hdr_samples/*.mov filter=lfs diff=lfs merge=lfs -text
 tests/fixtures/hdr_samples/*.hevc filter=lfs diff=lfs merge=lfs -text
 tests/fixtures/hdr_samples/*.jpg filter=lfs diff=lfs merge=lfs -text
+docs-site/static/demo/demo.mp4 filter=lfs diff=lfs merge=lfs -text

@@ -2,8 +2,8 @@ import React from "react";
 import {
   AbsoluteFill,
   Easing,
-  Img,
   interpolate,
+  OffthreadVideo,
   spring,
   staticFile,
   useCurrentFrame,
@@ -285,7 +285,7 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
               )}
             </div>
 
-            {/* Frame preview (letterboxed 16:9, same content as output video) */}
+            {/* Live video preview — shows the real output advancing during generation */}
             {frame >= 77 && (
               <div
                 style={{
@@ -301,14 +301,16 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
                   justifyContent: "center",
                 }}
               >
-                <Img
-                  src={staticFile("output-frame.jpg")}
+                <OffthreadVideo
+                  src={staticFile("output-preview.mp4")}
                   style={{
-                    maxWidth: "100%",
-                    maxHeight: "100%",
+                    width: "100%",
+                    height: "100%",
                     objectFit: "contain",
-                    transform: `scale(${kenBurnsScale}) translate(${kenBurnsX}px, ${kenBurnsY}px)`,
                   }}
+                  playbackRate={3}
+                  volume={0}
+                  startFrom={0}
                 />
               </div>
             )}
@@ -349,11 +351,11 @@ export const GeneratingScene: React.FC<Props> = ({ bassIntensity }) => {
 
         </div>
       </WindowFrame>
-      {/* Cursor: viewport coords, clicks GENERATE VIDEO */}
+      {/* Cursor: measured from 1920x1080 still render */}
       <AnimatedCursor
         steps={[
-          { frame: 35, x: 1040, y: 626 },
-          { frame: 42, x: 1040, y: 626, click: true },
+          { frame: 35, x: 1100, y: 590 },
+          { frame: 42, x: 1100, y: 590, click: true },
         ]}
       />
     </AbsoluteFill>

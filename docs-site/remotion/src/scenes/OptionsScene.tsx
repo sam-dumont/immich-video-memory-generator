@@ -438,13 +438,13 @@ export const OptionsScene: React.FC<Props> = ({ bassIntensity }) => {
 
         </div>
       </WindowFrame>
-      {/* Cursor: viewport coords, clicks Generate Music then Next */}
+      {/* Cursor: measured from 1920x1080 still render */}
       <AnimatedCursor
         steps={[
-          { frame: 35, x: 560, y: 626 },
-          { frame: 42, x: 560, y: 626, click: true },
-          { frame: 75, x: 920, y: 806 },
-          { frame: 85, x: 920, y: 806, click: true },
+          { frame: 35, x: 500, y: 540 },
+          { frame: 42, x: 500, y: 540, click: true },
+          { frame: 75, x: 1500, y: 895 },
+          { frame: 85, x: 1500, y: 895, click: true },
         ]}
       />
     </AbsoluteFill>

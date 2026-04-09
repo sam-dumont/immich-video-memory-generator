@@ -159,11 +159,10 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
       ? 0.97
       : 1;
 
-  // Viewport coordinates: content area origin = (360, 126)
-  // Window entry animation settles ~frame 30, so cursor starts at frame 40
+  // Measured from 1920x1080 still render: Generate Memories button center
   const cursorSteps = [
-    { frame: 40, x: 1040, y: 586, click: false },
-    { frame: 50, x: 1040, y: 586, click: true },
+    { frame: 40, x: 1100, y: 600, click: false },
+    { frame: 50, x: 1100, y: 600, click: true },
   ];
 
   return (
