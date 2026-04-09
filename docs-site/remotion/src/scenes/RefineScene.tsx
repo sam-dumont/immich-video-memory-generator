@@ -585,11 +585,11 @@ export const RefineScene: React.FC<Props> = ({ bassIntensity }) => {
 
         </div>
       </WindowFrame>
-      {/* Cursor: viewport coords, appears at CONTINUE button after scroll */}
+      {/* Cursor: measured from 1920x1080 still render */}
       <AnimatedCursor
         steps={[
-          { frame: 148, x: 1040, y: 880 },
-          { frame: 155, x: 1040, y: 880, click: true },
+          { frame: 148, x: 900, y: 690 },
+          { frame: 155, x: 900, y: 690, click: true },
         ]}
       />
     </AbsoluteFill>
