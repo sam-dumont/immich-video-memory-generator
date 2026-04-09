@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 from immich_memories.automation.notifications import (
     _build_body,
     _build_title,
+    _cleanup_thumbnail,
+    _extract_thumbnail,
     notify_job_complete,
     send_test_notification,
 )
@@ -200,6 +202,75 @@ class TestBuildBody:
             error="crash",
         )
         assert "Output" not in body
+
+
+class TestThumbnailExtraction:
+    def test_returns_none_for_missing_file(self) -> None:
+        assert _extract_thumbnail("/nonexistent/video.mp4") is None
+
+    def test_returns_none_when_ffmpeg_fails(self) -> None:
+        import tempfile
+
+        # WHY: mock subprocess.run to simulate ffmpeg not found
+        with (
+            patch("subprocess.run", side_effect=FileNotFoundError("ffmpeg")),
+            tempfile.NamedTemporaryFile(suffix=".mp4") as f,
+        ):
+            assert _extract_thumbnail(f.name) is None
+
+    def test_cleanup_thumbnail_removes_file(self, tmp_path) -> None:
+        thumb = tmp_path / "test.jpg"
+        thumb.write_bytes(b"fake")
+        _cleanup_thumbnail(str(thumb))
+        assert not thumb.exists()
+
+    def test_cleanup_thumbnail_ignores_missing(self) -> None:
+        _cleanup_thumbnail("/nonexistent/thumb.jpg")  # Should not raise
+
+
+class TestSendNotificationHelper:
+    def test_skips_when_disabled(self) -> None:
+        from immich_memories.cli._pipeline_runner import _send_notification
+
+        mock_config = MagicMock()
+        mock_config.notifications.enabled = False
+        # Should not raise or call anything
+        _send_notification(mock_config, "test", "completed", 10.0)
+
+    def test_skips_when_no_urls(self) -> None:
+        from immich_memories.cli._pipeline_runner import _send_notification
+
+        mock_config = MagicMock()
+        mock_config.notifications.enabled = True
+        mock_config.notifications.urls = []
+        _send_notification(mock_config, "test", "completed", 10.0)
+
+    def test_calls_notify_on_success(self) -> None:
+        from immich_memories.cli._pipeline_runner import _send_notification
+
+        mock_config = MagicMock()
+        mock_config.notifications.enabled = True
+        mock_config.notifications.urls = ["ntfy://test"]
+        mock_config.notifications.on_success = True
+
+        # WHY: would send real notifications — patch at source module
+        with patch("immich_memories.automation.notifications.notify_job_complete") as mock_notify:
+            _send_notification(mock_config, "monthly", "completed", 60.0, "/tmp/out.mp4")
+
+        mock_notify.assert_called_once()
+
+    def test_skips_success_when_on_success_false(self) -> None:
+        from immich_memories.cli._pipeline_runner import _send_notification
+
+        mock_config = MagicMock()
+        mock_config.notifications.enabled = True
+        mock_config.notifications.urls = ["ntfy://test"]
+        mock_config.notifications.on_success = False
+
+        with patch("immich_memories.automation.notifications.notify_job_complete") as mock_notify:
+            _send_notification(mock_config, "monthly", "completed", 60.0)
+
+        mock_notify.assert_not_called()
 
 
 class TestSendTestNotification:

@@ -36,17 +36,74 @@ def notify_job_complete(
     for url in urls:
         apobj.add(url)
 
+    # Extract thumbnail from output video if available
+    attach = _extract_thumbnail(output_path) if output_path and status == "completed" else None
+
     try:
-        result = bool(apobj.notify(title=title, body=body))
+        kwargs: dict = {"title": title, "body": body}
+        if attach:
+            kwargs["attach"] = attach
+        result = bool(apobj.notify(**kwargs))
     except (OSError, RuntimeError) as e:
         logger.exception("Notification delivery error: %s", e)
         return False
+    finally:
+        if attach:
+            _cleanup_thumbnail(attach)
 
     if result:
         logger.info("Notification sent: %s", title)
     else:
         logger.warning("Notification delivery failed: %s", title)
     return result
+
+
+def _extract_thumbnail(output_path: str) -> str | None:
+    """Extract a thumbnail frame from the output video for notification attachment."""
+    import subprocess
+    import tempfile
+    from pathlib import Path
+
+    video = Path(output_path)
+    if not video.exists():
+        return None
+
+    thumb = Path(tempfile.gettempdir()) / f"immich_notif_{video.stem}.jpg"
+    try:
+        # WHY: seek to 25% of video for a representative frame (skips title screen)
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-ss",
+                "5",
+                "-i",
+                str(video),
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=480:-1",
+                "-q:v",
+                "4",
+                str(thumb),
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+        if thumb.exists() and thumb.stat().st_size > 0:
+            return str(thumb)
+    except (OSError, subprocess.SubprocessError):
+        logger.debug("Failed to extract notification thumbnail")
+    return None
+
+
+def _cleanup_thumbnail(path: str) -> None:
+    """Remove temporary thumbnail file."""
+    import contextlib
+    from pathlib import Path
+
+    with contextlib.suppress(OSError):
+        Path(path).unlink(missing_ok=True)
 
 
 def _build_title(memory_type: str, status: str) -> str:
