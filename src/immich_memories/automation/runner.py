@@ -372,19 +372,18 @@ class AutoRunner:
         logger.info("Generating: %s (score=%.3f)", candidate.reason, candidate.score)
         logger.info("Running: %s", " ".join(cmd))
 
-        import time as _time
-
-        start = _time.monotonic()
         success = _execute_generate(cmd)
-        elapsed = _time.monotonic() - start
 
-        _send_notification(
-            config=self.config,
-            memory_type=candidate.memory_type,
-            success=success,
-            duration_seconds=elapsed,
-            error=None if success else "Generation subprocess failed",
-        )
+        # WHY: notification is sent by the CLI subprocess (_pipeline_runner.py)
+        # which includes thumbnail + output path. Only send from here on failure
+        # since the subprocess may have crashed before reaching its notification.
+        if not success:
+            _send_notification(
+                config=self.config,
+                memory_type=candidate.memory_type,
+                success=False,
+                error="Generation subprocess failed",
+            )
 
         if not success:
             return None
