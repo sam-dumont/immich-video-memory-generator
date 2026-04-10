@@ -70,7 +70,7 @@ def _build_generate_command(candidate: MemoryCandidate, upload: bool) -> list[st
         cmd.extend(["--start", candidate.date_range_start.isoformat()])
         cmd.extend(["--end", candidate.date_range_end.isoformat()])
     elif mem_type == "multi_person":
-        cmd.extend(["--memory-type", "person_spotlight"])
+        cmd.extend(["--memory-type", "multi_person"])
         cmd.extend(["--year", str(candidate.date_range_start.year)])
         person_names = candidate.person_names.copy()
 
@@ -349,7 +349,9 @@ class AutoRunner:
 
         Returns the output path on success, None if skipped or no candidates.
         """
-        effective_cooldown = cooldown_hours or self.config.automation.cooldown_hours
+        effective_cooldown = (
+            cooldown_hours if cooldown_hours is not None else self.config.automation.cooldown_hours
+        )
 
         if not force and _is_within_cooldown(self.db, effective_cooldown):
             return None
