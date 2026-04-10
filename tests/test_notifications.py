@@ -227,6 +227,36 @@ class TestThumbnailExtraction:
     def test_cleanup_thumbnail_ignores_missing(self) -> None:
         _cleanup_thumbnail("/nonexistent/thumb.jpg")  # Should not raise
 
+    def test_notify_attaches_thumbnail_when_available(self) -> None:
+        """Covers lines 45, 52: attach path + cleanup."""
+        mock_apprise = MagicMock()
+        mock_instance = MagicMock()
+        mock_instance.notify.return_value = True
+        mock_apprise.Apprise.return_value = mock_instance
+
+        # WHY: mock thumbnail extraction to return a fake path
+        with (
+            patch.dict("sys.modules", {"apprise": mock_apprise}),
+            patch(
+                "immich_memories.automation.notifications._extract_thumbnail",
+                return_value="/tmp/fake_thumb.jpg",
+            ),
+            patch(
+                "immich_memories.automation.notifications._cleanup_thumbnail",
+            ) as mock_cleanup,
+        ):
+            result = notify_job_complete(
+                memory_type="monthly",
+                status="completed",
+                output_path="/tmp/video.mp4",
+                urls=["ntfy://test"],
+            )
+
+        assert result is True
+        call_kwargs = mock_instance.notify.call_args.kwargs
+        assert call_kwargs["attach"] == "/tmp/fake_thumb.jpg"
+        mock_cleanup.assert_called_once_with("/tmp/fake_thumb.jpg")
+
 
 class TestSendNotificationHelper:
     def test_skips_when_disabled(self) -> None:
