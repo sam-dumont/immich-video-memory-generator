@@ -33,7 +33,7 @@ class AuthConfig(BaseModel):
     email_header: str = "Remote-Email"
     trusted_proxies: list[str] = Field(default_factory=list)
 
-    @field_validator("password", "client_secret", mode="before")
+    @field_validator("password", "client_secret", "issuer_url", "client_id", mode="before")
     @classmethod
     def expand_env(cls, v: str) -> str:
         if isinstance(v, str):
