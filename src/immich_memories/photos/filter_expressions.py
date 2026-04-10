@@ -1,7 +1,8 @@
 """FFmpeg filter strings for photo animations.
 
-Used internally by PhotoAnimator for simple SDR photo-to-video conversion.
-For HDR, face-aware, and high-quality animations, use renderer.py instead.
+Used internally by PhotoAnimator for SDR photo-to-video conversion:
+blur_bg, ken_burns, face_zoom, collage, split. For HDR and frame-by-frame
+rendering, see renderer.py.
 """
 
 from __future__ import annotations
@@ -171,6 +172,27 @@ def blur_bg_filter(
         zoom_step = zoom_amount / total_frames
         z_expr = f"max({start_zoom}-on*{zoom_step:.6f},1.0)"
 
+    # Compute foreground fitted size (fit source AR within target, like
+    # scaling_utilities.py's force_original_aspect_ratio=decrease)
+    src_ar = width / height
+    target_ar = target_w / target_h
+    if src_ar < target_ar:
+        # Source narrower than target (portrait in landscape): height constrains
+        fit_h = target_h
+        fit_w = round(target_h * src_ar)
+    else:
+        # Source wider than target: width constrains
+        fit_w = target_w
+        fit_h = round(target_w / src_ar)
+    # FFmpeg requires even dimensions
+    fit_w += fit_w % 2
+    fit_h += fit_h % 2
+
+    # Pre-scale with zoom margin so zoompan has room to animate
+    margin = (1.0 + zoom_amount) * 1.05
+    pre_w = int(fit_w * margin) + int(fit_w * margin) % 2
+    pre_h = int(fit_h * margin) + int(fit_h * margin) % 2
+
     # Background: scale up to fill + heavy blur
     bg = (
         f"split[bg][fg];"
@@ -178,14 +200,14 @@ def blur_bg_filter(
         f"crop={target_w}:{target_h},"
         f"boxblur=luma_radius=150:chroma_radius=150:luma_power=3:chroma_power=3[blurred];"
     )
-    # Foreground: fit within frame + subtle zoom
+    # Foreground: fit within frame at source AR + subtle zoom
     fg = (
-        f"[fg]scale={int(target_w * (1.0 + zoom_amount) * 1.05)}:-1:force_original_aspect_ratio=decrease:flags=lanczos,"
+        f"[fg]scale={pre_w}:{pre_h}:flags=lanczos,"
         f"zoompan=z='{z_expr}':"
         f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-        f"d={total_frames}:s={target_w}x{target_h}:fps={fps}[zoomed];"
+        f"d={total_frames}:s={fit_w}x{fit_h}:fps={fps}[zoomed];"
     )
-    # Overlay centered
+    # Overlay centered — blur shows through on mismatched edges
     overlay = "[blurred][zoomed]overlay=(W-w)/2:(H-h)/2"
 
     return f"{bg}{fg}{overlay}"

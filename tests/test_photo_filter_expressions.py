@@ -264,6 +264,63 @@ class TestBlurBgFilter:
         results = {blur_bg_filter(**args, seed=i) for i in range(20)}
         assert len(results) >= 3
 
+    def test_portrait_in_4k_landscape_foreground_preserves_aspect_ratio(self):
+        """Portrait photo (3024x4032) in 4K landscape must keep portrait AR in zoompan output.
+
+        Regression: foreground was scaled by target_w only, creating a portrait-shaped
+        input (4354x5805) fed into a landscape zoompan (s=3840x2160). The AR mismatch
+        caused the photo to appear tiny/distorted.
+        """
+        import re
+
+        result = blur_bg_filter(
+            width=3024,
+            height=4032,
+            target_w=3840,
+            target_h=2160,
+            duration=4.0,
+            fps=30,
+            seed=42,
+        )
+        # Extract zoompan s= parameter (foreground output size)
+        match = re.search(r"zoompan=.*?s=(\d+)x(\d+)", result)
+        assert match, f"No zoompan s= found in: {result}"
+        zoom_w, zoom_h = int(match.group(1)), int(match.group(2))
+
+        # Foreground zoompan output must be portrait (narrower than target)
+        # so blur background is visible on the sides
+        assert zoom_w < 3840, (
+            f"Foreground width {zoom_w} fills entire target — blur background invisible"
+        )
+        # Foreground AR should match source AR (portrait ~0.75), not target AR (1.78)
+        fg_ar = zoom_w / zoom_h
+        src_ar = 3024 / 4032  # 0.75
+        assert abs(fg_ar - src_ar) < 0.05, (
+            f"Foreground AR {fg_ar:.3f} doesn't match source AR {src_ar:.3f} — "
+            f"zoompan s={zoom_w}x{zoom_h} has wrong aspect ratio"
+        )
+
+    def test_portrait_in_1080p_foreground_narrower_than_target(self):
+        """Portrait photo in HD landscape: zoompan output must be narrower than target."""
+        import re
+
+        result = blur_bg_filter(
+            width=1080,
+            height=1920,
+            target_w=1920,
+            target_h=1080,
+            duration=4.0,
+            fps=30,
+            seed=0,
+        )
+        match = re.search(r"zoompan=.*?s=(\d+)x(\d+)", result)
+        assert match
+        zoom_w, zoom_h = int(match.group(1)), int(match.group(2))
+
+        # Portrait foreground should be narrower than landscape target
+        assert zoom_w < 1920, f"Foreground {zoom_w}px should be narrower than target 1920px"
+        assert zoom_h == 1080, f"Foreground height {zoom_h}px should match target height 1080px"
+
 
 class TestCollageFilter:
     """Tests for multi-photo collage (Apple-style slide-in stack)."""

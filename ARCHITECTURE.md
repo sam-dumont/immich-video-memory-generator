@@ -80,7 +80,7 @@ src/immich_memories/
 │   ├── animator.py             # PhotoAnimator: FFmpeg command builder, HEIC decode, HDR detection
 │   ├── photo_pipeline.py       # PhotoPipeline: end-to-end photo processing orchestrator
 │   ├── ultrahdr.py             # Ultra HDR JPEG (Android/Pixel): MPF parser, gain map, ISO 21496-1
-│   ├── filter_expressions.py   # LEGACY FFmpeg filter strings (superseded by renderer.py)
+│   ├── filter_expressions.py   # FFmpeg filter strings for single-photo animations (blur_bg, ken_burns, etc.)
 │   ├── grouper.py              # PhotoGrouper: temporal clustering, series detection
 │   └── scoring.py              # Photo scoring: favorites, faces, camera, penalty
 │

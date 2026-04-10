@@ -97,6 +97,7 @@ all = [
     "immich-memories[face]",
     "immich-memories[audio]",
     "immich-memories[audio-ml]",
+    "immich-memories[auth]",
     "immich-memories[demucs]",
     "immich-memories[gpu]",
 ]

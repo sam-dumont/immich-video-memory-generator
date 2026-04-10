@@ -25,7 +25,7 @@ ENV SETUPTOOLS_SCM_PRETEND_VERSION=${SETUPTOOLS_SCM_PRETEND_VERSION}
 
 RUN pip install --no-cache-dir build && \
     python -m build --wheel && \
-    (pip wheel --no-cache-dir --wheel-dir=/wheels ".[face]" || \
+    (pip wheel --no-cache-dir --wheel-dir=/wheels ".[all]" || \
      pip wheel --no-cache-dir --wheel-dir=/wheels .)
 
 
@@ -59,9 +59,9 @@ RUN pip install --no-cache-dir /wheels/*.whl && \
 # Create non-root user for security
 RUN groupadd -r immich && useradd -r -g immich -d /home/immich -m immich
 
-# Create config and cache directories with correct ownership
-RUN mkdir -p /home/immich/.immich-memories/cache /app/output && \
-    chown -R immich:immich /home/immich/.immich-memories /app/output
+# Create config, cache, and NiceGUI state directories with correct ownership
+RUN mkdir -p /home/immich/.immich-memories/cache /app/output /app/.nicegui && \
+    chown -R immich:immich /home/immich/.immich-memories /app/output /app/.nicegui
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
