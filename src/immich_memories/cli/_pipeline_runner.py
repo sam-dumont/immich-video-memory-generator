@@ -6,6 +6,7 @@ Immich, runs analysis, and generates the final video.
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -196,7 +197,40 @@ def run_pipeline_and_generate(
         _gen_time / _total_time * 100 if _total_time > 0 else 0,
     )
 
+    _send_notification(config, memory_type, "completed", _total_time, str(result_path))
+
     return result_path, should_upload, album_name
+
+
+def _send_notification(
+    config: Config,
+    memory_type: str | None,
+    status: str,
+    duration: float,
+    output_path: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Send notification if configured (best-effort, never raises)."""
+    notif = config.notifications
+    if not notif.enabled or not notif.urls:
+        return
+    if (status == "completed" and not notif.on_success) or (
+        status == "failed" and not notif.on_failure
+    ):
+        return
+    try:
+        from immich_memories.automation.notifications import notify_job_complete
+
+        notify_job_complete(
+            memory_type=memory_type or "unknown",
+            status=status,
+            duration_seconds=duration,
+            output_path=output_path,
+            error=error,
+            urls=notif.urls,
+        )
+    except (OSError, RuntimeError):
+        logging.getLogger(__name__).debug("Notification failed", exc_info=True)
 
 
 def _merge_photos_into_pool(

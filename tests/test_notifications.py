@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 from immich_memories.automation.notifications import (
     _build_body,
     _build_title,
+    _cleanup_thumbnail,
+    _extract_thumbnail,
     notify_job_complete,
     send_test_notification,
 )
@@ -200,6 +202,105 @@ class TestBuildBody:
             error="crash",
         )
         assert "Output" not in body
+
+
+class TestThumbnailExtraction:
+    def test_returns_none_for_missing_file(self) -> None:
+        assert _extract_thumbnail("/nonexistent/video.mp4") is None
+
+    def test_returns_none_when_ffmpeg_fails(self) -> None:
+        import tempfile
+
+        # WHY: mock subprocess.run to simulate ffmpeg not found
+        with (
+            patch("subprocess.run", side_effect=FileNotFoundError("ffmpeg")),
+            tempfile.NamedTemporaryFile(suffix=".mp4") as f,
+        ):
+            assert _extract_thumbnail(f.name) is None
+
+    def test_cleanup_thumbnail_removes_file(self, tmp_path) -> None:
+        thumb = tmp_path / "test.jpg"
+        thumb.write_bytes(b"fake")
+        _cleanup_thumbnail(str(thumb))
+        assert not thumb.exists()
+
+    def test_cleanup_thumbnail_ignores_missing(self) -> None:
+        _cleanup_thumbnail("/nonexistent/thumb.jpg")  # Should not raise
+
+    def test_notify_attaches_thumbnail_when_available(self) -> None:
+        """Covers lines 45, 52: attach path + cleanup."""
+        mock_apprise = MagicMock()
+        mock_instance = MagicMock()
+        mock_instance.notify.return_value = True
+        mock_apprise.Apprise.return_value = mock_instance
+
+        # WHY: mock thumbnail extraction to return a fake path
+        with (
+            patch.dict("sys.modules", {"apprise": mock_apprise}),
+            patch(
+                "immich_memories.automation.notifications._extract_thumbnail",
+                return_value="/tmp/fake_thumb.jpg",
+            ),
+            patch(
+                "immich_memories.automation.notifications._cleanup_thumbnail",
+            ) as mock_cleanup,
+        ):
+            result = notify_job_complete(
+                memory_type="monthly",
+                status="completed",
+                output_path="/tmp/video.mp4",
+                urls=["ntfy://test"],
+            )
+
+        assert result is True
+        call_kwargs = mock_instance.notify.call_args.kwargs
+        assert call_kwargs["attach"] == "/tmp/fake_thumb.jpg"
+        mock_cleanup.assert_called_once_with("/tmp/fake_thumb.jpg")
+
+
+class TestSendNotificationHelper:
+    def test_skips_when_disabled(self) -> None:
+        from immich_memories.cli._pipeline_runner import _send_notification
+
+        mock_config = MagicMock()
+        mock_config.notifications.enabled = False
+        # Should not raise or call anything
+        _send_notification(mock_config, "test", "completed", 10.0)
+
+    def test_skips_when_no_urls(self) -> None:
+        from immich_memories.cli._pipeline_runner import _send_notification
+
+        mock_config = MagicMock()
+        mock_config.notifications.enabled = True
+        mock_config.notifications.urls = []
+        _send_notification(mock_config, "test", "completed", 10.0)
+
+    def test_calls_notify_on_success(self) -> None:
+        from immich_memories.cli._pipeline_runner import _send_notification
+
+        mock_config = MagicMock()
+        mock_config.notifications.enabled = True
+        mock_config.notifications.urls = ["ntfy://test"]
+        mock_config.notifications.on_success = True
+
+        # WHY: would send real notifications — patch at source module
+        with patch("immich_memories.automation.notifications.notify_job_complete") as mock_notify:
+            _send_notification(mock_config, "monthly", "completed", 60.0, "/tmp/out.mp4")
+
+        mock_notify.assert_called_once()
+
+    def test_skips_success_when_on_success_false(self) -> None:
+        from immich_memories.cli._pipeline_runner import _send_notification
+
+        mock_config = MagicMock()
+        mock_config.notifications.enabled = True
+        mock_config.notifications.urls = ["ntfy://test"]
+        mock_config.notifications.on_success = False
+
+        with patch("immich_memories.automation.notifications.notify_job_complete") as mock_notify:
+            _send_notification(mock_config, "monthly", "completed", 60.0)
+
+        mock_notify.assert_not_called()
 
 
 class TestSendTestNotification:
