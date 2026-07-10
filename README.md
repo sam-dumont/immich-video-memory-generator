@@ -10,7 +10,7 @@
 
 **Turn your [Immich](https://immich.app/) photo library into video memory compilations with music, title screens, and smart cuts.**
 
-Immich Memories connects to your self-hosted Immich server, selects the best moments from your videos *and* photos, and compiles them into shareable memory videos. Year-end recaps, trip highlights, person spotlights, seasonal compilations, monthly highlights, "on this day" flashbacks -- all from a single tool.
+Immich Memories connects to your self-hosted Immich server, selects the best moments from your videos *and* photos, and compiles them into shareable memory videos. Year-end recaps, trip highlights, person spotlights, seasonal compilations, monthly highlights, "on this day" flashbacks, album compilations -- all from a single tool.
 
 > **Full documentation**: [sam-dumont.github.io/immich-video-memory-generator](https://sam-dumont.github.io/immich-video-memory-generator/)
 
@@ -123,7 +123,7 @@ immich-memories generate --year 2024 --person "John" --output ~/Videos/john_2024
 ## Key Features
 
 - **Videos + Photos** — Unified selection pool: videos, photos (Ken Burns / face-aware pan), and Live Photos
-- **7 Memory Types** — Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Trip
+- **8 Memory Types** — Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Trip, Album
 - **Smart Clip Selection** — Scene detection, interest scoring, duplicate filtering, temporal coverage
 - **Cinematic Titles** — GPU-rendered title screens with globe animations, satellite maps, month dividers
 - **Face-Aware Cropping** — Keeps faces centered when converting aspect ratios

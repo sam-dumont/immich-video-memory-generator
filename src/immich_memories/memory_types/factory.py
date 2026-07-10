@@ -21,7 +21,7 @@ from immich_memories.memory_types.presets import (
     ScoringProfile,
 )
 from immich_memories.memory_types.registry import MemoryType
-from immich_memories.timeperiod import birthday_year, calendar_year
+from immich_memories.timeperiod import birthday_year, calendar_year, custom_range
 
 # Registry: maps MemoryType -> factory callable
 _REGISTRY: dict[MemoryType, Callable[..., MemoryPreset]] = {}
@@ -306,4 +306,51 @@ def _trip(
         title_template="{location}",
         subtitle_template="{start_date} - {end_date}",
         default_duration_seconds=duration,
+    )
+
+
+@register_preset(
+    MemoryType.ALBUM,
+    name="Album",
+    description="Turn any Immich album into a memory video",
+)
+def _album(
+    album_id: str | None = None,
+    album_name: str | None = None,
+    album_start: date | None = None,
+    album_end: date | None = None,
+    asset_count: int = 0,
+    person_names: list[str] | None = None,
+    **kwargs,  # noqa: ARG001
+) -> MemoryPreset:
+    if not album_id:
+        raise ValueError("album_id is required for ALBUM memory type")
+
+    name = album_name or "Album"
+    # Album date range comes from Immich album metadata when available.
+    # Fallback: wide range — the pipeline works from the asset set itself,
+    # so the range only drives titles/dividers.
+    if album_start and album_end:
+        date_range = build_trip(album_start, album_end)
+    else:
+        date_range = custom_range(date(2000, 1, 1), date.today())
+
+    # ~5s of output per album asset, clamped to 60s-600s; 120s when unknown
+    duration = float(max(60, min(600, asset_count * 5))) if asset_count else 120.0
+    person_filter = PersonFilter()
+    if person_names:
+        person_filter = PersonFilter(mode="single", person_names=person_names[:1])
+
+    return MemoryPreset(
+        memory_type=MemoryType.ALBUM,
+        name=name,
+        description=f"Memories from the album '{name}'",
+        date_ranges=[date_range],
+        person_filter=person_filter,
+        scoring=ScoringProfile(),
+        title_template="{album}",
+        subtitle_template="{start_date} - {end_date}",
+        default_duration_seconds=duration,
+        album_id=album_id,
+        album_name=album_name,
     )

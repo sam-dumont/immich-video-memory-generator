@@ -109,6 +109,9 @@ class AppState:
     # Trip detection results (populated dynamically in Step 1 for trip preset)
     detected_trips: list[Any] = field(default_factory=list)
 
+    # Album list (populated dynamically in Step 1 for album preset)
+    albums: list[Any] = field(default_factory=list)
+
     # Upload-back-to-Immich settings
     upload_enabled: bool = False
     upload_album_name: str = "Memories"

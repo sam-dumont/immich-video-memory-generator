@@ -48,6 +48,7 @@ const sidebars: SidebarsConfig = {
             'create/memory-types/year-in-review',
             'create/memory-types/monthly-person-season',
             'create/memory-types/trip-memories',
+            'create/memory-types/album-memories',
           ],
         },
         {

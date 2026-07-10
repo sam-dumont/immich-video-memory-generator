@@ -56,6 +56,7 @@ def generate_template_title(
     start_date: str,
     end_date: str,
     person_names: list[str] | None = None,
+    album_name: str | None = None,
 ) -> tuple[str, str | None]:
     """Generate a template-based title from memory type and date range.
 
@@ -89,6 +90,12 @@ def generate_template_title(
 
     if memory_type == "on_this_day":
         return f"On This Day \u2014 {_MONTH_NAMES[start.month]} {start.day}", None
+
+    if memory_type == "album":
+        title = album_name or "Album Memories"
+        if start == end:
+            return title, f"{_MONTH_NAMES[start.month]} {start.day}, {start.year}"
+        return title, f"{start_date} \u2013 {end_date}"
 
     # Fallback for unknown types
     span_months = (end.year - start.year) * 12 + (end.month - start.month)
@@ -244,6 +251,7 @@ async def generate_title_after_pipeline(state: AppState) -> None:
         start_date=str(start_date),
         end_date=str(end_date),
         person_names=person_names,
+        album_name=state.memory_preset_params.get("album_name"),
     )
     state.title_suggestion_title = template_title
     state.title_suggestion_subtitle = template_subtitle

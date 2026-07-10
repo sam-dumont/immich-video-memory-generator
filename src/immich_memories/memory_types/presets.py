@@ -79,3 +79,5 @@ class MemoryPreset:
     title_template: str
     subtitle_template: str | None = None
     default_duration_seconds: float | None = None
+    album_id: str | None = None
+    album_name: str | None = None

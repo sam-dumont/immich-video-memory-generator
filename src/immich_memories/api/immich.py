@@ -408,6 +408,12 @@ class ImmichClient:
     async def get_albums(self) -> list[dict]:
         return await self.albums.get_albums()
 
+    async def get_album(self, album_id: str) -> dict:
+        return await self.albums.get_album(album_id)
+
+    async def get_album_assets(self, album_id: str) -> list[Asset]:
+        return await self.albums.get_album_assets(album_id)
+
     async def find_album_by_name(self, name: str) -> str | None:
         return await self.albums.find_album_by_name(name)
 

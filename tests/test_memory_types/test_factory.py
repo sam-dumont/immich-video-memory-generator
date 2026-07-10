@@ -255,3 +255,59 @@ class TestUnregisteredType:
     def test_unregistered_type_raises(self) -> None:
         with pytest.raises(ValueError, match="No preset factory"):
             create_preset(MemoryType.HOLIDAY, year=2024)
+
+
+class TestCreatePresetAlbum:
+    """Album preset builds from album metadata instead of a date search."""
+
+    def test_creates_preset_with_album_fields(self) -> None:
+        preset = create_preset(
+            MemoryType.ALBUM,
+            album_id="abc-123",
+            album_name="Kinmen Missions",
+            album_start=date(2026, 7, 4),
+            album_end=date(2026, 7, 12),
+            asset_count=40,
+        )
+        assert preset.memory_type == MemoryType.ALBUM
+        assert preset.album_id == "abc-123"
+        assert preset.album_name == "Kinmen Missions"
+        assert preset.name == "Kinmen Missions"
+
+    def test_date_range_from_album_dates(self) -> None:
+        preset = create_preset(
+            MemoryType.ALBUM,
+            album_id="abc-123",
+            album_start=date(2026, 7, 4),
+            album_end=date(2026, 7, 12),
+        )
+        assert len(preset.date_ranges) == 1
+        assert preset.date_ranges[0].start.date() == date(2026, 7, 4)
+        assert preset.date_ranges[0].end.date() == date(2026, 7, 12)
+
+    def test_wide_fallback_range_without_dates(self) -> None:
+        preset = create_preset(MemoryType.ALBUM, album_id="abc-123")
+        assert preset.date_ranges[0].start.date() == date(2000, 1, 1)
+
+    def test_duration_scales_with_asset_count(self) -> None:
+        small = create_preset(MemoryType.ALBUM, album_id="a", asset_count=5)
+        medium = create_preset(MemoryType.ALBUM, album_id="a", asset_count=40)
+        huge = create_preset(MemoryType.ALBUM, album_id="a", asset_count=500)
+        unknown = create_preset(MemoryType.ALBUM, album_id="a")
+        assert small.default_duration_seconds == 60  # floor
+        assert medium.default_duration_seconds == 200
+        assert huge.default_duration_seconds == 600  # ceiling
+        assert unknown.default_duration_seconds == 120
+
+    def test_requires_album_id(self) -> None:
+        with pytest.raises(ValueError, match="album_id"):
+            create_preset(MemoryType.ALBUM)
+
+    def test_registered_in_memory_type_list(self) -> None:
+        types = [t["type"] for t in list_memory_types()]
+        assert "album" in types
+
+    def test_other_presets_have_no_album_fields(self) -> None:
+        preset = create_preset(MemoryType.YEAR_IN_REVIEW, year=2024)
+        assert preset.album_id is None
+        assert preset.album_name is None

@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
+from immich_memories.api.models import Asset
+
 RequestFn = Callable[..., Any]
+
+logger = logging.getLogger(__name__)
 
 
 class AlbumService:
@@ -55,6 +62,32 @@ class AlbumService:
 
     async def get_albums(self) -> list[dict]:
         return await self._request("GET", "/albums")
+
+    async def get_album(self, album_id: str) -> dict:
+        """Fetch a single album by ID, including its assets."""
+        return await self._request("GET", f"/albums/{album_id}")
+
+    async def get_album_assets(self, album_id: str) -> list[Asset]:
+        """Fetch all assets in an album as parsed Asset models.
+
+        Trashed assets are skipped; archived assets are kept because their
+        presence in an album is a deliberate user choice. Assets that fail
+        to parse are logged and skipped rather than failing the whole fetch.
+        Results are sorted chronologically by capture time.
+        """
+        data = await self.get_album(album_id)
+        assets: list[Asset] = []
+        for raw in data.get("assets", []):
+            try:
+                asset = Asset.model_validate(raw)
+            except ValidationError as exc:
+                logger.warning("Skipping unparseable album asset %s: %s", raw.get("id"), exc)
+                continue
+            if asset.is_trashed:
+                continue
+            assets.append(asset)
+        assets.sort(key=lambda a: a.file_created_at)
+        return assets
 
     async def find_album_by_name(self, name: str) -> str | None:
         """Returns album ID if found, None otherwise."""
