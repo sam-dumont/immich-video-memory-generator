@@ -1,0 +1,57 @@
+---
+sidebar_label: "Album Memories"
+---
+
+# Album Memories
+
+Turn any Immich album into a memory video. Instead of searching by date range, the album memory type uses exactly the assets you (or your family) already curated into an album — videos and photos alike.
+
+This is the most direct way to make a memory: if the album is good, the video will be good.
+
+## When to use it
+
+- **Shared albums**: a trip album that several people contributed to
+- **Curated highlights**: you already picked the best shots — skip the date-range search entirely
+- **Events without clean date boundaries**: a birthday party mixed into a busy weekend, a multi-weekend project
+- **No GPS data**: trip detection needs GPS; albums don't
+
+## CLI
+
+Generate from an album by name (case-insensitive, unique partial matches work):
+
+```bash
+immich-memories generate --source-album "Kinmen 2026"
+```
+
+`--source-album` implies `--memory-type album`, so the explicit form is equivalent:
+
+```bash
+immich-memories generate --memory-type album --source-album "Kinmen 2026"
+```
+
+If the name is ambiguous or not found, the CLI lists your albums so you can pick the exact name or pass the album ID instead.
+
+Useful combinations:
+
+```bash
+# Include the album's photos, not just videos
+immich-memories generate --source-album "Kinmen 2026" --include-photos
+
+# Override the computed duration (default: ~5s per asset, 60–600s)
+immich-memories generate --source-album "Kinmen 2026" --duration 180
+
+# Preview what would be generated
+immich-memories generate --source-album "Kinmen 2026" --dry-run
+```
+
+## Web UI
+
+In Step 1, select the **Album** preset card. The album list loads from your Immich server; pick one from the searchable dropdown (most recently updated albums first). The date range and target duration are filled in from the album's metadata, and the generated title defaults to the album name.
+
+## Behavior notes
+
+- **Title**: defaults to the album name, with the album's date span as the subtitle. Override with `--title` / `--subtitle` or in Step 3 of the UI.
+- **Date range**: derived from the actual capture times of the album's assets — used for title screens and month/year dividers.
+- **Trashed assets** are skipped; **archived assets** are kept, since putting them in an album is a deliberate choice.
+- **Live Photos**: motion-clip extraction is not available in album mode (it searches by date range, which would pull in assets from outside the album). Live Photo stills in the album are included as photos.
+- **Duration default**: roughly 5 seconds of output per album asset, clamped between 60s and 600s. The pipeline still scores and selects the best segments — a 200-asset album won't produce a 17-minute video.

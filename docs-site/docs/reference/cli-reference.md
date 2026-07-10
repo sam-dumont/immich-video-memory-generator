@@ -114,7 +114,8 @@ immich-memories generate [OPTIONS]
 | `--end` | text | - | End date (use with --start) |
 | `--period` | text | - | Period from start date (e.g., 6m, 1y, 2w) |
 | `--birthday`, `-b` | flag/text | - | Birthday-based year. Bare flag auto-detects from Immich; or pass MM/DD |
-| `--memory-type` | choice | - | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `trip` |
+| `--memory-type` | choice | - | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `trip`, `album` |
+| `--source-album` | string | - | Immich album name or ID to build the memory from (implies `--memory-type album`) |
 | `--person`, `-p` | text | - | Person name to filter by (repeatable) |
 | `--season` | choice | - | `spring`, `summer`, `fall`, `autumn`, `winter` |
 | `--month` | integer | - | Month 1-12 (narrows yearly types; selects trip by month) |

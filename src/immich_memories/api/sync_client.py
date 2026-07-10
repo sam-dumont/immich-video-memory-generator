@@ -253,6 +253,15 @@ class SyncImmichClient:
             self._async_client.get_videos_for_all_persons(person_ids, date_range, progress_callback)
         )
 
+    def get_albums(self) -> list[dict]:
+        return self._run(self._async_client.get_albums())
+
+    def get_album(self, album_id: str) -> dict:
+        return self._run(self._async_client.get_album(album_id))
+
+    def get_album_assets(self, album_id: str) -> list[Asset]:
+        return self._run(self._async_client.get_album_assets(album_id))
+
     def upload_asset(self, file_path: Path) -> str:
         return self._run(self._async_client.upload_asset(file_path))
 

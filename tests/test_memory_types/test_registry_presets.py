@@ -43,7 +43,10 @@ class TestMemoryTypeEnum:
         assert {str(m) for m in phase2} == expected
 
     def test_total_enum_count(self) -> None:
-        assert len(MemoryType) == 9
+        assert len(MemoryType) == 10
+
+    def test_album_value_exists(self) -> None:
+        assert MemoryType.ALBUM == "album"
 
     def test_is_str_enum(self) -> None:
         assert isinstance(MemoryType.YEAR_IN_REVIEW, str)

@@ -13,6 +13,7 @@ class MemoryType(StrEnum):
     MULTI_PERSON = "multi_person"
     MONTHLY_HIGHLIGHTS = "monthly_highlights"
     ON_THIS_DAY = "on_this_day"
+    ALBUM = "album"
     # Phase 2 (placeholders)
     HOLIDAY = "holiday"
     TRIP = "trip"

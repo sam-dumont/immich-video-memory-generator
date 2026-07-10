@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 MIN_CLIP_DURATION = 1.5
 
 
+def _album_id(state) -> str | None:
+    """Return the source album ID when the album preset is active."""
+    if state.memory_type != "album":
+        return None
+    return state.memory_preset_params.get("album_id")
+
+
 def _fetch_assets(state) -> list:
     """Blocking: fetch video assets from Immich API."""
     date_range = state.date_range
@@ -26,6 +33,10 @@ def _fetch_assets(state) -> list:
         base_url=state.immich_url,
         api_key=state.immich_api_key,
     ) as client:
+        album_id = _album_id(state)
+        if album_id:
+            # Album mode: the album's own videos, no date-range search
+            return [a for a in client.get_album_assets(album_id) if a.is_video]
         multi_ids = state.memory_preset_params.get("person_ids", [])
         if len(multi_ids) >= 2:
             return client.get_videos_for_all_persons(multi_ids, date_range)
@@ -68,13 +79,24 @@ def _build_clips(assets: list) -> tuple[list[VideoClipInfo], int]:
 
 def _fetch_photos(state, date_range) -> list:
     """Fetch photo assets (blocking)."""
-    person_id = state.selected_person.id if state.selected_person else None
     with SyncImmichClient(state.immich_url, state.immich_api_key) as client:
+        album_id = _album_id(state)
+        if album_id:
+            from immich_memories.api.models import AssetType
+
+            return [a for a in client.get_album_assets(album_id) if a.type == AssetType.IMAGE]
+        person_id = state.selected_person.id if state.selected_person else None
         return client.get_photos_for_date_range(date_range, person_id=person_id)
 
 
 def _fetch_live_photos(state, date_range) -> tuple[list[VideoClipInfo], set[str]]:
     """Fetch live photo clips (blocking)."""
+    # WHY: Live Photo extraction searches by date range, which would pull
+    # assets from outside the album — album mode keeps stills as photos.
+    if _album_id(state):
+        logger.info("Album mode: skipping Live Photo motion extraction")
+        return [], set()
+
     lp_person_id = state.selected_person.id if state.selected_person else None
     multi_ids = state.memory_preset_params.get("person_ids", [])
 

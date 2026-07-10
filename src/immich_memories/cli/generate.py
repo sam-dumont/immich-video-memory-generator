@@ -128,10 +128,17 @@ def register_generate_commands(main: click.Group) -> None:
                 "monthly_highlights",
                 "on_this_day",
                 "trip",
+                "album",
             ]
         ),
         default=None,
         help="Memory type preset",
+    )
+    @click.option(
+        "--source-album",
+        type=str,
+        default=None,
+        help="Immich album name or ID to build the memory from (implies --memory-type album)",
     )
     @click.option(
         "--season",
@@ -310,6 +317,7 @@ def register_generate_commands(main: click.Group) -> None:
         birthday: str | None,
         person: tuple[str, ...],
         memory_type: str | None,
+        source_album: str | None,
         season: str | None,
         month: int | None,
         hemisphere: str,
@@ -351,6 +359,7 @@ def register_generate_commands(main: click.Group) -> None:
           --memory-type multi_person --person "Alice" --person "Bob" --year 2024
           --memory-type monthly_highlights --month 7 --year 2024
           --memory-type on_this_day
+          --memory-type album --source-album "Kinmen 2026"
 
         \b
         Manual time period options:
@@ -374,7 +383,23 @@ def register_generate_commands(main: click.Group) -> None:
             print_error("Immich not configured. Run 'immich-memories config' first.")
             sys.exit(1)
 
+        # Album source implies album memory type
+        if source_album and memory_type is None:
+            memory_type = "album"
+
         # Validate memory type constraints
+        if memory_type == "album" and not source_album:
+            print_error("--source-album is required with --memory-type album")
+            sys.exit(1)
+
+        if source_album and memory_type != "album":
+            print_error("--source-album requires --memory-type album")
+            sys.exit(1)
+
+        if memory_type == "album" and person_names:
+            print_error("--person is not supported with --memory-type album")
+            sys.exit(1)
+
         if memory_type in ("person_spotlight", "multi_person") and not person_names:
             print_error(f"--person is required with --memory-type {memory_type}")
             sys.exit(1)
@@ -394,6 +419,39 @@ def register_generate_commands(main: click.Group) -> None:
         if years_back is not None and memory_type != "on_this_day":
             print_error("--years-back requires --memory-type on_this_day")
             sys.exit(1)
+
+        # Album flow: assets come from the album itself, not a date search
+        if memory_type == "album":
+            from immich_memories.cli._album_generation import run_album_command
+
+            assert source_album is not None  # validated above
+            run_album_command(
+                config=config,
+                source_album=source_album,
+                output=output,
+                include_live_photos=include_live_photos,
+                include_photos=include_photos,
+                photo_duration=photo_duration,
+                analysis_depth=analysis_depth,
+                transition=transition,
+                music=music,
+                music_volume=music_volume,
+                no_music=no_music,
+                resolution=resolution,
+                scale_mode=scale_mode,
+                output_format=output_format,
+                add_date=add_date,
+                keep_intermediates=keep_intermediates,
+                privacy_mode=privacy_mode,
+                title_override=title_override,
+                subtitle_override=subtitle_override,
+                upload_to_immich=upload_to_immich,
+                album=album,
+                duration=duration,
+                quiet=quiet,
+                dry_run=dry_run,
+            )
+            return
 
         # Resolve date range(s)
         # WHY: birthday="auto" means detect from Immich later — don't pass to parser

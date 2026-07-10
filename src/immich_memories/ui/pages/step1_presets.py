@@ -24,6 +24,7 @@ _PRESET_CARDS: list[tuple[str, str, str, str]] = [
     (MemoryType.MONTHLY_HIGHLIGHTS, "event_note", "Monthly Highlights", "One month, distilled"),
     (MemoryType.ON_THIS_DAY, "history", "On This Day", "This day through the years"),
     (MemoryType.TRIP, "flight_takeoff", "Trip", "Auto-detect trips from GPS data"),
+    (MemoryType.ALBUM, "photo_album", "Album", "Turn an album into a movie"),
     ("custom", "tune", "Custom", "Full control over date range"),
 ]
 
@@ -121,6 +122,8 @@ def _render_params(key: str) -> None:
             _apply_preset_to_state(memory_type)
         elif memory_type == MemoryType.TRIP:
             _render_trip_params()
+        elif memory_type == MemoryType.ALBUM:
+            _render_album_params()
 
 
 def _year_options_with_all() -> list:
@@ -464,6 +467,105 @@ def _render_trip_params() -> None:
     # Auto-detect trips if connected and year is set
     if state.connected_user and current_year:
         ui.timer(0.1, lambda: _detect_trips_for_year(current_year), once=True)
+
+
+def _parse_album_date(raw: str | None):
+    """Parse an ISO date string from the Immich album API to a date, or None."""
+    if not raw:
+        return None
+    from datetime import datetime
+
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def _render_album_params() -> None:
+    """Album picker — fetches the album list from Immich."""
+    from nicegui import run
+
+    state = get_app_state()
+    album_container = ui.column().classes("w-full mt-2")
+
+    def _on_album_selected(albums: list[dict], album_id: str) -> None:
+        album = next((a for a in albums if a.get("id") == album_id), None)
+        if not album:
+            return
+        p = state.memory_preset_params
+        p["album_id"] = album["id"]
+        p["album_name"] = album.get("albumName", "Untitled")
+        p["asset_count"] = album.get("assetCount", 0)
+        p["album_start"] = _parse_album_date(album.get("startDate"))
+        p["album_end"] = _parse_album_date(album.get("endDate"))
+        _apply_preset_to_state(MemoryType.ALBUM)
+
+    def _render_album_select(albums: list[dict]) -> None:
+        if not albums:
+            ui.label("No albums found in Immich.").style("color: var(--im-text-secondary)").classes(
+                "text-sm italic"
+            )
+            return
+
+        # Most recently ended albums first
+        albums_sorted = sorted(albums, key=lambda a: a.get("endDate") or "", reverse=True)
+        options = {
+            a["id"]: f"{a.get('albumName', 'Untitled')} ({a.get('assetCount', 0)} items)"
+            for a in albums_sorted
+            if a.get("id")
+        }
+        saved_id = state.memory_preset_params.get("album_id")
+
+        ui.select(
+            options=options,
+            label="Select an album",
+            value=saved_id if saved_id in options else None,
+            on_change=lambda e: _on_album_selected(albums, e.value),
+            with_input=True,
+        ).classes("w-full")
+
+    async def _load_albums() -> None:
+        album_container.clear()
+
+        if not state.immich_url or not state.immich_api_key:
+            with album_container:
+                ui.label("Connect to Immich first to list albums.").style(
+                    "color: var(--im-text-secondary)"
+                ).classes("text-sm italic")
+            return
+
+        with album_container, ui.row().classes("items-center gap-2"):
+            ui.spinner(size="sm")
+            ui.label("Loading albums...").style("color: var(--im-text-secondary)").classes(
+                "text-sm"
+            )
+
+        def do_fetch() -> list[dict]:
+            from immich_memories.api.immich import SyncImmichClient
+
+            with SyncImmichClient(
+                base_url=state.immich_url,
+                api_key=state.immich_api_key,
+            ) as client:
+                return client.get_albums()
+
+        try:
+            albums = await run.io_bound(do_fetch)
+        except Exception as exc:  # WHY: UI graceful degradation
+            logger.warning("Album fetch failed: %s", exc)
+            album_container.clear()
+            with album_container:
+                ui.label(f"Failed to load albums: {exc}").style("color: var(--im-error)").classes(
+                    "text-sm"
+                )
+            return
+
+        state.albums = albums
+        album_container.clear()
+        with album_container:
+            _render_album_select(albums)
+
+    ui.timer(0.1, _load_albums, once=True)
 
 
 def _apply_preset_to_state(memory_type: MemoryType) -> None:
