@@ -474,6 +474,8 @@ class AutoRunner:
             self.config.llm.api_key,
             self.config.musicgen.api_key,
             self.config.ace_step.api_key,
+            self.config.auth.password,
+            self.config.auth.client_secret,
         ]
         if self.config.title_llm is not None:
             values.append(self.config.title_llm.api_key)

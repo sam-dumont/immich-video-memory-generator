@@ -1256,6 +1256,46 @@ class TestRunOneOutcomes:
         assert "***" in result.error
         assert runner.state.get_last_attempt().error == result.error
 
+    @pytest.mark.parametrize(
+        "credential_path",
+        [
+            "immich.api_key",
+            "llm.api_key",
+            "title_llm.api_key",
+            "musicgen.api_key",
+            "ace_step.api_key",
+            "auth.password",
+            "auth.client_secret",
+        ],
+    )
+    def test_every_configured_credential_is_redacted_before_tail_boundary(
+        self,
+        config: Config,
+        candidate: MemoryCandidate,
+        credential_path: str,
+    ) -> None:
+        """Every credential-bearing config field must redact before truncation."""
+        secret = credential_path.replace(".", "-") + "-" + "q" * 80 + "-SECRET-END-91de"
+        section_name, field_name = credential_path.split(".")
+        if section_name == "title_llm":
+            config.title_llm = config.llm.model_copy(update={field_name: secret})
+        else:
+            setattr(getattr(config, section_name), field_name, secret)
+        safe_marker = "configured-model-name-must-remain"
+        config.llm.model = safe_marker
+        stderr = f"process output {secret}{'z' * 1940} {safe_marker}"
+        runner = AutoRunner(config, execute=lambda _argv: ProcessResult(7, "", stderr))
+
+        with patch.object(runner, "suggest", return_value=[candidate]):
+            result = runner.run_one(force=True)
+
+        assert result.error is not None
+        assert secret not in result.error
+        assert secret[-16:] not in result.error
+        assert "***" in result.error
+        assert safe_marker in result.error
+        assert runner.state.get_last_attempt().error == result.error
+
     def test_notification_url_is_redacted_before_tail_boundary(
         self, config: Config, candidate: MemoryCandidate
     ) -> None:
