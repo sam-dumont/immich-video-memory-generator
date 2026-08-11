@@ -271,8 +271,10 @@ def _compute_upcoming_birthday_ids(people: list, today: date, lookahead_days: in
         if not getattr(person, "birth_date", None):
             continue
         bday = person.birth_date
-        this_year_bday = birthday_year(bday, today.year).start.date()
-        days_until = (this_year_bday - today).days
+        next_bday = birthday_year(bday, today.year).start.date()
+        if next_bday < today:
+            next_bday = birthday_year(bday, today.year + 1).start.date()
+        days_until = (next_bday - today).days
         if 0 <= days_until <= lookahead_days:
             ids.add(person.id)
     return ids

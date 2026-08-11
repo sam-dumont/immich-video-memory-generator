@@ -289,6 +289,30 @@ class TestBirthdayDetector:
         assert result[0].date_range_start == date(2024, 2, 29)
         assert result[0].date_range_end == date(2025, 2, 27)
 
+    def test_uses_previous_year_occurrence_just_after_new_year(self):
+        person = _make_person("New Year Eve", birth_date=date(2000, 12, 31))
+
+        result = BirthdayDetector().detect(
+            {},
+            [person],
+            set(),
+            _make_config(),
+            date(2026, 1, 2),
+            person_asset_counts={person.id: 75},
+        )
+
+        assert len(result) == 1
+        candidate = result[0]
+        assert candidate.date_range_start == date(2024, 12, 31)
+        assert candidate.date_range_end == date(2025, 12, 30)
+        assert candidate.memory_key == make_memory_key(
+            "person_spotlight",
+            date(2024, 12, 31),
+            date(2025, 12, 30),
+            ["new year eve"],
+        )
+        assert "25 years old" in candidate.reason
+
     def test_handles_no_people(self):
         result = PersonSpotlightDetector().detect({}, [], set(), _make_config(), date(2026, 3, 1))
         assert result == []

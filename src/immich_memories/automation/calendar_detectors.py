@@ -296,12 +296,14 @@ class BirthdayDetector:
 
             bday = person.birth_date
             # WHY: 2-day minimum buffer after birthday to let photo sync happen
-            this_year_bday = birthday_year(bday, today.year).start.date()
-            days_since = (today - this_year_bday).days
+            most_recent_bday = birthday_year(bday, today.year).start.date()
+            if most_recent_bday > today:
+                most_recent_bday = birthday_year(bday, today.year - 1).start.date()
+            days_since = (today - most_recent_bday).days
             if days_since < 2 or days_since > self.WINDOW_DAYS:
                 continue
 
-            completed_birthday_year = birthday_year(bday, today.year - 1)
+            completed_birthday_year = birthday_year(bday, most_recent_bday.year - 1)
             start = completed_birthday_year.start.date()
             end = completed_birthday_year.end.date()
             name_lower = person.name.lower()
@@ -311,7 +313,7 @@ class BirthdayDetector:
                 continue
 
             asset_count = counts.get(person.id, 0)
-            age = today.year - bday.year
+            age = most_recent_bday.year - bday.year
             reason = (
                 f"Birthday ({age} years old), {asset_count} assets"
                 if asset_count

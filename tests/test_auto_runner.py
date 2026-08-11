@@ -205,6 +205,41 @@ class TestSuggestReturnsCandidates:
         assert birthday.date_range_start == date(2024, 2, 29)
         assert birthday.date_range_end == date(2025, 2, 27)
 
+    def test_upcoming_january_birthday_suppresses_december_spotlight(self, config: Config) -> None:
+        """Discovery looks into next year when rotating people near New Year."""
+        from immich_memories.preflight import CheckStatus
+
+        person = MagicMock()
+        person.id = "person-new-year"
+        person.name = "New Year"
+        person.thumbnail_path = "/thumb.jpg"
+        person.birth_date = date(2000, 1, 1)
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.get_time_buckets.return_value = []
+        client.get_all_people.return_value = [person]
+        client.get_person_asset_count.return_value = 50
+
+        with (
+            patch(
+                "immich_memories.api.immich.SyncImmichClient",
+                return_value=client,
+            ),
+            patch(
+                "immich_memories.preflight.check_immich",
+                return_value=MagicMock(status=CheckStatus.OK),
+            ),
+            patch("immich_memories.automation.runner.date") as mock_date,
+        ):
+            mock_date.today.return_value = date(2025, 12, 27)
+            mock_date.side_effect = date
+            candidates = AutoRunner(config).suggest(limit=10)
+
+        assert all(
+            candidate.category is not CandidateCategory.PERSON_SPOTLIGHT for candidate in candidates
+        )
+
     def test_variety_history_uses_only_completed_auto_runs(self, config: Config) -> None:
         """Manual, scheduled, failed, and running rows cannot block auto candidates."""
         from immich_memories.preflight import CheckStatus
