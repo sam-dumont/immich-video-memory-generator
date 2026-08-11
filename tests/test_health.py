@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,19 +18,15 @@ class TestHealthEndpoint:
         """Liveness must stay green without consulting config, Immich, or SQLite."""
         from immich_memories.ui.app import _liveness_handler
 
+        config = MagicMock(name="get_config")
+        immich = MagicMock(name="check_immich_dependency")
+        automation = MagicMock(name="get_automation_status")
+        last_run = MagicMock(name="get_last_successful_run")
         with (
-            patch(
-                "immich_memories.ui.app.get_config",
-                side_effect=AssertionError("liveness loaded configuration"),
-            ),
-            patch(
-                "immich_memories.ui.app._check_immich_dependency",
-                side_effect=AssertionError("liveness contacted Immich"),
-            ),
-            patch(
-                "immich_memories.ui.app._get_automation_status",
-                side_effect=AssertionError("liveness opened the database"),
-            ),
+            patch("immich_memories.ui.app.get_config", config),
+            patch("immich_memories.ui.app._check_immich_dependency", immich),
+            patch("immich_memories.ui.app._get_automation_status", automation),
+            patch("immich_memories.ui.app._get_last_successful_run", last_run),
         ):
             response = await _liveness_handler(MagicMock())
 
@@ -38,6 +35,69 @@ class TestHealthEndpoint:
             "status": "alive",
             "version": immich_memories.__version__,
         }
+        config.assert_not_called()
+        immich.assert_not_called()
+        automation.assert_not_called()
+        last_run.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "failing_boundary",
+        ["automation", "last_run"],
+    )
+    async def test_health_database_failures_never_log_configured_secrets(
+        self,
+        caplog,
+        failing_boundary,
+    ):
+        """Database diagnostics must be sanitized before response or logging boundaries."""
+        from immich_memories.ui.app import _ImmichDependency, _readiness_handler
+
+        secrets = (
+            "immich-health-secret",
+            "analysis-health-secret",
+            "title-health-secret",
+            "basic-health-secret",
+            "oidc-health-secret",
+            "json://notify-health-secret",
+        )
+        config = Config(
+            immich={"url": "http://immich.test", "api_key": secrets[0]},
+            llm={"api_key": secrets[1]},
+            title_llm={"api_key": secrets[2]},
+            auth={"password": secrets[3], "client_secret": secrets[4]},
+            notifications={"urls": [secrets[5]]},
+        )
+        failure = RuntimeError("database failed: " + " / ".join(secrets))
+        automation = MagicMock(return_value={})
+        last_run = MagicMock(return_value=None)
+        if failing_boundary == "automation":
+            automation.side_effect = failure
+        else:
+            last_run.side_effect = failure
+
+        caplog.set_level(logging.WARNING, logger="immich_memories.ui.app")
+        with (
+            patch("immich_memories.ui.app.get_config", return_value=config),
+            patch(
+                "immich_memories.ui.app._check_immich_dependency",
+                new_callable=AsyncMock,
+                return_value=_ImmichDependency(
+                    status="ready",
+                    reachable=True,
+                    resolved_api_version="v3",
+                ),
+            ),
+            patch("immich_memories.ui.app._get_automation_status", automation),
+            patch("immich_memories.ui.app._get_last_successful_run", last_run),
+        ):
+            response = await _readiness_handler(MagicMock())
+
+        assert response.status_code == 200
+        assert "Could not read" in caplog.text
+        for secret in secrets:
+            assert secret not in caplog.text
+            assert secret not in response.body.decode()
 
     @pytest.mark.asyncio
     async def test_readiness_is_503_when_configuration_is_missing(self):

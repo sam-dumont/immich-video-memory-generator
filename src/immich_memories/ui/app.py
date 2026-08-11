@@ -22,11 +22,12 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from immich_memories import __version__
 from immich_memories.config import get_config, init_config_dir
-from immich_memories.security import configured_secret_values
+from immich_memories.security import configured_secret_values, sanitize_error_message
 from immich_memories.ui.auth import (
     clear_session,
     is_auth_enabled,
     is_bypass_path,
+    is_health_probe_path,
     is_rate_limited,
     is_trusted_proxy,
     set_session,
@@ -379,12 +380,18 @@ def _get_automation_status(config) -> dict[str, Any]:
     return AutoRunner(config).status().to_dict()
 
 
+def _sanitize_health_text(value: object, secrets_to_redact: tuple[str, ...]) -> str:
+    """Apply structural and config-aware sanitization before exposing health text."""
+    safe = sanitize_error_message(str(value))
+    for secret in secrets_to_redact:
+        safe = safe.replace(secret, "***")
+    return safe
+
+
 def _redact_health_value(value: Any, secrets_to_redact: tuple[str, ...]) -> Any:
-    """Recursively remove configured credentials from operational state."""
+    """Recursively sanitize operational state with the shared text redactor."""
     if isinstance(value, str):
-        for secret in secrets_to_redact:
-            value = value.replace(secret, "***")
-        return value
+        return _sanitize_health_text(value, secrets_to_redact)
     if isinstance(value, dict):
         return {key: _redact_health_value(item, secrets_to_redact) for key, item in value.items()}
     if isinstance(value, list):
@@ -418,6 +425,7 @@ async def _build_health_snapshot() -> dict[str, Any]:
             "version": __version__,
         }
 
+    secrets_to_redact = configured_secret_values(config)
     configured = bool(config.immich.url and config.immich.api_key)
     if configured:
         try:
@@ -430,17 +438,23 @@ async def _build_health_snapshot() -> dict[str, Any]:
     automation: dict[str, Any] | None = None
     try:
         automation = _get_automation_status(config)
-    except Exception:
-        logger.warning("Could not read automation status for readiness", exc_info=True)
+    except Exception as exc:
+        logger.warning(
+            "Could not read automation status for readiness: %s",
+            _sanitize_health_text(exc, secrets_to_redact),
+        )
 
     last_successful_run: str | None = None
     try:
         last_successful_run = _get_last_successful_run()
-    except Exception:
-        logger.warning("Could not read run status for readiness", exc_info=True)
+    except Exception as exc:
+        logger.warning(
+            "Could not read run status for readiness: %s",
+            _sanitize_health_text(exc, secrets_to_redact),
+        )
 
     if automation is not None:
-        automation = _redact_health_value(automation, configured_secret_values(config))
+        automation = _redact_health_value(automation, secrets_to_redact)
 
     ready = configured and immich.status == "ready"
     api_version_policy = getattr(config.immich.api_version, "value", config.immich.api_version)
@@ -538,6 +552,9 @@ async def _auth_middleware(request: Request, call_next):
     BaseHTTPMiddleware breaks NiceGUI websockets. NiceGUI's middleware
     decorator only runs on HTTP requests and has access to app.storage.user.
     """
+    if is_health_probe_path(request.url.path):
+        return await call_next(request)
+
     config = get_config()
     if not is_auth_enabled(config.auth):
         return await call_next(request)

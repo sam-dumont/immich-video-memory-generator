@@ -65,17 +65,23 @@ def reset_rate_limiter() -> None:
 
 
 _BYPASS_PREFIXES = ("/_nicegui/",)
-_BYPASS_EXACT = frozenset(
-    {
-        "/health",
-        "/health/live",
-        "/health/ready",
-        "/login",
-        "/logout",
-        "/auth/callback",
-        "/auth/authorize",
-    }
+_HEALTH_BYPASS_EXACT = frozenset({"/health", "/health/live", "/health/ready"})
+_BYPASS_EXACT = (
+    frozenset(
+        {
+            "/login",
+            "/logout",
+            "/auth/callback",
+            "/auth/authorize",
+        }
+    )
+    | _HEALTH_BYPASS_EXACT
 )
+
+
+def is_health_probe_path(path: str) -> bool:
+    """Return whether path is an exact operational health endpoint."""
+    return path in _HEALTH_BYPASS_EXACT
 
 
 def is_bypass_path(path: str) -> bool:

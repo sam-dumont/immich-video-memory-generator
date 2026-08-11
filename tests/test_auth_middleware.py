@@ -9,9 +9,11 @@ and E2E tests (Playwright, Phase 10).
 from __future__ import annotations
 
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from immich_memories.config_loader import Config
 from immich_memories.config_models_auth import AuthConfig
 from immich_memories.ui.auth import (
     clear_session,
@@ -47,6 +49,74 @@ class TestBypassPaths:
     )
     def test_protected_paths_return_false(self, path: str):
         assert is_bypass_path(path) is False
+
+
+class TestProductionMiddleware:
+    """Production ordering keeps operational probes independent from config."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("path", ["/health", "/health/live", "/health/ready"])
+    async def test_health_bypasses_before_configuration_load(self, path: str):
+        from immich_memories.ui.app import _auth_middleware
+
+        request = MagicMock()
+        request.url.path = path
+        response = MagicMock(name="health_response")
+        call_next = AsyncMock(return_value=response)
+        get_config = MagicMock(side_effect=AssertionError("health loaded configuration"))
+
+        with patch("immich_memories.ui.app.get_config", get_config):
+            actual = await _auth_middleware(request, call_next)
+
+        assert actual is response
+        get_config.assert_not_called()
+        call_next.assert_awaited_once_with(request)
+
+    @pytest.mark.asyncio
+    async def test_health_prefix_is_not_a_configuration_bypass(self):
+        from immich_memories.ui.app import _auth_middleware
+
+        request = MagicMock()
+        request.url.path = "/health/live/extra"
+        response = MagicMock(name="protected_response")
+        call_next = AsyncMock(return_value=response)
+        get_config = MagicMock(return_value=Config())
+
+        with patch("immich_memories.ui.app.get_config", get_config):
+            actual = await _auth_middleware(request, call_next)
+
+        assert actual is response
+        get_config.assert_called_once_with()
+        call_next.assert_awaited_once_with(request)
+
+    @pytest.mark.asyncio
+    async def test_login_still_loads_config_and_applies_rate_limiting(self):
+        from immich_memories.ui.app import _auth_middleware
+
+        request = MagicMock()
+        request.url.path = "/login"
+        blocked = MagicMock(name="rate_limited_response")
+        call_next = AsyncMock()
+        get_config = MagicMock(
+            return_value=Config(
+                auth={
+                    "enabled": True,
+                    "provider": "basic",
+                    "username": "operator",
+                    "password": "test-password",
+                }
+            )
+        )
+
+        with (
+            patch("immich_memories.ui.app.get_config", get_config),
+            patch("immich_memories.ui.app._check_login_rate_limit", return_value=blocked),
+        ):
+            actual = await _auth_middleware(request, call_next)
+
+        assert actual is blocked
+        get_config.assert_called_once_with()
+        call_next.assert_not_awaited()
 
 
 class TestSessionHelpers:
