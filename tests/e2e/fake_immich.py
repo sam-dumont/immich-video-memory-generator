@@ -36,7 +36,7 @@ def _asset_payload(asset_id: str, asset_type: str, filename: str) -> dict[str, A
         "isFavorite": False,
         "isArchived": False,
         "isTrashed": False,
-        "duration": 1200 if is_video else None,
+        "duration": 2000 if is_video else None,
         "width": 640 if is_video else 320,
         "height": 360 if is_video else 240,
         "exifInfo": {
@@ -128,11 +128,11 @@ def _generate_video(root: Path) -> Path:
             "-f",
             "lavfi",
             "-i",
-            "testsrc2=size=640x360:rate=30:duration=1.2",
+            "testsrc2=size=640x360:rate=30:duration=2.0",
             "-f",
             "lavfi",
             "-i",
-            "sine=frequency=440:sample_rate=48000:duration=1.2",
+            "sine=frequency=440:sample_rate=48000:duration=2.0",
             "-map",
             "0:v:0",
             "-map",
@@ -219,6 +219,25 @@ def _handler_type(
                         "email": "fake@example.test",
                         "name": "Fake Immich User",
                         "isAdmin": True,
+                    },
+                )
+                return
+            if path == "/api/people":
+                self._send_json(
+                    200,
+                    {
+                        "people": [
+                            {
+                                "id": "fake-person",
+                                "name": "Fake Person",
+                                "birthDate": None,
+                                "thumbnailPath": "/fake/people/fake-person.jpg",
+                                "isHidden": False,
+                                "updatedAt": "2024-06-01T12:00:00.000Z",
+                            }
+                        ],
+                        "total": 1,
+                        "hidden": 0,
                     },
                 )
                 return

@@ -12,6 +12,8 @@ import pytest
 from immich_memories.api.compatibility import ResolvedApiVersion
 from immich_memories.api.immich import ImmichAuthError, SyncImmichClient
 from immich_memories.api.models import AssetType
+from immich_memories.timeperiod import calendar_year
+from immich_memories.ui.pages.step2_loading import MIN_CLIP_DURATION, _build_clips
 
 pytestmark = pytest.mark.e2e
 
@@ -81,6 +83,26 @@ def test_current_user_uses_api_key_authentication(fake_immich_server) -> None:
     assert user.name == "Fake Immich User"
 
 
+def test_step1_connection_chain_returns_user_people_and_available_years(
+    fake_immich_server,
+) -> None:
+    """The real Step 1 connection call chain completes against the fake."""
+    with SyncImmichClient(
+        fake_immich_server.base_url,
+        fake_immich_server.api_key,
+        api_version="auto",
+    ) as client:
+        user = client.get_current_user()
+        people = client.get_all_people()
+        years = client.get_available_years()
+
+    assert user.name == "Fake Immich User"
+    assert [(person.id, person.name, person.is_hidden) for person in people] == [
+        ("fake-person", "Fake Person", False)
+    ]
+    assert years == [2024]
+
+
 def test_wrong_api_key_is_rejected(fake_immich_server) -> None:
     """The fake catches browser tests that forgot or corrupted the API key."""
     with (
@@ -124,7 +146,7 @@ def test_metadata_search_filters_the_video_and_photo_inventories(fake_immich_ser
         photos = client.search_metadata(asset_type=AssetType.IMAGE).all_assets
 
     assert [asset.id for asset in videos] == ["video-1", "video-2"]
-    assert [asset.duration_seconds for asset in videos] == [1.2, 1.2]
+    assert [asset.duration_seconds for asset in videos] == [2.0, 2.0]
     assert [asset.id for asset in photos] == ["photo-1", "photo-2"]
     assert [asset.duration_seconds for asset in photos] == [None, None]
 
@@ -139,8 +161,24 @@ def test_search_uses_v3_millisecond_duration_on_the_wire(fake_immich_server) -> 
 
     response.raise_for_status()
     durations = [asset["duration"] for asset in response.json()["assets"]["items"]]
-    assert durations == [1200, 1200]
+    assert durations == [2000, 2000]
     assert all(type(duration) is int for duration in durations)
+
+
+def test_real_step2_duration_filter_keeps_selectable_fake_clips(fake_immich_server) -> None:
+    """The fake videos survive the same minimum-duration filter used by Step 2."""
+    with SyncImmichClient(
+        fake_immich_server.base_url,
+        fake_immich_server.api_key,
+        api_version="v3",
+    ) as client:
+        assets = client.get_videos_for_date_range(calendar_year(2024))
+
+    clips, skipped = _build_clips(assets)
+
+    assert skipped == 0
+    assert [clip.asset.id for clip in clips] == ["video-1", "video-2"]
+    assert all(clip.duration_seconds >= MIN_CLIP_DURATION for clip in clips)
 
 
 def test_original_and_playback_downloads_are_valid_h264_sdr_media(
@@ -172,7 +210,7 @@ def test_original_and_playback_downloads_are_valid_h264_sdr_media(
             "color_transfer": "bt709",
         }
         assert streams["audio"]["codec_name"] == "aac"
-        assert float(probe["format"]["duration"]) == pytest.approx(1.2, abs=0.1)
+        assert float(probe["format"]["duration"]) == pytest.approx(2.0, abs=0.1)
 
 
 def test_photo_originals_are_generated_jpegs(fake_immich_server, tmp_path: Path) -> None:
