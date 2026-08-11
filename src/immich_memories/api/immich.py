@@ -267,7 +267,8 @@ class ImmichClient:
                     raise
                 last_exception = e
             except httpx.RequestError as e:
-                raise self._request_error(e) from None
+                last_exception = self._request_error(e)
+                break
 
             if attempt < _MAX_RETRIES - 1:
                 backoff = _BACKOFF_BASE * (2**attempt)

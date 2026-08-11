@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import traceback
+from collections.abc import Callable
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -101,6 +104,88 @@ class TestGivesUpAfterMaxRetries:
             await client._request("GET", "/test")
 
         assert client._client.request.call_count == 3
+
+
+class TestTransportFailureRedaction:
+    """Transport diagnostics never expose the configured Immich credential."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("make_error", "expected_attempts"),
+        [
+            pytest.param(
+                lambda key: httpx.TimeoutException(f"timed out carrying {key}"),
+                3,
+                id="timeout-unlabelled",
+            ),
+            pytest.param(
+                lambda key: httpx.TimeoutException(f"x-api-key={key} timed out"),
+                3,
+                id="timeout-labelled",
+            ),
+            pytest.param(
+                lambda key: httpx.ConnectError(f"connection refused for {key}"),
+                3,
+                id="network-unlabelled",
+            ),
+            pytest.param(
+                lambda key: httpx.ConnectError(f"api_key: {key} connection refused"),
+                3,
+                id="network-labelled",
+            ),
+            pytest.param(
+                lambda key: httpx.RequestError(f"request rejected for {key}"),
+                1,
+                id="request-unlabelled",
+            ),
+            pytest.param(
+                lambda key: httpx.RequestError(f"x-api-key: {key} request rejected"),
+                1,
+                id="request-labelled",
+            ),
+        ],
+    )
+    async def test_redacts_logs_exception_and_chain_without_changing_retries(
+        self,
+        _mock_config,
+        caplog: pytest.LogCaptureFixture,
+        make_error: Callable[[str], httpx.RequestError],
+        expected_attempts: int,
+    ) -> None:
+        """Raw transport exceptions cannot escape through any diagnostic surface."""
+        api_key = "configured-immich-secret-91de"
+        client = ImmichClient(_TEST_URL, api_key)
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(side_effect=make_error(api_key))
+
+        # WHY: keep the real retry and logging path while removing only wall-clock delay.
+        with (
+            patch("immich_memories.api.immich.asyncio.sleep", new_callable=AsyncMock),
+            caplog.at_level(logging.WARNING, logger="immich_memories.api.immich"),
+            pytest.raises(ImmichAPIError) as raised,
+        ):
+            await client._request("GET", "/test")
+
+        final_error = raised.value
+        rendered_traceback = "".join(
+            traceback.format_exception(raised.type, final_error, raised.tb)
+        )
+        diagnostics = "\n".join(
+            [
+                *(record.getMessage() for record in caplog.records),
+                str(final_error),
+                rendered_traceback,
+                str(final_error.__cause__ or ""),
+                str(final_error.__context__ or ""),
+            ]
+        )
+
+        assert api_key not in diagnostics
+        assert "***" in diagnostics
+        assert final_error.__cause__ is None
+        assert final_error.__context__ is None
+        assert client._client.request.call_count == expected_attempts
 
 
 class TestNoRetryOn401:
