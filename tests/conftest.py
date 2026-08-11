@@ -94,7 +94,7 @@ def make_asset(
     original_file_name: str = "VID_001.MOV",
     exif_make: str | None = "Apple",
     exif_model: str | None = "iPhone 15 Pro",
-    duration: str | None = "0:00:10.000",
+    duration: str | int | float | None = "0:00:10.000",
 ) -> Asset:
     """Create an Asset with sensible defaults for testing."""
     now = file_created_at or datetime.now(tz=UTC)
@@ -110,6 +110,19 @@ def make_asset(
         exifInfo=exif,
         duration=duration,
     )
+
+
+@pytest.fixture()
+def asset_payload() -> dict[str, object]:
+    """Provide a minimal raw Immich asset response payload."""
+    now = datetime.now(tz=UTC)
+    return {
+        "id": "asset-payload-001",
+        "type": "VIDEO",
+        "fileCreatedAt": now,
+        "fileModifiedAt": now,
+        "updatedAt": now,
+    }
 
 
 def make_clip(

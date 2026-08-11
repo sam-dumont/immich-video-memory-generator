@@ -2,11 +2,44 @@
 
 from __future__ import annotations
 
+import logging
+from contextlib import suppress
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_duration_seconds(value: Any) -> float | None:
+    """Normalize v2 duration strings and v3 duration milliseconds to seconds."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        logger.debug("Unable to parse asset duration: %r", value)
+        return None
+    if isinstance(value, int):
+        return value / 1000
+    if isinstance(value, float):
+        return value
+    if not isinstance(value, str):
+        logger.debug("Unable to parse asset duration: %r", value)
+        return None
+    with suppress(ValueError):
+        # v2 formats are typically HH:MM:SS.mmm, MM:SS.mmm, or seconds.
+        parts = value.split(":")
+        if len(parts) == 3:
+            hours, minutes, seconds = parts
+            return float(hours) * 3600 + float(minutes) * 60 + float(seconds)
+        if len(parts) == 2:
+            minutes, seconds = parts
+            return float(minutes) * 60 + float(seconds)
+        if len(parts) == 1:
+            return float(value)
+    logger.debug("Unable to parse asset duration: %r", value)
+    return None
 
 
 class AssetType(StrEnum):
@@ -162,7 +195,7 @@ class Asset(BaseModel):
     is_favorite: bool = Field(default=False, alias="isFavorite")
     is_archived: bool = Field(default=False, alias="isArchived")
     is_trashed: bool = Field(default=False, alias="isTrashed")
-    duration: str | None = None
+    duration_seconds: float | None = Field(default=None, validation_alias="duration")
     # WHY: width/height from search API — needed for resolution filtering
     # BEFORE download. Without these, all non-favorites report 0×0 and get dropped.
     width: int = Field(default=0)
@@ -208,24 +241,11 @@ class Asset(BaseModel):
         """Check if this asset is a video."""
         return self.type == AssetType.VIDEO
 
-    @property
-    def duration_seconds(self) -> float | None:
-        """Parse duration string to seconds."""
-        if not self.duration:
-            return None
-        try:
-            # Format is typically "HH:MM:SS.mmm" or "MM:SS.mmm"
-            parts = self.duration.split(":")
-            if len(parts) == 3:
-                hours, minutes, seconds = parts
-                return float(hours) * 3600 + float(minutes) * 60 + float(seconds)
-            elif len(parts) == 2:
-                minutes, seconds = parts
-                return float(minutes) * 60 + float(seconds)
-            else:
-                return float(self.duration)
-        except (ValueError, TypeError):
-            return None
+    @field_validator("duration_seconds", mode="before")
+    @classmethod
+    def parse_duration_seconds(cls, value: Any) -> float | None:
+        """Validate raw duration values from Immich responses."""
+        return _parse_duration_seconds(value)
 
     @property
     def year(self) -> int:
@@ -275,10 +295,16 @@ class TimeBucket(BaseModel):
 class ServerInfo(BaseModel):
     """Immich server information."""
 
-    version: str = ""
-    version_url: str = Field(default="", alias="versionUrl")
+    major: int
+    minor: int
+    patch: int
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @property
+    def version_string(self) -> str:
+        """Return the server version in display form."""
+        return f"{self.major}.{self.minor}.{self.patch}"
 
 
 class UserInfo(BaseModel):

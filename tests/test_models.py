@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 import pytest
@@ -12,6 +13,7 @@ from immich_memories.api.models import (
     AssetType,
     ExifInfo,
     Person,
+    ServerInfo,
     VideoClipInfo,
 )
 
@@ -46,6 +48,24 @@ class TestPerson:
         assert person.display_name == "Person 12345678"
 
 
+class TestServerInfo:
+    """Tests for supported Immich server version responses."""
+
+    @pytest.mark.parametrize(
+        ("payload", "expected"),
+        [
+            pytest.param({"major": 2, "minor": 6, "patch": 3}, "2.6.3", id="v2"),
+            pytest.param({"major": 3, "minor": 1, "patch": 0}, "3.1.0", id="v3"),
+        ],
+    )
+    def test_version_string_is_derived_from_numeric_fields(
+        self, payload: dict[str, int], expected: str
+    ) -> None:
+        info = ServerInfo.model_validate(payload)
+
+        assert info.version_string == expected
+
+
 class TestAsset:
     """Tests for Asset model."""
 
@@ -72,30 +92,6 @@ class TestAsset:
             updatedAt=datetime.now(),
         )
         assert asset.type == AssetType.VIDEO
-
-    def test_duration_parsing(self):
-        """Test duration string parsing."""
-        # HH:MM:SS format
-        asset = Asset(
-            id="123",
-            type=AssetType.VIDEO,
-            duration="00:01:30.500",
-            fileCreatedAt=datetime.now(),
-            fileModifiedAt=datetime.now(),
-            updatedAt=datetime.now(),
-        )
-        assert asset.duration_seconds == 90.5
-
-        # MM:SS format
-        asset2 = Asset(
-            id="456",
-            type=AssetType.VIDEO,
-            duration="02:30.000",
-            fileCreatedAt=datetime.now(),
-            fileModifiedAt=datetime.now(),
-            updatedAt=datetime.now(),
-        )
-        assert asset2.duration_seconds == 150.0
 
     def test_year_and_month(self):
         """Test year and month extraction."""
@@ -412,42 +408,51 @@ class TestHDRDetectionParametrized:
         assert clip.hdr_format == expected_format
 
 
-class TestDurationParsingParametrized:
-    """Parametrized duration string parsing."""
+class TestDurationNormalization:
+    """Tests for v2 and v3 duration response formats."""
 
     @pytest.mark.parametrize(
-        "duration_str,expected",
+        ("wire_duration", "seconds"),
         [
-            pytest.param("0:00:10.000", 10.0, id="hhmmss-10s"),
-            pytest.param("00:01:30.500", 90.5, id="hhmmss-90.5s"),
-            pytest.param("02:30.000", 150.0, id="mmss-150s"),
-            pytest.param("0:00:00.000", 0.0, id="zero"),
-            pytest.param(None, None, id="none"),
+            pytest.param("00:01:30.500", 90.5, id="v2-hhmmss"),
+            pytest.param("02:30.000", 150.0, id="v2-mmss"),
+            pytest.param("90.5", 90.5, id="v2-numeric-seconds"),
+            pytest.param(90500, 90.5, id="v3-milliseconds"),
+            pytest.param(0, 0.0, id="v3-zero-milliseconds"),
+            pytest.param(90.5, 90.5, id="floating-point-seconds"),
+            pytest.param(None, None, id="null"),
         ],
     )
-    def test_duration_parsing(self, duration_str, expected):
-        """Duration strings parse to correct seconds."""
-        asset = Asset(
-            id="d",
-            type=AssetType.VIDEO,
-            duration=duration_str,
-            fileCreatedAt=datetime.now(),
-            fileModifiedAt=datetime.now(),
-            updatedAt=datetime.now(),
-        )
-        assert asset.duration_seconds == expected
+    def test_duration_is_normalized(
+        self,
+        wire_duration: str | int | float | None,
+        seconds: float | None,
+        asset_payload: dict[str, object],
+    ) -> None:
+        """v2 strings and v3 milliseconds share one seconds contract."""
+        asset = Asset.model_validate({**asset_payload, "duration": wire_duration})
 
-    def test_invalid_duration_returns_none(self):
-        """Unparseable duration returns None."""
-        asset = Asset(
-            id="d",
-            type=AssetType.VIDEO,
-            duration="not-a-duration",
-            fileCreatedAt=datetime.now(),
-            fileModifiedAt=datetime.now(),
-            updatedAt=datetime.now(),
-        )
+        assert asset.duration_seconds == seconds
+        assert not hasattr(asset, "duration")
+
+    @pytest.mark.parametrize("wire_duration", ["not-a-duration", True])
+    def test_invalid_duration_becomes_none_and_logs_debug_once(
+        self,
+        wire_duration: object,
+        caplog: pytest.LogCaptureFixture,
+        asset_payload: dict[str, object],
+    ) -> None:
+        """Malformed duration data does not reject otherwise valid assets."""
+        caplog.set_level(logging.DEBUG, logger="immich_memories.api.models")
+        asset = Asset.model_validate({**asset_payload, "duration": wire_duration})
+
         assert asset.duration_seconds is None
+        duration_logs = [
+            record
+            for record in caplog.records
+            if record.name == "immich_memories.api.models" and record.levelno == logging.DEBUG
+        ]
+        assert len(duration_logs) == 1
 
 
 class TestRotationParametrized:
