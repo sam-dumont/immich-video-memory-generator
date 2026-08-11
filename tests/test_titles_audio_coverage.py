@@ -1730,7 +1730,7 @@ class TestSearchServiceMetadata:
         assert datetime.fromisoformat(payload["takenBefore"]) == taken_before.astimezone(UTC)
 
     @pytest.mark.asyncio
-    async def test_search_metadata_normalizes_dates_to_utc_midnight(self):
+    async def test_search_metadata_normalizes_inclusive_date_boundaries(self):
         from immich_memories.api.models import AssetType
         from immich_memories.api.search_service import SearchService
 
@@ -1756,7 +1756,7 @@ class TestSearchServiceMetadata:
             "personIds": ["person-1"],
             "type": "VIDEO",
             "takenAfter": "2025-01-01T00:00:00+00:00",
-            "takenBefore": "2025-01-31T00:00:00+00:00",
+            "takenBefore": "2025-01-31T23:59:59.999999+00:00",
         }
 
 
