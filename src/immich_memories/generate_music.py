@@ -299,6 +299,12 @@ def apply_music_file(
     """Mix a music file and publish it only when it matches the encoding plan."""
     from immich_memories.audio.mixer import DuckingConfig, MixConfig, mix_audio_with_ducking
 
+    expected_suffix = f".{encoding_plan.container}"
+    if video_path.suffix.lower() != expected_suffix:
+        raise ValueError(
+            f"Music input suffix {video_path.suffix!r} does not match "
+            f"encoding plan container {encoding_plan.container!r}"
+        )
     mix_config = MixConfig(
         ducking=DuckingConfig(
             music_volume_db=-20 + (volume * 20),

@@ -754,3 +754,35 @@ class TestQuietModeProgressCallback:
 
         # Should have at most a few lines, not 100
         assert len(log_lines) < 10
+
+
+class TestApplyMusicFileAtomic:
+    """Music staging must match the immutable encoding contract."""
+
+    def test_rejects_video_suffix_that_disagrees_with_plan(self, tmp_path):
+        """Music mixing must not conceal a stale container from a direct caller."""
+        from immich_memories.generate_music import apply_music_file
+        from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+
+        video = tmp_path / "output.mp4"
+        music = tmp_path / "music.wav"
+        video.write_bytes(b"original video")
+        music.write_bytes(b"music data")
+        plan = EncodingPlan(
+            codec=OutputCodec.PRORES,
+            encoder="prores_ks",
+            encoder_args=("-profile:v", "3"),
+            target_transfer=HdrTransfer.NONE,
+            tone_map_to_sdr=False,
+            pixel_format="yuv422p10le",
+            container="mov",
+        )
+
+        with (
+            patch("immich_memories.audio.mixer.mix_audio_with_ducking") as mix,
+            pytest.raises(ValueError, match="does not match encoding plan container"),
+        ):
+            apply_music_file(video, music, volume=0.8, encoding_plan=plan)
+
+        mix.assert_not_called()
+        assert video.read_bytes() == b"original video"
