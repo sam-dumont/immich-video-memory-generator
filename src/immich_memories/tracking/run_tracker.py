@@ -16,6 +16,7 @@ from immich_memories.tracking.run_id import generate_run_id
 from immich_memories.tracking.system_info import capture_system_info
 
 if TYPE_CHECKING:
+    from immich_memories.processing.output_contract import OutputProbe
     from immich_memories.timeperiod import DateRange
 
 logger = logging.getLogger(__name__)
@@ -250,6 +251,64 @@ class RunTracker:
             self._save_metadata_json(Path(output_path).parent, run)
 
         return self._run or run  # type: ignore
+
+    def complete_artifact(
+        self,
+        output_path: Path | str,
+        probe: OutputProbe,
+        warnings: list[str],
+        *,
+        delivery_album: str | None = None,
+        clips_analyzed: int = 0,
+        clips_selected: int = 0,
+        errors_count: int = 0,
+    ) -> RunMetadata:
+        """Complete a validated local artifact without probing or attempting delivery."""
+        if self._current_phase:
+            self.complete_phase()
+
+        output_path = Path(output_path)
+        self.db.update_run_status(
+            run_id=self.run_id,
+            status="completed",
+            completed_at=datetime.now(tz=UTC),
+            output_path=str(output_path),
+            output_size_bytes=probe.size_bytes,
+            output_duration_seconds=probe.duration_seconds,
+            clips_analyzed=clips_analyzed,
+            clips_selected=clips_selected,
+            errors_count=errors_count,
+            delivery_album=delivery_album,
+            warnings=warnings,
+        )
+
+        run = self.db.get_run(self.run_id)
+        if run is None:
+            raise RuntimeError(f"Completed run disappeared from database: {self.run_id}")
+        self._run = run
+        self._save_metadata_json(output_path.parent, run)
+        logger.info("Completed artifact for run %s", self.run_id)
+        return run
+
+    def mark_delivery_pending(self, error: str, *, attempted: bool = True) -> RunMetadata:
+        """Record one failed Immich call and refresh durable metadata."""
+        self.db.mark_delivery_pending(self.run_id, error, attempted=attempted)
+        return self._reload_and_refresh_sidecar()
+
+    def mark_delivered(self, asset_id: str) -> RunMetadata:
+        """Record one successful Immich call and refresh durable metadata."""
+        self.db.mark_delivered(self.run_id, asset_id)
+        return self._reload_and_refresh_sidecar()
+
+    def _reload_and_refresh_sidecar(self) -> RunMetadata:
+        """Reload the current run and mirror it beside its completed artifact."""
+        run = self.db.get_run(self.run_id)
+        if run is None:
+            raise RuntimeError(f"Run disappeared from database: {self.run_id}")
+        self._run = run
+        if run.output_path:
+            self._save_metadata_json(Path(run.output_path).parent, run)
+        return run
 
     def fail_run(self, error: str, errors_count: int = 1) -> None:
         """Mark run as failed.

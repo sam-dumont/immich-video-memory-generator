@@ -5,12 +5,21 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from enum import StrEnum
 from typing import Any, Literal
 
 
 def normalize_memory_people(people: tuple[str, ...] | list[str]) -> tuple[str, ...]:
     """Canonicalize person identities for automation variety comparisons."""
     return tuple(" ".join(person.split()).casefold() for person in people)
+
+
+class DeliveryStatus(StrEnum):
+    """Durable Immich delivery state for a completed local artifact."""
+
+    NOT_REQUESTED = "not_requested"
+    PENDING = "pending"
+    DELIVERED = "delivered"
 
 
 @dataclass
@@ -155,6 +164,12 @@ class RunMetadata:
     output_path: str | None = None
     output_size_bytes: int = 0
     output_duration_seconds: float = 0.0
+    delivery_status: DeliveryStatus = DeliveryStatus.NOT_REQUESTED
+    delivery_attempts: int = 0
+    delivery_error: str | None = None
+    immich_asset_id: str | None = None
+    delivery_album: str | None = None
+    warnings: list[str] = field(default_factory=list)
 
     # Statistics
     clips_analyzed: int = 0
@@ -200,6 +215,12 @@ class RunMetadata:
             "output_path": self.output_path,
             "output_size_bytes": self.output_size_bytes,
             "output_duration_seconds": self.output_duration_seconds,
+            "delivery_status": self.delivery_status.value,
+            "delivery_attempts": self.delivery_attempts,
+            "delivery_error": self.delivery_error,
+            "immich_asset_id": self.immich_asset_id,
+            "delivery_album": self.delivery_album,
+            "warnings": self.warnings,
             "clips_analyzed": self.clips_analyzed,
             "clips_selected": self.clips_selected,
             "errors_count": self.errors_count,
@@ -241,6 +262,14 @@ class RunMetadata:
             output_path=data.get("output_path"),
             output_size_bytes=data.get("output_size_bytes", 0),
             output_duration_seconds=data.get("output_duration_seconds", 0.0),
+            delivery_status=DeliveryStatus(
+                data.get("delivery_status") or DeliveryStatus.NOT_REQUESTED
+            ),
+            delivery_attempts=data.get("delivery_attempts") or 0,
+            delivery_error=data.get("delivery_error"),
+            immich_asset_id=data.get("immich_asset_id"),
+            delivery_album=data.get("delivery_album"),
+            warnings=list(data.get("warnings") or []),
             clips_analyzed=data.get("clips_analyzed", 0),
             clips_selected=data.get("clips_selected", 0),
             errors_count=data.get("errors_count", 0),

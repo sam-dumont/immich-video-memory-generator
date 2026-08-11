@@ -19,6 +19,7 @@ from immich_memories.cache.database_models import (  # noqa: F401
 )
 from immich_memories.cache.migration_sql import execute_migration_script
 from immich_memories.cache.migration_v11 import migrate_automation_history
+from immich_memories.cache.migration_v13 import migrate_delivery_state
 
 if TYPE_CHECKING:
     from immich_memories.analysis.scenes import Scene
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 12  # Increment when schema changes
+SCHEMA_VERSION = 13  # Also invalidates cached analysis_version rows; increment deliberately.
 SCORING_VERSION = 2  # Bump when score computation changes
 
 
@@ -97,6 +98,7 @@ class VideoAnalysisCache:
             10: self._migration_v10_automation_state,
             11: self._migration_v11_automation_history,
             12: self._migration_v12_automation_attempt_identity,
+            13: migrate_delivery_state,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):

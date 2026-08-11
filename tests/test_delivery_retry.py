@@ -1,0 +1,888 @@
+"""Artifact completion and Immich delivery-state contracts."""
+
+from __future__ import annotations
+
+import json
+import logging
+import sqlite3
+import subprocess
+import traceback
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from immich_memories.cache.database import VideoAnalysisCache
+from immich_memories.processing.output_contract import OutputProbe
+from immich_memories.tracking import DeliveryStatus, RunDatabase, RunMetadata, RunTracker
+from tests.conftest import make_clip
+
+
+def test_run_metadata_delivery_state_round_trips_through_json() -> None:
+    """Sidecars retain delivery state, attempts, errors, asset identity, and warnings."""
+    run = RunMetadata(
+        run_id="delivery-round-trip",
+        created_at=datetime(2026, 8, 11, 10, 0, tzinfo=UTC),
+        status="completed",
+        delivery_status=DeliveryStatus.PENDING,
+        delivery_attempts=2,
+        delivery_error="Immich timed out",
+        immich_asset_id="asset-123",
+        delivery_album="Family Memories",
+        warnings=["Optional music failed: backend unavailable"],
+    )
+
+    loaded = RunMetadata.from_json(run.to_json())
+
+    assert loaded.delivery_status is DeliveryStatus.PENDING
+    assert loaded.delivery_attempts == 2
+    assert loaded.delivery_error == "Immich timed out"
+    assert loaded.immich_asset_id == "asset-123"
+    assert loaded.delivery_album == "Family Memories"
+    assert loaded.warnings == ["Optional music failed: backend unavailable"]
+
+
+def test_legacy_run_metadata_treats_null_delivery_fields_as_defaults() -> None:
+    """Old or hand-edited sidecars cannot turn nullable JSON into invalid lifecycle state."""
+    loaded = RunMetadata.from_dict(
+        {
+            "run_id": "legacy-sidecar",
+            "created_at": "2026-08-11T10:00:00+00:00",
+            "delivery_status": None,
+            "delivery_attempts": None,
+            "warnings": None,
+        }
+    )
+
+    assert loaded.delivery_status is DeliveryStatus.NOT_REQUESTED
+    assert loaded.delivery_attempts == 0
+    assert loaded.delivery_error is None
+    assert loaded.immich_asset_id is None
+    assert loaded.delivery_album is None
+    assert loaded.warnings == []
+
+
+def test_fresh_database_has_delivery_state_defaults(tmp_path: Path) -> None:
+    """Fresh runs begin not requested and retain empty delivery diagnostics."""
+    db_path = tmp_path / "fresh-v13.db"
+    VideoAnalysisCache(db_path)
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO pipeline_runs (run_id, created_at, status)
+            VALUES ('fresh-run', '2026-08-11T10:00:00+00:00', 'running')
+            """
+        )
+        row = conn.execute(
+            """
+            SELECT delivery_status, delivery_attempts, delivery_error,
+                   immich_asset_id, delivery_album, warnings_json
+            FROM pipeline_runs WHERE run_id = 'fresh-run'
+            """
+        ).fetchone()
+        schema_version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+
+    assert row == ("not_requested", 0, None, None, None, "[]")
+    assert schema_version == 13
+
+
+def test_database_round_trip_preserves_delivery_and_automation_identity(tmp_path: Path) -> None:
+    """Saving delivery fields never erases the exact v12 automation attempt identity."""
+    database = RunDatabase(tmp_path / "round-trip.db")
+    run = RunMetadata(
+        run_id="saved-delivery",
+        created_at=datetime(2026, 8, 11, 10, 0, tzinfo=UTC),
+        completed_at=datetime(2026, 8, 11, 10, 5, tzinfo=UTC),
+        status="completed",
+        source="auto",
+        automation_attempt_id="attempt-v12-preserved",
+        output_path=str(tmp_path / "memory.mp4"),
+        delivery_status=DeliveryStatus.PENDING,
+        delivery_attempts=3,
+        delivery_error="Immich unavailable",
+        immich_asset_id=None,
+        delivery_album="Launch Album",
+        warnings=["Optional music failed: timeout"],
+    )
+
+    database.save_run(run)
+    loaded = database.get_run(run.run_id)
+
+    assert loaded is not None
+    assert loaded.delivery_status is DeliveryStatus.PENDING
+    assert loaded.delivery_attempts == 3
+    assert loaded.delivery_error == "Immich unavailable"
+    assert loaded.immich_asset_id is None
+    assert loaded.delivery_album == "Launch Album"
+    assert loaded.warnings == ["Optional music failed: timeout"]
+    assert loaded.automation_attempt_id == "attempt-v12-preserved"
+
+
+def test_populated_v12_migrates_additively_without_changing_attempt_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The v13 migration preserves populated v12 rows and their parent attempt IDs."""
+    from immich_memories.cache import database as cache_database
+
+    db_path = tmp_path / "populated-v12.db"
+    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 12)
+    VideoAnalysisCache(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO pipeline_runs (
+                run_id, created_at, completed_at, status, source,
+                automation_attempt_id, output_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "existing-v12",
+                "2026-08-11T09:00:00+00:00",
+                "2026-08-11T09:05:00+00:00",
+                "completed",
+                "auto",
+                "attempt-existing-v12",
+                str(tmp_path / "memory.mp4"),
+            ),
+        )
+        conn.commit()
+
+    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 13)
+    migrated = RunDatabase(db_path).get_run("existing-v12")
+
+    assert migrated is not None
+    assert migrated.status == "completed"
+    assert migrated.automation_attempt_id == "attempt-existing-v12"
+    assert migrated.delivery_status is DeliveryStatus.NOT_REQUESTED
+    assert migrated.delivery_attempts == 0
+    assert migrated.delivery_error is None
+    assert migrated.immich_asset_id is None
+    assert migrated.delivery_album is None
+    assert migrated.warnings == []
+
+
+def test_database_marks_delivery_pending_atomically_without_changing_artifact(
+    tmp_path: Path,
+) -> None:
+    """One failed API call increments once and leaves the completed artifact intact."""
+    database = RunDatabase(tmp_path / "pending.db")
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"validated-memory")
+    completed_at = datetime(2026, 8, 11, 10, 5, tzinfo=UTC)
+    database.save_run(
+        RunMetadata(
+            run_id="pending-run",
+            created_at=datetime(2026, 8, 11, 10, 0, tzinfo=UTC),
+            completed_at=completed_at,
+            status="completed",
+            output_path=str(output_path),
+            output_size_bytes=16,
+            delivery_status=DeliveryStatus.DELIVERED,
+            delivery_attempts=2,
+            immich_asset_id="stale-asset",
+            delivery_album="Original Album",
+            warnings=["music fallback"],
+            automation_attempt_id="attempt-preserved",
+        )
+    )
+
+    updated = database.mark_delivery_pending("pending-run", "Immich timed out")
+
+    assert updated.delivery_status is DeliveryStatus.PENDING
+    assert updated.delivery_attempts == 3
+    assert updated.delivery_error == "Immich timed out"
+    assert updated.immich_asset_id is None
+    assert updated.delivery_album == "Original Album"
+    assert updated.status == "completed"
+    assert updated.completed_at == completed_at
+    assert updated.output_path == str(output_path)
+    assert updated.warnings == ["music fallback"]
+    assert updated.automation_attempt_id == "attempt-preserved"
+
+
+def test_database_marks_delivery_success_and_clears_previous_error(tmp_path: Path) -> None:
+    """One successful API call increments once, stores its asset ID, and clears failure text."""
+    database = RunDatabase(tmp_path / "delivered.db")
+    database.save_run(
+        RunMetadata(
+            run_id="delivered-run",
+            created_at=datetime(2026, 8, 11, 10, 0, tzinfo=UTC),
+            completed_at=datetime(2026, 8, 11, 10, 5, tzinfo=UTC),
+            status="completed",
+            delivery_status=DeliveryStatus.PENDING,
+            delivery_attempts=1,
+            delivery_error="previous timeout",
+            delivery_album="Original Album",
+        )
+    )
+
+    updated = database.mark_delivered("delivered-run", "asset-new")
+
+    assert updated.delivery_status is DeliveryStatus.DELIVERED
+    assert updated.delivery_attempts == 2
+    assert updated.delivery_error is None
+    assert updated.immich_asset_id == "asset-new"
+    assert updated.delivery_album == "Original Album"
+    assert updated.status == "completed"
+
+
+@pytest.mark.parametrize("asset_id", ["", "   "])
+def test_database_rejects_empty_delivered_asset_identity(
+    tmp_path: Path,
+    asset_id: str,
+) -> None:
+    """A response without a usable Immich asset ID is not a successful delivery call."""
+    database = RunDatabase(tmp_path / "invalid-asset.db")
+    database.save_run(
+        RunMetadata(
+            run_id="invalid-asset-run",
+            created_at=datetime(2026, 8, 11, 10, 0, tzinfo=UTC),
+            status="completed",
+            delivery_status=DeliveryStatus.PENDING,
+        )
+    )
+
+    with pytest.raises(ValueError, match="asset ID"):
+        database.mark_delivered("invalid-asset-run", asset_id)
+
+    unchanged = database.get_run("invalid-asset-run")
+    assert unchanged is not None
+    assert unchanged.delivery_status is DeliveryStatus.PENDING
+    assert unchanged.delivery_attempts == 0
+    assert unchanged.immich_asset_id is None
+
+
+def _save_delivery_candidate(
+    database: RunDatabase,
+    tmp_path: Path,
+    *,
+    run_id: str,
+    created_at: datetime,
+    completed_at: datetime | None,
+    status: str = "completed",
+    delivery_status: DeliveryStatus = DeliveryStatus.PENDING,
+    source: str = "auto",
+    with_file: bool = True,
+) -> RunMetadata:
+    output_path = tmp_path / f"{run_id}.mp4" if with_file else None
+    if output_path is not None:
+        output_path.write_bytes(run_id.encode())
+    run = RunMetadata(
+        run_id=run_id,
+        created_at=created_at,
+        completed_at=completed_at,
+        status=status,  # type: ignore[arg-type]
+        source=source,
+        output_path=str(output_path) if output_path is not None else None,
+        delivery_status=delivery_status,
+    )
+    database.save_run(run)
+    return run
+
+
+def test_oldest_pending_delivery_excludes_ineligible_runs(tmp_path: Path) -> None:
+    """Retry selection requires completed, pending, source-matched runs with output paths."""
+    database = RunDatabase(tmp_path / "oldest.db")
+    base = datetime(2026, 8, 11, 10, 0, tzinfo=UTC)
+    _save_delivery_candidate(
+        database,
+        tmp_path,
+        run_id="running-old",
+        created_at=base,
+        completed_at=None,
+        status="running",
+    )
+    _save_delivery_candidate(
+        database,
+        tmp_path,
+        run_id="delivered-old",
+        created_at=base,
+        completed_at=base + timedelta(minutes=1),
+        delivery_status=DeliveryStatus.DELIVERED,
+    )
+    _save_delivery_candidate(
+        database,
+        tmp_path,
+        run_id="manual-old",
+        created_at=base,
+        completed_at=base + timedelta(minutes=2),
+        source="manual",
+    )
+    _save_delivery_candidate(
+        database,
+        tmp_path,
+        run_id="pathless-old",
+        created_at=base,
+        completed_at=base + timedelta(minutes=3),
+        with_file=False,
+    )
+    expected = _save_delivery_candidate(
+        database,
+        tmp_path,
+        run_id="pending-first",
+        created_at=base,
+        completed_at=base + timedelta(minutes=4),
+    )
+    _save_delivery_candidate(
+        database,
+        tmp_path,
+        run_id="pending-later",
+        created_at=base,
+        completed_at=base + timedelta(minutes=5),
+    )
+
+    selected = database.get_oldest_pending_delivery(source="auto")
+
+    assert selected is not None
+    assert selected.run_id == expected.run_id
+
+
+def test_oldest_pending_delivery_warns_and_continues_past_missing_files(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A missing oldest artifact is actionable but cannot hide the next retryable run."""
+    database = RunDatabase(tmp_path / "missing.db")
+    base = datetime(2026, 8, 11, 10, 0, tzinfo=UTC)
+    database.save_run(
+        RunMetadata(
+            run_id="missing-oldest",
+            created_at=base,
+            completed_at=base + timedelta(minutes=1),
+            status="completed",
+            source="auto",
+            output_path=str(tmp_path / "missing-memory.mp4"),
+            delivery_status=DeliveryStatus.PENDING,
+        )
+    )
+    expected = _save_delivery_candidate(
+        database,
+        tmp_path,
+        run_id="existing-next",
+        created_at=base,
+        completed_at=base + timedelta(minutes=2),
+    )
+    caplog.set_level("WARNING")
+
+    selected = database.get_oldest_pending_delivery(source="auto")
+
+    assert selected is not None
+    assert selected.run_id == expected.run_id
+    assert "missing-oldest" in caplog.text
+    assert "cannot be retried because its output file is missing" in caplog.text
+
+
+def test_oldest_pending_delivery_breaks_timestamp_ties_deterministically(
+    tmp_path: Path,
+) -> None:
+    """Equal completion and creation timestamps use run ID as the final stable key."""
+    database = RunDatabase(tmp_path / "ties.db")
+    created = datetime(2026, 8, 11, 10, 0, tzinfo=UTC)
+    completed = created + timedelta(minutes=5)
+    _save_delivery_candidate(
+        database,
+        tmp_path,
+        run_id="z-run",
+        created_at=created,
+        completed_at=completed,
+    )
+    expected = _save_delivery_candidate(
+        database,
+        tmp_path,
+        run_id="a-run",
+        created_at=created,
+        completed_at=completed,
+    )
+    _save_delivery_candidate(
+        database,
+        tmp_path,
+        run_id="created-later",
+        created_at=created + timedelta(seconds=1),
+        completed_at=completed,
+    )
+
+    selected = database.get_oldest_pending_delivery(source="auto")
+
+    assert selected is not None
+    assert selected.run_id == expected.run_id
+
+
+def _authoritative_probe() -> OutputProbe:
+    return OutputProbe(
+        codec="h264",
+        container="mp4",
+        duration_seconds=42.5,
+        size_bytes=4096,
+        pixel_format="yuv420p",
+        color_transfer="bt709",
+        color_primaries="bt709",
+        width=1920,
+        height=1080,
+        decoded_frames=1020,
+    )
+
+
+def test_tracker_completes_artifact_from_authoritative_probe_without_reprobing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Artifact completion trusts validated probe facts and refreshes the JSON sidecar."""
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"small-test-file")
+    tracker = RunTracker(
+        "artifact-run",
+        db_path=tmp_path / "tracker.db",
+        capture_system=False,
+    )
+    tracker.start_run(
+        source="auto",
+        automation_attempt_id="attempt-artifact",
+    )
+    monkeypatch.setattr(
+        tracker,
+        "_get_video_duration",
+        lambda _path: (_ for _ in ()).throw(AssertionError("legacy probe called")),
+    )
+
+    completed = tracker.complete_artifact(
+        output_path,
+        _authoritative_probe(),
+        warnings=["Optional music failed: timeout"],
+        delivery_album="Family Album",
+        clips_analyzed=12,
+        clips_selected=7,
+        errors_count=1,
+    )
+
+    assert completed.status == "completed"
+    assert completed.output_path == str(output_path)
+    assert completed.output_size_bytes == 4096
+    assert completed.output_duration_seconds == 42.5
+    assert completed.delivery_status is DeliveryStatus.NOT_REQUESTED
+    assert completed.delivery_attempts == 0
+    assert completed.delivery_album == "Family Album"
+    assert completed.warnings == ["Optional music failed: timeout"]
+    assert completed.clips_analyzed == 12
+    assert completed.clips_selected == 7
+    assert completed.errors_count == 1
+    assert completed.automation_attempt_id == "attempt-artifact"
+    sidecar = RunMetadata.from_json((tmp_path / "run_metadata.json").read_text())
+    assert sidecar.to_dict() == completed.to_dict()
+
+
+def test_tracker_marks_delivery_pending_and_refreshes_sidecar(tmp_path: Path) -> None:
+    """A failed API call stays completed and persists its retry state to the sidecar."""
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"validated")
+    tracker = RunTracker("tracker-pending", db_path=tmp_path / "pending.db", capture_system=False)
+    tracker.start_run(automation_attempt_id="attempt-pending")
+    tracker.complete_artifact(
+        output_path,
+        _authoritative_probe(),
+        warnings=["music fallback"],
+        delivery_album="Original Album",
+    )
+
+    pending = tracker.mark_delivery_pending("Immich timed out")
+
+    assert pending.status == "completed"
+    assert pending.delivery_status is DeliveryStatus.PENDING
+    assert pending.delivery_attempts == 1
+    assert pending.delivery_error == "Immich timed out"
+    assert pending.immich_asset_id is None
+    assert pending.delivery_album == "Original Album"
+    assert pending.automation_attempt_id == "attempt-pending"
+    sidecar = RunMetadata.from_json((tmp_path / "run_metadata.json").read_text())
+    assert sidecar.to_dict() == pending.to_dict()
+    assert tracker.current_run == pending
+
+
+def test_tracker_marks_delivery_success_and_refreshes_sidecar(tmp_path: Path) -> None:
+    """A successful retry records its asset and keeps the original album for provenance."""
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"validated")
+    tracker = RunTracker(
+        "tracker-delivered", db_path=tmp_path / "delivered.db", capture_system=False
+    )
+    tracker.start_run()
+    tracker.complete_artifact(
+        output_path,
+        _authoritative_probe(),
+        warnings=[],
+        delivery_album="Original Album",
+    )
+    tracker.mark_delivery_pending("first call failed")
+
+    delivered = tracker.mark_delivered("asset-retry")
+
+    assert delivered.status == "completed"
+    assert delivered.delivery_status is DeliveryStatus.DELIVERED
+    assert delivered.delivery_attempts == 2
+    assert delivered.delivery_error is None
+    assert delivered.immich_asset_id == "asset-retry"
+    assert delivered.delivery_album == "Original Album"
+    sidecar = RunMetadata.from_json((tmp_path / "run_metadata.json").read_text())
+    assert sidecar.to_dict() == delivered.to_dict()
+    assert tracker.current_run == delivered
+
+
+def test_tracker_marks_pending_configuration_error_without_counting_api_call(
+    tmp_path: Path,
+) -> None:
+    """Requested delivery without a client is pending, but no API attempt occurred."""
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"validated")
+    tracker = RunTracker("tracker-config", db_path=tmp_path / "config.db", capture_system=False)
+    tracker.start_run()
+    tracker.complete_artifact(output_path, _authoritative_probe(), warnings=[])
+
+    pending = tracker.mark_delivery_pending(
+        "Immich upload requested but no client is configured",
+        attempted=False,
+    )
+
+    assert pending.delivery_status is DeliveryStatus.PENDING
+    assert pending.delivery_attempts == 0
+    assert pending.delivery_error == "Immich upload requested but no client is configured"
+
+
+def _h264_plan():
+    from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+
+    return EncodingPlan(
+        codec=OutputCodec.H264,
+        encoder="libx264",
+        encoder_args=("-c:v", "libx264"),
+        target_transfer=HdrTransfer.NONE,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p",
+        container="mp4",
+    )
+
+
+def _probe_payload() -> dict[str, object]:
+    return {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": "h264",
+                "pix_fmt": "yuv420p",
+                "color_transfer": "bt709",
+                "color_primaries": "bt709",
+                "width": 1920,
+                "height": 1080,
+                "nb_read_frames": "1020",
+            }
+        ],
+        "format": {
+            "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+            "duration": "42.5",
+            "size": "4096",
+            "tags": {"major_brand": "isom"},
+        },
+    }
+
+
+def _prepare_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    upload_enabled: bool,
+    client: object | None,
+    upload_album: str | None = None,
+    music_warning: str | None = None,
+    upload_result: dict[str, str] | Exception | None = None,
+    configured_secret: str | None = None,
+) -> tuple[object, list[str]]:
+    from immich_memories import generate as generate_module
+    from immich_memories.generate import GenerationParams
+    from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.assembly_config import AssemblyClip, AssemblySettings
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source")
+    assembly_clip = AssemblyClip(path=source, duration=5.0, asset_id="clip-1")
+    from immich_memories.config_loader import Config
+
+    config = Config(
+        cache={"directory": str(tmp_path / "cache"), "database": str(tmp_path / "runs.db")},
+        immich={"api_key": configured_secret or ""},
+    )
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=tmp_path / "memory.mp4",
+        config=config,
+        client=client,
+        no_music=True,
+        upload_enabled=upload_enabled,
+        upload_album=upload_album,
+        debug_preserve_intermediates=True,
+        source="auto",
+        automation_attempt_id="attempt-generation",
+    )
+    plan = _h264_plan()
+    events: list[str] = []
+
+    class Assembler:
+        def assemble_with_titles(
+            self,
+            _clips: object,
+            output_path: Path,
+            _callback: object,
+            **_kwargs: object,
+        ) -> Path:
+            output_path.write_bytes(b"validated-artifact")
+            return output_path
+
+    original_run = subprocess.run
+
+    def run_probe(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[0] == "ffprobe":
+            return subprocess.CompletedProcess(command, 0, json.dumps(_probe_payload()), "")
+        return original_run(command, **kwargs)  # type: ignore[call-overload]
+
+    def music_phase(*_args: object, **_kwargs: object) -> MusicPhaseResult:
+        events.append("music")
+        return MusicPhaseResult(applied=False, warning=music_warning)
+
+    def final_validate(path: Path, encoding_plan: object) -> OutputProbe:
+        assert path.name == "memory.mp4"
+        assert encoding_plan is plan
+        events.append("final-probe")
+        return _authoritative_probe()
+
+    def upload(*_args: object, **_kwargs: object) -> dict[str, str]:
+        artifact = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
+        assert artifact is not None
+        assert artifact.status == "completed"
+        events.append("upload")
+        if isinstance(upload_result, Exception):
+            raise upload_result
+        return upload_result or {"asset_id": "asset-success"}
+
+    monkeypatch.setattr("immich_memories.tracking.generate_run_id", lambda: "delivery-run")
+    monkeypatch.setattr(
+        "immich_memories.cache.video_cache.VideoDownloadCache",
+        lambda **_kwargs: MagicMock(),
+    )
+    monkeypatch.setattr(generate_module, "_extract_clips", lambda *_args: [assembly_clip])
+    monkeypatch.setattr(
+        generate_module,
+        "_build_assembly_settings",
+        lambda *_args: AssemblySettings(encoding_plan=plan),
+    )
+    monkeypatch.setattr(generate_module, "_create_assembler", lambda *_args: Assembler())
+    monkeypatch.setattr(generate_module, "_run_music_phase", music_phase)
+    monkeypatch.setattr(generate_module, "_upload_to_immich", upload)
+    monkeypatch.setattr(generate_module, "_cleanup_temp_clips", lambda _clips: None)
+    monkeypatch.setattr(output_contract.subprocess, "run", run_probe)
+    monkeypatch.setattr(generate_module, "validate_output", final_validate, raising=False)
+    monkeypatch.setattr(
+        RunTracker,
+        "_get_video_duration",
+        lambda _self, _path: (_ for _ in ()).throw(AssertionError("legacy probe called")),
+    )
+    return params, events
+
+
+def test_generation_without_upload_completes_artifact_as_not_requested(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A validated final artifact completes before returning, without a delivery attempt."""
+    from immich_memories.generate import generate_memory
+
+    params, events = _prepare_generation(
+        tmp_path,
+        monkeypatch,
+        upload_enabled=False,
+        client=None,
+    )
+
+    result = generate_memory(params)  # type: ignore[arg-type]
+    saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
+
+    assert result.read_bytes() == b"validated-artifact"
+    assert events == ["music", "final-probe"]
+    assert saved is not None
+    assert saved.status == "completed"
+    assert saved.output_size_bytes == 4096
+    assert saved.output_duration_seconds == 42.5
+    assert saved.delivery_status is DeliveryStatus.NOT_REQUESTED
+    assert saved.delivery_attempts == 0
+    assert saved.automation_attempt_id == "attempt-generation"
+
+
+def test_successful_generation_delivery_records_asset_and_original_album(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One successful API call records one attempt after artifact completion."""
+    from immich_memories.generate import generate_memory
+
+    params, events = _prepare_generation(
+        tmp_path,
+        monkeypatch,
+        upload_enabled=True,
+        client=object(),
+        upload_album="Original Family Album",
+        music_warning="Optional music failed: backend unavailable",
+        upload_result={"asset_id": "asset-delivered"},
+    )
+
+    generate_memory(params)  # type: ignore[arg-type]
+    saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
+
+    assert events == ["music", "final-probe", "upload"]
+    assert saved is not None
+    assert saved.status == "completed"
+    assert saved.delivery_status is DeliveryStatus.DELIVERED
+    assert saved.delivery_attempts == 1
+    assert saved.delivery_error is None
+    assert saved.immich_asset_id == "asset-delivered"
+    assert saved.delivery_album == "Original Family Album"
+    assert saved.warnings == ["Optional music failed: backend unavailable"]
+    assert saved.automation_attempt_id == "attempt-generation"
+
+
+def test_failed_generation_delivery_is_pending_and_does_not_fail_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed API call is retryable, sanitized, and cannot rewrite completion as failure."""
+    from immich_memories.generate import DeliveryError, generate_memory
+
+    configured_literal = "configured-delivery-secret"
+    params, events = _prepare_generation(
+        tmp_path,
+        monkeypatch,
+        upload_enabled=True,
+        client=object(),
+        upload_album="Album At Generation Time",
+        upload_result=RuntimeError(f"Immich echoed {configured_literal}"),
+        configured_secret=configured_literal,
+    )
+
+    with pytest.raises(DeliveryError, match="Immich delivery failed") as caught:
+        generate_memory(params)  # type: ignore[arg-type]
+    saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
+
+    assert events == ["music", "final-probe", "upload"]
+    assert saved is not None
+    assert saved.status == "completed"
+    assert saved.delivery_status is DeliveryStatus.PENDING
+    assert saved.delivery_attempts == 1
+    assert saved.delivery_album == "Album At Generation Time"
+    assert saved.immich_asset_id is None
+    assert configured_literal not in (saved.delivery_error or "")
+    assert configured_literal not in str(caught.value)
+    assert configured_literal not in "".join(traceback.format_exception(caught.value))
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert saved.automation_attempt_id == "attempt-generation"
+
+
+def test_requested_generation_delivery_without_client_is_pending_without_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing delivery configuration is durable pending work, not an invisible no-op."""
+    from immich_memories.generate import DeliveryError, generate_memory
+
+    params, events = _prepare_generation(
+        tmp_path,
+        monkeypatch,
+        upload_enabled=True,
+        client=None,
+        upload_album="Album For Later Retry",
+    )
+
+    with pytest.raises(DeliveryError, match="no Immich client"):
+        generate_memory(params)  # type: ignore[arg-type]
+    saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
+
+    assert events == ["music", "final-probe"]
+    assert saved is not None
+    assert saved.status == "completed"
+    assert saved.delivery_status is DeliveryStatus.PENDING
+    assert saved.delivery_attempts == 0
+    assert saved.delivery_album == "Album For Later Retry"
+    assert saved.immich_asset_id is None
+    assert saved.automation_attempt_id == "attempt-generation"
+
+
+def test_delivery_transition_failure_cannot_count_or_downgrade_a_second_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-upload persistence failure never enters the API-failure transition."""
+    from immich_memories.config_loader import Config
+    from immich_memories.generate import (
+        DeliveryError,
+        GenerationParams,
+        _deliver_completed_artifact,
+    )
+
+    class TransitionTracker:
+        def __init__(self) -> None:
+            self.attempts = 0
+            self.pending_calls = 0
+
+        def mark_delivered(self, _asset_id: str) -> None:
+            self.attempts += 1
+            raise OSError("sidecar refresh failed after the database commit")
+
+        def mark_delivery_pending(self, _message: str, *, attempted: bool) -> None:
+            self.pending_calls += 1
+            self.attempts += int(attempted)
+
+    tracker = TransitionTracker()
+    params = GenerationParams(
+        clips=[],
+        output_path=tmp_path / "memory.mp4",
+        config=Config(),
+        client=object(),  # type: ignore[arg-type]
+        upload_enabled=True,
+    )
+    monkeypatch.setattr(
+        "immich_memories.generate._upload_to_immich",
+        lambda *_args: {"asset_id": "asset-already-committed"},
+    )
+
+    with pytest.raises(DeliveryError):
+        _deliver_completed_artifact(
+            params,
+            params.output_path,
+            tracker,  # type: ignore[arg-type]
+        )
+
+    assert tracker.attempts == 1
+    assert tracker.pending_calls == 0
+
+
+def test_pending_state_persistence_failure_logs_no_exception_literal(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Secondary tracking failures use controlled text and cannot leak arbitrary secrets."""
+    from immich_memories.generate import DeliveryError, _raise_delivery_error
+
+    configured_literal = "unlabelled-tracking-secret"
+    tracker = MagicMock()
+    tracker.mark_delivery_pending.side_effect = OSError(configured_literal)
+
+    with (
+        caplog.at_level(logging.ERROR, logger="immich_memories.generate"),
+        pytest.raises(DeliveryError),
+    ):
+        _raise_delivery_error(
+            tracker,
+            "safe delivery failure",
+            attempted=True,
+        )
+
+    assert configured_literal not in caplog.text
+    assert "Could not persist pending delivery state" in caplog.text

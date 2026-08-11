@@ -1233,11 +1233,13 @@ class TestGenerateMemoryInner:
         patches, result_path, _ = self._patch_inner_deps(tmp_path)
 
         with contextlib.ExitStack() as stack:
-            {name: stack.enter_context(p) for name, p in patches.items()}
+            mocks = {name: stack.enter_context(p) for name, p in patches.items()}
             upload_mock = stack.enter_context(patch("immich_memories.generate._upload_to_immich"))
+            upload_mock.return_value = {"asset_id": "uploaded-asset"}
             _generate_memory_inner(params)
 
         upload_mock.assert_called_once_with(mock_client, result_path, "test-album")
+        mocks["tracker"].return_value.mark_delivered.assert_called_once_with("uploaded-asset")
 
     def test_upload_not_called_when_disabled(self, tmp_path):
         from immich_memories.generate import _generate_memory_inner

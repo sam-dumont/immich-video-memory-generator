@@ -9,8 +9,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
+from typing import Any
 
 from immich_memories.tracking.models import (
+    DeliveryStatus,
     PhaseStats,
     RunMetadata,
     SystemInfo,
@@ -18,6 +20,14 @@ from immich_memories.tracking.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _row_value(row: sqlite3.Row, column: str, default: Any = None) -> Any:
+    """Read a column that may be absent on legacy compatibility rows."""
+    try:
+        return row[column]
+    except IndexError:
+        return default
 
 
 def row_to_run(row: sqlite3.Row) -> RunMetadata:
@@ -31,18 +41,16 @@ def row_to_run(row: sqlite3.Row) -> RunMetadata:
         created_at=datetime.fromisoformat(row["created_at"]),
         completed_at=(datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None),
         status=row["status"],
-        memory_type=row["memory_type"] if "memory_type" in dict(row) else None,
-        memory_key=row["memory_key"] if "memory_key" in dict(row) else None,
-        memory_category=(row["memory_category"] if "memory_category" in dict(row) else None),
+        memory_type=_row_value(row, "memory_type"),
+        memory_key=_row_value(row, "memory_key"),
+        memory_category=_row_value(row, "memory_category"),
         memory_people=(
-            tuple(json.loads(row["memory_people_json"]))
-            if "memory_people_json" in dict(row) and row["memory_people_json"]
+            tuple(json.loads(_row_value(row, "memory_people_json")))
+            if _row_value(row, "memory_people_json")
             else ()
         ),
-        source=row["source"] if "source" in dict(row) else "manual",
-        automation_attempt_id=(
-            row["automation_attempt_id"] if "automation_attempt_id" in dict(row) else None
-        ),
+        source=_row_value(row, "source", "manual"),
+        automation_attempt_id=_row_value(row, "automation_attempt_id"),
         person_name=row["person_name"],
         person_id=row["person_id"],
         date_range_start=(
@@ -55,6 +63,16 @@ def row_to_run(row: sqlite3.Row) -> RunMetadata:
         output_path=row["output_path"],
         output_size_bytes=row["output_size_bytes"] or 0,
         output_duration_seconds=row["output_duration_seconds"] or 0.0,
+        delivery_status=DeliveryStatus(
+            _row_value(row, "delivery_status") or DeliveryStatus.NOT_REQUESTED
+        ),
+        delivery_attempts=_row_value(row, "delivery_attempts", 0) or 0,
+        delivery_error=_row_value(row, "delivery_error"),
+        immich_asset_id=_row_value(row, "immich_asset_id"),
+        delivery_album=_row_value(row, "delivery_album"),
+        warnings=(
+            json.loads(_row_value(row, "warnings_json")) if _row_value(row, "warnings_json") else []
+        ),
         clips_analyzed=row["clips_analyzed"] or 0,
         clips_selected=row["clips_selected"] or 0,
         errors_count=row["errors_count"] or 0,
@@ -133,8 +151,9 @@ class RunDatabase:
                     person_name, person_id, date_range_start, date_range_end,
                     target_duration_minutes, output_path, output_size_bytes,
                     output_duration_seconds, clips_analyzed, clips_selected,
-                    errors_count, system_info
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    errors_count, system_info, delivery_status, delivery_attempts,
+                    delivery_error, immich_asset_id, delivery_album, warnings_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.run_id,
@@ -159,6 +178,12 @@ class RunDatabase:
                     run.clips_selected,
                     run.errors_count,
                     run.system_info.to_json() if run.system_info else None,
+                    run.delivery_status.value,
+                    run.delivery_attempts,
+                    run.delivery_error,
+                    run.immich_asset_id,
+                    run.delivery_album,
+                    json.dumps(run.warnings),
                 ),
             )
             conn.commit()
@@ -229,6 +254,8 @@ class RunDatabase:
         clips_analyzed: int | None = None,
         clips_selected: int | None = None,
         errors_count: int | None = None,
+        delivery_album: str | None = None,
+        warnings: list[str] | None = None,
     ) -> None:
         """Update run status and optionally other fields."""
         with self._get_connection() as conn:
@@ -263,6 +290,14 @@ class RunDatabase:
                 updates.append("errors_count = ?")
                 params.append(errors_count)
 
+            if delivery_album is not None:
+                updates.append("delivery_album = ?")
+                params.append(delivery_album)
+
+            if warnings is not None:
+                updates.append("warnings_json = ?")
+                params.append(json.dumps(warnings))
+
             params.append(run_id)
 
             conn.execute(
@@ -270,6 +305,61 @@ class RunDatabase:
                 params,
             )
             conn.commit()
+
+    def mark_delivery_pending(
+        self,
+        run_id: str,
+        error: str,
+        *,
+        attempted: bool = True,
+    ) -> RunMetadata:
+        """Record one failed delivery call without changing artifact completion."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE pipeline_runs
+                SET delivery_status = ?,
+                    delivery_attempts = delivery_attempts + ?,
+                    delivery_error = ?,
+                    immich_asset_id = NULL
+                WHERE run_id = ?
+                """,
+                (DeliveryStatus.PENDING.value, int(attempted), error, run_id),
+            )
+            if cursor.rowcount != 1:
+                raise KeyError(f"Unknown pipeline run: {run_id}")
+            conn.commit()
+
+        updated = self.get_run(run_id)
+        if updated is None:  # pragma: no cover - row was updated in the transaction above
+            raise KeyError(f"Unknown pipeline run: {run_id}")
+        return updated
+
+    def mark_delivered(self, run_id: str, asset_id: str) -> RunMetadata:
+        """Record one successful delivery call without changing artifact completion."""
+        normalized_asset_id = asset_id.strip()
+        if not normalized_asset_id:
+            raise ValueError("Immich delivery requires a nonempty asset ID")
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE pipeline_runs
+                SET delivery_status = ?,
+                    delivery_attempts = delivery_attempts + 1,
+                    delivery_error = NULL,
+                    immich_asset_id = ?
+                WHERE run_id = ?
+                """,
+                (DeliveryStatus.DELIVERED.value, normalized_asset_id, run_id),
+            )
+            if cursor.rowcount != 1:
+                raise KeyError(f"Unknown pipeline run: {run_id}")
+            conn.commit()
+
+        updated = self.get_run(run_id)
+        if updated is None:  # pragma: no cover - row was updated in the transaction above
+            raise KeyError(f"Unknown pipeline run: {run_id}")
+        return updated
 
     def mark_stale_runs_as_interrupted(self) -> int:
         """Mark any 'running' runs as 'interrupted' (startup cleanup)."""
@@ -286,6 +376,34 @@ class RunDatabase:
             if count > 0:
                 logger.info(f"Marked {count} stale run(s) as interrupted")
             return count
+
+    def get_oldest_pending_delivery(self, source: str) -> RunMetadata | None:
+        """Return the oldest completed pending delivery for one source."""
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT run_id, output_path
+                FROM pipeline_runs
+                WHERE status = 'completed'
+                  AND delivery_status = ?
+                  AND output_path IS NOT NULL
+                  AND source = ?
+                ORDER BY COALESCE(completed_at, created_at), created_at, run_id
+                """,
+                (DeliveryStatus.PENDING.value, source),
+            ).fetchall()
+
+        for row in rows:
+            output_path = Path(row["output_path"])
+            if output_path.is_file():
+                return self.get_run(row["run_id"])
+            logger.warning(
+                "Pending delivery run '%s' cannot be retried because its output file "
+                "is missing or not a regular file: %s",
+                row["run_id"],
+                output_path,
+            )
+        return None
 
     # =========================================================================
     # Query Methods (from RunQueriesMixin)

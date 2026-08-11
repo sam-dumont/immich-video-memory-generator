@@ -279,6 +279,7 @@ def test_generation_validation_failure_preserves_old_final_and_stops_downstream_
     assert (run_output_dir / "memory.assembling.mp4").exists()
     music_phase.assert_not_called()
     upload.assert_not_called()
+    tracker.complete_artifact.assert_not_called()
     tracker.complete_run.assert_not_called()
     tracker.fail_run.assert_called_once()
 

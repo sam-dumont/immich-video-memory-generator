@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 from immich_memories.generate_clips import (
     MIN_CLIP_DURATION,
@@ -47,13 +47,14 @@ from immich_memories.generate_settings import (
     _upload_to_immich,
 )
 from immich_memories.processing.clip_validation import validate_clips
-from immich_memories.processing.output_contract import publish_validated_output
-from immich_memories.security import sanitize_error_message
+from immich_memories.processing.output_contract import publish_validated_output, validate_output
+from immich_memories.security import configured_secret_values, sanitize_error_message
 
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.config_loader import Config
+    from immich_memories.tracking import RunTracker
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "GenerationParams",
     "GenerationError",
+    "DeliveryError",
     "PipelineLock",
     "generate_memory",
     "check_disk_space",
@@ -159,6 +161,10 @@ class GenerationParams:
 
 class GenerationError(Exception):
     """Raised when video generation fails."""
+
+
+class DeliveryError(GenerationError):
+    """Raised when a completed artifact could not be delivered to Immich."""
 
 
 class PipelineLock:
@@ -290,6 +296,84 @@ def _build_memory_key(params: GenerationParams) -> str | None:
     return make_memory_key(params.memory_type, params.date_start, params.date_end, person_names)
 
 
+def _safe_delivery_message(exc: Exception, config: Config) -> str:
+    """Sanitize one delivery error, including unlabelled configured secrets."""
+    safe_message = sanitize_error_message(str(exc))
+    for secret in configured_secret_values(config):
+        safe_message = safe_message.replace(secret, "***")
+    return safe_message
+
+
+def _pending_delivery_error(
+    run_tracker: RunTracker,
+    message: str,
+    *,
+    attempted: bool,
+) -> DeliveryError:
+    """Persist retry state and build a safe error outside any raw exception chain."""
+    try:
+        run_tracker.mark_delivery_pending(message, attempted=attempted)
+    except Exception:  # WHY: secondary details may contain secrets; keep the artifact primary
+        logger.error("Could not persist pending delivery state")
+    return DeliveryError(f"Immich delivery failed: {message}")
+
+
+def _raise_delivery_error(
+    run_tracker: RunTracker,
+    message: str,
+    *,
+    attempted: bool,
+) -> NoReturn:
+    """Persist retry state and raise without invalidating the completed artifact."""
+    error = _pending_delivery_error(run_tracker, message, attempted=attempted)
+    raise error from None
+
+
+def _deliver_completed_artifact(
+    params: GenerationParams,
+    result_path: Path,
+    run_tracker: RunTracker,
+) -> None:
+    """Deliver a completed artifact and persist exactly one API attempt."""
+    if not params.upload_enabled:
+        return
+    if params.client is None:
+        _raise_delivery_error(
+            run_tracker,
+            "no Immich client is configured",
+            attempted=False,
+        )
+
+    _report(params, "upload", 0.95, "Uploading to Immich...")
+    delivery_error: DeliveryError | None = None
+    asset_id: str | None = None
+    try:
+        result = _upload_to_immich(params.client, result_path, params.upload_album)
+        asset_id = result.get("asset_id")
+        if not isinstance(asset_id, str) or not asset_id.strip():
+            raise ValueError("Immich upload returned no asset ID")
+    except Exception as exc:
+        safe_message = _safe_delivery_message(exc, params.config)
+        logger.warning("Immich delivery failed: %s", safe_message)
+        delivery_error = _pending_delivery_error(
+            run_tracker,
+            safe_message,
+            attempted=True,
+        )
+    if delivery_error is not None:
+        raise delivery_error from None
+
+    assert asset_id is not None  # validated in the API-call boundary above
+    try:
+        run_tracker.mark_delivered(asset_id)
+    except Exception as exc:
+        safe_message = _safe_delivery_message(exc, params.config)
+        logger.error("Could not persist successful Immich delivery: %s", safe_message)
+        delivery_error = DeliveryError(f"Immich delivery state update failed: {safe_message}")
+    if delivery_error is not None:
+        raise delivery_error from None
+
+
 def _generate_memory_inner(params: GenerationParams) -> Path:
     """Inner pipeline — runs under PipelineLock."""
     from immich_memories.cache.video_cache import VideoDownloadCache
@@ -410,23 +494,29 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         _phase_times["music"] = _time.monotonic() - _t
         pp.report("music", 1.0, music_result.warning or "Music ready")
 
+        final_probe = validate_output(result_path, settings.encoding_plan)
+        artifact_warnings = [music_result.warning] if music_result.warning else []
+        run_tracker.complete_artifact(
+            result_path,
+            final_probe,
+            artifact_warnings,
+            delivery_album=params.upload_album,
+            clips_analyzed=len(params.clips),
+            clips_selected=len(assembly_clips),
+        )
+
         # Phase 4: Upload (if requested)
-        if params.upload_enabled and params.client:
-            _report(params, "upload", 0.95, "Uploading to Immich...")
-            _upload_to_immich(params.client, result_path, params.upload_album)
+        _deliver_completed_artifact(params, result_path, run_tracker)
 
         _phase_times["total"] = _time.monotonic() - _phase_start
         _log_phase_timing(_phase_times, len(assembly_clips))
 
         _report(params, "done", 1.0, "Complete!")
-        run_tracker.complete_run(
-            output_path=result_path,
-            clips_analyzed=len(params.clips),
-            clips_selected=len(assembly_clips),
-        )
 
         return result_path
 
+    except DeliveryError:
+        raise
     except GenerationError as e:
         run_tracker.fail_run(str(e))
         raise

@@ -1353,5 +1353,7 @@ def test_optional_music_failure_preserves_base_and_uploads_valid_artifact(
     assert result.read_bytes() == b"validated-base"
     assert uploaded == [b"validated-base"]
     assert ("music", warning) in progress
-    tracker.complete_run.assert_called_once()
+    tracker.complete_artifact.assert_called_once()
+    assert tracker.complete_artifact.call_args.args[2] == [warning]
+    tracker.mark_delivered.assert_called_once_with("asset-1")
     tracker.fail_run.assert_not_called()
