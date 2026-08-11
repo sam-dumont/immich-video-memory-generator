@@ -7,10 +7,39 @@ import os
 import re
 from pathlib import Path
 
+from pydantic import BaseModel
+
 logger = logging.getLogger(__name__)
 
 # Control characters for sanitizing filenames
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+_CREDENTIAL_FIELD_NAMES = frozenset({"api_key", "password", "client_secret"})
+
+
+def configured_secret_values(config: BaseModel) -> tuple[str, ...]:
+    """Return configured credentials and secret-bearing notification URLs."""
+    secrets: set[str] = set()
+    pending: list[object] = [config]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, BaseModel):
+            for field_name in type(value).model_fields:
+                field_value = getattr(value, field_name)
+                if field_name in _CREDENTIAL_FIELD_NAMES:
+                    if isinstance(field_value, str) and field_value:
+                        secrets.add(field_value)
+                else:
+                    pending.append(field_value)
+        elif isinstance(value, dict):
+            pending.extend(value.values())
+        elif isinstance(value, (list, tuple, set, frozenset)):
+            pending.extend(value)
+
+    notifications = getattr(config, "notifications", None)
+    for url in getattr(notifications, "urls", ()):
+        if isinstance(url, str) and url:
+            secrets.add(url)
+    return tuple(sorted(secrets, key=len, reverse=True))
 
 
 def validate_path(

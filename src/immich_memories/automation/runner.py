@@ -24,7 +24,7 @@ from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.automation.variety import VarietyDecision, apply_variety_rules
 from immich_memories.config_loader import Config
 from immich_memories.config_models import AutomationConfig
-from immich_memories.security import sanitize_error_message
+from immich_memories.security import configured_secret_values, sanitize_error_message
 from immich_memories.timeperiod import DateRange, birthday_year
 from immich_memories.tracking.models import RunMetadata
 from immich_memories.tracking.run_database import RunDatabase
@@ -469,18 +469,7 @@ class AutoRunner:
 
     def _secrets(self) -> tuple[str, ...]:
         """Return configured credential values that must never enter attempt history."""
-        values = [
-            self.config.immich.api_key,
-            self.config.llm.api_key,
-            self.config.musicgen.api_key,
-            self.config.ace_step.api_key,
-            self.config.auth.password,
-            self.config.auth.client_secret,
-        ]
-        if self.config.title_llm is not None:
-            values.append(self.config.title_llm.api_key)
-        values.extend(self.config.notifications.urls)
-        return tuple(sorted({value for value in values if value}, key=len, reverse=True))
+        return configured_secret_values(self.config)
 
     def status(
         self,

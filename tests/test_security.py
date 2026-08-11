@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from immich_memories import security
+from immich_memories.config_loader import Config
 from immich_memories.security import sanitize_filename, validate_path
 
 
@@ -43,3 +45,43 @@ class TestSanitizeFilename:
 
     def test_replaces_slashes(self):
         assert sanitize_filename("path/to/file.mp4") == "path_to_file.mp4"
+
+
+def test_configured_secret_values_include_only_current_secret_fields() -> None:
+    """Credential discovery must cover the config model without sweeping in ordinary values."""
+    expected = {
+        "immich-credential",
+        "primary-llm-credential",
+        "title-llm-credential",
+        "musicgen-credential",
+        "ace-step-credential",
+        "basic-auth-password",
+        "oidc-client-secret",
+        "https://notify.test/embedded-credential",
+    }
+    config = Config(
+        immich={"url": "http://immich.test", "api_key": "immich-credential"},
+        llm={
+            "base_url": "http://llm.test/v1",
+            "model": "ordinary-model-name",
+            "api_key": "primary-llm-credential",
+        },
+        title_llm={"api_key": "title-llm-credential"},
+        musicgen={"base_url": "http://music.test", "api_key": "musicgen-credential"},
+        ace_step={"api_url": "http://ace.test", "api_key": "ace-step-credential"},
+        auth={
+            "username": "ordinary-user-name",
+            "password": "basic-auth-password",
+            "client_id": "ordinary-client-id",
+            "client_secret": "oidc-client-secret",
+        },
+        notifications={"urls": ["https://notify.test/embedded-credential"]},
+    )
+
+    actual = security.configured_secret_values(config)
+
+    assert set(actual) == expected
+    assert actual == tuple(sorted(actual, key=len, reverse=True))
+    assert "ordinary-model-name" not in actual
+    assert "ordinary-user-name" not in actual
+    assert "ordinary-client-id" not in actual
