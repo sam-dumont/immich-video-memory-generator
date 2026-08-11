@@ -31,11 +31,15 @@ approval. Its plist remains on disk and nothing was deleted.
   latest completed month, hard category cadence/rotation rules are enforced without relaxation,
   and status/dry-run output explains rejections. The full automation controller gate passed
   318 tests with 16 live tests deselected.
-- **P0.3 Immich v2/v3: fixed.** Code and documentation now explicitly support both majors with
-  automatic runtime detection by default. Duration normalization, version-selected uploads,
-  offset-aware search dates, structured errors, all-client policy propagation, preflight
-  resolution, and the read-only config check are closed through `c6cea3b`. Key final commits:
-  `33745c6`, `5e46078`, `822a870`, `cecdf7a`, and `c6cea3b`.
+- **P0.3 Immich v2/v3: fixed and independently approved.** Code and documentation now explicitly
+  support both majors with automatic runtime detection by default. Duration normalization,
+  version-selected uploads, offset-aware search dates, structured and transport-error redaction,
+  all-client policy propagation, preflight resolution, and the read-only config check are closed
+  through `144c38f`; public compatibility docs landed in `59e97b2`. The final compatibility gate
+  passed 465 tests plus Ruff, format, mypy, and import contracts. Live read-only
+  `immich-memories config test` passed with both default `auto` detection and an explicit `v3`
+  override. Key final commits: `33745c6`, `5e46078`, `822a870`, `cecdf7a`, `c6cea3b`, `ee389a0`,
+  `144c38f`, and `59e97b2`.
 - **P0.4–P0.6: still open.** Output codec enforcement, unified version reporting, and required
   browser E2E remain launch blockers and will be handled after the Immich compatibility slice.
 
@@ -213,6 +217,14 @@ immich:
 - V3 structured errors and correlation IDs are preserved in sanitized exceptions/logs.
 - `immich-memories config test` provides a read-only authentication and compatibility check and
   reports the resolved API contract.
+
+Final verification evidence:
+
+- The complete compatibility gate passed 465 tests plus Ruff, format, mypy, and import contracts.
+- Live read-only `immich-memories config test` passed in default `auto` mode and with an explicit
+  `v3` override.
+- Transport failures and diagnostics are redacted through `ee389a0` and `144c38f`.
+- The public v2/v3 contract and mutation-sensitive docs tests landed in `59e97b2` and its follow-up.
 
 Official references:
 
