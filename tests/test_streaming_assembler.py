@@ -93,7 +93,10 @@ def test_streaming_hardware_encoder_failure_retries_same_codec_in_software(tmp_p
 
 def test_streaming_broken_pipe_retries_same_codec_in_software(tmp_path: Path) -> None:
     """Early hardware FFmpeg death during frame writing retries once in software."""
-    from immich_memories.processing.streaming_assembler import assemble_streaming
+    from immich_memories.processing.streaming_assembler import (
+        StreamingEncoderWriteError,
+        assemble_streaming,
+    )
 
     plans: list[EncodingPlan] = []
 
@@ -107,7 +110,7 @@ def test_streaming_broken_pipe_retries_same_codec_in_software(tmp_path: Path) ->
 
         def write_frame(self, _frame: np.ndarray) -> None:
             if self.plan.encoder == "hevc_videotoolbox":
-                raise BrokenPipeError("hardware ffmpeg exited before accepting frames")
+                raise StreamingEncoderWriteError("hardware ffmpeg exited before accepting frames")
 
         def finish(self) -> None:
             pass
@@ -137,6 +140,71 @@ def test_streaming_broken_pipe_retries_same_codec_in_software(tmp_path: Path) ->
     assert [plan.encoder for plan in plans] == ["hevc_videotoolbox", "libx265"]
     assert len(plans) == 2
     assert all(plan.codec is OutputCodec.H265 for plan in plans)
+
+
+def test_streaming_encoder_write_translates_broken_pipe_to_encoder_failure(tmp_path: Path) -> None:
+    """Only the encoder write boundary may classify a broken pipe as retryable."""
+    from immich_memories.processing.streaming_assembler import StreamingEncoder
+
+    class ClosedEncoderStdin:
+        def write(self, _frame: memoryview) -> None:
+            raise BrokenPipeError("hardware ffmpeg exited before accepting frames")
+
+    encoder = StreamingEncoder(
+        tmp_path / "output.mp4", width=16, height=16, fps=1, encoding_plan=_hardware_h265_plan()
+    )
+    encoder._proc = SimpleNamespace(stdin=ClosedEncoderStdin())
+
+    with pytest.raises(RuntimeError) as raised:
+        encoder.write_frame(np.zeros((16, 16, 3), dtype=np.uint8))
+
+    assert isinstance(raised.value.__cause__, BrokenPipeError)
+
+
+def test_streaming_callback_broken_pipe_does_not_retry_software(tmp_path: Path) -> None:
+    """A preview-consumer pipe error must escape without an encoder fallback."""
+    from immich_memories.processing.streaming_assembler import assemble_streaming
+
+    plans: list[EncodingPlan] = []
+
+    class WorkingEncoder:
+        def __init__(self, *_args: object, encoding_plan: EncodingPlan, **_kwargs: object) -> None:
+            plans.append(encoding_plan)
+
+        def start(self) -> None:
+            pass
+
+        def write_frame(self, _frame: np.ndarray) -> None:
+            pass
+
+        def finish(self) -> None:
+            pass
+
+    def disconnected_preview(_jpeg: bytes) -> None:
+        raise BrokenPipeError("preview consumer disconnected")
+
+    clip = SimpleNamespace(duration=1.0, path=tmp_path / "input.mp4")
+    frame = np.zeros((16, 16, 3), dtype=np.uint8)
+    with (
+        patch("immich_memories.processing.streaming_assembler.StreamingEncoder", WorkingEncoder),
+        patch(
+            "immich_memories.processing.streaming_assembler._make_decoder",
+            side_effect=lambda *_args, **_kwargs: iter([frame]),
+        ),
+        pytest.raises(BrokenPipeError, match="preview consumer"),
+    ):
+        assemble_streaming(
+            clips=[clip],
+            transitions=[],
+            output_path=tmp_path / "output.mp4",
+            width=16,
+            height=16,
+            fps=1,
+            encoding_plan=_hardware_h265_plan(),
+            frame_preview_callback=disconnected_preview,
+        )
+
+    assert [plan.encoder for plan in plans] == ["hevc_videotoolbox"]
 
 
 def _has_ffmpeg() -> bool:

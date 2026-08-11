@@ -251,6 +251,10 @@ class FrameDecoder:
             proc.wait(timeout=5)
 
 
+class StreamingEncoderWriteError(RuntimeError):
+    """FFmpeg stopped accepting raw frames from the streaming encoder."""
+
+
 class StreamingEncoder:
     """Encode raw frames to video via FFmpeg stdin pipe."""
 
@@ -342,7 +346,10 @@ class StreamingEncoder:
         assert self._proc is not None and self._proc.stdin is not None  # noqa: S101
         # WHY: ndarray.data is a memoryview — avoids copying ~25 MB per 4K frame
         # that .tobytes() would allocate
-        self._proc.stdin.write(frame.data)
+        try:
+            self._proc.stdin.write(frame.data)
+        except BrokenPipeError as exc:
+            raise StreamingEncoderWriteError("Streaming encoder stopped accepting frames") from exc
 
     def finish(self) -> None:
         """Close stdin pipe and wait for FFmpeg to finish."""
@@ -670,7 +677,7 @@ def assemble_streaming(
             frame_preview_callback,
             audio_work_dir=audio_work_dir,
         )
-    except BrokenPipeError:
+    except StreamingEncoderWriteError:
         with contextlib.suppress(OSError, subprocess.TimeoutExpired, RuntimeError):
             encoder.finish()
         fallback_result = retry_in_software()
