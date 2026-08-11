@@ -29,6 +29,7 @@ def test_preflight_passes_configured_api_version_to_client() -> None:
     config = Config(immich={"url": _TEST_URL, "api_key": _TEST_KEY, "api_version": "v2"})
     client = MagicMock()
     client.__enter__.return_value = client
+    client.get_api_version.return_value = ResolvedApiVersion.V2
     client.get_current_user.return_value = SimpleNamespace(name="Sam", email="sam@example.com")
 
     with patch(
@@ -42,6 +43,39 @@ def test_preflight_passes_configured_api_version_to_client() -> None:
         api_key=_TEST_KEY,
         api_version=ApiVersionPolicy.V2,
     )
+    client.get_api_version.assert_called_once_with()
+    assert result.details == f"Server: {_TEST_URL}; API: v2"
+
+
+def test_auto_preflight_reports_detected_server_major() -> None:
+    config = Config(immich={"url": _TEST_URL, "api_key": _TEST_KEY})
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.get_api_version.return_value = ResolvedApiVersion.V3
+    client.get_current_user.return_value = SimpleNamespace(name="Sam", email="sam@example.com")
+
+    with patch("immich_memories.api.immich.SyncImmichClient", return_value=client):
+        result = check_immich(config)
+
+    assert result.status is CheckStatus.OK
+    assert result.details == f"Server: {_TEST_URL}; API: v3"
+
+
+def test_auto_preflight_rejects_unsupported_server_major() -> None:
+    config = Config(immich={"url": _TEST_URL, "api_key": _TEST_KEY})
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.get_api_version.side_effect = UnsupportedImmichVersion(
+        "Unsupported Immich major version 4"
+    )
+
+    with patch("immich_memories.api.immich.SyncImmichClient", return_value=client):
+        result = check_immich(config)
+
+    assert result.status is CheckStatus.ERROR
+    assert result.message == "Unsupported Immich version"
+    assert result.details == "Unsupported Immich major version 4"
+    client.get_current_user.assert_not_called()
 
 
 def _client_with_version_response(

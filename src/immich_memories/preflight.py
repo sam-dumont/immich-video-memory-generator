@@ -8,6 +8,7 @@ from enum import Enum
 
 import httpx
 
+from immich_memories.api.compatibility import UnsupportedImmichVersion
 from immich_memories.config import Config
 from immich_memories.security import sanitize_error_message
 
@@ -66,13 +67,22 @@ def check_immich(config: Config) -> CheckResult:
             api_key=config.immich.api_key,
             api_version=config.immich.api_version,
         ) as client:
+            resolved_version = client.get_api_version()
             user = client.get_current_user()
             return CheckResult(
                 name="Immich",
                 status=CheckStatus.OK,
                 message=f"Connected as {user.name or user.email}",
-                details=f"Server: {config.immich.url}",
+                details=f"Server: {config.immich.url}; API: {resolved_version.value}",
             )
+    except UnsupportedImmichVersion as e:
+        safe_message = sanitize_error_message(str(e)).replace(config.immich.api_key, "***")
+        return CheckResult(
+            name="Immich",
+            status=CheckStatus.ERROR,
+            message="Unsupported Immich version",
+            details=safe_message,
+        )
     except ImmichAPIError as e:
         safe_message = sanitize_error_message(str(e)).replace(config.immich.api_key, "***")
         diagnostics = [safe_message]
