@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from immich_memories.api.compatibility import ResolvedApiVersion
 from immich_memories.api.immich import (
     ImmichAPIError,
     ImmichAuthError,
@@ -228,6 +229,13 @@ class TestSyncImmichClient:
         assert client.api_key == "test-api-key"
         assert client.timeout == 30.0
         client.close()
+
+    def test_get_api_version_returns_resolved_version(self, _mock_config):
+        client = SyncImmichClient(_TEST_URL, _TEST_KEY, api_version="v2")
+        try:
+            assert client.get_api_version() is ResolvedApiVersion.V2
+        finally:
+            client.close()
 
 
 class TestSearchPagination:

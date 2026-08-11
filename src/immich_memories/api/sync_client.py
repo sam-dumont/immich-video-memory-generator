@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.api.compatibility import ResolvedApiVersion
 from immich_memories.api.models import (
     Asset,
     MetadataSearchResult,
@@ -90,6 +91,10 @@ class SyncImmichClient:
 
     def get_server_info(self) -> ServerInfo:
         return self._run(self._async_client.get_server_info())
+
+    def get_api_version(self) -> ResolvedApiVersion:
+        """Return the API major version selected by the asynchronous client."""
+        return self._run(self._async_client.get_api_version())
 
     def get_current_user(self) -> UserInfo:
         return self._run(self._async_client.get_current_user())

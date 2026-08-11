@@ -15,6 +15,11 @@ from pydantic import ValidationError
 from immich_memories.api.album_service import AlbumService
 from immich_memories.api.all_assets_service import AllAssetsService
 from immich_memories.api.asset_service import AssetService
+from immich_memories.api.compatibility import (
+    ApiVersionPolicy,
+    ResolvedApiVersion,
+    resolve_api_version,
+)
 from immich_memories.api.models import (
     Asset,
     AssetType,
@@ -70,10 +75,17 @@ class ImmichClient:
         base_url: str,
         api_key: str,
         timeout: float = 30.0,
+        api_version: ApiVersionPolicy | str = "auto",
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
+        try:
+            self._api_version_policy = ApiVersionPolicy(api_version)
+        except (TypeError, ValueError) as e:
+            raise ValueError(
+                f"api_version must be one of 'auto', 'v2', or 'v3'; got {api_version!r}"
+            ) from e
 
         if not self.base_url:
             raise ValueError("Immich URL not configured")
@@ -81,6 +93,12 @@ class ImmichClient:
             raise ValueError("Immich API key not configured")
 
         self._client: httpx.AsyncClient | None = None
+        self._resolved_api_version: ResolvedApiVersion | None = (
+            None
+            if self._api_version_policy is ApiVersionPolicy.AUTO
+            else resolve_api_version(self._api_version_policy, None)
+        )
+        self._api_version_lock = asyncio.Lock()
 
         # Wire composed services
         self.search = SearchService(self._request)
@@ -197,9 +215,30 @@ class ImmichClient:
         """Get server version information."""
         data = await self._request("GET", "/server/version")
         try:
-            return ServerInfo(**data)
+            return ServerInfo.model_validate(data)
         except ValidationError as e:
-            raise ImmichAPIError(f"Unexpected API response format: {e}") from e
+            raise ImmichAPIError(
+                "Malformed Immich server version response from /api/server/version: "
+                "expected numeric major, minor, and patch fields"
+            ) from e
+
+    async def get_api_version(self) -> ResolvedApiVersion:
+        """Resolve the Immich API major version used by this client."""
+        if self._resolved_api_version is not None:
+            return self._resolved_api_version
+        async with self._api_version_lock:
+            if self._resolved_api_version is None:
+                server_info = await self.get_server_info()
+                self._resolved_api_version = resolve_api_version(
+                    self._api_version_policy, server_info.major
+                )
+                logger.info(
+                    "Immich API compatibility: server=%s mode=%s resolved=%s",
+                    server_info.version_string,
+                    self._api_version_policy.value,
+                    self._resolved_api_version.value,
+                )
+            return self._resolved_api_version
 
     async def get_current_user(self) -> UserInfo:
         """Get current user information."""

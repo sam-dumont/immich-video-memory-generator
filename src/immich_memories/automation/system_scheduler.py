@@ -150,7 +150,9 @@ def generate_crontab_entry(
     config_path: Path | None = None,
 ) -> str:
     """Generate a single crontab line for daily auto-generation."""
-    command = shlex.join(_auto_command(binary_path, cooldown_hours, config_path))
+    command = shlex.join(_auto_command(binary_path, cooldown_hours, config_path)).replace(
+        "%", r"\%"
+    )
     return f"{schedule_minute} {schedule_hour} * * * {command}"
 
 

@@ -187,6 +187,17 @@ class TestGenerateCrontabEntry:
             "24",
         ]
 
+    def test_custom_config_escapes_cron_percent_before_command_dispatch(self) -> None:
+        """Cron must not turn a percent in the config path into stdin."""
+        entry = generate_crontab_entry(
+            "/bin/im",
+            config_path=Path("/tmp/Config dir/family%archive.yaml"),
+        )
+        command = entry.split(maxsplit=5)[5]
+
+        assert r"family\%archive.yaml" in command
+        assert "family%archive.yaml" not in command
+
 
 class TestInstallScheduler:
     @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="launchd")
