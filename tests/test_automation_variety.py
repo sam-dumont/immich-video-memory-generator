@@ -62,6 +62,23 @@ def test_same_category_cannot_repeat() -> None:
     assert decision.rejected[0].rule == "same_category_as_previous"
 
 
+def test_first_matching_rule_has_stable_precedence() -> None:
+    monthly = _candidate(CandidateCategory.MONTHLY_REVIEW, people=["Alice"])
+    history = [
+        _completed(CandidateCategory.MONTHLY_REVIEW, people=("Alice",)),
+        _completed(
+            CandidateCategory.MONTHLY_REVIEW,
+            people=("Alice",),
+            created_at=datetime(2026, 8, 9, 9, 0),
+            completed_at=datetime(2026, 8, 9, 10, 0),
+        ),
+    ]
+
+    decision = apply_variety_rules([monthly], history, TODAY)
+
+    assert [item.rule for item in decision.rejected] == ["same_category_as_previous"]
+
+
 def test_category_cannot_exceed_two_of_six() -> None:
     categories = [
         CandidateCategory.MONTHLY_REVIEW,

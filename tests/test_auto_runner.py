@@ -144,7 +144,12 @@ class TestSuggestReturnsCandidates:
             CandidateCategory.MONTHLY_REVIEW
         ]
         assert runner.last_variety_decision.rejected == []
-        mock_list_runs.assert_called_once_with(limit=6, status="completed", source="auto")
+        mock_list_runs.assert_called_once_with(
+            limit=6,
+            status="completed",
+            source="auto",
+            order_by_completion=True,
+        )
 
     def test_suggest_preserves_rejections_and_does_not_fallback(self, config: Config) -> None:
         """An all-rejected day stays empty and exposes the stable rule."""
@@ -192,6 +197,95 @@ class TestSuggestReturnsCandidates:
             "same_category_as_previous"
         ]
         assert mock_score.call_args.args[0] == []
+
+    def test_variety_uses_completion_order_for_category_and_people(self, config: Config) -> None:
+        """Later completion wins even when its run started earlier."""
+        from immich_memories.preflight import CheckStatus
+        from immich_memories.tracking.models import RunMetadata
+
+        runner = AutoRunner(config)
+        history = [
+            RunMetadata(
+                run_id="created-last-completed-first",
+                created_at=datetime(2026, 8, 10, 10, 0),
+                completed_at=datetime(2026, 8, 10, 10, 30),
+                status="completed",
+                source="auto",
+                memory_category=CandidateCategory.ON_THIS_DAY.value,
+                memory_people=("Alice",),
+            ),
+            RunMetadata(
+                run_id="middle",
+                created_at=datetime(2026, 8, 10, 9, 30),
+                completed_at=datetime(2026, 8, 10, 11, 0),
+                status="completed",
+                source="auto",
+                memory_category=CandidateCategory.BIRTHDAY.value,
+                memory_people=("Bob",),
+            ),
+            RunMetadata(
+                run_id="created-first-completed-last",
+                created_at=datetime(2026, 8, 10, 9, 0),
+                completed_at=datetime(2026, 8, 10, 12, 0),
+                status="completed",
+                source="auto",
+                memory_category=CandidateCategory.MONTHLY_REVIEW.value,
+                memory_people=("Carol",),
+            ),
+        ]
+        for run in history:
+            runner.db.save_run(run)
+
+        monthly = MemoryCandidate(
+            memory_type="monthly_highlights",
+            category=CandidateCategory.MONTHLY_REVIEW,
+            date_range_start=date(2026, 7, 1),
+            date_range_end=date(2026, 7, 31),
+            person_names=[],
+            memory_key="monthly:completion-order",
+            score=0.7,
+            reason="latest month",
+            asset_count=100,
+        )
+        alice = MemoryCandidate(
+            memory_type="multi_person",
+            category=CandidateCategory.MULTI_PERSON,
+            date_range_start=date(2025, 1, 1),
+            date_range_end=date(2025, 12, 31),
+            person_names=["Alice", "Dani"],
+            memory_key="people:completion-order",
+            score=0.6,
+            reason="pair",
+            asset_count=50,
+        )
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get_time_buckets.return_value = []
+        mock_client.get_all_people.return_value = []
+
+        with (
+            patch(
+                "immich_memories.api.immich.SyncImmichClient",
+                return_value=mock_client,
+            ),
+            patch(
+                "immich_memories.preflight.check_immich",
+                return_value=MagicMock(status=CheckStatus.OK),
+            ),
+            patch("immich_memories.automation.runner.date") as mock_date,
+            patch(
+                "immich_memories.automation.runner._run_all_detectors",
+                return_value=[monthly, alice],
+            ),
+        ):
+            mock_date.today.return_value = date(2026, 8, 11)
+            candidates = runner.suggest(limit=10)
+
+        assert candidates == [alice]
+        assert [item.rule for item in runner.last_variety_decision.rejected] == [
+            "same_category_as_previous"
+        ]
 
 
 class TestSuggestEmptyLibrary:

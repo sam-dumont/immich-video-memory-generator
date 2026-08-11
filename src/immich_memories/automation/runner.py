@@ -294,7 +294,12 @@ class AutoRunner:
         auto_cfg = self.config.automation
         generated_keys = self.db.get_generated_memory_keys()
         last_runs = _build_last_runs_by_type(self.db)
-        recent_auto_runs = self.db.list_runs(limit=6, status="completed", source="auto")
+        recent_auto_runs = self.db.list_runs(
+            limit=6,
+            status="completed",
+            source="auto",
+            order_by_completion=True,
+        )
         today = date.today()
 
         with SyncImmichClient(

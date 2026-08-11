@@ -307,8 +307,13 @@ class RunDatabase:
         person_name: str | None = None,
         status: str | None = None,
         source: str | None = None,
+        order_by_completion: bool = False,
     ) -> list[RunMetadata]:
-        """List runs with optional filtering."""
+        """List runs with optional filtering and explicit completion ordering."""
+        if order_by_completion and status != "completed":
+            msg = "order_by_completion requires status='completed'"
+            raise ValueError(msg)
+
         with self._get_connection() as conn:
             query = "SELECT * FROM pipeline_runs WHERE 1=1"
             params: list = []
@@ -325,7 +330,14 @@ class RunDatabase:
                 query += " AND source = ?"
                 params.append(source)
 
-            query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+            if order_by_completion:
+                query += (
+                    " ORDER BY COALESCE(completed_at, created_at) DESC,"
+                    " created_at DESC, run_id DESC"
+                )
+            else:
+                query += " ORDER BY created_at DESC"
+            query += " LIMIT ? OFFSET ?"
             params.extend([limit, offset])
 
             rows = conn.execute(query, params).fetchall()

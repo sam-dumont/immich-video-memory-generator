@@ -209,6 +209,52 @@ def test_list_runs_treats_empty_source_as_a_concrete_filter(db: RunDatabase) -> 
     assert [run.run_id for run in runs] == ["empty"]
 
 
+def test_list_runs_can_order_completed_rows_by_completion_time(db: RunDatabase) -> None:
+    """Automation recency follows completion, with legacy rows falling back to creation."""
+    completed_first = _make_completed_run(
+        "created-last-completed-first",
+        datetime(2026, 8, 10, 10, 0),
+    )
+    completed_first.completed_at = datetime(2026, 8, 10, 10, 30)
+    legacy = _make_completed_run("legacy-null-completion", datetime(2026, 8, 10, 11, 30))
+    legacy.completed_at = None
+    completed_last = _make_completed_run(
+        "created-first-completed-last",
+        datetime(2026, 8, 10, 9, 0),
+    )
+    completed_last.completed_at = datetime(2026, 8, 10, 12, 0)
+    for run in (completed_first, legacy, completed_last):
+        db.save_run(run)
+
+    runs = db.list_runs(
+        status="completed",
+        source="auto",
+        order_by_completion=True,
+    )
+
+    assert [run.run_id for run in runs] == [
+        "created-first-completed-last",
+        "legacy-null-completion",
+        "created-last-completed-first",
+    ]
+
+
+def test_completion_order_has_deterministic_tie_breakers(db: RunDatabase) -> None:
+    """Equal completion and creation timestamps fall back to descending run ID."""
+    created_at = datetime(2026, 8, 10, 9, 0)
+    for run_id in ("tie-a", "tie-z"):
+        run = _make_completed_run(run_id, created_at)
+        db.save_run(run)
+
+    runs = db.list_runs(
+        status="completed",
+        source="auto",
+        order_by_completion=True,
+    )
+
+    assert [run.run_id for run in runs] == ["tie-z", "tie-a"]
+
+
 def test_completed_identity_filters_source_and_time(db: RunDatabase) -> None:
     """Exact run lookup rejects wrong-source and pre-attempt completions."""
     started_after = datetime(2026, 7, 2, 9, 0)
