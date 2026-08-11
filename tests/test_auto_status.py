@@ -13,7 +13,12 @@ from click.testing import CliRunner
 
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 from immich_memories.automation.models import AutoOutcome
-from immich_memories.automation.runner import AutoRunner, SuggestOutcome, SuggestStatus
+from immich_memories.automation.runner import (
+    AutoRunner,
+    ImmichDiscoveryError,
+    SuggestOutcome,
+    SuggestStatus,
+)
 from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.automation.system_scheduler import SchedulerStatus
 from immich_memories.automation.variety import RejectedCandidate, VarietyDecision
@@ -388,9 +393,58 @@ def test_direct_suggest_still_raises_post_preflight_discovery_errors(tmp_path: P
             return_value=MagicMock(status=CheckStatus.OK),
         ),
         patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
-        pytest.raises(RuntimeError, match="metadata failed"),
+        pytest.raises(ImmichDiscoveryError, match="metadata failed"),
     ):
         AutoRunner(config).suggest(limit=1)
+
+
+def test_status_does_not_hide_generated_key_database_failures(tmp_path: Path) -> None:
+    """Durable-state faults remain fatal instead of impersonating an offline Immich."""
+    from immich_memories.preflight import CheckStatus
+
+    runner = AutoRunner(_config(tmp_path))
+    with (
+        patch(
+            "immich_memories.preflight.check_immich",
+            return_value=MagicMock(status=CheckStatus.OK),
+        ),
+        patch.object(
+            runner.db,
+            "get_generated_memory_keys",
+            side_effect=RuntimeError("generated-key database read failed"),
+        ),
+        patch("immich_memories.api.immich.SyncImmichClient") as client,
+        pytest.raises(RuntimeError, match="generated-key database read failed"),
+    ):
+        runner.status(refresh_suggestion=True)
+
+    client.assert_not_called()
+
+
+def test_status_does_not_hide_detector_programming_failures(tmp_path: Path) -> None:
+    """Local candidate logic remains strict after a healthy library snapshot."""
+    from immich_memories.preflight import CheckStatus
+
+    runner = AutoRunner(_config(tmp_path))
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.get_time_buckets.return_value = []
+    client.get_all_people.return_value = []
+
+    with (
+        patch(
+            "immich_memories.preflight.check_immich",
+            return_value=MagicMock(status=CheckStatus.OK),
+        ),
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        patch(
+            "immich_memories.automation.runner._run_all_detectors",
+            side_effect=RuntimeError("detector invariant failed"),
+        ),
+        pytest.raises(RuntimeError, match="detector invariant failed"),
+    ):
+        runner.status(refresh_suggestion=True)
 
 
 def test_cooldown_uses_auto_completion_time_not_start_time(tmp_path: Path) -> None:

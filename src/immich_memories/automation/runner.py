@@ -34,6 +34,10 @@ _GENERATION_TIMEOUT_REASON = "generation timed out after 2 hours"
 _OUTPUT_TAIL_LENGTH = 2000
 
 
+class ImmichDiscoveryError(RuntimeError):
+    """A live Immich library snapshot could not be collected."""
+
+
 class SuggestOutcome(StrEnum):
     """Status of the most recent candidate discovery call."""
 
@@ -411,7 +415,7 @@ class AutoRunner:
         if refresh_suggestion:
             try:
                 self.suggest(limit=1)
-            except Exception as exc:
+            except ImmichDiscoveryError as exc:
                 # Status is a diagnostic surface: a live Immich discovery failure must
                 # not hide the durable attempt/run history that explains automation.
                 error = _safe_tail(exc, self._secrets()) or "candidate discovery failed"
@@ -553,35 +557,39 @@ class AutoRunner:
         )
         today = date.today()
 
-        with SyncImmichClient(
-            base_url=self.config.immich.url,
-            api_key=self.config.immich.api_key,
-        ) as client:
-            buckets = client.get_time_buckets()
-            assets_by_month = _time_buckets_to_month_counts(buckets)
-            people = client.get_all_people() if auto_cfg.detect_person_spotlight else []
+        try:
+            with SyncImmichClient(
+                base_url=self.config.immich.url,
+                api_key=self.config.immich.api_key,
+            ) as client:
+                buckets = client.get_time_buckets()
+                people = client.get_all_people() if auto_cfg.detect_person_spotlight else []
 
-            # Fetch per-person asset counts (top 10 named people only)
-            person_asset_counts: dict[str, int] = {}
-            if auto_cfg.detect_person_spotlight and people:
-                named = [p for p in people if p.name and p.thumbnail_path][:10]
-                for p in named:
-                    person_asset_counts[p.id] = client.get_person_asset_count(p.id)
+                # Fetch per-person asset counts (top 10 named people only)
+                person_asset_counts: dict[str, int] = {}
+                if auto_cfg.detect_person_spotlight and people:
+                    named = [p for p in people if p.name and p.thumbnail_path][:10]
+                    for p in named:
+                        person_asset_counts[p.id] = client.get_person_asset_count(p.id)
 
-            # Fetch GPS assets for trip detection (past year only)
-            gps_assets = None
-            if auto_cfg.detect_trips:
-                trips_cfg = self.config.trips
-                if not (trips_cfg.homebase_latitude == trips_cfg.homebase_longitude == 0.0):
-                    from immich_memories.api.all_assets_service import AllAssetsService
-                    from immich_memories.timeperiod import DateRange
+                # Fetch GPS assets for trip detection (past year only)
+                gps_assets = None
+                if auto_cfg.detect_trips:
+                    trips_cfg = self.config.trips
+                    if not (trips_cfg.homebase_latitude == trips_cfg.homebase_longitude == 0.0):
+                        from immich_memories.api.all_assets_service import AllAssetsService
+                        from immich_memories.timeperiod import DateRange
 
-                    year_start = datetime(today.year - 1, 1, 1)
-                    year_end = datetime(today.year - 1, 12, 31, 23, 59, 59)
-                    dr = DateRange(start=year_start, end=year_end)
-                    asset_service = AllAssetsService(client._async_client.search)
-                    gps_assets = client._run(asset_service.get_assets_for_date_range(dr))
-                    logger.info("Fetched %d assets for trip detection", len(gps_assets))
+                        year_start = datetime(today.year - 1, 1, 1)
+                        year_end = datetime(today.year - 1, 12, 31, 23, 59, 59)
+                        dr = DateRange(start=year_start, end=year_end)
+                        asset_service = AllAssetsService(client._async_client.search)
+                        gps_assets = client._run(asset_service.get_assets_for_date_range(dr))
+                        logger.info("Fetched %d assets for trip detection", len(gps_assets))
+        except Exception as exc:
+            raise ImmichDiscoveryError(str(exc)) from exc
+
+        assets_by_month = _time_buckets_to_month_counts(buckets)
 
         all_candidates = _run_all_detectors(
             auto_cfg,
