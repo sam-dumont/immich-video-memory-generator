@@ -700,7 +700,7 @@ class TestRunOneNoCandidates:
         assert result.outcome is AutoOutcome.SKIPPED
         assert result.reason == "no eligible candidates"
         assert result.recent_categories == (CandidateCategory.MONTHLY_REVIEW.value,)
-        assert len(result.rejections) == 20
+        assert len(result.rejections) == len(rejected_candidates)
         assert [(item.category, item.memory_key, item.rule) for item in result.rejections][:1] == [
             (
                 CandidateCategory.MONTHLY_REVIEW.value,
@@ -708,6 +708,7 @@ class TestRunOneNoCandidates:
                 "same_category_as_previous",
             )
         ]
+        assert result.rejections[-1].memory_key == rejected_candidates[-1].memory_key
         execute.assert_not_called()
         assert len(runner.db.list_runs()) == 1
 

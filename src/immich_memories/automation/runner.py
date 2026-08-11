@@ -34,7 +34,6 @@ logger = logging.getLogger(__name__)
 _GENERATION_TIMEOUT_SECONDS = 7200
 _GENERATION_TIMEOUT_REASON = "generation timed out after 2 hours"
 _OUTPUT_TAIL_LENGTH = 2000
-_MAX_REPORTED_REJECTIONS = 20
 
 
 class ImmichDiscoveryError(RuntimeError):
@@ -568,7 +567,7 @@ class AutoRunner:
                     memory_key=item.candidate.memory_key,
                     rule=item.rule,
                 )
-                for item in self.last_variety_decision.rejected[:_MAX_REPORTED_REJECTIONS]
+                for item in self.last_variety_decision.rejected
             ),
         )
 
