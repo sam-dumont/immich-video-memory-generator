@@ -24,7 +24,7 @@ from immich_memories.automation.variety import VarietyDecision, apply_variety_ru
 from immich_memories.config_loader import Config
 from immich_memories.config_models import AutomationConfig
 from immich_memories.security import sanitize_error_message
-from immich_memories.timeperiod import birthday_year
+from immich_memories.timeperiod import DateRange, birthday_year
 from immich_memories.tracking.models import RunMetadata
 from immich_memories.tracking.run_database import RunDatabase
 
@@ -178,6 +178,20 @@ def _time_buckets_to_month_counts(
         except (ValueError, AttributeError):
             continue
     return result
+
+
+def _trailing_year_range(today: date) -> DateRange:
+    """Return one inclusive calendar-year lookback ending on ``today``."""
+    try:
+        start_day = today.replace(year=today.year - 1)
+    except ValueError:
+        # February 29 has no same-day counterpart in a non-leap year.
+        start_day = today.replace(year=today.year - 1, day=28)
+
+    return DateRange(
+        start=datetime.combine(start_day, datetime.min.time()),
+        end=datetime.combine(today, datetime.max.time()),
+    )
 
 
 def _build_last_runs_by_type(db: RunDatabase) -> dict[str, date]:
@@ -664,11 +678,8 @@ class AutoRunner:
                     trips_cfg = self.config.trips
                     if not (trips_cfg.homebase_latitude == trips_cfg.homebase_longitude == 0.0):
                         from immich_memories.api.all_assets_service import AllAssetsService
-                        from immich_memories.timeperiod import DateRange
 
-                        year_start = datetime(today.year - 1, 1, 1)
-                        year_end = datetime(today.year - 1, 12, 31, 23, 59, 59)
-                        dr = DateRange(start=year_start, end=year_end)
+                        dr = _trailing_year_range(today)
                         asset_service = AllAssetsService(client._async_client.search)
                         gps_assets = client._run(asset_service.get_assets_for_date_range(dr))
                         logger.info("Fetched %d assets for trip detection", len(gps_assets))

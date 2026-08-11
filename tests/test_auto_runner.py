@@ -21,6 +21,7 @@ from immich_memories.automation.runner import (
     _build_generate_command,
     _build_last_runs_by_type,
     _execute_generate,
+    _trailing_year_range,
 )
 from immich_memories.cli.auto_cmd import _candidates_to_json, _print_candidates_table
 from immich_memories.config_loader import Config
@@ -94,6 +95,72 @@ def _save_completed_run(
 
 
 class TestSuggestReturnsCandidates:
+    def test_trailing_year_range_handles_leap_day(self) -> None:
+        requested = _trailing_year_range(date(2024, 2, 29))
+
+        assert requested.start == datetime(2023, 2, 28)
+        assert requested.end == datetime(2024, 2, 29, 23, 59, 59, 999999)
+
+    def test_trip_discovery_uses_trailing_year_and_keeps_new_year_trip(
+        self, config: Config
+    ) -> None:
+        """Current-year and New-Year-crossing trips must reach production detection."""
+        from immich_memories.analysis.trip_detection import DetectedTrip
+        from immich_memories.preflight import CheckStatus
+
+        config.trips.homebase_latitude = 50.85
+        config.trips.homebase_longitude = 4.35
+        config.automation.detect_monthly = False
+        config.automation.detect_yearly = False
+        config.automation.detect_person_spotlight = False
+        config.automation.detect_activity_burst = False
+        today = date(2026, 1, 20)
+        gps_assets = [MagicMock(id="new-year-photo")]
+        trip = DetectedTrip(
+            start_date=date(2025, 12, 29),
+            end_date=date(2026, 1, 4),
+            location_name="New Year away",
+            asset_count=80,
+            centroid_lat=48.85,
+            centroid_lon=2.35,
+        )
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.get_time_buckets.return_value = []
+        asset_service = MagicMock()
+        query = object()
+        asset_service.get_assets_for_date_range.return_value = query
+        client._run.return_value = gps_assets
+
+        with (
+            patch(
+                "immich_memories.preflight.check_immich",
+                return_value=MagicMock(status=CheckStatus.OK),
+            ),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+            patch(
+                "immich_memories.api.all_assets_service.AllAssetsService",
+                return_value=asset_service,
+            ),
+            patch(
+                "immich_memories.analysis.trip_detection.detect_trips",
+                return_value=[trip],
+            ),
+            patch("immich_memories.automation.runner.date") as clock,
+        ):
+            clock.today.return_value = today
+            clock.side_effect = date
+            candidates = AutoRunner(config).suggest(limit=10)
+
+        requested = asset_service.get_assets_for_date_range.call_args.args[0]
+        assert requested.start == datetime(2025, 1, 20)
+        assert requested.end == datetime(2026, 1, 20, 23, 59, 59, 999999)
+        client._run.assert_called_once_with(query)
+        assert [
+            (candidate.date_range_start, candidate.date_range_end) for candidate in candidates
+        ] == [(date(2025, 12, 29), date(2026, 1, 4))]
+
     def test_same_type_scoring_cooldown_uses_only_auto_completions(
         self, config: Config, candidate: MemoryCandidate
     ) -> None:
