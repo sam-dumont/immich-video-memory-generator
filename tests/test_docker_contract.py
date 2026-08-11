@@ -5,10 +5,14 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
+import tomllib
 from pathlib import Path
 
 import pytest
 import yaml
+from packaging.markers import default_environment
+from packaging.requirements import Requirement
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -35,6 +39,23 @@ def _dry_run_make(target: str, *assignments: str, env: dict[str, str] | None = N
     return _logical_instructions(result.stdout)
 
 
+def _resolve_install_target(extra: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, REPO_ROOT / "docker" / "validate_install_extras.py", extra],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _marker_environment(sys_platform: str, platform_machine: str) -> dict[str, str]:
+    environment = {key: str(value) for key, value in default_environment().items()}
+    environment["sys_platform"] = sys_platform
+    environment["platform_machine"] = platform_machine
+    return environment
+
+
 def test_docker_build_requires_an_explicit_application_version() -> None:
     """A missing release version must stop the image build, not invent one."""
     dockerfile = _dockerfile()
@@ -50,12 +71,66 @@ def test_docker_build_installs_exactly_the_requested_feature_set() -> None:
     dockerfile = _logical_instructions(_dockerfile())
 
     assert re.search(r"(?m)^ARG INSTALL_EXTRAS=all\s*$", dockerfile)
-    assert (
-        'if [ "${INSTALL_EXTRAS}" = "none" ]; then '
-        "pip wheel --no-cache-dir --wheel-dir=/wheels .; else" in dockerfile
-    )
-    assert 'pip wheel --no-cache-dir --wheel-dir=/wheels ".[${INSTALL_EXTRAS}]"' in dockerfile
+    validator = 'python docker/validate_install_extras.py "${INSTALL_EXTRAS}"'
+    wheel_build = 'pip wheel --no-cache-dir --wheel-dir=/wheels "${INSTALL_TARGET}"'
+    assert validator in dockerfile
+    assert wheel_build in dockerfile
+    assert dockerfile.index(validator) < dockerfile.index(wheel_build)
     assert not re.search(r"pip wheel[^\n]*\|\|", dockerfile)
+
+
+@pytest.mark.parametrize("extra", ["", "definitely-not-a-real-extra"])
+def test_install_extra_validator_rejects_blank_and_unknown_names(extra: str) -> None:
+    """A typo must stop before pip can turn it into a successful base install."""
+    result = _resolve_install_target(extra)
+
+    assert result.returncode != 0
+    assert f"Invalid INSTALL_EXTRAS={extra!r}" in result.stderr
+    assert "Use 'none' or one of:" in result.stderr
+    assert "all" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("extra", "expected"),
+    [("none", "."), ("auth", ".[auth]"), ("all", ".[all]")],
+)
+def test_install_extra_validator_resolves_declared_feature_sets(extra: str, expected: str) -> None:
+    """The explicit base selector and declared extras must map to exact wheel targets."""
+    result = _resolve_install_target(extra)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == expected
+
+
+def test_gpu_extra_excludes_taichi_only_on_linux_arm64() -> None:
+    """The all image must keep GPU support except where Taichi publishes no wheel."""
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    extras = pyproject["project"]["optional-dependencies"]
+    gpu_requirements = [Requirement(value) for value in extras["gpu"]]
+    taichi = next(requirement for requirement in gpu_requirements if requirement.name == "taichi")
+    freetype = next(
+        requirement for requirement in gpu_requirements if requirement.name == "freetype-py"
+    )
+
+    assert taichi.marker is not None
+    for machine in ("aarch64", "arm64"):
+        environment = _marker_environment("linux", machine)
+        assert not taichi.marker.evaluate(environment)
+
+    for platform, machine in (("linux", "x86_64"), ("darwin", "arm64"), ("win32", "AMD64")):
+        environment = _marker_environment(platform, machine)
+        assert taichi.marker.evaluate(environment)
+
+    assert freetype.marker is None
+    assert "immich-memories[gpu]" in extras["all"]
+
+
+def test_builder_provides_native_opus_for_arm64_source_wheels() -> None:
+    """ARM64 audio wheels must link system Opus instead of an obsolete bundled build."""
+    builder_stage = _logical_instructions(_dockerfile()).split("# Stage 2:", maxsplit=1)[0]
+
+    assert "libopus-dev" in builder_stage
+    assert "pkg-config" in builder_stage
 
 
 def test_runtime_image_exposes_standard_oci_build_identity() -> None:

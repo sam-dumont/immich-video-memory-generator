@@ -1745,7 +1745,7 @@ all = [
     { name = "freetype-py", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "mutagen", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "panns-inference", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
-    { name = "taichi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "taichi", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and sys_platform == 'linux') or sys_platform == 'darwin' or sys_platform == 'win32'" },
     { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 all-mac = [
@@ -1759,7 +1759,7 @@ all-mac = [
     { name = "pyobjc-framework-metal", marker = "sys_platform == 'darwin'" },
     { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'" },
     { name = "pyobjc-framework-vision", marker = "sys_platform == 'darwin'" },
-    { name = "taichi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "taichi", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and sys_platform == 'linux') or sys_platform == 'darwin' or sys_platform == 'win32'" },
     { name = "torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 audio = [
@@ -1804,7 +1804,7 @@ face = [
 ]
 gpu = [
     { name = "freetype-py", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
-    { name = "taichi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "taichi", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and sys_platform == 'linux') or sys_platform == 'darwin' or sys_platform == 'win32'" },
 ]
 mac = [
     { name = "pyobjc-core", marker = "sys_platform == 'darwin'" },
@@ -1880,9 +1880,9 @@ requires-dist = [
     { name = "scenedetect", extras = ["opencv"], specifier = ">=0.6" },
     { name = "soundfile", marker = "extra == 'dev'", specifier = ">=0.12" },
     { name = "staticmap", specifier = ">=0.5" },
-    { name = "taichi", marker = "extra == 'all'", specifier = ">=1.7.0" },
-    { name = "taichi", marker = "extra == 'all-mac'", specifier = ">=1.7.0" },
-    { name = "taichi", marker = "extra == 'gpu'", specifier = ">=1.7.0" },
+    { name = "taichi", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'all') or (sys_platform != 'linux' and extra == 'all')", specifier = ">=1.7.0" },
+    { name = "taichi", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'all-mac') or (sys_platform != 'linux' and extra == 'all-mac')", specifier = ">=1.7.0" },
+    { name = "taichi", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'gpu') or (sys_platform != 'linux' and extra == 'gpu')", specifier = ">=1.7.0" },
     { name = "torch", marker = "extra == 'all'", specifier = ">=2.0" },
     { name = "torch", marker = "extra == 'all-mac'", specifier = ">=2.0" },
     { name = "torch", marker = "extra == 'audio-ml'", specifier = ">=2.0" },

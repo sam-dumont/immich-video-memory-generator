@@ -12,11 +12,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
     git \
+    libopus-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
+COPY docker/validate_install_extras.py ./docker/validate_install_extras.py
 
 # hatch-vcs needs git history to detect version, which isn't available in Docker.
 # The caller must provide the release identity explicitly.
@@ -25,11 +28,8 @@ ARG INSTALL_EXTRAS=all
 RUN if [ -z "${APP_VERSION}" ]; then echo "APP_VERSION build argument is required" >&2; exit 1; fi
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
 
-RUN if [ "${INSTALL_EXTRAS}" = "none" ]; then \
-        pip wheel --no-cache-dir --wheel-dir=/wheels .; \
-    else \
-        pip wheel --no-cache-dir --wheel-dir=/wheels ".[${INSTALL_EXTRAS}]"; \
-    fi
+RUN INSTALL_TARGET="$(python docker/validate_install_extras.py "${INSTALL_EXTRAS}")" && \
+    pip wheel --no-cache-dir --wheel-dir=/wheels "${INSTALL_TARGET}"
 
 
 # Stage 2: Runtime image
