@@ -186,9 +186,15 @@ class TestVideoEncodingPlan:
         assert "color_trc=arib-std-b67" in video_filter
 
     def test_pq_plan_uses_smpte2084_not_hlg(self):
+        from unittest.mock import patch
+
         from immich_memories.titles.video_encoding import _get_best_encoder
 
-        encoder_args, video_filter = _get_best_encoder(_software_h265_pq_plan())
+        with patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            return_value=True,
+        ):
+            encoder_args, video_filter = _get_best_encoder(_software_h265_pq_plan())
 
         assert "smpte2084" in video_filter
         assert "arib-std-b67" not in video_filter
@@ -206,11 +212,17 @@ class TestGlobeVideoPlan:
     """Globe commands preserve the configured codec contract."""
 
     def test_hdr_true_includes_hlg_metadata(self):
+        from unittest.mock import patch
+
         from immich_memories.titles.globe_video import _build_ffmpeg_command
 
-        cmd = _build_ffmpeg_command(
-            1920, 1080, 30.0, 5.0, Path("/tmp/g.mp4"), _hardware_h265_hdr_plan()
-        )
+        with patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            return_value=True,
+        ):
+            cmd = _build_ffmpeg_command(
+                1920, 1080, 30.0, 5.0, Path("/tmp/g.mp4"), _hardware_h265_hdr_plan()
+            )
         cmd_str = " ".join(cmd)
         assert "arib-std-b67" in cmd_str
         assert "bt2020" in cmd_str
