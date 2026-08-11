@@ -47,6 +47,7 @@ from immich_memories.generate_settings import (
     _upload_to_immich,
 )
 from immich_memories.processing.clip_validation import validate_clips
+from immich_memories.processing.output_contract import publish_validated_output
 from immich_memories.security import sanitize_error_message
 
 if TYPE_CHECKING:
@@ -381,12 +382,17 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
 
         settings = _build_assembly_settings(params, assembly_clips)
         assembler = _create_assembler(settings, params.config)
-        result_path = assembler.assemble_with_titles(
+        staged_output_path = result_output_path.with_name(
+            f"{result_output_path.stem}.assembling{result_output_path.suffix}"
+        )
+        staged_result_path = assembler.assemble_with_titles(
             assembly_clips,
-            result_output_path,
+            staged_output_path,
             assembly_cb,
             frame_preview_callback=params.frame_preview_callback,
         )
+        publish_validated_output(staged_result_path, result_output_path, settings.encoding_plan)
+        result_path = result_output_path
         run_tracker.complete_phase(items_processed=len(assembly_clips))
         _phase_times["assembly"] = _time.monotonic() - _t
 

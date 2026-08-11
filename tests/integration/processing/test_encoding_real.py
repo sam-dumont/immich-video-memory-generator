@@ -5,6 +5,7 @@ Run with: make test-integration-processing
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -145,3 +146,85 @@ class TestResolveEncodeResolution:
         )
         # settings.target_resolution takes priority over default_resolution
         assert encoder.resolve_encode_resolution(None) == (1280, 720)
+
+
+# ---------------------------------------------------------------------------
+# Final artifact validation and publication
+# ---------------------------------------------------------------------------
+
+
+def _write_tiny_sdr_video(output_path: Path, codec_args: list[str]) -> None:
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:size=160x90:rate=10:duration=0.3",
+            "-vf",
+            "setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709",
+            *codec_args,
+            "-an",
+            str(output_path),
+        ],
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+
+class TestValidatedOutputPublication:
+    def test_real_h264_output_is_probed_and_atomically_published(self, tmp_path: Path):
+        from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+        from immich_memories.processing.output_contract import publish_validated_output
+
+        staged = tmp_path / "memory.assembling.mp4"
+        final = tmp_path / "memory.mp4"
+        _write_tiny_sdr_video(
+            staged,
+            ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"],
+        )
+        plan = EncodingPlan(
+            codec=OutputCodec.H264,
+            encoder="libx264",
+            encoder_args=("-c:v", "libx264"),
+            target_transfer=HdrTransfer.NONE,
+            tone_map_to_sdr=False,
+            pixel_format="yuv420p",
+            container="mp4",
+        )
+
+        probe = publish_validated_output(staged, final, plan)
+
+        assert final.exists()
+        assert not staged.exists()
+        assert probe.codec == "h264"
+        assert (probe.width, probe.height) == (160, 90)
+        assert probe.duration_seconds > 0
+
+    def test_real_prores_output_uses_the_ffprobe_codec_name(self, tmp_path: Path):
+        from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+        from immich_memories.processing.output_contract import publish_validated_output
+
+        staged = tmp_path / "memory.assembling.mov"
+        final = tmp_path / "memory.mov"
+        _write_tiny_sdr_video(
+            staged,
+            ["-c:v", "prores_ks", "-profile:v", "1", "-pix_fmt", "yuv422p10le"],
+        )
+        plan = EncodingPlan(
+            codec=OutputCodec.PRORES,
+            encoder="prores_ks",
+            encoder_args=("-c:v", "prores_ks"),
+            target_transfer=HdrTransfer.NONE,
+            tone_map_to_sdr=False,
+            pixel_format="yuv422p10le",
+            container="mov",
+        )
+
+        probe = publish_validated_output(staged, final, plan)
+
+        assert final.exists()
+        assert probe.codec == "prores"
+        assert probe.container == "mov"

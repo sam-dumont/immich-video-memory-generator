@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
 from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -102,6 +104,104 @@ class TestGenerationError:
     def test_is_exception(self):
         with pytest.raises(GenerationError, match="test error"):
             raise GenerationError("test error")
+
+
+def test_generation_assembles_to_a_staged_sibling_before_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The orchestrator must never let the assembler write the published filename directly."""
+    from immich_memories import generate as generate_module
+    from immich_memories.generate import generate_memory
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.assembly_config import AssemblyClip, AssemblySettings
+    from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source-video")
+    assembly_clip = AssemblyClip(path=source, duration=5.0, asset_id="clip-1")
+    config = Config(
+        cache={
+            "directory": str(tmp_path / "cache"),
+            "database": str(tmp_path / "runs.db"),
+        }
+    )
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=tmp_path / "memory.mp4",
+        config=config,
+        no_music=True,
+    )
+    assembled_paths: list[Path] = []
+    encoding_plan = EncodingPlan(
+        codec=OutputCodec.H264,
+        encoder="libx264",
+        encoder_args=("-c:v", "libx264"),
+        target_transfer=HdrTransfer.NONE,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p",
+        container="mp4",
+    )
+
+    class Assembler:
+        def assemble_with_titles(
+            self,
+            _clips,
+            output_path: Path,
+            _progress_callback,
+            **_kwargs,
+        ) -> Path:
+            assembled_paths.append(output_path)
+            output_path.write_bytes(b"assembled-video")
+            return output_path
+
+    probe_payload = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": "h264",
+                "pix_fmt": "yuv420p",
+                "color_transfer": "bt709",
+                "color_primaries": "bt709",
+                "width": 1920,
+                "height": 1080,
+            }
+        ],
+        "format": {
+            "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+            "duration": "12.0",
+            "size": "4096",
+            "tags": {"major_brand": "isom"},
+        },
+    }
+
+    def run_probe(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 0, json.dumps(probe_payload), "")
+
+    monkeypatch.setattr(output_contract.subprocess, "run", run_probe)
+    tracker = MagicMock()
+    video_cache = MagicMock()
+    with (
+        patch("immich_memories.tracking.RunTracker", return_value=tracker),
+        patch(
+            "immich_memories.cache.video_cache.VideoDownloadCache",
+            return_value=video_cache,
+        ),
+        patch.object(generate_module, "_extract_clips", return_value=[assembly_clip]),
+        patch.object(
+            generate_module,
+            "_build_assembly_settings",
+            return_value=AssemblySettings(encoding_plan=encoding_plan),
+        ),
+        patch.object(generate_module, "_create_assembler", return_value=Assembler()),
+        patch.object(generate_module, "_run_music_phase"),
+        patch.object(generate_module, "_cleanup_temp_clips"),
+    ):
+        result = generate_memory(params)
+
+    assert assembled_paths[0].name == "memory.assembling.mp4"
+    assert result.name == "memory.mp4"
+    assert result.read_bytes() == b"assembled-video"
+    assert not assembled_paths[0].exists()
 
 
 class TestBuildAssemblySettings:
