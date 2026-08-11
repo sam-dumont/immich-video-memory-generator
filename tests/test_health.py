@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import immich_memories
 from immich_memories.config_loader import Config
 
 
@@ -29,10 +31,10 @@ class TestHealthEndpoint:
         ):
             response = await _health_handler(mock_request)
 
-        data = response.body.decode()
+        data = json.loads(response.body)
         assert "status" in data
         assert "immich_reachable" in data
-        assert "version" in data
+        assert data["version"] == immich_memories.__version__
 
     @pytest.mark.asyncio
     async def test_check_immich_reachable_returns_true_on_200(self):

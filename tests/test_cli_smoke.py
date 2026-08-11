@@ -7,16 +7,16 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from click.testing import CliRunner
+from click.testing import CliRunner, Result
 
-from immich_memories import __version__
+import immich_memories
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 from immich_memories.automation.models import AutoOutcome, AutoRejection, AutoRunResult
 from immich_memories.cli import main
 from immich_memories.config_loader import Config
 
 
-def _invoke(args: list[str], config: Config | None = None) -> object:
+def _invoke(args: list[str], config: Config | None = None) -> Result:
     """Invoke the CLI with mocked config and init_config_dir."""
     config = config or Config()
     runner = CliRunner()
@@ -54,7 +54,7 @@ class TestCLIHelp:
         """--version shows the version string."""
         result = _invoke(["--version"])
         assert result.exit_code == 0
-        assert __version__ in result.output
+        assert immich_memories.__version__ in result.output
 
     def test_generate_help(self):
         """generate --help lists expected flags."""

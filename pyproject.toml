@@ -169,8 +169,6 @@ include = [
 
 # Semantic Release Configuration
 [tool.semantic_release]
-version_toml = ["pyproject.toml:tool.semantic_release.version"]
-version = "0.2.0"
 tag_format = "v{version}"
 branch = "main"
 build_command = "uv build"
