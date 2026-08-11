@@ -77,6 +77,7 @@ def register_config_commands(main: click.Group) -> None:
                     with SyncImmichClient(
                         base_url=new_url,
                         api_key=new_api_key,
+                        api_version=cfg.immich.api_version,
                     ) as client:
                         user = client.get_current_user()
                         print_success(f"Connected! Logged in as: {user.name or user.email}")
@@ -98,6 +99,7 @@ def register_config_commands(main: click.Group) -> None:
         with SyncImmichClient(
             base_url=cfg.immich.url,
             api_key=cfg.immich.api_key,
+            api_version=cfg.immich.api_version,
         ) as client:
             people_list = client.get_all_people()
 
@@ -127,6 +129,7 @@ def register_config_commands(main: click.Group) -> None:
         with SyncImmichClient(
             base_url=cfg.immich.url,
             api_key=cfg.immich.api_key,
+            api_version=cfg.immich.api_version,
         ) as client:
             years_list = client.get_available_years()
 

@@ -148,7 +148,11 @@ def _download_immich_preview(asset_id: str, *, config=None) -> Path | None:
     try:
         from immich_memories.api.immich import SyncImmichClient
 
-        client = SyncImmichClient(state.immich_url, state.immich_api_key)
+        client = SyncImmichClient(
+            base_url=state.immich_url,
+            api_key=state.immich_api_key,
+            api_version=state.immich_api_version,
+        )
         video_bytes: bytes = client.get_video_playback(asset_id)
         if video_bytes and len(video_bytes) > 10_000:
             preview_path.write_bytes(video_bytes)

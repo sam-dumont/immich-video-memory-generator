@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from immich_memories.api.compatibility import ApiVersionPolicy
+
 if TYPE_CHECKING:
     from immich_memories.api.models import Person, VideoClipInfo
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
@@ -31,6 +33,7 @@ class AppState:
     config_saved: bool = False
     immich_url: str = ""
     immich_api_key: str = ""
+    immich_api_version: ApiVersionPolicy = ApiVersionPolicy.AUTO
 
     # Time period selection
     time_period_mode: str = "year"  # "year", "period", or "custom"
@@ -211,5 +214,6 @@ def ensure_config(state: AppState) -> None:
         state.config = config
         state.immich_url = config.immich.url
         state.immich_api_key = config.immich.api_key
+        state.immich_api_version = config.immich.api_version
         state.include_live_photos = config.analysis.include_live_photos
         state.include_photos = config.photos.enabled

@@ -171,6 +171,7 @@ def _run_pipeline_blocking(
         with SyncImmichClient(
             base_url=state.immich_url,
             api_key=state.immich_api_key,
+            api_version=state.immich_api_version,
         ) as client:
             from immich_memories.config import get_config
 

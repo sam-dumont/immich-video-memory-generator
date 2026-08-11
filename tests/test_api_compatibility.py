@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -17,9 +18,30 @@ from immich_memories.api.compatibility import (
     resolve_api_version,
 )
 from immich_memories.api.immich import ImmichAPIError, ImmichClient
+from immich_memories.config_loader import Config
+from immich_memories.preflight import CheckStatus, check_immich
 
 _TEST_URL = "https://immich.example.com"
 _TEST_KEY = "test-api-key"
+
+
+def test_preflight_passes_configured_api_version_to_client() -> None:
+    config = Config(immich={"url": _TEST_URL, "api_key": _TEST_KEY, "api_version": "v2"})
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.get_current_user.return_value = SimpleNamespace(name="Sam", email="sam@example.com")
+
+    with patch(
+        "immich_memories.api.immich.SyncImmichClient", return_value=client
+    ) as client_factory:
+        result = check_immich(config)
+
+    assert result.status is CheckStatus.OK
+    client_factory.assert_called_once_with(
+        base_url=_TEST_URL,
+        api_key=_TEST_KEY,
+        api_version=ApiVersionPolicy.V2,
+    )
 
 
 def _client_with_version_response(

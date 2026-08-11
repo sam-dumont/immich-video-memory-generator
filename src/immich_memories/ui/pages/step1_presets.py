@@ -389,6 +389,7 @@ def _render_trip_params() -> None:
                 with SyncImmichClient(
                     base_url=state.immich_url,
                     api_key=state.immich_api_key,
+                    api_version=state.immich_api_version,
                 ) as client:
                     assets = client.get_videos_for_date_range(dr)
                 return detect_trips(

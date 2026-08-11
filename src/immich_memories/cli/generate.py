@@ -565,6 +565,7 @@ def register_generate_commands(main: click.Group) -> None:
                 with SyncImmichClient(
                     base_url=config.immich.url,
                     api_key=config.immich.api_key,
+                    api_version=config.immich.api_version,
                 ) as client:
                     progress.update(task, completed=True)
                     # Trip detection flow: branch early

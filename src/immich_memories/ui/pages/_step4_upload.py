@@ -75,6 +75,7 @@ async def upload_to_immich(
         client = SyncImmichClient(
             base_url=state.immich_url,
             api_key=state.immich_api_key,
+            api_version=state.immich_api_version,
         )
 
         album_name = state.upload_album_name or "Memories"

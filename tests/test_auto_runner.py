@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from rich.console import Console
 
+from immich_memories.api.compatibility import ApiVersionPolicy
 from immich_memories.automation.candidate_scorer import score_and_rank
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 from immich_memories.automation.models import AutoOutcome, ProcessResult
@@ -96,6 +97,33 @@ def _save_completed_run(
 
 
 class TestSuggestReturnsCandidates:
+    def test_suggest_passes_configured_api_version_to_client(self, config: Config) -> None:
+        from immich_memories.preflight import CheckStatus
+
+        config.immich.api_version = ApiVersionPolicy.V2
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.get_time_buckets.return_value = []
+        client.get_all_people.return_value = []
+
+        with (
+            patch(
+                "immich_memories.preflight.check_immich",
+                return_value=MagicMock(status=CheckStatus.OK),
+            ),
+            patch(
+                "immich_memories.api.immich.SyncImmichClient", return_value=client
+            ) as client_factory,
+        ):
+            AutoRunner(config).suggest(limit=1)
+
+        client_factory.assert_called_once_with(
+            base_url="http://immich.test:2283",
+            api_key="test-key",
+            api_version=ApiVersionPolicy.V2,
+        )
+
     def test_trailing_year_range_handles_leap_day(self) -> None:
         requested = _trailing_year_range(date(2024, 2, 29))
 

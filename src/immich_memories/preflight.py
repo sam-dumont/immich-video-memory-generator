@@ -64,6 +64,7 @@ def check_immich(config: Config) -> CheckResult:
         with SyncImmichClient(
             base_url=config.immich.url,
             api_key=config.immich.api_key,
+            api_version=config.immich.api_version,
         ) as client:
             user = client.get_current_user()
             return CheckResult(

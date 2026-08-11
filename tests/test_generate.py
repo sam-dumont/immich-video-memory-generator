@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -20,6 +20,53 @@ from immich_memories.generate import (
 from immich_memories.generate_music import music_config_available
 from immich_memories.generate_privacy import clip_location_name
 from tests.conftest import make_asset, make_clip
+
+
+def test_cli_generate_passes_configured_api_version_to_client(tmp_path: Path) -> None:
+    from click.testing import CliRunner
+
+    from immich_memories.api.compatibility import ApiVersionPolicy
+    from immich_memories.cli import main
+
+    config = Config(
+        immich={
+            "url": "https://immich.example.com",
+            "api_key": "test-api-key",
+            "api_version": "v2",
+        }
+    )
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+
+    with (
+        patch("immich_memories.cli.get_config", return_value=config),
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client) as client_factory,
+        patch(
+            "immich_memories.cli.generate.fetch_videos_and_live_photos",
+            return_value=([], []),
+        ),
+    ):
+        result = CliRunner().invoke(
+            main,
+            [
+                "generate",
+                "--start",
+                "2025-01-01",
+                "--end",
+                "2025-01-31",
+                "--no-music",
+                "--output",
+                str(tmp_path / "memory.mp4"),
+            ],
+        )
+
+    assert result.exit_code == 1
+    client_factory.assert_called_once_with(
+        base_url="https://immich.example.com",
+        api_key="test-api-key",
+        api_version=ApiVersionPolicy.V2,
+    )
 
 
 class TestGenerationParams:

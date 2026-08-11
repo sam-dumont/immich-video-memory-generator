@@ -78,7 +78,11 @@ def _build_generation_params(state, selected_clips, output_path):
     if state.include_photos and state.config:
         state.config.photos.duration = state.photo_duration
 
-    client = SyncImmichClient(base_url=state.immich_url, api_key=state.immich_api_key)
+    client = SyncImmichClient(
+        base_url=state.immich_url,
+        api_key=state.immich_api_key,
+        api_version=state.immich_api_version,
+    )
 
     return GenerationParams(
         clips=selected_clips,

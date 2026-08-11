@@ -92,6 +92,7 @@ def _render_immich_config_section(state) -> None:
                     with SyncImmichClient(
                         base_url=state.immich_url,
                         api_key=state.immich_api_key,
+                        api_version=state.immich_api_version,
                     ) as client:
                         user = client.get_current_user()
                         people = client.get_all_people()

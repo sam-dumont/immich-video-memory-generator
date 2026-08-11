@@ -25,6 +25,7 @@ def _fetch_assets(state) -> list:
     with SyncImmichClient(
         base_url=state.immich_url,
         api_key=state.immich_api_key,
+        api_version=state.immich_api_version,
     ) as client:
         multi_ids = state.memory_preset_params.get("person_ids", [])
         if len(multi_ids) >= 2:
@@ -69,7 +70,11 @@ def _build_clips(assets: list) -> tuple[list[VideoClipInfo], int]:
 def _fetch_photos(state, date_range) -> list:
     """Fetch photo assets (blocking)."""
     person_id = state.selected_person.id if state.selected_person else None
-    with SyncImmichClient(state.immich_url, state.immich_api_key) as client:
+    with SyncImmichClient(
+        base_url=state.immich_url,
+        api_key=state.immich_api_key,
+        api_version=state.immich_api_version,
+    ) as client:
         return client.get_photos_for_date_range(date_range, person_id=person_id)
 
 
@@ -78,7 +83,11 @@ def _fetch_live_photos(state, date_range) -> tuple[list[VideoClipInfo], set[str]
     lp_person_id = state.selected_person.id if state.selected_person else None
     multi_ids = state.memory_preset_params.get("person_ids", [])
 
-    with SyncImmichClient(state.immich_url, state.immich_api_key) as lp_client:
+    with SyncImmichClient(
+        base_url=state.immich_url,
+        api_key=state.immich_api_key,
+        api_version=state.immich_api_version,
+    ) as lp_client:
         return fetch_live_photo_clips(
             lp_client,
             date_range,
@@ -267,7 +276,11 @@ async def _fetch_thumbnails_batched(
         batch = need_thumbs[i : i + batch_size]
 
         def fetch_thumb_batch(clips_batch=batch):
-            with SyncImmichClient(state.immich_url, state.immich_api_key) as client:
+            with SyncImmichClient(
+                base_url=state.immich_url,
+                api_key=state.immich_api_key,
+                api_version=state.immich_api_version,
+            ) as client:
                 for clip in clips_batch:
                     with contextlib.suppress(Exception):
                         thumb = client.get_asset_thumbnail(clip.asset.id, size="preview")
@@ -300,7 +313,11 @@ async def _fetch_metadata_batched(
         batch = need_meta[i : i + batch_size]
 
         def fetch_meta_batch(clips_batch=batch):
-            with SyncImmichClient(state.immich_url, state.immich_api_key) as client:
+            with SyncImmichClient(
+                base_url=state.immich_url,
+                api_key=state.immich_api_key,
+                api_version=state.immich_api_version,
+            ) as client:
                 for clip in clips_batch:
                     _probe_and_cache_metadata(clip, client, state, analysis_cache)
 
@@ -380,7 +397,11 @@ async def _load_photo_thumbnails_async(
         batch = need[i : i + batch_size]
 
         def fetch_batch(assets_batch=batch):
-            with SyncImmichClient(state.immich_url, state.immich_api_key) as client:
+            with SyncImmichClient(
+                base_url=state.immich_url,
+                api_key=state.immich_api_key,
+                api_version=state.immich_api_version,
+            ) as client:
                 for asset in assets_batch:
                     with contextlib.suppress(Exception):
                         thumb = client.get_asset_thumbnail(asset.id, size="preview")

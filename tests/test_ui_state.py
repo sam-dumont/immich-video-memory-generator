@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from immich_memories.ui.state import AppState, _sessions, get_app_state, reset_app_state
+from immich_memories.api.compatibility import ApiVersionPolicy
+from immich_memories.config_loader import Config
+from immich_memories.ui.state import (
+    AppState,
+    _sessions,
+    ensure_config,
+    get_app_state,
+    reset_app_state,
+)
 from tests.conftest import make_clip
 
 
@@ -45,6 +53,27 @@ class TestAppStateDefaults:
         """Default time period mode is 'year'."""
         state = AppState()
         assert state.time_period_mode == "year"
+
+    def test_default_immich_api_version_is_auto(self):
+        """UI clients default to automatic Immich compatibility detection."""
+        state = AppState()
+        assert state.immich_api_version is ApiVersionPolicy.AUTO
+
+    def test_ensure_config_loads_explicit_immich_api_version(self):
+        """UI clients retain an explicit compatibility policy from configuration."""
+        state = AppState()
+        config = Config(
+            immich={
+                "url": "https://immich.example.com",
+                "api_key": "test-key",
+                "api_version": "v2",
+            }
+        )
+
+        with patch("immich_memories.config_loader.get_config", return_value=config):
+            ensure_config(state)
+
+        assert state.immich_api_version is ApiVersionPolicy.V2
 
 
 class TestAppStateResetClips:
@@ -191,6 +220,26 @@ class TestScaleModeMap:
         from immich_memories.ui.pages._step4_generate import _SCALE_MODE_MAP
 
         assert len(_SCALE_MODE_MAP) == 4
+
+
+def test_generation_factory_passes_state_api_version_to_client(tmp_path) -> None:
+    from immich_memories.ui.pages._step4_generate import _build_generation_params
+
+    state = AppState(
+        config=Config(),
+        immich_url="https://immich.example.com",
+        immich_api_key="test-api-key",
+        immich_api_version=ApiVersionPolicy.V2,
+    )
+
+    with patch("immich_memories.api.immich.SyncImmichClient") as client_factory:
+        _build_generation_params(state, [], tmp_path / "memory.mp4")
+
+    client_factory.assert_called_once_with(
+        base_url="https://immich.example.com",
+        api_key="test-api-key",
+        api_version=ApiVersionPolicy.V2,
+    )
 
 
 class TestFormatDuration:

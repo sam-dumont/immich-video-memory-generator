@@ -671,6 +671,7 @@ class AutoRunner:
             with SyncImmichClient(
                 base_url=self.config.immich.url,
                 api_key=self.config.immich.api_key,
+                api_version=self.config.immich.api_version,
             ) as client:
                 buckets = client.get_time_buckets()
                 people = client.get_all_people() if auto_cfg.detect_person_spotlight else []
