@@ -271,7 +271,7 @@ def generate_memory(params: GenerationParams) -> Path:
         raise GenerationError("No clips provided for generation")
 
     # Single-instance lock: prevent concurrent pipeline runs from corrupting state
-    lock_path = Path.home() / ".immich-memories" / ".lock"
+    lock_path = params.config.cache.database_path.parent / ".lock"
     with PipelineLock(lock_path):
         return _generate_memory_inner(params)
 
