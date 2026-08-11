@@ -242,7 +242,10 @@ def staged_music_output(video_path: Path) -> Iterator[Path]:
     try:
         yield staged_path
     finally:
-        staged_path.unlink(missing_ok=True)
+        try:
+            staged_path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Music stage cleanup failed; preserving the primary phase outcome")
 
 
 def _require_audio_stream(path: Path) -> None:

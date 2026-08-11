@@ -273,4 +273,9 @@ async def apply_uploaded_music(
         return MusicPhaseResult(applied=False, warning=warning)
     finally:
         if tmp_music_path is not None:
-            tmp_music_path.unlink(missing_ok=True)
+            try:
+                tmp_music_path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning(
+                    "Temporary music cleanup failed; preserving the primary phase outcome"
+                )
