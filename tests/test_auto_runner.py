@@ -170,6 +170,41 @@ class TestSuggestReturnsCandidates:
         types = {c.memory_type for c in candidates}
         assert "monthly_highlights" in types
 
+    def test_suggest_handles_leap_day_person_in_non_leap_year(self, config: Config) -> None:
+        """The public discovery flow uses the same observed-birthday rule as detection."""
+        from immich_memories.preflight import CheckStatus
+
+        person = MagicMock()
+        person.id = "person-leap"
+        person.name = "Leap"
+        person.thumbnail_path = "/thumb.jpg"
+        person.birth_date = date(2000, 2, 29)
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.get_time_buckets.return_value = []
+        client.get_all_people.return_value = [person]
+        client.get_person_asset_count.return_value = 50
+
+        with (
+            patch(
+                "immich_memories.api.immich.SyncImmichClient",
+                return_value=client,
+            ),
+            patch(
+                "immich_memories.preflight.check_immich",
+                return_value=MagicMock(status=CheckStatus.OK),
+            ),
+            patch("immich_memories.automation.runner.date") as mock_date,
+        ):
+            mock_date.today.return_value = date(2025, 3, 10)
+            mock_date.side_effect = date
+            candidates = AutoRunner(config).suggest(limit=10)
+
+        birthday = next(c for c in candidates if c.category is CandidateCategory.BIRTHDAY)
+        assert birthday.date_range_start == date(2024, 2, 29)
+        assert birthday.date_range_end == date(2025, 2, 27)
+
     def test_variety_history_uses_only_completed_auto_runs(self, config: Config) -> None:
         """Manual, scheduled, failed, and running rows cannot block auto candidates."""
         from immich_memories.preflight import CheckStatus

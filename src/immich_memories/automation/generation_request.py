@@ -58,8 +58,11 @@ class GenerationRequest:
                 argv.extend(["--year", str(self.start.year), "--month", str(self.start.month)])
             case CandidateCategory.YEAR_IN_REVIEW:
                 argv.extend(["--year", str(self.start.year)])
-            case CandidateCategory.PERSON_SPOTLIGHT | CandidateCategory.BIRTHDAY:
+            case CandidateCategory.PERSON_SPOTLIGHT:
                 argv.extend(["--year", str(self.start.year)])
+                argv.extend(f"--person={name}" for name in self.people)
+            case CandidateCategory.BIRTHDAY:
+                argv.extend(["--year", str(self.start.year), "--birthday"])
                 argv.extend(f"--person={name}" for name in self.people)
             case CandidateCategory.MULTI_PERSON:
                 argv.extend(["--year", str(self.start.year)])

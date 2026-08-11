@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
+
 import click
 
 from immich_memories.timeperiod import (
@@ -12,6 +14,19 @@ from immich_memories.timeperiod import (
     from_period,
     parse_date,
 )
+
+
+def _parse_birthday(value: str) -> date:
+    """Parse the birthday option's documented MM/DD forms before generic dates."""
+    for candidate, date_format in (
+        (value, "%m/%d/%Y"),
+        (f"{value}/2000", "%m/%d/%Y"),
+    ):
+        try:
+            return datetime.strptime(candidate, date_format).date()
+        except ValueError:
+            continue
+    return parse_date(value)
 
 
 def _resolve_manual_dates(
@@ -58,7 +73,15 @@ def resolve_date_range(
         default_range = _resolve_memory_type_dates(
             memory_type, year, season, month, hemisphere, years_back
         )
-        return _resolve_manual_dates(start, end, period) or default_range
+        manual_range = _resolve_manual_dates(start, end, period)
+        if manual_range:
+            return manual_range
+        if memory_type == "person_spotlight" and birthday:
+            try:
+                return birthday_year(_parse_birthday(birthday), year)
+            except ValueError as e:
+                raise click.UsageError(str(e))
+        return default_range
 
     manual = _resolve_manual_dates(start, end, period)
     if manual:
@@ -67,7 +90,7 @@ def resolve_date_range(
     if year:
         if birthday:
             try:
-                return birthday_year(parse_date(birthday), year)
+                return birthday_year(_parse_birthday(birthday), year)
             except ValueError as e:
                 raise click.UsageError(str(e))
         return calendar_year(year)

@@ -303,6 +303,34 @@ class TestBackwardCompatibility:
         assert result.start.month == 7
         assert result.start.day == 21
 
+    def test_person_spotlight_birthday_selector_overrides_calendar_year(self):
+        result = resolve_date_range(
+            year=2025,
+            start=None,
+            end=None,
+            period=None,
+            birthday="03/01/2000",
+            memory_type="person_spotlight",
+        )
+
+        assert isinstance(result, DateRange)
+        assert result.start == datetime(2025, 3, 1)
+        assert result.end == datetime(2026, 2, 28, 23, 59, 59)
+
+    def test_person_spotlight_auto_birthday_value_handles_leap_day(self):
+        result = resolve_date_range(
+            year=2024,
+            start=None,
+            end=None,
+            period=None,
+            birthday="02/29",
+            memory_type="person_spotlight",
+        )
+
+        assert isinstance(result, DateRange)
+        assert result.start == datetime(2024, 2, 29)
+        assert result.end == datetime(2025, 2, 27, 23, 59, 59)
+
     def test_no_options_raises_usage_error(self):
         import click
 

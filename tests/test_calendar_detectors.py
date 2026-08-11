@@ -249,7 +249,7 @@ class TestOnThisDayDetector:
 # BirthdayDetector
 # ---------------------------------------------------------------------------
 class TestBirthdayDetector:
-    def test_uses_person_spotlight_preset_with_birthday_category(self):
+    def test_uses_just_completed_birthday_year_and_exact_memory_key(self):
         person = _make_person("Alice", birth_date=date(2000, 3, 1))
 
         result = BirthdayDetector().detect(
@@ -264,6 +264,30 @@ class TestBirthdayDetector:
         assert len(result) == 1
         assert result[0].memory_type == "person_spotlight"
         assert result[0].category is CandidateCategory.BIRTHDAY
+        assert result[0].date_range_start == date(2025, 3, 1)
+        assert result[0].date_range_end == date(2026, 2, 28)
+        assert result[0].memory_key == make_memory_key(
+            "person_spotlight",
+            date(2025, 3, 1),
+            date(2026, 2, 28),
+            ["alice"],
+        )
+
+    def test_uses_existing_leap_day_birthday_rule(self):
+        person = _make_person("Leap", birth_date=date(2000, 2, 29))
+
+        result = BirthdayDetector().detect(
+            {},
+            [person],
+            set(),
+            _make_config(),
+            date(2025, 3, 10),
+            person_asset_counts={person.id: 50},
+        )
+
+        assert len(result) == 1
+        assert result[0].date_range_start == date(2024, 2, 29)
+        assert result[0].date_range_end == date(2025, 2, 27)
 
     def test_handles_no_people(self):
         result = PersonSpotlightDetector().detect({}, [], set(), _make_config(), date(2026, 3, 1))

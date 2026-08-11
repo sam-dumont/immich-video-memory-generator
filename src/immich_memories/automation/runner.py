@@ -24,6 +24,7 @@ from immich_memories.automation.variety import VarietyDecision, apply_variety_ru
 from immich_memories.config_loader import Config
 from immich_memories.config_models import AutomationConfig
 from immich_memories.security import sanitize_error_message
+from immich_memories.timeperiod import birthday_year
 from immich_memories.tracking.models import RunMetadata
 from immich_memories.tracking.run_database import RunDatabase
 
@@ -270,7 +271,7 @@ def _compute_upcoming_birthday_ids(people: list, today: date, lookahead_days: in
         if not getattr(person, "birth_date", None):
             continue
         bday = person.birth_date
-        this_year_bday = date(today.year, bday.month, bday.day)
+        this_year_bday = birthday_year(bday, today.year).start.date()
         days_until = (this_year_bday - today).days
         if 0 <= days_until <= lookahead_days:
             ids.add(person.id)

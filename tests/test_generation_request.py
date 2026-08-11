@@ -115,6 +115,8 @@ def _candidate(
             _candidate(
                 CandidateCategory.BIRTHDAY,
                 "person_spotlight",
+                start=date(2024, 3, 1),
+                end=date(2025, 2, 28),
                 people=["Alice"],
             ),
             [
@@ -123,7 +125,8 @@ def _candidate(
                 "--memory-type",
                 "person_spotlight",
                 "--year",
-                "2025",
+                "2024",
+                "--birthday",
                 "--person=Alice",
                 "--source=auto",
                 "--memory-key=key:birthday",
