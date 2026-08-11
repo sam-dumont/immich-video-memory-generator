@@ -14,6 +14,7 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     _get_rotation_filter,
 )
+from immich_memories.processing.encoding_plan import EncodingPlan
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.ffmpeg_runner import (
     AssemblyContext,
@@ -22,12 +23,43 @@ from immich_memories.processing.ffmpeg_runner import (
 from immich_memories.processing.hdr_utilities import (
     _detect_hdr_type,
     _get_colorspace_filter,
-    _get_gpu_encoder_args,
+    _get_hdr_conversion_filter,
 )
 from immich_memories.processing.scaling_utilities import _get_smart_crop_filter
 from immich_memories.security import validate_video_path
 
 logger = logging.getLogger(__name__)
+
+
+def encoder_args_for_plan(plan: EncodingPlan, hdr_type: str = "hlg") -> list[str]:
+    """Build FFmpeg arguments from a resolved plan without selecting again."""
+    args = ["-c:v", plan.encoder, *plan.encoder_args, "-pix_fmt", plan.pixel_format]
+    if plan.codec.value == "h265" and plan.container == "mp4":
+        args.extend(["-tag:v", "hvc1"])
+    if plan.hdr:
+        color_trc = "smpte2084" if hdr_type == "pq" else "arib-std-b67"
+        args.extend(
+            [
+                "-colorspace",
+                "bt2020nc",
+                "-color_primaries",
+                "bt2020",
+                "-color_trc",
+                color_trc,
+            ]
+        )
+    else:
+        args.extend(
+            [
+                "-colorspace",
+                "bt709",
+                "-color_primaries",
+                "bt709",
+                "-color_trc",
+                "bt709",
+            ]
+        )
+    return args
 
 
 def configure_pyav_output_stream(
@@ -100,13 +132,15 @@ class ClipEncoder:
         return self.default_resolution
 
     def resolve_encode_hdr(self, clip: AssemblyClip) -> tuple[str, str]:
-        hdr_type = "hlg"
-        if self.settings.preserve_hdr:
-            clip_hdr = _detect_hdr_type(clip.path)
-            if clip_hdr:
-                hdr_type = clip_hdr
-            return hdr_type, _get_colorspace_filter(hdr_type)
-        return hdr_type, ""
+        plan = self.settings.encoding_plan
+        source_hdr = _detect_hdr_type(clip.path) if plan.hdr or plan.tone_map_to_sdr else None
+        if plan.hdr:
+            target_hdr = source_hdr or "hlg"
+            conversion = _get_hdr_conversion_filter(source_hdr, target_hdr)
+            return target_hdr, conversion + _get_colorspace_filter(target_hdr)
+        if plan.tone_map_to_sdr and source_hdr:
+            return "sdr", _get_hdr_conversion_filter(source_hdr, "sdr")
+        return "sdr", ""
 
     def encode_single_clip(
         self,
@@ -118,11 +152,7 @@ class ClipEncoder:
         validate_video_path(clip.path, must_exist=True)
         target_w, target_h = self.resolve_encode_resolution(target_resolution)
 
-        pix_fmt = (
-            ("p010le" if sys.platform == "darwin" else "yuv420p10le")
-            if self.settings.preserve_hdr
-            else "yuv420p"
-        )
+        pix_fmt = self.settings.encoding_plan.pixel_format
         target_fps = 60
         hdr_type, colorspace_filter = self.resolve_encode_hdr(clip)
 
@@ -162,11 +192,7 @@ class ClipEncoder:
             clip, target_w, target_h, rotation_filter, common_suffix, audio_filter
         )
 
-        video_codec_args = _get_gpu_encoder_args(
-            crf=8,  # WHY: near-lossless for intermediates, final quality set in assembly
-            preserve_hdr=self.settings.preserve_hdr,
-            hdr_type=hdr_type,
-        )
+        video_codec_args = encoder_args_for_plan(self.settings.encoding_plan, hdr_type)
 
         cmd = [
             "ffmpeg",
@@ -292,10 +318,7 @@ class ClipEncoder:
         """Re-encodes for frame-accurate trim boundaries (stream copy can't do this)."""
         validate_video_path(input_path, must_exist=True)
 
-        video_codec_args = _get_gpu_encoder_args(
-            crf=8,  # WHY: near-lossless for intermediates, final quality set in assembly
-            preserve_hdr=self.settings.preserve_hdr,
-        )
+        video_codec_args = encoder_args_for_plan(self.settings.encoding_plan)
 
         audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
         loudnorm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if self.settings.normalize_clip_audio else ""
@@ -377,15 +400,12 @@ class ClipEncoder:
         ctx: AssemblyContext,
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> subprocess.CompletedProcess:
-        video_codec_args = _get_gpu_encoder_args(
-            crf=8,  # WHY: near-lossless for intermediates, final quality set in assembly
-            preserve_hdr=self.settings.preserve_hdr,
-            hdr_type=ctx.hdr_type,
+        video_codec_args = encoder_args_for_plan(self.settings.encoding_plan, ctx.hdr_type)
+        logger.info(
+            "Encoding final output with %s (%s)",
+            self.settings.encoding_plan.encoder,
+            "HDR" if self.settings.encoding_plan.hdr else "SDR",
         )
-        if self.settings.preserve_hdr:
-            logger.info(f"Using GPU-accelerated HEVC with {ctx.hdr_type.upper()} HDR preservation")
-        else:
-            logger.info("Using GPU-accelerated encoding")
 
         framerate_args = ["-r", str(ctx.target_fps)]
         logger.info(f"Output frame rate: {ctx.target_fps}fps")

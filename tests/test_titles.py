@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from immich_memories.processing.encoding_plan import EncodingPlan, OutputCodec
 from immich_memories.titles.animations import (
     EASING_FUNCTIONS,
     TEXT_ANIMATIONS,
@@ -45,6 +46,112 @@ from immich_memories.titles.text_builder import (
     get_ordinal,
     infer_selection_type,
 )
+
+
+def _software_prores_plan() -> EncodingPlan:
+    return EncodingPlan(
+        codec=OutputCodec.PRORES,
+        encoder="prores_ks",
+        encoder_args=(),
+        hdr=False,
+        tone_map_to_sdr=False,
+        pixel_format="yuv422p10le",
+        container="mov",
+    )
+
+
+def test_generated_prores_title_uses_mov_suffix(tmp_path: Path, monkeypatch) -> None:
+    """Generated title paths must use the plan container before rendering."""
+    config = TitleScreenConfig(
+        use_gpu_rendering=False,
+        encoding_plan=_software_prores_plan(),
+    )
+    generator = TitleScreenGenerator(config=config, output_dir=tmp_path)
+    monkeypatch.setattr(generator._rendering, "create_title_video", lambda **_kwargs: None)
+
+    screen = generator.generate_title_screen(year=2025)
+
+    assert screen.path.suffix == ".mov"
+
+
+def test_rendering_service_passes_the_configured_plan_to_video_encoder(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The service conduit must not collapse the plan back to an HDR boolean."""
+    from immich_memories.titles import rendering_service as rendering_module
+    from immich_memories.titles.rendering_service import RenderingService
+
+    plan = _software_prores_plan()
+    config = TitleScreenConfig(use_gpu_rendering=False, encoding_plan=plan)
+    output = tmp_path / "title.mov"
+
+    def encode_title(*, encoding_plan: EncodingPlan, output_path: Path, **_kwargs) -> Path:
+        if encoding_plan is not plan:
+            raise AssertionError("rendering service substituted the configured encoding plan")
+        return output_path
+
+    monkeypatch.setattr(rendering_module, "create_title_video", encode_title)
+    service = RenderingService(config)
+
+    result = service.create_title_video(
+        title="2025",
+        subtitle=None,
+        style=TitleStyle(name="test"),
+        output_path=output,
+        width=1280,
+        height=720,
+        duration=1.0,
+        fps=30.0,
+        animated_background=False,
+    )
+
+    assert result == output
+
+
+def test_generated_prores_ending_uses_same_plan_and_mov_suffix(tmp_path: Path, monkeypatch) -> None:
+    """Ending clips must be container- and codec-compatible with the title."""
+    plan = _software_prores_plan()
+    generator = TitleScreenGenerator(
+        config=TitleScreenConfig(use_gpu_rendering=False, encoding_plan=plan),
+        output_dir=tmp_path,
+    )
+
+    def encode_ending(*, encoding_plan: EncodingPlan, **_kwargs) -> None:
+        if encoding_plan is not plan:
+            raise AssertionError("ending service substituted the configured encoding plan")
+
+    monkeypatch.setattr(generator._ending, "create_ending_video", encode_ending)
+
+    screen = generator.generate_ending_screen()
+
+    assert screen.path.suffix == ".mov"
+
+
+def test_trip_map_fly_uses_same_plan_and_mov_suffix(tmp_path: Path, monkeypatch) -> None:
+    """Animated trip maps are title clips and must share the output contract."""
+    from immich_memories.titles import map_animation
+
+    plan = _software_prores_plan()
+    generator = TitleScreenGenerator(
+        config=TitleScreenConfig(use_gpu_rendering=False, encoding_plan=plan),
+        output_dir=tmp_path,
+    )
+
+    def encode_map(*, encoding_plan: EncodingPlan, output_path: Path, **_kwargs) -> Path:
+        if encoding_plan is not plan:
+            raise AssertionError("trip service substituted the configured encoding plan")
+        return output_path
+
+    monkeypatch.setattr(map_animation, "create_map_fly_video", encode_map)
+
+    screen = generator.generate_trip_map_screen(
+        locations=[(50.85, 4.35)],
+        title_text="BRUSSELS",
+        home_lat=51.05,
+        home_lon=3.72,
+    )
+
+    assert screen.path.suffix == ".mov"
 
 
 class TestTitleStyle:

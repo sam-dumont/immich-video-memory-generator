@@ -13,8 +13,10 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.processing.encoding_plan import EncodingPlan
+
 from .animations import get_animation_preset, reverse_preset
-from .encoding import _get_gpu_encoder_args
+from .encoding import standalone_title_encoding_plan, title_encoder_args
 from .styles import TitleStyle
 
 if TYPE_CHECKING:
@@ -67,20 +69,13 @@ def _get_sdr_to_hlg_filter(hdr: bool = True) -> str:
     return "format=p010le"
 
 
-def _get_best_encoder(hdr: bool = True) -> tuple[list[str], str]:
-    """Get the best encoder args and optional SDR→HLG video filter.
-
-    Delegates encoder selection to the shared _get_gpu_encoder_args(),
-    then adds the PIL-specific SDR→HLG conversion filter when needed.
-
-    Args:
-        hdr: If True, output HLG HDR. If False, output SDR.
-
-    Returns:
-        Tuple of (encoder args, video filter for SDR→HLG conversion).
-    """
-    encoder_args = _get_gpu_encoder_args(hdr=hdr)
-    video_filter = _get_sdr_to_hlg_filter(hdr=hdr)
+def _get_best_encoder(
+    encoding_plan: EncodingPlan | None = None,
+) -> tuple[list[str], str]:
+    """Return plan-derived args and the PIL-specific color conversion."""
+    plan = encoding_plan or standalone_title_encoding_plan()
+    encoder_args = title_encoder_args(plan)
+    video_filter = _get_sdr_to_hlg_filter(hdr=plan.hdr)
     return encoder_args, video_filter
 
 
@@ -172,8 +167,8 @@ def create_title_video(
     fps: float = 60.0,  # 60fps for smooth animations (downsample later if needed)
     animated_background: bool = True,
     fade_from_white: bool = False,
-    hdr: bool = True,
     background_image: np.ndarray | None = None,
+    encoding_plan: EncodingPlan | None = None,
 ) -> Path:
     """Create a complete title video with full animation support.
 
@@ -207,7 +202,7 @@ def create_title_video(
     renderer = TitleRenderer(style, settings, background_image=background_image)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    encoder_args, video_filter = _get_best_encoder(hdr=hdr)
+    encoder_args, video_filter = _get_best_encoder(encoding_plan)
     cmd = _build_ffmpeg_cmd(width, height, fps, duration, encoder_args, video_filter, output_path)
 
     # Use a queue to pass frames between threads

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -18,7 +17,7 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     TransitionType,
 )
-from immich_memories.processing.clip_encoder import ClipEncoder
+from immich_memories.processing.clip_encoder import ClipEncoder, encoder_args_for_plan
 from immich_memories.processing.ffmpeg_filter_graph import ConcatService
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.ffmpeg_runner import AssemblyContext
@@ -28,7 +27,6 @@ from immich_memories.processing.hdr_utilities import (
     _get_clip_hdr_types,
     _get_colorspace_filter,
     _get_dominant_hdr_type,
-    _get_gpu_encoder_args,
 )
 from immich_memories.processing.streaming_assembler import streaming_assemble_full
 
@@ -88,17 +86,15 @@ def create_assembly_context(
     if target_w is None or target_h is None:
         target_w, target_h = resolve_target_resolution(settings, prober, clips)
 
-    pix_fmt = (
-        ("p010le" if sys.platform == "darwin" else "yuv420p10le")
-        if settings.preserve_hdr
-        else "yuv420p"
-    )
+    plan = settings.encoding_plan
+    inspect_source_hdr = plan.hdr or plan.tone_map_to_sdr
+    pix_fmt = plan.pixel_format
     target_fps = prober.detect_max_framerate(clips)
-    hdr_type = _get_dominant_hdr_type(clips) if settings.preserve_hdr else "hlg"
+    hdr_type = _get_dominant_hdr_type(clips) if plan.hdr else "sdr"
 
-    clip_hdr_types = _get_clip_hdr_types(clips) if settings.preserve_hdr else [None] * len(clips)
+    clip_hdr_types = _get_clip_hdr_types(clips) if inspect_source_hdr else [None] * len(clips)
     clip_primaries: list[str | None] = []
-    if settings.preserve_hdr:
+    if inspect_source_hdr:
         for clip in clips:
             clip_primaries.append(_detect_color_primaries(clip.path))
     else:
@@ -110,7 +106,7 @@ def create_assembly_context(
             f"Mixed HDR content detected: {unique_types} - converting all to {hdr_type.upper()}"
         )
 
-    colorspace_filter = _get_colorspace_filter(hdr_type) if settings.preserve_hdr else ""
+    colorspace_filter = _get_colorspace_filter(hdr_type) if plan.hdr else ""
 
     return AssemblyContext(
         target_w=target_w,
@@ -228,18 +224,12 @@ class AssemblyEngine:
 
         ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
         fade_duration = self.settings.transition_duration or 0.5
-        crf = self.settings.output_crf or 18
-
-        # GPU encoder + HDR — same _get_gpu_encoder_args the old filter graph used
-        encoder_args = _get_gpu_encoder_args(
-            crf=crf,
-            preserve_hdr=self.settings.preserve_hdr,
-            hdr_type=ctx.hdr_type,
-        )
-        if self.settings.preserve_hdr:
-            logger.info(f"Streaming assembly with {ctx.hdr_type.upper()} HDR preservation")
+        plan = self.settings.encoding_plan
+        encoder_args = encoder_args_for_plan(plan, ctx.hdr_type)
+        if plan.hdr:
+            logger.info("Streaming %s HDR assembly with %s", ctx.hdr_type.upper(), plan.encoder)
         else:
-            logger.info("Streaming assembly with GPU-accelerated encoding")
+            logger.info("Streaming SDR assembly with %s", plan.encoder)
 
         logger.info(f"Streaming assembly: {len(clips)} clips at {target_w}x{target_h}")
 
@@ -255,12 +245,9 @@ class AssemblyEngine:
             ctx=ctx,
             normalize_audio=self.settings.normalize_clip_audio,
             privacy_mode=self.settings.privacy_mode,
-            # WHY: Only use HDR pipe when clips actually contain HDR content.
-            # When all clips are SDR, _get_dominant_hdr_type defaults to "hlg"
-            # but piping SDR as yuv420p10le causes shape mismatches on Linux.
-            hdr_type=ctx.hdr_type
-            if self.settings.preserve_hdr and any(t is not None for t in ctx.clip_hdr_types)
-            else None,
+            # The output plan controls pipe depth. In explicit HDR mode, SDR inputs
+            # are converted to the plan's HLG/PQ target before entering the 10-bit pipe.
+            hdr_type=ctx.hdr_type if plan.hdr else None,
             scale_mode=self.settings.scale_mode,
             progress_callback=progress_callback,
             frame_preview_callback=frame_preview_callback,

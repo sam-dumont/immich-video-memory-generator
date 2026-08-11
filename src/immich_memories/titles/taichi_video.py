@@ -15,7 +15,9 @@ from pathlib import Path
 
 import numpy as np
 
-from .encoding import _get_gpu_encoder_args
+from immich_memories.processing.encoding_plan import EncodingPlan
+
+from .encoding import standalone_title_encoding_plan, title_encoder_args
 from .renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
 
 logger = logging.getLogger(__name__)
@@ -77,27 +79,28 @@ def create_title_video_taichi(
     config: TaichiTitleConfig | None = None,
     fade_from_white: bool = False,
     fade_to_white: bool = False,
-    hdr: bool = True,
+    encoding_plan: EncodingPlan | None = None,
     frame_progress: Callable[[int, int], None] | None = None,
 ) -> Path:
     """Create title video using Taichi GPU rendering."""
     cfg = config or TaichiTitleConfig()
-    cfg.hdr = hdr
+    plan = encoding_plan or standalone_title_encoding_plan()
+    cfg.hdr = plan.hdr
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     renderer = TaichiTitleRenderer(cfg)
 
-    encoder_args = _get_gpu_encoder_args(hdr=hdr)
+    encoder_args = title_encoder_args(plan)
 
     # WHY: rgb48le (16-bit) for HDR preserves full 10-bit+ precision.
     # rgb24 (8-bit) for SDR. No zscale conversion needed — data is
     # already in the correct color space from the source clip.
-    pix_fmt = "rgb48le" if hdr else "rgb24"
+    pix_fmt = "rgb48le" if plan.hdr else "rgb24"
 
     # WHY: rawvideo input needs explicit color metadata for HDR —
     # without it, the encoder strips bt2020 tags from the output.
     input_color_args: list[str] = []
-    if hdr:
+    if plan.hdr:
         input_color_args = [
             "-color_primaries",
             "bt2020",
@@ -148,8 +151,8 @@ def create_title_video_taichi(
     fade_out_frames = int(1.5 * cfg.fps) if fade_to_white else 0
     fade_out_start = renderer.total_frames - fade_out_frames
 
-    white_val = 65535 if hdr else 255
-    blend_dtype = np.uint16 if hdr else np.uint8
+    white_val = 65535 if plan.hdr else 255
+    blend_dtype = np.uint16 if plan.hdr else np.uint8
     blend_buffer = (
         np.zeros((cfg.height, cfg.width, 3), dtype=blend_dtype)
         if (fade_from_white or fade_to_white)

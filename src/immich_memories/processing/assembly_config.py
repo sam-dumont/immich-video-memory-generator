@@ -6,12 +6,13 @@ used across the assembly pipeline.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
 
 from immich_memories.processing.clips import ClipSegment
+from immich_memories.processing.encoding_plan import EncodingPlan, OutputCodec
 
 __all__ = [
     "AssemblyClip",
@@ -24,6 +25,19 @@ __all__ = [
 
 
 MAX_FACE_CACHE_SIZE = 50  # Max entries in face detection cache to prevent unbounded growth
+
+
+def _default_encoding_plan() -> EncodingPlan:
+    """Return the explicit SDR/H.264 plan used by standalone assembly callers."""
+    return EncodingPlan(
+        codec=OutputCodec.H264,
+        encoder="libx264",
+        encoder_args=("-preset", "medium", "-crf", "18"),
+        hdr=False,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p",
+        container="mp4",
+    )
 
 
 class TransitionType(StrEnum):
@@ -87,6 +101,7 @@ class TitleScreenSettings:
 class AssemblySettings:
     """Settings for video assembly."""
 
+    encoding_plan: EncodingPlan = field(default_factory=_default_encoding_plan)
     transition: TransitionType = TransitionType.CROSSFADE
     transition_duration: float | None = None
     music_path: Path | None = None
@@ -105,7 +120,7 @@ class AssemblySettings:
     output_codec: str = "h264"
     output_crf: int | None = None
     # HDR and quality preservation
-    preserve_hdr: bool = True  # Use HEVC with HDR metadata
+    preserve_hdr: bool = True  # Deprecated compatibility field; encoding_plan owns HDR policy
     preserve_framerate: bool = True  # Keep original frame rate (e.g., 60fps)
     target_framerate: int | None = None  # Force specific frame rate (None = auto)
     # Resolution settings
@@ -129,6 +144,11 @@ class AssemblySettings:
     # Fallback resolution when auto_resolution is False and target_resolution is None
     # Set by the caller from config.output.resolution_tuple
     default_resolution: tuple[int, int] | None = None
+
+    def __post_init__(self) -> None:
+        """Keep read-only legacy metadata aligned with the resolved plan."""
+        self.output_format = self.encoding_plan.container
+        self.output_codec = self.encoding_plan.codec.value
 
 
 @dataclass

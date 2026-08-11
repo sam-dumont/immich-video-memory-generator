@@ -7,94 +7,131 @@ one source clip is HDR. When all sources are SDR, titles should be SDR too.
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
+
+from immich_memories.processing.assembly_config import AssemblySettings, TitleScreenSettings
+from immich_memories.processing.encoding_plan import EncodingPlan, OutputCodec
 
 
-class TestEncodingHDRFlag:
-    """encoding.py: _get_gpu_encoder_args respects hdr flag."""
-
-    def test_hdr_true_includes_bt2020_metadata(self):
-        from immich_memories.titles.encoding import _get_gpu_encoder_args
-
-        args = _get_gpu_encoder_args(hdr=True)
-        assert "-color_primaries" in args
-        assert "bt2020" in args
-        assert "arib-std-b67" in args
-
-    def test_hdr_false_omits_bt2020_metadata(self):
-        from immich_memories.titles.encoding import _get_gpu_encoder_args
-
-        args = _get_gpu_encoder_args(hdr=False)
-        assert "bt2020" not in args
-        assert "arib-std-b67" not in args
-
-    def test_hdr_false_uses_8bit_pixel_format(self):
-        from immich_memories.titles.encoding import _get_gpu_encoder_args
-
-        args = _get_gpu_encoder_args(hdr=False)
-        # Should use 8-bit pixel format, not 10-bit
-        assert "p010le" not in args
-        assert "yuv420p10le" not in args
-
-    def test_hdr_true_uses_10bit_pixel_format(self):
-        from immich_memories.titles.encoding import _get_gpu_encoder_args
-
-        args = _get_gpu_encoder_args(hdr=True)
-        # Should use 10-bit pixel format
-        has_10bit = "p010le" in args or "yuv420p10le" in args
-        assert has_10bit
-
-    def test_default_is_hdr(self):
-        """Backward compatibility: default should be HDR."""
-        from immich_memories.titles.encoding import _get_gpu_encoder_args
-
-        args = _get_gpu_encoder_args()
-        assert "bt2020" in args
+def _software_h264_plan() -> EncodingPlan:
+    return EncodingPlan(
+        codec=OutputCodec.H264,
+        encoder="libx264",
+        encoder_args=("-preset", "medium", "-crf", "18"),
+        hdr=False,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p",
+        container="mp4",
+    )
 
 
-class TestEncodingUsesH264ForIntermediates:
-    """Title intermediates should use H.264 (fast) not HEVC (slow)."""
-
-    def test_uses_h264_not_hevc(self):
-        """Encoder should be H.264 variant, not HEVC."""
-        from immich_memories.titles.encoding import _get_gpu_encoder_args
-
-        args = _get_gpu_encoder_args(hdr=True)
-        codec_idx = args.index("-c:v") + 1
-        codec = args[codec_idx]
-        assert "264" in codec or "x264" in codec, (
-            f"Expected H.264 encoder for intermediates, got {codec}"
-        )
-        assert "265" not in codec and "hevc" not in codec
-
-    def test_quality_is_intermediate_not_lossless(self):
-        """Quality params should be fast-intermediate, not near-lossless."""
-        from immich_memories.titles.encoding import _get_gpu_encoder_args
-
-        args = _get_gpu_encoder_args(hdr=True)
-        if "-q:v" in args:
-            qv = int(args[args.index("-q:v") + 1])
-            assert 40 <= qv <= 65, f"q:v should be 40-65 for intermediates, got {qv}"
-        if "-qp" in args:
-            qp = int(args[args.index("-qp") + 1])
-            assert 15 <= qp <= 25, f"qp should be 15-25 for intermediates, got {qp}"
-        if "-crf" in args:
-            crf = int(args[args.index("-crf") + 1])
-            assert 14 <= crf <= 22, f"CRF should be 14-22, got {crf}"
+def _software_prores_plan() -> EncodingPlan:
+    return EncodingPlan(
+        codec=OutputCodec.PRORES,
+        encoder="prores_ks",
+        encoder_args=(),
+        hdr=False,
+        tone_map_to_sdr=False,
+        pixel_format="yuv422p10le",
+        container="mov",
+    )
 
 
-class TestVideoEncodingHDRFlag:
-    """video_encoding.py: _get_best_encoder respects hdr flag."""
+def _hardware_h265_hdr_plan() -> EncodingPlan:
+    return EncodingPlan(
+        codec=OutputCodec.H265,
+        encoder="hevc_videotoolbox",
+        encoder_args=("-q:v", "50", "-allow_sw", "1"),
+        hdr=True,
+        tone_map_to_sdr=False,
+        pixel_format="p010le",
+        container="mp4",
+    )
+
+
+def test_title_encoder_args_use_the_resolved_software_h264_plan() -> None:
+    """Title clips must use the same codec family as the final output."""
+    from immich_memories.titles.encoding import title_encoder_args
+
+    args = title_encoder_args(_software_h264_plan())
+
+    assert args[args.index("-c:v") + 1] == "libx264"
+    assert "hevc_videotoolbox" not in args
+    assert "libx265" not in args
+    assert args[args.index("-pix_fmt") + 1] == "yuv420p"
+    assert args[args.index("-color_trc") + 1] == "bt709"
+
+
+def test_title_config_carries_the_plan_and_derives_prores_suffix() -> None:
+    """Every generated title path must use a concat-compatible container."""
+    from immich_memories.titles.generator import TitleScreenConfig
+
+    plan = _software_prores_plan()
+    config = TitleScreenConfig(encoding_plan=plan)
+
+    assert config.encoding_plan is plan
+    assert config.output_suffix == ".mov"
+    assert config.hdr is False
+
+
+def test_title_inserter_threads_the_assembly_plan_into_title_config() -> None:
+    """The title generator receives the exact plan already resolved for assembly."""
+    from immich_memories.processing.title_inserter import TitleInserter
+
+    plan = _software_prores_plan()
+    inserter = TitleInserter(AssemblySettings(encoding_plan=plan), MagicMock())
+
+    config = inserter._build_title_config(TitleScreenSettings(), 1920, 1080, 30)
+
+    assert config.encoding_plan is plan
+
+
+class TestPlanDerivedTitleEncoding:
+    """Every title helper consumes the already-resolved plan."""
+
+    def test_h265_hardware_plan_keeps_hdr_metadata_and_10bit_format(self):
+        from immich_memories.titles.encoding import title_encoder_args
+
+        args = title_encoder_args(_hardware_h265_hdr_plan())
+
+        assert args[args.index("-c:v") + 1] == "hevc_videotoolbox"
+        assert args[args.index("-pix_fmt") + 1] == "p010le"
+        assert args[args.index("-color_primaries") + 1] == "bt2020"
+        assert args[args.index("-color_trc") + 1] == "arib-std-b67"
+        assert args[args.index("-tag:v") + 1] == "hvc1"
+
+    def test_prores_plan_never_substitutes_h264_or_hevc(self):
+        from immich_memories.titles.encoding import title_encoder_args
+
+        args = title_encoder_args(_software_prores_plan())
+
+        assert args[args.index("-c:v") + 1] == "prores_ks"
+        assert args[args.index("-pix_fmt") + 1] == "yuv422p10le"
+        assert all("264" not in token and "hevc" not in token for token in args)
+
+    def test_standalone_title_plan_is_explicit_h264_sdr(self):
+        from immich_memories.titles.encoding import standalone_title_encoding_plan
+
+        plan = standalone_title_encoding_plan()
+
+        assert plan.codec is OutputCodec.H264
+        assert plan.encoder == "libx264"
+        assert plan.hdr is False
+
+
+class TestVideoEncodingPlan:
+    """PIL title encoding derives color conversion from the plan."""
 
     def test_hdr_false_returns_empty_filter(self):
         from immich_memories.titles.video_encoding import _get_best_encoder
 
-        _, video_filter = _get_best_encoder(hdr=False)
+        _, video_filter = _get_best_encoder(_software_h264_plan())
         assert video_filter == ""
 
     def test_hdr_true_returns_hlg_filter(self):
         from immich_memories.titles.video_encoding import _get_best_encoder
 
-        _, video_filter = _get_best_encoder(hdr=True)
+        _, video_filter = _get_best_encoder(_hardware_h265_hdr_plan())
         assert isinstance(video_filter, str)
         # WHY: On systems with zscale, filter contains conversion.
         # On systems without, it falls back to basic format conversion.
@@ -107,18 +144,20 @@ class TestVideoEncodingHDRFlag:
     def test_hdr_false_no_color_metadata(self):
         from immich_memories.titles.video_encoding import _get_best_encoder
 
-        encoder_args, _ = _get_best_encoder(hdr=False)
+        encoder_args, _ = _get_best_encoder(_software_h264_plan())
         assert "bt2020" not in encoder_args
         assert "arib-std-b67" not in encoder_args
 
 
-class TestGlobeVideoHDRFlag:
-    """globe_video.py: _build_ffmpeg_command respects hdr flag."""
+class TestGlobeVideoPlan:
+    """Globe commands preserve the configured codec contract."""
 
     def test_hdr_true_includes_hlg_metadata(self):
         from immich_memories.titles.globe_video import _build_ffmpeg_command
 
-        cmd = _build_ffmpeg_command(1920, 1080, 30.0, 5.0, Path("/tmp/g.mp4"), hdr=True)
+        cmd = _build_ffmpeg_command(
+            1920, 1080, 30.0, 5.0, Path("/tmp/g.mp4"), _hardware_h265_hdr_plan()
+        )
         cmd_str = " ".join(cmd)
         assert "arib-std-b67" in cmd_str
         assert "bt2020" in cmd_str
@@ -126,26 +165,30 @@ class TestGlobeVideoHDRFlag:
     def test_hdr_false_omits_hlg_metadata(self):
         from immich_memories.titles.globe_video import _build_ffmpeg_command
 
-        cmd = _build_ffmpeg_command(1920, 1080, 30.0, 5.0, Path("/tmp/g.mp4"), hdr=False)
+        cmd = _build_ffmpeg_command(
+            1920, 1080, 30.0, 5.0, Path("/tmp/g.mov"), _software_prores_plan()
+        )
         cmd_str = " ".join(cmd)
         assert "arib-std-b67" not in cmd_str
         assert "bt2020" not in cmd_str
+        assert "-c:v prores_ks" in cmd_str
 
 
-class TestTitleScreenConfigHDR:
-    """TitleScreenConfig has hdr flag."""
+class TestTitleScreenConfigPlan:
+    """TitleScreenConfig derives HDR truth from its plan."""
 
-    def test_default_hdr_true(self):
+    def test_default_is_explicit_sdr(self):
         from immich_memories.titles.generator import TitleScreenConfig
 
         config = TitleScreenConfig()
-        assert config.hdr
+        assert not config.hdr
+        assert config.encoding_plan.codec is OutputCodec.H264
 
-    def test_hdr_can_be_set_false(self):
+    def test_hdr_is_derived_from_plan(self):
         from immich_memories.titles.generator import TitleScreenConfig
 
-        config = TitleScreenConfig(hdr=False)
-        assert not config.hdr
+        config = TitleScreenConfig(encoding_plan=_hardware_h265_hdr_plan())
+        assert config.hdr
 
 
 class TestHDRDetection:

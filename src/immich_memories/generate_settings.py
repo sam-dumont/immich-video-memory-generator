@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from immich_memories.generate_privacy import (
     extract_trip_locations,
@@ -16,6 +16,16 @@ from immich_memories.processing.assembly_config import (
     TitleScreenSettings,
     TransitionType,
 )
+from immich_memories.processing.encoding_plan import (
+    EncodingRequest,
+    OutputCodec,
+    resolve_encoding_plan,
+)
+from immich_memories.processing.hardware import (
+    HWAccelCapabilities,
+    detect_hardware_acceleration,
+)
+from immich_memories.processing.hdr_utilities import has_any_hdr_clip
 
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
@@ -60,23 +70,46 @@ def _build_assembly_settings(
     # Scale mode: CLI/param > config > default
     effective_scale_mode = params.scale_mode or config.defaults.scale_mode
 
-    # Output format → codec mapping
-    _format_to_codec = {"mp4": "h264", "prores": "prores"}
-    output_codec: str = (
-        _format_to_codec.get(params.output_format.lower(), config.output.codec)
-        if params.output_format
-        else config.output.codec
+    # A CLI format override selects both a compatible codec and container.
+    # With no override, the explicit output config remains authoritative.
+    format_override = params.output_format.lower() if params.output_format else None
+    output_container: Literal["mp4", "mov"]
+    if format_override == "prores":
+        output_codec = OutputCodec.PRORES
+        output_container = "mov"
+    elif format_override == "mp4":
+        output_codec = OutputCodec.H264
+        output_container = "mp4"
+    else:
+        output_codec = OutputCodec(config.output.codec)
+        output_container = config.output.format
+
+    capabilities = (
+        detect_hardware_acceleration() if config.hardware.enabled else HWAccelCapabilities()
+    )
+    output_crf = params.output_crf if params.output_crf is not None else config.output.effective_crf
+    encoding_plan = resolve_encoding_plan(
+        EncodingRequest(
+            codec=output_codec,
+            hdr_mode=config.output.hdr_mode,
+            hardware_enabled=config.hardware.enabled,
+            preset=config.hardware.encoder_preset,
+            crf=output_crf,
+            container=output_container,
+        ),
+        capabilities,
+        input_has_hdr=has_any_hdr_clip(assembly_clips),
     )
 
     return AssemblySettings(
+        encoding_plan=encoding_plan,
         transition=transition_type,
         transition_duration=params.transition_duration,
-        output_crf=params.output_crf or config.output.effective_crf,
+        output_crf=output_crf,
         auto_resolution=auto_resolution,
         target_resolution=target_resolution,
         title_screens=title_screen_settings,
         scale_mode=effective_scale_mode,
-        output_codec=output_codec,
         add_date_overlay=params.add_date_overlay,
         debug_preserve_intermediates=params.debug_preserve_intermediates,
         privacy_mode=params.privacy_mode,

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from immich_memories.processing.hdr_utilities import _get_gpu_encoder_args, quality_to_crf
+from immich_memories.processing.clip_encoder import encoder_args_for_plan
+from immich_memories.processing.encoding_plan import EncodingPlan, OutputCodec
+from immich_memories.processing.hdr_utilities import quality_to_crf
 
 
 class TestQualityToCrf:
@@ -26,25 +28,26 @@ class TestQualityToCrf:
 
 
 class TestEncoderArgsQuality:
-    """GPU encoder args reflect quality preset."""
+    """Resolved software encoder args retain the configured quality."""
 
-    def test_high_quality_macos_has_high_vt_quality(self):
-        import sys
+    @staticmethod
+    def _software_h264_plan(crf: int) -> EncodingPlan:
+        return EncodingPlan(
+            codec=OutputCodec.H264,
+            encoder="libx264",
+            encoder_args=("-preset", "medium", "-crf", str(crf)),
+            hdr=False,
+            tone_map_to_sdr=False,
+            pixel_format="yuv420p",
+            container="mp4",
+        )
 
-        if sys.platform != "darwin":
-            return  # Skip on non-macOS
-        args = _get_gpu_encoder_args(crf=quality_to_crf("high"), preserve_hdr=True)
-        # Should use hevc_videotoolbox with high -q:v
-        q_idx = args.index("-q:v")
-        vt_quality = int(args[q_idx + 1])
-        assert vt_quality >= 65
+    def test_high_quality_crf_reaches_ffmpeg_command(self):
+        crf = quality_to_crf("high")
+        args = encoder_args_for_plan(self._software_h264_plan(crf))
+        assert args[args.index("-crf") + 1] == str(crf)
 
-    def test_low_quality_macos_has_low_vt_quality(self):
-        import sys
-
-        if sys.platform != "darwin":
-            return
-        args = _get_gpu_encoder_args(crf=quality_to_crf("low"), preserve_hdr=True)
-        q_idx = args.index("-q:v")
-        vt_quality = int(args[q_idx + 1])
-        assert vt_quality <= 45
+    def test_low_quality_crf_reaches_ffmpeg_command(self):
+        crf = quality_to_crf("low")
+        args = encoder_args_for_plan(self._software_h264_plan(crf))
+        assert args[args.index("-crf") + 1] == str(crf)

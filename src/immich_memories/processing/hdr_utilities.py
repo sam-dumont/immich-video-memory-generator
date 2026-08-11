@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +16,6 @@ __all__ = [
     "_get_colorspace_filter",
     "_get_hdr_conversion_filter",
     "_get_clip_hdr_types",
-    "_get_gpu_encoder_args",
     "_resolve_clip_hdr",
     "quality_to_crf",
 ]
@@ -253,6 +251,19 @@ def _get_hdr_to_hdr_filter(source_type: str, target_type: str, has_zscale: bool)
     return ""
 
 
+def _get_hdr_to_sdr_filter(source_type: str, has_zscale: bool) -> str:
+    """Return a deterministic HDR-to-BT.709 tone-map filter."""
+    if not has_zscale:
+        logger.warning("zscale not available - HDR to SDR tone mapping is unavailable")
+        return ""
+    transfer = "smpte2084" if source_type == "pq" else "arib-std-b67"
+    return (
+        f",zscale=t=linear:tin={transfer}:pin=bt2020:min=bt2020nc:rin=tv:npl=100"
+        ",format=gbrpf32le,tonemap=tonemap=hable:desat=0"
+        ",zscale=t=bt709:p=bt709:m=bt709:r=tv,format=yuv420p"
+    )
+
+
 def _get_hdr_conversion_filter(
     source_type: str | None,
     target_type: str,
@@ -265,7 +276,7 @@ def _get_hdr_conversion_filter(
 
     Args:
         source_type: Source HDR type ("hlg", "pq", "sdr", or None for unknown)
-        target_type: Target HDR type ("hlg" or "pq")
+        target_type: Target dynamic range ("hlg", "pq", or "sdr")
         source_primaries: Source color primaries (e.g. "bt709", "smpte432" for
             Display P3). When None, defaults to "bt709" for SDR sources.
 
@@ -276,6 +287,11 @@ def _get_hdr_conversion_filter(
         return ""
 
     has_zscale = _check_zscale_available()
+
+    if target_type == "sdr":
+        if source_type is None or source_type == "sdr":
+            return ""
+        return _get_hdr_to_sdr_filter(source_type, has_zscale)
 
     if source_type is None or source_type == "sdr":
         return _get_sdr_to_hdr_filter(target_type, source_primaries, has_zscale)
@@ -297,11 +313,6 @@ def _get_clip_hdr_types(clips: list) -> list[str | None]:
     return hdr_types
 
 
-def _hdr_color_args(color_trc: str) -> list[str]:
-    """Common HDR color metadata arguments for encoder commands."""
-    return ["-colorspace", "bt2020nc", "-color_primaries", "bt2020", "-color_trc", color_trc]
-
-
 def quality_to_crf(quality: str) -> int:
     """Map quality preset to CRF value.
 
@@ -309,105 +320,6 @@ def quality_to_crf(quality: str) -> int:
     These values are calibrated for near-transparent quality at "high".
     """
     return {"high": 12, "medium": 18, "low": 28}.get(quality, 12)
-
-
-def _crf_to_vt_quality(crf: int) -> int:
-    """Map CRF to VideoToolbox -q:v (1-100, higher = better).
-
-    WHY: The old formula (100 - crf*3) gave q:v 31 for CRF 23 — far too
-    compressed. Apple apps use ~65-80 for high quality. This mapping
-    is calibrated against real iPhone HEVC output.
-    """
-    # CRF 12 → q:v 78 (archival), CRF 18 → q:v 62, CRF 28 → q:v 38
-    return max(20, min(90, 90 - crf * 2))
-
-
-def _encoder_args_macos(crf: int, preserve_hdr: bool, color_trc: str) -> list[str]:
-    """VideoToolbox encoder args for macOS."""
-    vt_quality = _crf_to_vt_quality(crf)
-    base = ["-c:v", "hevc_videotoolbox", "-q:v", str(vt_quality), "-tag:v", "hvc1"]
-    if preserve_hdr:
-        return base + ["-pix_fmt", "p010le"] + _hdr_color_args(color_trc)
-    return base
-
-
-def _encoder_args_nvenc(crf: int, preserve_hdr: bool, color_trc: str) -> list[str] | None:
-    """NVENC encoder args, or None if unavailable."""
-    try:
-        result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True
-        )
-        if "hevc_nvenc" not in result.stdout:
-            return None
-    except (OSError, subprocess.SubprocessError):
-        return None
-    base = [
-        "-c:v",
-        "hevc_nvenc",
-        "-preset",
-        "p4",
-        "-rc",
-        "constqp",
-        "-qp",
-        str(crf),
-        "-tag:v",
-        "hvc1",
-    ]
-    if preserve_hdr:
-        return base + ["-pix_fmt", "p010le"] + _hdr_color_args(color_trc)
-    return base
-
-
-def _encoder_args_cpu(crf: int, preserve_hdr: bool, color_trc: str, hdr_type: str) -> list[str]:
-    """CPU fallback encoder args (libx265 HDR or libx264 SDR)."""
-    if not preserve_hdr:
-        return ["-c:v", "libx264", "-preset", "medium", "-crf", str(crf)]
-    x265_transfer = "smpte2084" if hdr_type == "pq" else "arib-std-b67"
-    return [
-        "-c:v",
-        "libx265",
-        "-preset",
-        "medium",
-        "-crf",
-        str(crf),
-        "-pix_fmt",
-        "yuv420p10le",
-        "-tag:v",
-        "hvc1",
-        *_hdr_color_args(color_trc),
-        "-x265-params",
-        f"hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer={x265_transfer}:colormatrix=bt2020nc",
-    ]
-
-
-def _get_gpu_encoder_args(
-    crf: int = 23, preserve_hdr: bool = False, hdr_type: str = "hlg"
-) -> list[str]:
-    """Get GPU-accelerated encoder arguments.
-
-    Uses hardware encoding when available:
-    - macOS: hevc_videotoolbox (Apple Silicon GPU)
-    - NVIDIA: hevc_nvenc (CUDA)
-    - Fallback: libx265/libx264 (CPU)
-
-    Args:
-        crf: Quality level (lower = better, 0-51)
-        preserve_hdr: If True, use 10-bit HDR settings
-        hdr_type: "hlg" for iPhone HLG, "pq" for Android HDR10/HDR10+
-
-    Returns:
-        List of FFmpeg encoder arguments.
-    """
-    color_trc = "smpte2084" if hdr_type == "pq" else "arib-std-b67"
-
-    if sys.platform == "darwin":
-        return _encoder_args_macos(crf, preserve_hdr, color_trc)
-
-    nvenc = _encoder_args_nvenc(crf, preserve_hdr, color_trc)
-    if nvenc is not None:
-        return nvenc
-
-    return _encoder_args_cpu(crf, preserve_hdr, color_trc, hdr_type)
 
 
 def _resolve_clip_hdr(

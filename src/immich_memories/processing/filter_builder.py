@@ -58,11 +58,15 @@ class FilterBuilder:
 
     def _build_hdr_conversion(self, i: int, ctx: AssemblyContext) -> str:
         """Build HDR conversion filter for a clip if needed."""
-        if not self.settings.preserve_hdr or ctx.clip_hdr_types[i] == ctx.hdr_type:
+        plan = self.settings.encoding_plan
+        source_hdr = ctx.clip_hdr_types[i]
+        if source_hdr == ctx.hdr_type:
+            return ""
+        if not plan.hdr and not (plan.tone_map_to_sdr and source_hdr is not None):
             return ""
         source_pri = ctx.clip_primaries[i] if i < len(ctx.clip_primaries) else None
         hdr_conversion = _get_hdr_conversion_filter(
-            ctx.clip_hdr_types[i], ctx.hdr_type, source_primaries=source_pri
+            source_hdr, ctx.hdr_type, source_primaries=source_pri
         )
         if hdr_conversion:
             logger.info(
@@ -323,11 +327,15 @@ class FilterBuilder:
 
     def get_clip_hdr_conversion(self, i: int, ctx: AssemblyContext) -> str:
         """Return HDR conversion filter string for clip i, or empty string."""
-        if not self.settings.preserve_hdr or ctx.clip_hdr_types[i] == ctx.hdr_type:
+        plan = self.settings.encoding_plan
+        source_hdr = ctx.clip_hdr_types[i]
+        if source_hdr == ctx.hdr_type:
+            return ""
+        if not plan.hdr and not (plan.tone_map_to_sdr and source_hdr is not None):
             return ""
         source_pri = ctx.clip_primaries[i] if i < len(ctx.clip_primaries) else None
         hdr_conversion = _get_hdr_conversion_filter(
-            ctx.clip_hdr_types[i], ctx.hdr_type, source_primaries=source_pri
+            source_hdr, ctx.hdr_type, source_primaries=source_pri
         )
         if hdr_conversion:
             logger.info(

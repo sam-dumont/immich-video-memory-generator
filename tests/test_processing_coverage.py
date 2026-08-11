@@ -26,17 +26,11 @@ from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.hardware import HWAccelBackend, HWAccelCapabilities
 from immich_memories.processing.hdr_utilities import (
     _check_zscale_available,
-    _crf_to_vt_quality,
-    _encoder_args_cpu,
-    _encoder_args_macos,
-    _encoder_args_nvenc,
     _get_colorspace_filter,
     _get_dominant_hdr_type,
-    _get_gpu_encoder_args,
     _get_hdr_conversion_filter,
     _get_hdr_to_hdr_filter,
     _get_sdr_to_hdr_filter,
-    _hdr_color_args,
     has_any_hdr_clip,
     quality_to_crf,
 )
@@ -1325,121 +1319,6 @@ class TestQualityToCrf:
 
     def test_unknown_defaults_to_12(self):
         assert quality_to_crf("ultra") == 12
-
-
-class TestCrfToVtQuality:
-    def test_crf_12(self):
-        assert _crf_to_vt_quality(12) == 66
-
-    def test_crf_18(self):
-        assert _crf_to_vt_quality(18) == 54
-
-    def test_clamps_low(self):
-        assert _crf_to_vt_quality(51) == 20
-
-    def test_clamps_high(self):
-        assert _crf_to_vt_quality(0) == 90
-
-
-class TestHdrColorArgs:
-    def test_returns_expected_args(self):
-        args = _hdr_color_args("arib-std-b67")
-        assert args == [
-            "-colorspace",
-            "bt2020nc",
-            "-color_primaries",
-            "bt2020",
-            "-color_trc",
-            "arib-std-b67",
-        ]
-
-
-class TestEncoderArgsMacos:
-    def test_sdr_mode(self):
-        args = _encoder_args_macos(18, preserve_hdr=False, color_trc="arib-std-b67")
-        assert "hevc_videotoolbox" in args
-        assert "-pix_fmt" not in args
-
-    def test_hdr_mode(self):
-        args = _encoder_args_macos(12, preserve_hdr=True, color_trc="arib-std-b67")
-        assert "p010le" in args
-        assert "bt2020" in args
-
-
-class TestEncoderArgsNvenc:
-    def test_available(self):
-        # WHY: subprocess.run checks for hevc_nvenc encoder
-        with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(stdout="hevc_nvenc available")
-            args = _encoder_args_nvenc(18, preserve_hdr=False, color_trc="arib-std-b67")
-
-        assert args is not None
-        assert "hevc_nvenc" in args
-
-    def test_not_available(self):
-        with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(stdout="libx264 only")
-            args = _encoder_args_nvenc(18, preserve_hdr=False, color_trc="arib-std-b67")
-
-        assert args is None
-
-    def test_hdr_adds_color_args(self):
-        with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(stdout="hevc_nvenc")
-            args = _encoder_args_nvenc(12, preserve_hdr=True, color_trc="smpte2084")
-
-        assert "p010le" in args
-        assert "bt2020" in args
-
-
-class TestEncoderArgsCpu:
-    def test_sdr_uses_libx264(self):
-        args = _encoder_args_cpu(18, preserve_hdr=False, color_trc="arib-std-b67", hdr_type="hlg")
-        assert "libx264" in args
-
-    def test_hdr_hlg_uses_libx265(self):
-        args = _encoder_args_cpu(12, preserve_hdr=True, color_trc="arib-std-b67", hdr_type="hlg")
-        assert "libx265" in args
-        assert "yuv420p10le" in args
-
-    def test_hdr_pq_x265_params(self):
-        args = _encoder_args_cpu(12, preserve_hdr=True, color_trc="smpte2084", hdr_type="pq")
-        x265_param = [a for a in args if "transfer=smpte2084" in a]
-        assert len(x265_param) == 1
-
-
-class TestGetGpuEncoderArgs:
-    def test_darwin_uses_videotoolbox(self):
-        with patch("immich_memories.processing.hdr_utilities.sys") as mock_sys:
-            mock_sys.platform = "darwin"
-            args = _get_gpu_encoder_args(crf=18)
-        assert "hevc_videotoolbox" in args
-
-    def test_linux_nvidia(self):
-        with (
-            patch("immich_memories.processing.hdr_utilities.sys") as mock_sys,
-            patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run,
-        ):
-            mock_sys.platform = "linux"
-            mock_run.return_value = MagicMock(stdout="hevc_nvenc")
-            args = _get_gpu_encoder_args(crf=18)
-        assert "hevc_nvenc" in args
-
-    def test_linux_cpu_fallback(self):
-        with (
-            patch("immich_memories.processing.hdr_utilities.sys") as mock_sys,
-            patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run,
-        ):
-            mock_sys.platform = "linux"
-            mock_run.return_value = MagicMock(stdout="libx264 libx265")
-            args = _get_gpu_encoder_args(crf=18, preserve_hdr=True, hdr_type="hlg")
-        assert "libx265" in args
-
-    def test_pq_color_trc(self):
-        with patch("immich_memories.processing.hdr_utilities.sys") as mock_sys:
-            mock_sys.platform = "darwin"
-            args = _get_gpu_encoder_args(crf=18, preserve_hdr=True, hdr_type="pq")
-        assert "smpte2084" in args
 
 
 class TestCheckZscaleAvailable:

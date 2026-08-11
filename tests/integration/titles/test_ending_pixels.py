@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from immich_memories.titles.encoding import standalone_title_encoding_plan
 from immich_memories.titles.ending_service import EndingService
 from immich_memories.titles.styles import TitleStyle
 from tests.integration.conftest import requires_ffmpeg
@@ -44,7 +45,7 @@ class TestEndingPixels:
             height=TITLE_H,
             duration=duration,
             fps=float(TITLE_FPS),
-            hdr=False,
+            encoding_plan=standalone_title_encoding_plan(),
         )
         return output
 

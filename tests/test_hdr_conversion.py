@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+from immich_memories.processing.assembly_config import AssemblyClip, AssemblySettings
+from immich_memories.processing.encoding_plan import EncodingPlan, OutputCodec
 
 
 class TestDetectHdrType:
@@ -212,3 +216,47 @@ class TestHdrConversionFilter:
 
         assert "pin=bt2020" in result
         assert "npl=203" in result
+
+    def test_h264_plan_tone_maps_hlg_input_to_sdr(self):
+        """Explicit H.264/SDR output must tone-map an HDR source before encoding."""
+        from immich_memories.processing.assembly_engine import create_assembly_context
+        from immich_memories.processing.filter_builder import FilterBuilder
+
+        plan = EncodingPlan(
+            codec=OutputCodec.H264,
+            encoder="libx264",
+            encoder_args=("-preset", "medium", "-crf", "18"),
+            hdr=False,
+            tone_map_to_sdr=True,
+            pixel_format="yuv420p",
+            container="mp4",
+        )
+        settings = AssemblySettings(encoding_plan=plan, preserve_hdr=False)
+        prober = MagicMock()
+        prober.detect_max_framerate.return_value = 30
+        clip = AssemblyClip(path=Path("/tmp/hlg.mp4"), duration=5.0)
+
+        with (
+            patch(
+                "immich_memories.processing.assembly_engine._get_clip_hdr_types",
+                return_value=["hlg"],
+            ),
+            patch(
+                "immich_memories.processing.assembly_engine._detect_color_primaries",
+                return_value="bt2020",
+            ),
+            patch(
+                "immich_memories.processing.hdr_utilities._check_zscale_available",
+                return_value=True,
+            ),
+        ):
+            context = create_assembly_context(settings, prober, [clip], 1920, 1080)
+            conversion = FilterBuilder(
+                settings, prober, lambda _path: None
+            ).get_clip_hdr_conversion(0, context)
+
+        assert context.hdr_type == "sdr"
+        assert context.pix_fmt == "yuv420p"
+        assert "zscale=t=linear" in conversion
+        assert "tonemap=" in conversion
+        assert "zscale=t=bt709" in conversion

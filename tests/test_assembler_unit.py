@@ -19,6 +19,44 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     TransitionType,
 )
+from immich_memories.processing.encoding_plan import EncodingPlan, OutputCodec
+
+
+def _software_h264_plan() -> EncodingPlan:
+    return EncodingPlan(
+        codec=OutputCodec.H264,
+        encoder="libx264",
+        encoder_args=("-preset", "medium", "-crf", "18"),
+        hdr=False,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p",
+        container="mp4",
+    )
+
+
+def _tone_map_h264_plan() -> EncodingPlan:
+    plan = _software_h264_plan()
+    return EncodingPlan(
+        codec=plan.codec,
+        encoder=plan.encoder,
+        encoder_args=plan.encoder_args,
+        hdr=False,
+        tone_map_to_sdr=True,
+        pixel_format=plan.pixel_format,
+        container=plan.container,
+    )
+
+
+def _software_h265_hdr_plan() -> EncodingPlan:
+    return EncodingPlan(
+        codec=OutputCodec.H265,
+        encoder="libx265",
+        encoder_args=("-preset", "medium", "-crf", "18"),
+        hdr=True,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p10le",
+        container="mp4",
+    )
 
 
 def _make_assembly_clip(
@@ -140,3 +178,195 @@ class TestVideoAssemblerIntegration:
 
         with pytest.raises(FileNotFoundError):
             assembler.assemble([clip], output)
+
+
+def test_final_assembly_command_uses_the_resolved_software_h264_plan(tmp_path: Path) -> None:
+    """The final FFmpeg command must not select a different codec downstream."""
+    from immich_memories.processing.clip_encoder import ClipEncoder
+    from immich_memories.processing.ffmpeg_runner import AssemblyContext
+
+    settings = AssemblySettings(encoding_plan=_software_h264_plan(), preserve_hdr=False)
+    prober = MagicMock()
+    prober.estimate_duration.return_value = 5.0
+    encoder = ClipEncoder(settings, prober, lambda _path: None)
+    clip = _make_assembly_clip(tmp_path)
+    context = AssemblyContext(
+        target_w=1920,
+        target_h=1080,
+        pix_fmt="yuv420p",
+        hdr_type="sdr",
+        clip_hdr_types=[None],
+        clip_primaries=[None],
+        colorspace_filter="",
+        target_fps=30,
+        fade_duration=0.5,
+    )
+
+    with patch("immich_memories.processing.clip_encoder._run_ffmpeg_with_progress") as run:
+        encoder.run_ffmpeg_assembly(
+            ["-i", str(clip.path)],
+            "[0:v]null[vout];[0:a]anull[aout]",
+            "[vout]",
+            "[aout]",
+            tmp_path / "memory.mp4",
+            [clip],
+            context,
+        )
+
+    command = run.call_args.args[0]
+    codec = command[command.index("-c:v") + 1]
+    assert codec == "libx264"
+    assert all(token not in {"hevc_videotoolbox", "hevc_nvenc", "libx265"} for token in command)
+    assert command[command.index("-colorspace") + 1] == "bt709"
+    assert command[command.index("-color_primaries") + 1] == "bt709"
+    assert command[command.index("-color_trc") + 1] == "bt709"
+
+
+def test_single_clip_reencode_uses_the_same_software_h264_plan(tmp_path: Path) -> None:
+    """Clip normalization must remain concat-compatible with the final output."""
+    from immich_memories.processing.clip_encoder import ClipEncoder
+
+    settings = AssemblySettings(encoding_plan=_software_h264_plan(), preserve_hdr=False)
+    prober = MagicMock()
+    prober.has_audio_stream.return_value = False
+    prober.probe_framerate.return_value = 30.0
+    encoder = ClipEncoder(settings, prober, lambda _path: None)
+    clip = _make_assembly_clip(tmp_path)
+
+    with patch("immich_memories.processing.clip_encoder.subprocess.run") as run:
+        run.return_value = MagicMock(returncode=0, stderr="")
+        encoder.encode_single_clip(clip, tmp_path / "normalized.mp4", (1920, 1080))
+
+    command = run.call_args.args[0]
+    assert command[command.index("-c:v") + 1] == "libx264"
+    assert "hevc_videotoolbox" not in command
+    assert "libx265" not in command
+
+
+def test_frame_accurate_trim_uses_the_same_software_h264_plan(tmp_path: Path) -> None:
+    """A re-encoded trim must remain concat-compatible with every other clip."""
+    from immich_memories.processing.clip_encoder import ClipEncoder
+
+    settings = AssemblySettings(encoding_plan=_software_h264_plan(), preserve_hdr=False)
+    encoder = ClipEncoder(settings, MagicMock(), lambda _path: None)
+    clip = _make_assembly_clip(tmp_path)
+
+    with patch("immich_memories.processing.clip_encoder.subprocess.run") as run:
+        run.return_value = MagicMock(returncode=0, stderr="")
+        encoder.trim_segment_reencode(clip.path, tmp_path / "trimmed.mp4", 1.0, 2.0)
+
+    command = run.call_args.args[0]
+    assert command[command.index("-c:v") + 1] == "libx264"
+    assert "hevc_videotoolbox" not in command
+    assert "libx265" not in command
+
+
+def test_streaming_assembly_uses_the_same_software_h264_plan(tmp_path: Path) -> None:
+    """The scalable path must pass the resolved plan to its FFmpeg encoder."""
+    from immich_memories.processing.assembly_engine import AssemblyEngine
+
+    settings = AssemblySettings(
+        encoding_plan=_software_h264_plan(),
+        preserve_hdr=False,
+        auto_resolution=False,
+        target_resolution=(1920, 1080),
+    )
+    prober = MagicMock()
+    prober.detect_max_framerate.return_value = 30
+    clips = [
+        _make_assembly_clip(tmp_path, "one.mp4"),
+        _make_assembly_clip(tmp_path, "two.mp4"),
+    ]
+    engine = AssemblyEngine(settings, prober, MagicMock(), MagicMock())
+
+    with patch("immich_memories.processing.assembly_engine.streaming_assemble_full") as assemble:
+        engine.assemble_scalable(clips, tmp_path / "memory.mp4")
+
+    encoder_args = assemble.call_args.kwargs["encoder_args"]
+    assert encoder_args[encoder_args.index("-c:v") + 1] == "libx264"
+    assert "hevc_videotoolbox" not in encoder_args
+    assert "libx265" not in encoder_args
+
+
+def test_explicit_hdr_plan_converts_all_sdr_streaming_input(tmp_path: Path) -> None:
+    """Source detection cannot override an explicitly requested HDR output."""
+    from immich_memories.processing.assembly_engine import AssemblyEngine
+
+    settings = AssemblySettings(
+        encoding_plan=_software_h265_hdr_plan(),
+        auto_resolution=False,
+        target_resolution=(1920, 1080),
+    )
+    prober = MagicMock()
+    prober.detect_max_framerate.return_value = 30
+    clips = [
+        _make_assembly_clip(tmp_path, "one.mp4"),
+        _make_assembly_clip(tmp_path, "two.mp4"),
+    ]
+    engine = AssemblyEngine(settings, prober, MagicMock(), MagicMock())
+
+    with (
+        patch(
+            "immich_memories.processing.assembly_engine._get_clip_hdr_types",
+            return_value=[None, None],
+        ),
+        patch(
+            "immich_memories.processing.assembly_engine._get_dominant_hdr_type",
+            return_value="hlg",
+        ),
+        patch("immich_memories.processing.assembly_engine.streaming_assemble_full") as assemble,
+    ):
+        engine.assemble_scalable(clips, tmp_path / "memory.mp4")
+
+    assert assemble.call_args.kwargs["hdr_type"] == "hlg"
+
+
+def test_single_hlg_clip_is_tone_mapped_for_h264_output(tmp_path: Path) -> None:
+    """The single-clip shortcut must apply the same HDR-to-SDR policy."""
+    from immich_memories.processing.clip_encoder import ClipEncoder
+
+    settings = AssemblySettings(encoding_plan=_tone_map_h264_plan(), preserve_hdr=False)
+    prober = MagicMock()
+    prober.has_audio_stream.return_value = False
+    prober.probe_framerate.return_value = 30.0
+    encoder = ClipEncoder(settings, prober, lambda _path: None)
+    clip = _make_assembly_clip(tmp_path)
+
+    with (
+        patch("immich_memories.processing.clip_encoder._detect_hdr_type", return_value="hlg"),
+        patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            return_value=True,
+        ),
+        patch("immich_memories.processing.clip_encoder.subprocess.run") as run,
+    ):
+        run.return_value = MagicMock(returncode=0, stderr="")
+        encoder.encode_single_clip(clip, tmp_path / "normalized.mp4", (1920, 1080))
+
+    command = run.call_args.args[0]
+    filter_graph = command[command.index("-filter_complex") + 1]
+    assert "zscale=t=linear" in filter_graph
+    assert "tonemap=" in filter_graph
+    assert "zscale=t=bt709" in filter_graph
+
+
+def test_generation_settings_resolve_one_software_h265_plan(tmp_path: Path) -> None:
+    """Generation must resolve the requested codec once before assembly starts."""
+    from immich_memories.config_loader import Config
+    from immich_memories.generate import GenerationParams
+    from immich_memories.generate_settings import _build_assembly_settings
+    from immich_memories.processing.encoding_plan import HdrMode
+
+    config = Config()
+    config.hardware.enabled = False
+    config.output.codec = "h265"
+    config.output.hdr_mode = HdrMode.SDR
+    params = GenerationParams(clips=[], output_path=tmp_path / "memory.mp4", config=config)
+
+    settings = _build_assembly_settings(params, [])
+
+    assert settings.encoding_plan.codec is OutputCodec.H265
+    assert settings.encoding_plan.encoder == "libx265"
+    assert settings.encoding_plan.hdr is False
+    assert settings.encoding_plan.container == "mp4"
+    assert settings.output_codec == "h265"

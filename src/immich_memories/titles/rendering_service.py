@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from immich_memories.processing.encoding_plan import EncodingPlan
+
 from .styles import TitleStyle
 from .video_encoding import create_title_video
 
@@ -77,9 +79,9 @@ class RenderingService:
     ) -> Path:
         """Create title video using GPU or PIL renderer.
 
-        HDR flag is read from self.config.hdr.
+        The immutable encoding plan is read from the title config.
         """
-        hdr = self.config.hdr
+        encoding_plan = self.config.encoding_plan
         if self._use_gpu and create_title_video_taichi is not None:
             return self._create_gpu_title(
                 title,
@@ -93,7 +95,7 @@ class RenderingService:
                 animated_background,
                 fade_from_white,
                 is_birthday,
-                hdr=hdr,
+                encoding_plan=encoding_plan,
                 background_image=background_image,
                 content_clip_path=content_clip_path,
                 is_ending=is_ending,
@@ -117,8 +119,8 @@ class RenderingService:
             fps=fps,
             animated_background=animated_background,
             fade_from_white=fade_from_white,
-            hdr=hdr,
             background_image=background_image,
+            encoding_plan=encoding_plan,
         )
 
     def _create_gpu_title(
@@ -134,7 +136,7 @@ class RenderingService:
         animated_background: bool,
         fade_from_white: bool,
         is_birthday: bool,
-        hdr: bool = True,
+        encoding_plan: EncodingPlan,
         background_image: np.ndarray | None = None,
         content_clip_path: Path | None = None,
         is_ending: bool = False,
@@ -156,7 +158,7 @@ class RenderingService:
                 height,
                 fps,
                 duration,
-                hdr=hdr,
+                hdr=encoding_plan.hdr,
             )
             if not slowmo_reader.is_active:
                 slowmo_reader = None
@@ -206,7 +208,7 @@ class RenderingService:
                 config,
                 fade_from_white=fade_from_white,
                 fade_to_white=fade_to_white,
-                hdr=hdr,
+                encoding_plan=encoding_plan,
                 frame_progress=frame_progress,
             )
         finally:
@@ -266,7 +268,7 @@ class RenderingService:
         falls back to PIL rendering with the map as static background.
         No bokeh/particles -- clean map aesthetic.
         """
-        hdr = self.config.hdr
+        encoding_plan = self.config.encoding_plan
         if self._use_gpu and create_title_video_taichi is not None:
             # Dim the map so white text pops
             dimmed = background_array * 0.55
@@ -300,7 +302,12 @@ class RenderingService:
                 vignette_pulse=0.0,
             )
             return create_title_video_taichi(
-                title, subtitle, output_path, config, fade_from_white=True, hdr=hdr
+                title,
+                subtitle,
+                output_path,
+                config,
+                fade_from_white=True,
+                encoding_plan=encoding_plan,
             )
         # PIL fallback
         return create_title_video(
@@ -319,5 +326,5 @@ class RenderingService:
             fps=fps,
             animated_background=False,
             fade_from_white=True,
-            hdr=hdr,
+            encoding_plan=encoding_plan,
         )

@@ -120,7 +120,6 @@ class TestTaichiTitleVideo:
             "CPU Backend",
             output,
             config=config,
-            hdr=False,
         )
 
         assert result.exists()
@@ -155,7 +154,7 @@ class TestTaichiTitleVideo:
         )
         # Without fade
         no_fade = tmp_path / "no_fade.mp4"
-        create_title_video_taichi("Test", None, no_fade, config=config, hdr=False)
+        create_title_video_taichi("Test", None, no_fade, config=config)
 
         # With fade from white
         with_fade = tmp_path / "with_fade.mp4"
@@ -164,7 +163,6 @@ class TestTaichiTitleVideo:
             None,
             with_fade,
             config=config,
-            hdr=False,
             fade_from_white=True,
         )
 

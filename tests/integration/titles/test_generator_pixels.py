@@ -50,7 +50,6 @@ def _make_generator(tmp_path: Path, **config_overrides) -> TitleScreenGenerator:
         "month_divider_duration": 0.5,
         "ending_duration": 1.0,
         "animated_background": False,
-        "hdr": False,
     }
     defaults.update(config_overrides)
     config = TitleScreenConfig(**defaults)
@@ -218,7 +217,7 @@ class TestAllScreensPixels:
 
     def test_sdr_no_hdr_metadata(self, tmp_path):
         """SDR title should not have HDR color metadata."""
-        gen = _make_generator(tmp_path, hdr=False)
+        gen = _make_generator(tmp_path)
         screen = gen.generate_title_screen(year=2024)
 
         stream = ffprobe_stream(screen.path)

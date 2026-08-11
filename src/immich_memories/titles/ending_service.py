@@ -9,7 +9,9 @@ import contextlib
 import logging
 from pathlib import Path
 
-from .encoding import _get_gpu_encoder_args
+from immich_memories.processing.encoding_plan import EncodingPlan
+
+from .encoding import title_encoder_args
 from .styles import TitleStyle
 
 logger = logging.getLogger(__name__)
@@ -29,7 +31,7 @@ class EndingService:
         height: int,
         duration: float,
         fps: float,
-        hdr: bool = True,
+        encoding_plan: EncodingPlan,
     ) -> None:
         """Create ending video with fade to specified color.
 
@@ -52,8 +54,8 @@ class EndingService:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Build FFmpeg command -- same pattern as taichi_video.py (intro)
-        # to ensure identical HLG HDR output.
-        encoder_args = _get_gpu_encoder_args(hdr=hdr)
+        # to ensure it uses the same codec and color contract as every title clip.
+        encoder_args = title_encoder_args(encoding_plan)
         cmd = [
             "ffmpeg",
             "-y",
@@ -75,7 +77,7 @@ class EndingService:
             "lavfi",
             "-i",
             f"anullsrc=r=48000:cl=stereo:d={duration}",
-            # Video encoding - GPU accelerated with 10-bit HLG
+            # Video encoding follows the resolved output contract.
             *encoder_args,
             # Audio encoding
             "-c:a",

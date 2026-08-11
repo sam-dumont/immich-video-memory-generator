@@ -48,7 +48,6 @@ class TestCreateTitleVideo:
             duration=2.0,
             fps=10.0,
             animated_background=False,
-            hdr=False,
         )
         assert out.exists()
         assert out.stat().st_size > 0
@@ -72,7 +71,6 @@ class TestCreateTitleVideo:
             duration=1.5,
             fps=10.0,
             animated_background=False,
-            hdr=False,
         )
         assert has_audio_stream(out)
 
@@ -88,7 +86,6 @@ class TestCreateTitleVideo:
             duration=1.5,
             fps=10.0,
             animated_background=False,
-            hdr=False,
         )
         # Extract a mid-video frame and check for visual content
         mid_frame = extract_frame_rgb(out, frame_num=5, width=TITLE_W, height=TITLE_H)
@@ -110,7 +107,6 @@ class TestFadeFromWhite:
             fps=10.0,
             animated_background=False,
             fade_from_white=True,
-            hdr=False,
         )
         first = extract_frame_rgb(out, frame_num=0, width=TITLE_W, height=TITLE_H)
         mean_brightness = first.mean()
@@ -133,7 +129,6 @@ class TestOutputResolution:
             duration=1.0,
             fps=10.0,
             animated_background=False,
-            hdr=False,
         )
         stream = ffprobe_stream(out)
         assert int(stream["width"]) == w

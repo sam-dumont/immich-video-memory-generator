@@ -61,7 +61,6 @@ class TestBuildTitleConfigResolution:
             target_w=720,
             target_h=1280,
             fps=30,
-            hdr=False,
         )
         assert config.output_resolution == (720, 1280)
 
@@ -73,6 +72,5 @@ class TestBuildTitleConfigResolution:
             target_w=1920,
             target_h=1080,
             fps=30,
-            hdr=True,
         )
         assert config.output_resolution == (1920, 1080)

@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+from immich_memories.processing.encoding_plan import EncodingPlan
 
 if TYPE_CHECKING:
     pass
@@ -22,6 +24,7 @@ if TYPE_CHECKING:
 from .encoding import (  # noqa: F401
     ORIENTATION_RESOLUTIONS,
     get_resolution_for_orientation,
+    standalone_title_encoding_plan,
 )
 from .ending_service import EndingService
 from .rendering_service import RenderingService
@@ -88,8 +91,18 @@ class TitleScreenConfig:
     resolution_width: int | None = None
     resolution_height: int | None = None
 
-    # HDR: match source clips. True = HLG bt2020, False = SDR yuv420p.
-    hdr: bool = True
+    # Immutable codec/HDR/container contract shared with final assembly.
+    encoding_plan: EncodingPlan = field(default_factory=standalone_title_encoding_plan)
+
+    @property
+    def hdr(self) -> bool:
+        """Whether title frames must be rendered in HDR."""
+        return self.encoding_plan.hdr
+
+    @property
+    def output_suffix(self) -> str:
+        """Container suffix required for concat-compatible title clips."""
+        return f".{self.encoding_plan.container}"
 
     @property
     def output_resolution(self) -> tuple[int, int]:
@@ -220,7 +233,7 @@ class TitleScreenGenerator:
         )
 
         width, height = self.config.output_resolution
-        output_path = self.output_dir / "title_screen.mp4"
+        output_path = self.output_dir / f"title_screen{self.config.output_suffix}"
 
         # Pass clip path for slow-mo content-backed background
         clip_for_bg = None
@@ -333,7 +346,7 @@ class TitleScreenGenerator:
             use_line_accent=False,
         )
 
-        output_path = self.output_dir / f"month_divider_{month:02d}.mp4"
+        output_path = self.output_dir / (f"month_divider_{month:02d}{self.config.output_suffix}")
         width, height = self.config.output_resolution
 
         self._rendering.create_title_video(
@@ -376,7 +389,7 @@ class TitleScreenGenerator:
             use_line_accent=False,
         )
 
-        output_path = self.output_dir / f"year_divider_{year}.mp4"
+        output_path = self.output_dir / f"year_divider_{year}{self.config.output_suffix}"
         width, height = self.config.output_resolution
 
         self._rendering.create_title_video(
@@ -407,7 +420,7 @@ class TitleScreenGenerator:
         frame_progress: Callable[[int, int], None] | None = None,
     ) -> GeneratedScreen:
         """Generate the ending screen — reverse slow-mo blur + fade to white."""
-        output_path = self.output_dir / "ending_screen.mp4"
+        output_path = self.output_dir / f"ending_screen{self.config.output_suffix}"
         width, height = self.config.output_resolution
 
         if content_clip_path and self.style.background_type == "content_backed":
@@ -436,7 +449,7 @@ class TitleScreenGenerator:
                 height=height,
                 duration=self.config.ending_duration,
                 fps=self.config.fps,
-                hdr=self.config.hdr,
+                encoding_plan=self.config.encoding_plan,
             )
 
         logger.info("Generated ending screen")
@@ -495,7 +508,7 @@ class TitleScreenGenerator:
         )
 
         safe_name = location_name.replace(" ", "_").replace(",", "")[:30]
-        output_path = self.output_dir / f"location_{safe_name}.mp4"
+        output_path = self.output_dir / f"location_{safe_name}{self.config.output_suffix}"
 
         self._rendering.create_title_video(
             title=location_name,

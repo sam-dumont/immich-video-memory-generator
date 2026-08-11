@@ -701,24 +701,6 @@ class TestHDRUtilities:
         clips = [_make_clip(test_clip_720p)]
         assert has_any_hdr_clip(clips) is False
 
-    def test_get_gpu_encoder_args_returns_list(self):
-        """_get_gpu_encoder_args returns a non-empty list of strings."""
-        from immich_memories.processing.hdr_utilities import _get_gpu_encoder_args
-
-        args = _get_gpu_encoder_args(crf=23, preserve_hdr=False)
-        assert isinstance(args, list)
-        assert len(args) > 0
-        assert all(isinstance(a, str) for a in args)
-
-    def test_get_gpu_encoder_args_hdr(self):
-        """_get_gpu_encoder_args with preserve_hdr includes HDR flags."""
-        from immich_memories.processing.hdr_utilities import _get_gpu_encoder_args
-
-        args = _get_gpu_encoder_args(crf=18, preserve_hdr=True, hdr_type="hlg")
-        args_str = " ".join(args)
-        # Should include HEVC/x265 and color metadata
-        assert "hevc" in args_str or "libx265" in args_str
-
     def test_get_hdr_conversion_filter_same_type(self):
         """Same source and target HDR type returns empty string."""
         from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
@@ -1661,61 +1643,3 @@ class TestHDRUtilitiesExtra:
 
         result = _check_zscale_available()
         assert isinstance(result, bool)
-
-    def test_hdr_color_args(self):
-        """_hdr_color_args returns correct FFmpeg color args."""
-        from immich_memories.processing.hdr_utilities import _hdr_color_args
-
-        args = _hdr_color_args("arib-std-b67")
-        assert "-colorspace" in args
-        assert "bt2020nc" in args
-        assert "arib-std-b67" in args
-
-    def test_encoder_args_macos_sdr(self):
-        """_encoder_args_macos SDR mode excludes HDR flags."""
-        import sys
-
-        if sys.platform != "darwin":
-            pytest.skip("macOS-only test")
-
-        from immich_memories.processing.hdr_utilities import _encoder_args_macos
-
-        args = _encoder_args_macos(crf=23, preserve_hdr=False, color_trc="arib-std-b67")
-        args_str = " ".join(args)
-        assert "hevc_videotoolbox" in args_str
-        assert "p010le" not in args_str
-
-    def test_encoder_args_macos_hdr(self):
-        """_encoder_args_macos HDR mode includes p010le and color metadata."""
-        import sys
-
-        if sys.platform != "darwin":
-            pytest.skip("macOS-only test")
-
-        from immich_memories.processing.hdr_utilities import _encoder_args_macos
-
-        args = _encoder_args_macos(crf=18, preserve_hdr=True, color_trc="arib-std-b67")
-        args_str = " ".join(args)
-        assert "hevc_videotoolbox" in args_str
-        assert "p010le" in args_str
-        assert "bt2020" in args_str
-
-    def test_encoder_args_cpu_sdr(self):
-        """CPU fallback SDR uses libx264."""
-        from immich_memories.processing.hdr_utilities import _encoder_args_cpu
-
-        args = _encoder_args_cpu(
-            crf=23, preserve_hdr=False, color_trc="arib-std-b67", hdr_type="hlg"
-        )
-        assert "-c:v" in args
-        assert "libx264" in args
-
-    def test_encoder_args_cpu_hdr(self):
-        """CPU fallback HDR uses libx265 with x265-params."""
-        from immich_memories.processing.hdr_utilities import _encoder_args_cpu
-
-        args = _encoder_args_cpu(
-            crf=18, preserve_hdr=True, color_trc="arib-std-b67", hdr_type="hlg"
-        )
-        assert "libx265" in args
-        assert "-x265-params" in args

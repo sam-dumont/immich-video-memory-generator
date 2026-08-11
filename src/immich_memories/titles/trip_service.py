@@ -65,7 +65,7 @@ class TripService:
         width, height = self.config.output_resolution
         duration = self.config.title_duration
 
-        output_path = self.output_dir / "trip_map_fly_intro.mp4"
+        output_path = self.output_dir / f"trip_map_fly_intro{self.config.output_suffix}"
         create_map_fly_video(
             departure=(home_lat, home_lon),
             destinations=destinations,
@@ -77,7 +77,7 @@ class TripService:
             fps=self.config.fps,
             hold_start=0.5,
             hold_end=1.0,
-            hdr=self.config.hdr,
+            encoding_plan=self.config.encoding_plan,
             destination_names=location_names,
         )
 
@@ -102,7 +102,7 @@ class TripService:
         width, height = self.config.output_resolution
         map_array = render_trip_map_array(locations, width, height, location_names=location_names)
 
-        output_path = self.output_dir / "trip_map_intro.mp4"
+        output_path = self.output_dir / f"trip_map_intro{self.config.output_suffix}"
         self._rendering.create_map_video(
             title=title_text,
             subtitle=subtitle_text,

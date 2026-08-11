@@ -176,7 +176,6 @@ class TestTaichiContentBacked:
             orientation="landscape",
             resolution="720p",
             fps=30.0,
-            hdr=False,
             title_override="Performance Test 2025",
             subtitle_override="Content Backed",
         )
@@ -285,7 +284,6 @@ class TestTaichiGradient:
             orientation="landscape",
             resolution="720p",
             fps=30.0,
-            hdr=False,
             style_mode="auto",
             title_override="Gradient Only 2025",
             subtitle_override="No Content Clip",

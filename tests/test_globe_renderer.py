@@ -246,14 +246,16 @@ class TestCameraInterpolation:
 class TestGlobeVideo:
     """Globe animation video creation."""
 
-    def test_ffmpeg_command_includes_hlg_metadata(self):
-        """FFmpeg command should include HLG color metadata."""
+    def test_standalone_ffmpeg_command_is_explicit_h264_sdr(self):
+        """Standalone globe rendering must use the documented H.264/SDR plan."""
         from immich_memories.titles.globe_video import _build_ffmpeg_command
 
         cmd = _build_ffmpeg_command(1920, 1080, 30.0, 5.0, Path("/tmp/globe.mp4"))
         cmd_str = " ".join(cmd)
-        assert "arib-std-b67" in cmd_str
-        assert "bt2020" in cmd_str
+        assert "-c:v libx264" in cmd_str
+        assert "bt709" in cmd_str
+        assert "arib-std-b67" not in cmd_str
+        assert "hevc" not in cmd_str
         assert "rgb24" in cmd_str
 
     def test_ffmpeg_command_has_silent_audio(self):

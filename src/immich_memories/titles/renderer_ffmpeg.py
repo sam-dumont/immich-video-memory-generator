@@ -17,14 +17,16 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .encoding import _get_gpu_encoder_args
+from immich_memories.processing.encoding_plan import EncodingPlan
+
+from .encoding import standalone_title_encoding_plan, title_encoder_args
 
 logger = logging.getLogger(__name__)
 
 
-def _get_encoder_args(hdr: bool = True) -> list[str]:
-    """Get encoder arguments — delegates to shared encoding._get_gpu_encoder_args."""
-    return _get_gpu_encoder_args(hdr=hdr)
+def _get_encoder_args(encoding_plan: EncodingPlan | None = None) -> list[str]:
+    """Get encoder arguments from the supplied or standalone title plan."""
+    return title_encoder_args(encoding_plan or standalone_title_encoding_plan())
 
 
 @dataclass
@@ -90,6 +92,7 @@ def create_title_ffmpeg(
     subtitle: str | None,
     output_path: Path,
     config: FFmpegTitleConfig | None = None,
+    encoding_plan: EncodingPlan | None = None,
 ) -> Path:
     """Create a title screen using FFmpeg native filters.
 
@@ -195,8 +198,8 @@ def create_title_ffmpeg(
         # Apply text filters
         "-vf",
         filter_chain,
-        # Encoding - GPU accelerated with 10-bit for smooth gradients
-        *_get_encoder_args(),
+        # Encoding follows the supplied output contract.
+        *_get_encoder_args(encoding_plan),
         "-c:a",
         "aac",
         "-b:a",
@@ -227,6 +230,7 @@ def create_title_with_effects(
     subtitle: str | None,
     output_path: Path,
     config: FFmpegTitleConfig | None = None,
+    encoding_plan: EncodingPlan | None = None,
 ) -> Path:
     """Create a title screen with animated effects using FFmpeg.
 
@@ -356,8 +360,8 @@ def create_title_with_effects(
         f"[{last_label}]",
         "-map",
         "1:a",
-        # Encoding - GPU accelerated with 10-bit for smooth gradients
-        *_get_encoder_args(),
+        # Encoding follows the supplied output contract.
+        *_get_encoder_args(encoding_plan),
         "-c:a",
         "aac",
         "-b:a",

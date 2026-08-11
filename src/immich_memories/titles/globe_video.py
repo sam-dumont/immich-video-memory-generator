@@ -1,8 +1,4 @@
-"""Animated globe video creation.
-
-Renders per-frame globe projections with interpolated camera,
-piped to FFmpeg as HLG HDR video. Used for trip map intro screens.
-"""
+"""Animated globe video creation using the selected output encoding plan."""
 
 from __future__ import annotations
 
@@ -13,7 +9,9 @@ from pathlib import Path
 
 import numpy as np
 
-from .encoding import _get_gpu_encoder_args
+from immich_memories.processing.encoding_plan import EncodingPlan
+
+from .encoding import standalone_title_encoding_plan, title_encoder_args
 from .globe_renderer import GlobeCameraKeyframe, interpolate_camera
 from .taichi_globe import project_globe_frame
 
@@ -31,13 +29,13 @@ def create_globe_animation_video(
     fov: float = 0.8,
     hold_start: float = 0.5,
     hold_end: float = 1.0,
-    hdr: bool = True,
+    encoding_plan: EncodingPlan | None = None,
 ) -> Path:
     """Create an animated globe fly-over video.
 
     Renders each frame by projecting the equirectangular texture onto
     a 3D sphere with interpolated camera position, then pipes raw
-    frames to FFmpeg with HLG HDR metadata.
+    frames to FFmpeg using the supplied encoding plan.
 
     Args:
         texture: Equirectangular map texture, float32 (h, w, 3).
@@ -50,6 +48,8 @@ def create_globe_animation_video(
         fov: Field of view multiplier.
         hold_start: Seconds to hold on the starting position.
         hold_end: Seconds to hold on the ending position.
+        encoding_plan: Codec, container, pixel format, and HDR contract. Standalone
+            calls default explicitly to H.264/SDR.
 
     Returns:
         Path to the generated video file.
@@ -57,7 +57,7 @@ def create_globe_animation_video(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     total_frames = int(duration * fps)
 
-    cmd = _build_ffmpeg_command(width, height, fps, duration, output_path, hdr=hdr)
+    cmd = _build_ffmpeg_command(width, height, fps, duration, output_path, encoding_plan)
     logger.info(f"Rendering globe animation: {total_frames} frames, {duration}s")
 
     process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -106,13 +106,13 @@ def _build_ffmpeg_command(
     fps: float,
     duration: float,
     output_path: Path,
-    hdr: bool = True,
+    encoding_plan: EncodingPlan | None = None,
 ) -> list[str]:
     """Build FFmpeg command for globe video encoding.
 
     Uses the shared encoder from encoding.py (single source of truth).
     """
-    encoder_args = _get_gpu_encoder_args(hdr=hdr)
+    encoder_args = title_encoder_args(encoding_plan or standalone_title_encoding_plan())
 
     return [
         "ffmpeg",
