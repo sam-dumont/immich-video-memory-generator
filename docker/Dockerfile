@@ -19,22 +19,31 @@ COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
 # hatch-vcs needs git history to detect version, which isn't available in Docker.
-# Use SETUPTOOLS_SCM_PRETEND_VERSION to provide the version explicitly.
-ARG SETUPTOOLS_SCM_PRETEND_VERSION=0.2.0
-ENV SETUPTOOLS_SCM_PRETEND_VERSION=${SETUPTOOLS_SCM_PRETEND_VERSION}
+# The caller must provide the release identity explicitly.
+ARG APP_VERSION
+ARG INSTALL_EXTRAS=all
+RUN if [ -z "${APP_VERSION}" ]; then echo "APP_VERSION build argument is required" >&2; exit 1; fi
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
 
-RUN pip install --no-cache-dir build && \
-    python -m build --wheel && \
-    (pip wheel --no-cache-dir --wheel-dir=/wheels ".[all]" || \
-     pip wheel --no-cache-dir --wheel-dir=/wheels .)
+RUN if [ "${INSTALL_EXTRAS}" = "none" ]; then \
+        pip wheel --no-cache-dir --wheel-dir=/wheels .; \
+    else \
+        pip wheel --no-cache-dir --wheel-dir=/wheels ".[${INSTALL_EXTRAS}]"; \
+    fi
 
 
 # Stage 2: Runtime image
 FROM python:3.11-slim@sha256:b1b81d67b8df73bf6067191790c233ef9e598b863fc1ccf447956138ca466d99
 
+ARG APP_VERSION
+ARG VCS_REF=unknown
+ARG SOURCE_URL=https://github.com/sam-dumont/immich-video-memory-generator
+
 LABEL maintainer="Immich Memories Contributors"
 LABEL description="Create video compilations from your Immich library"
-LABEL version="0.2.0"
+LABEL org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.source="${SOURCE_URL}"
 
 WORKDIR /app
 
@@ -50,7 +59,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy wheels from builder
 COPY --from=builder /wheels /wheels
-COPY --from=builder /app/dist/*.whl /wheels/
 
 # Install the application
 RUN pip install --no-cache-dir /wheels/*.whl && \
@@ -75,7 +83,7 @@ EXPOSE 8080
 
 # Health check (use python instead of curl since slim image doesn't include curl)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/live')" || exit 1
 
 # Default command: run the UI
 CMD ["immich-memories", "ui", "--host", "0.0.0.0"]

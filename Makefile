@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast mutation benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check clean clean-cache clean-all build build-check docker docker-run file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
+.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast mutation benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
 
 # Default target
 help:
@@ -501,19 +501,35 @@ build-wheel:
 
 DOCKER_IMAGE := immich-memories
 DOCKER_TAG := latest
+APP_VERSION ?= $(shell uv run python -c 'from immich_memories._version import __version__; print(__version__)')
+INSTALL_EXTRAS ?= all
+VCS_REF ?= $(shell git rev-parse HEAD)
+SOURCE_URL ?= https://github.com/sam-dumont/immich-video-memory-generator
+IMMICH_CONFIG_DIR ?= $(HOME)/.immich-memories
+IMMICH_OUTPUT_DIR ?= $(CURDIR)/output
 
 docker:
-	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) -f docker/Dockerfile .
+	docker build \
+		--build-arg APP_VERSION=$(APP_VERSION) \
+		--build-arg INSTALL_EXTRAS=$(INSTALL_EXTRAS) \
+		--build-arg VCS_REF=$(VCS_REF) \
+		--build-arg SOURCE_URL=$(SOURCE_URL) \
+		-t $(DOCKER_IMAGE):$(DOCKER_TAG) \
+		-f docker/Dockerfile .
 
 docker-run:
+	mkdir -p $(IMMICH_CONFIG_DIR) $(IMMICH_OUTPUT_DIR)
 	docker run -it --rm \
 		-p 8080:8080 \
-		-v ~/.immich-memories:/root/.immich-memories \
+		-v $(IMMICH_CONFIG_DIR):/home/immich/.immich-memories \
+		-v $(IMMICH_OUTPUT_DIR):/app/output \
 		$(DOCKER_IMAGE):$(DOCKER_TAG)
 
 docker-shell:
+	mkdir -p $(IMMICH_CONFIG_DIR) $(IMMICH_OUTPUT_DIR)
 	docker run -it --rm \
-		-v ~/.immich-memories:/root/.immich-memories \
+		-v $(IMMICH_CONFIG_DIR):/home/immich/.immich-memories \
+		-v $(IMMICH_OUTPUT_DIR):/app/output \
 		$(DOCKER_IMAGE):$(DOCKER_TAG) /bin/bash
 
 # =============================================================================

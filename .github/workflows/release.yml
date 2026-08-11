@@ -397,6 +397,11 @@ jobs:
           file: ./docker/Dockerfile
           push: true
           platforms: ${{ matrix.platform }}
+          build-args: |
+            APP_VERSION=${{ needs.analyze.outputs.next_version }}
+            INSTALL_EXTRAS=all
+            VCS_REF=${{ github.sha }}
+            SOURCE_URL=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=${{ matrix.slug }}
           cache-to: type=gha,mode=max,scope=${{ matrix.slug }}
           outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true
