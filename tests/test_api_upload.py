@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import os
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
+from immich_memories.api.album_service import InvalidUploadResponse, build_upload_fields
+from immich_memories.api.compatibility import ResolvedApiVersion, UnsupportedImmichVersion
 from immich_memories.api.immich import ImmichClient, SyncImmichClient
 
 _TEST_URL = "https://immich.example.com"
@@ -23,7 +27,7 @@ def _mock_config():
         yield cfg
 
 
-def _json_response(data: dict, status: int = 200) -> httpx.Response:
+def _json_response(data: object, status: int = 200) -> httpx.Response:
     return httpx.Response(
         status,
         request=httpx.Request("POST", "/test"),
@@ -32,14 +36,193 @@ def _json_response(data: dict, status: int = 200) -> httpx.Response:
     )
 
 
+@pytest.fixture()
+def video_path(tmp_path: Path) -> Path:
+    path = tmp_path / "memory clip.mp4"
+    path.write_bytes(b"fake video content")
+    os.utime(path, (1_704_164_645, 1_704_164_645))
+    return path
+
+
 class TestUploadAsset:
+    def test_v3_upload_fields_match_the_v3_contract(self, tmp_path: Path) -> None:
+        video_file = tmp_path / "holiday memory.mp4"
+        modified_at = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
+
+        fields = build_upload_fields(ResolvedApiVersion.V3, video_file, modified_at)
+
+        assert fields == {
+            "filename": "holiday memory.mp4",
+            "fileCreatedAt": "2024-01-02T03:04:05+00:00",
+            "fileModifiedAt": "2024-01-02T03:04:05+00:00",
+        }
+
+    def test_v2_upload_fields_keep_deterministic_device_identity(self, tmp_path: Path) -> None:
+        video_file = tmp_path / "holiday memory.mp4"
+        video_file.write_bytes(b"fake video content")
+        modified_at = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
+
+        fields = build_upload_fields(ResolvedApiVersion.V2, video_file, modified_at)
+
+        assert fields == {
+            "deviceAssetId": "immich-memories-8b374193fa92cfcd",
+            "deviceId": "immich-memories",
+            "fileCreatedAt": "2024-01-02T03:04:05+00:00",
+            "fileModifiedAt": "2024-01-02T03:04:05+00:00",
+        }
+
+    @pytest.mark.asyncio
+    async def test_v3_upload_sends_exact_multipart_contract(self, video_path: Path) -> None:
+        client = ImmichClient(_TEST_URL, _TEST_KEY, api_version="v3")
+        # WHY: replace the external Immich write while preserving the real upload service.
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(
+            return_value=_json_response({"id": "asset-v3", "status": "created"})
+        )
+
+        result = await client.upload_asset(video_path)
+
+        assert result == "asset-v3"
+        assert client._client.request.await_count == 1
+        request = client._client.request.await_args
+        assert request.args == ("POST", "/api/assets")
+        assert request.kwargs["data"] == {
+            "filename": "memory clip.mp4",
+            "fileCreatedAt": "2024-01-02T03:04:05+00:00",
+            "fileModifiedAt": "2024-01-02T03:04:05+00:00",
+        }
+        assert "assetData" not in request.kwargs["data"]
+        assert set(request.kwargs["files"]) == {"assetData"}
+        asset_data = request.kwargs["files"]["assetData"]
+        assert asset_data[0] == "memory clip.mp4"
+        assert asset_data[2] == "video/mp4"
+        assert request.kwargs["timeout"] == 600.0
+
+    @pytest.mark.asyncio
+    async def test_v2_upload_sends_exact_multipart_contract(self, video_path: Path) -> None:
+        client = ImmichClient(_TEST_URL, _TEST_KEY, api_version="v2")
+        # WHY: replace the external Immich write while preserving the real upload service.
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(
+            return_value=_json_response({"id": "asset-v2", "status": "created"})
+        )
+
+        result = await client.upload_asset(video_path)
+
+        assert result == "asset-v2"
+        assert client._client.request.await_count == 1
+        request = client._client.request.await_args
+        assert request.args == ("POST", "/api/assets")
+        assert request.kwargs["data"] == {
+            "deviceAssetId": "immich-memories-e1a1f100d5f573b1",
+            "deviceId": "immich-memories",
+            "fileCreatedAt": "2024-01-02T03:04:05+00:00",
+            "fileModifiedAt": "2024-01-02T03:04:05+00:00",
+        }
+        assert "assetData" not in request.kwargs["data"]
+        assert set(request.kwargs["files"]) == {"assetData"}
+        asset_data = request.kwargs["files"]["assetData"]
+        assert asset_data[0] == "memory clip.mp4"
+        assert asset_data[2] == "video/mp4"
+        assert request.kwargs["timeout"] == 600.0
+
+    @pytest.mark.asyncio
+    async def test_auto_upload_resolves_once_before_posting(self, video_path: Path) -> None:
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
+        # WHY: provide controlled Immich version and upload responses without network I/O.
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(
+            side_effect=[
+                _json_response({"major": 3, "minor": 1, "patch": 0}),
+                _json_response({"id": "asset-one", "status": "created"}),
+                _json_response({"id": "asset-two", "status": "created"}),
+            ]
+        )
+
+        assert await client.upload_asset(video_path) == "asset-one"
+        assert await client.upload_asset(video_path) == "asset-two"
+
+        requests = client._client.request.await_args_list
+        assert [request.args[:2] for request in requests] == [
+            ("GET", "/api/server/version"),
+            ("POST", "/api/assets"),
+            ("POST", "/api/assets"),
+        ]
+        assert requests[1].kwargs["data"] == {
+            "filename": "memory clip.mp4",
+            "fileCreatedAt": "2024-01-02T03:04:05+00:00",
+            "fileModifiedAt": "2024-01-02T03:04:05+00:00",
+        }
+
+    @pytest.mark.asyncio
+    async def test_unsupported_auto_version_does_not_open_or_upload_file(
+        self, video_path: Path
+    ) -> None:
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
+        # WHY: return an unsupported real-world server version without network I/O.
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(
+            return_value=_json_response({"major": 4, "minor": 0, "patch": 0})
+        )
+
+        # WHY: file opening is the boundary that proves no upload bytes are read.
+        with (
+            patch.object(Path, "open") as open_file,
+            pytest.raises(UnsupportedImmichVersion, match="major version 4"),
+        ):
+            await client.upload_asset(video_path)
+
+        open_file.assert_not_called()
+        requests = client._client.request.await_args_list
+        assert [request.args[:2] for request in requests] == [("GET", "/api/server/version")]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "response_body",
+        [
+            pytest.param({"status": "created"}, id="missing-id"),
+            pytest.param({"id": ""}, id="empty-id"),
+            pytest.param({"id": 123}, id="non-string-id"),
+            pytest.param([], id="non-object-body"),
+        ],
+    )
+    async def test_malformed_upload_response_raises_typed_error(
+        self, video_path: Path, response_body: object
+    ) -> None:
+        client = ImmichClient(_TEST_URL, _TEST_KEY, api_version="v3")
+        # WHY: return a malformed successful Immich response without a network write.
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(return_value=_json_response(response_body))
+
+        with pytest.raises(InvalidUploadResponse, match="non-empty string id"):
+            await client.upload_asset(video_path)
+
+    @pytest.mark.asyncio
+    async def test_duplicate_upload_response_returns_existing_asset_id(
+        self, video_path: Path
+    ) -> None:
+        client = ImmichClient(_TEST_URL, _TEST_KEY, api_version="v2")
+        # WHY: represent Immich's duplicate response without performing a network write.
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(
+            return_value=_json_response({"id": "existing-asset", "status": "duplicate"})
+        )
+
+        assert await client.upload_asset(video_path) == "existing-asset"
+
     @pytest.mark.asyncio
     async def test_upload_asset_sends_multipart(self, _mock_config, tmp_path):
         """upload_asset sends the file as multipart form data."""
         video_file = tmp_path / "memory.mp4"
         video_file.write_bytes(b"fake video content")
 
-        client = ImmichClient(_TEST_URL, _TEST_KEY)
+        client = ImmichClient(_TEST_URL, _TEST_KEY, api_version="v2")
         client._client = AsyncMock()
         client._client.is_closed = False
         client._client.request = AsyncMock(

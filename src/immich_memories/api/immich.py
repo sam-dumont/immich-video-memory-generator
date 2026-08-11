@@ -105,7 +105,7 @@ class ImmichClient:
         self.all_assets = AllAssetsService(self.search)
         self.assets = AssetService(self._request, self.base_url, lambda: self.client)
         self.people = PersonService(self._request)
-        self.albums = AlbumService(self._request)
+        self.albums = AlbumService(self._request, self.get_api_version)
 
     @property
     def client(self) -> httpx.AsyncClient:
