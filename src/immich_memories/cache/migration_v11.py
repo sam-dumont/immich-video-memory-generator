@@ -7,11 +7,9 @@ import sqlite3
 from datetime import UTC, datetime
 
 
-def _legacy_local_timestamp_to_utc(value: str) -> str:
-    """Convert an offset-free local wall time to UTC, preserving aware values."""
+def _timestamp_to_canonical_utc(value: str) -> str:
+    """Convert local-naive or offset-aware timestamp text to canonical UTC."""
     parsed = datetime.fromisoformat(value)
-    if parsed.tzinfo is not None:
-        return value
     return parsed.astimezone(UTC).isoformat()
 
 
@@ -36,7 +34,7 @@ def migrate_automation_history(conn: sqlite3.Connection) -> None:
         selected = ", ".join((key_column, *columns))
         for row in conn.execute(f"SELECT {selected} FROM {table}").fetchall():  # noqa: S608
             updates = {
-                column: _legacy_local_timestamp_to_utc(row[index + 1])
+                column: _timestamp_to_canonical_utc(row[index + 1])
                 for index, column in enumerate(columns)
                 if row[index + 1]
             }

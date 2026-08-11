@@ -14,7 +14,7 @@ from unittest.mock import patch
 import pytest
 
 from immich_memories.automation.models import AutoOutcome
-from immich_memories.automation.runner import AutoRunner
+from immich_memories.automation.runner import AutoRunner, _cooldown_status
 from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.cache import database as cache_database
 from immich_memories.cache.database import VideoAnalysisCache
@@ -88,7 +88,7 @@ def test_future_automation_attempt_timestamps_are_aware_utc(tmp_path: Path) -> N
     assert finished.finished_at.tzinfo is UTC
 
 
-def test_v11_normalizes_legacy_timestamps_and_preserves_aware_values(
+def test_v11_normalizes_all_timestamps_to_canonical_utc(
     tmp_path: Path,
     brussels_machine_timezone: None,
 ) -> None:
@@ -164,18 +164,89 @@ def test_v11_normalizes_legacy_timestamps_and_preserves_aware_values(
 
     assert runs["winter"] == ("2026-01-10T08:00:00+00:00", "2026-01-10T09:00:00+00:00")
     assert runs["summer"] == ("2026-08-10T07:00:00+00:00", "2026-08-10T08:00:00+00:00")
-    assert runs["aware"] == (
-        "2026-08-10T09:00:00+02:00",
-        "2026-08-10T10:00:00+02:00",
-    )
+    assert runs["aware"] == ("2026-08-10T07:00:00+00:00", "2026-08-10T08:00:00+00:00")
     assert phases == [
         ("2026-08-10T07:00:00+00:00", "2026-08-10T08:00:00+00:00"),
-        ("2026-08-10T09:00:00+02:00", "2026-08-10T10:00:00+02:00"),
+        ("2026-08-10T07:00:00+00:00", "2026-08-10T08:00:00+00:00"),
     ]
     assert attempts == [
-        ("2026-01-10T09:00:00+01:00", "2026-01-10T10:00:00+01:00"),
+        ("2026-01-10T08:00:00+00:00", "2026-01-10T09:00:00+00:00"),
         ("2026-01-10T08:00:00+00:00", "2026-01-10T09:00:00+00:00"),
     ]
+
+
+def test_v11_canonical_utc_keeps_completion_order_and_cooldown_chronological(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Different explicit offsets cannot invert completion history after migration."""
+    db_path = tmp_path / "offset-order-v10.db"
+    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 10)
+    legacy_db = RunDatabase(db_path)
+    legacy_db.save_run(
+        RunMetadata(
+            run_id="older-plus-two",
+            created_at=datetime.fromisoformat("2026-08-10T09:00:00+02:00"),
+            completed_at=datetime.fromisoformat("2026-08-10T09:30:00+02:00"),
+            status="completed",
+            source="auto",
+            memory_type="trip",
+            memory_category="trip",
+        )
+    )
+    legacy_db.save_run(
+        RunMetadata(
+            run_id="newer-utc",
+            created_at=datetime.fromisoformat("2026-08-10T07:45:00+00:00"),
+            completed_at=datetime.fromisoformat("2026-08-10T08:00:00+00:00"),
+            status="completed",
+            source="auto",
+            memory_type="monthly_highlights",
+            memory_category="monthly_review",
+        )
+    )
+    with sqlite3.connect(db_path) as conn:
+        conn.executemany(
+            """
+            INSERT INTO automation_attempts (
+                id, started_at, finished_at, outcome, reason
+            ) VALUES (?, ?, ?, 'skipped', 'test')
+            """,
+            [
+                (
+                    "older-plus-two",
+                    "2026-08-10T09:20:00+02:00",
+                    "2026-08-10T09:21:00+02:00",
+                ),
+                (
+                    "newer-utc",
+                    "2026-08-10T08:05:00+00:00",
+                    "2026-08-10T08:06:00+00:00",
+                ),
+            ],
+        )
+
+    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 11)
+    migrated = RunDatabase(db_path)
+    runs = migrated.list_runs(
+        status="completed",
+        source="auto",
+        order_by_completion=True,
+    )
+
+    assert [run.run_id for run in runs] == ["newer-utc", "older-plus-two"]
+    assert runs[0].memory_category == "monthly_review"
+    assert runs[0].completed_at == datetime(2026, 8, 10, 8, 0, tzinfo=UTC)
+    assert runs[1].completed_at == datetime(2026, 8, 10, 7, 30, tzinfo=UTC)
+    assert _cooldown_status(
+        runs[0],
+        24,
+        now=datetime(2026, 8, 11, 7, 45, tzinfo=UTC),
+    ).active
+    last_attempt = AutomationStateStore(db_path).get_last_attempt()
+    assert last_attempt is not None
+    assert last_attempt.id == "newer-utc"
+    assert last_attempt.started_at == datetime(2026, 8, 10, 8, 5, tzinfo=UTC)
 
 
 def test_v11_conservatively_backfills_legacy_auto_identity(tmp_path: Path) -> None:
