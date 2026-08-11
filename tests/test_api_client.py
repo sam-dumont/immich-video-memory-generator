@@ -14,6 +14,7 @@ from immich_memories.api.immich import (
     ImmichClient,
     ImmichNotFoundError,
     SyncImmichClient,
+    parse_error_response,
 )
 from immich_memories.api.models import MetadataSearchResult
 
@@ -63,25 +64,98 @@ class TestImmichClientRequest:
     async def test_401_raises_auth_error(self, _mock_config):
         """401 status maps to ImmichAuthError."""
         client = ImmichClient(_TEST_URL, _TEST_KEY)
-        mock_response = httpx.Response(401, request=httpx.Request("GET", "/test"))
+        mock_response = httpx.Response(
+            401,
+            request=httpx.Request("GET", "/test", headers={"x-api-key": _TEST_KEY}),
+            json={"error": "Unauthorized", "message": "API key rejected"},
+            headers={"X-Correlation-ID": "corr-auth"},
+        )
         client._client = AsyncMock()
         client._client.is_closed = False
         client._client.request = AsyncMock(return_value=mock_response)
 
-        with pytest.raises(ImmichAuthError, match="Invalid API key"):
+        with pytest.raises(ImmichAuthError, match="Invalid API key") as raised:
             await client._request("GET", "/test")
+
+        assert str(raised.value) == "Invalid API key"
+        assert raised.value.status_code == 401
+        assert raised.value.correlation_id == "corr-auth"
+        assert raised.value.details == {
+            "error": "Unauthorized",
+            "message": "API key rejected",
+        }
+        assert _TEST_KEY not in str(raised.value)
+
+    @pytest.mark.parametrize(
+        ("response", "expected_message", "expected_body"),
+        [
+            pytest.param(
+                httpx.Response(400, json={"message": "v2 validation failed"}),
+                "v2 validation failed",
+                {"message": "v2 validation failed"},
+                id="v2-string-message",
+            ),
+            pytest.param(
+                httpx.Response(
+                    422,
+                    json={"message": {"error": "nested validation failed"}},
+                ),
+                "nested validation failed",
+                {"message": {"error": "nested validation failed"}},
+                id="nested-object",
+            ),
+            pytest.param(
+                httpx.Response(
+                    400,
+                    json={"message": ["first failure", {"message": "second failure"}]},
+                ),
+                "first failure; second failure",
+                {"message": ["first failure", {"message": "second failure"}]},
+                id="nested-list",
+            ),
+            pytest.param(
+                httpx.Response(502, text="plain gateway failure"),
+                "plain gateway failure",
+                "plain gateway failure",
+                id="plain-text",
+            ),
+        ],
+    )
+    def test_error_response_shapes_are_normalized(
+        self,
+        response: httpx.Response,
+        expected_message: str,
+        expected_body: object,
+    ) -> None:
+        details = parse_error_response(response)
+
+        assert details.message == expected_message
+        assert details.status_code == response.status_code
+        assert details.body == expected_body
 
     @pytest.mark.asyncio
     async def test_404_raises_not_found(self, _mock_config):
         """404 status maps to ImmichNotFoundError."""
         client = ImmichClient(_TEST_URL, _TEST_KEY)
-        mock_response = httpx.Response(404, request=httpx.Request("GET", "/test"))
+        mock_response = httpx.Response(
+            404,
+            request=httpx.Request("GET", "/test"),
+            json={"error": "Not Found", "message": "Asset does not exist"},
+            headers={"X-Correlation-ID": "corr-missing"},
+        )
         client._client = AsyncMock()
         client._client.is_closed = False
         client._client.request = AsyncMock(return_value=mock_response)
 
-        with pytest.raises(ImmichNotFoundError, match="not found"):
+        with pytest.raises(ImmichNotFoundError, match="not found") as raised:
             await client._request("GET", "/test")
+
+        assert raised.value.status_code == 404
+        assert raised.value.correlation_id == "corr-missing"
+        assert raised.value.details == {
+            "error": "Not Found",
+            "message": "Asset does not exist",
+        }
 
     @pytest.mark.asyncio
     async def test_500_raises_api_error(self, _mock_config):
@@ -90,7 +164,8 @@ class TestImmichClientRequest:
         mock_response = httpx.Response(
             500,
             request=httpx.Request("GET", "/test"),
-            content=b"Internal Server Error",
+            json={"message": "temporary outage", "retryable": True},
+            headers={"X-Correlation-ID": "corr-retry"},
         )
         client._client = AsyncMock()
         client._client.is_closed = False
@@ -102,7 +177,13 @@ class TestImmichClientRequest:
             pytest.raises(ImmichAPIError) as exc_info,
         ):
             await client._request("GET", "/test")
+        assert str(exc_info.value) == "temporary outage"
         assert exc_info.value.status_code == 500
+        assert exc_info.value.correlation_id == "corr-retry"
+        assert exc_info.value.details == {
+            "message": "temporary outage",
+            "retryable": True,
+        }
 
     @pytest.mark.asyncio
     async def test_timeout_raises_api_error(self, _mock_config):
@@ -184,6 +265,72 @@ class TestImmichClientRequest:
 
         with pytest.raises(ImmichAPIError, match="Bad request: missing field"):
             await client._request("POST", "/test")
+
+    @pytest.mark.asyncio
+    async def test_v3_error_preserves_list_message_details_and_correlation_id(
+        self, _mock_config
+    ) -> None:
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
+        response = httpx.Response(
+            400,
+            request=httpx.Request("POST", "/api/assets", headers={"x-api-key": _TEST_KEY}),
+            json={"error": "Bad Request", "message": ["filename is required"]},
+            headers={"X-Correlation-ID": "corr-123"},
+        )
+        # WHY: return a representative v3 API failure without network I/O.
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(return_value=response)
+
+        with pytest.raises(ImmichAPIError) as raised:
+            await client._request("POST", "/assets")
+
+        assert str(raised.value) == "filename is required"
+        assert raised.value.status_code == 400
+        assert raised.value.correlation_id == "corr-123"
+        assert raised.value.details == {
+            "error": "Bad Request",
+            "message": ["filename is required"],
+        }
+        assert _TEST_KEY not in str(raised.value)
+
+    @pytest.mark.asyncio
+    async def test_error_message_redacts_api_key_from_response_body(self, _mock_config) -> None:
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
+        response = httpx.Response(
+            400,
+            request=httpx.Request("POST", "/api/assets"),
+            json={"message": f"x-api-key: {_TEST_KEY}"},
+        )
+        # WHY: reproduce a secret-bearing server message without network I/O.
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(return_value=response)
+
+        with pytest.raises(ImmichAPIError) as raised:
+            await client._request("POST", "/assets")
+
+        assert "***" in str(raised.value)
+        assert _TEST_KEY not in str(raised.value)
+
+    @pytest.mark.asyncio
+    async def test_error_message_redacts_unlabeled_configured_api_key(self, _mock_config) -> None:
+        client = ImmichClient(_TEST_URL, _TEST_KEY)
+        response = httpx.Response(
+            400,
+            request=httpx.Request("POST", "/api/assets"),
+            json={"message": _TEST_KEY},
+        )
+        # WHY: reproduce a server echoing the configured credential without network I/O.
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(return_value=response)
+
+        with pytest.raises(ImmichAPIError) as raised:
+            await client._request("POST", "/assets")
+
+        assert str(raised.value) == "***"
+        assert _TEST_KEY not in str(raised.value)
 
 
 class TestImmichClientLifecycle:

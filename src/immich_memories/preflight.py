@@ -9,6 +9,7 @@ from enum import Enum
 import httpx
 
 from immich_memories.config import Config
+from immich_memories.security import sanitize_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +58,9 @@ def check_immich(config: Config) -> CheckResult:
             details="Set immich.api_key in config or IMMICH_MEMORIES_IMMICH__API_KEY env var",
         )
 
-    try:
-        from immich_memories.api.immich import SyncImmichClient
+    from immich_memories.api.immich import ImmichAPIError, SyncImmichClient
 
+    try:
         with SyncImmichClient(
             base_url=config.immich.url,
             api_key=config.immich.api_key,
@@ -71,12 +72,28 @@ def check_immich(config: Config) -> CheckResult:
                 message=f"Connected as {user.name or user.email}",
                 details=f"Server: {config.immich.url}",
             )
+    except ImmichAPIError as e:
+        safe_message = sanitize_error_message(str(e)).replace(config.immich.api_key, "***")
+        diagnostics = [safe_message]
+        if e.status_code is not None:
+            diagnostics.append(f"HTTP {e.status_code}")
+        if e.correlation_id:
+            safe_correlation = sanitize_error_message(e.correlation_id).replace(
+                config.immich.api_key, "***"
+            )
+            diagnostics.append(f"Correlation ID: {safe_correlation}")
+        return CheckResult(
+            name="Immich",
+            status=CheckStatus.ERROR,
+            message="Connection failed",
+            details="; ".join(diagnostics),
+        )
     except (httpx.TimeoutException, httpx.HTTPStatusError, OSError) as e:
         return CheckResult(
             name="Immich",
             status=CheckStatus.ERROR,
             message="Connection failed",
-            details=str(e),
+            details=sanitize_error_message(str(e)).replace(config.immich.api_key, "***"),
         )
 
 

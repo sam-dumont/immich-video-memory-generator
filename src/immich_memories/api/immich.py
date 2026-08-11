@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from pydantic import ValidationError
@@ -31,6 +32,7 @@ from immich_memories.api.models import (
 )
 from immich_memories.api.person_service import PersonService
 from immich_memories.api.search_service import SearchService
+from immich_memories.security import sanitize_error_message
 
 if TYPE_CHECKING:
     from immich_memories.timeperiod import DateRange
@@ -43,12 +45,57 @@ _MAX_RETRIES = 3
 _BACKOFF_BASE = 1.0
 
 
+@dataclass(frozen=True)
+class ApiErrorDetails:
+    """Normalized diagnostics from an unsuccessful Immich response."""
+
+    message: str
+    status_code: int
+    correlation_id: str | None
+    body: dict[str, Any] | list[Any] | str | None
+
+
+def _message_from_body(body: Any) -> str | None:
+    if isinstance(body, str):
+        return body.strip() or None
+    if isinstance(body, list):
+        parts = [part for item in body if (part := _message_from_body(item))]
+        return "; ".join(parts) or None
+    if isinstance(body, dict):
+        for key in ("message", "error"):
+            if key in body and (message := _message_from_body(body[key])):
+                return message
+    return None
+
+
+def parse_error_response(response: httpx.Response) -> ApiErrorDetails:
+    """Normalize supported Immich error bodies without copying request metadata."""
+    try:
+        body: dict[str, Any] | list[Any] | str | None = response.json()
+    except (ValueError, TypeError):
+        body = response.text.strip() or None
+    return ApiErrorDetails(
+        message=sanitize_error_message(_message_from_body(body) or f"HTTP {response.status_code}"),
+        status_code=response.status_code,
+        correlation_id=response.headers.get("X-Correlation-ID"),
+        body=body,
+    )
+
+
 class ImmichAPIError(Exception):
     """Base exception for Immich API errors."""
 
-    def __init__(self, message: str, status_code: int | None = None):
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        correlation_id: str | None = None,
+        details: dict[str, Any] | list[Any] | str | None = None,
+    ):
         super().__init__(message)
         self.status_code = status_code
+        self.correlation_id = correlation_id
+        self.details = details
 
 
 class ImmichAuthError(ImmichAPIError):
@@ -138,25 +185,42 @@ class ImmichClient:
     ) -> None:
         await self.close()
 
-    @staticmethod
-    def _check_response(response: httpx.Response) -> dict | list | bytes:
+    def _check_response(self, response: httpx.Response) -> dict | list | bytes:
         """Check response status and return parsed body, or raise on error."""
         if response.status_code == 401:
-            raise ImmichAuthError("Invalid API key", status_code=401)
+            error = parse_error_response(response)
+            raise ImmichAuthError(
+                "Invalid API key",
+                status_code=error.status_code,
+                correlation_id=error.correlation_id,
+                details=error.body,
+            )
         if response.status_code == 404:
-            raise ImmichNotFoundError("Resource not found", status_code=404)
+            error = parse_error_response(response)
+            raise ImmichNotFoundError(
+                "Resource not found",
+                status_code=error.status_code,
+                correlation_id=error.correlation_id,
+                details=error.body,
+            )
         if response.status_code in _RETRYABLE_STATUS:
+            error = parse_error_response(response)
             raise ImmichAPIError(
-                f"Server error: {response.status_code}",
-                status_code=response.status_code,
+                error.message.replace(self.api_key, "***")
+                if error.body is not None
+                else f"Server error: {response.status_code}",
+                status_code=error.status_code,
+                correlation_id=error.correlation_id,
+                details=error.body,
             )
         if response.status_code >= 400:
-            try:
-                error_data = response.json()
-                message = error_data.get("message", response.text)
-            except (ValueError, TypeError):
-                message = response.text
-            raise ImmichAPIError(message, status_code=response.status_code)
+            error = parse_error_response(response)
+            raise ImmichAPIError(
+                error.message.replace(self.api_key, "***"),
+                status_code=error.status_code,
+                correlation_id=error.correlation_id,
+                details=error.body,
+            )
 
         content_type = response.headers.get("content-type", "")
         if "application/json" in content_type:
@@ -469,9 +533,11 @@ class ImmichClient:
 from immich_memories.api.sync_client import SyncImmichClient  # noqa: E402
 
 __all__ = [
+    "ApiErrorDetails",
     "ImmichAPIError",
     "ImmichAuthError",
     "ImmichClient",
     "ImmichNotFoundError",
     "SyncImmichClient",
+    "parse_error_response",
 ]
