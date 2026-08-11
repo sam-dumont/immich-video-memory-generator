@@ -89,6 +89,13 @@ class SuggestStatus:
 
 
 @dataclass(frozen=True)
+class _BoundedProcessDetails:
+    """Sanitized subprocess output with independent per-stream tail bounds."""
+
+    text: str
+
+
+@dataclass(frozen=True)
 class CooldownStatus:
     """Current cooldown derived from the latest completed automation run."""
 
@@ -495,7 +502,7 @@ class AutoRunner:
             suggestion=self.last_suggest_status,
         )
 
-    def _process_details(self, stdout: Any, stderr: Any) -> str:
+    def _process_details(self, stdout: Any, stderr: Any) -> _BoundedProcessDetails:
         """Format independently bounded stdout and stderr tails for persistence."""
         secrets = self._secrets()
         stdout_tail = _safe_tail(stdout, secrets)
@@ -505,7 +512,7 @@ class AutoRunner:
             details.append(f"stdout:\n{stdout_tail}")
         if stderr_tail:
             details.append(f"stderr:\n{stderr_tail}")
-        return "\n".join(details) or "no subprocess output"
+        return _BoundedProcessDetails("\n".join(details) or "no subprocess output")
 
     def _finish(
         self,
@@ -556,10 +563,13 @@ class AutoRunner:
         reason: str,
         *,
         candidate: MemoryCandidate | None,
-        error: Any = None,
+        error: object | _BoundedProcessDetails | None = None,
     ) -> AutoRunResult:
         """Persist one safe parent failure, then notify exactly once best-effort."""
-        safe_error = _safe_tail(error if error is not None else reason, self._secrets())
+        if isinstance(error, _BoundedProcessDetails):
+            safe_error = error.text
+        else:
+            safe_error = _safe_tail(error if error is not None else reason, self._secrets())
         safe_error = safe_error or reason
         result = self._finish(
             attempt,
@@ -760,34 +770,36 @@ class AutoRunner:
                 process = self.execute(cmd)
             except subprocess.TimeoutExpired as exc:
                 details = self._process_details(exc.stdout, exc.stderr)
-                error = f"{_GENERATION_TIMEOUT_REASON}\n{details}"
+                timeout_error = _BoundedProcessDetails(
+                    f"{_GENERATION_TIMEOUT_REASON}\n{details.text}"
+                )
                 logger.error(_GENERATION_TIMEOUT_REASON)
                 return self._fail_candidate(
                     attempt,
                     _GENERATION_TIMEOUT_REASON,
                     candidate=candidate,
-                    error=error,
+                    error=timeout_error,
                 )
             except Exception as exc:
-                error = _safe_tail(exc, self._secrets()) or "generation process failed"
+                launch_error = _safe_tail(exc, self._secrets()) or "generation process failed"
                 reason = "generation process could not be executed"
-                logger.error("%s: %s", reason, error)
+                logger.error("%s: %s", reason, launch_error)
                 return self._fail_candidate(
                     attempt,
                     reason,
                     candidate=candidate,
-                    error=error,
+                    error=launch_error,
                 )
 
             if process.returncode != 0:
                 reason = f"generation subprocess exited with code {process.returncode}"
-                error = self._process_details(process.stdout, process.stderr)
-                logger.error("%s: %s", reason, error)
+                process_error = self._process_details(process.stdout, process.stderr)
+                logger.error("%s: %s", reason, process_error.text)
                 return self._fail_candidate(
                     attempt,
                     reason,
                     candidate=candidate,
-                    error=error,
+                    error=process_error,
                 )
 
             matching_run = self.db.get_completed_run_by_automation_attempt(
@@ -832,11 +844,11 @@ class AutoRunner:
             )
         except Exception as exc:
             reason = "automation failed"
-            error = _safe_tail(exc, self._secrets()) or exc.__class__.__name__
-            logger.error("%s: %s", reason, error)
+            outer_error = _safe_tail(exc, self._secrets()) or exc.__class__.__name__
+            logger.error("%s: %s", reason, outer_error)
             return self._fail_candidate(
                 attempt,
                 reason,
                 candidate=candidate,
-                error=error,
+                error=outer_error,
             )

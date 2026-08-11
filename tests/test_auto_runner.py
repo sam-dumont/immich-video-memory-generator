@@ -1026,6 +1026,37 @@ class TestRunOneOutcomes:
         assert "stderr-secret" not in result.error
         assert "***" in result.error
 
+    def test_long_process_streams_keep_both_sanitized_tails_in_failure_outputs(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        """The finalizer cannot collapse two bounded stream tails into stderr alone."""
+        configured_value = "combined-stream-secret-4d71"
+        config.immich.api_key = configured_value
+        stdout = "x" * 3000 + f" STDOUT-TAIL-MARKER {configured_value}"
+        stderr = "y" * 3000 + f" STDERR-TAIL-MARKER {configured_value}"
+        runner = AutoRunner(
+            config,
+            execute=lambda _argv: ProcessResult(8, stdout, stderr),
+        )
+
+        with (
+            patch.object(runner, "suggest", return_value=[candidate]),
+            patch("immich_memories.automation.runner._send_notification") as notify,
+        ):
+            result = runner.run_one(force=True)
+
+        attempt = runner.state.get_last_attempt()
+        assert attempt is not None
+        assert result.error == attempt.error
+        assert result.error is not None
+        assert "STDOUT-TAIL-MARKER" in result.error
+        assert "STDERR-TAIL-MARKER" in result.error
+        assert configured_value not in result.error
+        assert "***" in result.error
+        assert len(result.error) <= 4100
+        notify.assert_called_once()
+        assert notify.call_args.kwargs["error"] == result.error
+
     def test_configured_immich_key_is_redacted_before_tail_boundary(
         self, config: Config, candidate: MemoryCandidate
     ) -> None:
