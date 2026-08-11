@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 
@@ -20,6 +21,7 @@ class GenerationRequest:
     people: tuple[str, ...] = ()
     upload: bool = False
     automation_attempt_id: str | None = None
+    config_path: Path | None = None
 
     @classmethod
     def from_candidate(
@@ -27,6 +29,7 @@ class GenerationRequest:
         candidate: MemoryCandidate,
         upload: bool,
         automation_attempt_id: str | None = None,
+        config_path: Path | None = None,
     ) -> GenerationRequest:
         """Validate a candidate category and choose its rendering preset."""
         match candidate.category:
@@ -54,11 +57,15 @@ class GenerationRequest:
             people=tuple(candidate.person_names),
             upload=upload,
             automation_attempt_id=automation_attempt_id,
+            config_path=config_path,
         )
 
     def to_argv(self) -> list[str]:
         """Build shell-safe argv for the public generate command."""
-        argv = ["immich-memories", "generate", "--memory-type", self.memory_type]
+        argv = ["immich-memories"]
+        if self.config_path is not None:
+            argv.extend(["--config", str(self.config_path)])
+        argv.extend(["generate", "--memory-type", self.memory_type])
 
         match self.category:
             case CandidateCategory.MONTHLY_REVIEW | CandidateCategory.ACTIVITY_BURST:

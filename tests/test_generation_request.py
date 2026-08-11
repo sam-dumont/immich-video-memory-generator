@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import date
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -219,6 +220,20 @@ def test_automation_attempt_id_is_forwarded_as_hidden_child_identity() -> None:
     ).to_argv()
 
     assert argv[-1] == "--automation-attempt-id=attempt-4f2d"
+
+
+def test_custom_config_precedes_generate_subcommand_without_shell_encoding() -> None:
+    """Dropping or joining the config path could select another Immich account."""
+    candidate = _candidate(CandidateCategory.YEAR_IN_REVIEW, "year_in_review")
+    config_path = Path("/tmp/Config dir/photos & family's.yaml")
+
+    argv = GenerationRequest.from_candidate(
+        candidate,
+        upload=False,
+        config_path=config_path,
+    ).to_argv()
+
+    assert argv[:4] == ["immich-memories", "--config", str(config_path), "generate"]
 
 
 def test_unknown_category_fails_before_request_creation() -> None:

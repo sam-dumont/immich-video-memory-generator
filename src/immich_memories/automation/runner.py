@@ -200,6 +200,7 @@ def _build_generate_command(
     candidate: MemoryCandidate,
     upload: bool,
     automation_attempt_id: str | None = None,
+    config_path: Path | None = None,
 ) -> list[str]:
     """Build CLI subprocess command from an exhaustively validated candidate."""
     from immich_memories.automation.generation_request import GenerationRequest
@@ -208,6 +209,7 @@ def _build_generate_command(
         candidate,
         upload,
         automation_attempt_id=automation_attempt_id,
+        config_path=config_path,
     ).to_argv()
 
 
@@ -438,11 +440,13 @@ class AutoRunner:
         self,
         config: Config,
         execute: Callable[[list[str]], ProcessResult] | None = None,
+        config_path: Path | None = None,
     ):
         self.config = config
         self.db = RunDatabase(db_path=config.cache.database_path)
         self.state = AutomationStateStore(config.cache.database_path)
         self.execute = execute or _execute_generate
+        self.config_path = config_path
         self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
         self.last_suggest_status = SuggestStatus()
 
@@ -753,6 +757,7 @@ class AutoRunner:
                 candidate,
                 effective_upload,
                 automation_attempt_id=attempt.id,
+                config_path=self.config_path,
             )
 
             if dry_run:

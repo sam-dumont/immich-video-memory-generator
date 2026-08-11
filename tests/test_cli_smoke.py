@@ -242,6 +242,47 @@ class TestQuietFlag:
 
 
 class TestAutoRunOutput:
+    def test_root_custom_config_path_reaches_auto_runner(self, tmp_path: Path) -> None:
+        """The root option remains provenance after Click loads the config object."""
+        config_path = tmp_path / "Config dir" / "family & photos.yaml"
+        config_path.parent.mkdir()
+        Config(
+            immich={"url": "http://immich.test", "api_key": "test-key"},
+            cache={"database": str(tmp_path / "cache.db")},
+        ).save_yaml(config_path)
+        auto_runner = MagicMock()
+        auto_runner.run_one.return_value = AutoRunResult(
+            outcome=AutoOutcome.SKIPPED,
+            reason="cooldown active",
+        )
+
+        with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner) as cls:
+            result = CliRunner().invoke(
+                main,
+                ["--config", str(config_path), "auto", "run", "--quiet"],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert cls.call_args.kwargs["config_path"] == config_path.resolve()
+
+    def test_root_custom_config_path_reaches_scheduler_renderer(self, tmp_path: Path) -> None:
+        """Installed daily jobs must retain the config selected during installation."""
+        config_path = tmp_path / "Config dir" / "family & photos.yaml"
+        config_path.parent.mkdir()
+        Config().save_yaml(config_path)
+
+        with patch(
+            "immich_memories.automation.system_scheduler.show_scheduler_config",
+            return_value="scheduler definition",
+        ) as show:
+            result = CliRunner().invoke(
+                main,
+                ["--config", str(config_path), "auto", "install", "--show"],
+            )
+
+        assert result.exit_code == 0, result.output
+        show.assert_called_once_with(9, 0, 24, config_path=config_path.resolve())
+
     def test_quiet_completed_emits_exactly_one_json_object(self, tmp_path: Path) -> None:
         output = tmp_path / "memory.mp4"
         auto_result = AutoRunResult(

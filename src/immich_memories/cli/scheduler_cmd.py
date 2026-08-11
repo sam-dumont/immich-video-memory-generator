@@ -112,6 +112,10 @@ def register_scheduler_commands(main: click.Group) -> None:
         from immich_memories.scheduling.daemon import run_daemon_loop
 
         if foreground:
-            run_daemon_loop(config.scheduler, db_path=config.cache.database_path)
+            run_daemon_loop(
+                config.scheduler,
+                db_path=config.cache.database_path,
+                config_path=ctx.obj["config_path"],
+            )
         else:
             print_error("Background mode not yet supported. Use --foreground.")

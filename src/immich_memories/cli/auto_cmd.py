@@ -108,7 +108,7 @@ def suggest(ctx: click.Context, as_json: bool, limit: int, memory_type: str | No
     from immich_memories.automation.runner import AutoRunner, SuggestOutcome
 
     config: Config = ctx.obj["config"]
-    runner = AutoRunner(config)
+    runner = AutoRunner(config, config_path=ctx.obj["config_path"])
     candidates = runner.suggest(limit=limit)
 
     if runner.last_suggest_status.outcome is SuggestOutcome.PREFLIGHT_FAILED:
@@ -152,7 +152,7 @@ def run_cmd(
     if quiet:
         logging.disable(logging.CRITICAL)
     try:
-        result = AutoRunner(config).run_one(
+        result = AutoRunner(config, config_path=ctx.obj["config_path"]).run_one(
             force=force, cooldown_hours=cooldown, upload=upload, dry_run=dry_run
         )
     finally:
@@ -202,7 +202,11 @@ def status(ctx: click.Context, as_json: bool) -> None:
     if as_json:
         logging.disable(logging.CRITICAL)
     try:
-        payload = AutoRunner(config).status(refresh_suggestion=True).to_dict()
+        payload = (
+            AutoRunner(config, config_path=ctx.obj["config_path"])
+            .status(refresh_suggestion=True)
+            .to_dict()
+        )
         scheduler = get_scheduler_status()
         scheduler_state = (
             "unknown" if scheduler.active is None else "active" if scheduler.active else "inactive"
@@ -260,7 +264,15 @@ def status(ctx: click.Context, as_json: bool) -> None:
 @click.option("--cooldown", default=24, help="Cooldown hours between runs")
 @click.option("--uninstall", is_flag=True, help="Remove installed scheduler")
 @click.option("--show", is_flag=True, help="Show config without installing")
-def install(hour: int, minute: int, cooldown: int, uninstall: bool, show: bool) -> None:
+@click.pass_context
+def install(
+    ctx: click.Context,
+    hour: int,
+    minute: int,
+    cooldown: int,
+    uninstall: bool,
+    show: bool,
+) -> None:
     """Install system-level scheduler (launchd/systemd/cron)."""
     from immich_memories.automation.system_scheduler import (
         install_scheduler,
@@ -268,8 +280,10 @@ def install(hour: int, minute: int, cooldown: int, uninstall: bool, show: bool) 
         uninstall_scheduler,
     )
 
+    config_path: Path | None = ctx.obj["config_path"]
+
     if show:
-        content = show_scheduler_config(hour, minute, cooldown)
+        content = show_scheduler_config(hour, minute, cooldown, config_path=config_path)
         if content:
             click.echo(content)
         else:
@@ -284,7 +298,7 @@ def install(hour: int, minute: int, cooldown: int, uninstall: bool, show: bool) 
         return
 
     try:
-        result = install_scheduler(hour, minute, cooldown)
+        result = install_scheduler(hour, minute, cooldown, config_path=config_path)
     except FileNotFoundError:
         print_info("immich-memories binary not found in PATH")
         return

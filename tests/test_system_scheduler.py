@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import plistlib
+import shlex
 import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -90,6 +92,22 @@ class TestGenerateLaunchdPlist:
         plist = generate_launchd_plist("/bin/im")
         assert "PATH" in plist
 
+    def test_custom_config_is_exact_xml_safe_program_argument(self) -> None:
+        config_path = Path('/tmp/Config & family/one <two> "three".yaml')
+
+        parsed = plistlib.loads(generate_launchd_plist("/bin/im", config_path=config_path).encode())
+
+        assert parsed["ProgramArguments"] == [
+            "/bin/im",
+            "--config",
+            str(config_path),
+            "auto",
+            "run",
+            "--quiet",
+            "--cooldown",
+            "24",
+        ]
+
 
 class TestGenerateSystemdUnits:
     def test_service_has_oneshot_type(self) -> None:
@@ -116,6 +134,17 @@ class TestGenerateSystemdUnits:
         _, timer = generate_systemd_units("/bin/im")
         assert "Persistent=true" in timer
 
+    def test_custom_config_is_quoted_before_subcommand(self) -> None:
+        config_path = Path('/tmp/Config dir/family $HOME 50% "best".yaml')
+
+        service, _ = generate_systemd_units("/bin/im", config_path=config_path)
+
+        assert (
+            "ExecStart=/bin/im --config "
+            '"/tmp/Config dir/family $$HOME 50%% \\"best\\".yaml" auto run '
+            "--quiet --cooldown 24"
+        ) in service
+
 
 class TestGenerateCrontabEntry:
     def test_valid_cron_format(self) -> None:
@@ -140,6 +169,23 @@ class TestGenerateCrontabEntry:
     def test_cooldown_in_entry(self) -> None:
         entry = generate_crontab_entry("/bin/im", cooldown_hours=6)
         assert "--cooldown 6" in entry
+
+    def test_custom_config_round_trips_through_shell_parser(self) -> None:
+        config_path = Path("/tmp/Config dir/family's & photos.yaml")
+
+        entry = generate_crontab_entry("/bin/im", config_path=config_path)
+        command = entry.split(maxsplit=5)[5]
+
+        assert shlex.split(command) == [
+            "/bin/im",
+            "--config",
+            str(config_path),
+            "auto",
+            "run",
+            "--quiet",
+            "--cooldown",
+            "24",
+        ]
 
 
 class TestInstallScheduler:

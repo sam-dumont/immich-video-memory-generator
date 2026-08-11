@@ -31,7 +31,12 @@ def _handle_signal(signum, frame):
     logger.info(f"Received signal {signum}, shutting down...")
 
 
-def run_daemon_loop(config: SchedulerConfig, *, db_path: Path) -> None:
+def run_daemon_loop(
+    config: SchedulerConfig,
+    *,
+    db_path: Path,
+    config_path: Path | None = None,
+) -> None:
     """Run the scheduler daemon in the foreground.
 
     Sleeps until the next job fires, executes it via CLI subprocess,
@@ -79,17 +84,29 @@ def run_daemon_loop(config: SchedulerConfig, *, db_path: Path) -> None:
                 break
 
             # Execute the job
-            execute_job(next_job, timeout_seconds=config.job_timeout_minutes * 60)
+            execute_job(
+                next_job,
+                timeout_seconds=config.job_timeout_minutes * 60,
+                config_path=config_path,
+            )
 
     logger.info("Scheduler daemon stopped")
 
 
-def execute_job(job: PendingJob, timeout_seconds: int = 3600) -> None:
+def execute_job(
+    job: PendingJob,
+    timeout_seconds: int = 3600,
+    *,
+    config_path: Path | None = None,
+) -> None:
     """Execute a scheduled job by invoking the CLI as a subprocess."""
     params = resolve_schedule_params(job.schedule, job.fire_time)
     logger.info(f"Executing '{job.schedule.name}': {params}")
 
-    cmd = ["immich-memories", "generate"]
+    cmd = ["immich-memories"]
+    if config_path is not None:
+        cmd.extend(["--config", str(config_path)])
+    cmd.append("generate")
     cmd.extend(["--memory-type", params["memory_type"]])
 
     if "year" in params:
@@ -134,6 +151,7 @@ def execute_job(job: PendingJob, timeout_seconds: int = 3600) -> None:
         success=success,
         duration_seconds=elapsed,
         error=error_msg,
+        config_path=config_path,
     )
 
 
@@ -142,12 +160,13 @@ def _notify_if_configured(
     success: bool,
     duration_seconds: float = 0.0,
     error: str | None = None,
+    config_path: Path | None = None,
 ) -> None:
     """Send an Apprise notification if enabled in config."""
-    from immich_memories.config_loader import get_config
+    from immich_memories.config_loader import Config, get_config
 
     try:
-        config = get_config()
+        config = Config.from_yaml(config_path) if config_path is not None else get_config()
     except Exception:  # WHY: daemon top-level safety net — must not crash the scheduler
         return
 

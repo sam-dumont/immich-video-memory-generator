@@ -40,6 +40,33 @@ class TestDaemonLoop:
         assert "--year" in cmd
         assert "2025" in cmd  # Previous year
 
+    def test_execute_job_propagates_custom_config_before_generate(self):
+        """The legacy daemon must not fall back to the default Immich account."""
+        from immich_memories.scheduling.daemon import execute_job
+        from immich_memories.scheduling.engine import PendingJob
+
+        entry = ScheduleEntry(
+            name="yearly",
+            memory_type="year_in_review",
+            cron="0 6 15 1 *",
+        )
+        job = PendingJob(
+            schedule=entry,
+            fire_time=datetime(2026, 1, 15, 6, 0, tzinfo=UTC),
+        )
+        config_path = Path("/tmp/Config dir/photos & family.yaml")
+
+        with patch("immich_memories.scheduling.daemon.subprocess") as mock_sub:
+            mock_sub.run.return_value = MagicMock(returncode=0)
+            execute_job(job, config_path=config_path)
+
+        assert mock_sub.run.call_args.args[0][:4] == [
+            "immich-memories",
+            "--config",
+            str(config_path),
+            "generate",
+        ]
+
     def test_execute_job_with_upload(self):
         """execute_job should pass --upload-to-immich when enabled."""
         from immich_memories.scheduling.daemon import execute_job
@@ -140,6 +167,54 @@ class TestDaemonLoop:
         ):
             # Should not raise — graceful shutdown
             run_daemon_loop(config, db_path=Path("/tmp/test_daemon.db"))
+
+    def test_daemon_loop_forwards_custom_config_to_each_job(self):
+        """The daemon handoff cannot discard provenance after CLI startup."""
+        import immich_memories.scheduling.daemon as daemon
+        from immich_memories.scheduling.daemon import run_daemon_loop
+        from immich_memories.scheduling.engine import PendingJob
+
+        config = SchedulerConfig(
+            enabled=True,
+            schedules=[
+                ScheduleEntry(
+                    name="yearly",
+                    memory_type="year_in_review",
+                    cron="0 6 * * *",
+                )
+            ],
+        )
+        job = PendingJob(
+            schedule=config.schedules[0],
+            fire_time=datetime(2026, 1, 15, 6, 0, tzinfo=UTC),
+        )
+        scheduler = MagicMock()
+        scheduler.seconds_until_next.return_value = 0
+        scheduler.get_next_jobs.return_value = [job]
+        config_path = Path("/tmp/Config dir/family.yaml")
+
+        def stop_after_job(*_args: object, **_kwargs: object) -> None:
+            daemon._shutdown_requested = True
+
+        with (
+            patch("immich_memories.scheduling.daemon.Scheduler", return_value=scheduler),
+            patch("immich_memories.tracking.run_database.RunDatabase"),
+            patch(
+                "immich_memories.scheduling.daemon.execute_job",
+                side_effect=stop_after_job,
+            ) as execute,
+        ):
+            run_daemon_loop(
+                config,
+                db_path=Path("/tmp/test_daemon.db"),
+                config_path=config_path,
+            )
+
+        execute.assert_called_once_with(
+            job,
+            timeout_seconds=3600,
+            config_path=config_path,
+        )
 
     def test_person_names_use_equals_syntax(self):
         """Person names should use --person=Name to prevent flag injection."""

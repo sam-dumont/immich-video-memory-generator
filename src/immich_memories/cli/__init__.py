@@ -47,10 +47,12 @@ def main(ctx: click.Context, config: str | None) -> None:
 
     try:
         if config:
-            config_path = Path(config)
+            config_path = Path(config).expanduser().resolve()
             ctx.obj["config"] = Config.from_yaml(config_path)
+            ctx.obj["config_path"] = config_path
         else:
             ctx.obj["config"] = get_config()
+            ctx.obj["config_path"] = None
     except ValidationError as e:
         print_error(format_validation_error(e))
         sys.exit(1)
