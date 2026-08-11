@@ -40,8 +40,8 @@ detection works.
 The compatibility layer handles the known v2-to-v3 differences: duration strings versus integer
 milliseconds, version-specific upload fields, and the UTC offset on search dates. The read-only
 `immich-memories config test` reports the server version and authentication errors; it does not test
-uploads. If a v3 upload fails, keep the HTTP status and `X-Correlation-ID` from the command doing the
-upload. Both are useful in Immich server logs. API keys are redacted.
+uploads. If a v3 upload fails, keep the error shown by the command doing the upload and check the
+relevant Immich server logs. API keys are redacted.
 
 ## No Videos Found
 
