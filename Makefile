@@ -454,14 +454,16 @@ build-check:
 	uvx twine check dist/*
 
 # Ensure dev dependencies are installed
+ENSURE_DEV_COMMAND ?= uv sync --all-extras --quiet
 ensure-dev:
-	@uv sync --all-extras --quiet
+	@$(ENSURE_DEV_COMMAND)
 
 # Run all checks (same as CI)
 check: ensure-dev lint format-check typecheck file-length complexity test
 	@echo "All checks passed!"
 
 # One non-publishing launch gate shared by operators and pull-request CI.
+launch-check: ENSURE_DEV_COMMAND = echo "Using preinstalled launch-check dependencies"
 launch-check: check build build-check docs-check e2e
 	@echo "Launch readiness checks passed!"
 

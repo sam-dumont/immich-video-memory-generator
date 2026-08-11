@@ -18,8 +18,30 @@ from immich_memories.processing.encoding_plan import (
 )
 from immich_memories.processing.output_contract import validate_output
 from immich_memories.tracking.run_database import RunDatabase
+from tests.e2e.conftest import _build_launch_environment
 
 pytestmark = pytest.mark.e2e
+
+
+def test_launch_environment_strips_all_production_shortcuts(monkeypatch) -> None:
+    """Personal provider settings must never escape into the fake-service app."""
+    shortcut_names = {
+        "IMMICH_URL",
+        "IMMICH_API_KEY",
+        "OPENAI_API_KEY",
+        "MUSICGEN_ENABLED",
+        "MUSICGEN_BASE_URL",
+        "MUSICGEN_API_KEY",
+        "ACE_STEP_ENABLED",
+        "ACE_STEP_MODE",
+        "ACE_STEP_API_URL",
+    }
+    for name in shortcut_names:
+        monkeypatch.setenv(name, "https://personal.example.invalid/secret")
+
+    environment = _build_launch_environment()
+
+    assert shortcut_names.isdisjoint(environment)
 
 
 def _choose(page: Page, label: str, option: str) -> None:

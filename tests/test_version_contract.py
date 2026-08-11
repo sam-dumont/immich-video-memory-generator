@@ -28,6 +28,17 @@ def _make_target_prerequisites(target: str) -> set[str]:
     return set(declaration.removeprefix(prefix).split())
 
 
+def _make_dry_run(target: str) -> str:
+    result = subprocess.run(
+        ["make", "--no-print-directory", "-n", target],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout
+
+
 def test_package_exports_generated_version() -> None:
     """The public package version must be the version Hatch VCS generated."""
     assert immich_memories.__version__ == generated_version
@@ -54,6 +65,14 @@ def test_launch_check_composes_every_release_gate() -> None:
     }
 
 
+def test_launch_check_consumes_the_preinstalled_ci_environment() -> None:
+    """The launch job must not replace dev-test with every heavyweight extra."""
+    commands = _make_dry_run("launch-check")
+
+    assert "uv sync --all-extras" not in commands
+    assert "Using preinstalled launch-check dependencies" in commands
+
+
 def test_ci_runs_the_hermetic_launch_check_with_runtime_dependencies() -> None:
     """Pull requests must run the browser/FFmpeg launch gate without credentials."""
     workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
@@ -70,6 +89,9 @@ def test_ci_runs_the_hermetic_launch_check_with_runtime_dependencies() -> None:
         str(step.get("run", "")) for step in workflow["jobs"]["ci-success"]["steps"]
     )
     assert "needs['launch-check'].result" in summary_command
+    assert "needs.setup.result" in summary_command
+    assert "github.event_name" in summary_command
+    assert '"pull_request"' in summary_command
 
     upload = next(
         step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")

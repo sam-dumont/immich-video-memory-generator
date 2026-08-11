@@ -132,19 +132,29 @@ from immich_memories.ui.app import main
 main(port=int(sys.argv[3]), host="127.0.0.1", reload=False)
 """
 
+_PRODUCTION_SHORTCUT_ENV = frozenset(
+    {
+        "IMMICH_URL",
+        "IMMICH_API_KEY",
+        "OPENAI_API_KEY",
+        "MUSICGEN_ENABLED",
+        "MUSICGEN_BASE_URL",
+        "MUSICGEN_API_KEY",
+        "ACE_STEP_ENABLED",
+        "ACE_STEP_MODE",
+        "ACE_STEP_API_URL",
+    }
+)
 
-@pytest.fixture(scope="session")
-def launch_app_url(
-    launch_workspace: LaunchWorkspace,
-    unused_tcp_port_factory,
-) -> Generator[str, None, None]:
-    """Run the app against only the fake service and disposable local state."""
-    port = unused_tcp_port_factory()
-    url = f"http://127.0.0.1:{port}"
+
+def _build_launch_environment() -> dict[str, str]:
+    """Return a subprocess environment isolated from every provider override."""
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith(("IMMICH_MEMORIES_", "NICEGUI_")) and key != "PYTEST_CURRENT_TEST"
+        if not key.startswith(("IMMICH_MEMORIES_", "NICEGUI_"))
+        and key not in _PRODUCTION_SHORTCUT_ENV
+        and key != "PYTEST_CURRENT_TEST"
     }
     env.update(
         {
@@ -154,6 +164,18 @@ def launch_app_url(
             "TI_LOG_LEVEL": "error",
         }
     )
+    return env
+
+
+@pytest.fixture(scope="session")
+def launch_app_url(
+    launch_workspace: LaunchWorkspace,
+    unused_tcp_port_factory,
+) -> Generator[str, None, None]:
+    """Run the app against only the fake service and disposable local state."""
+    port = unused_tcp_port_factory()
+    url = f"http://127.0.0.1:{port}"
+    env = _build_launch_environment()
 
     venv_python = _REPO_ROOT / ".venv" / "bin" / "python"
     with launch_workspace.log_path.open("w") as log_file:
