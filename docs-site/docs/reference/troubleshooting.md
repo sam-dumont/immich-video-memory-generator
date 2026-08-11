@@ -33,14 +33,15 @@ immich:
 ```
 
 `auto` detects the server major at runtime; you do not pick one for each run. If a reverse proxy
-hides or rewrites `/server/version`, use `v2` or `v3` as a manual troubleshooting escape hatch.
+hides or rewrites `/api/server/version`, use `v2` or `v3` as a manual troubleshooting escape hatch.
 The override forces that contract, so match the real server major and return to `auto` once
 detection works.
 
 The compatibility layer handles the known v2-to-v3 differences: duration strings versus integer
-milliseconds, version-specific upload fields, and the UTC offset on search dates. If a v3 upload
-still fails, keep the HTTP status and `X-Correlation-ID` printed by the check; both are useful in
-Immich server logs. API keys are redacted.
+milliseconds, version-specific upload fields, and the UTC offset on search dates. The read-only
+`immich-memories config test` reports the server version and authentication errors; it does not test
+uploads. If a v3 upload fails, keep the HTTP status and `X-Correlation-ID` from the command doing the
+upload. Both are useful in Immich server logs. API keys are redacted.
 
 ## No Videos Found
 
