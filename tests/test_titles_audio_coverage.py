@@ -1729,6 +1729,36 @@ class TestSearchServiceMetadata:
         assert datetime.fromisoformat(payload["takenAfter"]) == taken_after.astimezone(UTC)
         assert datetime.fromisoformat(payload["takenBefore"]) == taken_before.astimezone(UTC)
 
+    @pytest.mark.asyncio
+    async def test_search_metadata_normalizes_dates_to_utc_midnight(self):
+        from immich_memories.api.models import AssetType
+        from immich_memories.api.search_service import SearchService
+
+        mock_request = AsyncMock(
+            return_value={"assets": {"total": 0, "count": 0, "items": [], "nextPage": None}}
+        )
+        svc = SearchService(mock_request)
+
+        await svc.search_metadata(
+            person_ids=["person-1"],
+            asset_type=AssetType.VIDEO,
+            taken_after=date(2025, 1, 1),
+            taken_before=date(2025, 1, 31),
+            page=2,
+            size=40,
+        )
+
+        assert mock_request.call_args.kwargs["json"] == {
+            "page": 2,
+            "size": 40,
+            "withExif": True,
+            "withPeople": True,
+            "personIds": ["person-1"],
+            "type": "VIDEO",
+            "takenAfter": "2025-01-01T00:00:00+00:00",
+            "takenBefore": "2025-01-31T00:00:00+00:00",
+        }
+
 
 def _make_asset(asset_id: str, created: str, is_live: bool = False) -> dict:
     """Helper to create a minimal asset dict for search responses."""
