@@ -11,6 +11,7 @@ from immich_memories.processing.encoding_plan import HdrTransfer
 from immich_memories.security import validate_video_path
 
 __all__ = [
+    "RequiredColorConversionUnavailable",
     "_detect_hdr_type",
     "_detect_color_primaries",
     "_get_dominant_hdr_type",
@@ -23,6 +24,10 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+class RequiredColorConversionUnavailable(RuntimeError):
+    """A required transfer conversion cannot be performed by this FFmpeg build."""
 
 
 def _detect_hdr_type(video_path: Path) -> str | None:
@@ -282,6 +287,8 @@ def _get_hdr_conversion_filter(
     source_type: str | None,
     target_type: str,
     source_primaries: str | None = None,
+    *,
+    required: bool = False,
 ) -> str:
     """Get filter to convert between HDR formats (HLG <-> PQ) or SDR -> HDR.
 
@@ -293,24 +300,32 @@ def _get_hdr_conversion_filter(
         target_type: Target dynamic range ("hlg", "pq", or "sdr")
         source_primaries: Source color primaries (e.g. "bt709", "smpte432" for
             Display P3). When None, defaults to "bt709" for SDR sources.
+        required: Raise a typed error instead of returning an empty filter when
+            conversion is required but zscale is unavailable.
 
     Returns:
         FFmpeg filter string for conversion, or empty string if no conversion needed
     """
-    if source_type == target_type:
+    normalized_source = (
+        "sdr" if source_type is None or source_type == HdrTransfer.NONE.value else source_type
+    )
+    if normalized_source == target_type:
         return ""
 
     has_zscale = _check_zscale_available()
+    if required and not has_zscale:
+        raise RequiredColorConversionUnavailable(
+            f"Required {normalized_source}-to-{target_type} color conversion "
+            "needs FFmpeg with the zscale filter"
+        )
 
     if target_type == "sdr":
-        if source_type is None or source_type == "sdr":
-            return ""
-        return _get_hdr_to_sdr_filter(source_type, has_zscale)
+        return _get_hdr_to_sdr_filter(normalized_source, has_zscale)
 
-    if source_type is None or source_type == "sdr":
+    if normalized_source == "sdr":
         return _get_sdr_to_hdr_filter(target_type, source_primaries, has_zscale)
 
-    return _get_hdr_to_hdr_filter(source_type, target_type, has_zscale)
+    return _get_hdr_to_hdr_filter(normalized_source, target_type, has_zscale)
 
 
 def _get_clip_hdr_types(clips: list) -> list[str | None]:
@@ -369,5 +384,6 @@ def _resolve_clip_hdr(
         normalized_source,
         target_type,
         source_primaries=source_primaries,
+        required=True,
     )
     return hdr_conversion, colorspace_filter, output_pix_fmt, "", clip_is_hdr

@@ -265,6 +265,42 @@ def test_streaming_decoder_builds_plan_targeted_hlg_to_sdr_chain() -> None:
     assert ",format=yuv420p,setsar=1" in vf
 
 
+@pytest.mark.parametrize(
+    ("source_transfer", "target_transfer"),
+    [("hlg", "pq"), ("pq", "hlg")],
+)
+def test_streaming_decoder_fails_when_required_hdr_conversion_is_unavailable(
+    source_transfer: str,
+    target_transfer: str,
+) -> None:
+    """Streaming must not relabel HLG as PQ, or PQ as HLG, without conversion."""
+    from unittest.mock import MagicMock, patch
+
+    from immich_memories.processing.hdr_utilities import RequiredColorConversionUnavailable
+    from immich_memories.processing.streaming_assembler import _make_decoder
+
+    clip = MagicMock(path=Path("hdr.mp4"), is_title_screen=False, rotation_override=None)
+    ctx = MagicMock(
+        hdr_type=target_transfer,
+        pix_fmt="yuv420p10le",
+        clip_hdr_types=[source_transfer],
+        clip_primaries=["bt2020"],
+        colorspace_filter=(
+            ",setparams=colorspace=bt2020nc:color_primaries=bt2020:"
+            f"color_trc={'smpte2084' if target_transfer == 'pq' else 'arib-std-b67'}"
+        ),
+    )
+
+    with (
+        patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            return_value=False,
+        ),
+        pytest.raises(RequiredColorConversionUnavailable),
+    ):
+        _make_decoder(clip, 0, 320, 240, 30, ctx=ctx, hdr_type=target_transfer)
+
+
 @requires_ffmpeg
 class TestStreamingAssemble:
     def test_assembles_two_clips_with_crossfade(self, tmp_path: object) -> None:

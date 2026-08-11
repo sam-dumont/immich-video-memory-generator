@@ -283,7 +283,10 @@ def test_single_clip_reencode_uses_the_same_software_h264_plan(tmp_path: Path) -
     encoder = ClipEncoder(settings, prober, lambda _path: None)
     clip = _make_assembly_clip(tmp_path)
 
-    with patch("immich_memories.processing.clip_encoder.subprocess.run") as run:
+    with (
+        patch("immich_memories.processing.clip_encoder._detect_hdr_type", return_value=None),
+        patch("immich_memories.processing.clip_encoder.subprocess.run") as run,
+    ):
         run.return_value = MagicMock(returncode=0, stderr="")
         encoder.encode_single_clip(clip, tmp_path / "normalized.mp4", (1920, 1080))
 
@@ -392,6 +395,39 @@ def test_single_hlg_clip_is_tone_mapped_for_h264_output(tmp_path: Path) -> None:
     assert "zscale=t=linear" in filter_graph
     assert "tonemap=" in filter_graph
     assert "zscale=t=bt709" in filter_graph
+
+
+@pytest.mark.parametrize(
+    "plan",
+    [_tone_map_h264_plan(), _software_h264_plan()],
+    ids=["resolved-tone-map", "defensive-source-detection"],
+)
+def test_single_hdr_clip_fails_when_required_tone_map_is_unavailable(
+    tmp_path: Path,
+    plan: EncodingPlan,
+) -> None:
+    """The single-clip path must not label unconverted HDR pixels as SDR."""
+    from immich_memories.processing.clip_encoder import ClipEncoder
+    from immich_memories.processing.hdr_utilities import RequiredColorConversionUnavailable
+
+    settings = AssemblySettings(encoding_plan=plan, preserve_hdr=False)
+    prober = MagicMock()
+    prober.has_audio_stream.return_value = False
+    prober.probe_framerate.return_value = 30.0
+    encoder = ClipEncoder(settings, prober, lambda _path: None)
+    clip = _make_assembly_clip(tmp_path)
+
+    with (
+        patch("immich_memories.processing.clip_encoder._detect_hdr_type", return_value="hlg"),
+        patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            return_value=False,
+        ),
+        patch("immich_memories.processing.clip_encoder.subprocess.run") as run,
+        pytest.raises(RequiredColorConversionUnavailable),
+    ):
+        run.return_value = MagicMock(returncode=0, stderr="")
+        encoder.encode_single_clip(clip, tmp_path / "normalized.mp4", (1920, 1080))
 
 
 def test_generation_settings_resolve_one_software_h265_plan(tmp_path: Path) -> None:

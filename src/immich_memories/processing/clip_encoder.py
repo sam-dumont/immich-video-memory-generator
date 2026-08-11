@@ -99,15 +99,15 @@ class ClipEncoder:
 
     def resolve_encode_hdr(self, clip: AssemblyClip) -> tuple[str, str]:
         plan = self.settings.encoding_plan
-        source_hdr = _detect_hdr_type(clip.path) if plan.hdr or plan.tone_map_to_sdr else None
+        source_hdr = _detect_hdr_type(clip.path)
         if plan.hdr:
             target_hdr = plan.target_transfer.value
-            conversion = _get_hdr_conversion_filter(source_hdr, target_hdr)
+            conversion = _get_hdr_conversion_filter(source_hdr, target_hdr, required=True)
             return target_hdr, conversion + _get_colorspace_filter(target_hdr)
-        if plan.tone_map_to_sdr and source_hdr:
-            return "sdr", _get_hdr_conversion_filter(source_hdr, "sdr") + _get_colorspace_filter(
-                "sdr"
-            )
+        if source_hdr:
+            return "sdr", _get_hdr_conversion_filter(
+                source_hdr, "sdr", required=True
+            ) + _get_colorspace_filter("sdr")
         return "sdr", _get_colorspace_filter("sdr")
 
     def encode_single_clip(

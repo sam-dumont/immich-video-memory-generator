@@ -9,6 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from immich_memories.processing.assembly_config import AssemblySettings, TitleScreenSettings
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 
@@ -142,18 +144,46 @@ class TestVideoEncodingPlan:
         assert "color_primaries=bt709" in video_filter
         assert "color_trc=bt709" in video_filter
 
+    @pytest.mark.parametrize(
+        "plan",
+        [_hardware_h265_hdr_plan(), _software_h265_pq_plan()],
+        ids=["hlg", "pq"],
+    )
+    def test_hdr_title_fails_when_required_color_conversion_is_unavailable(
+        self, plan: EncodingPlan
+    ) -> None:
+        """HLG/PQ title output must not relabel unconverted SDR pixels."""
+        from unittest.mock import patch
+
+        from immich_memories.processing import hdr_utilities
+        from immich_memories.titles.encoding import title_color_filter
+
+        with (
+            patch(
+                "immich_memories.processing.hdr_utilities._check_zscale_available",
+                return_value=False,
+            ),
+            pytest.raises(RuntimeError) as exc_info,
+        ):
+            title_color_filter(plan)
+
+        assert type(exc_info.value) is hdr_utilities.RequiredColorConversionUnavailable
+
     def test_hdr_true_returns_hlg_filter(self):
+        from unittest.mock import patch
+
         from immich_memories.titles.video_encoding import _get_best_encoder
 
-        _, video_filter = _get_best_encoder(_hardware_h265_hdr_plan())
+        with patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            return_value=True,
+        ):
+            _, video_filter = _get_best_encoder(_hardware_h265_hdr_plan())
+
         assert isinstance(video_filter, str)
-        # WHY: On systems with zscale, filter contains conversion.
-        # On systems without, it falls back to basic format conversion.
-        # Either way, if non-empty it must contain format conversion.
-        if video_filter:
-            assert "format=" in video_filter or "zscale" in video_filter, (
-                f"HDR filter should contain format conversion, got: {video_filter}"
-            )
+        assert "zscale=" in video_filter
+        assert "t=arib-std-b67" in video_filter
+        assert "color_trc=arib-std-b67" in video_filter
 
     def test_pq_plan_uses_smpte2084_not_hlg(self):
         from immich_memories.titles.video_encoding import _get_best_encoder

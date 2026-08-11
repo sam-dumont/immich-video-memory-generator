@@ -40,7 +40,12 @@ def title_color_filter(plan: EncodingPlan, *, rgb_input: bool = True) -> str:
     parts: list[str] = []
     if rgb_input:
         parts.append("format=yuv420p")
-    conversion = _get_hdr_conversion_filter("sdr", target, source_primaries="bt709")
+    conversion = _get_hdr_conversion_filter(
+        "sdr",
+        target,
+        source_primaries="bt709",
+        required=True,
+    )
     if conversion:
         parts.append(conversion.removeprefix(","))
     parts.extend(

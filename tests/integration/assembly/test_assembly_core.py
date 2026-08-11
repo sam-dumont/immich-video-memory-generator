@@ -709,12 +709,21 @@ class TestHDRUtilities:
         assert result == ""
 
     def test_get_hdr_conversion_filter_sdr_to_hlg(self):
-        """SDR to HLG conversion returns a filter (may be empty if no zscale)."""
-        from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
+        """Required SDR-to-HLG conversion either runs or fails closed."""
+        from immich_memories.processing.hdr_utilities import (
+            RequiredColorConversionUnavailable,
+            _get_hdr_conversion_filter,
+            check_zscale_available,
+        )
 
-        result = _get_hdr_conversion_filter(None, "hlg")
-        # Result depends on zscale availability, but should not crash
-        assert isinstance(result, str)
+        if not check_zscale_available():
+            with pytest.raises(RequiredColorConversionUnavailable):
+                _get_hdr_conversion_filter(None, "hlg", required=True)
+            return
+
+        result = _get_hdr_conversion_filter(None, "hlg", required=True)
+        assert "zscale=" in result
+        assert "t=arib-std-b67" in result
 
 
 # ===================================================================
