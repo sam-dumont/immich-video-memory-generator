@@ -20,6 +20,7 @@ class GenerationRequest:
     end: date
     people: tuple[str, ...] = ()
     upload: bool = False
+    album_name: str | None = None
     automation_attempt_id: str | None = None
     config_path: Path | None = None
 
@@ -30,6 +31,7 @@ class GenerationRequest:
         upload: bool,
         automation_attempt_id: str | None = None,
         config_path: Path | None = None,
+        album_name: str | None = None,
     ) -> GenerationRequest:
         """Validate a candidate category and choose its rendering preset."""
         match candidate.category:
@@ -56,6 +58,7 @@ class GenerationRequest:
             end=candidate.date_range_end,
             people=tuple(candidate.person_names),
             upload=upload,
+            album_name=album_name,
             automation_attempt_id=automation_attempt_id,
             config_path=config_path,
         )
@@ -106,6 +109,8 @@ class GenerationRequest:
         )
         if self.upload:
             argv.append("--upload-to-immich")
+            if self.album_name is not None:
+                argv.extend(["--album", self.album_name])
         if self.automation_attempt_id is not None:
             argv.append(f"--automation-attempt-id={self.automation_attempt_id}")
         return argv

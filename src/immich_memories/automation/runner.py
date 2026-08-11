@@ -14,6 +14,7 @@ from typing import Any
 from immich_memories.automation.candidate_scorer import score_and_rank
 from immich_memories.automation.candidates import MemoryCandidate
 from immich_memories.automation.models import (
+    AutoAction,
     AutomationAttempt,
     AutoOutcome,
     AutoRejection,
@@ -115,11 +116,14 @@ class AutomationStatus:
     recent_categories: tuple[str, ...]
     rejection_reasons: tuple[str, ...]
     suggestion: SuggestStatus
+    pending_delivery_count: int
+    oldest_pending_delivery: RunMetadata | None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the stable machine-facing automation status contract."""
         attempt = self.last_attempt
         run = self.last_completed_auto_run
+        pending = self.oldest_pending_delivery
         return {
             "last_attempt": (
                 {
@@ -163,11 +167,21 @@ class AutomationStatus:
                 "outcome": self.suggestion.outcome.value,
                 "error": self.suggestion.error,
             },
-            # Encoding Task 5 will replace this with DeliveryStatus.PENDING-backed
-            # delivery persistence. Until then no durable pending-delivery state
-            # exists, so the producer says so instead of making health invent a queue.
-            "pending_delivery_count": 0,
-            "oldest_pending_delivery": None,
+            "pending_delivery_count": self.pending_delivery_count,
+            "oldest_pending_delivery": (
+                {
+                    "run_id": pending.run_id,
+                    "completed_at": (
+                        pending.completed_at.isoformat() if pending.completed_at else None
+                    ),
+                    "output_path": pending.output_path,
+                    "delivery_attempts": pending.delivery_attempts,
+                    "delivery_error": pending.delivery_error,
+                    "delivery_album": pending.delivery_album,
+                }
+                if pending
+                else None
+            ),
         }
 
 
@@ -221,6 +235,7 @@ def _build_generate_command(
     upload: bool,
     automation_attempt_id: str | None = None,
     config_path: Path | None = None,
+    album_name: str | None = None,
 ) -> list[str]:
     """Build CLI subprocess command from an exhaustively validated candidate."""
     from immich_memories.automation.generation_request import GenerationRequest
@@ -230,6 +245,7 @@ def _build_generate_command(
         upload,
         automation_attempt_id=automation_attempt_id,
         config_path=config_path,
+        album_name=album_name,
     ).to_argv()
 
 
@@ -249,6 +265,11 @@ def _cooldown_status(
         current = current.replace(tzinfo=UTC)
     until = completed_at + timedelta(hours=cooldown_hours)
     return CooldownStatus(hours=cooldown_hours, active=current < until, until=until)
+
+
+def _resolve_cooldown_hours(requested: int | None, configured: int) -> int:
+    """Keep explicit CLI cooldown provenance, including a zero override."""
+    return configured if requested is None else requested
 
 
 def _is_within_cooldown(db: RunDatabase, cooldown_hours: int) -> bool:
@@ -519,6 +540,8 @@ class AutoRunner:
             ),
             rejection_reasons=rejection_reasons,
             suggestion=self.last_suggest_status,
+            pending_delivery_count=self.db.count_pending_deliveries(source="auto"),
+            oldest_pending_delivery=self.db.get_oldest_pending_delivery(source="auto"),
         )
 
     def _process_details(self, stdout: Any, stderr: Any) -> _BoundedProcessDetails:
@@ -543,6 +566,7 @@ class AutoRunner:
         run_id: str | None = None,
         output_path: Path | None = None,
         error: str | None = None,
+        action: AutoAction = AutoAction.GENERATION,
     ) -> AutoRunResult:
         """Persist one terminal transition and return the same public result."""
         candidate_category = None
@@ -561,6 +585,7 @@ class AutoRunner:
         return AutoRunResult(
             outcome=outcome,
             reason=reason,
+            action=action,
             candidate=candidate,
             run_id=run_id,
             output_path=output_path,
@@ -635,6 +660,69 @@ class AutoRunner:
             result = self._finish(attempt, AutoOutcome.SKIPPED, "no eligible candidates")
             return None, result
         return candidates[0], None
+
+    def retry_pending_delivery(
+        self,
+        attempt: AutomationAttempt,
+        *,
+        dry_run: bool,
+    ) -> AutoRunResult | None:
+        """Retry the oldest deliverable auto artifact, if one exists."""
+        pending = self.db.get_oldest_pending_delivery(source="auto")
+        if pending is None:
+            return None
+        if pending.output_path is None:  # guarded by the database query
+            raise RuntimeError(f"Pending delivery run has no output path: {pending.run_id}")
+
+        output_path = Path(pending.output_path)
+        if dry_run:
+            logger.info("Dry run — would retry pending delivery: %s", output_path)
+            return self._finish(
+                attempt,
+                AutoOutcome.DRY_RUN,
+                "pending delivery dry run",
+                run_id=pending.run_id,
+                output_path=output_path,
+                action=AutoAction.DELIVERY_RETRY,
+            )
+
+        from immich_memories.api.immich import SyncImmichClient
+
+        try:
+            with SyncImmichClient(
+                base_url=self.config.immich.url,
+                api_key=self.config.immich.api_key,
+                api_version=self.config.immich.api_version,
+            ) as client:
+                upload = client.upload_memory(
+                    video_path=output_path,
+                    album_name=pending.delivery_album,
+                )
+            asset_id = upload.get("asset_id")
+            if not isinstance(asset_id, str) or not asset_id.strip():
+                raise ValueError("Immich upload returned no asset ID")
+        except Exception as exc:
+            safe_error = _safe_tail(exc, self._secrets()) or "Immich delivery failed"
+            logger.warning("Pending Immich delivery failed: %s", safe_error)
+            self.db.mark_delivery_pending(pending.run_id, safe_error)
+            return self._finish(
+                attempt,
+                AutoOutcome.FAILED,
+                "pending delivery failed",
+                run_id=pending.run_id,
+                output_path=output_path,
+                error=safe_error,
+                action=AutoAction.DELIVERY_RETRY,
+            )
+        self.db.mark_delivered(pending.run_id, asset_id)
+        return self._finish(
+            attempt,
+            AutoOutcome.COMPLETED,
+            "pending delivery completed",
+            run_id=pending.run_id,
+            output_path=output_path,
+            action=AutoAction.DELIVERY_RETRY,
+        )
 
     def suggest(self, limit: int = 10) -> list[MemoryCandidate]:
         """Detect, score, and rank memory candidates from the Immich library."""
@@ -766,10 +854,13 @@ class AutoRunner:
         candidate: MemoryCandidate | None = None
 
         try:
-            effective_cooldown = (
-                cooldown_hours
-                if cooldown_hours is not None
-                else self.config.automation.cooldown_hours
+            retry_result = self.retry_pending_delivery(attempt, dry_run=dry_run)
+            if retry_result is not None:
+                return retry_result
+
+            effective_cooldown = _resolve_cooldown_hours(
+                cooldown_hours,
+                self.config.automation.cooldown_hours,
             )
             if not force and _is_within_cooldown(self.db, effective_cooldown):
                 return self._finish(attempt, AutoOutcome.SKIPPED, "cooldown active")
@@ -784,6 +875,7 @@ class AutoRunner:
                 effective_upload,
                 automation_attempt_id=attempt.id,
                 config_path=self.config_path,
+                album_name=self.config.automation.album_name,
             )
 
             if dry_run:

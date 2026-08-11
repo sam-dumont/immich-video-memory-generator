@@ -202,12 +202,28 @@ def test_category_maps_to_exact_argv(candidate: MemoryCandidate, expected: list[
     assert GenerationRequest.from_candidate(candidate, upload=False).to_argv() == expected
 
 
-def test_upload_is_an_independent_flag() -> None:
+def test_upload_forwards_the_automation_album_to_the_child_cli() -> None:
     candidate = _candidate(CandidateCategory.YEAR_IN_REVIEW, "year_in_review")
 
-    argv = GenerationRequest.from_candidate(candidate, upload=True).to_argv()
+    argv = GenerationRequest.from_candidate(
+        candidate,
+        upload=True,
+        album_name="Daily Auto Memories",
+    ).to_argv()
 
-    assert argv[-1] == "--upload-to-immich"
+    assert argv[-3:] == ["--upload-to-immich", "--album", "Daily Auto Memories"]
+
+
+def test_album_is_not_forwarded_when_upload_is_disabled() -> None:
+    candidate = _candidate(CandidateCategory.YEAR_IN_REVIEW, "year_in_review")
+
+    argv = GenerationRequest.from_candidate(
+        candidate,
+        upload=False,
+        album_name="Daily Auto Memories",
+    ).to_argv()
+
+    assert "--album" not in argv
 
 
 def test_automation_attempt_id_is_forwarded_as_hidden_child_identity() -> None:

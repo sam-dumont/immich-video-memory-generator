@@ -11,7 +11,7 @@ from click.testing import CliRunner, Result
 
 import immich_memories
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
-from immich_memories.automation.models import AutoOutcome, AutoRejection, AutoRunResult
+from immich_memories.automation.models import AutoAction, AutoOutcome, AutoRejection, AutoRunResult
 from immich_memories.cli import main
 from immich_memories.config_loader import Config
 
@@ -254,6 +254,7 @@ class TestAutoRunOutput:
         auto_runner.run_one.return_value = AutoRunResult(
             outcome=AutoOutcome.SKIPPED,
             reason="cooldown active",
+            action=AutoAction.GENERATION,
         )
 
         with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner) as cls:
@@ -288,6 +289,7 @@ class TestAutoRunOutput:
         auto_result = AutoRunResult(
             outcome=AutoOutcome.COMPLETED,
             reason="generation completed",
+            action=AutoAction.GENERATION,
             candidate=_auto_candidate(),
             run_id="run-123",
             output_path=output,
@@ -302,6 +304,7 @@ class TestAutoRunOutput:
         assert result.stdout.count("\n") == 1
         assert json.loads(result.stdout) == {
             "outcome": "completed",
+            "action": "generation",
             "reason": "generation completed",
             "candidate_key": "monthly:2026-07",
             "category": "monthly_review",
@@ -334,6 +337,7 @@ class TestAutoRunOutput:
         auto_runner.run_one.return_value = AutoRunResult(
             outcome=AutoOutcome.SKIPPED,
             reason="cooldown active",
+            action=AutoAction.GENERATION,
         )
 
         with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
@@ -342,6 +346,7 @@ class TestAutoRunOutput:
         assert result.exit_code == 0
         assert json.loads(result.stdout) == {
             "outcome": "skipped",
+            "action": "generation",
             "reason": "cooldown active",
             "candidate_key": None,
             "category": None,
@@ -356,6 +361,7 @@ class TestAutoRunOutput:
         auto_runner.run_one.return_value = AutoRunResult(
             outcome=AutoOutcome.DRY_RUN,
             reason="dry run",
+            action=AutoAction.GENERATION,
             candidate=_auto_candidate(),
         )
 
@@ -372,6 +378,7 @@ class TestAutoRunOutput:
         auto_runner.run_one.return_value = AutoRunResult(
             outcome=AutoOutcome.SKIPPED,
             reason="no eligible candidates",
+            action=AutoAction.GENERATION,
             recent_categories=("monthly_review", "trip"),
             rejections=(
                 AutoRejection(
@@ -388,6 +395,7 @@ class TestAutoRunOutput:
         assert result.exit_code == 0
         assert json.loads(result.stdout) == {
             "outcome": "skipped",
+            "action": "generation",
             "reason": "no eligible candidates",
             "candidate_key": None,
             "category": None,
@@ -432,6 +440,7 @@ class TestAutoRunOutput:
         auto_runner.run_one.return_value = AutoRunResult(
             outcome=AutoOutcome.FAILED,
             reason="generation subprocess exited with code 7",
+            action=AutoAction.GENERATION,
             candidate=_auto_candidate(),
             error="root cause on stdout",
         )
@@ -442,6 +451,7 @@ class TestAutoRunOutput:
         assert result.exit_code == 1
         assert json.loads(result.stdout) == {
             "outcome": "failed",
+            "action": "generation",
             "reason": "generation subprocess exited with code 7",
             "candidate_key": "monthly:2026-07",
             "category": "monthly_review",
@@ -451,6 +461,25 @@ class TestAutoRunOutput:
             "rejections": [],
         }
         assert "root cause on stdout" in result.stderr
+
+    def test_failed_delivery_retry_exposes_action_and_exits_one(self) -> None:
+        auto_runner = MagicMock()
+        auto_runner.run_one.return_value = AutoRunResult(
+            outcome=AutoOutcome.FAILED,
+            reason="pending delivery failed",
+            action=AutoAction.DELIVERY_RETRY,
+            run_id="run-pending",
+            error="safe upload error",
+        )
+
+        with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
+            result = _invoke(["auto", "run", "--quiet"])
+
+        assert result.exit_code == 1
+        payload = json.loads(result.stdout)
+        assert payload["action"] == "delivery_retry"
+        assert payload["run_id"] == "run-pending"
+        assert "safe upload error" in result.stderr
 
     def test_real_preflight_error_path_is_failed_json_and_exit_one(self, tmp_path: Path) -> None:
         from immich_memories.preflight import CheckResult, CheckStatus

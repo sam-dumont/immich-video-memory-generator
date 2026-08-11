@@ -316,6 +316,7 @@ def test_brussels_daily_auto_run_is_not_inside_24_hour_cooldown(
 ) -> None:
     """Local 09:00 on consecutive summer days is exactly 24 hours apart."""
     db_path = tmp_path / "cooldown-v10.db"
+    current_schema_version = cache_database.SCHEMA_VERSION
     monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 10)
     RunDatabase(db_path)
     with sqlite3.connect(db_path) as conn:
@@ -327,7 +328,7 @@ def test_brussels_daily_auto_run_is_not_inside_24_hour_cooldown(
                       'completed', 'auto', '[]')
             """
         )
-    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 11)
+    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", current_schema_version)
     config = Config(
         immich={"url": "http://immich.test:2283", "api_key": "test-key"},
         cache={"database": str(db_path), "directory": str(tmp_path / "cache")},
