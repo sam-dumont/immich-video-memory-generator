@@ -6,10 +6,12 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+import immich_memories.processing.encoding_plan as encoding_plan_module
 from immich_memories.processing.encoding_plan import (
     EncodingRequest,
     HdrMode,
     OutputCodec,
+    UnsupportedEncodingCombination,
     resolve_encoding_plan,
 )
 from immich_memories.processing.hardware import HWAccelBackend, HWAccelCapabilities
@@ -93,6 +95,100 @@ def test_h264_explicit_hdr_is_rejected_before_rendering() -> None:
     assert "H.264" in str(exc_info.value)
 
 
+def test_raw_hdr_string_cannot_bypass_h264_hdr_rejection() -> None:
+    request = EncodingRequest(
+        codec=OutputCodec.H264,
+        hdr_mode="hdr",  # type: ignore[arg-type]
+        hardware_enabled=False,
+        preset="balanced",
+        crf=18,
+        container="mp4",
+    )
+
+    with pytest.raises(UnsupportedEncodingCombination, match="H.264"):
+        resolve_encoding_plan(request, _apple_capabilities(), input_has_hdr=True)
+
+
+def test_unknown_preset_is_rejected_at_resolver_boundary() -> None:
+    request = EncodingRequest(
+        codec=OutputCodec.H264,
+        hdr_mode=HdrMode.AUTO,
+        hardware_enabled=False,
+        preset="turbo",  # type: ignore[arg-type]
+        crf=18,
+        container="mp4",
+    )
+
+    with pytest.raises(UnsupportedEncodingCombination, match="preset"):
+        resolve_encoding_plan(request, _apple_capabilities(), input_has_hdr=False)
+
+
+@pytest.mark.parametrize(
+    "crf",
+    [
+        pytest.param(-1, id="below-minimum"),
+        pytest.param(52, id="above-maximum"),
+        pytest.param(18.5, id="not-integer"),
+        pytest.param(True, id="boolean"),
+    ],
+)
+def test_invalid_crf_is_rejected_at_resolver_boundary(crf: object) -> None:
+    request = EncodingRequest(
+        codec=OutputCodec.H264,
+        hdr_mode=HdrMode.AUTO,
+        hardware_enabled=False,
+        preset="balanced",
+        crf=crf,  # type: ignore[arg-type]
+        container="mp4",
+    )
+
+    with pytest.raises(UnsupportedEncodingCombination, match="CRF"):
+        resolve_encoding_plan(request, _apple_capabilities(), input_has_hdr=False)
+
+
+def test_valid_raw_enum_strings_are_normalized_in_plan() -> None:
+    request = EncodingRequest(
+        codec="h265",  # type: ignore[arg-type]
+        hdr_mode="auto",  # type: ignore[arg-type]
+        hardware_enabled=False,
+        preset="balanced",
+        crf=18,
+        container="mp4",
+    )
+
+    plan = resolve_encoding_plan(request, _apple_capabilities(), input_has_hdr=True)
+
+    assert plan.codec is OutputCodec.H265
+    assert plan.hdr is True
+
+
+@pytest.mark.parametrize(
+    ("codec", "hdr_mode", "message"),
+    [
+        pytest.param("vp9", HdrMode.AUTO, "codec", id="codec"),
+        pytest.param(OutputCodec.H264, "dolby", "HDR mode", id="hdr-mode"),
+        pytest.param(264, HdrMode.AUTO, "codec", id="codec-non-string"),
+        pytest.param(OutputCodec.H264, None, "HDR mode", id="hdr-mode-non-string"),
+    ],
+)
+def test_unknown_raw_enum_values_raise_typed_error(
+    codec: object,
+    hdr_mode: object,
+    message: str,
+) -> None:
+    request = EncodingRequest(
+        codec=codec,  # type: ignore[arg-type]
+        hdr_mode=hdr_mode,  # type: ignore[arg-type]
+        hardware_enabled=False,
+        preset="balanced",
+        crf=18,
+        container="mp4",
+    )
+
+    with pytest.raises(UnsupportedEncodingCombination, match=message):
+        resolve_encoding_plan(request, _apple_capabilities(), input_has_hdr=False)
+
+
 def test_h265_auto_preserves_hdr_input() -> None:
     plan = resolve_encoding_plan(
         _request(OutputCodec.H265, hardware_enabled=True),
@@ -168,7 +264,7 @@ def test_prores_requires_mov_container() -> None:
 
 
 def test_unknown_container_is_rejected() -> None:
-    with pytest.raises(ValueError, match="container"):
+    with pytest.raises(UnsupportedEncodingCombination, match="container"):
         resolve_encoding_plan(
             _request(OutputCodec.H264, hardware_enabled=False, container="mkv"),
             _apple_capabilities(),
@@ -208,6 +304,17 @@ def test_software_encoder_args_include_requested_crf() -> None:
     assert plan.encoder_args == ("-preset", "medium", "-crf", "21")
 
 
+@pytest.mark.parametrize("crf", [0, 51])
+def test_crf_boundary_values_are_preserved(crf: int) -> None:
+    plan = resolve_encoding_plan(
+        _request(OutputCodec.H264, hardware_enabled=False, crf=crf),
+        _apple_capabilities(),
+        input_has_hdr=False,
+    )
+
+    assert plan.encoder_args[-2:] == ("-crf", str(crf))
+
+
 def test_unsupported_hardware_encoder_falls_back_within_requested_codec() -> None:
     capabilities = HWAccelCapabilities(
         backend=HWAccelBackend.APPLE,
@@ -223,6 +330,21 @@ def test_unsupported_hardware_encoder_falls_back_within_requested_codec() -> Non
 
     assert plan.codec is OutputCodec.H265
     assert plan.encoder == "libx265"
+
+
+def test_mismatched_encoder_family_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        encoding_plan_module,
+        "get_ffmpeg_encoder",
+        lambda *_args, **_kwargs: ("libx265", ["-preset", "medium"]),
+    )
+
+    with pytest.raises(UnsupportedEncodingCombination, match="libx265.*h264"):
+        resolve_encoding_plan(
+            _request(OutputCodec.H264, hardware_enabled=False),
+            _apple_capabilities(),
+            input_has_hdr=False,
+        )
 
 
 def test_resolved_plan_is_immutable() -> None:
