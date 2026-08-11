@@ -397,6 +397,77 @@ def test_database_marks_delivery_success_and_clears_previous_error(tmp_path: Pat
     assert updated.status == "completed"
 
 
+def test_database_rejects_delivery_for_completed_run_without_requested_delivery(
+    tmp_path: Path,
+) -> None:
+    """A completed no-upload artifact cannot be retroactively marked delivered."""
+    from immich_memories.tracking import InvalidRunLifecycleError
+
+    database = RunDatabase(tmp_path / "not-requested.db")
+    database.save_run(
+        RunMetadata(
+            run_id="not-requested-run",
+            created_at=datetime(2026, 8, 11, 10, 0, tzinfo=UTC),
+            completed_at=datetime(2026, 8, 11, 10, 5, tzinfo=UTC),
+            status="completed",
+            delivery_status=DeliveryStatus.NOT_REQUESTED,
+        )
+    )
+    before = database.get_run("not-requested-run")
+    assert before is not None
+
+    with pytest.raises(InvalidRunLifecycleError, match="requested delivery"):
+        database.mark_delivered("not-requested-run", "asset-must-not-persist")
+
+    after = database.get_run("not-requested-run")
+    assert after is not None
+    assert after.to_dict() == before.to_dict()
+
+
+def test_database_rejects_repeated_artifact_completion_after_delivery(tmp_path: Path) -> None:
+    """Artifact facts become immutable once the delivery transition is committed."""
+    from immich_memories.tracking import InvalidRunLifecycleError
+
+    database = RunDatabase(tmp_path / "completed-twice.db")
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"validated")
+    created_at = datetime(2026, 8, 11, 10, 0, tzinfo=UTC)
+    database.save_run(RunMetadata(run_id="delivered-run", created_at=created_at, status="running"))
+    database.complete_artifact(
+        "delivered-run",
+        completed_at=created_at + timedelta(minutes=1),
+        output_path=str(output_path),
+        output_size_bytes=4096,
+        output_duration_seconds=42.5,
+        delivery_requested=True,
+        delivery_album="Original Album",
+        warnings=[],
+        clips_analyzed=4,
+        clips_selected=2,
+        errors_count=0,
+    )
+    before = database.mark_delivered("delivered-run", "asset-authoritative")
+
+    with pytest.raises(InvalidRunLifecycleError, match="running run"):
+        database.complete_artifact(
+            "delivered-run",
+            completed_at=created_at + timedelta(minutes=2),
+            output_path=str(output_path),
+            output_size_bytes=1,
+            output_duration_seconds=1.0,
+            delivery_requested=False,
+            delivery_album=None,
+            warnings=["stale"],
+            clips_analyzed=0,
+            clips_selected=0,
+            errors_count=1,
+        )
+
+    after = database.get_run("delivered-run")
+    assert after is not None
+    assert after.to_dict() == before.to_dict()
+
+
 @pytest.mark.parametrize("asset_id", ["", "   "])
 def test_database_rejects_empty_delivered_asset_identity(
     tmp_path: Path,
@@ -1027,6 +1098,45 @@ def test_generation_without_upload_completes_artifact_as_not_requested(
     assert saved.delivery_status is DeliveryStatus.NOT_REQUESTED
     assert saved.delivery_attempts == 0
     assert saved.automation_attempt_id == "attempt-generation"
+
+
+@pytest.mark.parametrize("upload_enabled", [False, True], ids=["not-requested", "delivered"])
+def test_final_progress_callback_failure_preserves_authoritative_artifact_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    upload_enabled: bool,
+) -> None:
+    """A final observer failure can escape, but cannot downgrade durable completion."""
+    from immich_memories.generate import GenerationError, generate_memory
+
+    params, _events = _prepare_generation(
+        tmp_path,
+        monkeypatch,
+        upload_enabled=upload_enabled,
+        client=object() if upload_enabled else None,
+        upload_result={"asset_id": "asset-final-callback"},
+    )
+
+    def raise_after_completion(phase: str, _progress: float, _message: str) -> None:
+        if phase == "done":
+            raise RuntimeError("observer failed after durable completion")
+
+    params.progress_callback = raise_after_completion  # type: ignore[attr-defined]
+
+    with pytest.raises(GenerationError, match="observer failed after durable completion"):
+        generate_memory(params)  # type: ignore[arg-type]
+
+    saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
+    assert saved is not None
+    assert saved.status == "completed"
+    assert saved.output_path is not None
+    assert Path(saved.output_path).read_bytes() == b"validated-artifact"
+    if upload_enabled:
+        assert saved.delivery_status is DeliveryStatus.DELIVERED
+        assert saved.immich_asset_id == "asset-final-callback"
+    else:
+        assert saved.delivery_status is DeliveryStatus.NOT_REQUESTED
+        assert saved.immich_asset_id is None
 
 
 def test_successful_generation_delivery_records_asset_and_original_album(

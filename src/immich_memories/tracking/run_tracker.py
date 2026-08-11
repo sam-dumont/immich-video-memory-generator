@@ -343,6 +343,12 @@ class RunTracker:
             errors_count: Total errors encountered.
         """
         self._require_started()
+        run = self.db.get_run(self.run_id)
+        if run is not None and run.status == "completed":
+            logger.warning(
+                "Run %s is already completed; preserving durable artifact state", self.run_id
+            )
+            return
         # Complete any pending phase
         if self._current_phase:
             self.complete_phase(errors=[{"error": error}])
