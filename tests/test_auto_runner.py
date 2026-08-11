@@ -367,7 +367,7 @@ class TestSuggestEmptyLibrary:
 
 
 class TestRunOneCooldown:
-    def test_within_cooldown_returns_skipped_and_finishes_attempt_once(
+    def test_recent_completed_auto_run_returns_skipped_and_finishes_attempt_once(
         self, config: Config
     ) -> None:
         """Cooldown is an observable, durable zero-success outcome."""
@@ -376,6 +376,7 @@ class TestRunOneCooldown:
             run_id="test_recent",
             created_at=datetime.now(tz=UTC) - timedelta(hours=1),
             status="completed",
+            source="auto",
         )
         runner.db.save_run(recent_run)
 
@@ -391,6 +392,25 @@ class TestRunOneCooldown:
         assert result.output_path is None
         finish.assert_called_once()
         assert runner.state.get_last_attempt().outcome is AutoOutcome.SKIPPED
+
+    def test_recent_manual_run_does_not_activate_auto_cooldown(self, config: Config) -> None:
+        """A manual export must not consume the smart automation cooldown."""
+        runner = AutoRunner(config)
+        runner.db.save_run(
+            RunMetadata(
+                run_id="recent-manual",
+                created_at=datetime.now(tz=UTC) - timedelta(hours=1),
+                status="completed",
+                source="manual",
+            )
+        )
+
+        with patch.object(runner, "suggest", return_value=[]) as suggest:
+            result = runner.run_one(cooldown_hours=24)
+
+        assert result.outcome is AutoOutcome.SKIPPED
+        assert result.reason == "no eligible candidates"
+        suggest.assert_called_once_with(limit=1)
 
 
 class TestRunOneDryRun:
@@ -459,6 +479,66 @@ class TestRunOneNoCandidates:
         finish.assert_called_once()
         assert runner.state.get_last_attempt().outcome is AutoOutcome.FAILED
 
+    def test_preflight_error_is_failed_and_finishes_attempt_once(self, config: Config) -> None:
+        """A returned Immich preflight error is not a healthy empty candidate set."""
+        from immich_memories.preflight import CheckResult, CheckStatus
+
+        runner = AutoRunner(config)
+        preflight = CheckResult(
+            name="Immich",
+            status=CheckStatus.ERROR,
+            message="Authentication failed",
+            details=f"API key rejected: {config.immich.api_key}",
+        )
+
+        with (
+            patch("immich_memories.preflight.check_immich", return_value=preflight),
+            patch.object(
+                runner.state, "finish_attempt", wraps=runner.state.finish_attempt
+            ) as finish,
+        ):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.reason == "Immich preflight failed"
+        assert result.error is not None
+        assert "Authentication failed" in result.error
+        assert config.immich.api_key not in result.error
+        finish.assert_called_once()
+        assert runner.state.get_last_attempt().outcome is AutoOutcome.FAILED
+
+    def test_preflight_failure_signal_resets_before_next_healthy_suggest(
+        self, config: Config
+    ) -> None:
+        """One server outage cannot poison a later healthy empty-library decision."""
+        from immich_memories.preflight import CheckResult, CheckStatus
+
+        runner = AutoRunner(config)
+        failed = CheckResult(
+            name="Immich",
+            status=CheckStatus.ERROR,
+            message="Connection failed",
+            details="temporary outage",
+        )
+        healthy = CheckResult(name="Immich", status=CheckStatus.OK, message="Connected")
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get_time_buckets.return_value = []
+        mock_client.get_all_people.return_value = []
+
+        with patch("immich_memories.preflight.check_immich", return_value=failed):
+            assert runner.suggest(limit=1) == []
+
+        with (
+            patch("immich_memories.preflight.check_immich", return_value=healthy),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=mock_client),
+        ):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.SKIPPED
+        assert result.reason == "no eligible candidates"
+
 
 class TestRunOneOutcomes:
     def test_failed_process_uses_stdout_error_and_finishes_once(
@@ -508,6 +588,50 @@ class TestRunOneOutcomes:
         assert "stdout-secret" not in result.error
         assert "stderr-secret" not in result.error
         assert "***" in result.error
+
+    def test_configured_immich_key_is_redacted_before_tail_boundary(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        """Truncation cannot split a configured key and retain its secret suffix."""
+        secret = "immich-key-" + "q" * 80 + "-IMMICH-END-73ac"
+        config.immich.api_key = secret
+        stdout = f"process output {secret}{'z' * 1980}"
+        completed = subprocess.CompletedProcess(["generate"], 7, stdout, "")
+        runner = AutoRunner(config)
+
+        with (
+            patch.object(runner, "suggest", return_value=[candidate]),
+            patch("immich_memories.automation.runner.subprocess.run", return_value=completed),
+        ):
+            result = runner.run_one(force=True)
+
+        assert result.error is not None
+        assert secret not in result.error
+        assert secret[-16:] not in result.error
+        assert "***" in result.error
+        assert runner.state.get_last_attempt().error == result.error
+
+    def test_notification_url_is_redacted_before_tail_boundary(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        """A webhook URL crossing the retained tail boundary cannot leak its token suffix."""
+        secret_url = "https://notify.test/" + "w" * 80 + "/WEBHOOK-END-19bd"
+        config.notifications.urls = [secret_url]
+        stderr = f"delivery error {secret_url}{'y' * 1980}"
+        completed = subprocess.CompletedProcess(["generate"], 9, "", stderr)
+        runner = AutoRunner(config)
+
+        with (
+            patch.object(runner, "suggest", return_value=[candidate]),
+            patch("immich_memories.automation.runner.subprocess.run", return_value=completed),
+        ):
+            result = runner.run_one(force=True)
+
+        assert result.error is not None
+        assert secret_url not in result.error
+        assert secret_url[-16:] not in result.error
+        assert "***" in result.error
+        assert runner.state.get_last_attempt().error == result.error
 
     def test_exit_zero_without_matching_new_run_is_failure(
         self, config: Config, candidate: MemoryCandidate

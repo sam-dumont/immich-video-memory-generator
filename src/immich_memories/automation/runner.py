@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 import subprocess
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +31,21 @@ logger = logging.getLogger(__name__)
 _GENERATION_TIMEOUT_SECONDS = 7200
 _GENERATION_TIMEOUT_REASON = "generation timed out after 2 hours"
 _OUTPUT_TAIL_LENGTH = 2000
+
+
+class SuggestOutcome(StrEnum):
+    """Status of the most recent candidate discovery call."""
+
+    READY = "ready"
+    PREFLIGHT_FAILED = "preflight_failed"
+
+
+@dataclass(frozen=True)
+class SuggestStatus:
+    """Per-call signal that distinguishes healthy emptiness from preflight failure."""
+
+    outcome: SuggestOutcome = SuggestOutcome.READY
+    error: str | None = None
 
 
 def _time_buckets_to_month_counts(
@@ -70,8 +87,8 @@ def _build_generate_command(candidate: MemoryCandidate, upload: bool) -> list[st
 
 
 def _is_within_cooldown(db: RunDatabase, cooldown_hours: int) -> bool:
-    """Check if the most recent completed run is within the cooldown window."""
-    runs = db.list_runs(limit=1, status="completed")
+    """Check if the most recent completed auto run is within the cooldown window."""
+    runs = db.list_runs(limit=1, status="completed", source="auto")
     if not runs:
         return False
     last_completed = runs[0].created_at
@@ -109,7 +126,7 @@ def _safe_tail(value: Any, secrets: tuple[str, ...] = ()) -> str:
 
 
 def _execute_generate(cmd: list[str]) -> ProcessResult:
-    """Run one generation subprocess and capture bounded, sanitized output."""
+    """Run one generation subprocess and capture output for config-aware redaction."""
     result = subprocess.run(  # noqa: S603
         cmd,
         capture_output=True,
@@ -118,8 +135,8 @@ def _execute_generate(cmd: list[str]) -> ProcessResult:
     )
     return ProcessResult(
         returncode=result.returncode,
-        stdout=_safe_tail(result.stdout),
-        stderr=_safe_tail(result.stderr),
+        stdout=_coerce_process_output(result.stdout),
+        stderr=_coerce_process_output(result.stderr),
     )
 
 
@@ -281,6 +298,7 @@ class AutoRunner:
         self.state = AutomationStateStore(config.cache.database_path)
         self.execute = execute or _execute_generate
         self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
+        self.last_suggest_status = SuggestStatus()
 
     def _secrets(self) -> tuple[str, ...]:
         """Return configured credential values that must never enter attempt history."""
@@ -290,7 +308,7 @@ class AutoRunner:
             self.config.musicgen.api_key,
         ]
         values.extend(self.config.notifications.urls)
-        return tuple(value for value in values if value)
+        return tuple(sorted({value for value in values if value}, key=len, reverse=True))
 
     def _process_details(self, stdout: Any, stderr: Any) -> str:
         """Format independently bounded stdout and stderr tails for persistence."""
@@ -347,15 +365,44 @@ class AutoRunner:
             error=error,
         )
 
+    def _suggest_one_for_attempt(
+        self, attempt: AutomationAttempt
+    ) -> tuple[MemoryCandidate | None, AutoRunResult | None]:
+        """Return one candidate or the terminal result of candidate discovery."""
+        candidates = self.suggest(limit=1)
+        if self.last_suggest_status.outcome is SuggestOutcome.PREFLIGHT_FAILED:
+            reason = "Immich preflight failed"
+            result = self._finish(
+                attempt,
+                AutoOutcome.FAILED,
+                reason,
+                error=self.last_suggest_status.error or reason,
+            )
+            return None, result
+        if not candidates:
+            logger.info("No eligible candidates found")
+            result = self._finish(attempt, AutoOutcome.SKIPPED, "no eligible candidates")
+            return None, result
+        return candidates[0], None
+
     def suggest(self, limit: int = 10) -> list[MemoryCandidate]:
         """Detect, score, and rank memory candidates from the Immich library."""
         from immich_memories.api.immich import SyncImmichClient
         from immich_memories.preflight import CheckStatus, check_immich
 
         self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
+        self.last_suggest_status = SuggestStatus()
         immich_result = check_immich(self.config)
         if immich_result.status == CheckStatus.ERROR:
-            logger.error("Immich preflight failed: %s", immich_result.message)
+            error = f"Immich preflight failed: {immich_result.message}"
+            if immich_result.details:
+                error = f"{error}: {immich_result.details}"
+            error = _safe_tail(error, self._secrets())
+            self.last_suggest_status = SuggestStatus(
+                outcome=SuggestOutcome.PREFLIGHT_FAILED,
+                error=error,
+            )
+            logger.error("%s", error)
             return []
 
         auto_cfg = self.config.automation
@@ -444,12 +491,10 @@ class AutoRunner:
             if not force and _is_within_cooldown(self.db, effective_cooldown):
                 return self._finish(attempt, AutoOutcome.SKIPPED, "cooldown active")
 
-            candidates = self.suggest(limit=1)
-            if not candidates:
-                logger.info("No eligible candidates found")
-                return self._finish(attempt, AutoOutcome.SKIPPED, "no eligible candidates")
-
-            candidate = candidates[0]
+            candidate, candidate_result = self._suggest_one_for_attempt(attempt)
+            if candidate_result is not None:
+                return candidate_result
+            assert candidate is not None
             effective_upload = upload or self.config.automation.upload_to_immich
             cmd = _build_generate_command(candidate, effective_upload)
 

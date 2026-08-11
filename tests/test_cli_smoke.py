@@ -340,6 +340,54 @@ class TestAutoRunOutput:
         }
         assert "root cause on stdout" in result.stderr
 
+    def test_real_preflight_error_path_is_failed_json_and_exit_one(self, tmp_path: Path) -> None:
+        from immich_memories.preflight import CheckResult, CheckStatus
+
+        config = Config(
+            immich={"url": "http://immich.test:2283", "api_key": "preflight-secret"},
+            cache={"database": str(tmp_path / "runs.db")},
+        )
+        preflight = CheckResult(
+            name="Immich",
+            status=CheckStatus.ERROR,
+            message="Authentication failed",
+            details="API key rejected: preflight-secret",
+        )
+
+        with patch("immich_memories.preflight.check_immich", return_value=preflight):
+            result = _invoke(["auto", "run", "--force", "--quiet"], config=config)
+
+        assert result.exit_code == 1
+        payload = json.loads(result.stdout)
+        assert payload["outcome"] == "failed"
+        assert payload["reason"] == "Immich preflight failed"
+        assert "Authentication failed" in result.stderr
+        assert "preflight-secret" not in result.stderr
+
+    def test_auto_suggest_reports_preflight_error_without_second_check(
+        self, tmp_path: Path
+    ) -> None:
+        from immich_memories.preflight import CheckResult, CheckStatus
+
+        config = Config(
+            immich={"url": "http://immich.test:2283", "api_key": "test-key"},
+            cache={"database": str(tmp_path / "runs.db")},
+        )
+        preflight = CheckResult(
+            name="Immich",
+            status=CheckStatus.ERROR,
+            message="Connection failed",
+            details="server unavailable",
+        )
+
+        with patch("immich_memories.preflight.check_immich", return_value=preflight) as check:
+            result = _invoke(["auto", "suggest"], config=config)
+
+        assert result.exit_code == 1
+        assert "Immich preflight failed" in result.stderr
+        assert "server unavailable" in result.stderr
+        check.assert_called_once()
+
 
 class TestPreflightCommand:
     """Test preflight command with real checks (no mocks)."""

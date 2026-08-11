@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json as json_mod
+import logging
 from pathlib import Path
 
 import click
@@ -104,10 +105,19 @@ def auto() -> None:
 @click.pass_context
 def suggest(ctx: click.Context, as_json: bool, limit: int, memory_type: str | None) -> None:
     """Show prioritized memory candidates."""
-    from immich_memories.automation.runner import AutoRunner
+    from immich_memories.automation.runner import AutoRunner, SuggestOutcome
 
     config: Config = ctx.obj["config"]
-    candidates = AutoRunner(config).suggest(limit=limit)
+    runner = AutoRunner(config)
+    candidates = runner.suggest(limit=limit)
+
+    if runner.last_suggest_status.outcome is SuggestOutcome.PREFLIGHT_FAILED:
+        error = runner.last_suggest_status.error or "Immich preflight failed"
+        if as_json:
+            click.echo(json_mod.dumps({"error": error}))
+        else:
+            click.echo(error, err=True)
+        ctx.exit(1)
 
     if memory_type:
         candidates = [c for c in candidates if c.memory_type == memory_type]
@@ -138,9 +148,16 @@ def run_cmd(
     from immich_memories.automation.runner import AutoRunner
 
     config: Config = ctx.obj["config"]
-    result = AutoRunner(config).run_one(
-        force=force, cooldown_hours=cooldown, upload=upload, dry_run=dry_run
-    )
+    previous_logging_disable = logging.root.manager.disable
+    if quiet:
+        logging.disable(logging.CRITICAL)
+    try:
+        result = AutoRunner(config).run_one(
+            force=force, cooldown_hours=cooldown, upload=upload, dry_run=dry_run
+        )
+    finally:
+        if quiet:
+            logging.disable(previous_logging_disable)
 
     if quiet:
         click.echo(_auto_result_to_json(result))
