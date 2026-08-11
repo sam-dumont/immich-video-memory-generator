@@ -425,12 +425,16 @@ async def test_ui_music_probe_failure_is_optional_and_sanitized(
 
 
 @pytest.mark.asyncio
-async def test_ui_upload_continues_after_optional_music_plan_probe_failure(
+async def test_ui_upload_continues_after_optional_music_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A music validation-probe failure must not skip the independent upload phase."""
-    from immich_memories.ui.pages._step4_generate import _apply_optional_music_and_upload
+    """A nonfatal music failure must not skip final validation or delivery."""
+    from immich_memories.generate import PreparedGeneration
+    from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.processing.output_contract import OutputProbe
+    from immich_memories.tracking import DeliveryStatus
+    from immich_memories.ui.pages._step4_generate import finalize_ui_generation
 
     result_path = tmp_path / "memory.mp4"
     result_path.write_bytes(b"validated-base")
@@ -441,38 +445,77 @@ async def test_ui_upload_continues_after_optional_music_plan_probe_failure(
         },
         memory_type=None,
         upload_enabled=True,
+        generation_warning=None,
+        delivery_status=DeliveryStatus.NOT_REQUESTED,
+        upload_result=None,
+    )
+    plan = _h264_output_plan()
+    prepared = PreparedGeneration(result_path, plan, (), 1, 1)
+    params = GenerationParams(
+        clips=[],
+        output_path=result_path,
+        config=Config(),
+        client=object(),  # type: ignore[arg-type]
+        upload_enabled=True,
+        upload_album="UI Album",
+    )
+    warning = "Optional music failed: probe failed"
+    music = AsyncMock(return_value=MusicPhaseResult(applied=False, warning=warning))
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate._apply_music", music)
+    final_probe = OutputProbe(
+        codec="h264",
+        container="mp4",
+        duration_seconds=5.0,
+        size_bytes=1024,
+        pixel_format="yuv420p",
+        color_transfer="bt709",
+        color_primaries="bt709",
+        width=1920,
+        height=1080,
+        decoded_frames=120,
     )
     monkeypatch.setattr(
-        "immich_memories.generate_music.derive_music_validation_plan",
-        MagicMock(side_effect=RuntimeError("probe failed")),
+        "immich_memories.ui.pages._step4_generate.validate_output",
+        lambda _path, _encoding_plan: final_probe,
     )
-    monkeypatch.setattr(
-        "immich_memories.ui.pages._step4_generate.ui.notify",
-        MagicMock(),
-    )
+
+    async def io_bound(callback, *args, **kwargs):
+        return callback(*args, **kwargs)
+
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.run.io_bound", io_bound)
     upload = AsyncMock()
     monkeypatch.setattr(
         "immich_memories.ui.pages._step4_upload.upload_to_immich",
         upload,
     )
     tracker = MagicMock()
+    completed = SimpleNamespace(delivery_status=DeliveryStatus.PENDING)
+    tracker.complete_artifact.return_value = completed
+    upload.return_value = completed
     progress = _Progress()
     status = _Status()
 
-    await _apply_optional_music_and_upload(
+    await finalize_ui_generation(
         state,
-        Config(),
-        result_path,
-        [],
-        tmp_path,
+        params,
+        prepared,
         tracker,
         progress,
         status,
     )
 
-    upload.assert_awaited_once_with(result_path, state, progress, status)
-    tracker.start_phase.assert_called_once_with("music", 1)
-    tracker.complete_phase.assert_called_once()
+    music.assert_awaited_once()
+    assert music.await_args.kwargs["encoding_plan"] is plan
+    tracker.complete_artifact.assert_called_once_with(
+        result_path,
+        final_probe,
+        [warning],
+        delivery_requested=True,
+        delivery_album="UI Album",
+        clips_analyzed=1,
+        clips_selected=1,
+    )
+    upload.assert_awaited_once_with(result_path, state, params, tracker, progress, status)
     assert result_path.read_bytes() == b"validated-base"
 
 

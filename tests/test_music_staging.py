@@ -517,7 +517,10 @@ async def test_post_publication_cleanup_failure_does_not_block_upload(
     music_source: str,
 ) -> None:
     """Both post-publication cleanup failures still reach the independent upload phase."""
-    from immich_memories.ui.pages._step4_generate import _apply_optional_music_and_upload
+    from immich_memories.generate import GenerationParams, PreparedGeneration
+    from immich_memories.processing.output_contract import OutputProbe
+    from immich_memories.tracking import DeliveryStatus
+    from immich_memories.ui.pages._step4_generate import finalize_ui_generation
 
     video_path = tmp_path / "memory.mp4"
     video_path.write_bytes(b"validated-base")
@@ -580,6 +583,9 @@ async def test_post_publication_cleanup_failure_does_not_block_upload(
         upload,
     )
     tracker = MagicMock()
+    completed = SimpleNamespace(delivery_status=DeliveryStatus.PENDING)
+    tracker.complete_artifact.return_value = completed
+    upload.return_value = completed
     progress = _Progress()
     status = _Status()
     state = SimpleNamespace(
@@ -590,14 +596,41 @@ async def test_post_publication_cleanup_failure_does_not_block_upload(
         },
         memory_type=None,
         upload_enabled=True,
+        generation_warning=None,
+        delivery_status=DeliveryStatus.NOT_REQUESTED,
+        upload_result=None,
+    )
+    plan = _h264_plan()
+    prepared = PreparedGeneration(video_path, plan, (), 1, 1)
+    params = GenerationParams(
+        clips=[],
+        output_path=video_path,
+        config=Config(),
+        client=object(),  # type: ignore[arg-type]
+        upload_enabled=True,
+        upload_album="Cleanup Album",
+    )
+    final_probe = OutputProbe(
+        codec="h264",
+        container="mp4",
+        duration_seconds=5.0,
+        size_bytes=1024,
+        pixel_format="yuv420p",
+        color_transfer="bt709",
+        color_primaries="bt709",
+        width=1920,
+        height=1080,
+        decoded_frames=120,
+    )
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_generate.validate_output",
+        lambda _path, _encoding_plan: final_probe,
     )
 
-    await _apply_optional_music_and_upload(
+    await finalize_ui_generation(
         state,
-        Config(),
-        video_path,
-        [],
-        tmp_path,
+        params,
+        prepared,
         tracker,
         progress,
         status,
@@ -605,4 +638,13 @@ async def test_post_publication_cleanup_failure_does_not_block_upload(
 
     assert video_path.read_bytes() == b"validated-mix"
     tracker.complete_phase.assert_called_once_with(items_processed=1)
-    upload.assert_awaited_once_with(video_path, state, progress, status)
+    tracker.complete_artifact.assert_called_once_with(
+        video_path,
+        final_probe,
+        [],
+        delivery_requested=True,
+        delivery_album="Cleanup Album",
+        clips_analyzed=1,
+        clips_selected=1,
+    )
+    upload.assert_awaited_once_with(video_path, state, params, tracker, progress, status)

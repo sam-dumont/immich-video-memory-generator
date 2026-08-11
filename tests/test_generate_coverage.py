@@ -1367,6 +1367,7 @@ class TestGenerateMemoryInner:
         with contextlib.ExitStack() as stack:
             mocks = {name: stack.enter_context(p) for name, p in patches.items()}
             mocks["extract"].side_effect = GenerationError("intentional")
+            mocks["tracker"].return_value.db.get_run.return_value.status = "running"
 
             with pytest.raises(GenerationError):
                 _generate_memory_inner(params)
@@ -1383,6 +1384,7 @@ class TestGenerateMemoryInner:
         with contextlib.ExitStack() as stack:
             mocks = {name: stack.enter_context(p) for name, p in patches.items()}
             mocks["extract"].side_effect = RuntimeError("surprise")
+            mocks["tracker"].return_value.db.get_run.return_value.status = "running"
 
             with pytest.raises(GenerationError):
                 _generate_memory_inner(params)

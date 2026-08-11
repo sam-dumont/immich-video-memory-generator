@@ -1000,6 +1000,51 @@ def _prepare_generation(
     return params, events
 
 
+def test_deferred_generation_returns_exact_context_on_the_caller_owned_tracker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """UI post-processing receives the assembly contract without completing a shadow run."""
+    from immich_memories import generate as generate_module
+    from immich_memories.generate import PreparedGeneration, generate_memory
+    from immich_memories.processing.assembly_config import AssemblySettings
+
+    params, events = _prepare_generation(
+        tmp_path,
+        monkeypatch,
+        upload_enabled=True,
+        client=object(),
+        upload_album="UI Album",
+    )
+    exact_plan = _h264_plan()
+    monkeypatch.setattr(
+        generate_module,
+        "_build_assembly_settings",
+        lambda *_args: AssemblySettings(encoding_plan=exact_plan),
+    )
+    tracker = RunTracker("ui-owned-run", db_path=tmp_path / "runs.db", capture_system=False)
+
+    prepared = generate_memory(
+        params,  # type: ignore[arg-type]
+        run_tracker=tracker,
+        defer_finalization=True,
+    )
+    saved = RunDatabase(tmp_path / "runs.db").get_run("ui-owned-run")
+
+    assert isinstance(prepared, PreparedGeneration)
+    assert prepared.encoding_plan is exact_plan
+    assert prepared.clips_analyzed == 1
+    assert prepared.clips_selected == 1
+    assert len(prepared.assembly_clips) == 1
+    assert prepared.path.read_bytes() == b"validated-artifact"
+    assert events == []
+    assert tracker.current_run is not None
+    assert tracker.current_run.run_id == "ui-owned-run"
+    assert saved is not None
+    assert saved.status == "running"
+    assert [phase.phase_name for phase in saved.phases] == ["clip_extraction", "assembly"]
+
+
 def test_generation_without_upload_completes_artifact_as_not_requested(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1058,6 +1103,87 @@ def test_successful_generation_delivery_records_asset_and_original_album(
     assert saved.delivery_album == "Original Family Album"
     assert saved.warnings == ["Optional music failed: backend unavailable"]
     assert saved.automation_attempt_id == "attempt-generation"
+
+
+def test_final_progress_callback_cannot_downgrade_or_leak_delivered_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A presentation callback runs after delivery and cannot redefine its outcome."""
+    from immich_memories.generate import generate_memory
+
+    configured_literal = "final-progress-secret-426"
+    params, events = _prepare_generation(
+        tmp_path,
+        monkeypatch,
+        upload_enabled=True,
+        client=object(),
+        upload_album="Finished Album",
+        upload_result={"asset_id": "asset-finished"},
+        configured_secret=configured_literal,
+    )
+
+    def fail_final_progress(phase: str, _progress: float, _message: str) -> None:
+        if phase == "done":
+            raise RuntimeError(f"presentation failed with {configured_literal}")
+
+    params.progress_callback = fail_final_progress
+    caplog.set_level(logging.WARNING, logger="immich_memories.generate")
+
+    result = generate_memory(params)  # type: ignore[arg-type]
+    saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
+
+    assert result.read_bytes() == b"validated-artifact"
+    assert events == ["music", "final-probe", "upload"]
+    assert saved is not None
+    assert saved.status == "completed"
+    assert saved.delivery_status is DeliveryStatus.DELIVERED
+    assert saved.delivery_attempts == 1
+    assert saved.immich_asset_id == "asset-finished"
+    assert configured_literal not in caplog.text
+
+
+def test_post_completion_exception_guard_preserves_delivered_database_truth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Even an unexpected post-commit error cannot call the destructive failure transition."""
+    from immich_memories import generate as generate_module
+    from immich_memories.generate import GenerationError, generate_memory
+
+    configured_literal = "post-commit-diagnostic-secret-527"
+    params, events = _prepare_generation(
+        tmp_path,
+        monkeypatch,
+        upload_enabled=True,
+        client=object(),
+        upload_result={"asset_id": "asset-committed"},
+        configured_secret=configured_literal,
+    )
+
+    def fail_timing(*_args: object) -> None:
+        raise RuntimeError(f"diagnostic failed with {configured_literal}")
+
+    monkeypatch.setattr(generate_module, "_log_phase_timing", fail_timing)
+    caplog.set_level(logging.ERROR, logger="immich_memories.generate")
+
+    with pytest.raises(GenerationError) as caught:
+        generate_memory(params)  # type: ignore[arg-type]
+    saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
+
+    assert events == ["music", "final-probe", "upload"]
+    assert saved is not None
+    assert saved.status == "completed"
+    assert saved.delivery_status is DeliveryStatus.DELIVERED
+    assert saved.delivery_attempts == 1
+    assert saved.immich_asset_id == "asset-committed"
+    assert configured_literal not in str(caught.value)
+    assert configured_literal not in "".join(traceback.format_exception(caught.value))
+    assert configured_literal not in caplog.text
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
 
 
 def test_failed_generation_delivery_is_pending_and_does_not_fail_artifact(

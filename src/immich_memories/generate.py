@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, Literal, NoReturn, overload
 
 from immich_memories.generate_clips import (
     MIN_CLIP_DURATION,
@@ -54,6 +54,8 @@ if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.config_loader import Config
+    from immich_memories.processing.assembly_config import AssemblyClip
+    from immich_memories.processing.encoding_plan import EncodingPlan
     from immich_memories.tracking import RunTracker
 
 logger = logging.getLogger(__name__)
@@ -61,8 +63,10 @@ logger = logging.getLogger(__name__)
 # Re-export all extracted symbols so existing callers continue to work
 __all__ = [
     "GenerationParams",
+    "PreparedGeneration",
     "GenerationError",
     "DeliveryError",
+    "deliver_completed_artifact",
     "PipelineLock",
     "generate_memory",
     "check_disk_space",
@@ -159,6 +163,17 @@ class GenerationParams:
     frame_preview_callback: Callable[[bytes], None] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedGeneration:
+    """Published base artifact awaiting caller-managed post-processing."""
+
+    path: Path
+    encoding_plan: EncodingPlan
+    assembly_clips: tuple[AssemblyClip, ...]
+    clips_analyzed: int
+    clips_selected: int
+
+
 class GenerationError(Exception):
     """Raised when video generation fails."""
 
@@ -219,6 +234,14 @@ def _report(params: GenerationParams, phase: str, progress: float, msg: str) -> 
         params.progress_callback(phase, progress, msg)
 
 
+def _report_completed_best_effort(params: GenerationParams) -> None:
+    """Keep a presentation callback from redefining a committed artifact."""
+    try:
+        _report(params, "done", 1.0, "Complete!")
+    except Exception:  # WHY: artifact and delivery state are already authoritative
+        logger.warning("Final progress callback failed after artifact completion")
+
+
 class _PipelineProgress:
     """Maps per-phase 0.0-1.0 progress into the overall pipeline range.
 
@@ -269,7 +292,30 @@ class _PipelineProgress:
         return cb
 
 
-def generate_memory(params: GenerationParams) -> Path:
+@overload
+def generate_memory(
+    params: GenerationParams,
+    *,
+    run_tracker: RunTracker | None = None,
+    defer_finalization: Literal[False] = False,
+) -> Path: ...
+
+
+@overload
+def generate_memory(
+    params: GenerationParams,
+    *,
+    run_tracker: RunTracker,
+    defer_finalization: Literal[True],
+) -> PreparedGeneration: ...
+
+
+def generate_memory(
+    params: GenerationParams,
+    *,
+    run_tracker: RunTracker | None = None,
+    defer_finalization: bool = False,
+) -> Path | PreparedGeneration:
     """Run the full video generation pipeline synchronously.
 
     Acquires a file lock to prevent concurrent runs, then executes
@@ -277,11 +323,19 @@ def generate_memory(params: GenerationParams) -> Path:
     """
     if not params.clips:
         raise GenerationError("No clips provided for generation")
+    if defer_finalization and run_tracker is None:
+        raise ValueError("Deferred finalization requires a caller-owned RunTracker")
 
     # Single-instance lock: prevent concurrent pipeline runs from corrupting state
     lock_path = params.config.cache.database_path.parent / ".lock"
     with PipelineLock(lock_path):
-        return _generate_memory_inner(params)
+        if run_tracker is None and not defer_finalization:
+            return _generate_memory_inner(params)
+        return _generate_memory_inner(
+            params,
+            run_tracker=run_tracker,
+            defer_finalization=defer_finalization,
+        )
 
 
 def _build_memory_key(params: GenerationParams) -> str | None:
@@ -329,14 +383,14 @@ def _raise_delivery_error(
     raise error from None
 
 
-def _deliver_completed_artifact(
+def deliver_completed_artifact(
     params: GenerationParams,
     result_path: Path,
     run_tracker: RunTracker,
-) -> None:
+) -> dict | None:
     """Deliver a completed artifact and persist exactly one API attempt."""
     if not params.upload_enabled:
-        return
+        return None
     if params.client is None:
         _raise_delivery_error(
             run_tracker,
@@ -372,22 +426,53 @@ def _deliver_completed_artifact(
         delivery_error = DeliveryError(f"Immich delivery state update failed: {safe_message}")
     if delivery_error is not None:
         raise delivery_error from None
+    return result
 
 
-def _generate_memory_inner(params: GenerationParams) -> Path:
+def _deliver_completed_artifact(
+    params: GenerationParams,
+    result_path: Path,
+    run_tracker: RunTracker,
+) -> dict | None:
+    """Compatibility wrapper for the original internal delivery boundary."""
+    return deliver_completed_artifact(params, result_path, run_tracker)
+
+
+def _fail_run_if_running(run_tracker: RunTracker, message: str) -> None:
+    """Fail only the still-running authoritative row, never a committed artifact."""
+    try:
+        persisted = run_tracker.db.get_run(run_tracker.run_id)
+    except Exception:  # WHY: an unknown lifecycle must not be destructively rewritten
+        logger.error("Could not inspect run lifecycle after generation failure")
+        return
+    if persisted is None or persisted.status != "running":
+        return
+    try:
+        run_tracker.fail_run(message)
+    except Exception:  # WHY: preserve the primary safe generation failure
+        logger.error("Could not persist generation failure state")
+
+
+def _generate_memory_inner(
+    params: GenerationParams,
+    *,
+    run_tracker: RunTracker | None = None,
+    defer_finalization: bool = False,
+) -> Path | PreparedGeneration:
     """Inner pipeline — runs under PipelineLock."""
     from immich_memories.cache.video_cache import VideoDownloadCache
     from immich_memories.security import sanitize_filename
     from immich_memories.tracking import RunTracker, generate_run_id
 
-    run_id = generate_run_id()
+    run_id = run_tracker.run_id if run_tracker is not None else generate_run_id()
 
     # Tag all log lines with run_id for correlation
     from immich_memories.logging_config import set_current_run_id
 
     set_current_run_id(run_id)
 
-    run_tracker = RunTracker(run_id, db_path=params.config.cache.database_path)
+    if run_tracker is None:
+        run_tracker = RunTracker(run_id, db_path=params.config.cache.database_path)
 
     # Create output directory structure
     dir_slug = params.output_path.stem
@@ -411,6 +496,7 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
     )
 
     assembly_clips: list = []  # WHY: populated in try, needed in finally for cleanup
+    pending_error: GenerationError | None = None
     try:
         import time as _time
 
@@ -480,6 +566,15 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         run_tracker.complete_phase(items_processed=len(assembly_clips))
         _phase_times["assembly"] = _time.monotonic() - _t
 
+        if defer_finalization:
+            return PreparedGeneration(
+                path=result_path,
+                encoding_plan=settings.encoding_plan,
+                assembly_clips=tuple(assembly_clips),
+                clips_analyzed=len(params.clips),
+                clips_selected=len(assembly_clips),
+            )
+
         # Phase 3: Music
         _t = _time.monotonic()
         pp.report("music", 0.0, "Generating music...")
@@ -512,22 +607,23 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         _phase_times["total"] = _time.monotonic() - _phase_start
         _log_phase_timing(_phase_times, len(assembly_clips))
 
-        _report(params, "done", 1.0, "Complete!")
+        _report_completed_best_effort(params)
 
         return result_path
 
     except DeliveryError:
         raise
     except GenerationError as e:
-        run_tracker.fail_run(str(e))
-        raise
+        safe_msg = _safe_delivery_message(e, params.config)
+        _fail_run_if_running(run_tracker, safe_msg)
+        pending_error = GenerationError(safe_msg)
     except (
         Exception
     ) as e:  # WHY: top-level generation boundary — converts unknown errors to GenerationError
-        logger.exception("Video generation failed")
-        safe_msg = sanitize_error_message(str(e))
-        run_tracker.fail_run(safe_msg)
-        raise GenerationError(f"Generation failed: {safe_msg}") from e
+        safe_msg = _safe_delivery_message(e, params.config)
+        logger.error("Video generation failed: %s", safe_msg)
+        _fail_run_if_running(run_tracker, safe_msg)
+        pending_error = GenerationError(f"Generation failed: {safe_msg}")
     finally:
         try:
             _cleanup_temp_clips(assembly_clips)
@@ -539,6 +635,9 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         except OSError:
             logger.debug("Temp dir cleanup failed", exc_info=True)
         set_current_run_id(None)
+
+    assert pending_error is not None  # one of the non-delivery exception branches set it
+    raise pending_error from None
 
 
 def _log_phase_timing(times: dict[str, float], clip_count: int) -> None:

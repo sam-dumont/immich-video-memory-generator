@@ -255,6 +255,7 @@ def test_generation_validation_failure_preserves_old_final_and_stops_downstream_
 
     monkeypatch.setattr(output_contract.subprocess, "run", run_probe)
     tracker = MagicMock()
+    tracker.db.get_run.return_value.status = "running"
     music_phase = MagicMock()
     upload = MagicMock()
     with (
