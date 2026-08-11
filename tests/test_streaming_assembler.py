@@ -91,6 +91,54 @@ def test_streaming_hardware_encoder_failure_retries_same_codec_in_software(tmp_p
     assert all(plan.codec is OutputCodec.H265 for plan in plans)
 
 
+def test_streaming_broken_pipe_retries_same_codec_in_software(tmp_path: Path) -> None:
+    """Early hardware FFmpeg death during frame writing retries once in software."""
+    from immich_memories.processing.streaming_assembler import assemble_streaming
+
+    plans: list[EncodingPlan] = []
+
+    class EarlyFailingHardwareEncoder:
+        def __init__(self, *_args: object, encoding_plan: EncodingPlan, **_kwargs: object) -> None:
+            self.plan = encoding_plan
+            plans.append(encoding_plan)
+
+        def start(self) -> None:
+            pass
+
+        def write_frame(self, _frame: np.ndarray) -> None:
+            if self.plan.encoder == "hevc_videotoolbox":
+                raise BrokenPipeError("hardware ffmpeg exited before accepting frames")
+
+        def finish(self) -> None:
+            pass
+
+    clip = SimpleNamespace(duration=1.0, path=tmp_path / "input.mp4")
+    frame = np.zeros((16, 16, 3), dtype=np.uint8)
+    with (
+        patch(
+            "immich_memories.processing.streaming_assembler.StreamingEncoder",
+            EarlyFailingHardwareEncoder,
+        ),
+        patch(
+            "immich_memories.processing.streaming_assembler._make_decoder",
+            side_effect=lambda *_args, **_kwargs: iter([frame]),
+        ),
+    ):
+        assemble_streaming(
+            clips=[clip],
+            transitions=[],
+            output_path=tmp_path / "output.mp4",
+            width=16,
+            height=16,
+            fps=1,
+            encoding_plan=_hardware_h265_plan(),
+        )
+
+    assert [plan.encoder for plan in plans] == ["hevc_videotoolbox", "libx265"]
+    assert len(plans) == 2
+    assert all(plan.codec is OutputCodec.H265 for plan in plans)
+
+
 def _has_ffmpeg() -> bool:
     try:
         subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=5)  # noqa: S603, S607

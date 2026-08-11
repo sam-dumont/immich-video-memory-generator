@@ -187,17 +187,32 @@ class ClipEncoder:
             ]
 
         plan = self.settings.encoding_plan
-        result = subprocess.run(build_command(plan), capture_output=True, text=True, timeout=1800)
-        if result.returncode != 0 and uses_hardware_encoder(plan):
+
+        def retry_in_software() -> subprocess.CompletedProcess:
             fallback_plan = software_fallback_plan(plan)
             logger.warning(
                 "Hardware encoder %s failed; retrying %s in software",
                 plan.encoder,
                 fallback_plan.codec.value,
             )
-            result = subprocess.run(
+            return subprocess.run(
                 build_command(fallback_plan), capture_output=True, text=True, timeout=1800
             )
+
+        try:
+            result = subprocess.run(
+                build_command(plan), capture_output=True, text=True, timeout=1800
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            if not uses_hardware_encoder(plan):
+                raise
+            result = retry_in_software()
+        else:
+            if result.returncode == 0 or not uses_hardware_encoder(plan):
+                if result.returncode != 0:
+                    raise RuntimeError(f"Failed to encode clip: {result.stderr[-500:]}")
+                return
+            result = retry_in_software()
         if result.returncode != 0:
             raise RuntimeError(f"Failed to encode clip: {result.stderr[-500:]}")
 

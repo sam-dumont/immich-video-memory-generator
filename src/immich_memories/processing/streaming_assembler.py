@@ -610,10 +610,44 @@ def assemble_streaming(
     plan = encoding_plan or _default_streaming_plan()
     hdr_type = plan.target_transfer.value if plan.hdr else None
     encoder = StreamingEncoder(output_path, width, height, fps, encoding_plan=plan)
-    encoder.start()
     blend_buf, temp_buf = _alloc_blend_bufs(width, height, hdr_type)
     # WHY: Throttle callbacks to every ~0.5s worth of frames to avoid UI overhead
     report_interval = max(1, fps // 2)
+
+    def retry_in_software() -> list[Path] | None:
+        if not _allow_runtime_fallback or not uses_hardware_encoder(plan):
+            return None
+        fallback_plan = software_fallback_plan(plan)
+        logger.warning(
+            "Hardware encoder %s failed; retrying %s streaming assembly in software",
+            plan.encoder,
+            fallback_plan.codec.value,
+        )
+        return assemble_streaming(
+            clips,
+            transitions,
+            output_path,
+            width,
+            height,
+            fps,
+            fade_duration,
+            fallback_plan,
+            ctx,
+            privacy_mode,
+            scale_mode,
+            progress_callback,
+            frame_preview_callback,
+            audio_work_dir,
+            _allow_runtime_fallback=False,
+        )
+
+    try:
+        encoder.start()
+    except (OSError, subprocess.TimeoutExpired):
+        fallback_result = retry_in_software()
+        if fallback_result is not None:
+            return fallback_result
+        raise
 
     try:
         _encode_clip_sequence(
@@ -636,41 +670,29 @@ def assemble_streaming(
             frame_preview_callback,
             audio_work_dir=audio_work_dir,
         )
-        encoder.finish()
-        if progress_callback:
-            progress_callback(total_frames, total_frames)
-        logger.info(f"Streaming assembly complete: {len(clips)} clips → {output_path.name}")
-    except RuntimeError:
-        with contextlib.suppress(RuntimeError):
+    except BrokenPipeError:
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired, RuntimeError):
             encoder.finish()
-        if _allow_runtime_fallback and uses_hardware_encoder(plan):
-            fallback_plan = software_fallback_plan(plan)
-            logger.warning(
-                "Hardware encoder %s failed; retrying %s streaming assembly in software",
-                plan.encoder,
-                fallback_plan.codec.value,
-            )
-            return assemble_streaming(
-                clips,
-                transitions,
-                output_path,
-                width,
-                height,
-                fps,
-                fade_duration,
-                fallback_plan,
-                ctx,
-                privacy_mode,
-                scale_mode,
-                progress_callback,
-                frame_preview_callback,
-                audio_work_dir,
-                _allow_runtime_fallback=False,
-            )
+        fallback_result = retry_in_software()
+        if fallback_result is not None:
+            return fallback_result
         raise
     except Exception:  # WHY: cleanup safety net — ensures encoder.finish() on non-encoder errors
-        encoder.finish()
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired, RuntimeError):
+            encoder.finish()
         raise
+
+    try:
+        encoder.finish()
+    except (OSError, subprocess.TimeoutExpired, RuntimeError):
+        fallback_result = retry_in_software()
+        if fallback_result is not None:
+            return fallback_result
+        raise
+
+    if progress_callback:
+        progress_callback(total_frames, total_frames)
+    logger.info(f"Streaming assembly complete: {len(clips)} clips → {output_path.name}")
 
     # Collect audio WAV files extracted by FrameDecoder during the encode pass
     audio_paths: list[Path] = []
