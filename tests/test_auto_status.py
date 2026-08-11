@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
@@ -285,6 +286,14 @@ def test_cooldown_uses_auto_completion_time_not_start_time(tmp_path: Path) -> No
     assert status.last_completed_auto_run.run_id == "long-auto-run"
 
 
+def test_status_preserves_explicit_zero_cooldown(tmp_path: Path) -> None:
+    """An explicit zero is a value, not a request for the configured default."""
+    status = AutoRunner(_config(tmp_path)).status(cooldown_hours=0)
+
+    assert status.cooldown.hours == 0
+    assert status.cooldown.active is False
+
+
 def test_status_human_output_distinguishes_installed_from_unknown_active(tmp_path: Path) -> None:
     """Human status does not describe a mere scheduler file as active."""
     config = _config(tmp_path)
@@ -301,3 +310,49 @@ def test_status_human_output_distinguishes_installed_from_unknown_active(tmp_pat
     assert result.exit_code == 0
     assert "Scheduler: launchd, installed, unknown" in result.output
     assert "Cooldown: ready (24h)" in result.output
+
+
+def test_status_real_suggest_flow_is_read_only(tmp_path: Path) -> None:
+    """Status scans once without attempts, pipeline runs, generation, or scheduler mutation."""
+    from immich_memories.preflight import CheckStatus
+
+    config = _config(tmp_path)
+    execute = MagicMock()
+    runner = AutoRunner(config, execute=execute)
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.get_time_buckets.return_value = []
+    client.get_all_people.return_value = []
+
+    def row_counts() -> tuple[int, int]:
+        with sqlite3.connect(config.cache.database_path) as conn:
+            attempts = conn.execute("SELECT COUNT(*) FROM automation_attempts").fetchone()[0]
+            runs = conn.execute("SELECT COUNT(*) FROM pipeline_runs").fetchone()[0]
+        return attempts, runs
+
+    before = row_counts()
+    scheduler = SchedulerStatus("launchd", True, False)
+    with (
+        patch("immich_memories.preflight.check_immich") as preflight,
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        patch("immich_memories.automation.runner.AutoRunner", return_value=runner),
+        patch(
+            "immich_memories.automation.system_scheduler.get_scheduler_status",
+            return_value=scheduler,
+        ) as inspect_scheduler,
+        patch("immich_memories.automation.system_scheduler.install_scheduler") as install,
+        patch("immich_memories.automation.system_scheduler.uninstall_scheduler") as uninstall,
+    ):
+        preflight.return_value = MagicMock(status=CheckStatus.OK)
+        result = _invoke(config, ["auto", "status", "--json"])
+
+    assert result.exit_code == 0
+    assert row_counts() == before == (0, 0)
+    assert json.loads(result.stdout)["suggestion"]["outcome"] == "ready"
+    preflight.assert_called_once_with(config)
+    client.get_time_buckets.assert_called_once_with()
+    execute.assert_not_called()
+    inspect_scheduler.assert_called_once_with()
+    install.assert_not_called()
+    uninstall.assert_not_called()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import cast
@@ -12,11 +13,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from rich.console import Console
 
+from immich_memories.automation.candidate_scorer import score_and_rank
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 from immich_memories.automation.models import AutoOutcome, ProcessResult
 from immich_memories.automation.runner import (
     AutoRunner,
     _build_generate_command,
+    _build_last_runs_by_type,
     _execute_generate,
 )
 from immich_memories.cli.auto_cmd import _candidates_to_json, _print_candidates_table
@@ -86,6 +89,52 @@ def _save_completed_run(
 
 
 class TestSuggestReturnsCandidates:
+    def test_same_type_scoring_cooldown_uses_only_auto_completions(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        """A recent manual run does not penalize; a recent auto run does."""
+        runner = AutoRunner(config)
+        recent = datetime(2026, 8, 10, 9, 0)
+        runner.db.save_run(
+            RunMetadata(
+                run_id="manual-monthly",
+                created_at=recent,
+                completed_at=recent + timedelta(minutes=10),
+                status="completed",
+                source="manual",
+                memory_type=candidate.memory_type,
+                memory_key="different-manual-key",
+            )
+        )
+        manual_candidate = replace(candidate)
+        score_and_rank(
+            [manual_candidate],
+            generated_keys=set(),
+            today=date(2026, 8, 11),
+            last_runs_by_type=_build_last_runs_by_type(runner.db),
+        )
+
+        runner.db.save_run(
+            RunMetadata(
+                run_id="auto-monthly",
+                created_at=recent,
+                completed_at=recent + timedelta(minutes=20),
+                status="completed",
+                source="auto",
+                memory_type=candidate.memory_type,
+                memory_key="different-auto-key",
+            )
+        )
+        auto_candidate = replace(candidate)
+        score_and_rank(
+            [auto_candidate],
+            generated_keys=set(),
+            today=date(2026, 8, 11),
+            last_runs_by_type=_build_last_runs_by_type(runner.db),
+        )
+
+        assert auto_candidate.score == pytest.approx(manual_candidate.score * 0.3)
+
     def test_monthly_candidates_from_time_buckets(self, config: Config) -> None:
         """Given time buckets with recent months, suggest returns monthly candidates."""
         mock_client = MagicMock()

@@ -419,17 +419,26 @@ class RunDatabase:
             ).fetchone()
             return row is not None
 
-    def get_last_run_of_type(self, memory_type: str) -> RunMetadata | None:
-        """Get the most recent completed run of a given memory type."""
+    def get_last_run_of_type(
+        self,
+        memory_type: str,
+        source: str | None = None,
+    ) -> RunMetadata | None:
+        """Get the most recent completed run of a type, optionally scoped by source."""
         with self._get_connection() as conn:
-            row = conn.execute(
-                """
+            query = """
                 SELECT * FROM pipeline_runs
                 WHERE memory_type = ? AND status = 'completed'
-                ORDER BY created_at DESC LIMIT 1
-                """,
-                (memory_type,),
-            ).fetchone()
+            """
+            params = [memory_type]
+            if source is not None:
+                query += " AND source = ?"
+                params.append(source)
+            query += (
+                " ORDER BY COALESCE(completed_at, created_at) DESC,"
+                " created_at DESC, run_id DESC LIMIT 1"
+            )
+            row = conn.execute(query, params).fetchone()
             return row_to_run(row) if row else None
 
     def get_generated_memory_keys(self) -> set[str]:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import patch
@@ -354,6 +355,25 @@ class TestSchedulerStatus:
         assert run.call_args.args[0] == ["crontab", "-l"]
 
     @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
+    def test_commented_crontab_entry_is_not_installed(self, _platform: object) -> None:
+        with patch("immich_memories.automation.system_scheduler.subprocess.run") as run:
+            run.return_value.returncode = 0
+            run.return_value.stdout = "\n  # 0 9 * * * /usr/bin/immich-memories auto run --quiet\n"
+            status = get_scheduler_status()
+
+        assert status.installed is False
+
+    @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
+    def test_known_missing_crontab_is_not_installed(self, _platform: object) -> None:
+        with patch("immich_memories.automation.system_scheduler.subprocess.run") as run:
+            run.return_value.returncode = 1
+            run.return_value.stdout = ""
+            run.return_value.stderr = "no crontab for test-user\n"
+            status = get_scheduler_status()
+
+        assert status.installed is False
+
+    @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
     def test_crontab_unreadable_installation_is_unknown(self, _platform: object) -> None:
         with patch(
             "immich_memories.automation.system_scheduler.subprocess.run",
@@ -363,3 +383,23 @@ class TestSchedulerStatus:
 
         assert status.installed is None
         assert status.active is None
+
+    @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
+    def test_crontab_timeout_is_unknown(self, _platform: object) -> None:
+        with patch(
+            "immich_memories.automation.system_scheduler.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(["crontab", "-l"], 5),
+        ):
+            status = get_scheduler_status()
+
+        assert status.installed is None
+
+    @patch("immich_memories.automation.system_scheduler.detect_platform", return_value="crontab")
+    def test_crontab_unrecognized_error_is_unknown(self, _platform: object) -> None:
+        with patch("immich_memories.automation.system_scheduler.subprocess.run") as run:
+            run.return_value.returncode = 2
+            run.return_value.stdout = ""
+            run.return_value.stderr = "permission denied"
+            status = get_scheduler_status()
+
+        assert status.installed is None

@@ -255,6 +255,30 @@ def test_completion_order_has_deterministic_tie_breakers(db: RunDatabase) -> Non
     assert [run.run_id for run in runs] == ["tie-z", "tie-a"]
 
 
+def test_last_run_of_type_filters_source_before_order_and_limit(db: RunDatabase) -> None:
+    """A newer manual run cannot hide the last auto run of the same memory type."""
+    completed_last = _make_completed_run(
+        "created-first-completed-last",
+        datetime(2026, 8, 8, 9, 0),
+        source="auto",
+    )
+    completed_last.completed_at = datetime(2026, 8, 11, 12, 0)
+    db.save_run(completed_last)
+    db.save_run(_make_completed_run("created-last", datetime(2026, 8, 9, 9, 0), source="auto"))
+    db.save_run(
+        _make_completed_run(
+            "newer-manual-trip",
+            datetime(2026, 8, 10, 9, 0),
+            source="manual",
+        )
+    )
+
+    run = db.get_last_run_of_type("trip", source="auto")
+
+    assert run is not None
+    assert run.run_id == "created-first-completed-last"
+
+
 def test_completed_identity_filters_source_and_time(db: RunDatabase) -> None:
     """Exact run lookup rejects wrong-source and pre-attempt completions."""
     started_after = datetime(2026, 7, 2, 9, 0)

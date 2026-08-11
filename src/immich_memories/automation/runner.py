@@ -144,9 +144,9 @@ def _build_last_runs_by_type(db: RunDatabase) -> dict[str, date]:
         "trip",
         "multi_person",
     ):
-        run = db.get_last_run_of_type(mem_type)
+        run = db.get_last_run_of_type(mem_type, source="auto")
         if run and run.created_at:
-            result[mem_type] = run.created_at.date()
+            result[mem_type] = (run.completed_at or run.created_at).date()
     return result
 
 
@@ -409,7 +409,9 @@ class AutoRunner:
         """Return durable automation state without candidate or scheduler side effects."""
         if refresh_suggestion:
             self.suggest(limit=1)
-        effective_cooldown = cooldown_hours or self.config.automation.cooldown_hours
+        effective_cooldown = (
+            cooldown_hours if cooldown_hours is not None else self.config.automation.cooldown_hours
+        )
         recent_runs = self.db.list_runs(
             limit=6,
             status="completed",

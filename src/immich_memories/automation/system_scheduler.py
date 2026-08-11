@@ -187,6 +187,15 @@ def _probe_active(command: list[str], inactive_codes: set[int]) -> bool | None:
     return None
 
 
+def _has_crontab_entry(contents: str) -> bool:
+    """Match the generated command only on active crontab lines."""
+    return any(
+        "immich-memories auto run" in line
+        for raw_line in contents.splitlines()
+        if (line := raw_line.strip()) and not line.startswith("#")
+    )
+
+
 def get_scheduler_status() -> SchedulerStatus:
     """Inspect scheduler installation and activation without changing either."""
     platform = detect_platform()
@@ -231,7 +240,12 @@ def get_scheduler_status() -> SchedulerStatus:
     except (OSError, subprocess.TimeoutExpired):
         installed = None
     else:
-        installed = "immich-memories auto run" in result.stdout if result.returncode == 0 else None
+        if result.returncode == 0:
+            installed = _has_crontab_entry(result.stdout)
+        elif result.returncode == 1 and "no crontab for " in result.stderr.casefold():
+            installed = False
+        else:
+            installed = None
     return SchedulerStatus(platform=platform, installed=installed, active=None)
 
 
