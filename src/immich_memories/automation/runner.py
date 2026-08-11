@@ -550,6 +550,34 @@ class AutoRunner:
             error=error,
         )
 
+    def _fail_candidate(
+        self,
+        attempt: AutomationAttempt,
+        reason: str,
+        *,
+        candidate: MemoryCandidate | None,
+        error: Any = None,
+    ) -> AutoRunResult:
+        """Persist one safe parent failure, then notify exactly once best-effort."""
+        safe_error = _safe_tail(error if error is not None else reason, self._secrets())
+        safe_error = safe_error or reason
+        result = self._finish(
+            attempt,
+            AutoOutcome.FAILED,
+            reason,
+            candidate=candidate,
+            error=safe_error,
+        )
+        if candidate is not None:
+            try:
+                self._notify_generation_failure(candidate, safe_error)
+            except Exception as exc:
+                logger.warning(
+                    "Failure notification could not be delivered: %s",
+                    _safe_tail(exc, self._secrets()) or exc.__class__.__name__,
+                )
+        return result
+
     def _suggest_one_for_attempt(
         self, attempt: AutomationAttempt
     ) -> tuple[MemoryCandidate | None, AutoRunResult | None]:
@@ -745,10 +773,8 @@ class AutoRunner:
                 details = self._process_details(exc.stdout, exc.stderr)
                 error = f"{_GENERATION_TIMEOUT_REASON}\n{details}"
                 logger.error(_GENERATION_TIMEOUT_REASON)
-                self._notify_generation_failure(candidate, error)
-                return self._finish(
+                return self._fail_candidate(
                     attempt,
-                    AutoOutcome.FAILED,
                     _GENERATION_TIMEOUT_REASON,
                     candidate=candidate,
                     error=error,
@@ -757,10 +783,8 @@ class AutoRunner:
                 error = _safe_tail(exc, self._secrets()) or "generation process failed"
                 reason = "generation process could not be executed"
                 logger.error("%s: %s", reason, error)
-                self._notify_generation_failure(candidate, error)
-                return self._finish(
+                return self._fail_candidate(
                     attempt,
-                    AutoOutcome.FAILED,
                     reason,
                     candidate=candidate,
                     error=error,
@@ -770,10 +794,8 @@ class AutoRunner:
                 reason = f"generation subprocess exited with code {process.returncode}"
                 error = self._process_details(process.stdout, process.stderr)
                 logger.error("%s: %s", reason, error)
-                self._notify_generation_failure(candidate, error)
-                return self._finish(
+                return self._fail_candidate(
                     attempt,
-                    AutoOutcome.FAILED,
                     reason,
                     candidate=candidate,
                     error=error,
@@ -785,18 +807,16 @@ class AutoRunner:
             )
             if matching_run is None:
                 reason = "no matching completed auto run"
-                return self._finish(
+                return self._fail_candidate(
                     attempt,
-                    AutoOutcome.FAILED,
                     reason,
                     candidate=candidate,
                     error=reason,
                 )
             if not matching_run.output_path:
                 reason = "matching run has no output path"
-                return self._finish(
+                return self._fail_candidate(
                     attempt,
-                    AutoOutcome.FAILED,
                     reason,
                     candidate=candidate,
                     error=reason,
@@ -805,9 +825,8 @@ class AutoRunner:
             output_path = Path(matching_run.output_path)
             if not output_path.is_file():
                 reason = "generated output file is missing"
-                return self._finish(
+                return self._fail_candidate(
                     attempt,
-                    AutoOutcome.FAILED,
                     reason,
                     candidate=candidate,
                     error=reason,
@@ -826,9 +845,8 @@ class AutoRunner:
             reason = "automation failed"
             error = _safe_tail(exc, self._secrets()) or exc.__class__.__name__
             logger.error("%s: %s", reason, error)
-            return self._finish(
+            return self._fail_candidate(
                 attempt,
-                AutoOutcome.FAILED,
                 reason,
                 candidate=candidate,
                 error=error,

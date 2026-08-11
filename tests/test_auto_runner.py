@@ -848,6 +848,107 @@ class TestRunOneOutcomes:
         assert result.outcome is AutoOutcome.FAILED
         assert result.reason == "no matching completed auto run"
 
+    @pytest.mark.parametrize(
+        ("integrity_failure", "expected_reason"),
+        [
+            ("no_run", "no matching completed auto run"),
+            ("no_output", "matching run has no output path"),
+            ("missing_file", "generated output file is missing"),
+        ],
+    )
+    def test_parent_integrity_failures_persist_then_notify_once(
+        self,
+        config: Config,
+        candidate: MemoryCandidate,
+        tmp_path: Path,
+        integrity_failure: str,
+        expected_reason: str,
+    ) -> None:
+        """Every parent-owned integrity failure has one durable, notified result."""
+        config.immich.api_key = "integrity-secret-5e91"
+        runner = AutoRunner(config)
+
+        def execute(_argv: list[str]) -> ProcessResult:
+            if integrity_failure == "no_output":
+                _save_completed_run(runner, candidate, None)
+            elif integrity_failure == "missing_file":
+                _save_completed_run(runner, candidate, tmp_path / "absent.mp4")
+            return ProcessResult(0, "", "")
+
+        runner.execute = execute
+        with (
+            patch.object(runner, "suggest", return_value=[candidate]),
+            patch.object(
+                runner.state, "finish_attempt", wraps=runner.state.finish_attempt
+            ) as finish,
+            patch("immich_memories.automation.runner._send_notification") as notify,
+        ):
+            result = runner.run_one(force=True)
+
+        attempt = runner.state.get_last_attempt()
+        assert attempt is not None
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.reason == expected_reason
+        assert result.error == attempt.error == expected_reason
+        assert "integrity-secret-5e91" not in result.error
+        finish.assert_called_once()
+        notify.assert_called_once()
+        assert notify.call_args.kwargs["error"] == result.error
+
+    def test_notification_exception_cannot_replace_durable_failure(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        """Notification transport failure happens after the terminal DB write."""
+        runner = AutoRunner(
+            config,
+            execute=lambda _argv: ProcessResult(9, "child failed", ""),
+        )
+        with (
+            patch.object(runner, "suggest", return_value=[candidate]),
+            patch.object(
+                runner.state, "finish_attempt", wraps=runner.state.finish_attempt
+            ) as finish,
+            patch(
+                "immich_memories.automation.runner._send_notification",
+                side_effect=RuntimeError("notification transport broke"),
+            ) as notify,
+        ):
+            result = runner.run_one(force=True)
+
+        attempt = runner.state.get_last_attempt()
+        assert attempt is not None
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.error == attempt.error
+        assert "child failed" in result.error
+        finish.assert_called_once()
+        notify.assert_called_once()
+
+    def test_outer_candidate_exception_is_redacted_persisted_and_notified_once(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        """An exception after selection belongs to that candidate and one finalizer."""
+        config.immich.api_key = "outer-secret-78dd"
+        runner = AutoRunner(config)
+        with (
+            patch.object(runner, "suggest", return_value=[candidate]),
+            patch(
+                "immich_memories.automation.runner._build_generate_command",
+                side_effect=RuntimeError("bad request outer-secret-78dd"),
+            ),
+            patch("immich_memories.automation.runner._send_notification") as notify,
+        ):
+            result = runner.run_one(force=True)
+
+        attempt = runner.state.get_last_attempt()
+        assert attempt is not None
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.reason == "automation failed"
+        assert result.error == attempt.error
+        assert "outer-secret-78dd" not in result.error
+        assert "***" in result.error
+        notify.assert_called_once()
+        assert notify.call_args.kwargs["error"] == result.error
+
     def test_failed_process_uses_stdout_error_and_finishes_once(
         self, config: Config, candidate: MemoryCandidate
     ) -> None:
@@ -873,6 +974,31 @@ class TestRunOneOutcomes:
         execute.assert_called_once()
         finish.assert_called_once()
         notify.assert_called_once()
+
+    def test_nonzero_failure_redacts_secret_before_persisting_and_notifying(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        """The finalizer sends the same redacted child error it stores and returns."""
+        configured_value = "configured-child-secret-92bf"
+        config.immich.api_key = configured_value
+        runner = AutoRunner(
+            config,
+            execute=lambda _argv: ProcessResult(7, f"child rejected {configured_value}", ""),
+        )
+
+        with (
+            patch.object(runner, "suggest", return_value=[candidate]),
+            patch("immich_memories.automation.runner._send_notification") as notify,
+        ):
+            result = runner.run_one(force=True)
+
+        attempt = runner.state.get_last_attempt()
+        assert attempt is not None
+        assert result.error == attempt.error
+        assert configured_value not in result.error
+        assert "***" in result.error
+        notify.assert_called_once()
+        assert notify.call_args.kwargs["error"] == result.error
 
     def test_process_error_details_are_sanitized_and_bounded(
         self, config: Config, candidate: MemoryCandidate
