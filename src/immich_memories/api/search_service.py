@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from immich_memories.api.models import (
@@ -17,6 +17,12 @@ if TYPE_CHECKING:
     from immich_memories.timeperiod import DateRange
 
 RequestFn = Callable[..., Any]
+
+
+def _api_datetime(value: datetime) -> str:
+    """Serialize a datetime with the UTC offset required by Immich's API."""
+    value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    return value.isoformat()
 
 
 class SearchService:
@@ -47,9 +53,9 @@ class SearchService:
         if asset_type:
             payload["type"] = asset_type.value
         if taken_after:
-            payload["takenAfter"] = taken_after.isoformat()
+            payload["takenAfter"] = _api_datetime(taken_after)
         if taken_before:
-            payload["takenBefore"] = taken_before.isoformat()
+            payload["takenBefore"] = _api_datetime(taken_before)
 
         data = await self._request("POST", "/search/metadata", json=payload)
         return MetadataSearchResult(**data)

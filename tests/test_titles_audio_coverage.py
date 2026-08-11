@@ -9,7 +9,7 @@ Covers uncovered branches in:
 from __future__ import annotations
 
 import tempfile
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1660,7 +1660,7 @@ class TestSearchServiceMetadata:
         assert payload["size"] == 50
 
     @pytest.mark.asyncio
-    async def test_search_metadata_with_filters(self):
+    async def test_search_metadata_normalizes_naive_dates_and_preserves_filters(self):
         from immich_memories.api.models import AssetType
         from immich_memories.api.search_service import SearchService
 
@@ -1676,13 +1676,58 @@ class TestSearchServiceMetadata:
             asset_type=AssetType.VIDEO,
             taken_after=taken_after,
             taken_before=taken_before,
+            page=3,
+            size=25,
         )
 
         payload = mock_request.call_args.kwargs["json"]
-        assert payload["personIds"] == ["p1"]
-        assert payload["type"] == "VIDEO"
-        assert "takenAfter" in payload
-        assert "takenBefore" in payload
+        assert payload == {
+            "page": 3,
+            "size": 25,
+            "withExif": True,
+            "withPeople": True,
+            "personIds": ["p1"],
+            "type": "VIDEO",
+            "takenAfter": "2024-01-01T00:00:00+00:00",
+            "takenBefore": "2024-12-31T00:00:00+00:00",
+        }
+        assert datetime.fromisoformat(payload["takenAfter"]).tzinfo is UTC
+        assert datetime.fromisoformat(payload["takenBefore"]).tzinfo is UTC
+
+    @pytest.mark.asyncio
+    async def test_search_metadata_converts_aware_dates_to_the_same_utc_instant(self):
+        from immich_memories.api.search_service import SearchService
+
+        mock_request = AsyncMock(
+            return_value={"assets": {"total": 0, "count": 0, "items": [], "nextPage": None}}
+        )
+        svc = SearchService(mock_request)
+        taken_after = datetime(
+            2024,
+            6,
+            1,
+            12,
+            30,
+            tzinfo=timezone(timedelta(hours=2)),
+        )
+        taken_before = datetime(
+            2024,
+            6,
+            30,
+            18,
+            tzinfo=timezone(timedelta(hours=-5)),
+        )
+
+        await svc.search_metadata(
+            taken_after=taken_after,
+            taken_before=taken_before,
+        )
+
+        payload = mock_request.call_args.kwargs["json"]
+        assert payload["takenAfter"] == "2024-06-01T10:30:00+00:00"
+        assert payload["takenBefore"] == "2024-06-30T23:00:00+00:00"
+        assert datetime.fromisoformat(payload["takenAfter"]) == taken_after.astimezone(UTC)
+        assert datetime.fromisoformat(payload["takenBefore"]) == taken_before.astimezone(UTC)
 
 
 def _make_asset(asset_id: str, created: str, is_live: bool = False) -> dict:
