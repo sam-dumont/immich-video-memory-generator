@@ -28,6 +28,61 @@ def format_duration(seconds: float) -> str:
     return f"{minutes}:{secs:02d}"
 
 
+def _render_existing_result(state) -> None:
+    """Render the durable outcome when Step 4 is revisited in this session."""
+    if not state.output_path:
+        return
+    output_path = Path(state.output_path)
+    if not output_path.is_file():
+        return
+
+    im_section_header("Result", icon="check_circle")
+    ui.label(f"Saved to: {output_path}").classes("text-sm").style("color: var(--im-text-secondary)")
+    if state.generation_warning:
+        ui.label(state.generation_warning).classes("text-sm").style("color: var(--im-warning)")
+    delivery_label = state.delivery_status.value.replace("_", " ").title()
+    ui.label(f"Immich delivery: {delivery_label}").classes("text-sm").style(
+        "color: var(--im-text-secondary)"
+    )
+    video_url = nicegui_app.add_media_file(local_file=output_path)
+    ui.video(video_url).classes("w-full rounded-lg").style(
+        "max-height: 400px; object-fit: contain; background: var(--im-bg-surface)"
+    )
+
+
+def _render_photo_preview(state, photos_count: int) -> None:
+    """Render the optional photo pool without inflating the page orchestrator."""
+    if not photos_count:
+        return
+
+    import base64
+
+    from immich_memories.ui.pages.step2_helpers import get_thumbnail
+
+    with ui.expansion(
+        f"{photos_count} Photos Available (auto-selected at generation)",
+        icon="photo_library",
+        value=False,
+    ).classes("w-full"):
+        max_preview = 40
+        with (
+            ui.element("div")
+            .classes("w-full grid gap-2")
+            .style("grid-template-columns: repeat(auto-fill, minmax(80px, 1fr))")
+        ):
+            for photo in state.photo_assets[:max_preview]:
+                thumb = get_thumbnail(photo.id)
+                if thumb:
+                    b64 = base64.b64encode(thumb).decode()
+                    ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full rounded").style(
+                        "aspect-ratio: 1; object-fit: cover"
+                    )
+        if photos_count > max_preview:
+            ui.label(f"+ {photos_count - max_preview} more").classes("text-sm mt-1").style(
+                "color: var(--im-text-secondary)"
+            )
+
+
 def render_step4() -> None:
     """Render Step 4: Preview & Export."""
     state = get_app_state()
@@ -69,33 +124,7 @@ def render_step4() -> None:
         im_stat_card("Format", options.get("format", "MP4"), icon="video_file")
 
     # Photo preview (if included)
-    if photos_count:
-        import base64
-
-        from immich_memories.ui.pages.step2_helpers import get_thumbnail
-
-        with ui.expansion(
-            f"{photos_count} Photos Available (auto-selected at generation)",
-            icon="photo_library",
-            value=False,
-        ).classes("w-full"):
-            max_preview = 40
-            with (
-                ui.element("div")
-                .classes("w-full grid gap-2")
-                .style("grid-template-columns: repeat(auto-fill, minmax(80px, 1fr))")
-            ):
-                for photo in state.photo_assets[:max_preview]:
-                    thumb = get_thumbnail(photo.id)
-                    if thumb:
-                        b64 = base64.b64encode(thumb).decode()
-                        ui.image(f"data:image/jpeg;base64,{b64}").classes("w-full rounded").style(
-                            "aspect-ratio: 1; object-fit: cover"
-                        )
-            if photos_count > max_preview:
-                ui.label(f"+ {photos_count - max_preview} more").classes("text-sm mt-1").style(
-                    "color: var(--im-text-secondary)"
-                )
+    _render_photo_preview(state, photos_count)
 
     # Output Settings (merged with Upload)
     im_section_header("Output", icon="folder")
@@ -161,15 +190,7 @@ def render_step4() -> None:
     )
 
     # Video result (if already generated) — below generate button, capped height
-    if state.output_path and Path(state.output_path).exists():
-        im_section_header("Result", icon="check_circle")
-        ui.label(f"Saved to: {state.output_path}").classes("text-sm").style(
-            "color: var(--im-text-secondary)"
-        )
-        video_url = nicegui_app.add_media_file(local_file=Path(state.output_path))
-        ui.video(video_url).classes("w-full rounded-lg").style(
-            "max-height: 400px; object-fit: contain; background: var(--im-bg-surface)"
-        )
+    _render_existing_result(state)
 
     im_separator()
     # Navigation

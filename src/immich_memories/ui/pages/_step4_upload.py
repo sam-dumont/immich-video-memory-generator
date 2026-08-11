@@ -8,12 +8,25 @@ from __future__ import annotations
 import contextlib
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from nicegui import run, ui
 
-from immich_memories.security import sanitize_error_message
+if TYPE_CHECKING:
+    from immich_memories.generate import GenerationParams
+    from immich_memories.tracking import RunMetadata, RunTracker
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_delivery_message(message: str, params: GenerationParams) -> str:
+    """Redact both labelled credentials and configured secret literals."""
+    from immich_memories.security import configured_secret_values, sanitize_error_message
+
+    safe_message = sanitize_error_message(message)
+    for secret in configured_secret_values(params.config):
+        safe_message = safe_message.replace(secret, "***")
+    return safe_message
 
 
 def init_upload_state(state) -> None:
@@ -52,9 +65,11 @@ def render_upload_controls(state) -> None:
 async def upload_to_immich(
     video_path: Path,
     state,
+    params: GenerationParams,
+    run_tracker: RunTracker,
     progress_bar: object,
     status_label: object,
-) -> None:
+) -> RunMetadata:
     """Upload the generated video to Immich.
 
     Args:
@@ -63,37 +78,37 @@ async def upload_to_immich(
         progress_bar: NiceGUI progress bar element.
         status_label: NiceGUI status label element.
     """
-    if not state.upload_enabled:
-        return
+    if not params.upload_enabled:
+        current = run_tracker.current_run
+        if current is None:
+            raise RuntimeError("Run not started")
+        return current
 
     status_label.set_text("Uploading to Immich...")
     progress_bar.value = 0.98
 
     try:
-        from immich_memories.api.immich import SyncImmichClient
+        from immich_memories.generate import deliver_completed_artifact
 
-        client = SyncImmichClient(
-            base_url=state.immich_url,
-            api_key=state.immich_api_key,
-            api_version=state.immich_api_version,
-        )
-
-        album_name = state.upload_album_name or "Memories"
-
-        result = await run.io_bound(
-            client.upload_memory,
-            video_path=video_path,
-            album_name=album_name,
-        )
-
+        result = await run.io_bound(deliver_completed_artifact, params, video_path, run_tracker)
+        completed = run_tracker.current_run
+        if completed is None:  # pragma: no cover - delivery requires an owned completed run
+            raise RuntimeError("Run disappeared after Immich delivery")
         state.upload_result = result
+        state.delivery_status = completed.delivery_status
         ui.notify(
-            f"Uploaded to Immich! Album: {album_name}",
+            f"Uploaded to Immich! Album: {params.upload_album}",
             type="positive",
         )
-        logger.info(f"Upload complete: asset={result.get('asset_id')}, album={album_name}")
+        logger.info("Upload complete: asset=%s", completed.immich_asset_id)
+        return completed
 
-    except Exception as e:  # WHY: UI graceful degradation
-        logger.warning(f"Upload to Immich failed: {e}")
-        safe_msg = sanitize_error_message(str(e))
-        ui.notify(f"Upload failed: {safe_msg}", type="warning")
+    except Exception as exc:  # WHY: a completed artifact must remain visible and retryable
+        current = run_tracker.current_run
+        if current is None:
+            raise
+        state.upload_result = None
+        state.delivery_status = current.delivery_status
+        logger.warning("Upload to Immich remains pending")
+        ui.notify(_safe_delivery_message(str(exc), params), type="warning")
+        return current

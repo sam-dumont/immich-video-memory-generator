@@ -353,6 +353,7 @@ async def test_ui_music_conduit_forwards_one_artifact_validation_plan(
             tmp_path / "memory.mp4",
             [],
             tmp_path,
+            None,
             _Progress(),
             _Status(),
             encoding_plan=plan,
@@ -432,43 +433,34 @@ async def test_ui_music_source_applies_exactly_once_without_detached_tracker(
 
     assert result == MusicPhaseResult(applied=True)
     apply_music.assert_awaited_once()
-    assert len(apply_music.await_args.args) == 7
+    assert len(apply_music.await_args.args) == 8
 
 
 @pytest.mark.asyncio
-async def test_ui_music_plan_failure_preserves_base_and_continues_upload(
+async def test_ui_music_plan_failure_preserves_base_artifact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Optional plan derivation failure warns once but cannot skip upload of the valid base."""
+    """Optional plan derivation failure cannot invalidate the valid base artifact."""
     from immich_memories.generate_music import MusicPhaseResult
-    from immich_memories.ui.pages._step4_generate import _run_post_assembly_phases
+    from immich_memories.ui.pages._step4_generate import _run_ui_music_phase
 
     result_path = tmp_path / "memory.mp4"
     result_path.write_bytes(b"validated-base")
     state = SimpleNamespace(
         generation_options={"music_source": "AI Generated"},
         memory_type=None,
-        upload_enabled=True,
     )
-    uploads: list[bytes] = []
 
     async def io_bound(
         _callback: Callable[..., object], *_args: object, **_kwargs: object
     ) -> object:
         raise RuntimeError("probe backend unavailable")
 
-    async def upload(video_path: Path, *_args: object, **_kwargs: object) -> None:
-        uploads.append(video_path.read_bytes())
-
     monkeypatch.setattr("immich_memories.ui.pages._step4_generate.run.io_bound", io_bound)
-    monkeypatch.setattr(
-        "immich_memories.ui.pages._step4_generate.upload_to_immich",
-        upload,
-    )
     monkeypatch.setattr("immich_memories.ui.pages._step4_generate.ui.notify", MagicMock())
 
-    result = await _run_post_assembly_phases(
+    result = await _run_ui_music_phase(
         state,
         Config(),
         result_path,
@@ -482,7 +474,7 @@ async def test_ui_music_plan_failure_preserves_base_and_continues_upload(
         applied=False,
         warning="Optional music failed: probe backend unavailable",
     )
-    assert uploads == [b"validated-base"]
+    assert result_path.read_bytes() == b"validated-base"
 
 
 @pytest.mark.asyncio
@@ -536,135 +528,195 @@ async def test_ui_music_plan_failure_is_sanitized_without_detached_tracking(
 
 
 @pytest.mark.asyncio
-async def test_fresh_ui_ai_music_receives_selected_clip_timeline_once(
+async def test_ui_upload_continues_after_optional_music_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The no-preview export path must retain the UI's selected clip timeline."""
-    from immich_memories.ui.pages._step4_generate import run_generation
-
-    class Element:
-        def __init__(self, *args: object, value: object = None, **_kwargs: object) -> None:
-            self.value = value if value is not None else (args[0] if args else None)
-            self.source = ""
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args: object) -> None:
-            return None
-
-        def clear(self) -> None:
-            return None
-
-        def classes(self, *_args: object):
-            return self
-
-        def style(self, *_args: object):
-            return self
-
-        def set_text(self, value: str) -> None:
-            self.value = value
-
-        def set_visibility(self, _visible: bool) -> None:
-            return None
+    """A nonfatal music failure must not skip final validation or delivery."""
+    from immich_memories.generate import PreparedGeneration
+    from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.processing.output_contract import OutputProbe
+    from immich_memories.tracking import DeliveryStatus
+    from immich_memories.ui.pages._step4_generate import finalize_ui_generation
 
     result_path = tmp_path / "memory.mp4"
     result_path.write_bytes(b"validated-base")
-    selected_clip = make_clip(
-        "clip-1",
-        duration=9.0,
-        file_created_at=datetime(2025, 7, 4),
-    )
-    selected_clip.llm_emotion = "joyful"
-    config = Config()
     state = SimpleNamespace(
-        cancel_requested=False,
-        config=config,
-        generation_options={"music_source": "AI Generated", "music_volume": 0.5},
-        clip_segments={"clip-1": (2.0, 8.0)},
+        generation_options={
+            "music_source": "Upload file",
+            "music_file": b"uploaded",
+        },
         memory_type=None,
-        upload_enabled=False,
-        output_path=None,
+        upload_enabled=True,
+        generation_warning=None,
+        delivery_status=DeliveryStatus.NOT_REQUESTED,
+        upload_result=None,
     )
-    selected_music = SimpleNamespace(full_mix=tmp_path / "music.wav", stems=None)
-    selected_music.full_mix.write_bytes(b"music")
-    music_result = SimpleNamespace(
-        versions=[selected_music],
-        selected=selected_music,
-        selected_version=None,
-        cleanup_unselected=lambda: None,
+    plan = _h264_output_plan()
+    prepared = PreparedGeneration(result_path, plan, (), 1, 1)
+    params = GenerationParams(
+        clips=[],
+        output_path=result_path,
+        config=Config(),
+        client=object(),  # type: ignore[arg-type]
+        upload_enabled=True,
+        upload_album="UI Album",
     )
-    received_timelines: list[object] = []
+    warning = "Optional music failed: probe failed"
+    music = AsyncMock(return_value=MusicPhaseResult(applied=False, warning=warning))
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate._apply_music", music)
+    final_probe = OutputProbe(
+        codec="h264",
+        container="mp4",
+        duration_seconds=5.0,
+        size_bytes=1024,
+        pixel_format="yuv420p",
+        color_transfer="bt709",
+        color_primaries="bt709",
+        width=1920,
+        height=1080,
+        decoded_frames=120,
+    )
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_generate.validate_output",
+        lambda _path, _encoding_plan: final_probe,
+    )
 
-    async def generate_music_for_video(*, timeline: object, **_kwargs: object) -> object:
-        received_timelines.append(timeline)
-        return music_result
-
-    def write_mix(*, output_path: Path, **_kwargs: object) -> None:
-        output_path.write_bytes(b"validated-mix")
-
-    def publish_mix(video_path: Path, encoding_plan: object) -> None:
-        del encoding_plan
-        video_path.with_suffix(".with_music.mp4").replace(video_path)
-
-    async def io_bound(
-        callback: Callable[..., object],
-        *args: object,
-        **kwargs: object,
-    ) -> object:
-        if callback.__name__ == "generate_memory":
-            return result_path
+    async def io_bound(callback, *args, **kwargs):
         return callback(*args, **kwargs)
 
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.run.io_bound", io_bound)
+    upload = AsyncMock()
     monkeypatch.setattr(
-        "immich_memories.ui.pages._step4_generate._build_generation_params",
-        lambda *_args: SimpleNamespace(progress_callback=None, frame_preview_callback=None),
+        "immich_memories.ui.pages._step4_upload.upload_to_immich",
+        upload,
     )
-    monkeypatch.setattr(
-        "immich_memories.ui.pages._step4_generate.normalize_ui_output_path",
-        lambda _state, path: path,
+    tracker = MagicMock()
+    completed = SimpleNamespace(delivery_status=DeliveryStatus.PENDING)
+    tracker.complete_artifact.return_value = completed
+    upload.return_value = completed
+    progress = _Progress()
+    status = _Status()
+
+    await finalize_ui_generation(
+        state,
+        params,
+        prepared,
+        tracker,
+        progress,
+        status,
     )
+
+    music.assert_awaited_once()
+    assert music.await_args.kwargs["encoding_plan"] is plan
+    tracker.complete_artifact.assert_called_once_with(
+        result_path,
+        final_probe,
+        [warning],
+        delivery_requested=True,
+        delivery_album="UI Album",
+        clips_analyzed=1,
+        clips_selected=1,
+    )
+    upload.assert_awaited_once_with(result_path, state, params, tracker, progress, status)
+    assert result_path.read_bytes() == b"validated-base"
+
+
+@pytest.mark.asyncio
+async def test_ui_finalization_preserves_selected_clip_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Deferred UI music receives original selections, not assembly internals."""
+    from immich_memories.generate import PreparedGeneration
+    from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.tracking import DeliveryStatus
+    from immich_memories.ui.pages._step4_generate import finalize_ui_generation
+
+    result_path = tmp_path / "memory.mp4"
+    result_path.write_bytes(b"validated-base")
+    selected_clip = make_clip("clip-1", duration=9.0, file_created_at=datetime(2025, 7, 4))
+    plan = _h264_output_plan()
+    state = SimpleNamespace(
+        generation_options={"music_source": "AI Generated"},
+        memory_type=None,
+        generation_warning=None,
+        delivery_status=DeliveryStatus.NOT_REQUESTED,
+    )
+    params = GenerationParams(clips=[selected_clip], output_path=result_path, config=Config())
+    prepared = PreparedGeneration(result_path, plan, (), 1, 1)
+    music = AsyncMock(return_value=MusicPhaseResult(applied=False))
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate._apply_music", music)
     monkeypatch.setattr(
-        "immich_memories.generate_music.derive_music_validation_plan",
-        lambda _path: _h264_output_plan(),
+        "immich_memories.ui.pages._step4_generate.validate_output", lambda *_args: MagicMock()
+    )
+
+    async def io_bound(callback, *args, **kwargs):
+        return callback(*args, **kwargs)
+
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.run.io_bound", io_bound)
+    tracker = MagicMock()
+    tracker.complete_artifact.return_value = SimpleNamespace(
+        delivery_status=DeliveryStatus.NOT_REQUESTED
+    )
+
+    await finalize_ui_generation(state, params, prepared, tracker, _Progress(), _Status())
+
+    assert music.await_args.args[3] == [selected_clip]
+    assert music.await_args.kwargs["encoding_plan"] is plan
+
+
+@pytest.mark.asyncio
+async def test_ai_cleanup_failure_does_not_undo_successful_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Cleanup after atomic publication is best-effort, not phase failure."""
+    from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.ui.pages._step4_music import apply_ai_music
+
+    result_path = tmp_path / "memory.mp4"
+    result_path.write_bytes(b"validated-base")
+    selected = SimpleNamespace(full_mix=tmp_path / "music.wav", stems=None)
+    music_result = SimpleNamespace(
+        versions=[selected],
+        selected=selected,
+        cleanup_unselected=MagicMock(side_effect=RuntimeError("cleanup-secret-912")),
     )
     monkeypatch.setattr(
         "immich_memories.ui.state.get_app_state",
-        lambda: SimpleNamespace(music_preview_result=None),
-    )
-    monkeypatch.setattr(
-        "immich_memories.audio.music_generator.generate_music_for_video",
-        generate_music_for_video,
-    )
-    monkeypatch.setattr("immich_memories.audio.mixer.mix_audio_with_ducking", write_mix)
-    monkeypatch.setattr("immich_memories.generate_music.publish_music_mix", publish_mix)
-    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.run.io_bound", io_bound)
-    monkeypatch.setattr("immich_memories.ui.pages._step4_music.run.io_bound", io_bound)
-    monkeypatch.setattr("immich_memories.ui.components.im_button", lambda *_a, **_kw: Element())
-    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.ui.linear_progress", Element)
-    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.ui.label", Element)
-    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.ui.image", Element)
-    monkeypatch.setattr(
-        "immich_memories.ui.pages._step4_generate._show_output", lambda *_args: None
+        lambda: SimpleNamespace(music_preview_result=music_result),
     )
 
-    await run_generation(
-        state,
-        [selected_clip],
-        total_duration=6.0,
-        output_dir=tmp_path,
-        output_path=result_path,
-        filename_input=SimpleNamespace(value="memory.mp4"),
-        progress_container=Element(),
-        output_container=Element(),
+    async def publish_mix(*_args: object, **_kwargs: object) -> None:
+        result_path.write_bytes(b"validated-mix")
+
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_music._mix_selected_ai_music",
+        publish_mix,
+    )
+    monkeypatch.setattr("immich_memories.ui.pages._step4_music.ui.notify", MagicMock())
+    tracker = MagicMock()
+    caplog.set_level("DEBUG")
+
+    result = await apply_ai_music(
+        result_path,
+        [],
+        {},
+        {"music_volume": 0.5},
+        Config(),
+        tmp_path,
+        tracker,
+        _Progress(),
+        _Status(),
+        encoding_plan=_h264_output_plan(),
     )
 
-    assert len(received_timelines) == 1
-    timeline = received_timelines[0]
-    assert [(clip.duration, clip.mood, clip.month) for clip in timeline.clips] == [
-        (6.0, "joyful", 7)
-    ]
+    assert result == MusicPhaseResult(applied=True)
+    assert result_path.read_bytes() == b"validated-mix"
+    tracker.complete_phase.assert_called_once_with(items_processed=1)
+    assert "cleanup-secret-912" not in caplog.text
 
 
 def _prores_plan():

@@ -8,6 +8,7 @@ import pytest
 
 from immich_memories.api.compatibility import ApiVersionPolicy
 from immich_memories.config_loader import Config
+from immich_memories.tracking import DeliveryStatus
 from immich_memories.ui.state import (
     AppState,
     _sessions,
@@ -60,6 +61,12 @@ class TestAppStateDefaults:
         """UI clients default to automatic Immich compatibility detection."""
         state = AppState()
         assert state.immich_api_version is ApiVersionPolicy.AUTO
+
+    def test_default_generation_outcome_is_typed_and_empty(self):
+        """A new UI session cannot imply a delivery request or stale warning."""
+        state = AppState()
+        assert state.generation_warning is None
+        assert state.delivery_status is DeliveryStatus.NOT_REQUESTED
 
     def test_ensure_config_loads_explicit_immich_api_version(self):
         """UI clients retain an explicit compatibility policy from configuration."""
@@ -328,21 +335,27 @@ def test_generation_factory_maps_explicit_ui_h265_override(tmp_path) -> None:
     assert params.output_format == "h265"
 
 
-def test_generation_factory_disables_core_music_for_ui_export(tmp_path) -> None:
-    """Step 4 owns music selection, so core generation cannot auto-generate it."""
+def test_generation_factory_preserves_ui_music_and_delivery_boundaries(
+    tmp_path,
+) -> None:
+    """UI keeps music deferred while preserving the requested delivery intent."""
     from immich_memories.ui.pages._step4_generate import _build_generation_params
 
     state = AppState(
         config=Config(),
-        generation_options={"music_source": "None"},
+        generation_options={},
         immich_url="https://immich.example.com",
         immich_api_key="test-api-key",
+        upload_enabled=True,
+        upload_album_name="Album At Click Time",
     )
 
     with patch("immich_memories.api.immich.SyncImmichClient"):
         params = _build_generation_params(state, [], tmp_path / "memory.mp4")
 
     assert params.no_music is True
+    assert params.upload_enabled is True
+    assert params.upload_album == "Album At Click Time"
 
 
 def test_config_initialized_ui_label_is_not_an_explicit_override(tmp_path) -> None:

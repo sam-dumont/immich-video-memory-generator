@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from immich_memories.api.compatibility import ApiVersionPolicy
+from immich_memories.tracking.models import DeliveryStatus
 
 if TYPE_CHECKING:
     from immich_memories.api.models import Person, VideoClipInfo
@@ -62,6 +63,8 @@ class AppState:
     generation_options: dict[str, Any] = field(default_factory=dict)
     processing: bool = False
     output_path: Path | None = None
+    generation_warning: str | None = None
+    delivery_status: DeliveryStatus = DeliveryStatus.NOT_REQUESTED
 
     # Music preview (generated in Step 3, used in Step 4)
     music_preview_result: Any | None = None  # MusicGenerationResult

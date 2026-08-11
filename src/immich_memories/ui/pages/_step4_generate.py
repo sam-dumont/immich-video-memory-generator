@@ -13,17 +13,30 @@ from typing import TYPE_CHECKING
 from nicegui import app as nicegui_app
 from nicegui import run, ui
 
-from immich_memories.security import sanitize_error_message
+from immich_memories.generate import PreparedGeneration, generate_memory
+from immich_memories.processing.output_contract import validate_output
+from immich_memories.security import configured_secret_values, sanitize_error_message
 from immich_memories.ui.components import (
     im_info_card,
     im_separator,
 )
-from immich_memories.ui.pages._step4_upload import upload_to_immich
 
 if TYPE_CHECKING:
     from immich_memories.processing.encoding_plan import EncodingPlan
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from immich_memories.config_loader import Config
+
+
+def _safe_ui_error_message(error: Exception, config: Config | None) -> str:
+    """Return a user-safe error without any configured credential literals."""
+    message = sanitize_error_message(str(error))
+    if config is not None:
+        for secret in configured_secret_values(config):
+            message = message.replace(secret, "***")
+    return message
 
 
 def _request_cancel(state, cancel_btn: ui.button | None, status_label) -> None:
@@ -145,11 +158,37 @@ def _build_generation_params(state, selected_clips, output_path):
         photo_assets=None,
         target_duration_seconds=state.target_duration * 60,
         selected_photo_ids=None,
-        # Music and upload handled separately by UI (AI gen, 4-stem ducking, NiceGUI progress)
+        # Music and upload are finalized separately by the UI on the same run lifecycle.
         music_path=None,
         no_music=True,
-        upload_enabled=False,
+        upload_enabled=state.upload_enabled,
+        upload_album=state.upload_album_name,
     )
+
+
+async def execute_ui_generation(
+    state,
+    params,
+    run_tracker,
+    progress_bar,
+    status_label,
+) -> PreparedGeneration:
+    """Run assembly and UI finalization with one caller-owned tracker."""
+    prepared = await run.io_bound(
+        generate_memory,
+        params,
+        run_tracker=run_tracker,
+        defer_finalization=True,
+    )
+    await finalize_ui_generation(
+        state,
+        params,
+        prepared,
+        run_tracker,
+        progress_bar,
+        status_label,
+    )
+    return prepared
 
 
 async def run_generation(
@@ -167,6 +206,13 @@ async def run_generation(
     from immich_memories.ui.components import im_button
 
     state.cancel_requested = False
+    state.generation_warning = None
+    from immich_memories.tracking import DeliveryStatus
+
+    state.delivery_status = DeliveryStatus.NOT_REQUESTED
+    state.upload_result = None
+    state.output_path = None
+    run_tracker = None
     # Mutable ref so the lambda closure can access the button after creation
     cancel_ref: list[ui.button | None] = [None]
 
@@ -190,7 +236,7 @@ async def run_generation(
         cancel_ref[0] = cancel_btn
 
     try:
-        from immich_memories.generate import GenerationError, generate_memory
+        from immich_memories.generate import GenerationError
 
         effective_output_path = normalize_ui_output_path(
             state,
@@ -213,36 +259,102 @@ async def run_generation(
         params.progress_callback = on_progress
         params.frame_preview_callback = on_frame_preview
 
-        # Phases 1+2: extract clips and assemble video
-        result_path = await run.io_bound(generate_memory, params)
+        from immich_memories.tracking import RunTracker, generate_run_id
 
-        run_id_label.set_text(f"Output: {result_path.parent.name}")
-
-        await _run_post_assembly_phases(
+        run_tracker = RunTracker(
+            generate_run_id(),
+            db_path=params.config.cache.database_path,
+        )
+        prepared = await execute_ui_generation(
             state,
-            state.config,
-            result_path,
-            selected_clips,
-            result_path.parent,
+            params,
+            run_tracker,
             progress_bar,
             status_label,
         )
+        result_path = prepared.path
+        run_id_label.set_text(f"Output: {result_path.parent.name}")
 
         progress_bar.value = 1.0
         status_label.set_text("Complete!")
         cancel_btn.set_visibility(False)
         state.output_path = result_path
 
-        _show_output(output_container, result_path)
+        _show_output(output_container, result_path, state)
 
     except Exception as e:  # WHY: UI graceful degradation
-        logger.exception("Video generation failed")
-        safe_msg = sanitize_error_message(str(e))
-        ui.notify(f"Generation failed: {safe_msg}", type="negative")
+        safe_msg = _safe_ui_error_message(e, state.config)
+        persisted = None
+        if run_tracker is not None:
+            persisted = run_tracker.db.get_run(run_tracker.run_id)
+            if persisted is not None and persisted.status == "running":
+                run_tracker.fail_run(safe_msg)
+        artifact_completed = persisted is not None and persisted.status == "completed"
+        if artifact_completed:
+            logger.error("Completion screen failed after artifact publication")
+            notice = f"Video saved, but the completion screen failed: {safe_msg}"
+            notice_type = "warning"
+        else:
+            logger.error("Video generation failed: %s", safe_msg)
+            notice = f"Generation failed: {safe_msg}"
+            notice_type = "negative"
+        ui.notify(notice, type=notice_type)
         cancel_btn.set_visibility(False)
         progress_container.clear()
         with progress_container:
-            im_info_card(f"Generation failed: {safe_msg}", variant="error")
+            im_info_card(notice, variant="warning" if artifact_completed else "error")
+
+
+async def finalize_ui_generation(
+    state,
+    params,
+    prepared,
+    run_tracker,
+    progress_bar,
+    status_label,
+):
+    """Finish UI-managed post-processing on the caller-owned run."""
+    from immich_memories.generate_music import MusicPhaseResult
+
+    music_result = MusicPhaseResult(applied=False)
+    music_source = state.generation_options.get("music_source", "None")
+    if music_source in {"AI Generated", "Upload file"}:
+        music_result = await _apply_music(
+            state,
+            params.config,
+            prepared.path,
+            list(params.clips),
+            prepared.path.parent,
+            run_tracker,
+            progress_bar,
+            status_label,
+            encoding_plan=prepared.encoding_plan,
+        )
+    final_probe = await run.io_bound(validate_output, prepared.path, prepared.encoding_plan)
+    warnings = [music_result.warning] if music_result.warning else []
+    completed = run_tracker.complete_artifact(
+        prepared.path,
+        final_probe,
+        warnings,
+        delivery_requested=params.upload_enabled,
+        delivery_album=params.upload_album,
+        clips_analyzed=prepared.clips_analyzed,
+        clips_selected=prepared.clips_selected,
+    )
+    state.generation_warning = music_result.warning
+    state.delivery_status = completed.delivery_status
+    if params.upload_enabled:
+        from immich_memories.ui.pages._step4_upload import upload_to_immich
+
+        completed = await upload_to_immich(
+            prepared.path,
+            state,
+            params,
+            run_tracker,
+            progress_bar,
+            status_label,
+        )
+    return completed
 
 
 async def _apply_music(
@@ -251,6 +363,7 @@ async def _apply_music(
     result_path,
     selected_clips,
     run_output_dir,
+    run_tracker,
     progress_bar,
     status_label,
     *,
@@ -270,7 +383,7 @@ async def _apply_music(
             gen_options,
             config,
             run_output_dir,
-            None,
+            run_tracker,
             progress_bar,
             status_label,
             encoding_plan=encoding_plan,
@@ -282,7 +395,7 @@ async def _apply_music(
         return await apply_uploaded_music(
             result_path,
             gen_options,
-            None,
+            run_tracker,
             progress_bar,
             status_label,
             encoding_plan=encoding_plan,
@@ -302,7 +415,7 @@ async def _run_ui_music_phase(
     progress_bar,
     status_label,
 ):
-    """Apply selected UI music as an optional post-assembly phase."""
+    """Apply legacy UI music requests without creating detached tracking state."""
     from immich_memories.generate_music import (
         MusicPhaseResult,
         derive_music_validation_plan,
@@ -320,6 +433,7 @@ async def _run_ui_music_phase(
             result_path,
             selected_clips,
             run_output_dir,
+            None,
             progress_bar,
             status_label,
             encoding_plan=encoding_plan,
@@ -329,30 +443,6 @@ async def _run_ui_music_phase(
         logger.warning(warning)
         ui.notify(f"{warning}. Video saved without music.", type="warning")
         return MusicPhaseResult(applied=False, warning=warning)
-
-
-async def _run_post_assembly_phases(
-    state,
-    config,
-    result_path: Path,
-    selected_clips: list,
-    run_output_dir: Path,
-    progress_bar,
-    status_label,
-):
-    """Run optional UI music and upload after the base artifact is validated."""
-    music_result = await _run_ui_music_phase(
-        state,
-        config,
-        result_path,
-        selected_clips,
-        run_output_dir,
-        progress_bar,
-        status_label,
-    )
-    if state.upload_enabled:
-        await upload_to_immich(result_path, state, progress_bar, status_label)
-    return music_result
 
 
 def _format_file_size(path: Path) -> str:
@@ -365,7 +455,7 @@ def _format_file_size(path: Path) -> str:
     return f"{size_bytes / 1024:.0f} KB"
 
 
-def _show_output(output_container, result_path: Path) -> None:
+def _show_output(output_container, result_path: Path, state) -> None:
     """Display the generated video with success state."""
     ui.notify("Video generated successfully!", type="positive")
     output_container.clear()
@@ -387,6 +477,14 @@ def _show_output(output_container, result_path: Path) -> None:
                     ui.label(f"Saved to: {result_path} ({file_size})").classes("text-sm").style(
                         "color: var(--im-text-secondary)"
                     )
+                if state.generation_warning:
+                    ui.label(state.generation_warning).classes("text-sm").style(
+                        "color: var(--im-warning)"
+                    )
+                delivery_label = state.delivery_status.value.replace("_", " ").title()
+                ui.label(f"Immich delivery: {delivery_label}").classes("text-sm").style(
+                    "color: var(--im-text-secondary)"
+                )
 
         if result_path.exists():
             video_url = nicegui_app.add_media_file(local_file=result_path)
