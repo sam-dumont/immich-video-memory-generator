@@ -6,7 +6,8 @@ light/dark pairs saved to docs-site/static/img/screenshots/.
 
 Usage:
     make screenshots          # light + dark, saves to docs-site/
-    make e2e                  # full E2E suite (includes screenshots)
+    make e2e                  # required hermetic launch gate (no screenshots)
+    make e2e-full             # all E2E, including optional visual flows
 """
 
 from __future__ import annotations
@@ -15,11 +16,12 @@ from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from tests.e2e.conftest import enable_demo_mode, set_theme
 from tests.e2e.redaction import redact_page, redact_person_names
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.visual]
 
 _THEMES = ["light", "dark"]
 _CLIP_LOAD_TIMEOUT = 300_000  # 5 minutes
@@ -33,17 +35,25 @@ def _save(page: Page, d: Path, name: str) -> None:
     page.screenshot(path=str(d / f"{name}.png"))
 
 
+def _save_navigation_diagnostic(page: Page, name: str) -> None:
+    """Keep one browser artifact when optional visual navigation times out."""
+    output = Path("test-results") / "e2e"
+    output.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(output / f"{name}.png"))
+
+
 def _goto(page: Page, url: str) -> None:
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-    except Exception:
+    except PlaywrightTimeoutError:
+        _save_navigation_diagnostic(page, "goto-timeout")
         page.wait_for_timeout(2000)
 
 
 def _wait(page: Page) -> None:
     try:
         page.wait_for_load_state("networkidle", timeout=10_000)
-    except Exception:
+    except PlaywrightTimeoutError:
         pass
     page.wait_for_timeout(1500)
 
@@ -181,7 +191,8 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
             page.wait_for_timeout(300)
             _prep(page)
             _save(page, d, _name("trip-detection", theme))
-        except Exception:
+        except PlaywrightTimeoutError:
+            _save_navigation_diagnostic(page, "trip-detection-timeout")
             pass
 
     # Switch back to Year in Review for wizard navigation
@@ -224,14 +235,15 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
 
     try:
         page.wait_for_url("**/step2", timeout=30_000)
-    except Exception:
+    except PlaywrightTimeoutError:
+        _save_navigation_diagnostic(page, "step2-navigation-timeout")
         return
     try:
         page.wait_for_selector('[role="dialog"]', timeout=5_000)
         # Capture loading/analysis state while dialog is visible
         _prep(page)
         _save(page, d, _name("step2-fresh-analysis", theme))
-    except Exception:
+    except PlaywrightTimeoutError:
         pass
     page.wait_for_function(
         "() => !document.querySelector('[role=\"dialog\"]')",
@@ -240,7 +252,7 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
     _wait(page)
     try:
         page.wait_for_selector('button:has-text("clips")', timeout=30_000)
-    except Exception:
+    except PlaywrightTimeoutError:
         pass
 
     _prep(page)
@@ -359,7 +371,8 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
             regen_btn.scroll_into_view_if_needed()
             _prep(page)
             _save(page, d, _name("llm-title-regenerate", theme))
-    except Exception:
+    except PlaywrightTimeoutError:
+        _save_navigation_diagnostic(page, "step3-navigation-timeout")
         pass
 
     # ════════════════════════════════════════════════════════════════
@@ -378,7 +391,8 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
         _hide_sidebar(page)
         _save(page, d, _name("hero-step4", theme))
         _show_sidebar(page)
-    except Exception:
+    except PlaywrightTimeoutError:
+        _save_navigation_diagnostic(page, "step4-navigation-timeout")
         pass
 
     # ════════════════════════════════════════════════════════════════
@@ -405,9 +419,11 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
                 _hide_sidebar(page)
                 _save(page, d, _name("hero-step4-complete", theme))
                 _show_sidebar(page)
-            except Exception:
+            except PlaywrightTimeoutError:
+                _save_navigation_diagnostic(page, "generation-timeout")
                 pass  # Generation may timeout — pre-generate screenshots still captured
-    except Exception:
+    except PlaywrightTimeoutError:
+        _save_navigation_diagnostic(page, "generation-start-timeout")
         pass
 
     # ════════════════════════════════════════════════════════════════
@@ -428,10 +444,7 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
 @pytest.mark.parametrize("theme", _THEMES)
 def test_capture_login_page(page: Page, app_url: str, screenshot_dir: Path, theme: str) -> None:
     """Capture the login page (skips if auth disabled)."""
-    try:
-        _goto(page, f"{app_url}/login")
-    except Exception:
-        return
+    _goto(page, f"{app_url}/login")
     _wait(page)
 
     sign_in = page.get_by_role("button", name="Sign in")

@@ -5,18 +5,67 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from immich_memories.analysis.analyzer_models import ScoredSegment
 from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.config_models import AnalysisConfig, CacheConfig, ContentAnalysisConfig
 
 
-def _make_builder() -> PreviewBuilder:
+def _make_builder(cache_config: CacheConfig | None = None) -> PreviewBuilder:
     return PreviewBuilder(
         client=MagicMock(),
-        cache_config=CacheConfig(),
+        cache_config=cache_config or CacheConfig(),
         analysis_config=AnalysisConfig(),
         content_analysis_config=ContentAnalysisConfig(),
     )
+
+
+class TestPreviewCacheLocation:
+    """Pipeline previews are disposable cache data, not user-home state."""
+
+    def test_finds_pipeline_preview_under_configured_cache(self, tmp_path: Path):
+        cache_config = CacheConfig(directory=str(tmp_path / "cache"))
+        preview = cache_config.cache_path / "previews" / "preview_video-1.mp4"
+        preview.parent.mkdir(parents=True)
+        preview.write_bytes(b"preview")
+
+        result = _make_builder(cache_config).find_cached_preview("video-1", 0.0, 2.0)
+
+        assert result == str(preview)
+
+    def test_extracts_pipeline_preview_under_configured_cache(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        cache_config = CacheConfig(directory=str(tmp_path / "cache"))
+        forbidden_home = tmp_path / "not-the-cache"
+
+        def fake_run(command, **_kwargs):
+            if command[0] == "ffprobe":
+                return MagicMock(returncode=0, stdout="2.0")
+            Path(command[-1]).write_bytes(b"preview")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(Path, "home", classmethod(lambda _cls: forbidden_home))
+        monkeypatch.setattr("subprocess.run", fake_run)
+        monkeypatch.setattr(
+            "immich_memories.analysis.preview_builder._get_fast_encoder_args",
+            lambda: [],
+        )
+
+        result = Path(
+            _make_builder(cache_config).extract_preview_segment(
+                tmp_path / "source.mp4",
+                0.0,
+                2.0,
+                asset_id="video-1",
+            )
+        )
+
+        assert result.parent == cache_config.cache_path / "previews"
+        assert not forbidden_home.exists()
 
 
 def _make_segment(start: float, end: float, score: float) -> ScoredSegment:

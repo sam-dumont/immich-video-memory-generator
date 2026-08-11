@@ -295,5 +295,9 @@ def _check_taichi() -> bool:
             os.close(saved_err)
             os.close(devnull_fd)
         return True
+    except ModuleNotFoundError as exc:
+        if exc.name != "taichi":
+            raise
+        return False
     except (RuntimeError, OSError):
         return False

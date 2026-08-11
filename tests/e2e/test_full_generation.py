@@ -22,11 +22,12 @@ from pathlib import Path
 import httpx
 import pytest
 from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from tests.e2e.conftest import _REPO_ROOT, enable_demo_mode, set_theme
 from tests.e2e.redaction import redact_page
 
-pytestmark = [pytest.mark.e2e, pytest.mark.slow]
+pytestmark = [pytest.mark.e2e, pytest.mark.slow, pytest.mark.visual]
 
 _GEN_PORT = 8096
 _GEN_URL = f"http://localhost:{_GEN_PORT}"
@@ -44,6 +45,7 @@ def gen_server_url():
         env["IMMICH_MEMORIES_AUTH__ENABLED"] = "false"
         env["IMMICH_MEMORIES_CACHE__DATABASE"] = f"{tmpdir}/fresh-cache.db"
         env["IMMICH_MEMORIES_CACHE__DIRECTORY"] = f"{tmpdir}/cache"
+        env["IMMICH_MEMORIES_OUTPUT__DIRECTORY"] = f"{tmpdir}/output"
         env["IMMICH_MEMORIES_DEFAULTS__TARGET_DURATION"] = "1"
         env["IMMICH_MEMORIES_OUTPUT__RESOLUTION"] = "720p"
         # WHY: Music generation can fail (missing torchcodec, no API) and
@@ -72,8 +74,11 @@ def gen_server_url():
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             if proc.poll() is not None:
-                stderr = (proc.stderr.read() if proc.stderr else b"").decode(errors="replace")
-                pytest.skip(f"Gen server exited: {stderr[-500:]}")
+                log_fh.flush()
+                pytest.fail(
+                    f"Gen server exited with code {proc.returncode}:\n"
+                    f"{log_file.read_text(errors='replace')[-4000:]}"
+                )
             try:
                 r = httpx.get(_GEN_URL, timeout=2.0, follow_redirects=True)
                 if r.status_code < 500:
@@ -83,7 +88,12 @@ def gen_server_url():
             time.sleep(0.5)
         else:
             proc.terminate()
-            pytest.skip("Gen server did not start")
+            proc.wait(timeout=5)
+            log_fh.flush()
+            pytest.fail(
+                "Gen server did not start within 30s:\n"
+                f"{log_file.read_text(errors='replace')[-4000:]}"
+            )
 
         yield _GEN_URL
 
@@ -99,7 +109,7 @@ def gen_server_url():
 def _goto(page: Page, url: str) -> None:
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-    except Exception:
+    except PlaywrightTimeoutError:
         page.wait_for_timeout(2000)
 
 
@@ -224,7 +234,7 @@ def test_full_generation_pipeline(
             status = page.locator(".q-linear-progress + *").first.text_content(timeout=500)
             if status and i % 2 == 0:
                 print(f"   ⏳ [{i * 15}s] {status}")
-        except Exception:
+        except PlaywrightTimeoutError:
             pass
 
         if not captured_progress:

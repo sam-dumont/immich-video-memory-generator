@@ -63,9 +63,9 @@ help:
 	@echo ""
 	@echo "E2E Tests (Playwright):"
 	@echo "  playwright-install  Install Playwright browsers"
-	@echo "  e2e                 Run Playwright E2E tests (fast)"
-	@echo "  e2e-full            Run ALL E2E tests + full generation (~10min)"
-	@echo "  screenshots         Capture UI screenshots (light + dark)"
+	@echo "  e2e                 Run the required hermetic launch smoke"
+	@echo "  e2e-full            Run ALL E2E and optional visual flows (~10min)"
+	@echo "  screenshots         Capture optional UI screenshots (light + dark)"
 	@echo "  diagrams            Render architecture diagrams (Mermaid)"
 	@echo ""
 	@echo "Cleanup:"
@@ -253,8 +253,9 @@ test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immic
 playwright-install:  ## Install Playwright browsers for E2E tests
 	uv run playwright install chromium
 
-e2e:  ## Run Playwright E2E tests (fast — screenshots + auth, ~3min)
-	uv run pytest tests/e2e/ -v -m "e2e and not slow" --log-cli-level=INFO --tb=short \
+e2e:  ## Run required fake-service contracts and real hermetic browser render
+	uv run pytest tests/e2e/test_fake_immich.py tests/e2e/test_launch_smoke.py -v \
+		-m "e2e and not visual" --log-cli-level=INFO --tb=short \
 		--junitxml=tests/e2e-junit.xml
 
 e2e-full:  ## Run ALL E2E tests including full generation pipeline (~10min)
@@ -262,7 +263,7 @@ e2e-full:  ## Run ALL E2E tests including full generation pipeline (~10min)
 		--junitxml=tests/e2e-junit.xml
 
 screenshots:  ## Capture UI screenshots in light + dark mode (coverage from server subprocess)
-	uv run pytest tests/e2e/test_screenshots.py -v -m e2e --log-cli-level=INFO --tb=short \
+	uv run pytest tests/e2e/test_screenshots.py -v -m visual --log-cli-level=INFO --tb=short \
 		--junitxml=tests/e2e-junit.xml
 
 diagrams:  ## Render architecture diagrams from Mermaid source files

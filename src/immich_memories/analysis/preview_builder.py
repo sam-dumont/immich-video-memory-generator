@@ -47,7 +47,7 @@ class PreviewBuilder:
         if stable_preview.exists():
             return str(stable_preview)
 
-        pipeline_preview_dir = Path.home() / ".cache" / "immich-memories" / "previews"
+        pipeline_preview_dir = c_config.cache_path / "previews"
         for p in pipeline_preview_dir.glob(f"*{asset_id[:8]}*"):
             if p.exists():
                 return str(p)
@@ -202,7 +202,7 @@ class PreviewBuilder:
         import subprocess
         import time
 
-        preview_dir = Path.home() / ".cache" / "immich-memories" / "previews"
+        preview_dir = self._cache_config.cache_path / "previews"
         preview_dir.mkdir(parents=True, exist_ok=True)
 
         MAX_PREVIEWS = 20

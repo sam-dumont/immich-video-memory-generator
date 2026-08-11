@@ -100,7 +100,9 @@ def render_step4() -> None:
     # Output Settings (merged with Upload)
     im_section_header("Output", icon="folder")
 
-    output_dir = Path.home() / "Videos" / "Memories"
+    if state.config is None:
+        raise RuntimeError("Output settings require a loaded configuration")
+    output_dir = state.config.output.output_path
     output_dir.mkdir(parents=True, exist_ok=True)
 
     from immich_memories.filename_builder import build_output_filename
