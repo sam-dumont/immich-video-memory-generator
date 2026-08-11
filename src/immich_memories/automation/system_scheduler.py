@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 import textwrap
 from dataclasses import dataclass, field
@@ -18,6 +19,16 @@ class SchedulerInstallResult:
     files_written: list[Path] = field(default_factory=list)
     activate_command: str = ""
     deactivate_command: str = ""
+
+
+@dataclass(frozen=True)
+class SchedulerStatus:
+    """Read-only facts about the external scheduler."""
+
+    platform: str
+    installed: bool | None
+    active: bool | None
+    paths: tuple[Path, ...] = ()
 
 
 _LAUNCHD_LABEL = "com.immich-memories.auto"
@@ -155,6 +166,73 @@ def _launchd_plist_path() -> Path:
 
 def _systemd_user_dir() -> Path:
     return Path.home() / ".config" / "systemd" / "user"
+
+
+def _probe_active(command: list[str], inactive_codes: set[int]) -> bool | None:
+    """Return active/inactive only for conclusive read-only command results."""
+    try:
+        result = subprocess.run(  # noqa: S603
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode == 0:
+        return True
+    if result.returncode in inactive_codes:
+        return False
+    return None
+
+
+def get_scheduler_status() -> SchedulerStatus:
+    """Inspect scheduler installation and activation without changing either."""
+    platform = detect_platform()
+    if platform == "launchd":
+        plist = _launchd_plist_path()
+        active = _probe_active(
+            ["launchctl", "print", f"gui/{os.getuid()}/{_LAUNCHD_LABEL}"],
+            inactive_codes={113},
+        )
+        return SchedulerStatus(
+            platform=platform,
+            installed=plist.is_file(),
+            active=active,
+            paths=(plist,),
+        )
+
+    if platform == "systemd":
+        user_dir = _systemd_user_dir()
+        paths = (
+            user_dir / _SYSTEMD_SERVICE,
+            user_dir / _SYSTEMD_TIMER,
+        )
+        active = _probe_active(
+            ["systemctl", "--user", "is-active", "--quiet", _SYSTEMD_TIMER],
+            inactive_codes={3},
+        )
+        return SchedulerStatus(
+            platform=platform,
+            installed=all(path.is_file() for path in paths),
+            active=active,
+            paths=paths,
+        )
+
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["crontab", "-l"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        installed = None
+    else:
+        installed = "immich-memories auto run" in result.stdout if result.returncode == 0 else None
+    return SchedulerStatus(platform=platform, installed=installed, active=None)
 
 
 def install_scheduler(

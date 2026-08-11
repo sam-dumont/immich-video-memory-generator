@@ -180,14 +180,78 @@ def history(ctx: click.Context, limit: int) -> None:
 
     config: Config = ctx.obj["config"]
     db = RunDatabase(db_path=config.cache.database_path)
-    all_runs = db.list_runs(limit=limit, status="completed")
-    auto_runs = [r for r in all_runs if r.source == "auto"]
+    auto_runs = db.list_runs(limit=limit, status="completed", source="auto")
 
     if not auto_runs:
         print_info("No auto-generated memories found")
         return
 
     _print_history_table(auto_runs)
+
+
+@auto.command()
+@click.option("--json", "as_json", is_flag=True, help="Machine-readable output")
+@click.pass_context
+def status(ctx: click.Context, as_json: bool) -> None:
+    """Show durable automation and external scheduler state."""
+    from immich_memories.automation.runner import AutoRunner
+    from immich_memories.automation.system_scheduler import get_scheduler_status
+
+    config: Config = ctx.obj["config"]
+    previous_logging_disable = logging.root.manager.disable
+    if as_json:
+        logging.disable(logging.CRITICAL)
+    try:
+        payload = AutoRunner(config).status(refresh_suggestion=True).to_dict()
+        scheduler = get_scheduler_status()
+        scheduler_state = (
+            "unknown" if scheduler.active is None else "active" if scheduler.active else "inactive"
+        )
+        payload["scheduler"] = {
+            "platform": scheduler.platform,
+            "installed": scheduler.installed,
+            "active": scheduler.active,
+            "state": scheduler_state,
+            "paths": [str(path) for path in scheduler.paths],
+        }
+    finally:
+        if as_json:
+            logging.disable(previous_logging_disable)
+
+    if as_json:
+        click.echo(json_mod.dumps(payload))
+        return
+
+    last_attempt = payload["last_attempt"]
+    last_run = payload["last_completed_auto_run"]
+    cooldown_status = payload["cooldown"]
+    scheduler_installation = (
+        "installation unknown"
+        if scheduler.installed is None
+        else "installed"
+        if scheduler.installed
+        else "not installed"
+    )
+    print_info(f"Scheduler: {scheduler.platform}, {scheduler_installation}, {scheduler_state}")
+    print_info(
+        "Last attempt: "
+        + (f"{last_attempt['outcome']} — {last_attempt['reason']}" if last_attempt else "none")
+    )
+    print_info(
+        "Last completed auto run: "
+        + (f"{last_run['run_id']} ({last_run['category'] or '-'})" if last_run else "none")
+    )
+    print_info(
+        f"Cooldown: {'active' if cooldown_status['active'] else 'ready'} "
+        f"({cooldown_status['hours']}h)"
+    )
+    categories = payload["recent_categories"]
+    print_info(f"Recent categories: {', '.join(categories) if categories else 'none'}")
+    rejections = payload["rejection_reasons"]
+    print_info(f"Current rejection rules: {', '.join(rejections) if rejections else 'none'}")
+    suggestion = payload["suggestion"]
+    if suggestion["outcome"] == "preflight_failed":
+        print_info(f"Suggestion snapshot unavailable: {suggestion['error']}")
 
 
 @auto.command()

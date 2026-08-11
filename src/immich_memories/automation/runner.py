@@ -6,7 +6,7 @@ import logging
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -24,6 +24,7 @@ from immich_memories.automation.variety import VarietyDecision, apply_variety_ru
 from immich_memories.config_loader import Config
 from immich_memories.config_models import AutomationConfig
 from immich_memories.security import sanitize_error_message
+from immich_memories.tracking.models import RunMetadata
 from immich_memories.tracking.run_database import RunDatabase
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,76 @@ class SuggestStatus:
 
     outcome: SuggestOutcome = SuggestOutcome.READY
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class CooldownStatus:
+    """Current cooldown derived from the latest completed automation run."""
+
+    hours: int
+    active: bool
+    until: datetime | None
+
+
+@dataclass(frozen=True)
+class AutomationStatus:
+    """Read-only durable automation facts used by CLI and UI status surfaces."""
+
+    last_attempt: AutomationAttempt | None
+    last_completed_auto_run: RunMetadata | None
+    cooldown: CooldownStatus
+    recent_categories: tuple[str, ...]
+    rejection_reasons: tuple[str, ...]
+    suggestion: SuggestStatus
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the stable machine-facing automation status contract."""
+        attempt = self.last_attempt
+        run = self.last_completed_auto_run
+        return {
+            "last_attempt": (
+                {
+                    "id": attempt.id,
+                    "started_at": attempt.started_at.isoformat(),
+                    "finished_at": (
+                        attempt.finished_at.isoformat() if attempt.finished_at else None
+                    ),
+                    "outcome": attempt.outcome.value,
+                    "reason": attempt.reason,
+                    "candidate_category": attempt.candidate_category,
+                    "memory_type": attempt.memory_type,
+                    "memory_key": attempt.memory_key,
+                    "run_id": attempt.run_id,
+                    "error": attempt.error,
+                }
+                if attempt
+                else None
+            ),
+            "last_completed_auto_run": (
+                {
+                    "run_id": run.run_id,
+                    "created_at": run.created_at.isoformat(),
+                    "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+                    "memory_type": run.memory_type,
+                    "memory_key": run.memory_key,
+                    "category": run.memory_category,
+                    "output_path": run.output_path,
+                }
+                if run
+                else None
+            ),
+            "cooldown": {
+                "hours": self.cooldown.hours,
+                "active": self.cooldown.active,
+                "until": self.cooldown.until.isoformat() if self.cooldown.until else None,
+            },
+            "recent_categories": list(self.recent_categories),
+            "rejection_reasons": list(self.rejection_reasons),
+            "suggestion": {
+                "outcome": self.suggestion.outcome.value,
+                "error": self.suggestion.error,
+            },
+        }
 
 
 def _time_buckets_to_month_counts(
@@ -86,25 +157,44 @@ def _build_generate_command(candidate: MemoryCandidate, upload: bool) -> list[st
     return GenerationRequest.from_candidate(candidate, upload).to_argv()
 
 
+def _cooldown_status(
+    last_run: RunMetadata | None,
+    cooldown_hours: int,
+    now: datetime | None = None,
+) -> CooldownStatus:
+    """Derive cooldown from completion time, falling back for legacy rows."""
+    if last_run is None:
+        return CooldownStatus(hours=cooldown_hours, active=False, until=None)
+    completed_at = last_run.completed_at or last_run.created_at
+    if completed_at.tzinfo is None:
+        completed_at = completed_at.replace(tzinfo=UTC)
+    current = now or datetime.now(tz=UTC)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=UTC)
+    until = completed_at + timedelta(hours=cooldown_hours)
+    return CooldownStatus(hours=cooldown_hours, active=current < until, until=until)
+
+
 def _is_within_cooldown(db: RunDatabase, cooldown_hours: int) -> bool:
     """Check if the most recent completed auto run is within the cooldown window."""
-    runs = db.list_runs(limit=1, status="completed", source="auto")
-    if not runs:
-        return False
-    last_completed = runs[0].created_at
-    now = datetime.now(tz=UTC)
-    if last_completed.tzinfo is None:
-        # DB stores naive datetimes — treat as UTC
-        last_completed = last_completed.replace(tzinfo=UTC)
-    hours_since = (now - last_completed).total_seconds() / 3600
-    if hours_since < cooldown_hours:
+    runs = db.list_runs(
+        limit=1,
+        status="completed",
+        source="auto",
+        order_by_completion=True,
+    )
+    status = _cooldown_status(runs[0] if runs else None, cooldown_hours)
+    if status.active:
+        assert status.until is not None
+        hours_since = cooldown_hours - (
+            (status.until - datetime.now(tz=UTC)).total_seconds() / 3600
+        )
         logger.info(
             "Cooldown active: %.1fh since last run (need %dh)",
             hours_since,
             cooldown_hours,
         )
-        return True
-    return False
+    return status.active
 
 
 def _coerce_process_output(value: Any) -> str:
@@ -309,6 +399,39 @@ class AutoRunner:
         ]
         values.extend(self.config.notifications.urls)
         return tuple(sorted({value for value in values if value}, key=len, reverse=True))
+
+    def status(
+        self,
+        cooldown_hours: int | None = None,
+        *,
+        refresh_suggestion: bool = False,
+    ) -> AutomationStatus:
+        """Return durable automation state without candidate or scheduler side effects."""
+        if refresh_suggestion:
+            self.suggest(limit=1)
+        effective_cooldown = cooldown_hours or self.config.automation.cooldown_hours
+        recent_runs = self.db.list_runs(
+            limit=6,
+            status="completed",
+            source="auto",
+            order_by_completion=True,
+        )
+        rejection_reasons = tuple(
+            dict.fromkeys(item.rule for item in self.last_variety_decision.rejected)
+        )
+        return AutomationStatus(
+            last_attempt=self.state.get_last_attempt(),
+            last_completed_auto_run=recent_runs[0] if recent_runs else None,
+            cooldown=_cooldown_status(
+                recent_runs[0] if recent_runs else None,
+                effective_cooldown,
+            ),
+            recent_categories=tuple(
+                run.memory_category for run in recent_runs if run.memory_category is not None
+            ),
+            rejection_reasons=rejection_reasons,
+            suggestion=self.last_suggest_status,
+        )
 
     def _process_details(self, stdout: Any, stderr: Any) -> str:
         """Format independently bounded stdout and stderr tails for persistence."""
