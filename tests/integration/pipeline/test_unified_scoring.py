@@ -14,6 +14,8 @@ import pytest
 
 from tests.integration.immich_fixtures import requires_immich
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture(scope="module")
 def analyzed_clip(immich_short_clips):

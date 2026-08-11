@@ -143,6 +143,8 @@ class TestTripGenerationPhotoFetch:
             mock_config.trips.homebase_longitude = 4.35
             mock_config.trips.min_distance_km = 50
             mock_config.defaults.transition = "smart"
+            mock_config.output.codec = "h264"
+            mock_config.output.format = "mp4"
 
             handle_trip_generation(
                 client=mock_client,
@@ -223,9 +225,12 @@ class TestTripGenerationPhotoFetch:
         ):
             from immich_memories.cli._trip_generation import handle_trip_generation
 
+            mock_config = MagicMock()
+            mock_config.output.codec = "h264"
+            mock_config.output.format = "mp4"
             handle_trip_generation(
                 client=mock_client,
-                config=MagicMock(),
+                config=mock_config,
                 progress=MagicMock(),
                 year=2021,
                 month=7,
