@@ -18,6 +18,7 @@ Most users only need these options:
 immich:
   url: "https://photos.example.com"
   api_key: "${IMMICH_API_KEY}"
+  api_version: auto  # auto | v2 | v3
 
 # ── Output ────────────────────────────────────────────────
 output:
@@ -51,6 +52,26 @@ scoring_priority:
 ```
 
 That's it. Everything else has sane defaults.
+
+## Immich API compatibility
+
+Immich Memories supports **Immich v2 and v3**. `auto` is the default runtime policy: the app
+detects the server major and selects the matching API contract. You do not choose a version for
+each run.
+
+Explicit `v2` and `v3` values are manual troubleshooting escape hatches for proxies or unusual
+deployments that break version detection. An override forces that contract; it is not a normal
+upgrade step.
+
+The compatibility layer converts v2 duration strings and v3 millisecond durations to seconds,
+uses version-specific upload fields, and sends timezone-aware search dates accepted by v3. Check
+the configured connection and resolved API contract without generating or uploading anything:
+
+```bash
+immich-memories config test
+```
+
+This check is read-only.
 
 ## Clip pacing
 

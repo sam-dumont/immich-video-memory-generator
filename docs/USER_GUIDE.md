@@ -42,6 +42,29 @@ This opens a web interface at `http://localhost:8080`.
 - **Save Config**: Saves settings for future sessions
 - **Preflight Check**: Tests all dependencies (FFmpeg, etc.)
 
+Immich Memories supports **Immich v2 and v3**. Leave API selection on its default:
+
+```yaml
+immich:
+  api_version: auto  # auto | v2 | v3
+```
+
+`auto` detects the server major version at runtime and selects the right API contract. You do not
+need to choose a version for each run. Explicit `v2` and `v3` are manual troubleshooting
+overrides—escape hatches for unusual proxies or deployments where version detection is wrong;
+each one forces that contract.
+
+The app normalizes v2 duration strings and v3 millisecond durations to seconds, selects the
+correct upload fields before sending a generated video, and sends timezone-aware asset search
+dates accepted by both majors.
+
+To test detection and authentication without generating or uploading anything, run the read-only
+check:
+
+```bash
+immich-memories config test
+```
+
 ### Time Period Selection
 
 Choose how to select which videos to include:
@@ -232,6 +255,8 @@ From here you can:
 - Verify your Immich URL is correct (include `https://`)
 - Check your API key is valid
 - Ensure Immich server is running
+- Run the read-only `immich-memories config test` check. It reports the resolved `v2` or `v3`
+  API contract on success.
 
 ### No Videos Found
 

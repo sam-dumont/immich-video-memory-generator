@@ -21,6 +21,27 @@ advanced:
 Or kept at the top level (both formats work).
 :::
 
+## Immich connection
+
+Immich Memories supports **Immich v2 and v3**. Automatic runtime detection is the default:
+
+```yaml
+immich:
+  url: "https://photos.example.com"
+  api_key: "${IMMICH_API_KEY}"
+  api_version: auto  # auto | v2 | v3
+```
+
+Keep `api_version` on `auto` for normal use. The client detects and caches the server major for
+each runtime client; you do not choose it for each generation. Explicit `v2` or `v3` is a manual
+troubleshooting escape hatch for a proxy or unusual deployment that prevents correct detection.
+An override forces that API contract.
+
+The compatibility boundary normalizes v2 duration strings and v3 millisecond durations to
+seconds, chooses the matching upload fields before any file upload, and emits timezone-aware
+search dates accepted by v3. Run the read-only `immich-memories config test` command to check
+credentials and see the resolved API contract without generating or uploading a memory.
+
 ## Video analysis
 
 ```yaml

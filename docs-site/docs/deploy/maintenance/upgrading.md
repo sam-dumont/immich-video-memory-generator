@@ -33,6 +33,38 @@ Check the [CHANGELOG](https://github.com/sam-dumont/immich-video-memory-generato
 - **New defaults**: behavior changes that might affect your output
 - **New dependencies**: system-level requirements (FFmpeg version, etc.)
 
+## Upgrading Immich from v2 to v3
+
+Immich Memories supports Immich v2 and v3. Keep the default automatic runtime policy during the
+server upgrade:
+
+```yaml
+immich:
+  api_version: auto  # auto | v2 | v3
+```
+
+You do not need to switch this setting for each run. On the next client start, `auto` detects the
+server major and uses its API contract. Explicit `v2` and `v3` are manual troubleshooting escape
+hatches for unusual proxies or deployments that prevent correct detection; they force the selected
+contract.
+
+The client handles the three v3 wire changes that affect generation:
+
+- **Duration:** v2 duration strings and v3 integer milliseconds are normalized to seconds.
+- **Upload:** v2 keeps the device identity fields; v3 sends `filename` and omits the removed
+  `deviceAssetId` and `deviceId` fields. The schema is selected before bytes are uploaded.
+- **Search dates:** date bounds include a UTC offset, which v3 requires.
+
+After upgrading Immich, run:
+
+```bash
+immich-memories config test
+```
+
+This is a read-only authentication and compatibility check. It does not search assets, generate
+a video, create an album, or upload anything. A successful result includes the resolved `v2` or
+`v3` contract.
+
 ## Config compatibility
 
 There is no automatic config migration. If a release renames or removes a config field, you'll see a validation error on startup. The fix is always documented in the release notes: update your `config.yaml` to use the new field name.

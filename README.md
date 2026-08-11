@@ -29,7 +29,7 @@ graph LR
     end
 
     subgraph "Synology NAS"
-        Immich["Immich v2.5.6<br/>Photos + Videos"]
+        Immich["Immich v2 or v3<br/>Photos + Videos"]
     end
 
     IM -->|"API reads<br/>(download clips)"| Immich
@@ -74,7 +74,27 @@ Default Docker limits: 4GB RAM, 4 CPUs. This is **not a NAS app** — video anal
 
 ### Supported Immich Versions
 
-Developed and tested against **Immich v2.5.6**. Should work with v1.100+ (uses the `/api/` endpoint prefix), but no guarantees for older versions.
+Immich Memories supports **Immich v2 and v3**. Automatic runtime detection is the default:
+
+```yaml
+immich:
+  api_version: auto  # auto | v2 | v3
+```
+
+Leave this on `auto`. The app detects the server major version and uses the matching API contract;
+you do not choose a version for each run. The explicit `v2` and `v3` values are manual
+troubleshooting overrides—escape hatches for proxies or unusual deployments that hide or rewrite
+the version endpoint. They force that contract, so don't use them as upgrade flags.
+
+The compatibility layer handles the actual v2-to-v3 breaks: v2 duration strings and v3
+millisecond durations both become seconds internally, uploads use the fields accepted by the
+detected major, and asset search dates include the UTC offset required by v3.
+
+Check the detected API contract and your credentials without generating or uploading anything:
+
+```bash
+immich-memories config test
+```
 
 ### Optional: LLM for smart clip analysis
 
@@ -110,6 +130,7 @@ cat > ~/.immich-memories/config.yaml << EOF
 immich:
   url: "https://photos.example.com"
   api_key: "your-api-key-here"
+  api_version: auto  # auto | v2 | v3
 EOF
 
 # 2. Launch the UI

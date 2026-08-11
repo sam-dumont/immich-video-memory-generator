@@ -31,10 +31,11 @@ approval. Its plist remains on disk and nothing was deleted.
   latest completed month, hard category cadence/rotation rules are enforced without relaxation,
   and status/dry-run output explains rejections. The full automation controller gate passed
   318 tests with 16 live tests deselected.
-- **P0.3 Immich v2/v3: in progress.** Version policy/detection, duration normalization, and
-  version-selected upload schemas are implemented through `85e5475`. Structured v3 errors,
-  all-client policy propagation, offset-aware search dates, documentation, and live read-only
-  verification remain before this blocker can close.
+- **P0.3 Immich v2/v3: fixed.** Code and documentation now explicitly support both majors with
+  automatic runtime detection by default. Duration normalization, version-selected uploads,
+  offset-aware search dates, structured errors, all-client policy propagation, preflight
+  resolution, and the read-only config check are closed through `c6cea3b`. Key final commits:
+  `33745c6`, `5e46078`, `822a870`, `cecdf7a`, and `c6cea3b`.
 - **P0.4–P0.6: still open.** Output codec enforcement, unified version reporting, and required
   browser E2E remain launch blockers and will be handled after the Immich compatibility slice.
 
@@ -177,40 +178,41 @@ Required result:
 - Person rotation accounts for both category and person identity.
 - Dry-run and status output explain rejected candidates and applied variety rules.
 
-### P0.3 — Immich v3 breaks durations and uploads
+### P0.3 — Immich v2/v3 compatibility — closed
 
-The app must support Immich v2 and v3 explicitly in the documentation, with automatic
+The app supports Immich v2 and v3 explicitly in the code and documentation, with automatic
 runtime selection by default.
 
-Confirmed v3 breaks:
+Confirmed v3 breaks addressed by the compatibility layer:
 
-- `AssetResponseDto.duration` is now a nullable integer in milliseconds. The local model
-  declares `str | None` and splits on `:`. Every clip-length calculation depends on the
-  normalized value.
-- V3 `POST /assets` no longer accepts `deviceAssetId` or `deviceId`. The current multipart
-  upload sends both.
+- `AssetResponseDto.duration` is now a nullable integer in milliseconds. V2 strings and v3
+  integers are normalized to seconds at the API boundary.
+- V3 `POST /assets` no longer accepts `deviceAssetId` or `deviceId`. Upload fields are now
+  selected from the resolved server major before bytes are sent.
 - V3 validation errors are structured and correlation ID moved to the
   `X-Correlation-ID` response header.
-- The local `ServerInfo` model expects `version`/`versionUrl`, but `/server/version` returns
-  major, minor, and patch components. Automatic detection cannot rely on the current model.
+- `/server/version` returns major, minor, and patch components. The validated server model now
+  uses those fields and caches the resolved major per client.
 
-Required result:
+Closed result:
 
 ```yaml
 immich:
-  api_version: auto  # auto, v2, or v3
+  api_version: auto  # auto | v2 | v3
 ```
 
 - `auto` detects and caches the server major version.
-- Explicit `v2`/`v3` overrides exist for unusual deployments and are validated when the
-  endpoint is reachable.
+- Explicit `v2`/`v3` overrides exist as manual troubleshooting escape hatches for unusual
+  deployments and bypass detection by forcing the selected contract.
 - Unsupported majors fail preflight.
 - API models accept v2 duration strings and v3 millisecond integers, normalizing both to
   seconds at the boundary.
 - Upload payloads are selected before the request; there is no risky upload-and-retry
   version detection.
+- Search date bounds carry a UTC offset accepted by v2 and required by v3.
 - V3 structured errors and correlation IDs are preserved in sanitized exceptions/logs.
-- All API endpoints used by the application are checked against both OpenAPI contracts.
+- `immich-memories config test` provides a read-only authentication and compatibility check and
+  reports the resolved API contract.
 
 Official references:
 
