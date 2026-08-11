@@ -9,47 +9,48 @@ Scans your Immich library, detects what's worth turning into a memory video, and
 
 ## How selection works
 
-The system runs 8 detectors against your library, each producing candidates with a score between 0 and 1. The top candidate gets generated.
+The system runs 8 detectors against your library, applies hard rotation rules, then scores the candidates that remain. The top eligible candidate gets generated.
 
-Here's what a real library (50K+ assets, 20 years, 500 tagged people) produces:
+A suggestion list can look like this:
 
 ```
  #  Type                 Period                  Score  Reason
- 1  monthly_highlights   Feb 2026                0.776  683 assets, most recent month
- 2  person_spotlight     2025 (Lucas)            0.700  Birthday (2 years old), 16464 assets
+ 1  monthly_highlights   Jul 2026                0.776  683 assets, latest completed month
+ 2  person_spotlight     2025 (Lucas)            0.700  Completed birthday year, 16464 assets
  3  year_in_review       2025                    0.672  13151 assets, never generated
- 4  monthly_highlights   Jan 2026                0.642  684 assets, never generated
- 5  monthly_highlights   Dec 2025                0.523  1384 assets, never generated
- 6  multi_person         2025 (Lucas & Alex)      0.514  ~2564 shared moments
- 7  multi_person         2025 (Alice & Lucas)    0.514  ~2007 shared moments
- 8  trip                 Jul 26 - Aug 10 2025    0.449  16-day trip to Charente-Maritime, 960 assets
- 9  year_in_review       2024                    0.384  18562 assets, never generated
-10  on_this_day          Mar 22                  0.349  Memories across 20 years (2005-2025)
-11  person_spotlight     2025 (Alex)              0.291  2nd most featured, 8549 assets
-12  person_spotlight     2025 (Alice)            0.228  3rd most featured, 6690 assets
-13  trip                 May 1-4 2025            0.123  4-day trip to Pas-de-Calais, 339 assets
-14  trip                 May 29 - Jun 1 2025     0.121  4-day trip to Ostend, Belgium, 258 assets
+ 4  multi_person         2025 (Lucas & Alex)     0.514  ~2564 shared moments
+ 5  trip                 Jul 26 - Aug 10 2025    0.449  16-day trip, 960 assets
+ 6  on_this_day          Aug 11                  0.349  Memories across 20 years
 ```
 
-Notice the variety: 3 monthly max, 3 person spotlights, 3 trips, 2 multi-person pairs, 1 on-this-day. The per-type caps prevent any single detector from flooding the list.
+Monthly review is deliberately boring in one specific way: it proposes only the latest completed month. It does not dump six old reviews into the queue, and it does not fall back to an older month when the latest one is already generated or blocked by rotation.
+
+Before scoring, automation rejects candidates that would make the output repetitive:
+
+- The previous category cannot repeat.
+- A category cannot appear more than twice in the last six completed automatic runs.
+- A monthly review cannot run twice in the same calendar month.
+- A person cannot reappear if they were in either of the last two person-bearing runs.
+
+These are hard rules. If every candidate is rejected, the run is skipped. Automation does not quietly relax the rules just to produce another video.
 
 ### What happens over a week of daily runs
 
 Say you set up `auto install` and it runs every morning at 9am:
 
-**Monday**: Feb 2026 monthly highlights gets generated (score 0.776, top candidate).
+**Monday**: July 2026 monthly highlights gets generated (score 0.776, top candidate).
 
-**Tuesday**: All `monthly_highlights` candidates get a 0.3x penalty for 7 days. Lucas's birthday spotlight (0.700) is now #1. That gets generated.
+**Tuesday**: Another monthly review is rejected because the category cannot repeat. Lucas's completed birthday-year spotlight is now #1.
 
-**Wednesday**: `person_spotlight` also gets a 7-day penalty. Year-in-review 2025 (0.672) takes over.
+**Wednesday**: A trip wins. The person rotation rule keeps Lucas from immediately appearing again in a spotlight or pair.
 
-**Thursday**: `year_in_review` penalized. The Charente-Maritime trip rises to #1. Multi-person pairs are close behind.
+**Thursday**: Year-in-review 2025 takes over.
 
-**Friday**: Trip penalized. Lucas & Alex together (multi_person) gets generated.
+**Friday**: A multi-person memory wins, provided neither person was in the last two person-bearing runs.
 
-**Next Monday** (day 8): The 7-day penalty on monthlies lifts. But Feb 2026 was already generated (deduped), so Jan 2026 takes the monthly slot.
+For the rest of August, another monthly review remains blocked because one already completed that month. In September, the detector can propose August: exactly one current monthly candidate, not a backlog of increasingly stale reviews.
 
-After a few weeks, the system has generated: 3 monthlies, a birthday video, a year-in-review, a 16-day trip, a couple together video, and a few person spotlights. Each run automatically picks whatever is most valuable at that moment.
+The exact order depends on your library. The guarantees are simpler: one generation subprocess at most, no category back-to-back, and no pile of monthly-review junk.
 
 ### Birthday timing
 
@@ -61,7 +62,7 @@ Birthdays get special treatment. Two rules make sure the timing is right:
 
 ### Trip detection
 
-Trips are detected from GPS data: any cluster of photos 50+ km from your homebase, spanning 2+ days, with no gap larger than 2 days. The detector only fires 7+ days after returning home (same sync buffer logic as birthdays).
+Trips are detected from GPS data in the trailing year, including completed current-year trips and trips that cross New Year. A trip is a cluster of photos 50+ km from your homebase, spanning 2+ days, with no gap larger than 2 days. The detector only fires 7+ days after returning home (same sync buffer logic as birthdays).
 
 You need homebase coordinates in your config:
 
@@ -95,7 +96,7 @@ Connects to Immich, fetches library stats + people + GPS assets, runs all detect
 
 | Detector | What it finds | Score range |
 |----------|---------------|-------------|
-| **MonthlyDetector** | Last 6 un-generated months | 0.5-0.8 |
+| **MonthlyDetector** | Latest completed month, if not already generated | 0.5-0.8 |
 | **YearlyDetector** | Past years with content (only after Jan 15) | 0.5-0.7 |
 | **PersonSpotlightDetector** | Top 5 people by asset count | 0.1-0.6 |
 | **BirthdayDetector** | People whose birthday was 2-60 days ago | 0.75 |
@@ -108,6 +109,7 @@ Connects to Immich, fetches library stats + people + GPS assets, runs all detect
 
 After detectors assign raw scores, the scorer applies:
 
+- **Hard rotation first**: no consecutive category, max 2 of the last 6, monthly cadence, and recent-person rotation
 - **Never-generated boost**: 1.2x for memories that don't exist yet
 - **Recency**: recent content scores higher (linear decay over 365 days, floor 0.5x)
 - **Content richness**: more assets = higher score (log scale)
@@ -129,7 +131,30 @@ Picks the #1 candidate from `suggest` and generates it. One memory per invocatio
 | `--force` | flag | `false` | Skip cooldown check |
 | `--cooldown` | int | `24` | Min hours since last auto-run |
 | `--upload` | flag | `false` | Upload result to Immich |
-| `--quiet` | flag | `false` | Machine-friendly output (just the path) |
+| `--quiet` | flag | `false` | Emit exactly one JSON result object on stdout |
+
+`skipped` and `dry_run` exit 0. `failed` exits nonzero. Quiet output is a stable JSON object, not a bare path:
+
+```json
+{
+  "outcome": "dry_run",
+  "reason": "dry run",
+  "candidate_key": "trip:2026-07-02:2026-07-09:",
+  "category": "trip",
+  "run_id": null,
+  "output_path": null,
+  "recent_categories": ["monthly_review", "birthday"],
+  "rejections": [
+    {
+      "category": "person_spotlight",
+      "memory_key": "person_spotlight:2025-01-01:2025-12-31:lucas",
+      "rule": "person_in_last_two_person_runs"
+    }
+  ]
+}
+```
+
+When every candidate is rejected, `outcome` is `skipped`, `category` is `null`, and `rejections` explains why. Human `--dry-run` output prints the same rotation and rejection details.
 
 ## auto install
 
@@ -155,6 +180,23 @@ Sets up your OS scheduler. Detects the platform and generates the right config f
 
 On macOS, launchd wakes the machine from sleep, runs the command, and goes back to sleep.
 
+### Installing with a custom config
+
+`--config` is a root option, so it goes before `auto`:
+
+```bash
+# Inspect the scheduler definition first
+immich-memories --config "/srv/Immich Memories/family.yaml" auto install --show
+
+# Install it
+immich-memories --config "/srv/Immich Memories/family.yaml" auto install --hour 9
+
+# Run the same configuration manually
+immich-memories --config "/srv/Immich Memories/family.yaml" auto run --dry-run
+```
+
+The generated launchd, systemd, or crontab command retains the resolved config path. Spaces and platform-specific special characters are encoded by the installer. Without `--config`, the normal default config behavior is unchanged.
+
 ## auto history
 
 ```bash
@@ -162,6 +204,16 @@ immich-memories auto history [--limit N]
 ```
 
 Shows recent auto-generated memories: date, type, date range, output file.
+
+## auto status
+
+```bash
+immich-memories auto status [--json]
+```
+
+Shows the external scheduler state, last automation attempt, last completed automatic run, cooldown, the last six categories, current variety rejection rules, and the live suggestion status. It is diagnostic: it does not generate a video or install, load, unload, or rewrite a scheduler.
+
+Use `--json` for the full machine-readable object. If Immich discovery is temporarily unavailable, durable attempt and run history still appears and `suggestion.outcome` explains the discovery failure.
 
 ## auto test-notification
 
