@@ -235,14 +235,6 @@ def _report(params: GenerationParams, phase: str, progress: float, msg: str) -> 
         params.progress_callback(phase, progress, msg)
 
 
-def _report_completed_best_effort(params: GenerationParams) -> None:
-    """Keep a presentation callback from redefining a committed artifact."""
-    try:
-        _report(params, "done", 1.0, "Complete!")
-    except Exception:  # WHY: artifact and delivery state are already authoritative
-        logger.warning("Final progress callback failed after artifact completion")
-
-
 class _PipelineProgress:
     """Maps per-phase 0.0-1.0 progress into the overall pipeline range.
 
@@ -618,7 +610,7 @@ def _generate_memory_inner(
         _phase_times["total"] = _time.monotonic() - _phase_start
         _log_phase_timing(_phase_times, len(assembly_clips))
 
-        _report_completed_best_effort(params)
+        _report(params, "done", 1.0, "Complete!")
 
         return result_path
 

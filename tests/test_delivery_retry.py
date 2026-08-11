@@ -1223,7 +1223,7 @@ def test_final_progress_callback_cannot_downgrade_or_leak_delivered_artifact(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A presentation callback runs after delivery and cannot redefine its outcome."""
-    from immich_memories.generate import generate_memory
+    from immich_memories.generate import GenerationError, generate_memory
 
     configured_literal = "final-progress-secret-426"
     params, events = _prepare_generation(
@@ -1234,6 +1234,7 @@ def test_final_progress_callback_cannot_downgrade_or_leak_delivered_artifact(
         upload_album="Finished Album",
         upload_result={"asset_id": "asset-finished"},
         configured_secret=configured_literal,
+        no_music=False,
     )
 
     def fail_final_progress(phase: str, _progress: float, _message: str) -> None:
@@ -1243,16 +1244,20 @@ def test_final_progress_callback_cannot_downgrade_or_leak_delivered_artifact(
     params.progress_callback = fail_final_progress
     caplog.set_level(logging.WARNING, logger="immich_memories.generate")
 
-    result = generate_memory(params)  # type: ignore[arg-type]
+    with pytest.raises(GenerationError) as caught:
+        generate_memory(params)  # type: ignore[arg-type]
     saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
 
-    assert result.read_bytes() == b"validated-artifact"
     assert events == ["music", "final-probe", "upload"]
     assert saved is not None
     assert saved.status == "completed"
     assert saved.delivery_status is DeliveryStatus.DELIVERED
     assert saved.delivery_attempts == 1
     assert saved.immich_asset_id == "asset-finished"
+    assert Path(saved.output_path or "").read_bytes() == b"validated-artifact"
+    assert configured_literal not in str(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
     assert configured_literal not in caplog.text
 
 
@@ -1273,6 +1278,7 @@ def test_post_completion_exception_guard_preserves_delivered_database_truth(
         client=object(),
         upload_result={"asset_id": "asset-committed"},
         configured_secret=configured_literal,
+        no_music=False,
     )
 
     def fail_timing(*_args: object) -> None:
