@@ -4,17 +4,31 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 
 from immich_memories.automation.candidate_scorer import score_and_rank
 from immich_memories.automation.candidates import MemoryCandidate
+from immich_memories.automation.models import (
+    AutomationAttempt,
+    AutoOutcome,
+    AutoRunResult,
+    ProcessResult,
+)
+from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.automation.variety import VarietyDecision, apply_variety_rules
 from immich_memories.config_loader import Config
 from immich_memories.config_models import AutomationConfig
+from immich_memories.security import sanitize_error_message
 from immich_memories.tracking.run_database import RunDatabase
 
 logger = logging.getLogger(__name__)
+
+_GENERATION_TIMEOUT_SECONDS = 7200
+_GENERATION_TIMEOUT_REASON = "generation timed out after 2 hours"
+_OUTPUT_TAIL_LENGTH = 2000
 
 
 def _time_buckets_to_month_counts(
@@ -76,25 +90,37 @@ def _is_within_cooldown(db: RunDatabase, cooldown_hours: int) -> bool:
     return False
 
 
-def _execute_generate(cmd: list[str]) -> bool:
-    """Run the generate subprocess, return True on success."""
-    try:
-        result = subprocess.run(  # noqa: S603
-            cmd, capture_output=True, text=True, timeout=7200
-        )
-    except subprocess.TimeoutExpired:
-        logger.error("Generation timed out after 2 hours")
-        return False
+def _coerce_process_output(value: Any) -> str:
+    """Normalize subprocess output from normal and timeout results."""
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return str(value)
 
-    if result.returncode != 0:
-        logger.error(
-            "Generation failed (exit %d): %s",
-            result.returncode,
-            result.stderr[-500:] if result.stderr else "no stderr",
-        )
-        return False
 
-    return True
+def _safe_tail(value: Any, secrets: tuple[str, ...] = ()) -> str:
+    """Sanitize output before retaining only its bounded tail."""
+    safe = sanitize_error_message(_coerce_process_output(value))
+    for secret in secrets:
+        if secret:
+            safe = safe.replace(secret, "***")
+    return safe[-_OUTPUT_TAIL_LENGTH:]
+
+
+def _execute_generate(cmd: list[str]) -> ProcessResult:
+    """Run one generation subprocess and capture bounded, sanitized output."""
+    result = subprocess.run(  # noqa: S603
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=_GENERATION_TIMEOUT_SECONDS,
+    )
+    return ProcessResult(
+        returncode=result.returncode,
+        stdout=_safe_tail(result.stdout),
+        stderr=_safe_tail(result.stderr),
+    )
 
 
 def _send_notification(
@@ -245,10 +271,81 @@ def _run_all_detectors(
 class AutoRunner:
     """Orchestrates candidate detection and one-shot generation."""
 
-    def __init__(self, config: Config):
+    def __init__(
+        self,
+        config: Config,
+        execute: Callable[[list[str]], ProcessResult] | None = None,
+    ):
         self.config = config
         self.db = RunDatabase(db_path=config.cache.database_path)
+        self.state = AutomationStateStore(config.cache.database_path)
+        self.execute = execute or _execute_generate
         self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
+
+    def _secrets(self) -> tuple[str, ...]:
+        """Return configured credential values that must never enter attempt history."""
+        values = [
+            self.config.immich.api_key,
+            self.config.llm.api_key,
+            self.config.musicgen.api_key,
+        ]
+        values.extend(self.config.notifications.urls)
+        return tuple(value for value in values if value)
+
+    def _process_details(self, stdout: Any, stderr: Any) -> str:
+        """Format independently bounded stdout and stderr tails for persistence."""
+        secrets = self._secrets()
+        stdout_tail = _safe_tail(stdout, secrets)
+        stderr_tail = _safe_tail(stderr, secrets)
+        details: list[str] = []
+        if stdout_tail:
+            details.append(f"stdout:\n{stdout_tail}")
+        if stderr_tail:
+            details.append(f"stderr:\n{stderr_tail}")
+        return "\n".join(details) or "no subprocess output"
+
+    def _finish(
+        self,
+        attempt: AutomationAttempt,
+        outcome: AutoOutcome,
+        reason: str,
+        *,
+        candidate: MemoryCandidate | None = None,
+        run_id: str | None = None,
+        output_path: Path | None = None,
+        error: str | None = None,
+    ) -> AutoRunResult:
+        """Persist one terminal transition and return the same public result."""
+        candidate_category = None
+        if candidate is not None:
+            candidate_category = getattr(candidate.category, "value", str(candidate.category))
+        self.state.finish_attempt(
+            attempt.id,
+            outcome,
+            reason,
+            candidate_category=candidate_category,
+            memory_type=candidate.memory_type if candidate else None,
+            memory_key=candidate.memory_key if candidate else None,
+            run_id=run_id,
+            error=error,
+        )
+        return AutoRunResult(
+            outcome=outcome,
+            reason=reason,
+            candidate=candidate,
+            run_id=run_id,
+            output_path=output_path,
+            error=error,
+        )
+
+    def _notify_generation_failure(self, candidate: MemoryCandidate, error: str) -> None:
+        """Keep the parent responsible only when the child did not complete."""
+        _send_notification(
+            config=self.config,
+            memory_type=candidate.memory_type,
+            success=False,
+            error=error,
+        )
 
     def suggest(self, limit: int = 10) -> list[MemoryCandidate]:
         """Detect, score, and rank memory candidates from the Immich library."""
@@ -333,53 +430,132 @@ class AutoRunner:
         cooldown_hours: int | None = None,
         upload: bool = False,
         dry_run: bool = False,
-    ) -> Path | None:
-        """Generate the top-scoring candidate memory.
+    ) -> AutoRunResult:
+        """Run one durable automation decision and return its exact outcome."""
+        attempt = self.state.start_attempt(reason="daily wake")
+        candidate: MemoryCandidate | None = None
 
-        Returns the output path on success, None if skipped or no candidates.
-        """
-        effective_cooldown = (
-            cooldown_hours if cooldown_hours is not None else self.config.automation.cooldown_hours
-        )
-
-        if not force and _is_within_cooldown(self.db, effective_cooldown):
-            return None
-
-        candidates = self.suggest(limit=1)
-        if not candidates:
-            logger.info("No candidates found")
-            return None
-
-        candidate = candidates[0]
-        effective_upload = upload or self.config.automation.upload_to_immich
-        cmd = _build_generate_command(candidate, effective_upload)
-
-        if dry_run:
-            logger.info("Dry run — would execute: %s", " ".join(cmd))
-            return None
-
-        logger.info("Generating: %s (score=%.3f)", candidate.reason, candidate.score)
-        logger.info("Running: %s", " ".join(cmd))
-
-        success = _execute_generate(cmd)
-
-        # WHY: notification is sent by the CLI subprocess (_pipeline_runner.py)
-        # which includes thumbnail + output path. Only send from here on failure
-        # since the subprocess may have crashed before reaching its notification.
-        if not success:
-            _send_notification(
-                config=self.config,
-                memory_type=candidate.memory_type,
-                success=False,
-                error="Generation subprocess failed",
+        try:
+            effective_cooldown = (
+                cooldown_hours
+                if cooldown_hours is not None
+                else self.config.automation.cooldown_hours
             )
+            if not force and _is_within_cooldown(self.db, effective_cooldown):
+                return self._finish(attempt, AutoOutcome.SKIPPED, "cooldown active")
 
-        if not success:
-            return None
+            candidates = self.suggest(limit=1)
+            if not candidates:
+                logger.info("No eligible candidates found")
+                return self._finish(attempt, AutoOutcome.SKIPPED, "no eligible candidates")
 
-        logger.info("Generation completed successfully")
-        recent = self.db.list_runs(limit=1, status="completed")
-        if recent and recent[0].output_path:
-            return Path(recent[0].output_path)
+            candidate = candidates[0]
+            effective_upload = upload or self.config.automation.upload_to_immich
+            cmd = _build_generate_command(candidate, effective_upload)
 
-        return None
+            if dry_run:
+                logger.info("Dry run — would execute: %s", " ".join(cmd))
+                return self._finish(
+                    attempt,
+                    AutoOutcome.DRY_RUN,
+                    "dry run",
+                    candidate=candidate,
+                )
+
+            logger.info("Generating: %s (score=%.3f)", candidate.reason, candidate.score)
+            logger.info("Running: %s", " ".join(cmd))
+            try:
+                process = self.execute(cmd)
+            except subprocess.TimeoutExpired as exc:
+                details = self._process_details(exc.stdout, exc.stderr)
+                error = f"{_GENERATION_TIMEOUT_REASON}\n{details}"
+                logger.error(_GENERATION_TIMEOUT_REASON)
+                self._notify_generation_failure(candidate, error)
+                return self._finish(
+                    attempt,
+                    AutoOutcome.FAILED,
+                    _GENERATION_TIMEOUT_REASON,
+                    candidate=candidate,
+                    error=error,
+                )
+            except Exception as exc:
+                error = _safe_tail(exc, self._secrets()) or "generation process failed"
+                reason = "generation process could not be executed"
+                logger.error("%s: %s", reason, error)
+                self._notify_generation_failure(candidate, error)
+                return self._finish(
+                    attempt,
+                    AutoOutcome.FAILED,
+                    reason,
+                    candidate=candidate,
+                    error=error,
+                )
+
+            if process.returncode != 0:
+                reason = f"generation subprocess exited with code {process.returncode}"
+                error = self._process_details(process.stdout, process.stderr)
+                logger.error("%s: %s", reason, error)
+                self._notify_generation_failure(candidate, error)
+                return self._finish(
+                    attempt,
+                    AutoOutcome.FAILED,
+                    reason,
+                    candidate=candidate,
+                    error=error,
+                )
+
+            matching_run = self.db.get_completed_run_by_identity(
+                candidate.memory_key,
+                "auto",
+                attempt.started_at,
+            )
+            if matching_run is None:
+                reason = "no matching completed auto run"
+                return self._finish(
+                    attempt,
+                    AutoOutcome.FAILED,
+                    reason,
+                    candidate=candidate,
+                    error=reason,
+                )
+            if not matching_run.output_path:
+                reason = "matching run has no output path"
+                return self._finish(
+                    attempt,
+                    AutoOutcome.FAILED,
+                    reason,
+                    candidate=candidate,
+                    error=reason,
+                )
+
+            output_path = Path(matching_run.output_path)
+            if not output_path.is_file():
+                reason = "generated output file is missing"
+                return self._finish(
+                    attempt,
+                    AutoOutcome.FAILED,
+                    reason,
+                    candidate=candidate,
+                    error=reason,
+                )
+
+            logger.info("Generation completed successfully: %s", output_path)
+            return self._finish(
+                attempt,
+                AutoOutcome.COMPLETED,
+                "generation completed",
+                candidate=candidate,
+                run_id=matching_run.run_id,
+                output_path=output_path,
+            )
+        except Exception as exc:
+            reason = "automation failed"
+            error = _safe_tail(exc, self._secrets()) or exc.__class__.__name__
+            logger.error("%s: %s", reason, error)
+            return self._finish(
+                attempt,
+                AutoOutcome.FAILED,
+                reason,
+                candidate=candidate,
+                error=error,
+            )

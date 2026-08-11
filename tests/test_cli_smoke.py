@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import json
+from datetime import date
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
 from immich_memories import __version__
+from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
+from immich_memories.automation.models import AutoOutcome, AutoRunResult
 from immich_memories.cli import main
 from immich_memories.config_loader import Config
 
@@ -20,6 +25,20 @@ def _invoke(args: list[str], config: Config | None = None) -> object:
         patch("immich_memories.cli.get_config", return_value=config),
     ):
         return runner.invoke(main, args, catch_exceptions=False)
+
+
+def _auto_candidate() -> MemoryCandidate:
+    return MemoryCandidate(
+        memory_type="monthly_highlights",
+        category=CandidateCategory.MONTHLY_REVIEW,
+        date_range_start=date(2026, 7, 1),
+        date_range_end=date(2026, 7, 31),
+        person_names=[],
+        memory_key="monthly:2026-07",
+        score=0.7,
+        reason="July",
+        asset_count=100,
+    )
 
 
 class TestCLIHelp:
@@ -220,6 +239,106 @@ class TestQuietFlag:
             config=config,
         )
         assert result.exit_code == 0
+
+
+class TestAutoRunOutput:
+    def test_quiet_completed_emits_exactly_one_json_object(self, tmp_path: Path) -> None:
+        output = tmp_path / "memory.mp4"
+        auto_result = AutoRunResult(
+            outcome=AutoOutcome.COMPLETED,
+            reason="generation completed",
+            candidate=_auto_candidate(),
+            run_id="run-123",
+            output_path=output,
+        )
+        auto_runner = MagicMock()
+        auto_runner.run_one.return_value = auto_result
+
+        with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
+            result = _invoke(["auto", "run", "--quiet"])
+
+        assert result.exit_code == 0
+        assert result.stdout.count("\n") == 1
+        assert json.loads(result.stdout) == {
+            "outcome": "completed",
+            "reason": "generation completed",
+            "candidate_key": "monthly:2026-07",
+            "run_id": "run-123",
+            "output_path": str(output),
+        }
+
+    def test_human_completed_states_outcome_and_reason(self, tmp_path: Path) -> None:
+        output = tmp_path / "memory.mp4"
+        auto_runner = MagicMock()
+        auto_runner.run_one.return_value = AutoRunResult(
+            outcome=AutoOutcome.COMPLETED,
+            reason="generation completed",
+            candidate=_auto_candidate(),
+            run_id="run-123",
+            output_path=output,
+        )
+
+        with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
+            result = _invoke(["auto", "run"])
+
+        assert result.exit_code == 0
+        assert "completed" in result.output
+        assert "generation completed" in result.output
+
+    def test_skipped_is_zero_and_json_has_null_identity(self) -> None:
+        auto_runner = MagicMock()
+        auto_runner.run_one.return_value = AutoRunResult(
+            outcome=AutoOutcome.SKIPPED,
+            reason="cooldown active",
+        )
+
+        with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
+            result = _invoke(["auto", "run", "--quiet"])
+
+        assert result.exit_code == 0
+        assert json.loads(result.stdout) == {
+            "outcome": "skipped",
+            "reason": "cooldown active",
+            "candidate_key": None,
+            "run_id": None,
+            "output_path": None,
+        }
+
+    def test_dry_run_is_zero_success(self) -> None:
+        auto_runner = MagicMock()
+        auto_runner.run_one.return_value = AutoRunResult(
+            outcome=AutoOutcome.DRY_RUN,
+            reason="dry run",
+            candidate=_auto_candidate(),
+        )
+
+        with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
+            result = _invoke(["auto", "run", "--quiet", "--dry-run"])
+
+        assert result.exit_code == 0
+        assert json.loads(result.stdout)["outcome"] == "dry_run"
+
+    def test_failed_writes_error_to_stderr_and_exits_one(self) -> None:
+        auto_runner = MagicMock()
+        auto_runner.run_one.return_value = AutoRunResult(
+            outcome=AutoOutcome.FAILED,
+            reason="generation subprocess exited with code 7",
+            candidate=_auto_candidate(),
+            error="root cause on stdout",
+        )
+
+        with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
+            result = _invoke(["auto", "run", "--quiet"])
+
+        assert result.exit_code == 1
+        assert json.loads(result.stdout) == {
+            "outcome": "failed",
+            "reason": "generation subprocess exited with code 7",
+            "candidate_key": "monthly:2026-07",
+            "run_id": None,
+            "output_path": None,
+        }
+        assert "root cause on stdout" in result.stderr
 
 
 class TestPreflightCommand:

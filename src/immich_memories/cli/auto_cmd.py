@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 from rich.table import Table
 
+from immich_memories.automation.models import AutoOutcome, AutoRunResult
 from immich_memories.cli._helpers import console, print_info, print_success
 from immich_memories.config_loader import Config
 
@@ -54,6 +55,19 @@ def _candidates_to_json(candidates: list) -> str:
         for c in candidates
     ]
     return json_mod.dumps(rows, indent=2)
+
+
+def _auto_result_to_json(result: AutoRunResult) -> str:
+    """Serialize the stable machine-facing automation result contract."""
+    return json_mod.dumps(
+        {
+            "outcome": result.outcome.value,
+            "reason": result.reason,
+            "candidate_key": result.candidate.memory_key if result.candidate else None,
+            "run_id": result.run_id,
+            "output_path": str(result.output_path) if result.output_path else None,
+        }
+    )
 
 
 def _print_history_table(runs: list) -> None:
@@ -128,10 +142,16 @@ def run_cmd(
         force=force, cooldown_hours=cooldown, upload=upload, dry_run=dry_run
     )
 
-    if result:
-        click.echo(str(result)) if quiet else print_success(f"Generated: {result}")
-    elif not quiet:
-        print_info("Nothing generated (cooldown active, no candidates, or dry run)")
+    if quiet:
+        click.echo(_auto_result_to_json(result))
+    elif result.outcome is AutoOutcome.COMPLETED:
+        print_success(f"{result.outcome.value}: {result.reason} ({result.output_path})")
+    elif result.outcome is not AutoOutcome.FAILED:
+        print_info(f"{result.outcome.value}: {result.reason}")
+
+    if result.outcome is AutoOutcome.FAILED:
+        click.echo(f"{result.outcome.value}: {result.reason}: {result.error}", err=True)
+        ctx.exit(1)
 
 
 @auto.command()

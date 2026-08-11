@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import cast
@@ -12,9 +13,15 @@ import pytest
 from rich.console import Console
 
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
-from immich_memories.automation.runner import AutoRunner, _build_generate_command
+from immich_memories.automation.models import AutoOutcome, ProcessResult
+from immich_memories.automation.runner import (
+    AutoRunner,
+    _build_generate_command,
+    _execute_generate,
+)
 from immich_memories.cli.auto_cmd import _candidates_to_json, _print_candidates_table
 from immich_memories.config_loader import Config
+from immich_memories.tracking.models import RunMetadata
 
 
 @pytest.fixture
@@ -33,6 +40,49 @@ def _make_time_bucket(year: int, month: int, count: int):
     bucket.time_bucket = f"{year}-{month:02d}-01T00:00:00.000Z"
     bucket.count = count
     return bucket
+
+
+@pytest.fixture
+def candidate() -> MemoryCandidate:
+    """Return one valid candidate for orchestration-boundary tests."""
+    return MemoryCandidate(
+        memory_type="monthly_highlights",
+        category=CandidateCategory.MONTHLY_REVIEW,
+        date_range_start=date(2026, 2, 1),
+        date_range_end=date(2026, 2, 28),
+        person_names=[],
+        memory_key="monthly_highlights:2026-02-01:2026-02-28:",
+        score=0.7,
+        reason="150 assets",
+        asset_count=150,
+    )
+
+
+def _save_completed_run(
+    runner: AutoRunner,
+    candidate: MemoryCandidate,
+    output_path: Path | None,
+    *,
+    run_id: str = "new-auto-run",
+    memory_key: str | None = None,
+    source: str = "auto",
+    created_at: datetime | None = None,
+) -> None:
+    """Seed the exact pipeline record that run_one validates after execution."""
+    started = created_at or datetime.now() + timedelta(milliseconds=10)
+    runner.db.save_run(
+        RunMetadata(
+            run_id=run_id,
+            created_at=started,
+            completed_at=started + timedelta(seconds=1),
+            status="completed",
+            source=source,
+            memory_type=candidate.memory_type,
+            memory_key=memory_key or candidate.memory_key,
+            memory_category=candidate.category.value,
+            output_path=str(output_path) if output_path else None,
+        )
+    )
 
 
 class TestSuggestReturnsCandidates:
@@ -317,10 +367,10 @@ class TestSuggestEmptyLibrary:
 
 
 class TestRunOneCooldown:
-    def test_within_cooldown_returns_none(self, config: Config) -> None:
-        """If a run completed within the cooldown window, run_one returns None."""
-        from immich_memories.tracking.models import RunMetadata
-
+    def test_within_cooldown_returns_skipped_and_finishes_attempt_once(
+        self, config: Config
+    ) -> None:
+        """Cooldown is an observable, durable zero-success outcome."""
         runner = AutoRunner(config)
         recent_run = RunMetadata(
             run_id="test_recent",
@@ -329,47 +379,284 @@ class TestRunOneCooldown:
         )
         runner.db.save_run(recent_run)
 
-        result = runner.run_one(cooldown_hours=24)
-        assert result is None
+        with patch.object(
+            runner.state, "finish_attempt", wraps=runner.state.finish_attempt
+        ) as finish:
+            result = runner.run_one(cooldown_hours=24)
+
+        assert result.outcome is AutoOutcome.SKIPPED
+        assert result.reason == "cooldown active"
+        assert result.candidate is None
+        assert result.run_id is None
+        assert result.output_path is None
+        finish.assert_called_once()
+        assert runner.state.get_last_attempt().outcome is AutoOutcome.SKIPPED
 
 
 class TestRunOneDryRun:
-    def test_dry_run_does_not_execute(self, config: Config) -> None:
-        """Dry run logs the command but does not call subprocess."""
-        candidate = MemoryCandidate(
-            memory_type="monthly_highlights",
-            category=CandidateCategory.MONTHLY_REVIEW,
-            date_range_start=date(2026, 2, 1),
-            date_range_end=date(2026, 2, 28),
-            person_names=[],
-            memory_key="monthly_highlights:2026-02-01:2026-02-28:",
-            score=0.7,
-            reason="150 assets",
-            asset_count=150,
-        )
+    def test_dry_run_does_not_execute(self, config: Config, candidate: MemoryCandidate) -> None:
+        """Dry run reports the candidate without crossing the process boundary."""
+        execute = MagicMock()
+        runner = AutoRunner(config, execute=execute)
 
-        runner = AutoRunner(config)
-
-        # WHY: would launch real pipeline subprocess
-        with (
-            patch("immich_memories.automation.runner.subprocess") as mock_sub,
-            patch.object(runner, "suggest", return_value=[candidate]),
-        ):
+        with patch.object(runner, "suggest", return_value=[candidate]):
             result = runner.run_one(force=True, dry_run=True)
 
-        assert result is None
-        mock_sub.run.assert_not_called()
+        assert result.outcome is AutoOutcome.DRY_RUN
+        assert result.reason == "dry run"
+        assert result.candidate == candidate
+        assert result.run_id is None
+        assert result.output_path is None
+        execute.assert_not_called()
+        assert runner.state.get_last_attempt().outcome is AutoOutcome.DRY_RUN
 
 
 class TestRunOneNoCandidates:
-    def test_no_candidates_returns_none(self, config: Config) -> None:
-        """If suggest returns empty, run_one returns None."""
+    def test_no_candidates_returns_skipped(self, config: Config) -> None:
+        """An empty eligible set has its own truthful reason."""
         runner = AutoRunner(config)
 
         with patch.object(runner, "suggest", return_value=[]):
             result = runner.run_one(force=True)
 
-        assert result is None
+        assert result.outcome is AutoOutcome.SKIPPED
+        assert result.reason == "no eligible candidates"
+        assert result.candidate is None
+        assert runner.state.get_last_attempt().outcome is AutoOutcome.SKIPPED
+
+    def test_attempt_is_running_before_suggest_preflight(self, config: Config) -> None:
+        """The daily wake is durable before suggest performs its network preflight."""
+        runner = AutoRunner(config)
+
+        def observe_attempt(*, limit: int) -> list[MemoryCandidate]:
+            assert limit == 1
+            attempt = runner.state.get_last_attempt()
+            assert attempt is not None
+            assert attempt.outcome is AutoOutcome.RUNNING
+            assert attempt.finished_at is None
+            return []
+
+        with patch.object(runner, "suggest", side_effect=observe_attempt):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.SKIPPED
+
+    def test_suggest_error_finishes_attempt_as_failed(self, config: Config) -> None:
+        """A preflight exception cannot leave a forever-running attempt."""
+        runner = AutoRunner(config)
+
+        with (
+            patch.object(runner, "suggest", side_effect=RuntimeError("preflight exploded")),
+            patch.object(
+                runner.state, "finish_attempt", wraps=runner.state.finish_attempt
+            ) as finish,
+        ):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.reason == "automation failed"
+        assert result.error == "preflight exploded"
+        finish.assert_called_once()
+        assert runner.state.get_last_attempt().outcome is AutoOutcome.FAILED
+
+
+class TestRunOneOutcomes:
+    def test_failed_process_uses_stdout_error_and_finishes_once(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        """A nonzero process is FAILED even when its only useful detail is stdout."""
+        execute = MagicMock(return_value=ProcessResult(7, "root cause on stdout", ""))
+        runner = AutoRunner(config, execute=execute)
+
+        with (
+            patch.object(runner, "suggest", return_value=[candidate]),
+            patch.object(
+                runner.state, "finish_attempt", wraps=runner.state.finish_attempt
+            ) as finish,
+            patch("immich_memories.automation.runner._send_notification") as notify,
+        ):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.reason == "generation subprocess exited with code 7"
+        assert result.error is not None
+        assert "root cause on stdout" in result.error
+        assert result.run_id is None
+        assert result.output_path is None
+        execute.assert_called_once()
+        finish.assert_called_once()
+        notify.assert_called_once()
+
+    def test_process_error_details_are_sanitized_and_bounded(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        """Persisted subprocess tails cannot grow forever or retain obvious API keys."""
+        execute = MagicMock(
+            return_value=ProcessResult(
+                2,
+                "x" * 5000 + " api_key=stdout-secret",
+                "y" * 5000 + " x-api-key: stderr-secret",
+            )
+        )
+        runner = AutoRunner(config, execute=execute)
+
+        with patch.object(runner, "suggest", return_value=[candidate]):
+            result = runner.run_one(force=True)
+
+        assert result.error is not None
+        assert len(result.error) <= 4100
+        assert "stdout-secret" not in result.error
+        assert "stderr-secret" not in result.error
+        assert "***" in result.error
+
+    def test_exit_zero_without_matching_new_run_is_failure(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        runner = AutoRunner(config, execute=lambda _argv: ProcessResult(0, "", ""))
+
+        with patch.object(runner, "suggest", return_value=[candidate]):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.reason == "no matching completed auto run"
+        assert result.run_id is None
+        assert result.output_path is None
+
+    def test_stale_matching_and_new_unrelated_runs_are_rejected(
+        self, config: Config, candidate: MemoryCandidate, tmp_path: Path
+    ) -> None:
+        """Neither a pre-attempt match nor a post-attempt different key proves success."""
+        output = tmp_path / "stale.mp4"
+        output.touch()
+        runner = AutoRunner(config)
+        _save_completed_run(
+            runner,
+            candidate,
+            output,
+            run_id="stale-match",
+            created_at=datetime.now() - timedelta(days=1),
+        )
+
+        def execute(_argv: list[str]) -> ProcessResult:
+            _save_completed_run(
+                runner,
+                candidate,
+                output,
+                run_id="new-unrelated",
+                memory_key="other:key",
+            )
+            return ProcessResult(0, "", "")
+
+        runner.execute = execute
+        with patch.object(runner, "suggest", return_value=[candidate]):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.run_id is None
+        assert result.output_path is None
+
+    def test_matching_run_without_output_path_is_failure(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        runner = AutoRunner(config)
+
+        def execute(_argv: list[str]) -> ProcessResult:
+            _save_completed_run(runner, candidate, None)
+            return ProcessResult(0, "", "")
+
+        runner.execute = execute
+        with patch.object(runner, "suggest", return_value=[candidate]):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.reason == "matching run has no output path"
+        assert result.run_id is None
+        assert result.output_path is None
+
+    def test_matching_run_with_missing_file_is_failure(
+        self, config: Config, candidate: MemoryCandidate, tmp_path: Path
+    ) -> None:
+        missing = tmp_path / "missing.mp4"
+        runner = AutoRunner(config)
+
+        def execute(_argv: list[str]) -> ProcessResult:
+            _save_completed_run(runner, candidate, missing)
+            return ProcessResult(0, "", "")
+
+        runner.execute = execute
+        with patch.object(runner, "suggest", return_value=[candidate]):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.reason == "generated output file is missing"
+        assert result.run_id is None
+        assert result.output_path is None
+
+    def test_matching_new_run_and_existing_file_is_completed(
+        self, config: Config, candidate: MemoryCandidate, tmp_path: Path
+    ) -> None:
+        output = tmp_path / "memory.mp4"
+        output.write_bytes(b"video")
+        runner = AutoRunner(config)
+
+        def execute(_argv: list[str]) -> ProcessResult:
+            _save_completed_run(runner, candidate, output, run_id="proved-run")
+            return ProcessResult(0, "generated", "")
+
+        runner.execute = execute
+        with (
+            patch.object(runner, "suggest", return_value=[candidate]),
+            patch("immich_memories.automation.runner._send_notification") as notify,
+        ):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.COMPLETED
+        assert result.reason == "generation completed"
+        assert result.run_id == "proved-run"
+        assert result.output_path == output
+        assert result.error is None
+        assert runner.state.get_last_attempt().run_id == "proved-run"
+        notify.assert_not_called()
+
+    def test_timeout_is_failed_with_specific_message_and_one_notification(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        def timeout(_argv: list[str]) -> ProcessResult:
+            raise subprocess.TimeoutExpired(
+                cmd=["immich-memories", "generate"],
+                timeout=7200,
+                output="partial stdout",
+                stderr="partial stderr",
+            )
+
+        runner = AutoRunner(config, execute=timeout)
+        with (
+            patch.object(runner, "suggest", return_value=[candidate]),
+            patch("immich_memories.automation.runner._send_notification") as notify,
+        ):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.reason == "generation timed out after 2 hours"
+        assert result.error is not None
+        assert "partial stdout" in result.error
+        assert "partial stderr" in result.error
+        notify.assert_called_once()
+
+    def test_execute_adapter_captures_process_result_with_two_hour_timeout(self) -> None:
+        completed = subprocess.CompletedProcess(["generate"], 0, "stdout", "stderr")
+        with patch(
+            "immich_memories.automation.runner.subprocess.run", return_value=completed
+        ) as run:
+            result = _execute_generate(["immich-memories", "generate"])
+
+        assert result == ProcessResult(0, "stdout", "stderr")
+        run.assert_called_once_with(
+            ["immich-memories", "generate"],
+            capture_output=True,
+            text=True,
+            timeout=7200,
+        )
 
 
 class TestBuildGenerateCommand:
@@ -455,14 +742,12 @@ class TestBuildGenerateCommand:
         )
         runner = AutoRunner(config)
 
-        with (
-            patch.object(runner, "suggest", return_value=[candidate]),
-            patch("immich_memories.automation.runner._execute_generate") as execute,
-            pytest.raises(ValueError, match="Unsupported automation category"),
-        ):
-            runner.run_one(force=True)
+        with patch.object(runner, "suggest", return_value=[candidate]):
+            result = runner.run_one(force=True)
 
-        execute.assert_not_called()
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.error is not None
+        assert "Unsupported automation category" in result.error
 
     def test_trip_command(self) -> None:
         candidate = MemoryCandidate(
