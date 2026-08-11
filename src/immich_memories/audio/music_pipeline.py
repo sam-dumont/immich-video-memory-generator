@@ -153,8 +153,8 @@ class MusicPipeline:
                 logger.info(f"Generating with {gen.name}")
                 return await gen.generate(request, _progress)
 
-            except (RuntimeError, OSError) as e:
-                logger.exception(f"{gen.name} failed: %s", e)
+            except (RuntimeError, OSError):
+                logger.warning("Music backend %s failed; trying next backend", gen.name)
                 continue
 
         return None
@@ -187,8 +187,8 @@ class MusicPipeline:
                 progress_callback=_progress,
             )
 
-        except (RuntimeError, OSError) as e:
-            logger.exception("Stem separation failed, continuing without stems: %s", e)
+        except (RuntimeError, OSError):
+            logger.warning("Stem separation failed; continuing without stems")
             return None
 
 

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from nicegui import app as nicegui_app
 from nicegui import run, ui
@@ -20,9 +19,6 @@ from immich_memories.ui.components import (
 )
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from immich_memories.processing.encoding_plan import EncodingPlan
 
 
 def _request_cancel(state, cancel_btn: ui.button | None, status_label) -> None:
@@ -222,31 +218,16 @@ async def run_generation(
             generate_run_id(),
             db_path=get_config().cache.database_path,
         )
-        music_source = state.generation_options.get("music_source", "None")
-        if music_source in {"AI Generated", "Upload file"}:
-            from immich_memories.generate_music import derive_music_validation_plan
-
-            music_validation_plan = await run.io_bound(
-                derive_music_validation_plan,
-                result_path,
-            )
-            await _apply_music(
-                state,
-                state.config,
-                result_path,
-                [],  # assembly_clips not needed for pre-generated music path
-                result_path.parent,
-                run_tracker,
-                progress_bar,
-                status_label,
-                encoding_plan=music_validation_plan,
-            )
-
-        # Phase 4: Upload (UI-specific — NiceGUI progress feedback)
-        if state.upload_enabled:
-            from immich_memories.ui.pages._step4_upload import upload_to_immich
-
-            await upload_to_immich(result_path, state, progress_bar, status_label)
+        await _apply_optional_music_and_upload(
+            state,
+            state.config,
+            result_path,
+            [],  # assembly_clips not needed for pre-generated music path
+            result_path.parent,
+            run_tracker,
+            progress_bar,
+            status_label,
+        )
 
         progress_bar.value = 1.0
         status_label.set_text("Complete!")
@@ -265,6 +246,36 @@ async def run_generation(
             im_info_card(f"Generation failed: {safe_msg}", variant="error")
 
 
+async def _apply_optional_music_and_upload(
+    state,
+    config,
+    result_path,
+    assembly_clips,
+    run_output_dir,
+    run_tracker,
+    progress_bar,
+    status_label,
+) -> None:
+    """Run independent optional music and upload phases in order."""
+    music_source = state.generation_options.get("music_source", "None")
+    if music_source in {"AI Generated", "Upload file"}:
+        await _apply_music(
+            state,
+            config,
+            result_path,
+            assembly_clips,
+            run_output_dir,
+            run_tracker,
+            progress_bar,
+            status_label,
+        )
+
+    if state.upload_enabled:
+        from immich_memories.ui.pages._step4_upload import upload_to_immich
+
+        await upload_to_immich(result_path, state, progress_bar, status_label)
+
+
 async def _apply_music(
     state,
     config,
@@ -274,17 +285,34 @@ async def _apply_music(
     run_tracker,
     progress_bar,
     status_label,
-    *,
-    encoding_plan: EncodingPlan,
 ):
-    """Phase 3: Apply music if requested."""
+    """Apply optional music using validation truth derived from the published base."""
+    from immich_memories.generate_music import (
+        MusicPhaseResult,
+        derive_music_validation_plan,
+        optional_music_warning,
+    )
+
+    try:
+        encoding_plan = await run.io_bound(derive_music_validation_plan, result_path)
+    except Exception as exc:  # WHY: Music must never invalidate a published base video.
+        warning = optional_music_warning(exc, config)
+        logger.warning(warning)
+        ui.notify(f"{warning}. Video saved without music.", type="warning")
+        run_tracker.start_phase("music", 1)
+        run_tracker.complete_phase(
+            items_processed=0,
+            errors=[{"error": warning}],
+        )
+        return MusicPhaseResult(applied=False, warning=warning)
+
     gen_options = state.generation_options
     music_source = gen_options.get("music_source", "None")
 
     if music_source == "AI Generated":
         from immich_memories.ui.pages._step4_music import apply_ai_music
 
-        await apply_ai_music(
+        return await apply_ai_music(
             result_path,
             assembly_clips,
             gen_options,
@@ -299,14 +327,16 @@ async def _apply_music(
     elif music_source == "Upload file" and gen_options.get("music_file"):
         from immich_memories.ui.pages._step4_music import apply_uploaded_music
 
-        await apply_uploaded_music(
+        return await apply_uploaded_music(
             result_path,
             gen_options,
             run_tracker,
             progress_bar,
             status_label,
             encoding_plan=encoding_plan,
+            config=config,
         )
+    return MusicPhaseResult(applied=False)
 
 
 def _format_file_size(path: Path) -> str:

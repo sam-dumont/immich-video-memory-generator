@@ -94,6 +94,39 @@ class TestMusicPipeline:
         assert fallback.generate_called
 
     @pytest.mark.asyncio
+    async def test_backend_fallback_log_never_contains_exception_secret(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Fallback logs are controlled messages, never raw backend exceptions."""
+
+        class SecretFailingGenerator(FakeGenerator):
+            async def generate(
+                self,
+                request: GenerationRequest,
+                progress_callback: Any | None = None,
+            ) -> GenerationResult:
+                del request, progress_callback
+                raise RuntimeError("backend rejected unlabeled-secret-751")
+
+        primary = SecretFailingGenerator("Primary")
+        fallback = FakeGenerator("Fallback")
+        pipeline = MusicPipeline(generators=[primary, fallback])
+        caplog.set_level("DEBUG")
+
+        async with pipeline:
+            result = await pipeline.generate_music_for_video(
+                timeline=VideoTimeline(),
+                output_dir=tmp_path,
+                num_versions=1,
+            )
+
+        assert len(result.versions) == 1
+        assert "Music backend Primary failed; trying next backend" in caplog.text
+        assert "unlabeled-secret-751" not in caplog.text
+
+    @pytest.mark.asyncio
     async def test_fallback_on_unavailable(self, tmp_path):
         primary = FakeGenerator("Primary", available=False)
         fallback = FakeGenerator("Fallback")
@@ -269,6 +302,41 @@ class TestStemSeparatorProtocol:
             )
 
         assert result.versions[0].stems is None
+
+    @pytest.mark.asyncio
+    async def test_stem_fallback_log_never_contains_exception_secret(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Best-effort stem failure logs do not include service exception data."""
+
+        class SecretFailingSeparator(FakeStemSeparator):
+            async def separate_stems(
+                self,
+                audio_path: Path,
+                output_dir: Path,
+                progress_callback: Any | None = None,
+            ) -> MusicStems:
+                del audio_path, output_dir, progress_callback
+                raise RuntimeError("stem service rejected unlabeled-secret-934")
+
+        pipeline = MusicPipeline(
+            generators=[FakeGenerator("Gen")],
+            stem_separator=SecretFailingSeparator(),
+        )
+        caplog.set_level("DEBUG")
+
+        async with pipeline:
+            result = await pipeline.generate_music_for_video(
+                timeline=VideoTimeline(),
+                output_dir=tmp_path,
+                num_versions=1,
+            )
+
+        assert result.versions[0].stems is None
+        assert "Stem separation failed; continuing without stems" in caplog.text
+        assert "unlabeled-secret-934" not in caplog.text
 
     @pytest.mark.asyncio
     async def test_unavailable_separator_skipped(self, tmp_path):

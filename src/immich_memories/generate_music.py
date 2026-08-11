@@ -7,9 +7,11 @@ music resolution, and audio mixing into assembled videos.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -29,6 +31,9 @@ if TYPE_CHECKING:
     from immich_memories.config_loader import Config
 
 logger = logging.getLogger(__name__)
+
+# WHY: audio proof decodes the whole supported memory, matching final video validation.
+_AUDIO_DECODE_TIMEOUT_SECONDS = 15 * 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,8 +234,19 @@ def publish_music_mix(
         raise
 
 
+@contextmanager
+def staged_music_output(video_path: Path) -> Iterator[Path]:
+    """Yield a clean container-preserving sibling and remove every leftover."""
+    staged_path = build_music_output_path(video_path)
+    staged_path.unlink(missing_ok=True)
+    try:
+        yield staged_path
+    finally:
+        staged_path.unlink(missing_ok=True)
+
+
 def _require_audio_stream(path: Path) -> None:
-    """Fail closed when a purported music mix contains no decodable audio stream."""
+    """Fail closed unless one full audio decode reports positive frame evidence."""
     try:
         result = subprocess.run(
             [
@@ -239,21 +255,36 @@ def _require_audio_stream(path: Path) -> None:
                 "error",
                 "-select_streams",
                 "a:0",
+                "-count_frames",
                 "-show_entries",
-                "stream=codec_type",
+                "stream=codec_type,nb_read_frames",
                 "-of",
-                "default=nokey=1:noprint_wrappers=1",
+                "json",
                 str(path),
             ],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=_AUDIO_DECODE_TIMEOUT_SECONDS,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise InvalidOutputArtifact("music mix audio validation failed") from exc
-    if result.returncode != 0 or result.stdout.strip() != "audio":
-        raise InvalidOutputArtifact("music mix is missing audio stream")
+    if result.returncode != 0 or result.stderr.strip():
+        raise InvalidOutputArtifact("music mix audio decode failed")
+    try:
+        streams = json.loads(result.stdout).get("streams", [])
+        if not streams or streams[0].get("codec_type") != "audio":
+            raise InvalidOutputArtifact("music mix is missing audio stream")
+        raw_frame_count = streams[0]["nb_read_frames"]
+        if not isinstance(raw_frame_count, str) or not raw_frame_count.isdecimal():
+            raise InvalidOutputArtifact("music mix has malformed decoded audio frame evidence")
+        decoded_frames = int(raw_frame_count)
+    except InvalidOutputArtifact:
+        raise
+    except (AttributeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        raise InvalidOutputArtifact("music mix is missing decoded audio frame evidence") from exc
+    if decoded_frames <= 0:
+        raise InvalidOutputArtifact("music mix must have positive decoded audio frames")
 
 
 def apply_music_file(
@@ -265,16 +296,16 @@ def apply_music_file(
     """Mix a music file and publish it only when it matches the encoding plan."""
     from immich_memories.audio.mixer import DuckingConfig, MixConfig, mix_audio_with_ducking
 
-    final_path = build_music_output_path(video_path)
     mix_config = MixConfig(
         ducking=DuckingConfig(
             music_volume_db=-20 + (volume * 20),
         ),
     )
-    mix_audio_with_ducking(
-        video_path=video_path,
-        music_path=music_path,
-        output_path=final_path,
-        config=mix_config,
-    )
-    return publish_music_mix(video_path, encoding_plan)
+    with staged_music_output(video_path) as staged_path:
+        mix_audio_with_ducking(
+            video_path=video_path,
+            music_path=music_path,
+            output_path=staged_path,
+            config=mix_config,
+        )
+        return publish_music_mix(video_path, encoding_plan)

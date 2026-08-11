@@ -214,6 +214,112 @@ def test_music_mix_drifting_from_base_identity_is_rejected(
     assert video.read_bytes() == b"validated-h264-base"
 
 
+def test_music_publication_requires_positive_decoded_audio_frames(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A staged mix is publishable only after one decoded-audio frame count."""
+    from immich_memories.filename_builder import build_music_output_path
+    from immich_memories.generate_music import publish_music_mix
+    from immich_memories.processing.output_contract import OutputProbe
+
+    video = tmp_path / "memory.mp4"
+    video.write_bytes(b"validated-base")
+    build_music_output_path(video).write_bytes(b"staged-mix")
+    commands: list[list[str]] = []
+    probe_kwargs: list[dict[str, object]] = []
+
+    def audio_probe(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        probe_kwargs.append(kwargs)
+        frame_count = "24" if "-count_frames" in command else "N/A"
+        payload = {"streams": [{"codec_type": "audio", "nb_read_frames": frame_count}]}
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    expected = OutputProbe(
+        codec="h264",
+        container="mp4",
+        duration_seconds=5.0,
+        size_bytes=1024,
+        pixel_format="yuv420p",
+        color_transfer="bt709",
+        color_primaries="bt709",
+        width=1920,
+        height=1080,
+        decoded_frames=120,
+    )
+    monkeypatch.setattr("immich_memories.generate_music.subprocess.run", audio_probe)
+    monkeypatch.setattr(
+        "immich_memories.generate_music.publish_validated_output",
+        MagicMock(return_value=expected),
+    )
+
+    result = publish_music_mix(video, _h264_output_plan())
+
+    assert result == expected
+    assert len(commands) == 1
+    assert probe_kwargs == [
+        {
+            "capture_output": True,
+            "text": True,
+            "timeout": 15 * 60,
+            "check": False,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("payload", "returncode", "stderr"),
+    [
+        ({"streams": [{"codec_type": "audio", "nb_read_frames": "12"}]}, 1, ""),
+        ({"streams": [], "format": {}}, 0, ""),
+        ({"streams": [{"codec_type": "audio", "nb_read_frames": "N/A"}]}, 0, ""),
+        ({"streams": [{"codec_type": "audio", "nb_read_frames": "0"}]}, 0, ""),
+        ({"streams": [{"codec_type": "audio", "nb_read_frames": "wat"}]}, 0, ""),
+        ({"streams": [{"codec_type": "audio", "nb_read_frames": True}]}, 0, ""),
+        (
+            {"streams": [{"codec_type": "audio", "nb_read_frames": "12"}]},
+            0,
+            "decode error",
+        ),
+    ],
+    ids=["nonzero", "missing", "na", "zero", "malformed", "boolean", "stderr"],
+)
+def test_music_publication_rejects_unproven_audio_decode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, object],
+    returncode: int,
+    stderr: str,
+) -> None:
+    """Missing, malformed, or errored audio decode evidence never publishes."""
+    from immich_memories.filename_builder import build_music_output_path
+    from immich_memories.generate_music import publish_music_mix
+    from immich_memories.processing.output_contract import InvalidOutputArtifact
+
+    video = tmp_path / "memory.mp4"
+    video.write_bytes(b"validated-base")
+    build_music_output_path(video).write_bytes(b"staged-mix")
+    monkeypatch.setattr(
+        "immich_memories.generate_music.subprocess.run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            returncode,
+            json.dumps(payload),
+            stderr,
+        ),
+    )
+    monkeypatch.setattr(
+        "immich_memories.generate_music.publish_validated_output",
+        lambda _staged_path, _final_path, _plan: None,
+    )
+
+    with pytest.raises(InvalidOutputArtifact):
+        publish_music_mix(video, _h264_output_plan())
+
+    assert video.read_bytes() == b"validated-base"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("music_source", "target"),
@@ -238,7 +344,13 @@ async def test_ui_music_conduit_forwards_one_artifact_validation_plan(
         memory_type=None,
     )
 
-    with patch(target, new_callable=AsyncMock) as music_helper:
+    with (
+        patch(
+            "immich_memories.generate_music.derive_music_validation_plan",
+            return_value=plan,
+        ),
+        patch(target, new_callable=AsyncMock) as music_helper,
+    ):
         await _apply_music(
             state,
             Config(),
@@ -248,10 +360,175 @@ async def test_ui_music_conduit_forwards_one_artifact_validation_plan(
             MagicMock(),
             _Progress(),
             _Status(),
-            encoding_plan=plan,
         )
 
     assert music_helper.await_args.kwargs["encoding_plan"] is plan
+
+
+@pytest.mark.asyncio
+async def test_ui_music_probe_failure_is_optional_and_sanitized(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A failed artifact probe must preserve the base and return to the upload flow."""
+    from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.ui.pages._step4_generate import _apply_music
+
+    credential_value = "probe-secret-427"
+    config = Config()
+    config.musicgen.api_key = credential_value
+    result_path = tmp_path / "memory.mp4"
+    result_path.write_bytes(b"validated-base")
+    state = SimpleNamespace(
+        generation_options={
+            "music_source": "Upload file",
+            "music_file": b"uploaded",
+        },
+        memory_type=None,
+    )
+    notify = MagicMock()
+    tracker = MagicMock()
+    monkeypatch.setattr(
+        "immich_memories.generate_music.derive_music_validation_plan",
+        MagicMock(side_effect=RuntimeError(f"probe rejected {credential_value}")),
+    )
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_generate.ui.notify",
+        notify,
+    )
+    caplog.set_level("DEBUG")
+
+    result = await _apply_music(
+        state,
+        config,
+        result_path,
+        [],
+        tmp_path,
+        tracker,
+        _Progress(),
+        _Status(),
+    )
+
+    warning = "Optional music failed: probe rejected ***"
+    assert result == MusicPhaseResult(applied=False, warning=warning)
+    assert result_path.read_bytes() == b"validated-base"
+    tracker.start_phase.assert_called_once_with("music", 1)
+    tracker.complete_phase.assert_called_once_with(
+        items_processed=0,
+        errors=[{"error": warning}],
+    )
+    assert notify.call_args.args[0] == f"{warning}. Video saved without music."
+    assert credential_value not in caplog.text
+    assert credential_value not in str(notify.call_args)
+    assert credential_value not in str(tracker.complete_phase.call_args)
+
+
+@pytest.mark.asyncio
+async def test_ui_upload_continues_after_optional_music_plan_probe_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A music validation-probe failure must not skip the independent upload phase."""
+    from immich_memories.ui.pages._step4_generate import _apply_optional_music_and_upload
+
+    result_path = tmp_path / "memory.mp4"
+    result_path.write_bytes(b"validated-base")
+    state = SimpleNamespace(
+        generation_options={
+            "music_source": "Upload file",
+            "music_file": b"uploaded",
+        },
+        memory_type=None,
+        upload_enabled=True,
+    )
+    monkeypatch.setattr(
+        "immich_memories.generate_music.derive_music_validation_plan",
+        MagicMock(side_effect=RuntimeError("probe failed")),
+    )
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_generate.ui.notify",
+        MagicMock(),
+    )
+    upload = AsyncMock()
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_upload.upload_to_immich",
+        upload,
+    )
+    tracker = MagicMock()
+    progress = _Progress()
+    status = _Status()
+
+    await _apply_optional_music_and_upload(
+        state,
+        Config(),
+        result_path,
+        [],
+        tmp_path,
+        tracker,
+        progress,
+        status,
+    )
+
+    upload.assert_awaited_once_with(result_path, state, progress, status)
+    tracker.start_phase.assert_called_once_with("music", 1)
+    tracker.complete_phase.assert_called_once()
+    assert result_path.read_bytes() == b"validated-base"
+
+
+@pytest.mark.asyncio
+async def test_ai_cleanup_failure_does_not_undo_successful_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Cleanup after atomic publication is best-effort, not phase failure."""
+    from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.ui.pages._step4_music import apply_ai_music
+
+    result_path = tmp_path / "memory.mp4"
+    result_path.write_bytes(b"validated-base")
+    selected = SimpleNamespace(full_mix=tmp_path / "music.wav", stems=None)
+    music_result = SimpleNamespace(
+        versions=[selected],
+        selected=selected,
+        cleanup_unselected=MagicMock(side_effect=RuntimeError("cleanup-secret-912")),
+    )
+    monkeypatch.setattr(
+        "immich_memories.ui.state.get_app_state",
+        lambda: SimpleNamespace(music_preview_result=music_result),
+    )
+
+    async def publish_mix(*_args: object, **_kwargs: object) -> None:
+        result_path.write_bytes(b"validated-mix")
+
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_music._mix_selected_ai_music",
+        publish_mix,
+    )
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_music.ui.notify",
+        MagicMock(),
+    )
+    tracker = MagicMock()
+    caplog.set_level("DEBUG")
+
+    result = await apply_ai_music(
+        result_path,
+        assembly_clips=[],
+        gen_options={"music_volume": 0.5},
+        config=Config(),
+        run_output_dir=tmp_path,
+        run_tracker=tracker,
+        progress_bar=_Progress(),
+        status_label=_Status(),
+        encoding_plan=_h264_output_plan(),
+    )
+
+    assert result == MusicPhaseResult(applied=True)
+    assert result_path.read_bytes() == b"validated-mix"
+    tracker.complete_phase.assert_called_once_with(items_processed=1)
+    assert "cleanup-secret-912" not in caplog.text
 
 
 class _RunTracker:
@@ -425,6 +702,7 @@ async def test_uploaded_music_preserves_mov_container(
         progress_bar=_Progress(),
         status_label=_Status(),
         encoding_plan=_prores_output_plan(),
+        config=Config(),
     )
 
     assert result_path.read_text() == "uploaded:memory.with_music.mov"
@@ -474,6 +752,7 @@ async def test_uploaded_invalid_mix_preserves_valid_base(
         progress_bar=_Progress(),
         status_label=_Status(),
         encoding_plan=_h264_output_plan(),
+        config=Config(),
     )
 
     warning = "Optional music failed: missing audio/video stream"
@@ -483,6 +762,70 @@ async def test_uploaded_invalid_mix_preserves_valid_base(
         items_processed=0,
         errors=[{"error": warning}],
     )
+
+
+@pytest.mark.asyncio
+async def test_uploaded_music_warning_redacts_unlabelled_configured_secret(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Uploaded-music errors redact config literals in every user-visible sink."""
+    from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.ui.pages._step4_music import apply_uploaded_music
+
+    result_path = tmp_path / "memory.mp4"
+    result_path.write_bytes(b"validated-base")
+    config = Config()
+    config.musicgen.api_key = "literal-secret-881"
+
+    def write_mix(**kwargs: object) -> None:
+        cast(Path, kwargs["output_path"]).write_bytes(b"staged-mix")
+
+    async def io_bound(callback: Callable[..., object], **kwargs: object) -> object:
+        return callback(**kwargs)
+
+    notify = MagicMock()
+    tracker = MagicMock()
+    monkeypatch.setattr(
+        "immich_memories.audio.mixer.mix_audio_with_ducking",
+        write_mix,
+    )
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_music.run.io_bound",
+        io_bound,
+    )
+    monkeypatch.setattr(
+        "immich_memories.generate_music.publish_music_mix",
+        MagicMock(side_effect=RuntimeError("upload rejected literal-secret-881")),
+    )
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_music.ui.notify",
+        notify,
+    )
+    caplog.set_level("DEBUG")
+
+    result = await apply_uploaded_music(
+        result_path,
+        gen_options={"music_file": b"uploaded", "music_volume": 0.5},
+        config=config,
+        run_tracker=tracker,
+        progress_bar=_Progress(),
+        status_label=_Status(),
+        encoding_plan=_h264_output_plan(),
+    )
+
+    warning = "Optional music failed: upload rejected ***"
+    assert result == MusicPhaseResult(applied=False, warning=warning)
+    assert warning in caplog.text
+    assert notify.call_args.args[0] == f"{warning}. Video saved without music."
+    tracker.complete_phase.assert_called_once_with(
+        items_processed=0,
+        errors=[{"error": warning}],
+    )
+    assert "literal-secret-881" not in caplog.text
+    assert "literal-secret-881" not in str(notify.call_args)
+    assert "literal-secret-881" not in str(tracker.complete_phase.call_args)
 
 
 @pytest.mark.integration
@@ -633,6 +976,40 @@ def test_real_music_mix_without_audio_never_replaces_base(
         )
 
     assert video_path.read_bytes() == original
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
+    reason="FFmpeg and ffprobe are required",
+)
+def test_real_truncated_aac_fails_decoded_audio_proof(tmp_path: Path) -> None:
+    """A truncated AAC artifact cannot satisfy the full-decode music contract."""
+    from immich_memories.generate_music import _require_audio_stream
+    from immich_memories.processing.output_contract import InvalidOutputArtifact
+
+    audio_path = tmp_path / "music.m4a"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=3",
+            "-c:a",
+            "aac",
+            audio_path,
+        ],
+        capture_output=True,
+        check=True,
+        timeout=30,
+    )
+    encoded = audio_path.read_bytes()
+    audio_path.write_bytes(encoded[: len(encoded) // 2])
+
+    with pytest.raises(InvalidOutputArtifact):
+        _require_audio_stream(audio_path)
 
 
 class TestApplyMusicFileAtomic:

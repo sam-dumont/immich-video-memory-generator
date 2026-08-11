@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 
 from nicegui import run, ui
 
-from immich_memories.filename_builder import build_music_output_path
 from immich_memories.generate_music import MusicPhaseResult, optional_music_warning
 
 if TYPE_CHECKING:
@@ -90,41 +89,41 @@ async def _mix_selected_ai_music(
     """Render the selected mix to a staged sibling and publish it safely."""
     from immich_memories.audio.mixer import DuckingConfig, MixConfig, mix_audio_with_ducking
 
-    final_path = build_music_output_path(result_path)
     mix_config = MixConfig(
         ducking=DuckingConfig(
             music_volume_db=-20 + (music_volume * 20),
         ),
     )
-    stems = selected_music.stems
-    if stems and stems.drums and stems.bass and stems.vocals and stems.other:
-        from immich_memories.audio.mixer_helpers import mix_audio_with_4stem_ducking
+    from immich_memories.generate_music import publish_music_mix, staged_music_output
 
-        await run.io_bound(
-            mix_audio_with_4stem_ducking,
-            video_path=result_path,
-            drums_path=stems.drums,
-            bass_path=stems.bass,
-            vocals_path=stems.vocals,
-            other_path=stems.other,
-            output_path=final_path,
-            config=mix_config,
-        )
-    else:
-        await run.io_bound(
-            mix_audio_with_ducking,
-            video_path=result_path,
-            music_path=selected_music.full_mix,
-            output_path=final_path,
-            config=mix_config,
-        )
-    from immich_memories.generate_music import publish_music_mix
+    with staged_music_output(result_path) as staged_path:
+        stems = selected_music.stems
+        if stems and stems.drums and stems.bass and stems.vocals and stems.other:
+            from immich_memories.audio.mixer_helpers import mix_audio_with_4stem_ducking
 
-    await run.io_bound(
-        publish_music_mix,
-        video_path=result_path,
-        encoding_plan=encoding_plan,
-    )
+            await run.io_bound(
+                mix_audio_with_4stem_ducking,
+                video_path=result_path,
+                drums_path=stems.drums,
+                bass_path=stems.bass,
+                vocals_path=stems.vocals,
+                other_path=stems.other,
+                output_path=staged_path,
+                config=mix_config,
+            )
+        else:
+            await run.io_bound(
+                mix_audio_with_ducking,
+                video_path=result_path,
+                music_path=selected_music.full_mix,
+                output_path=staged_path,
+                config=mix_config,
+            )
+        await run.io_bound(
+            publish_music_mix,
+            video_path=result_path,
+            encoding_plan=encoding_plan,
+        )
 
 
 async def apply_ai_music(
@@ -176,7 +175,10 @@ async def apply_ai_music(
                 gen_options.get("music_volume", 0.5),
                 encoding_plan,
             )
-            music_result.cleanup_unselected()
+            try:
+                music_result.cleanup_unselected()
+            except Exception:  # WHY: Publication already committed a validated artifact.
+                logger.warning("Music cleanup failed after publication; keeping the validated mix")
 
         run_tracker.complete_phase(items_processed=1)
         return MusicPhaseResult(applied=selected_music is not None)
@@ -202,6 +204,7 @@ async def apply_uploaded_music(
     progress_bar: object,
     status_label: object,
     encoding_plan: EncodingPlan,
+    config: object,
 ) -> MusicPhaseResult:
     """Mix an uploaded music file into the video.
 
@@ -231,34 +234,33 @@ async def apply_uploaded_music(
             tmp_music_path = Path(tmp.name)
 
         music_volume = gen_options.get("music_volume", 0.5)
-        final_path = build_music_output_path(result_path)
         mix_config = MixConfig(
             ducking=DuckingConfig(
                 music_volume_db=-20 + (music_volume * 20),
             ),
         )
 
-        await run.io_bound(
-            mix_audio_with_ducking,
-            video_path=result_path,
-            music_path=tmp_music_path,
-            output_path=final_path,
-            config=mix_config,
-        )
+        from immich_memories.generate_music import publish_music_mix, staged_music_output
 
-        from immich_memories.generate_music import publish_music_mix
-
-        await run.io_bound(
-            publish_music_mix,
-            video_path=result_path,
-            encoding_plan=encoding_plan,
-        )
+        with staged_music_output(result_path) as staged_path:
+            await run.io_bound(
+                mix_audio_with_ducking,
+                video_path=result_path,
+                music_path=tmp_music_path,
+                output_path=staged_path,
+                config=mix_config,
+            )
+            await run.io_bound(
+                publish_music_mix,
+                video_path=result_path,
+                encoding_plan=encoding_plan,
+            )
 
         run_tracker.complete_phase(items_processed=1)
         return MusicPhaseResult(applied=True)
 
     except Exception as e:  # WHY: UI graceful degradation
-        warning = optional_music_warning(e)
+        warning = optional_music_warning(e, config)
         logger.warning(warning)
         ui.notify(
             f"{warning}. Video saved without music.",
