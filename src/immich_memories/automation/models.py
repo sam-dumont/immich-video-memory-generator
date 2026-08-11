@@ -21,6 +21,15 @@ class AutoOutcome(StrEnum):
 
 
 @dataclass(frozen=True)
+class AutoRejection:
+    """One bounded, machine-readable hard-variety rejection."""
+
+    category: str
+    memory_key: str
+    rule: str
+
+
+@dataclass(frozen=True)
 class AutoRunResult:
     """Terminal result reported by one smart automation invocation."""
 
@@ -30,6 +39,8 @@ class AutoRunResult:
     run_id: str | None = None
     output_path: Path | None = None
     error: str | None = None
+    recent_categories: tuple[str, ...] = ()
+    rejections: tuple[AutoRejection, ...] = ()
 
 
 @dataclass(frozen=True)

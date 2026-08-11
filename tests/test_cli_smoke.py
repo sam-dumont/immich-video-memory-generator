@@ -11,7 +11,7 @@ from click.testing import CliRunner
 
 from immich_memories import __version__
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
-from immich_memories.automation.models import AutoOutcome, AutoRunResult
+from immich_memories.automation.models import AutoOutcome, AutoRejection, AutoRunResult
 from immich_memories.cli import main
 from immich_memories.config_loader import Config
 
@@ -304,8 +304,11 @@ class TestAutoRunOutput:
             "outcome": "completed",
             "reason": "generation completed",
             "candidate_key": "monthly:2026-07",
+            "category": "monthly_review",
             "run_id": "run-123",
             "output_path": str(output),
+            "recent_categories": [],
+            "rejections": [],
         }
 
     def test_human_completed_states_outcome_and_reason(self, tmp_path: Path) -> None:
@@ -341,8 +344,11 @@ class TestAutoRunOutput:
             "outcome": "skipped",
             "reason": "cooldown active",
             "candidate_key": None,
+            "category": None,
             "run_id": None,
             "output_path": None,
+            "recent_categories": [],
+            "rejections": [],
         }
 
     def test_dry_run_is_zero_success(self) -> None:
@@ -357,7 +363,69 @@ class TestAutoRunOutput:
             result = _invoke(["auto", "run", "--quiet", "--dry-run"])
 
         assert result.exit_code == 0
-        assert json.loads(result.stdout)["outcome"] == "dry_run"
+        payload = json.loads(result.stdout)
+        assert payload["outcome"] == "dry_run"
+        assert payload["category"] == "monthly_review"
+
+    def test_quiet_variety_rejection_exposes_rotation_and_rules(self) -> None:
+        auto_runner = MagicMock()
+        auto_runner.run_one.return_value = AutoRunResult(
+            outcome=AutoOutcome.SKIPPED,
+            reason="no eligible candidates",
+            recent_categories=("monthly_review", "trip"),
+            rejections=(
+                AutoRejection(
+                    category="monthly_review",
+                    memory_key="monthly:2026-07",
+                    rule="same_category_as_previous",
+                ),
+            ),
+        )
+
+        with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
+            result = _invoke(["auto", "run", "--quiet", "--dry-run"])
+
+        assert result.exit_code == 0
+        assert json.loads(result.stdout) == {
+            "outcome": "skipped",
+            "reason": "no eligible candidates",
+            "candidate_key": None,
+            "category": None,
+            "run_id": None,
+            "output_path": None,
+            "recent_categories": ["monthly_review", "trip"],
+            "rejections": [
+                {
+                    "category": "monthly_review",
+                    "memory_key": "monthly:2026-07",
+                    "rule": "same_category_as_previous",
+                }
+            ],
+        }
+
+    def test_human_dry_run_explains_variety_rejection(self) -> None:
+        auto_runner = MagicMock()
+        auto_runner.run_one.return_value = AutoRunResult(
+            outcome=AutoOutcome.SKIPPED,
+            reason="no eligible candidates",
+            recent_categories=("monthly_review", "trip"),
+            rejections=(
+                AutoRejection(
+                    category="monthly_review",
+                    memory_key="monthly:2026-07",
+                    rule="same_category_as_previous",
+                ),
+            ),
+        )
+
+        with patch("immich_memories.automation.runner.AutoRunner", return_value=auto_runner):
+            result = _invoke(["auto", "run", "--dry-run"])
+
+        assert result.exit_code == 0
+        assert "Recent auto categories: monthly_review, trip" in result.output
+        assert (
+            "Rejected monthly_review (monthly:2026-07): same_category_as_previous" in result.output
+        )
 
     def test_failed_writes_error_to_stderr_and_exits_one(self) -> None:
         auto_runner = MagicMock()
@@ -376,8 +444,11 @@ class TestAutoRunOutput:
             "outcome": "failed",
             "reason": "generation subprocess exited with code 7",
             "candidate_key": "monthly:2026-07",
+            "category": "monthly_review",
             "run_id": None,
             "output_path": None,
+            "recent_categories": [],
+            "rejections": [],
         }
         assert "root cause on stdout" in result.stderr
 

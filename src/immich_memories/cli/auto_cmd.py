@@ -65,8 +65,18 @@ def _auto_result_to_json(result: AutoRunResult) -> str:
             "outcome": result.outcome.value,
             "reason": result.reason,
             "candidate_key": result.candidate.memory_key if result.candidate else None,
+            "category": result.candidate.category.value if result.candidate else None,
             "run_id": result.run_id,
             "output_path": str(result.output_path) if result.output_path else None,
+            "recent_categories": list(result.recent_categories),
+            "rejections": [
+                {
+                    "category": rejection.category,
+                    "memory_key": rejection.memory_key,
+                    "rule": rejection.rule,
+                }
+                for rejection in result.rejections
+            ],
         }
     )
 
@@ -165,6 +175,16 @@ def run_cmd(
         print_success(f"{result.outcome.value}: {result.reason} ({result.output_path})")
     elif result.outcome is not AutoOutcome.FAILED:
         print_info(f"{result.outcome.value}: {result.reason}")
+
+    if not quiet:
+        if result.candidate is not None:
+            print_info(
+                f"Candidate: {result.candidate.category.value} ({result.candidate.memory_key})"
+            )
+        if result.recent_categories:
+            print_info(f"Recent auto categories: {', '.join(result.recent_categories)}")
+        for rejection in result.rejections:
+            print_info(f"Rejected {rejection.category} ({rejection.memory_key}): {rejection.rule}")
 
     if result.outcome is AutoOutcome.FAILED:
         click.echo(f"{result.outcome.value}: {result.reason}: {result.error}", err=True)

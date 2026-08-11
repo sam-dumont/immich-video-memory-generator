@@ -16,6 +16,7 @@ from immich_memories.automation.candidates import MemoryCandidate
 from immich_memories.automation.models import (
     AutomationAttempt,
     AutoOutcome,
+    AutoRejection,
     AutoRunResult,
     ProcessResult,
 )
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 _GENERATION_TIMEOUT_SECONDS = 7200
 _GENERATION_TIMEOUT_REASON = "generation timed out after 2 hours"
 _OUTPUT_TAIL_LENGTH = 2000
+_MAX_REPORTED_REJECTIONS = 20
 
 
 class ImmichDiscoveryError(RuntimeError):
@@ -462,6 +464,7 @@ class AutoRunner:
         self.execute = execute or _execute_generate
         self.config_path = config_path
         self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
+        self.last_recent_categories: tuple[str, ...] = ()
         self.last_suggest_status = SuggestStatus()
 
     def _secrets(self) -> tuple[str, ...]:
@@ -564,6 +567,15 @@ class AutoRunner:
             run_id=run_id,
             output_path=output_path,
             error=error,
+            recent_categories=self.last_recent_categories,
+            rejections=tuple(
+                AutoRejection(
+                    category=item.candidate.category.value,
+                    memory_key=item.candidate.memory_key,
+                    rule=item.rule,
+                )
+                for item in self.last_variety_decision.rejected[:_MAX_REPORTED_REJECTIONS]
+            ),
         )
 
     def _notify_generation_failure(self, candidate: MemoryCandidate, error: str) -> None:
@@ -632,6 +644,7 @@ class AutoRunner:
         from immich_memories.preflight import CheckStatus, check_immich
 
         self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
+        self.last_recent_categories = ()
         self.last_suggest_status = SuggestStatus()
         immich_result = check_immich(self.config)
         if immich_result.status == CheckStatus.ERROR:
@@ -654,6 +667,9 @@ class AutoRunner:
             status="completed",
             source="auto",
             order_by_completion=True,
+        )
+        self.last_recent_categories = tuple(
+            run.memory_category for run in recent_auto_runs if run.memory_category is not None
         )
         today = date.today()
 

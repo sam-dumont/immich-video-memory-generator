@@ -623,6 +623,65 @@ class TestRunOneDryRun:
 
 
 class TestRunOneNoCandidates:
+    def test_variety_rejection_is_typed_and_does_not_generate(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        """A hard rejection must stay visible without relaxing or generating."""
+        from immich_memories.preflight import CheckStatus
+
+        execute = MagicMock()
+        runner = AutoRunner(config, execute=execute)
+        completed = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
+        runner.db.save_run(
+            RunMetadata(
+                run_id="previous-monthly",
+                created_at=completed - timedelta(minutes=5),
+                completed_at=completed,
+                status="completed",
+                source="auto",
+                memory_type="monthly_highlights",
+                memory_category=CandidateCategory.MONTHLY_REVIEW.value,
+            )
+        )
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.get_time_buckets.return_value = []
+        client.get_all_people.return_value = []
+        rejected_candidates = [
+            replace(candidate, memory_key=f"{candidate.memory_key}:{index}") for index in range(25)
+        ]
+
+        with (
+            patch(
+                "immich_memories.preflight.check_immich",
+                return_value=MagicMock(status=CheckStatus.OK),
+            ),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+            patch(
+                "immich_memories.automation.runner._run_all_detectors",
+                return_value=rejected_candidates,
+            ),
+            patch("immich_memories.automation.runner.date") as clock,
+        ):
+            clock.today.return_value = date(2026, 8, 11)
+            clock.side_effect = date
+            result = runner.run_one(force=True, dry_run=True)
+
+        assert result.outcome is AutoOutcome.SKIPPED
+        assert result.reason == "no eligible candidates"
+        assert result.recent_categories == (CandidateCategory.MONTHLY_REVIEW.value,)
+        assert len(result.rejections) == 20
+        assert [(item.category, item.memory_key, item.rule) for item in result.rejections][:1] == [
+            (
+                CandidateCategory.MONTHLY_REVIEW.value,
+                rejected_candidates[0].memory_key,
+                "same_category_as_previous",
+            )
+        ]
+        execute.assert_not_called()
+        assert len(runner.db.list_runs()) == 1
+
     def test_no_candidates_returns_skipped(self, config: Config) -> None:
         """An empty eligible set has its own truthful reason."""
         runner = AutoRunner(config)
