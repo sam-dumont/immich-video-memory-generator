@@ -128,7 +128,9 @@ def test_ci_runs_the_hermetic_launch_check_with_runtime_dependencies() -> None:
     ("event_name", "setup_result", "launch_result", "expected_returncode"),
     [
         ("pull_request", "success", "success", 0),
+        ("pull_request", "success", "skipped", 1),
         ("pull_request", "success", "cancelled", 1),
+        ("workflow_call", "success", "skipped", 0),
         ("workflow_call", "success", "cancelled", 0),
         ("workflow_call", "failure", "skipped", 1),
     ],
