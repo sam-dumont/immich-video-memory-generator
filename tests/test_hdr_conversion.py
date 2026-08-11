@@ -322,6 +322,48 @@ class TestHdrConversionFilter:
         assert "tonemap=" in conversion
         assert "zscale=t=bt709" in conversion
 
+    def test_standalone_sdr_context_probes_actual_hdr_before_multi_clip_assembly(self):
+        """A plan without provenance must still discover HDR before building the graph."""
+        from immich_memories.processing.assembly_engine import create_assembly_context
+        from immich_memories.processing.filter_builder import FilterBuilder
+
+        plan = EncodingPlan(
+            codec=OutputCodec.H264,
+            encoder="libx264",
+            encoder_args=("-preset", "medium", "-crf", "18"),
+            target_transfer=HdrTransfer.NONE,
+            tone_map_to_sdr=False,
+            pixel_format="yuv420p",
+            container="mp4",
+        )
+        settings = AssemblySettings(encoding_plan=plan)
+        prober = MagicMock()
+        prober.detect_max_framerate.return_value = 30
+        clips = [
+            AssemblyClip(path=Path("/tmp/hlg.mp4"), duration=5.0),
+            AssemblyClip(path=Path("/tmp/sdr.mp4"), duration=5.0),
+        ]
+
+        with (
+            patch(
+                "immich_memories.processing.assembly_engine._get_clip_hdr_types",
+                return_value=["hlg", None],
+            ) as detect_transfers,
+            patch(
+                "immich_memories.processing.hdr_utilities._check_zscale_available",
+                return_value=True,
+            ),
+        ):
+            context = create_assembly_context(settings, prober, clips, 1920, 1080)
+            conversion = FilterBuilder(
+                settings, prober, lambda _path: None
+            ).get_clip_hdr_conversion(0, context)
+
+        detect_transfers.assert_called_once_with(clips)
+        assert context.clip_hdr_types == ["hlg", None]
+        assert "zscale=t=linear:tin=arib-std-b67" in conversion
+        assert "tonemap=" in conversion
+
     def test_filter_builder_fails_when_required_transfer_conversion_is_unavailable(self):
         """The normal assembly path must not relabel HLG pixels as PQ."""
         from immich_memories.processing.assembly_engine import create_assembly_context

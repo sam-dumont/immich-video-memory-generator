@@ -85,14 +85,15 @@ def create_assembly_context(
         target_w, target_h = resolve_target_resolution(settings, prober, clips)
 
     plan = settings.encoding_plan
-    inspect_source_hdr = plan.hdr or plan.tone_map_to_sdr
     pix_fmt = plan.pixel_format
     target_fps = prober.detect_max_framerate(clips)
     hdr_type = plan.target_transfer.value if plan.hdr else "sdr"
 
-    clip_hdr_types = _get_clip_hdr_types(clips) if inspect_source_hdr else [None] * len(clips)
+    # WHY: direct/standalone plans have no source provenance. Always inspect the
+    # actual clips so an HDR source cannot be relabeled SDR without conversion.
+    clip_hdr_types = _get_clip_hdr_types(clips)
     clip_primaries: list[str | None] = []
-    if inspect_source_hdr:
+    if plan.hdr:
         for clip in clips:
             clip_primaries.append(_detect_color_primaries(clip.path))
     else:
