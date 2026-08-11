@@ -143,6 +143,8 @@ def test_status_json_reports_durable_attempt_rotation_and_scheduler(tmp_path: Pa
         "rejection_reasons",
         "suggestion",
         "scheduler",
+        "pending_delivery_count",
+        "oldest_pending_delivery",
     }
     assert payload["last_attempt"]["outcome"] == "failed"
     assert payload["last_attempt"]["error"] == "connection refused"
@@ -152,6 +154,8 @@ def test_status_json_reports_durable_attempt_rotation_and_scheduler(tmp_path: Pa
     assert payload["cooldown"]["active"] is True
     assert payload["cooldown"]["until"] is not None
     assert payload["rejection_reasons"] == []
+    assert payload["pending_delivery_count"] == 0
+    assert payload["oldest_pending_delivery"] is None
     assert payload["scheduler"] == {
         "platform": "launchd",
         "installed": True,
