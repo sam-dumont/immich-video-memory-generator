@@ -192,6 +192,24 @@ class TestRunTrackerMemoryFields:
         assert saved_run.memory_type is None
         assert saved_run.memory_key is None
 
+    def test_run_metadata_json_round_trips_memory_identity(self):
+        """Automation category and people survive metadata JSON export/import."""
+        from datetime import datetime
+
+        from immich_memories.tracking.models import RunMetadata
+
+        run = RunMetadata(
+            run_id="identity-json",
+            created_at=datetime(2026, 8, 11, 9, 0),
+            memory_category="multi_person",
+            memory_people=(" alice ", "BOB\tJones"),
+        )
+
+        restored = RunMetadata.from_json(run.to_json())
+
+        assert restored.memory_category == "multi_person"
+        assert restored.memory_people == ("alice", "bob jones")
+
 
 class TestRunTrackerFailCancel:
     """Tests for fail_run and cancel_run."""

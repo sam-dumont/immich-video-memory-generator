@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Current schema version - increment when schema changes
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 # Scoring algorithm version — bump when score computation changes
 # so cached scores from the old algorithm get re-analyzed
@@ -91,6 +91,7 @@ class VideoAnalysisCache:
             7: self._migration_v7_asset_scores,
             8: self._migration_v8_scoring_version,
             9: self._migration_v9_automation,
+            10: self._migration_v10_automation_state,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):
@@ -349,6 +350,39 @@ class VideoAnalysisCache:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_source ON pipeline_runs(source)")
         logger.info("Added memory_type, memory_key, source columns for automation")
+
+    def _migration_v10_automation_state(self, conn: sqlite3.Connection) -> None:
+        """Add durable automation state and exact run identity fields."""
+        conn.execute("ALTER TABLE pipeline_runs ADD COLUMN memory_category TEXT")
+        conn.execute(
+            """
+            ALTER TABLE pipeline_runs
+            ADD COLUMN memory_people_json TEXT NOT NULL DEFAULT '[]'
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE automation_attempts (
+                id TEXT PRIMARY KEY,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                outcome TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                candidate_category TEXT,
+                memory_type TEXT,
+                memory_key TEXT,
+                run_id TEXT,
+                error TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX idx_auto_attempts_started
+            ON automation_attempts(started_at DESC)
+            """
+        )
+        logger.info("Added automation attempt state and exact run identity columns")
 
     # =========================================================================
     # Quick Video Metadata Methods

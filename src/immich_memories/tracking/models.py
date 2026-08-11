@@ -8,6 +8,11 @@ from datetime import date, datetime
 from typing import Any, Literal
 
 
+def normalize_memory_people(people: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    """Canonicalize person identities for automation variety comparisons."""
+    return tuple(" ".join(person.split()).casefold() for person in people)
+
+
 @dataclass
 class SystemInfo:
     """System specifications captured at run time."""
@@ -134,6 +139,8 @@ class RunMetadata:
     # Automation / dedup
     memory_type: str | None = None
     memory_key: str | None = None
+    memory_category: str | None = None
+    memory_people: tuple[str, ...] = ()
     source: str = "manual"  # "manual" | "scheduled" | "auto"
 
     # Input parameters
@@ -159,6 +166,9 @@ class RunMetadata:
     # Phase statistics (populated when loaded from DB)
     phases: list[PhaseStats] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        self.memory_people = normalize_memory_people(self.memory_people)
+
     @property
     def total_duration_seconds(self) -> float:
         """Get total run duration in seconds."""
@@ -175,6 +185,8 @@ class RunMetadata:
             "status": self.status,
             "memory_type": self.memory_type,
             "memory_key": self.memory_key,
+            "memory_category": self.memory_category,
+            "memory_people": list(self.memory_people),
             "source": self.source,
             "person_name": self.person_name,
             "person_id": self.person_id,
@@ -206,6 +218,8 @@ class RunMetadata:
             status=data.get("status", "running"),
             memory_type=data.get("memory_type"),
             memory_key=data.get("memory_key"),
+            memory_category=data.get("memory_category"),
+            memory_people=tuple(data.get("memory_people", [])),
             source=data.get("source", "manual"),
             person_name=data.get("person_name"),
             person_id=data.get("person_id"),

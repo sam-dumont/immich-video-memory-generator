@@ -10,7 +10,12 @@ from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 
-from immich_memories.tracking.models import PhaseStats, RunMetadata, SystemInfo
+from immich_memories.tracking.models import (
+    PhaseStats,
+    RunMetadata,
+    SystemInfo,
+    normalize_memory_people,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +33,12 @@ def row_to_run(row: sqlite3.Row) -> RunMetadata:
         status=row["status"],
         memory_type=row["memory_type"] if "memory_type" in dict(row) else None,
         memory_key=row["memory_key"] if "memory_key" in dict(row) else None,
+        memory_category=(row["memory_category"] if "memory_category" in dict(row) else None),
+        memory_people=(
+            tuple(json.loads(row["memory_people_json"]))
+            if "memory_people_json" in dict(row) and row["memory_people_json"]
+            else ()
+        ),
         source=row["source"] if "source" in dict(row) else "manual",
         person_name=row["person_name"],
         person_id=row["person_id"],
@@ -114,12 +125,12 @@ class RunDatabase:
                 """
                 INSERT OR REPLACE INTO pipeline_runs (
                     run_id, created_at, completed_at, status,
-                    memory_type, memory_key, source,
+                    memory_type, memory_key, memory_category, memory_people_json, source,
                     person_name, person_id, date_range_start, date_range_end,
                     target_duration_minutes, output_path, output_size_bytes,
                     output_duration_seconds, clips_analyzed, clips_selected,
                     errors_count, system_info
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.run_id,
@@ -128,6 +139,8 @@ class RunDatabase:
                     run.status,
                     run.memory_type,
                     run.memory_key,
+                    run.memory_category,
+                    json.dumps(normalize_memory_people(run.memory_people)),
                     run.source,
                     run.person_name,
                     run.person_id,
@@ -293,6 +306,7 @@ class RunDatabase:
         offset: int = 0,
         person_name: str | None = None,
         status: str | None = None,
+        source: str | None = None,
     ) -> list[RunMetadata]:
         """List runs with optional filtering."""
         with self._get_connection() as conn:
@@ -306,6 +320,10 @@ class RunDatabase:
             if status:
                 query += " AND status = ?"
                 params.append(status)
+
+            if source:
+                query += " AND source = ?"
+                params.append(source)
 
             query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
             params.extend([limit, offset])
@@ -412,3 +430,25 @@ class RunDatabase:
                 """
             ).fetchall()
             return {row["memory_key"] for row in rows}
+
+    def get_completed_run_by_identity(
+        self,
+        memory_key: str,
+        source: str,
+        created_after: datetime,
+    ) -> RunMetadata | None:
+        """Find a completed run created after an automation attempt started."""
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM pipeline_runs
+                WHERE memory_key = ?
+                  AND source = ?
+                  AND status = 'completed'
+                  AND created_at > ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (memory_key, source, created_after.isoformat()),
+            ).fetchone()
+        return row_to_run(row) if row else None
