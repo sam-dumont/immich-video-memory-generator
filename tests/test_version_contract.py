@@ -6,6 +6,7 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
 
 import immich_memories
@@ -37,6 +38,33 @@ def _make_dry_run(target: str) -> str:
         text=True,
     )
     return result.stdout
+
+
+def _ci_success_result(
+    event_name: str,
+    setup_result: str,
+    launch_result: str,
+) -> subprocess.CompletedProcess[str]:
+    """Run the checked-in summary gate against one GitHub-result scenario."""
+    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
+    command = workflow["jobs"]["ci-success"]["steps"][0]["run"]
+    replacements = {
+        "${{ github.event_name }}": event_name,
+        "${{ needs.setup.result }}": setup_result,
+        "${{ needs['launch-check'].result }}": launch_result,
+    }
+    for token, result in replacements.items():
+        command = command.replace(token, result)
+    for job in workflow["jobs"]:
+        command = command.replace(f"${{{{ needs.{job}.result }}}}", "success")
+    assert "${{" not in command
+    return subprocess.run(
+        ["bash", "-o", "pipefail", "-c", command],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_package_exports_generated_version() -> None:
@@ -85,13 +113,6 @@ def test_ci_runs_the_hermetic_launch_check_with_runtime_dependencies() -> None:
     assert "playwright install --with-deps chromium" in commands
     assert "make launch-check" in commands
     assert all("IMMICH_API_KEY" not in str(step) for step in steps)
-    summary_command = "\n".join(
-        str(step.get("run", "")) for step in workflow["jobs"]["ci-success"]["steps"]
-    )
-    assert "needs['launch-check'].result" in summary_command
-    assert "needs.setup.result" in summary_command
-    assert "github.event_name" in summary_command
-    assert '"pull_request"' in summary_command
 
     upload = next(
         step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")
@@ -100,3 +121,25 @@ def test_ci_runs_the_hermetic_launch_check_with_runtime_dependencies() -> None:
     artifact_paths = str(upload["with"]["path"])
     for expected in ("tests/e2e-junit.xml", "server.log", "output-probe.json"):
         assert expected in artifact_paths
+    assert "launch-smoke*/output/**" in artifact_paths
+
+
+@pytest.mark.parametrize(
+    ("event_name", "setup_result", "launch_result", "expected_returncode"),
+    [
+        ("pull_request", "success", "success", 0),
+        ("pull_request", "success", "cancelled", 1),
+        ("workflow_call", "success", "cancelled", 0),
+        ("workflow_call", "failure", "skipped", 1),
+    ],
+)
+def test_ci_summary_gate_enforces_event_sensitive_launch_result_matrix(
+    event_name: str,
+    setup_result: str,
+    launch_result: str,
+    expected_returncode: int,
+) -> None:
+    """PR launch results are required; workflow calls permit the skipped launch job."""
+    result = _ci_success_result(event_name, setup_result, launch_result)
+
+    assert result.returncode == expected_returncode, result.stdout + result.stderr

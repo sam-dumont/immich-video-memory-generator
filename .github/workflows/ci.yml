@@ -530,6 +530,7 @@ jobs:
             tests/e2e-junit.xml
             /tmp/pytest-of-runner/**/server.log
             /tmp/pytest-of-runner/**/output-probe.json
+            /tmp/pytest-of-runner/**/launch-smoke*/output/**
 
   # ── Summary gate ──────────────────────────────────────────────────────────
   ci-success:

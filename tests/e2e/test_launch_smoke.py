@@ -16,7 +16,11 @@ from immich_memories.processing.encoding_plan import (
     HdrTransfer,
     OutputCodec,
 )
-from immich_memories.processing.output_contract import validate_output
+from immich_memories.processing.output_contract import (
+    InvalidOutputArtifact,
+    OutputProbe,
+    validate_output,
+)
 from immich_memories.tracking.run_database import RunDatabase
 from tests.e2e.conftest import _build_launch_environment
 
@@ -42,6 +46,127 @@ def test_launch_environment_strips_all_production_shortcuts(monkeypatch) -> None
     environment = _build_launch_environment()
 
     assert shortcut_names.isdisjoint(environment)
+
+
+def test_failed_output_validation_records_sanitized_probe_without_removing_video(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Failed validation must leave CI a safe probe and the original video."""
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"rendered-video")
+    diagnostic_path = tmp_path / "output-probe.json"
+
+    def fail_validation(path: Path, plan: EncodingPlan) -> None:
+        raise InvalidOutputArtifact(f"invalid output at {path}")
+
+    monkeypatch.setattr(
+        "tests.e2e.test_launch_smoke.validate_output",
+        fail_validation,
+    )
+
+    with pytest.raises(InvalidOutputArtifact, match="invalid output"):
+        _validate_and_record_output(  # type: ignore[name-defined,arg-type]
+            output_path,
+            None,
+            diagnostic_path,
+        )
+
+    assert output_path.read_bytes() == b"rendered-video"
+    assert diagnostic_path.exists()
+    assert json.loads(diagnostic_path.read_text()) == {
+        "output": {
+            "exists": True,
+            "size_bytes": len(b"rendered-video"),
+        },
+        "validation": {
+            "error_type": "InvalidOutputArtifact",
+            "status": "failed",
+        },
+    }
+
+
+def test_successful_output_validation_records_sanitized_probe(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Successful validation must leave CI the normalized output evidence."""
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"rendered-video")
+    diagnostic_path = tmp_path / "output-probe.json"
+    probe = OutputProbe(
+        codec="h264",
+        container="mp4",
+        duration_seconds=1.25,
+        size_bytes=len(b"rendered-video"),
+        pixel_format="yuv420p",
+        color_transfer="bt709",
+        color_primaries="bt709",
+        width=1280,
+        height=720,
+        decoded_frames=30,
+    )
+
+    monkeypatch.setattr(
+        "tests.e2e.test_launch_smoke.validate_output",
+        lambda _path, _plan: probe,
+    )
+
+    assert _validate_and_record_output(output_path, None, diagnostic_path) is probe  # type: ignore[arg-type]
+    assert diagnostic_path.exists()
+    assert json.loads(diagnostic_path.read_text()) == {
+        "output": {
+            "exists": True,
+            "size_bytes": len(b"rendered-video"),
+        },
+        "probe": asdict(probe),
+        "validation": {"status": "passed"},
+    }
+
+
+def _output_diagnostic(path: Path) -> dict[str, bool | int | None]:
+    """Return only non-sensitive facts about the generated output."""
+    exists = path.is_file()
+    return {
+        "exists": exists,
+        "size_bytes": path.stat().st_size if exists else None,
+    }
+
+
+def _write_output_diagnostic(path: Path, diagnostic: dict[str, object]) -> None:
+    """Persist deterministic, non-sensitive E2E artifact metadata."""
+    path.write_text(json.dumps(diagnostic, indent=2, sort_keys=True))
+
+
+def _validate_and_record_output(
+    output_path: Path,
+    plan: EncodingPlan,
+    diagnostic_path: Path,
+) -> OutputProbe:
+    """Validate one E2E artifact while always preserving failure diagnostics."""
+    try:
+        probe = validate_output(output_path, plan)
+    except Exception as exc:
+        _write_output_diagnostic(
+            diagnostic_path,
+            {
+                "output": _output_diagnostic(output_path),
+                "validation": {
+                    "error_type": type(exc).__name__,
+                    "status": "failed",
+                },
+            },
+        )
+        raise
+    _write_output_diagnostic(
+        diagnostic_path,
+        {
+            "output": _output_diagnostic(output_path),
+            "probe": asdict(probe),
+            "validation": {"status": "passed"},
+        },
+    )
+    return probe
 
 
 def _choose(page: Page, label: str, option: str) -> None:
@@ -117,9 +242,10 @@ def test_launch_flow_renders_real_video(
         pixel_format="yuv420p",
         container="mp4",
     )
-    probe = validate_output(output_path, plan)
-    (launch_workspace.root / "output-probe.json").write_text(
-        json.dumps(asdict(probe), indent=2, sort_keys=True)
+    probe = _validate_and_record_output(
+        output_path,
+        plan,
+        launch_workspace.root / "output-probe.json",
     )
     assert probe.codec == "h264"
     assert (probe.width, probe.height) == (1280, 720)
