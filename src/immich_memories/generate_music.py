@@ -229,7 +229,10 @@ def publish_music_mix(
         _require_audio_stream(staged_path)
         return publish_validated_output(staged_path, video_path, encoding_plan)
     except Exception:
-        staged_path.unlink(missing_ok=True)
+        try:
+            staged_path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Music stage cleanup failed; preserving the primary phase outcome")
         raise
 
 

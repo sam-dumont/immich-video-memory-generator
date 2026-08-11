@@ -6,6 +6,7 @@ import json
 import shutil
 import subprocess
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -339,6 +340,7 @@ async def test_ui_music_conduit_forwards_one_artifact_validation_plan(
             "music_source": music_source,
             "music_file": b"uploaded",
         },
+        clip_segments={},
         memory_type=None,
     )
 
@@ -533,6 +535,138 @@ async def test_ui_music_plan_failure_is_sanitized_without_detached_tracking(
     assert credential_value not in str(notify.call_args)
 
 
+@pytest.mark.asyncio
+async def test_fresh_ui_ai_music_receives_selected_clip_timeline_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The no-preview export path must retain the UI's selected clip timeline."""
+    from immich_memories.ui.pages._step4_generate import run_generation
+
+    class Element:
+        def __init__(self, *args: object, value: object = None, **_kwargs: object) -> None:
+            self.value = value if value is not None else (args[0] if args else None)
+            self.source = ""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def clear(self) -> None:
+            return None
+
+        def classes(self, *_args: object):
+            return self
+
+        def style(self, *_args: object):
+            return self
+
+        def set_text(self, value: str) -> None:
+            self.value = value
+
+        def set_visibility(self, _visible: bool) -> None:
+            return None
+
+    result_path = tmp_path / "memory.mp4"
+    result_path.write_bytes(b"validated-base")
+    selected_clip = make_clip(
+        "clip-1",
+        duration=9.0,
+        file_created_at=datetime(2025, 7, 4),
+    )
+    selected_clip.llm_emotion = "joyful"
+    config = Config()
+    state = SimpleNamespace(
+        cancel_requested=False,
+        config=config,
+        generation_options={"music_source": "AI Generated", "music_volume": 0.5},
+        clip_segments={"clip-1": (2.0, 8.0)},
+        memory_type=None,
+        upload_enabled=False,
+        output_path=None,
+    )
+    selected_music = SimpleNamespace(full_mix=tmp_path / "music.wav", stems=None)
+    selected_music.full_mix.write_bytes(b"music")
+    music_result = SimpleNamespace(
+        versions=[selected_music],
+        selected=selected_music,
+        selected_version=None,
+        cleanup_unselected=lambda: None,
+    )
+    received_timelines: list[object] = []
+
+    async def generate_music_for_video(*, timeline: object, **_kwargs: object) -> object:
+        received_timelines.append(timeline)
+        return music_result
+
+    def write_mix(*, output_path: Path, **_kwargs: object) -> None:
+        output_path.write_bytes(b"validated-mix")
+
+    def publish_mix(video_path: Path, encoding_plan: object) -> None:
+        del encoding_plan
+        video_path.with_suffix(".with_music.mp4").replace(video_path)
+
+    async def io_bound(
+        callback: Callable[..., object],
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        if callback.__name__ == "generate_memory":
+            return result_path
+        return callback(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_generate._build_generation_params",
+        lambda *_args: SimpleNamespace(progress_callback=None, frame_preview_callback=None),
+    )
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_generate.normalize_ui_output_path",
+        lambda _state, path: path,
+    )
+    monkeypatch.setattr(
+        "immich_memories.generate_music.derive_music_validation_plan",
+        lambda _path: _h264_output_plan(),
+    )
+    monkeypatch.setattr(
+        "immich_memories.ui.state.get_app_state",
+        lambda: SimpleNamespace(music_preview_result=None),
+    )
+    monkeypatch.setattr(
+        "immich_memories.audio.music_generator.generate_music_for_video",
+        generate_music_for_video,
+    )
+    monkeypatch.setattr("immich_memories.audio.mixer.mix_audio_with_ducking", write_mix)
+    monkeypatch.setattr("immich_memories.generate_music.publish_music_mix", publish_mix)
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.run.io_bound", io_bound)
+    monkeypatch.setattr("immich_memories.ui.pages._step4_music.run.io_bound", io_bound)
+    monkeypatch.setattr("immich_memories.ui.components.im_button", lambda *_a, **_kw: Element())
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.ui.linear_progress", Element)
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.ui.label", Element)
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.ui.image", Element)
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_generate._show_output", lambda *_args: None
+    )
+
+    await run_generation(
+        state,
+        [selected_clip],
+        total_duration=6.0,
+        output_dir=tmp_path,
+        output_path=result_path,
+        filename_input=SimpleNamespace(value="memory.mp4"),
+        progress_container=Element(),
+        output_container=Element(),
+    )
+
+    assert len(received_timelines) == 1
+    timeline = received_timelines[0]
+    assert [(clip.duration, clip.mood, clip.month) for clip in timeline.clips] == [
+        (6.0, "joyful", 7)
+    ]
+
+
 def _prores_plan():
     from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 
@@ -666,7 +800,8 @@ async def test_ai_music_preserves_mov_container(
 
     await apply_ai_music(
         result_path,
-        assembly_clips=[],
+        selected_clips=[],
+        clip_segments={},
         gen_options={"music_volume": 0.5},
         config=object(),
         run_output_dir=tmp_path,
@@ -1177,6 +1312,65 @@ class TestApplyMusicFileAtomic:
 
         assert video.read_bytes() == b"validated-base"
         assert not (tmp_path / "memory.with_music.mp4").exists()
+
+    def test_validation_failure_survives_inner_stage_cleanup_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Stage cleanup cannot replace the validation failure or its chained cause."""
+        from immich_memories.generate_music import apply_music_file, optional_music_warning
+        from immich_memories.processing.output_contract import InvalidOutputArtifact
+
+        video = tmp_path / "memory.mp4"
+        music = tmp_path / "music.wav"
+        staged = tmp_path / "memory.with_music.mp4"
+        video.write_bytes(b"validated-base")
+        music.write_bytes(b"music")
+        config = Config()
+        configured_value = "validation-secret-482"
+        config.musicgen.api_key = configured_value
+        validation_cause = RuntimeError("decoded video evidence unavailable")
+        validation_error = InvalidOutputArtifact("invalid mix from validation-secret-482")
+        validation_error.__cause__ = validation_cause
+
+        def write_invalid_mix(*, output_path: Path, **_kwargs: object) -> None:
+            output_path.write_bytes(b"invalid-mix")
+
+        real_unlink = Path.unlink
+
+        def fail_stage_cleanup(path: Path, missing_ok: bool = False) -> None:
+            if path == staged and path.exists():
+                raise OSError("cleanup leaked cleanup-secret-917")
+            real_unlink(path, missing_ok=missing_ok)
+
+        monkeypatch.setattr(
+            "immich_memories.audio.mixer.mix_audio_with_ducking",
+            write_invalid_mix,
+        )
+        monkeypatch.setattr(
+            "immich_memories.generate_music.publish_validated_output",
+            MagicMock(side_effect=validation_error),
+        )
+        monkeypatch.setattr(
+            "immich_memories.generate_music._require_audio_stream",
+            lambda _path: None,
+        )
+        monkeypatch.setattr(Path, "unlink", fail_stage_cleanup)
+        caplog.set_level("DEBUG")
+
+        with pytest.raises(InvalidOutputArtifact) as caught:
+            apply_music_file(video, music, volume=0.5, encoding_plan=_h264_output_plan())
+
+        assert caught.value is validation_error
+        assert caught.value.__cause__ is validation_cause
+        assert optional_music_warning(caught.value, config) == (
+            "Optional music failed: invalid mix from ***"
+        )
+        assert video.read_bytes() == b"validated-base"
+        assert "Music stage cleanup failed; preserving the primary phase outcome" in caplog.text
+        assert "cleanup-secret-917" not in caplog.text
 
 
 def test_music_failure_keeps_valid_base_and_returns_sanitized_warning(tmp_path: Path) -> None:

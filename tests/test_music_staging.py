@@ -191,7 +191,8 @@ async def test_ai_music_stage_is_cleared_before_mix_and_after_failure(
 
     result = await apply_ai_music(
         video_path,
-        assembly_clips=[],
+        selected_clips=[],
+        clip_segments={},
         gen_options={"music_volume": 0.5},
         config=Config(),
         run_output_dir=tmp_path,
@@ -262,7 +263,8 @@ async def test_ai_success_survives_final_stage_cleanup_failure(
 
     result = await apply_ai_music(
         video_path,
-        assembly_clips=[],
+        selected_clips=[],
+        clip_segments={},
         gen_options={"music_volume": 0.5},
         config=Config(),
         run_output_dir=tmp_path,
@@ -329,7 +331,8 @@ async def test_mixer_failure_is_not_masked_by_final_stage_cleanup_failure(
 
     result = await apply_ai_music(
         video_path,
-        assembly_clips=[],
+        selected_clips=[],
+        clip_segments={},
         gen_options={"music_volume": 0.5},
         config=Config(),
         run_output_dir=tmp_path,
@@ -517,7 +520,7 @@ async def test_post_publication_cleanup_failure_does_not_block_upload(
     music_source: str,
 ) -> None:
     """Both post-publication cleanup failures still reach the independent upload phase."""
-    from immich_memories.ui.pages._step4_generate import _apply_optional_music_and_upload
+    from immich_memories.ui.pages._step4_generate import _run_post_assembly_phases
 
     video_path = tmp_path / "memory.mp4"
     video_path.write_bytes(b"validated-base")
@@ -576,10 +579,9 @@ async def test_post_publication_cleanup_failure_does_not_block_upload(
     monkeypatch.setattr("immich_memories.ui.pages._step4_music.ui.notify", MagicMock())
     upload = AsyncMock()
     monkeypatch.setattr(
-        "immich_memories.ui.pages._step4_upload.upload_to_immich",
+        "immich_memories.ui.pages._step4_generate.upload_to_immich",
         upload,
     )
-    tracker = MagicMock()
     progress = _Progress()
     status = _Status()
     state = SimpleNamespace(
@@ -588,21 +590,20 @@ async def test_post_publication_cleanup_failure_does_not_block_upload(
             "music_file": b"uploaded",
             "music_volume": 0.5,
         },
+        clip_segments={},
         memory_type=None,
         upload_enabled=True,
     )
 
-    await _apply_optional_music_and_upload(
+    await _run_post_assembly_phases(
         state,
         Config(),
         video_path,
         [],
         tmp_path,
-        tracker,
         progress,
         status,
     )
 
     assert video_path.read_bytes() == b"validated-mix"
-    tracker.complete_phase.assert_called_once_with(items_processed=1)
     upload.assert_awaited_once_with(video_path, state, progress, status)

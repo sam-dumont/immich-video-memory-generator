@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 async def _select_ai_music(
-    assembly_clips: list,
+    selected_clips: list,
+    clip_segments: dict[str, tuple[float, float]],
     config: object,
     run_output_dir: Path,
     progress_bar: object,
@@ -44,16 +45,17 @@ async def _select_ai_music(
     from immich_memories.audio.music_generator_client import MusicGenClientConfig
     from immich_memories.audio.music_generator_models import VideoTimeline
 
-    clip_data: list[tuple[float, str, int | None]] = [
-        (
-            clip.duration,
-            clip.llm_emotion or "calm",
-            clip.date.month
-            if hasattr(clip.date, "month")
-            else (int(clip.date.split("-")[1]) if clip.date else None),
+    clip_data: list[tuple[float, str, int | None]] = []
+    for clip in selected_clips:
+        start, end = clip_segments.get(clip.asset.id, (0.0, clip.duration_seconds or 5.0))
+        created_at = clip.asset.file_created_at
+        clip_data.append(
+            (
+                end - start,
+                clip.llm_emotion or "calm",
+                created_at.month if created_at is not None else None,
+            )
         )
-        for clip in assembly_clips
-    ]
     timeline = VideoTimeline.from_clips(
         clips=clip_data,
         title_duration=(config.title_screens.title_duration if config.title_screens.enabled else 0),
@@ -131,7 +133,8 @@ async def _mix_selected_ai_music(
 
 async def apply_ai_music(
     result_path: Path,
-    assembly_clips: list,
+    selected_clips: list,
+    clip_segments: dict[str, tuple[float, float]],
     gen_options: dict,
     config: object,
     run_output_dir: Path,
@@ -148,7 +151,8 @@ async def apply_ai_music(
 
     Args:
         result_path: Path to the assembled video file.
-        assembly_clips: List of AssemblyClip objects.
+        selected_clips: UI-selected VideoClipInfo objects.
+        clip_segments: Selected start/end bounds keyed by asset ID.
         gen_options: Generation options dict from UI state.
         config: App config object.
         run_output_dir: Output directory for this run.
@@ -162,7 +166,8 @@ async def apply_ai_music(
 
     try:
         music_result, selected_music = await _select_ai_music(
-            assembly_clips,
+            selected_clips,
+            clip_segments,
             config,
             run_output_dir,
             progress_bar,
