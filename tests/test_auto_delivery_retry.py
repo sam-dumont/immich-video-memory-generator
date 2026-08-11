@@ -61,6 +61,18 @@ def _save_pending_auto_run(
     return run
 
 
+@pytest.fixture(autouse=True)
+def _healthy_retry_preflight() -> None:
+    """Keep retry tests hermetic while daily automation checks Immich first."""
+    from immich_memories.preflight import CheckResult, CheckStatus
+
+    with patch(
+        "immich_memories.preflight.check_immich",
+        return_value=CheckResult(name="Immich", status=CheckStatus.OK, message="Connected"),
+    ):
+        yield
+
+
 @pytest.mark.parametrize(
     "api_version",
     [ApiVersionPolicy.AUTO, ApiVersionPolicy.V2, ApiVersionPolicy.V3],
@@ -236,6 +248,229 @@ def test_pending_delivery_rejects_missing_or_blank_asset_identity(
     assert saved.delivery_status is DeliveryStatus.PENDING
     assert saved.delivery_attempts == 1
     assert saved.immich_asset_id is None
+
+
+def test_retry_retries_delivery_persistence_without_reuploading(
+    tmp_path: Path,
+) -> None:
+    """A transient post-upload DB error cannot make the same invocation upload twice."""
+    runner = AutoRunner(_config(tmp_path))
+    pending = _save_pending_auto_run(runner, tmp_path)
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.upload_memory.return_value = {"asset_id": "asset-persisted"}
+    mark_delivered = runner.db.mark_delivered
+    calls = 0
+
+    def fail_once(run_id: str, asset_id: str) -> RunMetadata:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("temporary durable write failure")
+        return mark_delivered(run_id, asset_id)
+
+    with (
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        patch.object(runner.db, "mark_delivered", side_effect=fail_once),
+        patch.object(runner, "suggest") as suggest,
+    ):
+        result = runner.run_one(force=True)
+
+    assert result.outcome is AutoOutcome.COMPLETED
+    assert result.action is AutoAction.DELIVERY_RETRY
+    assert result.run_id == pending.run_id
+    assert result.output_path == Path(pending.output_path or "")
+    assert calls == 2
+    client.upload_memory.assert_called_once()
+    suggest.assert_not_called()
+    saved = runner.db.get_run(pending.run_id)
+    assert saved is not None
+    assert saved.delivery_status is DeliveryStatus.DELIVERED
+    assert saved.immich_asset_id == "asset-persisted"
+
+
+def test_retry_persistence_failure_keeps_retry_identity_without_reuploading(
+    tmp_path: Path,
+) -> None:
+    """A permanent durable-write outage is reported as a retry, never a generation failure."""
+    runner = AutoRunner(_config(tmp_path))
+    pending = _save_pending_auto_run(runner, tmp_path)
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.upload_memory.return_value = {"asset_id": "asset-not-durable"}
+
+    with (
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        patch.object(
+            runner.db,
+            "mark_delivered",
+            side_effect=OSError("durable store rejected retry-api-key"),
+        ) as mark_delivered,
+        patch.object(runner, "suggest") as suggest,
+    ):
+        result = runner.run_one(force=True)
+
+    assert result.outcome is AutoOutcome.FAILED
+    assert result.action is AutoAction.DELIVERY_RETRY
+    assert result.reason == "pending delivery persistence failed"
+    assert result.run_id == pending.run_id
+    assert result.output_path == Path(pending.output_path or "")
+    assert result.error is not None
+    assert "retry-api-key" not in result.error
+    assert mark_delivered.call_count == 2
+    client.upload_memory.assert_called_once()
+    suggest.assert_not_called()
+    saved = runner.db.get_run(pending.run_id)
+    assert saved is not None
+    assert saved.delivery_status is DeliveryStatus.PENDING
+    assert runner.state.get_last_attempt().run_id == pending.run_id
+
+
+def test_retry_pending_persistence_failure_keeps_retry_identity(
+    tmp_path: Path,
+) -> None:
+    """A failed upload cannot turn a failed pending-state write into GENERATION."""
+    runner = AutoRunner(_config(tmp_path))
+    pending = _save_pending_auto_run(runner, tmp_path)
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.upload_memory.side_effect = RuntimeError("upload unavailable")
+
+    with (
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        patch.object(
+            runner.db,
+            "mark_delivery_pending",
+            side_effect=OSError("pending durable write failed"),
+        ) as mark_pending,
+        patch.object(runner, "suggest") as suggest,
+    ):
+        result = runner.run_one(force=True)
+
+    assert result.outcome is AutoOutcome.FAILED
+    assert result.action is AutoAction.DELIVERY_RETRY
+    assert result.reason == "pending delivery persistence failed"
+    assert result.run_id == pending.run_id
+    assert result.output_path == Path(pending.output_path or "")
+    assert mark_pending.call_count == 2
+    client.upload_memory.assert_called_once()
+    suggest.assert_not_called()
+    assert runner.state.get_last_attempt().run_id == pending.run_id
+
+
+def test_retry_does_not_double_count_a_pending_write_that_committed_then_raised(
+    tmp_path: Path,
+) -> None:
+    """An ambiguous pending-state write is checked before retrying its increment."""
+    runner = AutoRunner(_config(tmp_path))
+    pending = _save_pending_auto_run(runner, tmp_path)
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.upload_memory.side_effect = RuntimeError("upload unavailable")
+    mark_pending = runner.db.mark_delivery_pending
+    calls = 0
+
+    def commit_then_raise(run_id: str, error: str) -> RunMetadata:
+        nonlocal calls
+        calls += 1
+        mark_pending(run_id, error)
+        raise OSError("connection closed after durable write")
+
+    with (
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        patch.object(runner.db, "mark_delivery_pending", side_effect=commit_then_raise),
+        patch.object(runner, "suggest") as suggest,
+    ):
+        result = runner.run_one(force=True)
+
+    assert result.outcome is AutoOutcome.FAILED
+    assert result.action is AutoAction.DELIVERY_RETRY
+    assert result.reason == "pending delivery failed"
+    assert result.run_id == pending.run_id
+    assert calls == 1
+    client.upload_memory.assert_called_once()
+    suggest.assert_not_called()
+    saved = runner.db.get_run(pending.run_id)
+    assert saved is not None
+    assert saved.delivery_status is DeliveryStatus.PENDING
+    assert saved.delivery_attempts == 1
+    assert saved.delivery_error == "upload unavailable"
+
+
+def test_retry_attempt_finish_is_retried_without_reuploading(tmp_path: Path) -> None:
+    """Retry-terminal attempt persistence stays in the retry path after a transient error."""
+    runner = AutoRunner(_config(tmp_path))
+    pending = _save_pending_auto_run(runner, tmp_path)
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.upload_memory.return_value = {"asset_id": "asset-finished"}
+    finish_attempt = runner.state.finish_attempt
+    calls = 0
+
+    def fail_once(*args: object, **kwargs: object):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("attempt durable write failed")
+        return finish_attempt(*args, **kwargs)
+
+    with (
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        patch.object(runner.state, "finish_attempt", side_effect=fail_once),
+        patch.object(runner, "suggest") as suggest,
+    ):
+        result = runner.run_one(force=True)
+
+    assert result.outcome is AutoOutcome.COMPLETED
+    assert result.action is AutoAction.DELIVERY_RETRY
+    assert result.run_id == pending.run_id
+    assert calls == 2
+    client.upload_memory.assert_called_once()
+    suggest.assert_not_called()
+    assert runner.state.get_last_attempt().outcome is AutoOutcome.COMPLETED
+
+
+def test_pending_retry_preflight_failure_stops_before_upload_or_suggest(
+    tmp_path: Path,
+) -> None:
+    """The standalone preflight gates retries without re-entering discovery."""
+    from immich_memories.preflight import CheckResult, CheckStatus
+
+    runner = AutoRunner(_config(tmp_path))
+    pending = _save_pending_auto_run(runner, tmp_path)
+    failed = CheckResult(
+        name="Immich",
+        status=CheckStatus.ERROR,
+        message="Authentication failed",
+        details="retry-api-key rejected",
+    )
+
+    with (
+        patch("immich_memories.preflight.check_immich", return_value=failed) as preflight,
+        patch("immich_memories.api.immich.SyncImmichClient") as client_factory,
+        patch.object(runner, "suggest") as suggest,
+    ):
+        result = runner.run_one(force=True)
+
+    assert result.outcome is AutoOutcome.FAILED
+    assert result.action is AutoAction.DELIVERY_RETRY
+    assert result.reason == "Immich preflight failed"
+    assert result.run_id == pending.run_id
+    assert result.output_path == Path(pending.output_path or "")
+    assert result.error is not None
+    assert "retry-api-key" not in result.error
+    preflight.assert_called_once_with(runner.config)
+    client_factory.assert_not_called()
+    suggest.assert_not_called()
+    attempt = runner.state.get_last_attempt()
+    assert attempt is not None
+    assert attempt.outcome is AutoOutcome.FAILED
+    assert attempt.run_id == pending.run_id
 
 
 def test_no_pending_delivery_preserves_candidate_flow_and_generation_action(

@@ -13,6 +13,7 @@ from typing import Any
 
 from immich_memories.automation.candidate_scorer import score_and_rank
 from immich_memories.automation.candidates import MemoryCandidate
+from immich_memories.automation.delivery_retry import PendingDeliveryRetry
 from immich_memories.automation.models import (
     AutoAction,
     AutomationAttempt,
@@ -491,6 +492,7 @@ class AutoRunner:
         self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
         self.last_recent_categories: tuple[str, ...] = ()
         self.last_suggest_status = SuggestStatus()
+        self._prepared_immich_preflight: Any | None = None
 
     def _secrets(self) -> tuple[str, ...]:
         """Return configured credential values that must never enter attempt history."""
@@ -601,6 +603,29 @@ class AutoRunner:
             ),
         )
 
+    def _preflight_error(self, result: Any) -> str | None:
+        """Turn one Immich preflight result into a sanitized automation diagnostic."""
+        from immich_memories.preflight import CheckStatus
+
+        if result.status is not CheckStatus.ERROR:
+            return None
+        error = f"Immich preflight failed: {result.message}"
+        if result.details:
+            error = f"{error}: {result.details}"
+        error = _safe_tail(error, self._secrets()) or "Immich preflight failed"
+        self.last_suggest_status = SuggestStatus(
+            outcome=SuggestOutcome.PREFLIGHT_FAILED,
+            error=error,
+        )
+        logger.error("%s", error)
+        return error
+
+    def _check_immich_preflight(self) -> Any:
+        """Run the one connection check shared by a retry and later discovery."""
+        from immich_memories.preflight import check_immich
+
+        return check_immich(self.config)
+
     def _notify_generation_failure(self, candidate: MemoryCandidate, error: str) -> None:
         """Keep the parent responsible only when the child did not complete."""
         _send_notification(
@@ -668,81 +693,59 @@ class AutoRunner:
         dry_run: bool,
     ) -> AutoRunResult | None:
         """Retry the oldest deliverable auto artifact, if one exists."""
-        pending = self.db.get_oldest_pending_delivery(source="auto")
-        if pending is None:
+        return self._pending_delivery_retry().run(attempt, dry_run=dry_run)
+
+    def _pending_delivery_retry(self) -> PendingDeliveryRetry:
+        """Bind this runner's durable collaborators to one retry state machine."""
+        return PendingDeliveryRetry(
+            self.config,
+            self.db,
+            self.state,
+            lambda value: _safe_tail(value, self._secrets()),
+            self.last_recent_categories,
+        )
+
+    def _prepare_pending_delivery_retry(
+        self,
+        attempt: AutomationAttempt,
+    ) -> AutoRunResult | None:
+        """Run the one retry preflight before selecting its queued artifact."""
+        if not self.db.count_pending_deliveries(source="auto"):
             return None
-        if pending.output_path is None:  # guarded by the database query
-            raise RuntimeError(f"Pending delivery run has no output path: {pending.run_id}")
-
-        output_path = Path(pending.output_path)
-        if dry_run:
-            logger.info("Dry run — would retry pending delivery: %s", output_path)
-            return self._finish(
-                attempt,
-                AutoOutcome.DRY_RUN,
-                "pending delivery dry run",
-                run_id=pending.run_id,
-                output_path=output_path,
-                action=AutoAction.DELIVERY_RETRY,
-            )
-
-        from immich_memories.api.immich import SyncImmichClient
-
-        try:
-            with SyncImmichClient(
-                base_url=self.config.immich.url,
-                api_key=self.config.immich.api_key,
-                api_version=self.config.immich.api_version,
-            ) as client:
-                upload = client.upload_memory(
-                    video_path=output_path,
-                    album_name=pending.delivery_album,
-                )
-            asset_id = upload.get("asset_id")
-            if not isinstance(asset_id, str) or not asset_id.strip():
-                raise ValueError("Immich upload returned no asset ID")
-        except Exception as exc:
-            safe_error = _safe_tail(exc, self._secrets()) or "Immich delivery failed"
-            logger.warning("Pending Immich delivery failed: %s", safe_error)
-            self.db.mark_delivery_pending(pending.run_id, safe_error)
-            return self._finish(
+        preflight = self._check_immich_preflight()
+        preflight_error = self._preflight_error(preflight)
+        if preflight_error is None:
+            self._prepared_immich_preflight = preflight
+            return None
+        pending = self.db.get_oldest_pending_delivery(source="auto")
+        if pending is not None and pending.output_path is not None:
+            return self._pending_delivery_retry().finish(
                 attempt,
                 AutoOutcome.FAILED,
-                "pending delivery failed",
+                "Immich preflight failed",
                 run_id=pending.run_id,
-                output_path=output_path,
-                error=safe_error,
-                action=AutoAction.DELIVERY_RETRY,
+                output_path=Path(pending.output_path),
+                error=preflight_error,
             )
-        self.db.mark_delivered(pending.run_id, asset_id)
         return self._finish(
             attempt,
-            AutoOutcome.COMPLETED,
-            "pending delivery completed",
-            run_id=pending.run_id,
-            output_path=output_path,
-            action=AutoAction.DELIVERY_RETRY,
+            AutoOutcome.FAILED,
+            "Immich preflight failed",
+            error=preflight_error,
         )
 
     def suggest(self, limit: int = 10) -> list[MemoryCandidate]:
         """Detect, score, and rank memory candidates from the Immich library."""
         from immich_memories.api.immich import SyncImmichClient
-        from immich_memories.preflight import CheckStatus, check_immich
 
         self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
         self.last_recent_categories = ()
         self.last_suggest_status = SuggestStatus()
-        immich_result = check_immich(self.config)
-        if immich_result.status == CheckStatus.ERROR:
-            error = f"Immich preflight failed: {immich_result.message}"
-            if immich_result.details:
-                error = f"{error}: {immich_result.details}"
-            error = _safe_tail(error, self._secrets())
-            self.last_suggest_status = SuggestStatus(
-                outcome=SuggestOutcome.PREFLIGHT_FAILED,
-                error=error,
-            )
-            logger.error("%s", error)
+        immich_result = self._prepared_immich_preflight
+        self._prepared_immich_preflight = None
+        if immich_result is None:
+            immich_result = self._check_immich_preflight()
+        if self._preflight_error(immich_result) is not None:
             return []
 
         auto_cfg = self.config.automation
@@ -854,6 +857,10 @@ class AutoRunner:
         candidate: MemoryCandidate | None = None
 
         try:
+            preflight_result = self._prepare_pending_delivery_retry(attempt)
+            if preflight_result is not None:
+                return preflight_result
+
             retry_result = self.retry_pending_delivery(attempt, dry_run=dry_run)
             if retry_result is not None:
                 return retry_result
@@ -975,3 +982,5 @@ class AutoRunner:
                 candidate=candidate,
                 error=outer_error,
             )
+        finally:
+            self._prepared_immich_preflight = None
