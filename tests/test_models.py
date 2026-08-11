@@ -435,6 +435,13 @@ class TestDurationNormalization:
         assert asset.duration_seconds == seconds
         assert not hasattr(asset, "duration")
 
+    def test_normalized_field_name_remains_seconds(self, asset_payload: dict[str, object]) -> None:
+        """Internal construction must not reinterpret integer seconds as milliseconds."""
+        asset = Asset.model_validate({**asset_payload, "duration_seconds": 90})
+
+        assert asset.duration_seconds == 90.0
+        assert asset.model_dump()["duration_seconds"] == 90.0
+
     @pytest.mark.parametrize("wire_duration", ["not-a-duration", True])
     def test_invalid_duration_becomes_none_and_logs_debug_once(
         self,

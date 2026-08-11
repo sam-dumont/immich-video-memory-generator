@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +195,7 @@ class Asset(BaseModel):
     is_favorite: bool = Field(default=False, alias="isFavorite")
     is_archived: bool = Field(default=False, alias="isArchived")
     is_trashed: bool = Field(default=False, alias="isTrashed")
-    duration_seconds: float | None = Field(default=None, validation_alias="duration")
+    duration_seconds: float | None = None
     # WHY: width/height from search API — needed for resolution filtering
     # BEFORE download. Without these, all non-favorites report 0×0 and get dropped.
     width: int = Field(default=0)
@@ -241,11 +241,15 @@ class Asset(BaseModel):
         """Check if this asset is a video."""
         return self.type == AssetType.VIDEO
 
-    @field_validator("duration_seconds", mode="before")
+    @model_validator(mode="before")
     @classmethod
-    def parse_duration_seconds(cls, value: Any) -> float | None:
-        """Validate raw duration values from Immich responses."""
-        return _parse_duration_seconds(value)
+    def normalize_wire_duration(cls, value: Any) -> Any:
+        """Convert only Immich's wire ``duration`` key to normalized seconds."""
+        if isinstance(value, dict) and "duration" in value:
+            normalized = dict(value)
+            normalized["duration_seconds"] = _parse_duration_seconds(normalized.pop("duration"))
+            return normalized
+        return value
 
     @property
     def year(self) -> int:
