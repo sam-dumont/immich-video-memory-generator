@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import traceback
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -214,6 +216,76 @@ class TestImmichClientRequest:
             pytest.raises(ImmichAPIError, match="Request failed"),
         ):
             await client._request("GET", "/test")
+
+    @pytest.mark.asyncio
+    async def test_timeout_retry_warnings_redact_configured_api_key(
+        self, _mock_config, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        api_key = "timeout-secret-91de"
+        client = ImmichClient(_TEST_URL, api_key)
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(
+            side_effect=httpx.TimeoutException(f"timed out with {api_key}")
+        )
+
+        # WHY: avoid real backoff while exercising the production retry/logger boundary.
+        with (
+            patch("immich_memories.api.immich.asyncio.sleep", new_callable=AsyncMock),
+            caplog.at_level(logging.WARNING, logger="immich_memories.api.immich"),
+            pytest.raises(ImmichAPIError),
+        ):
+            await client._request("GET", "/test")
+
+        warnings = "\n".join(record.getMessage() for record in caplog.records)
+        assert api_key not in warnings
+        assert warnings.count("Request failed: timed out with ***") == 2
+
+    @pytest.mark.asyncio
+    async def test_retryable_transport_error_redacts_final_exception_traceback(
+        self, _mock_config
+    ) -> None:
+        api_key = "transport-secret-91de"
+        client = ImmichClient(_TEST_URL, api_key)
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(
+            side_effect=httpx.ConnectError(f"connection rejected {api_key}")
+        )
+
+        # WHY: avoid real backoff while retaining the exception and traceback users receive.
+        with (
+            patch("immich_memories.api.immich.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(ImmichAPIError) as raised,
+        ):
+            await client._request("GET", "/test")
+
+        rendered_traceback = "".join(
+            traceback.format_exception(raised.type, raised.value, raised.tb)
+        )
+        assert str(raised.value) == "Request failed: connection rejected ***"
+        assert api_key not in rendered_traceback
+
+    @pytest.mark.asyncio
+    async def test_non_retryable_request_error_redacts_exception_traceback(
+        self, _mock_config
+    ) -> None:
+        api_key = "request-secret-91de"
+        client = ImmichClient(_TEST_URL, api_key)
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(
+            side_effect=httpx.RequestError(f"request rejected {api_key}")
+        )
+
+        with pytest.raises(ImmichAPIError) as raised:
+            await client._request("GET", "/test")
+
+        rendered_traceback = "".join(
+            traceback.format_exception(raised.type, raised.value, raised.tb)
+        )
+        assert str(raised.value) == "Request failed: request rejected ***"
+        assert api_key not in rendered_traceback
 
     @pytest.mark.asyncio
     async def test_json_response_parsed(self, _mock_config):

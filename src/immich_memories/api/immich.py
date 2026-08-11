@@ -234,6 +234,11 @@ class ImmichClient:
             return False
         return isinstance(exc, ImmichAPIError) and exc.status_code in _RETRYABLE_STATUS
 
+    def _request_error(self, exc: httpx.RequestError) -> ImmichAPIError:
+        """Build a client-aware sanitized transport diagnostic."""
+        safe_message = sanitize_error_message(str(exc)).replace(self.api_key, "***")
+        return ImmichAPIError(f"Request failed: {safe_message}")
+
     async def _request(
         self,
         method: str,
@@ -256,14 +261,13 @@ class ImmichClient:
                 response = await self.client.request(method, url, **kwargs)
                 return self._check_response(response)
             except (httpx.TimeoutException, httpx.NetworkError) as e:
-                last_exception = ImmichAPIError(f"Request failed: {e}")
-                last_exception.__cause__ = e
+                last_exception = self._request_error(e)
             except ImmichAPIError as e:
                 if not self._is_retryable(e):
                     raise
                 last_exception = e
             except httpx.RequestError as e:
-                raise ImmichAPIError(f"Request failed: {e}") from e
+                raise self._request_error(e) from None
 
             if attempt < _MAX_RETRIES - 1:
                 backoff = _BACKOFF_BASE * (2**attempt)
