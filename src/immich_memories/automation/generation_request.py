@@ -82,7 +82,7 @@ class GenerationRequest:
                 argv.extend(["--year", str(self.start.year)])
                 argv.extend(f"--person={name}" for name in self.people)
             case CandidateCategory.ON_THIS_DAY:
-                pass
+                argv.append(f"--automation-target-date={self.start.isoformat()}")
             case CandidateCategory.TRIP:
                 argv.extend(
                     [

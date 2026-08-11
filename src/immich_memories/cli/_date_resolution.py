@@ -62,6 +62,7 @@ def resolve_date_range(
     month: int | None = None,
     hemisphere: str = "north",
     years_back: int | None = None,
+    on_this_day_target: date | None = None,
 ) -> DateRange | list[DateRange]:
     """Resolve date range from command line options.
 
@@ -71,7 +72,13 @@ def resolve_date_range(
     """
     if memory_type:
         default_range = _resolve_memory_type_dates(
-            memory_type, year, season, month, hemisphere, years_back
+            memory_type,
+            year,
+            season,
+            month,
+            hemisphere,
+            years_back,
+            on_this_day_target,
         )
         manual_range = _resolve_manual_dates(start, end, period)
         if manual_range:
@@ -112,6 +119,7 @@ def _resolve_memory_type_dates(
     month: int | None,
     hemisphere: str,
     years_back: int | None = None,
+    on_this_day_target: date | None = None,
 ) -> DateRange | list[DateRange]:
     """Resolve date ranges from memory type preset."""
     from immich_memories.memory_types.date_builders import (
@@ -135,9 +143,10 @@ def _resolve_memory_type_dates(
         return build_month(month, year)
 
     if memory_type == "on_this_day":
-        from datetime import date
-
-        return build_on_this_day(date.today(), years_back=years_back)
+        return build_on_this_day(
+            on_this_day_target or date.today(),
+            years_back=years_back,
+        )
 
     # Types that use calendar year: year_in_review, person_spotlight, multi_person
     if not year:

@@ -166,6 +166,7 @@ def _candidate(
                 "generate",
                 "--memory-type",
                 "on_this_day",
+                "--automation-target-date=2026-08-11",
                 "--source=auto",
                 "--memory-key=key:on_this_day",
                 "--memory-category=on_this_day",

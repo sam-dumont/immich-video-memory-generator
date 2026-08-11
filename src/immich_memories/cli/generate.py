@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,7 +21,7 @@ from immich_memories.cli._pipeline_runner import (
     run_pipeline_and_generate,
 )
 from immich_memories.cli._trip_generation import handle_trip_generation, resolve_music_arg
-from immich_memories.timeperiod import DateRange
+from immich_memories.timeperiod import DateRange, parse_date
 
 if TYPE_CHECKING:
     from immich_memories.config_loader import Config
@@ -308,6 +309,7 @@ def register_generate_commands(main: click.Group) -> None:
     @click.option("--memory-key", type=str, default=None, hidden=True)
     @click.option("--memory-category", type=str, default=None, hidden=True)
     @click.option("--automation-attempt-id", type=str, default=None, hidden=True)
+    @click.option("--automation-target-date", type=str, default=None, hidden=True)
     @click.option("--quiet", is_flag=True, help="Suppress interactive progress, emit log lines")
     @click.pass_context
     def generate(
@@ -353,6 +355,7 @@ def register_generate_commands(main: click.Group) -> None:
         memory_key: str | None,
         memory_category: str | None,
         automation_attempt_id: str | None,
+        automation_target_date: str | None,
         quiet: bool,
     ) -> None:
         """Generate a video compilation.
@@ -390,6 +393,22 @@ def register_generate_commands(main: click.Group) -> None:
         if automation_attempt_id is not None and source != "auto":
             raise click.UsageError("--automation-attempt-id requires --source=auto")
 
+        exact_on_this_day: date | None = None
+        if automation_target_date is not None:
+            trusted_on_this_day = (
+                source == "auto"
+                and bool(memory_key)
+                and memory_category == memory_type == "on_this_day"
+            )
+            if not trusted_on_this_day:
+                raise click.UsageError(
+                    "--automation-target-date requires complete on_this_day automation identity"
+                )
+            try:
+                exact_on_this_day = parse_date(automation_target_date)
+            except ValueError as exc:
+                raise click.UsageError(str(exc)) from exc
+
         # Validate memory type constraints
         if memory_type in ("person_spotlight", "multi_person") and not person_names:
             print_error(f"--person is required with --memory-type {memory_type}")
@@ -426,6 +445,7 @@ def register_generate_commands(main: click.Group) -> None:
                 month=month,
                 hemisphere=hemisphere,
                 years_back=years_back,
+                on_this_day_target=exact_on_this_day,
             )
         except click.UsageError:
             raise
@@ -623,6 +643,7 @@ def register_generate_commands(main: click.Group) -> None:
                                 month=month,
                                 hemisphere=hemisphere,
                                 years_back=years_back,
+                                on_this_day_target=exact_on_this_day,
                             )
                             if isinstance(date_result, list):
                                 date_ranges = date_result

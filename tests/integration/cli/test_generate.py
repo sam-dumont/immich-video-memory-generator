@@ -328,6 +328,7 @@ class TestCLIGenerate:
         assert "--source" not in result.output
         assert "--memory-key" not in result.output
         assert "--memory-category" not in result.output
+        assert "--automation-target-date" not in result.output
 
     def test_automation_identity_options_reach_pipeline(self, tmp_path) -> None:
         from click.testing import CliRunner
@@ -375,6 +376,79 @@ class TestCLIGenerate:
         assert mock_pipeline.call_args.kwargs["source"] == "auto"
         assert mock_pipeline.call_args.kwargs["memory_key"] == "candidate:key"
         assert mock_pipeline.call_args.kwargs["memory_category"] == "birthday"
+
+    def test_automation_on_this_day_uses_candidate_date_in_child(self, tmp_path) -> None:
+        """A child starting after midnight must retain the parent's target day."""
+        from click.testing import CliRunner
+
+        from immich_memories.cli import main
+        from immich_memories.config_loader import Config
+
+        config = Config(immich={"url": "http://immich.test", "api_key": "test-key"})
+        output = tmp_path / "on-this-day.mp4"
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        asset = MagicMock(duration_seconds=10.0)
+
+        with (
+            patch("immich_memories.cli.get_config", return_value=config),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+            patch(
+                "immich_memories.cli.generate.fetch_videos_and_live_photos",
+                return_value=([asset], []),
+            ) as fetch,
+            patch(
+                "immich_memories.cli.generate.run_pipeline_and_generate",
+                return_value=(output, False, None),
+            ),
+        ):
+            result = CliRunner().invoke(
+                main,
+                [
+                    "generate",
+                    "--memory-type",
+                    "on_this_day",
+                    "--automation-target-date=2026-02-03",
+                    "--source=auto",
+                    "--memory-key=on-this-day:2026-02-03",
+                    "--memory-category=on_this_day",
+                    "--automation-attempt-id=attempt-123",
+                    "--no-music",
+                    "--output",
+                    str(output),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        date_ranges = fetch.call_args.kwargs["date_ranges"]
+        assert date_ranges
+        assert {(item.start.month, item.start.day) for item in date_ranges} == {(2, 2)}
+        assert {(item.end.month, item.end.day) for item in date_ranges} == {(2, 4)}
+
+    def test_automation_target_date_rejects_manual_context(self, tmp_path) -> None:
+        """The hidden exact-date selector cannot change public manual semantics."""
+        from click.testing import CliRunner
+
+        from immich_memories.cli import main
+        from immich_memories.config_loader import Config
+
+        config = Config(immich={"url": "http://immich.test", "api_key": "test-key"})
+        with patch("immich_memories.cli.get_config", return_value=config):
+            result = CliRunner().invoke(
+                main,
+                [
+                    "generate",
+                    "--memory-type",
+                    "on_this_day",
+                    "--automation-target-date=2026-02-03",
+                    "--output",
+                    str(tmp_path / "manual.mp4"),
+                ],
+            )
+
+        assert result.exit_code != 0
+        assert "requires complete on_this_day automation identity" in result.output
 
     @requires_immich
     def test_cli_generate_nonexistent_person(self, tmp_path):
