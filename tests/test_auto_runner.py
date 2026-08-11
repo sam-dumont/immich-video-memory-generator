@@ -668,13 +668,14 @@ class TestRunOneOutcomes:
     def test_held_configured_lease_skips_before_suggest_or_execute(
         self, config: Config, candidate: MemoryCandidate
     ) -> None:
-        """A second wake becomes a durable skip without doing library work."""
+        """A second wake skips without hiding the active durable attempt."""
         from immich_memories.automation.runner import AutomationLease
 
         suggest = MagicMock(return_value=[candidate])
         execute = MagicMock(return_value=ProcessResult(0, "", ""))
         runner = AutoRunner(config, execute=execute)
         lease_path = config.cache.database_path.parent / ".auto.lock"
+        active = runner.state.start_attempt(reason="daily wake")
 
         with (
             AutomationLease(lease_path),
@@ -685,7 +686,10 @@ class TestRunOneOutcomes:
 
         assert result.outcome is AutoOutcome.SKIPPED
         assert result.reason == "automation already running"
-        assert runner.state.get_last_attempt().outcome is AutoOutcome.SKIPPED
+        last_attempt = runner.state.get_last_attempt()
+        assert last_attempt is not None
+        assert last_attempt.id == active.id
+        assert last_attempt.outcome is AutoOutcome.RUNNING
         suggest.assert_not_called()
         execute.assert_not_called()
         notify.assert_not_called()

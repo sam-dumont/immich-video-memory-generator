@@ -696,10 +696,10 @@ class AutoRunner:
         dry_run: bool = False,
     ) -> AutoRunResult:
         """Run one durable automation decision and return its exact outcome."""
-        attempt = self.state.start_attempt(reason="daily wake")
         lease_path = self.config.cache.database_path.parent / ".auto.lock"
         try:
             with AutomationLease(lease_path):
+                attempt = self.state.start_attempt(reason="daily wake")
                 return self._run_one_under_lease(
                     attempt,
                     force=force,
@@ -708,20 +708,9 @@ class AutoRunner:
                     dry_run=dry_run,
                 )
         except AutomationAlreadyRunningError:
-            return self._finish(
-                attempt,
-                AutoOutcome.SKIPPED,
-                "automation already running",
-            )
-        except Exception as exc:
-            reason = "automation failed"
-            error = _safe_tail(exc, self._secrets()) or exc.__class__.__name__
-            logger.error("%s: %s", reason, error)
-            return self._finish(
-                attempt,
-                AutoOutcome.FAILED,
-                reason,
-                error=error,
+            return AutoRunResult(
+                outcome=AutoOutcome.SKIPPED,
+                reason="automation already running",
             )
 
     def _run_one_under_lease(
