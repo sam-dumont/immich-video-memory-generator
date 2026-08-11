@@ -401,6 +401,89 @@ def test_retry_does_not_double_count_a_pending_write_that_committed_then_raised(
     assert saved.delivery_error == "upload unavailable"
 
 
+def test_retry_does_not_repeat_pending_increment_when_its_probe_is_unavailable(
+    tmp_path: Path,
+) -> None:
+    """An unreadable authoritative row is not evidence that an increment did not commit."""
+    runner = AutoRunner(_config(tmp_path))
+    pending = _save_pending_auto_run(runner, tmp_path)
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.upload_memory.side_effect = RuntimeError("upload unavailable")
+    get_run = runner.db.get_run
+    reads = 0
+
+    def initial_select_then_unavailable(run_id: str) -> RunMetadata | None:
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            return get_run(run_id)
+        raise OSError("read replica unavailable")
+
+    with (
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        patch.object(
+            runner.db,
+            "mark_delivery_pending",
+            side_effect=OSError("connection closed during durable write"),
+        ) as mark_pending,
+        patch.object(runner.db, "get_run", side_effect=initial_select_then_unavailable),
+        patch.object(runner, "suggest") as suggest,
+    ):
+        result = runner.run_one(force=True)
+
+    assert result.outcome is AutoOutcome.FAILED
+    assert result.action is AutoAction.DELIVERY_RETRY
+    assert result.reason == "pending delivery persistence failed"
+    assert result.run_id == pending.run_id
+    assert result.output_path == Path(pending.output_path or "")
+    assert mark_pending.call_count == 1
+    client.upload_memory.assert_called_once()
+    suggest.assert_not_called()
+    saved = runner.db.get_run(pending.run_id)
+    assert saved is not None
+    assert saved.delivery_attempts == 0
+
+
+def test_retry_accepts_whitespace_asset_id_after_committed_delivery_write(
+    tmp_path: Path,
+) -> None:
+    """The durable probe uses the normalized asset identity returned by Immich."""
+    runner = AutoRunner(_config(tmp_path))
+    pending = _save_pending_auto_run(runner, tmp_path)
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.upload_memory.return_value = {"asset_id": "  asset-whitespace  "}
+    mark_delivered = runner.db.mark_delivered
+    calls = 0
+
+    def commit_then_raise(run_id: str, asset_id: str) -> RunMetadata:
+        nonlocal calls
+        calls += 1
+        mark_delivered(run_id, asset_id)
+        raise OSError("connection closed after durable write")
+
+    with (
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        patch.object(runner.db, "mark_delivered", side_effect=commit_then_raise),
+        patch.object(runner, "suggest") as suggest,
+    ):
+        result = runner.run_one(force=True)
+
+    assert result.outcome is AutoOutcome.COMPLETED
+    assert result.action is AutoAction.DELIVERY_RETRY
+    assert result.run_id == pending.run_id
+    assert calls == 1
+    client.upload_memory.assert_called_once()
+    suggest.assert_not_called()
+    saved = runner.db.get_run(pending.run_id)
+    assert saved is not None
+    assert saved.delivery_status is DeliveryStatus.DELIVERED
+    assert saved.immich_asset_id == "asset-whitespace"
+
+
 def test_retry_attempt_finish_is_retried_without_reuploading(tmp_path: Path) -> None:
     """Retry-terminal attempt persistence stays in the retry path after a transient error."""
     runner = AutoRunner(_config(tmp_path))
