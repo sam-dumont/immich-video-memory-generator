@@ -9,8 +9,249 @@ from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from immich_memories.config_loader import Config
+from immich_memories.generate import GenerationParams
+from tests.conftest import make_clip
+
+
+def _h264_output_plan():
+    from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+
+    return EncodingPlan(
+        codec=OutputCodec.H264,
+        encoder="libx264",
+        encoder_args=("-c:v", "libx264"),
+        target_transfer=HdrTransfer.NONE,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p",
+        container="mp4",
+    )
+
+
+def _prores_output_plan():
+    from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+
+    return EncodingPlan(
+        codec=OutputCodec.PRORES,
+        encoder="prores_ks",
+        encoder_args=("-c:v", "prores_ks"),
+        target_transfer=HdrTransfer.NONE,
+        tone_map_to_sdr=False,
+        pixel_format="yuv422p10le",
+        container="mov",
+    )
+
+
+def _publish_fake_music_mix(video_path: Path, encoding_plan: object) -> None:
+    """Emulate successful validated publication for path-only unit tests."""
+    from immich_memories.filename_builder import build_music_output_path
+
+    del encoding_plan
+    build_music_output_path(video_path).replace(video_path)
+
+
+def _final_probe_payload(*, codec: str = "h264") -> dict[str, object]:
+    return {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": codec,
+                "pix_fmt": "yuv420p",
+                "color_transfer": "bt709",
+                "color_primaries": "bt709",
+                "width": 1920,
+                "height": 1080,
+                "nb_read_frames": "360",
+            }
+        ],
+        "format": {
+            "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+            "duration": "12.0",
+            "size": "4096",
+            "tags": {"major_brand": "isom"},
+        },
+    }
+
+
+def test_music_validation_contract_comes_from_published_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """UI music validates against artifact truth, not mutable UI selection state."""
+    from immich_memories.generate_music import derive_music_validation_plan
+    from immich_memories.processing.encoding_plan import HdrTransfer, OutputCodec
+    from immich_memories.processing.output_contract import OutputProbe
+
+    base = tmp_path / "memory.mov"
+    base.write_bytes(b"published-base")
+    monkeypatch.setattr(
+        "immich_memories.generate_music.probe_output",
+        MagicMock(
+            return_value=OutputProbe(
+                codec="prores",
+                container="mov",
+                duration_seconds=5.0,
+                size_bytes=1024,
+                pixel_format="yuv422p10le",
+                color_transfer="bt709",
+                color_primaries="bt709",
+                width=1920,
+                height=1080,
+                decoded_frames=120,
+            )
+        ),
+    )
+
+    plan = derive_music_validation_plan(base)
+
+    assert plan.codec is OutputCodec.PRORES
+    assert plan.container == "mov"
+    assert plan.pixel_format == "yuv422p10le"
+    assert plan.target_transfer is HdrTransfer.NONE
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("codec", "vp9", "unsupported published codec"),
+        ("container", "matroska", "unsupported published container"),
+        ("pixel_format", "gbrp", "unsupported published pixel format"),
+        ("color_transfer", None, "unsupported published color transfer"),
+    ],
+)
+def test_music_validation_contract_rejects_unsupported_artifact_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    from dataclasses import replace
+
+    from immich_memories.generate_music import derive_music_validation_plan
+    from immich_memories.processing.output_contract import InvalidOutputArtifact, OutputProbe
+
+    base = tmp_path / "memory.mp4"
+    base.write_bytes(b"published-base")
+    probe = OutputProbe(
+        codec="h264",
+        container="mp4",
+        duration_seconds=5.0,
+        size_bytes=1024,
+        pixel_format="yuv420p",
+        color_transfer="bt709",
+        color_primaries="bt709",
+        width=1920,
+        height=1080,
+        decoded_frames=120,
+    )
+    monkeypatch.setattr(
+        "immich_memories.generate_music.probe_output",
+        MagicMock(return_value=replace(probe, **{field: value})),
+    )
+
+    with pytest.raises(InvalidOutputArtifact, match=message):
+        derive_music_validation_plan(base)
+
+
+def test_music_mix_drifting_from_base_identity_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from immich_memories.generate_music import apply_music_file, derive_music_validation_plan
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.output_contract import InvalidOutputArtifact, OutputProbe
+
+    video = tmp_path / "memory.mp4"
+    music = tmp_path / "music.wav"
+    video.write_bytes(b"validated-h264-base")
+    music.write_bytes(b"music")
+    monkeypatch.setattr(
+        "immich_memories.generate_music.probe_output",
+        MagicMock(
+            return_value=OutputProbe(
+                codec="h264",
+                container="mp4",
+                duration_seconds=5.0,
+                size_bytes=1024,
+                pixel_format="yuv420p",
+                color_transfer="bt709",
+                color_primaries="bt709",
+                width=1920,
+                height=1080,
+                decoded_frames=120,
+            )
+        ),
+    )
+    plan = derive_music_validation_plan(video)
+
+    def write_mix(*, output_path: Path, **_kwargs: object) -> None:
+        output_path.write_bytes(b"drifted-hevc-mix")
+
+    monkeypatch.setattr(
+        "immich_memories.audio.mixer.mix_audio_with_ducking",
+        write_mix,
+    )
+    monkeypatch.setattr(
+        "immich_memories.generate_music._require_audio_stream",
+        lambda _path: None,
+    )
+    monkeypatch.setattr(
+        output_contract.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 0, json.dumps(_final_probe_payload(codec="hevc")), ""
+        ),
+    )
+
+    with pytest.raises(InvalidOutputArtifact, match="expected h264, got hevc"):
+        apply_music_file(video, music, volume=0.5, encoding_plan=plan)
+
+    assert video.read_bytes() == b"validated-h264-base"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("music_source", "target"),
+    [
+        ("AI Generated", "immich_memories.ui.pages._step4_music.apply_ai_music"),
+        ("Upload file", "immich_memories.ui.pages._step4_music.apply_uploaded_music"),
+    ],
+)
+async def test_ui_music_conduit_forwards_one_artifact_validation_plan(
+    tmp_path: Path,
+    music_source: str,
+    target: str,
+) -> None:
+    from immich_memories.ui.pages._step4_generate import _apply_music
+
+    plan = _h264_output_plan()
+    state = SimpleNamespace(
+        generation_options={
+            "music_source": music_source,
+            "music_file": b"uploaded",
+        },
+        memory_type=None,
+    )
+
+    with patch(target, new_callable=AsyncMock) as music_helper:
+        await _apply_music(
+            state,
+            Config(),
+            tmp_path / "memory.mp4",
+            [],
+            tmp_path,
+            MagicMock(),
+            _Progress(),
+            _Status(),
+            encoding_plan=plan,
+        )
+
+    assert music_helper.await_args.kwargs["encoding_plan"] is plan
 
 
 class _RunTracker:
@@ -56,8 +297,17 @@ def test_apply_music_file_preserves_mov_container(
         "immich_memories.audio.mixer.mix_audio_with_ducking",
         write_output_name,
     )
+    monkeypatch.setattr(
+        "immich_memories.generate_music.publish_music_mix",
+        _publish_fake_music_mix,
+    )
 
-    apply_music_file(video_path, music_path, volume=0.5)
+    apply_music_file(
+        video_path,
+        music_path,
+        volume=0.5,
+        encoding_plan=_prores_output_plan(),
+    )
 
     assert video_path.read_text() == "memory.with_music.mov"
 
@@ -116,6 +366,10 @@ async def test_ai_music_preserves_mov_container(
         "immich_memories.ui.pages._step4_music.run.io_bound",
         io_bound,
     )
+    monkeypatch.setattr(
+        "immich_memories.generate_music.publish_music_mix",
+        _publish_fake_music_mix,
+    )
 
     await apply_ai_music(
         result_path,
@@ -126,6 +380,7 @@ async def test_ai_music_preserves_mov_container(
         run_tracker=_RunTracker(),
         progress_bar=_Progress(),
         status_label=_Status(),
+        encoding_plan=_prores_output_plan(),
     )
 
     mixer = "four-stem" if use_four_stems else "full-mix"
@@ -158,6 +413,10 @@ async def test_uploaded_music_preserves_mov_container(
         "immich_memories.ui.pages._step4_music.run.io_bound",
         io_bound,
     )
+    monkeypatch.setattr(
+        "immich_memories.generate_music.publish_music_mix",
+        _publish_fake_music_mix,
+    )
 
     await apply_uploaded_music(
         result_path,
@@ -165,9 +424,65 @@ async def test_uploaded_music_preserves_mov_container(
         run_tracker=_RunTracker(),
         progress_bar=_Progress(),
         status_label=_Status(),
+        encoding_plan=_prores_output_plan(),
     )
 
     assert result_path.read_text() == "uploaded:memory.with_music.mov"
+
+
+@pytest.mark.asyncio
+async def test_uploaded_invalid_mix_preserves_valid_base(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """UI upload music must validate before replacing the base artifact."""
+    from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.processing.output_contract import InvalidOutputArtifact
+    from immich_memories.ui.pages._step4_music import apply_uploaded_music
+
+    result_path = tmp_path / "memory.mp4"
+    result_path.write_bytes(b"validated-base")
+
+    def write_invalid_mix(**kwargs: object) -> None:
+        cast(Path, kwargs["output_path"]).write_bytes(b"invalid-mix")
+
+    async def io_bound(callback: Callable[..., object], **kwargs: object) -> object:
+        return callback(**kwargs)
+
+    monkeypatch.setattr(
+        "immich_memories.audio.mixer.mix_audio_with_ducking",
+        write_invalid_mix,
+    )
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_music.run.io_bound",
+        io_bound,
+    )
+    monkeypatch.setattr(
+        "immich_memories.generate_music.publish_music_mix",
+        MagicMock(side_effect=InvalidOutputArtifact("missing audio/video stream")),
+    )
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_music.ui.notify",
+        MagicMock(),
+    )
+    tracker = MagicMock()
+
+    result = await apply_uploaded_music(
+        result_path,
+        gen_options={"music_file": b"uploaded", "music_volume": 0.5},
+        run_tracker=tracker,
+        progress_bar=_Progress(),
+        status_label=_Status(),
+        encoding_plan=_h264_output_plan(),
+    )
+
+    warning = "Optional music failed: missing audio/video stream"
+    assert result == MusicPhaseResult(applied=False, warning=warning)
+    assert result_path.read_bytes() == b"validated-base"
+    tracker.complete_phase.assert_called_once_with(
+        items_processed=0,
+        errors=[{"error": warning}],
+    )
 
 
 @pytest.mark.integration
@@ -197,6 +512,8 @@ def test_real_prores_music_mix_stays_mov(tmp_path: Path) -> None:
             "0:v",
             "-map",
             "1:a",
+            "-vf",
+            "setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709",
             "-c:v",
             "prores_ks",
             "-profile:v",
@@ -228,7 +545,12 @@ def test_real_prores_music_mix_stays_mov(tmp_path: Path) -> None:
         timeout=60,
     )
 
-    apply_music_file(video_path, music_path, volume=0.5)
+    apply_music_file(
+        video_path,
+        music_path,
+        volume=0.5,
+        encoding_plan=_prores_output_plan(),
+    )
 
     probe = subprocess.run(
         [
@@ -253,3 +575,406 @@ def test_real_prores_music_mix_stays_mov(tmp_path: Path) -> None:
         "audio": "aac",
     }
     assert not (tmp_path / "memory.with_music.mp4").exists()
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
+    reason="FFmpeg and ffprobe are required",
+)
+def test_real_music_mix_without_audio_never_replaces_base(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A video-only staged artifact is not a successful music mix."""
+    from immich_memories.generate_music import apply_music_file
+    from immich_memories.processing.output_contract import InvalidOutputArtifact
+
+    video_path = tmp_path / "memory.mp4"
+    music_path = tmp_path / "music.wav"
+    music_path.write_bytes(b"unused")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=160x90:rate=10:duration=1",
+            "-vf",
+            "setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-an",
+            str(video_path),
+        ],
+        capture_output=True,
+        check=True,
+        timeout=30,
+    )
+    original = video_path.read_bytes()
+
+    def copy_video_only(*, output_path: Path, **_kwargs: object) -> None:
+        output_path.write_bytes(original)
+
+    monkeypatch.setattr(
+        "immich_memories.audio.mixer.mix_audio_with_ducking",
+        copy_video_only,
+    )
+
+    with pytest.raises(InvalidOutputArtifact, match="missing audio stream"):
+        apply_music_file(
+            video_path,
+            music_path,
+            volume=0.5,
+            encoding_plan=_h264_output_plan(),
+        )
+
+    assert video_path.read_bytes() == original
+
+
+class TestApplyMusicFileAtomic:
+    """Shared music publication keeps the validated base until proof succeeds."""
+
+    def test_replaces_video_with_mixed_output(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from immich_memories.generate_music import apply_music_file
+        from immich_memories.processing import output_contract
+
+        video = tmp_path / "output.mp4"
+        music = tmp_path / "music.wav"
+        video.write_bytes(b"original video")
+        music.write_bytes(b"music data")
+        monkeypatch.setattr(
+            output_contract.subprocess,
+            "run",
+            lambda command, **_kwargs: subprocess.CompletedProcess(
+                command, 0, json.dumps(_final_probe_payload()), ""
+            ),
+        )
+
+        def fake_mix(*, output_path: Path, **_kwargs: object) -> None:
+            output_path.write_bytes(b"mixed video")
+
+        monkeypatch.setattr(
+            "immich_memories.audio.mixer.mix_audio_with_ducking",
+            fake_mix,
+        )
+        monkeypatch.setattr(
+            "immich_memories.generate_music._require_audio_stream",
+            lambda _path: None,
+        )
+        apply_music_file(video, music, volume=0.8, encoding_plan=_h264_output_plan())
+
+        assert video.read_bytes() == b"mixed video"
+        assert not (tmp_path / "output.with_music.mp4").exists()
+
+    def test_does_not_unlink_original_before_swap(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from immich_memories.generate_music import apply_music_file
+        from immich_memories.processing import output_contract
+
+        video = tmp_path / "output.mp4"
+        music = tmp_path / "music.wav"
+        video.write_bytes(b"original video")
+        music.write_bytes(b"music data")
+        monkeypatch.setattr(
+            output_contract.subprocess,
+            "run",
+            lambda command, **_kwargs: subprocess.CompletedProcess(
+                command, 0, json.dumps(_final_probe_payload()), ""
+            ),
+        )
+        unlink_calls: list[Path] = []
+        original_unlink = Path.unlink
+
+        def tracking_unlink(self: Path, missing_ok: bool = False) -> None:
+            unlink_calls.append(self)
+            original_unlink(self, missing_ok=missing_ok)
+
+        def fake_mix(*, output_path: Path, **_kwargs: object) -> None:
+            output_path.write_bytes(b"mixed video")
+
+        with patch.object(Path, "unlink", tracking_unlink):
+            monkeypatch.setattr(
+                "immich_memories.audio.mixer.mix_audio_with_ducking",
+                fake_mix,
+            )
+            monkeypatch.setattr(
+                "immich_memories.generate_music._require_audio_stream",
+                lambda _path: None,
+            )
+            apply_music_file(video, music, volume=0.8, encoding_plan=_h264_output_plan())
+
+        assert video not in unlink_calls
+
+    def test_invalid_mix_never_replaces_valid_base(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from immich_memories.generate_music import apply_music_file
+        from immich_memories.processing.output_contract import InvalidOutputArtifact
+
+        video = tmp_path / "memory.mp4"
+        music = tmp_path / "music.wav"
+        video.write_bytes(b"validated-base")
+        music.write_bytes(b"music")
+
+        def write_invalid_mix(*, output_path: Path, **_kwargs: object) -> None:
+            output_path.write_bytes(b"invalid-mix")
+
+        monkeypatch.setattr(
+            "immich_memories.audio.mixer.mix_audio_with_ducking",
+            write_invalid_mix,
+        )
+        monkeypatch.setattr(
+            "immich_memories.generate_music.publish_validated_output",
+            MagicMock(side_effect=InvalidOutputArtifact("missing audio/video stream")),
+        )
+        monkeypatch.setattr(
+            "immich_memories.generate_music._require_audio_stream",
+            lambda _path: None,
+        )
+
+        with pytest.raises(InvalidOutputArtifact, match="missing audio/video stream"):
+            apply_music_file(
+                video,
+                music,
+                volume=0.8,
+                encoding_plan=_h264_output_plan(),
+            )
+
+        assert video.read_bytes() == b"validated-base"
+        assert not (tmp_path / "memory.with_music.mp4").exists()
+
+
+def test_music_failure_keeps_valid_base_and_returns_sanitized_warning(tmp_path: Path) -> None:
+    from immich_memories import generate_music
+    from immich_memories.generate_settings import _run_music_phase
+
+    base_video = tmp_path / "memory.mp4"
+    base_video.write_bytes(b"validated-base")
+    music_file = tmp_path / "music.wav"
+    music_file.write_bytes(b"music")
+    params = GenerationParams(
+        clips=[],
+        output_path=base_video,
+        config=Config(),
+        music_path=music_file,
+    )
+    tracker = MagicMock()
+
+    with patch(
+        "immich_memories.generate_music.apply_music_file",
+        side_effect=RuntimeError("music backend unavailable"),
+    ):
+        result = _run_music_phase(
+            params,
+            [],
+            base_video,
+            tmp_path,
+            tracker,
+            encoding_plan=_h264_output_plan(),
+        )
+
+    warning = "Optional music failed: music backend unavailable"
+    assert type(result) is generate_music.MusicPhaseResult
+    assert result == generate_music.MusicPhaseResult(applied=False, warning=warning)
+    assert base_video.read_bytes() == b"validated-base"
+    tracker.complete_phase.assert_called_once_with(
+        items_processed=0,
+        errors=[{"error": warning}],
+    )
+
+
+def test_music_resolution_failure_is_optional_and_sanitized(tmp_path: Path) -> None:
+    from immich_memories import generate_music
+    from immich_memories.generate_settings import _run_music_phase
+
+    base_video = tmp_path / "memory.mp4"
+    base_video.write_bytes(b"validated-base")
+    config = Config()
+    config.musicgen.enabled = True
+    config.musicgen.api_key = "top-secret"
+    params = GenerationParams(clips=[], output_path=base_video, config=config)
+    tracker = MagicMock()
+
+    with patch(
+        "immich_memories.generate_music.resolve_music_file",
+        side_effect=RuntimeError("api_key=top-secret backend unavailable"),
+    ):
+        result = _run_music_phase(
+            params,
+            [],
+            base_video,
+            tmp_path,
+            tracker,
+            encoding_plan=_h264_output_plan(),
+        )
+
+    warning = "Optional music failed: api_key=*** backend unavailable"
+    assert type(result) is generate_music.MusicPhaseResult
+    assert result == generate_music.MusicPhaseResult(applied=False, warning=warning)
+    assert base_video.read_bytes() == b"validated-base"
+    tracker.start_phase.assert_called_once_with("music", 1)
+    tracker.complete_phase.assert_called_once_with(
+        items_processed=0,
+        errors=[{"error": warning}],
+    )
+
+
+def test_optional_music_logs_never_include_raw_backend_secret(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Raw backend tracebacks must not bypass the optional boundary sanitizer."""
+    from immich_memories.generate_settings import _run_music_phase
+
+    base_video = tmp_path / "memory.mp4"
+    base_video.write_bytes(b"validated-base")
+    config = Config()
+    config.musicgen.enabled = True
+    config.musicgen.api_key = "top-secret"
+    params = GenerationParams(clips=[], output_path=base_video, config=config)
+    tracker = MagicMock()
+    caplog.set_level("DEBUG")
+
+    with patch(
+        "immich_memories.audio.music_generator.generate_music_for_video",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("backend rejected top-secret"),
+    ):
+        result = _run_music_phase(
+            params,
+            [],
+            base_video,
+            tmp_path,
+            tracker,
+            encoding_plan=_h264_output_plan(),
+        )
+
+    assert result.warning == "Optional music failed: backend rejected ***"
+    assert "Optional music failed: backend rejected ***" in caplog.text
+    assert "top-secret" not in caplog.text
+
+
+def test_music_phase_passes_exact_encoding_plan_to_publication(tmp_path: Path) -> None:
+    from immich_memories import generate_music
+    from immich_memories.generate_settings import _run_music_phase
+
+    base_video = tmp_path / "memory.mp4"
+    base_video.write_bytes(b"validated-base")
+    music_file = tmp_path / "music.wav"
+    music_file.write_bytes(b"music")
+    plan = _h264_output_plan()
+    params = GenerationParams(
+        clips=[],
+        output_path=base_video,
+        config=Config(),
+        music_path=music_file,
+    )
+    tracker = MagicMock()
+
+    with patch("immich_memories.generate_music.apply_music_file") as apply_music:
+        result = _run_music_phase(
+            params,
+            [],
+            base_video,
+            tmp_path,
+            tracker,
+            encoding_plan=plan,
+        )
+
+    assert result == generate_music.MusicPhaseResult(applied=True)
+    apply_music.assert_called_once_with(base_video, music_file, params.music_volume, plan)
+    tracker.complete_phase.assert_called_once_with(items_processed=1)
+
+
+def test_optional_music_failure_preserves_base_and_uploads_valid_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from immich_memories import generate as generate_module
+    from immich_memories.generate import generate_memory
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.assembly_config import AssemblyClip, AssemblySettings
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source-video")
+    assembly_clip = AssemblyClip(path=source, duration=5.0, asset_id="clip-1")
+    music_file = tmp_path / "music.wav"
+    music_file.write_bytes(b"music")
+    config = Config(
+        cache={"directory": str(tmp_path / "cache"), "database": str(tmp_path / "runs.db")}
+    )
+    progress: list[tuple[str, str]] = []
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=tmp_path / "memory.mp4",
+        config=config,
+        client=MagicMock(),
+        music_path=music_file,
+        upload_enabled=True,
+        progress_callback=lambda phase, _pct, message: progress.append((phase, message)),
+    )
+    plan = _h264_output_plan()
+
+    class Assembler:
+        def assemble_with_titles(
+            self,
+            _clips: object,
+            output_path: Path,
+            _progress_callback: object,
+            **_kwargs: object,
+        ) -> Path:
+            output_path.write_bytes(b"validated-base")
+            return output_path
+
+    monkeypatch.setattr(
+        output_contract.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 0, json.dumps(_final_probe_payload()), ""
+        ),
+    )
+    tracker = MagicMock()
+    uploaded: list[bytes] = []
+
+    def upload(_client: object, video_path: Path, _album: object) -> dict[str, str]:
+        uploaded.append(video_path.read_bytes())
+        return {"asset_id": "asset-1"}
+
+    with (
+        patch("immich_memories.tracking.RunTracker", return_value=tracker),
+        patch("immich_memories.cache.video_cache.VideoDownloadCache", return_value=MagicMock()),
+        patch.object(generate_module, "_extract_clips", return_value=[assembly_clip]),
+        patch.object(
+            generate_module,
+            "_build_assembly_settings",
+            return_value=AssemblySettings(encoding_plan=plan),
+        ),
+        patch.object(generate_module, "_create_assembler", return_value=Assembler()),
+        patch(
+            "immich_memories.generate_music.apply_music_file",
+            side_effect=RuntimeError("music backend unavailable"),
+        ),
+        patch.object(generate_module, "_upload_to_immich", side_effect=upload),
+        patch.object(generate_module, "_cleanup_temp_clips"),
+    ):
+        result = generate_memory(params)
+
+    warning = "Optional music failed: music backend unavailable"
+    assert result.read_bytes() == b"validated-base"
+    assert uploaded == [b"validated-base"]
+    assert ("music", warning) in progress
+    tracker.complete_run.assert_called_once()
+    tracker.fail_run.assert_not_called()

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from nicegui import app as nicegui_app
 from nicegui import run, ui
@@ -19,6 +20,9 @@ from immich_memories.ui.components import (
 )
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from immich_memories.processing.encoding_plan import EncodingPlan
 
 
 def _request_cancel(state, cancel_btn: ui.button | None, status_label) -> None:
@@ -218,16 +222,25 @@ async def run_generation(
             generate_run_id(),
             db_path=get_config().cache.database_path,
         )
-        await _apply_music(
-            state,
-            state.config,
-            result_path,
-            [],  # assembly_clips not needed for pre-generated music path
-            result_path.parent,
-            run_tracker,
-            progress_bar,
-            status_label,
-        )
+        music_source = state.generation_options.get("music_source", "None")
+        if music_source in {"AI Generated", "Upload file"}:
+            from immich_memories.generate_music import derive_music_validation_plan
+
+            music_validation_plan = await run.io_bound(
+                derive_music_validation_plan,
+                result_path,
+            )
+            await _apply_music(
+                state,
+                state.config,
+                result_path,
+                [],  # assembly_clips not needed for pre-generated music path
+                result_path.parent,
+                run_tracker,
+                progress_bar,
+                status_label,
+                encoding_plan=music_validation_plan,
+            )
 
         # Phase 4: Upload (UI-specific — NiceGUI progress feedback)
         if state.upload_enabled:
@@ -261,6 +274,8 @@ async def _apply_music(
     run_tracker,
     progress_bar,
     status_label,
+    *,
+    encoding_plan: EncodingPlan,
 ):
     """Phase 3: Apply music if requested."""
     gen_options = state.generation_options
@@ -278,13 +293,19 @@ async def _apply_music(
             run_tracker,
             progress_bar,
             status_label,
+            encoding_plan=encoding_plan,
             memory_type=state.memory_type,
         )
     elif music_source == "Upload file" and gen_options.get("music_file"):
         from immich_memories.ui.pages._step4_music import apply_uploaded_music
 
         await apply_uploaded_music(
-            result_path, gen_options, run_tracker, progress_bar, status_label
+            result_path,
+            gen_options,
+            run_tracker,
+            progress_bar,
+            status_label,
+            encoding_plan=encoding_plan,
         )
 
 

@@ -17,6 +17,7 @@ from immich_memories.processing.assembly_config import (
     TransitionType,
 )
 from immich_memories.processing.encoding_plan import (
+    EncodingPlan,
     EncodingRequest,
     resolve_encoding_plan,
     resolve_output_selection,
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.config_loader import Config
     from immich_memories.generate import GenerationParams
+    from immich_memories.generate_music import MusicPhaseResult
     from immich_memories.tracking import RunTracker
 
 logger = logging.getLogger(__name__)
@@ -190,29 +192,50 @@ def _run_music_phase(
     result_path: Path,
     run_output_dir: Path,
     run_tracker: RunTracker,
-) -> None:
+    *,
+    encoding_plan: EncodingPlan,
+) -> MusicPhaseResult:
     """Resolve and apply music to the assembled video."""
-    from immich_memories.generate_music import apply_music_file, resolve_music_file
+    from immich_memories.generate_music import (
+        MusicPhaseResult,
+        apply_music_file,
+        optional_music_warning,
+        resolve_music_file,
+    )
 
     def _report_fn(phase: str, progress: float, msg: str) -> None:
         if params.progress_callback:
             params.progress_callback(phase, progress, msg)
 
-    music_file = resolve_music_file(
-        config=params.config,
-        music_path=params.music_path,
-        no_music=params.no_music,
-        assembly_clips=assembly_clips,
-        run_output_dir=run_output_dir,
-        memory_type=params.memory_type,
-        report_fn=_report_fn,
-    )
-    if not music_file:
-        return
-    _report_fn("music", 0.9, "Mixing music...")
-    run_tracker.start_phase("music", 1)
-    apply_music_file(result_path, music_file, params.music_volume)
+    phase_started = False
+    try:
+        music_file = resolve_music_file(
+            config=params.config,
+            music_path=params.music_path,
+            no_music=params.no_music,
+            assembly_clips=assembly_clips,
+            run_output_dir=run_output_dir,
+            memory_type=params.memory_type,
+            report_fn=_report_fn,
+        )
+        if not music_file:
+            return MusicPhaseResult(applied=False)
+        _report_fn("music", 0.9, "Mixing music...")
+        run_tracker.start_phase("music", 1)
+        phase_started = True
+        apply_music_file(result_path, music_file, params.music_volume, encoding_plan)
+    except Exception as exc:  # WHY: optional music must not invalidate the base artifact
+        if not phase_started:
+            run_tracker.start_phase("music", 1)
+        warning = optional_music_warning(exc, params.config)
+        logger.warning(warning)
+        run_tracker.complete_phase(
+            items_processed=0,
+            errors=[{"error": warning}],
+        )
+        return MusicPhaseResult(applied=False, warning=warning)
     run_tracker.complete_phase(items_processed=1)
+    return MusicPhaseResult(applied=True)
 
 
 def _upload_to_immich(

@@ -399,9 +399,16 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         # Phase 3: Music
         _t = _time.monotonic()
         pp.report("music", 0.0, "Generating music...")
-        _run_music_phase(params, assembly_clips, result_path, run_output_dir, run_tracker)
+        music_result = _run_music_phase(
+            params,
+            assembly_clips,
+            result_path,
+            run_output_dir,
+            run_tracker,
+            encoding_plan=settings.encoding_plan,
+        )
         _phase_times["music"] = _time.monotonic() - _t
-        pp.report("music", 1.0, "Music ready")
+        pp.report("music", 1.0, music_result.warning or "Music ready")
 
         # Phase 4: Upload (if requested)
         if params.upload_enabled and params.client:

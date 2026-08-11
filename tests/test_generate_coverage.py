@@ -36,6 +36,21 @@ from immich_memories.generate import (
 from immich_memories.processing.assembly_config import AssemblyClip
 from tests.conftest import make_asset, make_clip
 
+
+def _h264_output_plan():
+    from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+
+    return EncodingPlan(
+        codec=OutputCodec.H264,
+        encoder="libx264",
+        encoder_args=("-c:v", "libx264"),
+        target_transfer=HdrTransfer.NONE,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p",
+        container="mp4",
+    )
+
+
 # ---------------------------------------------------------------------------
 # _parse_clip_date
 # ---------------------------------------------------------------------------
@@ -1442,7 +1457,14 @@ class TestRunMusicPhase:
         with patch(
             "immich_memories.generate_music.resolve_music_file", return_value=None
         ) as mock_resolve:
-            _run_music_phase(params, [], tmp_path / "result.mp4", tmp_path, mock_tracker)
+            _run_music_phase(
+                params,
+                [],
+                tmp_path / "result.mp4",
+                tmp_path,
+                mock_tracker,
+                encoding_plan=_h264_output_plan(),
+            )
 
         mock_resolve.assert_called_once()
         mock_tracker.start_phase.assert_not_called()
@@ -1459,15 +1481,23 @@ class TestRunMusicPhase:
             clips=[], output_path=Path("/tmp/o.mp4"), config=Config(), music_volume=0.7
         )
         mock_tracker = MagicMock()
+        encoding_plan = _h264_output_plan()
 
         # WHY: resolve_music_file and apply_music_file touch filesystem + FFmpeg
         with (
             patch("immich_memories.generate_music.resolve_music_file", return_value=music_file),
             patch("immich_memories.generate_music.apply_music_file") as mock_apply,
         ):
-            _run_music_phase(params, [], result_path, tmp_path, mock_tracker)
+            _run_music_phase(
+                params,
+                [],
+                result_path,
+                tmp_path,
+                mock_tracker,
+                encoding_plan=encoding_plan,
+            )
 
-        mock_apply.assert_called_once_with(result_path, music_file, 0.7)
+        mock_apply.assert_called_once_with(result_path, music_file, 0.7, encoding_plan)
         mock_tracker.start_phase.assert_called_once_with("music", 1)
         mock_tracker.complete_phase.assert_called_once_with(items_processed=1)
 
@@ -1487,7 +1517,14 @@ class TestRunMusicPhase:
         with patch(
             "immich_memories.generate_music.resolve_music_file", return_value=None
         ) as mock_resolve:
-            _run_music_phase(params, [], tmp_path / "r.mp4", tmp_path, mock_tracker)
+            _run_music_phase(
+                params,
+                [],
+                tmp_path / "r.mp4",
+                tmp_path,
+                mock_tracker,
+                encoding_plan=_h264_output_plan(),
+            )
 
         # Verify resolve_music_file received a report_fn callback
         call_kwargs = mock_resolve.call_args
@@ -2180,7 +2217,7 @@ class TestAutoGenerateMusic:
             result = auto_generate_music(config, [], tmp_path, None)
         assert result is None
 
-    def test_generation_exception_returns_none(self, tmp_path):
+    def test_generation_exception_reaches_optional_phase_boundary(self, tmp_path):
         from immich_memories.generate_music import auto_generate_music
 
         config = Config()
@@ -2191,9 +2228,9 @@ class TestAutoGenerateMusic:
                 "immich_memories.audio.music_generator.generate_music_for_video",
                 side_effect=RuntimeError("API down"),
             ),
+            pytest.raises(RuntimeError, match="API down"),
         ):
-            result = auto_generate_music(config, [], tmp_path, "month")
-        assert result is None
+            auto_generate_music(config, [], tmp_path, "month")
 
 
 class TestMusicConfigAvailable:

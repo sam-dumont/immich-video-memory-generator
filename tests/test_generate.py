@@ -6,7 +6,7 @@ import json
 import subprocess
 from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -519,8 +519,9 @@ class TestAutoMusicGeneration:
 
         # WHY: mock the async music generation to avoid real API calls
         with patch(
-            "immich_memories.generate_music.asyncio.run",
-        ) as mock_run:
+            "immich_memories.audio.music_generator.generate_music_for_video",
+            new_callable=AsyncMock,
+        ) as mock_generate:
             from immich_memories.audio.music_generator_models import (
                 GeneratedMusic,
                 MusicGenerationResult,
@@ -529,7 +530,7 @@ class TestAutoMusicGeneration:
 
             fake_music_path = tmp_path / "music.wav"
             fake_music_path.write_bytes(b"fake audio")
-            mock_run.return_value = MusicGenerationResult(
+            mock_generate.return_value = MusicGenerationResult(
                 versions=[
                     GeneratedMusic(
                         version_id=0,
@@ -569,8 +570,8 @@ class TestAutoMusicGeneration:
         )
         assert result is None
 
-    def test_auto_music_returns_none_on_failure(self, tmp_path):
-        """If music generation fails, return None instead of crashing."""
+    def test_auto_music_propagates_backend_failure_to_optional_phase(self, tmp_path):
+        """Backend failures reach the optional phase boundary for sanitization."""
         from immich_memories.generate_music import auto_generate_music
         from immich_memories.processing.assembly_config import AssemblyClip
 
@@ -587,14 +588,17 @@ class TestAutoMusicGeneration:
         )
 
         # WHY: mock to simulate API failure
-        with patch(
-            "immich_memories.generate_music.asyncio.run",
-            side_effect=RuntimeError("API unreachable"),
+        with (
+            patch(
+                "immich_memories.audio.music_generator.generate_music_for_video",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("API unreachable"),
+            ),
+            pytest.raises(RuntimeError, match="API unreachable"),
         ):
-            result = auto_generate_music(
+            auto_generate_music(
                 params.config, assembly_clips, tmp_path / "run_output", params.memory_type
             )
-            assert result is None
 
 
 class TestClipLocationName:
@@ -721,65 +725,3 @@ class TestQuietModeProgressCallback:
 
         # Should have at most a few lines, not 100
         assert len(log_lines) < 10
-
-
-class TestApplyMusicFileAtomic:
-    """_apply_music_file must use atomic replace for crash-safe swap."""
-
-    def test_replaces_video_with_mixed_output(self, tmp_path):
-        """After mixing, video_path has mixed content and no temp file remains."""
-        from immich_memories.generate_music import apply_music_file
-
-        video = tmp_path / "output.mp4"
-        music = tmp_path / "music.wav"
-        video.write_bytes(b"original video")
-        music.write_bytes(b"music data")
-
-        # WHY: mock the audio mixer to avoid real FFmpeg — we only test the file swap
-        with patch(
-            "immich_memories.audio.mixer.mix_audio_with_ducking",
-        ) as mock_mix:
-
-            def fake_mix(video_path, music_path, output_path, config):
-                output_path.write_bytes(b"mixed video")
-
-            mock_mix.side_effect = fake_mix
-
-            apply_music_file(video, music, volume=0.8)
-
-        assert video.read_bytes() == b"mixed video"
-        assert not (tmp_path / "output.with_music.mp4").exists()
-
-    def test_does_not_unlink_original_before_swap(self, tmp_path):
-        """Crash-safety: must not unlink() then rename() — use replace() instead."""
-        from immich_memories.generate_music import apply_music_file
-
-        video = tmp_path / "output.mp4"
-        music = tmp_path / "music.wav"
-        video.write_bytes(b"original video")
-        music.write_bytes(b"music data")
-
-        unlink_calls: list[Path] = []
-        original_unlink = Path.unlink
-
-        def tracking_unlink(self, missing_ok=False):
-            unlink_calls.append(self)
-            return original_unlink(self, missing_ok=missing_ok)
-
-        # WHY: mock the audio mixer to avoid real FFmpeg — we only test the swap
-        with (
-            patch("immich_memories.audio.mixer.mix_audio_with_ducking") as mock_mix,
-            patch.object(Path, "unlink", tracking_unlink),
-        ):
-
-            def fake_mix(video_path, music_path, output_path, config):
-                output_path.write_bytes(b"mixed video")
-
-            mock_mix.side_effect = fake_mix
-
-            apply_music_file(video, music, volume=0.8)
-
-        # The original video path must NOT appear in unlink calls
-        assert video not in unlink_calls, (
-            "Original video was unlinked before swap — use Path.replace() for crash-safety"
-        )
