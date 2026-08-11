@@ -36,19 +36,36 @@ def _get_resolution(probe_data: dict) -> tuple[int, int]:
 
 def _make_settings(**overrides):
     """Create AssemblySettings with sensible test defaults (no config fallback)."""
-    from immich_memories.processing.assembly_config import AssemblySettings, TransitionType
+    from immich_memories.processing.assembly_config import (
+        AssemblySettings,
+        TransitionType,
+        standalone_assembly_encoding_plan,
+    )
 
     defaults = {
+        "encoding_plan": standalone_assembly_encoding_plan(28),
         "transition": TransitionType.CROSSFADE,
         "transition_duration": 0.3,
-        "output_crf": 28,
-        "preserve_hdr": False,
         "auto_resolution": False,
         "target_resolution": (1280, 720),
         "normalize_clip_audio": False,
     }
     defaults.update(overrides)
     return AssemblySettings(**defaults)
+
+
+def _hlg_plan():
+    from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+
+    return EncodingPlan(
+        codec=OutputCodec.H265,
+        encoder="libx265",
+        encoder_args=("-preset", "ultrafast", "-crf", "28"),
+        target_transfer=HdrTransfer.HLG,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p10le",
+        container="mp4",
+    )
 
 
 def _make_clip(path: Path, duration: float = 3.0, **kwargs):
@@ -738,7 +755,7 @@ class TestAssemblyContext:
         """SDR context has yuv420p pixel format and empty colorspace filter."""
         from immich_memories.processing.assembly_engine import create_assembly_context
 
-        settings = _make_settings(preserve_hdr=False)
+        settings = _make_settings()
         prober = _make_prober(settings)
         clips = [_make_clip(test_clip_720p)]
 
@@ -747,7 +764,8 @@ class TestAssemblyContext:
         assert ctx.target_w == 1280
         assert ctx.target_h == 720
         assert ctx.pix_fmt == "yuv420p"
-        assert ctx.colorspace_filter == ""
+        assert ctx.hdr_type == "sdr"
+        assert "colorspace=bt709" in ctx.colorspace_filter
 
     def test_resolve_target_resolution_explicit(self, test_clip_720p):
         """Explicit target_resolution is used directly."""
@@ -1122,27 +1140,27 @@ class TestClipEncoderExtra:
         """resolve_encode_hdr for SDR clip returns hlg default and empty filter."""
         from immich_memories.processing.clip_encoder import ClipEncoder
 
-        settings = _make_settings(preserve_hdr=False)
+        settings = _make_settings()
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
 
         clip = _make_clip(test_clip_720p)
         hdr_type, colorspace = encoder.resolve_encode_hdr(clip)
-        assert hdr_type == "hlg"
-        assert colorspace == ""
+        assert hdr_type == "sdr"
+        assert "colorspace=bt709" in colorspace
 
     def test_resolve_encode_hdr_enabled(self, test_clip_720p):
-        """resolve_encode_hdr with preserve_hdr=True probes clip and returns filter."""
+        """An explicit HLG plan probes and converts an SDR clip."""
         from immich_memories.processing.clip_encoder import ClipEncoder
 
-        settings = _make_settings(preserve_hdr=True)
+        settings = _make_settings(encoding_plan=_hlg_plan())
         prober = _make_prober(settings)
         encoder = ClipEncoder(settings, prober, _noop_face_center)
 
         clip = _make_clip(test_clip_720p)
         hdr_type, colorspace = encoder.resolve_encode_hdr(clip)
-        # SDR clip with preserve_hdr still gets hlg default and colorspace filter
         assert hdr_type == "hlg"
+        assert "zscale" in colorspace
         assert "setparams" in colorspace
 
     def test_trim_segment_reencode(self, test_clip_720p, tmp_path):
@@ -1241,7 +1259,7 @@ class TestFilterBuilderExtra:
         from immich_memories.processing.ffmpeg_runner import AssemblyContext
         from immich_memories.processing.filter_builder import FilterBuilder
 
-        settings = _make_settings(preserve_hdr=True)
+        settings = _make_settings(encoding_plan=_hlg_plan())
         prober = _make_prober(settings)
         fb = FilterBuilder(settings, prober, _noop_face_center)
 
@@ -1260,11 +1278,11 @@ class TestFilterBuilderExtra:
         assert result == ""
 
     def test_get_clip_hdr_conversion_no_hdr(self, test_clip_720p):
-        """get_clip_hdr_conversion returns empty when preserve_hdr is False."""
+        """An SDR plan does not convert an SDR clip just because context is malformed."""
         from immich_memories.processing.ffmpeg_runner import AssemblyContext
         from immich_memories.processing.filter_builder import FilterBuilder
 
-        settings = _make_settings(preserve_hdr=False)
+        settings = _make_settings()
         prober = _make_prober(settings)
         fb = FilterBuilder(settings, prober, _noop_face_center)
 

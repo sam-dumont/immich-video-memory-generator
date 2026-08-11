@@ -143,14 +143,15 @@ class TestGenerationError:
             raise GenerationError("test error")
 
 
-def test_generation_assembles_to_a_staged_sibling_before_publication(
+def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The orchestrator must never let the assembler write the published filename directly."""
+    """A direct caller's stale suffix cannot override the resolved output contract."""
     from immich_memories import generate as generate_module
     from immich_memories.generate import generate_memory
     from immich_memories.processing import output_contract
     from immich_memories.processing.assembly_config import AssemblyClip, AssemblySettings
+    from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 
     source = tmp_path / "source.mp4"
     source.write_bytes(b"source-video")
@@ -168,7 +169,15 @@ def test_generation_assembles_to_a_staged_sibling_before_publication(
         no_music=True,
     )
     assembled_paths: list[Path] = []
-    encoding_plan = _h264_output_plan()
+    encoding_plan = EncodingPlan(
+        codec=OutputCodec.PRORES,
+        encoder="prores_ks",
+        encoder_args=("-profile:v", "3"),
+        target_transfer=HdrTransfer.NONE,
+        tone_map_to_sdr=False,
+        pixel_format="yuv422p10le",
+        container="mov",
+    )
 
     class Assembler:
         def assemble_with_titles(
@@ -182,7 +191,26 @@ def test_generation_assembles_to_a_staged_sibling_before_publication(
             output_path.write_bytes(b"assembled-video")
             return output_path
 
-    probe_payload = _final_probe_payload()
+    probe_payload = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": "prores",
+                "pix_fmt": "yuv422p10le",
+                "color_transfer": "bt709",
+                "color_primaries": "bt709",
+                "width": 1920,
+                "height": 1080,
+                "nb_read_frames": "360",
+            }
+        ],
+        "format": {
+            "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+            "duration": "12.0",
+            "size": "4096",
+            "tags": {"major_brand": "qt  "},
+        },
+    }
 
     def run_probe(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 0, json.dumps(probe_payload), "")
@@ -208,8 +236,8 @@ def test_generation_assembles_to_a_staged_sibling_before_publication(
     ):
         result = generate_memory(params)
 
-    assert assembled_paths[0].name == "memory.assembling.mp4"
-    assert result.name == "memory.mp4"
+    assert assembled_paths[0].name == "memory.assembling.mov"
+    assert result.name == "memory.mov"
     assert result.read_bytes() == b"assembled-video"
     assert not assembled_paths[0].exists()
 

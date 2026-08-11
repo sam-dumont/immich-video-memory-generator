@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from immich_memories.config_loader import Config
     from immich_memories.generate import GenerationParams
     from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.processing.encoding_plan import EncodingPlan
     from immich_memories.tracking import RunTracker
 
 logger = logging.getLogger(__name__)
@@ -101,7 +102,6 @@ def _build_assembly_settings(
         encoding_plan=encoding_plan,
         transition=transition_type,
         transition_duration=params.transition_duration,
-        output_crf=output_crf,
         auto_resolution=auto_resolution,
         target_resolution=target_resolution,
         title_screens=title_screen_settings,
@@ -180,7 +180,6 @@ def _create_assembler(settings: AssemblySettings, config: Config):
 
     return VideoAssembler(
         settings,
-        output_crf=config.output.effective_crf,
         default_transition_duration=config.defaults.transition_duration,
         default_resolution=config.output.resolution_tuple,
     )

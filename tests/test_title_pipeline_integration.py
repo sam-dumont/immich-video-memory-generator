@@ -17,6 +17,7 @@ import pytest
 from immich_memories.processing.assembly_config import (
     AssemblyClip,
     AssemblySettings,
+    standalone_assembly_encoding_plan,
 )
 from immich_memories.processing.assembly_engine import _pick_transition
 
@@ -59,21 +60,21 @@ class TestOrientationRotation:
     def test_swaps_for_rotation_90(self):
         from immich_memories.processing.ffmpeg_prober import FFmpegProber
 
-        prober = FFmpegProber(AssemblySettings())
+        prober = FFmpegProber(AssemblySettings(encoding_plan=standalone_assembly_encoding_plan()))
         stream = {"width": 3840, "height": 2160, "side_data_list": [{"rotation": -90}]}
         assert prober.parse_resolution_from_stream(stream) == (2160, 3840)
 
     def test_swaps_for_rotation_270(self):
         from immich_memories.processing.ffmpeg_prober import FFmpegProber
 
-        prober = FFmpegProber(AssemblySettings())
+        prober = FFmpegProber(AssemblySettings(encoding_plan=standalone_assembly_encoding_plan()))
         stream = {"width": 1920, "height": 1080, "side_data_list": [{"rotation": 270}]}
         assert prober.parse_resolution_from_stream(stream) == (1080, 1920)
 
     def test_no_swap_without_rotation(self):
         from immich_memories.processing.ffmpeg_prober import FFmpegProber
 
-        prober = FFmpegProber(AssemblySettings())
+        prober = FFmpegProber(AssemblySettings(encoding_plan=standalone_assembly_encoding_plan()))
         stream = {"width": 1920, "height": 1080, "side_data_list": []}
         assert prober.parse_resolution_from_stream(stream) == (1920, 1080)
 

@@ -55,6 +55,8 @@ _SCALE_MODE_MAP = {
 _FORMAT_MAP = {
     "MP4 (H.264)": "mp4",
     "MP4 (H.265)": "h265",
+    "MOV (H.264)": "h264_mov",
+    "MOV (H.265)": "h265_mov",
     "MOV (ProRes)": "prores",
 }
 

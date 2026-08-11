@@ -16,14 +16,15 @@ from tests.integration.conftest import ffprobe_json, get_duration, has_stream, r
 pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
 
-def _make_encoder(
-    *, preserve_hdr: bool = False, default_resolution: tuple[int, int] = (1920, 1080)
-):
-    from immich_memories.processing.assembly_config import AssemblySettings
+def _make_encoder(*, default_resolution: tuple[int, int] = (1920, 1080)):
+    from immich_memories.processing.assembly_config import (
+        AssemblySettings,
+        standalone_assembly_encoding_plan,
+    )
     from immich_memories.processing.clip_encoder import ClipEncoder
     from immich_memories.processing.ffmpeg_prober import FFmpegProber
 
-    settings = AssemblySettings(preserve_hdr=preserve_hdr)
+    settings = AssemblySettings(encoding_plan=standalone_assembly_encoding_plan())
     prober = FFmpegProber(settings)
     return ClipEncoder(
         settings=settings,
@@ -133,11 +134,17 @@ class TestResolveEncodeResolution:
         assert encoder.resolve_encode_resolution(None) == (1920, 1080)
 
     def test_settings_resolution_overrides_default(self):
-        from immich_memories.processing.assembly_config import AssemblySettings
+        from immich_memories.processing.assembly_config import (
+            AssemblySettings,
+            standalone_assembly_encoding_plan,
+        )
         from immich_memories.processing.clip_encoder import ClipEncoder
         from immich_memories.processing.ffmpeg_prober import FFmpegProber
 
-        settings = AssemblySettings(target_resolution=(1280, 720))
+        settings = AssemblySettings(
+            encoding_plan=standalone_assembly_encoding_plan(),
+            target_resolution=(1280, 720),
+        )
         prober = FFmpegProber(settings)
         encoder = ClipEncoder(
             settings=settings,

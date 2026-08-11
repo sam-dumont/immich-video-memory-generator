@@ -880,11 +880,13 @@ class TestBuildAssemblySettingsExtraBranches:
         assert settings.transition == TransitionType.CROSSFADE
 
     def test_prores_format(self):
+        from immich_memories.processing.encoding_plan import OutputCodec
+
         params = GenerationParams(
             clips=[], output_path=Path("/out/o.mp4"), config=Config(), output_format="prores"
         )
         settings = _build_assembly_settings(params, [])
-        assert settings.output_codec == "prores"
+        assert settings.encoding_plan.codec is OutputCodec.PRORES
 
     def test_unknown_explicit_format_is_rejected(self):
         config = Config()
@@ -949,14 +951,17 @@ class TestBuildAssemblySettingsExtraBranches:
         assert settings.debug_preserve_intermediates is True
 
     def test_crf_from_params(self):
+        config = Config()
+        config.hardware.enabled = False
         params = GenerationParams(
             clips=[],
             output_path=Path("/out/o.mp4"),
-            config=Config(),
+            config=config,
             output_crf=18,
         )
         settings = _build_assembly_settings(params, [])
-        assert settings.output_crf == 18
+        args = settings.encoding_plan.encoder_args
+        assert args[args.index("-crf") + 1] == "18"
 
 
 # ---------------------------------------------------------------------------

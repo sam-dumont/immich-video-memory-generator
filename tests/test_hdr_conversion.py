@@ -201,6 +201,32 @@ class TestHdrConversionFilter:
 
         assert result == ""
 
+    @pytest.mark.parametrize(
+        ("source_type", "target_type"),
+        [
+            (None, "hlg"),
+            (None, "pq"),
+            ("hlg", "pq"),
+            ("pq", "hlg"),
+            ("hlg", "sdr"),
+            ("pq", "sdr"),
+        ],
+    )
+    def test_required_transfer_conversion_fails_without_zscale(
+        self, source_type: str | None, target_type: str
+    ) -> None:
+        """Missing zscale must abort instead of attaching false target metadata."""
+        from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
+
+        with (
+            patch(
+                "immich_memories.processing.hdr_utilities._check_zscale_available",
+                return_value=False,
+            ),
+            pytest.raises(RuntimeError, match="zscale"),
+        ):
+            _get_hdr_conversion_filter(source_type, target_type)
+
     def test_sdr_to_hlg_default_bt709_primaries(self):
         """Default SDR→HLG conversion should use bt709 primaries."""
         from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
@@ -263,7 +289,7 @@ class TestHdrConversionFilter:
             pixel_format="yuv420p",
             container="mp4",
         )
-        settings = AssemblySettings(encoding_plan=plan, preserve_hdr=False)
+        settings = AssemblySettings(encoding_plan=plan)
         prober = MagicMock()
         prober.detect_max_framerate.return_value = 30
         clip = AssemblyClip(path=Path("/tmp/hlg.mp4"), duration=5.0)
@@ -313,7 +339,7 @@ class TestHdrConversionFilter:
             pixel_format="yuv420p10le",
             container="mp4",
         )
-        settings = AssemblySettings(encoding_plan=plan, preserve_hdr=True)
+        settings = AssemblySettings(encoding_plan=plan)
         prober = MagicMock()
         prober.detect_max_framerate.return_value = 30
         clip = AssemblyClip(path=Path("/tmp/hlg.mp4"), duration=5.0)
@@ -356,7 +382,7 @@ class TestHdrConversionFilter:
             pixel_format="yuv420p10le",
             container="mp4",
         )
-        settings = AssemblySettings(encoding_plan=plan, preserve_hdr=True)
+        settings = AssemblySettings(encoding_plan=plan)
         prober = MagicMock()
         prober.detect_max_framerate.return_value = 30
         clip = AssemblyClip(path=Path("/tmp/hlg.mp4"), duration=5.0)
@@ -403,7 +429,7 @@ class TestHdrConversionFilter:
             pixel_format="yuv420p",
             container="mp4",
         )
-        settings = AssemblySettings(encoding_plan=plan, preserve_hdr=False)
+        settings = AssemblySettings(encoding_plan=plan)
         context = MagicMock(
             hdr_type="sdr",
             clip_hdr_types=["hlg"],

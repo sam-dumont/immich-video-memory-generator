@@ -6,6 +6,18 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 
+def _trip_config():
+    """Return a real config so strict encoding fields cannot become MagicMocks."""
+    from immich_memories.config_loader import Config
+
+    config = Config()
+    config.trips.homebase_latitude = 50.85
+    config.trips.homebase_longitude = 4.35
+    config.trips.min_distance_km = 50
+    config.defaults.transition = "smart"
+    return config
+
+
 class TestPhotoOnlyTripNotSkipped:
     """A trip with photos but no videos should not be skipped at the gate."""
 
@@ -138,13 +150,7 @@ class TestTripGenerationPhotoFetch:
 
             mock_generate.return_value = (MagicMock(), False, None)
 
-            mock_config = MagicMock()
-            mock_config.trips.homebase_latitude = 50.85
-            mock_config.trips.homebase_longitude = 4.35
-            mock_config.trips.min_distance_km = 50
-            mock_config.defaults.transition = "smart"
-            mock_config.output.codec = "h264"
-            mock_config.output.format = "mp4"
+            mock_config = _trip_config()
 
             handle_trip_generation(
                 client=mock_client,
@@ -225,12 +231,9 @@ class TestTripGenerationPhotoFetch:
         ):
             from immich_memories.cli._trip_generation import handle_trip_generation
 
-            mock_config = MagicMock()
-            mock_config.output.codec = "h264"
-            mock_config.output.format = "mp4"
             handle_trip_generation(
                 client=mock_client,
-                config=mock_config,
+                config=_trip_config(),
                 progress=MagicMock(),
                 year=2021,
                 month=7,

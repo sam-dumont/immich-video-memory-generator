@@ -48,14 +48,17 @@ def _make_assembly_clips(clip_paths: list[Path], duration: float = 5.0):
 
 def _make_assembler(**overrides):
     """Create an assembler with settings tuned for benchmarking."""
-    from immich_memories.processing.assembly_config import AssemblySettings, TransitionType
+    from immich_memories.processing.assembly_config import (
+        AssemblySettings,
+        TransitionType,
+        standalone_assembly_encoding_plan,
+    )
     from immich_memories.processing.video_assembler import VideoAssembler
 
     defaults = {
+        "encoding_plan": standalone_assembly_encoding_plan(28),
         "transition": TransitionType.CROSSFADE,
         "transition_duration": 0.3,
-        "output_crf": 28,
-        "preserve_hdr": False,
         "normalize_clip_audio": False,
     }
     defaults.update(overrides)

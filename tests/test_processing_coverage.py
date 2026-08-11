@@ -13,6 +13,7 @@ from immich_memories.processing.assembly_config import (
     AssemblyClip,
     AssemblySettings,
     TransitionType,
+    standalone_assembly_encoding_plan,
 )
 from immich_memories.processing.clips import (
     ClipExtractor,
@@ -917,6 +918,10 @@ class TestStreamRenderToMp4:
                 "immich_memories.photos.photo_pipeline.render_ken_burns_streaming",
                 return_value=[img],
             ),
+            patch(
+                "immich_memories.processing.hdr_utilities.check_zscale_available",
+                return_value=True,
+            ),
         ):
             _stream_render_to_mp4(img, params, output, 100, 100, gain_map_hdr=True, peak_nits=1200)
 
@@ -994,7 +999,9 @@ class TestParseResolutionFromStream:
     """Pure parsing logic — no subprocess needed."""
 
     def setup_method(self):
-        self.prober = FFmpegProber(settings=AssemblySettings())
+        self.prober = FFmpegProber(
+            settings=AssemblySettings(encoding_plan=standalone_assembly_encoding_plan())
+        )
 
     def test_landscape_no_rotation(self):
         stream = {"width": 1920, "height": 1080}
@@ -1045,7 +1052,9 @@ class TestPickResolutionTier:
     """Pure logic — resolution tier selection from counts."""
 
     def setup_method(self):
-        self.prober = FFmpegProber(settings=AssemblySettings())
+        self.prober = FFmpegProber(
+            settings=AssemblySettings(encoding_plan=standalone_assembly_encoding_plan())
+        )
         self.res_4k = (3840, 2160)
         self.res_1080p = (1920, 1080)
         self.res_720p = (1280, 720)
@@ -1097,7 +1106,9 @@ class TestDetectMaxFramerate:
     """Framerate rounding to common values."""
 
     def setup_method(self):
-        self.prober = FFmpegProber(settings=AssemblySettings())
+        self.prober = FFmpegProber(
+            settings=AssemblySettings(encoding_plan=standalone_assembly_encoding_plan())
+        )
 
     def test_60fps_round(self, tmp_path):
         clip = AssemblyClip(path=tmp_path / "a.mp4", duration=5.0)
@@ -1127,17 +1138,25 @@ class TestEstimateDuration:
     """Duration estimation with transition overlap."""
 
     def test_no_clips(self):
-        prober = FFmpegProber(settings=AssemblySettings())
+        prober = FFmpegProber(
+            settings=AssemblySettings(encoding_plan=standalone_assembly_encoding_plan())
+        )
         assert prober.estimate_duration([]) == 0.0
 
     def test_single_clip(self, tmp_path):
-        prober = FFmpegProber(settings=AssemblySettings(transition=TransitionType.CROSSFADE))
+        prober = FFmpegProber(
+            settings=AssemblySettings(
+                encoding_plan=standalone_assembly_encoding_plan(),
+                transition=TransitionType.CROSSFADE,
+            )
+        )
         clip = AssemblyClip(path=tmp_path / "a.mp4", duration=10.0)
         assert prober.estimate_duration([clip]) == 10.0
 
     def test_crossfade_overlap(self, tmp_path):
         prober = FFmpegProber(
             settings=AssemblySettings(
+                encoding_plan=standalone_assembly_encoding_plan(),
                 transition=TransitionType.CROSSFADE,
                 transition_duration=0.5,
             )
@@ -1147,7 +1166,12 @@ class TestEstimateDuration:
         assert prober.estimate_duration(clips) == 14.0
 
     def test_cut_no_overlap(self, tmp_path):
-        prober = FFmpegProber(settings=AssemblySettings(transition=TransitionType.CUT))
+        prober = FFmpegProber(
+            settings=AssemblySettings(
+                encoding_plan=standalone_assembly_encoding_plan(),
+                transition=TransitionType.CUT,
+            )
+        )
         clips = [AssemblyClip(path=tmp_path / f"{i}.mp4", duration=5.0) for i in range(3)]
         assert prober.estimate_duration(clips) == 15.0
 
@@ -1251,8 +1275,9 @@ class TestSdrToHdrFilter:
         f = _get_sdr_to_hdr_filter("pq", "bt709", has_zscale=True)
         assert "smpte2084" in f
 
-    def test_no_zscale_returns_empty(self):
-        assert _get_sdr_to_hdr_filter("hlg", "bt709", has_zscale=False) == ""
+    def test_no_zscale_fails_closed(self):
+        with pytest.raises(RuntimeError, match="zscale"):
+            _get_sdr_to_hdr_filter("hlg", "bt709", has_zscale=False)
 
     def test_display_p3_source(self):
         f = _get_sdr_to_hdr_filter("hlg", "smpte432", has_zscale=True)
@@ -1277,8 +1302,9 @@ class TestHdrToHdrFilter:
     def test_same_type_returns_empty(self):
         assert _get_hdr_to_hdr_filter("hlg", "hlg", has_zscale=True) == ""
 
-    def test_no_zscale_returns_empty(self):
-        assert _get_hdr_to_hdr_filter("hlg", "pq", has_zscale=False) == ""
+    def test_no_zscale_fails_closed(self):
+        with pytest.raises(RuntimeError, match="zscale"):
+            _get_hdr_to_hdr_filter("hlg", "pq", has_zscale=False)
 
 
 class TestGetHdrConversionFilter:
@@ -1348,6 +1374,12 @@ class TestZscaleFallbackBehavior:
     """When zscale is unavailable, photo rendering falls back to SDR."""
 
     def setup_method(self):
+        import immich_memories.processing.hdr_utilities as hdr_mod
+
+        hdr_mod._zscale_cache = None
+
+    def teardown_method(self):
+        """Do not leak a mocked FFmpeg capability into unrelated tests."""
         import immich_memories.processing.hdr_utilities as hdr_mod
 
         hdr_mod._zscale_cache = None

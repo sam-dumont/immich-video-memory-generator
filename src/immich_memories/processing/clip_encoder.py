@@ -286,13 +286,17 @@ class ClipEncoder:
         """Re-encodes for frame-accurate trim boundaries (stream copy can't do this)."""
         validate_video_path(input_path, must_exist=True)
 
-        video_codec_args = encoder_args_for_plan(self.settings.encoding_plan)
+        plan = self.settings.encoding_plan
+        video_codec_args = encoder_args_for_plan(plan)
+        _, color_filter = self.resolve_encode_hdr(AssemblyClip(path=input_path, duration=duration))
+        video_filter = f"{color_filter},format={plan.pixel_format}"
 
         audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
         loudnorm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if self.settings.normalize_clip_audio else ""
 
         filter_complex = (
-            f"[0:v]trim=start={start}:duration={duration},setpts=PTS-STARTPTS[vout];"
+            f"[0:v]trim=start={start}:duration={duration},setpts=PTS-STARTPTS"
+            f"{video_filter}[vout];"
             f"anullsrc=r=48000:cl=stereo,atrim=0:{duration}[silence];"
             f"[0:a]atrim=start={start}:duration={duration},{audio_format},"
             f"asetpts=PTS-STARTPTS{loudnorm},apad=whole_dur={duration}[asrc];"
@@ -327,7 +331,8 @@ class ClipEncoder:
             logger.warning(f"Trim with audio failed, using silence: {result.stderr[-200:]}")
 
             filter_complex_silent = (
-                f"[0:v]trim=start={start}:duration={duration},setpts=PTS-STARTPTS[vout];"
+                f"[0:v]trim=start={start}:duration={duration},setpts=PTS-STARTPTS"
+                f"{video_filter}[vout];"
                 f"anullsrc=r=48000:cl=stereo,atrim=0:{duration},{audio_format},"
                 f"asetpts=PTS-STARTPTS[aout]"
             )

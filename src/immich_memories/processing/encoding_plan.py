@@ -130,6 +130,8 @@ def resolve_output_selection(
     overrides: dict[str, OutputSelection] = {
         "mp4": OutputSelection(OutputCodec.H264, "mp4"),
         "h265": OutputSelection(OutputCodec.H265, "mp4"),
+        "h264_mov": OutputSelection(OutputCodec.H264, "mov"),
+        "h265_mov": OutputSelection(OutputCodec.H265, "mov"),
         "prores": OutputSelection(OutputCodec.PRORES, "mov"),
     }
     if format_override is not None:

@@ -552,13 +552,14 @@ class TestResolutionVariations:
             AssemblyClip,
             AssemblySettings,
             TransitionType,
+            standalone_assembly_encoding_plan,
         )
         from immich_memories.processing.video_assembler import VideoAssembler
 
         settings = AssemblySettings(
+            encoding_plan=standalone_assembly_encoding_plan(28),
             transition=TransitionType.CROSSFADE,
             transition_duration=0.3,
-            output_crf=28,
             auto_resolution=False,
             target_resolution=(1280, 720),
             scale_mode="blur",

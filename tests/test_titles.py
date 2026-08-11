@@ -534,10 +534,12 @@ class TestAssemblyIntegration:
             AssemblySettings,
             TitleScreenSettings,
             TransitionType,
+            standalone_assembly_encoding_plan,
         )
 
         title_settings = TitleScreenSettings(year=2024)
         settings = AssemblySettings(
+            encoding_plan=standalone_assembly_encoding_plan(),
             transition=TransitionType.CROSSFADE,
             title_screens=title_settings,
         )
@@ -550,11 +552,10 @@ class TestAssemblyIntegration:
 
         from immich_memories.processing.assembly_config import (
             AssemblyClip,
-            AssemblySettings,
         )
         from immich_memories.processing.video_assembler import VideoAssembler
 
-        assembler = VideoAssembler(AssemblySettings())
+        assembler = VideoAssembler()
 
         # Test valid date
         clip = AssemblyClip(
@@ -577,11 +578,10 @@ class TestAssemblyIntegration:
         """Test month change detection."""
         from immich_memories.processing.assembly_config import (
             AssemblyClip,
-            AssemblySettings,
         )
         from immich_memories.processing.video_assembler import VideoAssembler
 
-        assembler = VideoAssembler(AssemblySettings())
+        assembler = VideoAssembler()
 
         clips = [
             AssemblyClip(path=Path("/tmp/1.mp4"), duration=5.0, date="2024-01-15"),

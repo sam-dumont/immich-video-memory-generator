@@ -7,7 +7,7 @@ one source clip is HDR. When all sources are SDR, titles should be SDR too.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -184,6 +184,18 @@ class TestVideoEncodingPlan:
         assert "zscale=" in video_filter
         assert "t=arib-std-b67" in video_filter
         assert "color_trc=arib-std-b67" in video_filter
+
+    def test_hdr_title_fails_instead_of_relabeling_when_zscale_is_missing(self):
+        from immich_memories.titles.video_encoding import _get_best_encoder
+
+        with (
+            patch(
+                "immich_memories.processing.hdr_utilities._check_zscale_available",
+                return_value=False,
+            ),
+            pytest.raises(RuntimeError, match="zscale"),
+        ):
+            _get_best_encoder(_hardware_h265_hdr_plan())
 
     def test_pq_plan_uses_smpte2084_not_hlg(self):
         from unittest.mock import patch

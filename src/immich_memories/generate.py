@@ -13,8 +13,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, Literal, NoReturn, cast
 
+from immich_memories.filename_builder import normalize_output_path
 from immich_memories.generate_clips import (
     MIN_CLIP_DURATION,
     _cleanup_temp_clips,
@@ -396,7 +397,7 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
 
     # Preflight: abort early if disk is critically low
     check_disk_space(run_output_dir)
-    result_output_path = run_output_dir / sanitize_filename(params.output_path.name)
+    requested_output_path = run_output_dir / sanitize_filename(params.output_path.name)
 
     run_tracker.start_run(
         person_name=params.person_name,
@@ -465,6 +466,10 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         run_tracker.start_phase("assembly", len(assembly_clips))
 
         settings = _build_assembly_settings(params, assembly_clips)
+        result_output_path = normalize_output_path(
+            requested_output_path,
+            cast(Literal["mp4", "mov"], settings.encoding_plan.container),
+        )
         assembler = _create_assembler(settings, params.config)
         staged_output_path = result_output_path.with_name(
             f"{result_output_path.stem}.assembling{result_output_path.suffix}"

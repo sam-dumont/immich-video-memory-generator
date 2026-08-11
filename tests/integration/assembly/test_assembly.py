@@ -21,12 +21,16 @@ pytestmark = [pytest.mark.integration, requires_ffmpeg]
 @pytest.fixture
 def assembler():
     """Create a VideoAssembler with fast settings."""
-    from immich_memories.processing.assembly_config import AssemblySettings, TransitionType
+    from immich_memories.processing.assembly_config import (
+        AssemblySettings,
+        TransitionType,
+        standalone_assembly_encoding_plan,
+    )
 
     settings = AssemblySettings(
+        encoding_plan=standalone_assembly_encoding_plan(28),
         transition=TransitionType.CROSSFADE,
         transition_duration=0.3,
-        output_crf=28,  # fast, lower quality
     )
 
     from immich_memories.processing.video_assembler import VideoAssembler
@@ -50,7 +54,10 @@ class TestSingleClipAssembly:
 
     def test_public_single_clip_honors_prores_mov_plan(self, test_clip_720p, tmp_path):
         """An H.264 source cannot byte-copy past a resolved ProRes/MOV contract."""
-        from immich_memories.processing.assembly_config import AssemblyClip, AssemblySettings
+        from immich_memories.processing.assembly_config import (
+            AssemblyClip,
+            AssemblySettings,
+        )
         from immich_memories.processing.encoding_plan import (
             EncodingPlan,
             HdrTransfer,
@@ -94,11 +101,16 @@ class TestSingleClipAssembly:
 class TestDefaultSettings:
     def test_none_defaults_use_config_fallback(self, test_clip_720p, tmp_path):
         """AssemblySettings with None CRF/transition uses config defaults."""
-        from immich_memories.processing.assembly_config import AssemblyClip, AssemblySettings
+        from immich_memories.processing.assembly_config import (
+            AssemblyClip,
+            AssemblySettings,
+            standalone_assembly_encoding_plan,
+        )
         from immich_memories.processing.video_assembler import VideoAssembler
 
-        # None triggers the `or 0.5` / config fallback paths
-        settings = AssemblySettings(output_crf=None, transition_duration=None)
+        settings = AssemblySettings(
+            encoding_plan=standalone_assembly_encoding_plan(), transition_duration=None
+        )
         assembler = VideoAssembler(settings)
         output = tmp_path / "defaults.mp4"
         clip = AssemblyClip(path=test_clip_720p, duration=3.0)

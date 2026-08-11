@@ -15,10 +15,13 @@ pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
 
 def _make_prober():
-    from immich_memories.processing.assembly_config import AssemblySettings
+    from immich_memories.processing.assembly_config import (
+        AssemblySettings,
+        standalone_assembly_encoding_plan,
+    )
     from immich_memories.processing.ffmpeg_prober import FFmpegProber
 
-    return FFmpegProber(AssemblySettings())
+    return FFmpegProber(AssemblySettings(encoding_plan=standalone_assembly_encoding_plan()))
 
 
 def _make_clip(path: Path, duration: float = 3.0):
@@ -249,10 +252,12 @@ class TestEstimateDuration:
         from immich_memories.processing.assembly_config import (
             AssemblySettings,
             TransitionType,
+            standalone_assembly_encoding_plan,
         )
         from immich_memories.processing.ffmpeg_prober import FFmpegProber
 
         settings = AssemblySettings(
+            encoding_plan=standalone_assembly_encoding_plan(),
             transition=TransitionType.CROSSFADE,
             transition_duration=0.5,
         )

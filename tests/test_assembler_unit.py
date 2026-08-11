@@ -59,6 +59,18 @@ def _software_h265_hdr_plan() -> EncodingPlan:
     )
 
 
+def _software_h265_pq_plan() -> EncodingPlan:
+    return EncodingPlan(
+        codec=OutputCodec.H265,
+        encoder="libx265",
+        encoder_args=("-preset", "medium", "-crf", "18"),
+        target_transfer=HdrTransfer.PQ,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p10le",
+        container="mp4",
+    )
+
+
 def _software_prores_plan() -> EncodingPlan:
     return EncodingPlan(
         codec=OutputCodec.PRORES,
@@ -84,12 +96,45 @@ def _make_assembler(settings: AssemblySettings | None = None):
     """Create a VideoAssembler with explicit defaults (no config singleton needed)."""
     from immich_memories.processing.video_assembler import VideoAssembler
 
-    return VideoAssembler(settings or AssemblySettings())
+    return VideoAssembler(settings)
 
 
 def _write_mock_encoded(_clip, destination, *, target_resolution):
     assert target_resolution is not None
     destination.write_bytes(b"encoded-under-plan")
+
+
+def test_assembly_settings_requires_an_explicit_encoding_plan() -> None:
+    """Assembly must not invent a final-output policy for its callers."""
+    with pytest.raises(TypeError, match="encoding_plan"):
+        AssemblySettings()  # type: ignore[call-arg]
+
+
+def test_video_assembler_convenience_crf_builds_the_real_plan() -> None:
+    """The convenience CRF must reach the encoder contract, not dead metadata."""
+    from immich_memories.processing.video_assembler import VideoAssembler
+
+    assembler = VideoAssembler(output_crf=28)
+
+    args = assembler.settings.encoding_plan.encoder_args
+    assert args[args.index("-crf") + 1] == "28"
+
+
+def test_preview_builds_an_explicit_crf_28_plan(tmp_path: Path) -> None:
+    """Preview quality must be carried by its actual encoder plan."""
+    from immich_memories.config_loader import Config
+    from immich_memories.processing.video_assembler import create_preview
+
+    clip = _make_assembly_clip(tmp_path, duration=2.0)
+    output = tmp_path / "preview.mp4"
+
+    with patch("immich_memories.processing.video_assembler.VideoAssembler") as assembler_cls:
+        assembler_cls.return_value.assemble.return_value = output
+        create_preview([clip], output, config=Config())
+
+    settings = assembler_cls.call_args.args[0]
+    args = settings.encoding_plan.encoder_args
+    assert args[args.index("-crf") + 1] == "28"
 
 
 class TestVideoAssemblerIntegration:
@@ -103,7 +148,9 @@ class TestVideoAssemblerIntegration:
 
     def test_single_clip_encodes_file(self, tmp_path):
         """Single clip without music still encodes under the final plan."""
-        assembler = _make_assembler(AssemblySettings(music_path=None))
+        assembler = _make_assembler(
+            AssemblySettings(encoding_plan=_software_h264_plan(), music_path=None)
+        )
         clip = _make_assembly_clip(tmp_path, "input.mp4")
         output = tmp_path / "output.mp4"
 
@@ -140,19 +187,29 @@ class TestVideoAssemblerIntegration:
         """Assembly settings are accessible on the assembler."""
         assembler = _make_assembler(
             AssemblySettings(
+                encoding_plan=EncodingPlan(
+                    codec=OutputCodec.H264,
+                    encoder="libx264",
+                    encoder_args=("-preset", "medium", "-crf", "22"),
+                    target_transfer=HdrTransfer.NONE,
+                    tone_map_to_sdr=False,
+                    pixel_format="yuv420p",
+                    container="mp4",
+                ),
                 transition=TransitionType.CUT,
-                output_crf=22,
             )
         )
         assert assembler.settings.transition == TransitionType.CUT
-        assert assembler.settings.output_crf == 22
+        assert assembler.settings.encoding_plan.encoder_args[-1] == "22"
 
     def test_single_clip_with_music_triggers_music_flow(self, tmp_path):
         """Single clip with music_path set takes the music branch, not copy."""
         music_file = tmp_path / "music.mp3"
         music_file.write_bytes(b"\x00" * 512)
 
-        assembler = _make_assembler(AssemblySettings(music_path=music_file))
+        assembler = _make_assembler(
+            AssemblySettings(encoding_plan=_software_h264_plan(), music_path=music_file)
+        )
         clip = _make_assembly_clip(tmp_path, "input.mp4")
         output = tmp_path / "output.mp4"
 
@@ -173,7 +230,9 @@ class TestVideoAssemblerIntegration:
 
     def test_assemble_returns_path(self, tmp_path):
         """assemble() returns a Path on success."""
-        assembler = _make_assembler(AssemblySettings(music_path=None))
+        assembler = _make_assembler(
+            AssemblySettings(encoding_plan=_software_h264_plan(), music_path=None)
+        )
         clip = _make_assembly_clip(tmp_path, "single.mp4")
         output = tmp_path / "result.mp4"
 
@@ -190,12 +249,14 @@ class TestVideoAssemblerIntegration:
             default_transition_duration=0.8,
         )
 
-        assert assembler.settings.output_crf == 23
+        assert assembler.settings.encoding_plan.encoder_args[-1] == "23"
         assert assembler.settings.transition_duration == 0.8
 
     def test_assemble_idempotent_single_clip(self, tmp_path):
         """Assembling the same single clip twice produces identical output."""
-        assembler = _make_assembler(AssemblySettings(music_path=None))
+        assembler = _make_assembler(
+            AssemblySettings(encoding_plan=_software_h264_plan(), music_path=None)
+        )
         clip = _make_assembly_clip(tmp_path, "input.mp4")
 
         out1 = tmp_path / "out1.mp4"
@@ -208,7 +269,9 @@ class TestVideoAssemblerIntegration:
 
     def test_assemble_does_not_modify_input(self, tmp_path):
         """Assembling does not modify the source clip file."""
-        assembler = _make_assembler(AssemblySettings(music_path=None))
+        assembler = _make_assembler(
+            AssemblySettings(encoding_plan=_software_h264_plan(), music_path=None)
+        )
         clip = _make_assembly_clip(tmp_path, "input.mp4")
         original_bytes = clip.path.read_bytes()
 
@@ -219,7 +282,9 @@ class TestVideoAssemblerIntegration:
 
     def test_missing_output_parent_raises(self, tmp_path):
         """Assembler raises when output parent directory does not exist."""
-        assembler = _make_assembler(AssemblySettings(music_path=None))
+        assembler = _make_assembler(
+            AssemblySettings(encoding_plan=_software_h264_plan(), music_path=None)
+        )
         clip = _make_assembly_clip(tmp_path, "input.mp4")
         output = tmp_path / "nonexistent" / "output.mp4"
 
@@ -235,7 +300,7 @@ def test_final_assembly_command_uses_the_resolved_software_h264_plan(tmp_path: P
     from immich_memories.processing.clip_encoder import ClipEncoder
     from immich_memories.processing.ffmpeg_runner import AssemblyContext
 
-    settings = AssemblySettings(encoding_plan=_software_h264_plan(), preserve_hdr=False)
+    settings = AssemblySettings(encoding_plan=_software_h264_plan())
     prober = MagicMock()
     prober.estimate_duration.return_value = 5.0
     encoder = ClipEncoder(settings, prober, lambda _path: None)
@@ -276,7 +341,7 @@ def test_single_clip_reencode_uses_the_same_software_h264_plan(tmp_path: Path) -
     """Clip normalization must remain concat-compatible with the final output."""
     from immich_memories.processing.clip_encoder import ClipEncoder
 
-    settings = AssemblySettings(encoding_plan=_software_h264_plan(), preserve_hdr=False)
+    settings = AssemblySettings(encoding_plan=_software_h264_plan())
     prober = MagicMock()
     prober.has_audio_stream.return_value = False
     prober.probe_framerate.return_value = 30.0
@@ -300,11 +365,14 @@ def test_frame_accurate_trim_uses_the_same_software_h264_plan(tmp_path: Path) ->
     """A re-encoded trim must remain concat-compatible with every other clip."""
     from immich_memories.processing.clip_encoder import ClipEncoder
 
-    settings = AssemblySettings(encoding_plan=_software_h264_plan(), preserve_hdr=False)
+    settings = AssemblySettings(encoding_plan=_software_h264_plan())
     encoder = ClipEncoder(settings, MagicMock(), lambda _path: None)
     clip = _make_assembly_clip(tmp_path)
 
-    with patch("immich_memories.processing.clip_encoder.subprocess.run") as run:
+    with (
+        patch("immich_memories.processing.clip_encoder._detect_hdr_type", return_value=None),
+        patch("immich_memories.processing.clip_encoder.subprocess.run") as run,
+    ):
         run.return_value = MagicMock(returncode=0, stderr="")
         encoder.trim_segment_reencode(clip.path, tmp_path / "trimmed.mp4", 1.0, 2.0)
 
@@ -314,6 +382,79 @@ def test_frame_accurate_trim_uses_the_same_software_h264_plan(tmp_path: Path) ->
     assert "libx265" not in command
 
 
+@pytest.mark.parametrize(
+    ("source_transfer", "plan", "expected_conversion"),
+    [
+        (None, _software_h265_hdr_plan(), "zscale=tin=bt709:t=arib-std-b67"),
+        (None, _software_h265_pq_plan(), "zscale=tin=bt709:t=smpte2084"),
+        ("hlg", _software_h265_pq_plan(), "zscale=tin=arib-std-b67:t=smpte2084"),
+        ("pq", _software_h265_hdr_plan(), "zscale=tin=smpte2084:t=arib-std-b67"),
+        ("hlg", _tone_map_h264_plan(), "zscale=t=linear:tin=arib-std-b67"),
+    ],
+)
+def test_frame_accurate_trim_converts_source_transfer_to_the_plan(
+    tmp_path: Path,
+    source_transfer: str | None,
+    plan: EncodingPlan,
+    expected_conversion: str,
+) -> None:
+    """Frame-accurate trims must transform pixels before applying target tags."""
+    from immich_memories.processing.clip_encoder import ClipEncoder
+
+    encoder = ClipEncoder(AssemblySettings(encoding_plan=plan), MagicMock(), lambda _path: None)
+    clip = _make_assembly_clip(tmp_path)
+
+    with (
+        patch(
+            "immich_memories.processing.clip_encoder._detect_hdr_type",
+            return_value=source_transfer,
+        ),
+        patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            return_value=True,
+        ),
+        patch("immich_memories.processing.clip_encoder.subprocess.run") as run,
+    ):
+        run.return_value = MagicMock(returncode=0, stderr="")
+        encoder.trim_segment_reencode(clip.path, tmp_path / f"trimmed.{plan.container}", 1.0, 2.0)
+
+    command = run.call_args.args[0]
+    filter_graph = command[command.index("-filter_complex") + 1]
+    assert expected_conversion in filter_graph
+
+
+def test_frame_accurate_trim_silence_fallback_keeps_transfer_conversion(
+    tmp_path: Path,
+) -> None:
+    """Losing the source audio cannot also lose the video transfer transform."""
+    from immich_memories.processing.clip_encoder import ClipEncoder
+
+    plan = _software_h265_pq_plan()
+    encoder = ClipEncoder(AssemblySettings(encoding_plan=plan), MagicMock(), lambda _path: None)
+    clip = _make_assembly_clip(tmp_path)
+
+    with (
+        patch(
+            "immich_memories.processing.clip_encoder._detect_hdr_type",
+            return_value="hlg",
+        ),
+        patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            return_value=True,
+        ),
+        patch("immich_memories.processing.clip_encoder.subprocess.run") as run,
+    ):
+        run.side_effect = [
+            MagicMock(returncode=1, stderr="missing audio"),
+            MagicMock(returncode=0, stderr=""),
+        ]
+        encoder.trim_segment_reencode(clip.path, tmp_path / "trimmed.mp4", 1.0, 2.0)
+
+    fallback = run.call_args_list[1].args[0]
+    filter_graph = fallback[fallback.index("-filter_complex") + 1]
+    assert "zscale=tin=arib-std-b67:t=smpte2084" in filter_graph
+
+
 def test_streaming_assembly_uses_the_same_software_h264_plan(tmp_path: Path) -> None:
     """The scalable path must pass the resolved plan to its FFmpeg encoder."""
     from immich_memories.processing.assembly_engine import AssemblyEngine
@@ -321,7 +462,6 @@ def test_streaming_assembly_uses_the_same_software_h264_plan(tmp_path: Path) -> 
     plan = _software_h264_plan()
     settings = AssemblySettings(
         encoding_plan=plan,
-        preserve_hdr=False,
         auto_resolution=False,
         target_resolution=(1920, 1080),
     )
@@ -372,7 +512,7 @@ def test_single_hlg_clip_is_tone_mapped_for_h264_output(tmp_path: Path) -> None:
     """The single-clip shortcut must apply the same HDR-to-SDR policy."""
     from immich_memories.processing.clip_encoder import ClipEncoder
 
-    settings = AssemblySettings(encoding_plan=_tone_map_h264_plan(), preserve_hdr=False)
+    settings = AssemblySettings(encoding_plan=_tone_map_h264_plan())
     prober = MagicMock()
     prober.has_audio_stream.return_value = False
     prober.probe_framerate.return_value = 30.0
@@ -410,7 +550,7 @@ def test_single_hdr_clip_fails_when_required_tone_map_is_unavailable(
     from immich_memories.processing.clip_encoder import ClipEncoder
     from immich_memories.processing.hdr_utilities import RequiredColorConversionUnavailable
 
-    settings = AssemblySettings(encoding_plan=plan, preserve_hdr=False)
+    settings = AssemblySettings(encoding_plan=plan)
     prober = MagicMock()
     prober.has_audio_stream.return_value = False
     prober.probe_framerate.return_value = 30.0
@@ -472,4 +612,4 @@ def test_generation_settings_preserve_exact_pq_transfer(tmp_path: Path) -> None:
 
     assert settings.encoding_plan.target_transfer is HdrTransfer.PQ
     assert settings.encoding_plan.container == "mp4"
-    assert settings.output_codec == "h265"
+    assert settings.encoding_plan.codec is OutputCodec.H265

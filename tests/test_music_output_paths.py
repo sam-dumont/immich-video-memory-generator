@@ -48,10 +48,8 @@ def _prores_output_plan():
 
 def _publish_fake_music_mix(video_path: Path, encoding_plan: object) -> None:
     """Emulate successful validated publication for path-only unit tests."""
-    from immich_memories.filename_builder import build_music_output_path
-
-    del encoding_plan
-    build_music_output_path(video_path).replace(video_path)
+    container = encoding_plan.container
+    video_path.with_suffix(f".with_music.{container}").replace(video_path)
 
 
 def _final_probe_payload(*, codec: str = "h264") -> dict[str, object]:
@@ -529,6 +527,20 @@ async def test_ai_cleanup_failure_does_not_undo_successful_publication(
     assert result_path.read_bytes() == b"validated-mix"
     tracker.complete_phase.assert_called_once_with(items_processed=1)
     assert "cleanup-secret-912" not in caplog.text
+
+
+def _prores_plan():
+    from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+
+    return EncodingPlan(
+        codec=OutputCodec.PRORES,
+        encoder="prores_ks",
+        encoder_args=("-profile:v", "3"),
+        target_transfer=HdrTransfer.NONE,
+        tone_map_to_sdr=False,
+        pixel_format="yuv422p10le",
+        container="mov",
+    )
 
 
 class _RunTracker:

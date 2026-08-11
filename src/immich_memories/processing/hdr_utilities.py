@@ -223,14 +223,13 @@ def _get_sdr_to_hdr_filter(
     source_primaries: str | None,
     has_zscale: bool,
 ) -> str:
-    """Return zscale filter string for SDR-to-HDR upscale, or empty string.
+    """Return the required zscale filter string for SDR-to-HDR conversion.
 
     Uses npl=203 (SDR reference white per BT.2408), explicit TV range,
     and agamma=false for accurate gamma — prevents red/warm color cast.
     """
     if not has_zscale:
-        logger.warning("zscale not available - SDR to HDR conversion may look washed out")
-        return ""
+        raise RuntimeError("zscale is required for SDR-to-HDR transfer conversion")
     src_pri = source_primaries or "bt709"
     src_matrix = "bt709" if src_pri in ("bt709", "smpte432") else src_pri
     if target_type == "hlg":
@@ -251,10 +250,9 @@ def _get_sdr_to_hdr_filter(
 
 
 def _get_hdr_to_hdr_filter(source_type: str, target_type: str, has_zscale: bool) -> str:
-    """Return zscale filter string for HLG<->PQ conversion, or empty string."""
+    """Return the required zscale filter string for HLG<->PQ conversion."""
     if not has_zscale:
-        logger.warning("zscale not available - HDR conversion may not be accurate")
-        return ""
+        raise RuntimeError("zscale is required for HDR transfer conversion")
     if source_type == "hlg" and target_type == "pq":
         return (
             ",zscale=tin=arib-std-b67:t=smpte2084"
@@ -273,8 +271,7 @@ def _get_hdr_to_hdr_filter(source_type: str, target_type: str, has_zscale: bool)
 def _get_hdr_to_sdr_filter(source_type: str, has_zscale: bool) -> str:
     """Return a deterministic HDR-to-BT.709 tone-map filter."""
     if not has_zscale:
-        logger.warning("zscale not available - HDR to SDR tone mapping is unavailable")
-        return ""
+        raise RuntimeError("zscale is required for HDR-to-SDR tone mapping")
     transfer = "smpte2084" if source_type == "pq" else "arib-std-b67"
     return (
         f",zscale=t=linear:tin={transfer}:pin=bt2020:min=bt2020nc:rin=tv:npl=100"
@@ -293,7 +290,7 @@ def _get_hdr_conversion_filter(
     """Get filter to convert between HDR formats (HLG <-> PQ) or SDR -> HDR.
 
     Uses zscale for proper colorspace and transfer function conversion.
-    Falls back to colorspace filter if zscale unavailable.
+    Raises when zscale is unavailable for a required transfer conversion.
 
     Args:
         source_type: Source HDR type ("hlg", "pq", "sdr", or None for unknown)

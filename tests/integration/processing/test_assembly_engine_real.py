@@ -15,10 +15,13 @@ pytestmark = [pytest.mark.integration, requires_ffmpeg]
 
 
 def _make_settings(**kwargs):
-    from immich_memories.processing.assembly_config import AssemblySettings
+    from immich_memories.processing.assembly_config import (
+        AssemblySettings,
+        standalone_assembly_encoding_plan,
+    )
 
     defaults = {
-        "preserve_hdr": False,
+        "encoding_plan": standalone_assembly_encoding_plan(28),
         "auto_resolution": False,
         "target_resolution": (1280, 720),
         "transition_duration": 0.5,

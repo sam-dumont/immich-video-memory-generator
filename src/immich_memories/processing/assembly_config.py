@@ -6,7 +6,7 @@ used across the assembly pipeline.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
@@ -21,18 +21,19 @@ __all__ = [
     "TitleScreenSettings",
     "TransitionType",
     "_get_rotation_filter",
+    "standalone_assembly_encoding_plan",
 ]
 
 
 MAX_FACE_CACHE_SIZE = 50  # Max entries in face detection cache to prevent unbounded growth
 
 
-def _default_encoding_plan() -> EncodingPlan:
-    """Return the explicit SDR/H.264 plan used by standalone assembly callers."""
+def standalone_assembly_encoding_plan(crf: int = 23) -> EncodingPlan:
+    """Return the explicit software H.264/SDR contract for standalone assembly."""
     return EncodingPlan(
         codec=OutputCodec.H264,
         encoder="libx264",
-        encoder_args=("-preset", "medium", "-crf", "18"),
+        encoder_args=("-preset", "medium", "-crf", str(crf)),
         target_transfer=HdrTransfer.NONE,
         tone_map_to_sdr=False,
         pixel_format="yuv420p",
@@ -101,7 +102,7 @@ class TitleScreenSettings:
 class AssemblySettings:
     """Settings for video assembly."""
 
-    encoding_plan: EncodingPlan = field(default_factory=_default_encoding_plan)
+    encoding_plan: EncodingPlan
     transition: TransitionType = TransitionType.CROSSFADE
     transition_duration: float | None = None
     music_path: Path | None = None
@@ -116,11 +117,6 @@ class AssemblySettings:
     music_other_path: Path | None = None  # Other instruments stem
     add_date_overlay: bool = False
     date_format: str = "%B %d, %Y"
-    output_format: str = "mp4"
-    output_codec: str = "h264"
-    output_crf: int | None = None
-    # HDR and quality preservation
-    preserve_hdr: bool = True  # Deprecated compatibility field; encoding_plan owns HDR policy
     preserve_framerate: bool = True  # Keep original frame rate (e.g., 60fps)
     target_framerate: int | None = None  # Force specific frame rate (None = auto)
     # Resolution settings
@@ -144,11 +140,6 @@ class AssemblySettings:
     # Fallback resolution when auto_resolution is False and target_resolution is None
     # Set by the caller from config.output.resolution_tuple
     default_resolution: tuple[int, int] | None = None
-
-    def __post_init__(self) -> None:
-        """Keep read-only legacy metadata aligned with the resolved plan."""
-        self.output_format = self.encoding_plan.container
-        self.output_codec = self.encoding_plan.codec.value
 
 
 @dataclass

@@ -13,6 +13,7 @@ from immich_memories.processing.assembly_config import (
     AssemblyClip,
     AssemblySettings,
     TransitionType,
+    standalone_assembly_encoding_plan,
 )
 from immich_memories.processing.assembly_engine import AssemblyEngine
 from immich_memories.processing.audio_mixer_service import AudioMixerService
@@ -55,14 +56,14 @@ class VideoAssembler:
         default_transition_duration: float = 0.5,
         default_resolution: tuple[int, int] = (1920, 1080),
     ):
-        self.settings = settings or AssemblySettings()
+        self.settings = settings or AssemblySettings(
+            encoding_plan=standalone_assembly_encoding_plan(output_crf)
+        )
 
         # Face detection cache: path -> (center_x, center_y) or None
         self._face_cache: OrderedDict[Path, tuple[float, float] | None] = OrderedDict()
 
         # Apply caller-provided defaults where settings left them unset
-        if self.settings.output_crf is None:
-            self.settings.output_crf = output_crf
         if self.settings.transition_duration is None:
             self.settings.transition_duration = default_transition_duration
         if self.settings.default_resolution is None:
@@ -178,6 +179,7 @@ def assemble_montage(
         )
 
     settings = AssemblySettings(
+        encoding_plan=standalone_assembly_encoding_plan(),
         transition=transition,
         transition_duration=transition_duration,
         music_path=music_path,
@@ -224,8 +226,8 @@ def create_preview(
             break
 
     settings = AssemblySettings(
+        encoding_plan=standalone_assembly_encoding_plan(28),
         transition=TransitionType.CUT,
-        output_crf=28,
     )
 
     return VideoAssembler(settings).assemble(preview_clips, output_path)

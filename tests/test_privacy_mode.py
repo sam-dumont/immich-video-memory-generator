@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 from immich_memories.processing.assembly_config import (
     AssemblyClip,
     AssemblySettings,
+    standalone_assembly_encoding_plan,
 )
 from immich_memories.processing.ffmpeg_runner import AssemblyContext
 from immich_memories.processing.filter_builder import FilterBuilder
@@ -17,11 +18,13 @@ class TestPrivacyModeConfig:
     """AssemblySettings has privacy_mode flag."""
 
     def test_default_is_false(self):
-        settings = AssemblySettings()
+        settings = AssemblySettings(encoding_plan=standalone_assembly_encoding_plan())
         assert not settings.privacy_mode
 
     def test_can_be_enabled(self):
-        settings = AssemblySettings(privacy_mode=True)
+        settings = AssemblySettings(
+            encoding_plan=standalone_assembly_encoding_plan(), privacy_mode=True
+        )
         assert settings.privacy_mode
 
 
@@ -30,7 +33,9 @@ class TestPrivacyVideoBlur:
 
     def _make_filter_builder(self, privacy_mode: bool = False):
         """Create a FilterBuilder with mocked dependencies."""
-        settings = AssemblySettings(privacy_mode=privacy_mode)
+        settings = AssemblySettings(
+            encoding_plan=standalone_assembly_encoding_plan(), privacy_mode=privacy_mode
+        )
         # WHY: mock prober — FilterBuilder calls ffprobe for resolution; unit tests skip I/O
         prober = MagicMock()
         prober.get_video_resolution = MagicMock(return_value=None)
@@ -85,7 +90,9 @@ class TestPrivacyAudioMuffle:
     """Privacy mode muffles ALL audio — keeps cadence but makes speech unintelligible."""
 
     def _make_filter_builder(self, privacy_mode: bool = False):
-        settings = AssemblySettings(privacy_mode=privacy_mode)
+        settings = AssemblySettings(
+            encoding_plan=standalone_assembly_encoding_plan(), privacy_mode=privacy_mode
+        )
         # WHY: mock prober + face_center_fn — audio filter tests don't touch video I/O
         prober = MagicMock()
         face_center_fn = MagicMock(return_value=None)

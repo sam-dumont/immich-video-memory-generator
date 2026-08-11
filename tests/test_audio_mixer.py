@@ -7,11 +7,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from immich_memories.processing.assembly_config import AssemblySettings
+from immich_memories.processing.assembly_config import (
+    AssemblySettings,
+    standalone_assembly_encoding_plan,
+)
 from immich_memories.processing.audio_mixer_service import AudioMixerService
 
 
 def _make_service(**overrides: object) -> AudioMixerService:
+    overrides.setdefault("encoding_plan", standalone_assembly_encoding_plan())
     settings = AssemblySettings(**overrides)  # type: ignore[arg-type]
     return AudioMixerService(settings)
 

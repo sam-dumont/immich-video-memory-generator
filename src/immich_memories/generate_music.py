@@ -225,7 +225,7 @@ def publish_music_mix(
     encoding_plan: EncodingPlan,
 ) -> OutputProbe:
     """Validate the staged music sibling before atomically replacing the base."""
-    staged_path = build_music_output_path(video_path)
+    staged_path = video_path.with_suffix(f".with_music.{encoding_plan.container}")
     try:
         _require_audio_stream(staged_path)
         return publish_validated_output(staged_path, video_path, encoding_plan)
