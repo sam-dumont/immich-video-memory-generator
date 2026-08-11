@@ -10,6 +10,7 @@ from pathlib import Path
 
 from nicegui import run, ui
 
+from immich_memories.filename_builder import build_music_output_path
 from immich_memories.security import sanitize_error_message
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,7 @@ async def apply_ai_music(
             progress_bar.value = 0.96
 
             music_volume = gen_options.get("music_volume", 0.5)
-            final_path = result_path.with_suffix(".with_music.mp4")
+            final_path = build_music_output_path(result_path)
             mix_config = MixConfig(
                 ducking=DuckingConfig(
                     music_volume_db=-20 + (music_volume * 20),
@@ -198,7 +199,7 @@ async def apply_uploaded_music(
             tmp_music_path = Path(tmp.name)
 
         music_volume = gen_options.get("music_volume", 0.5)
-        final_path = result_path.with_suffix(".with_music.mp4")
+        final_path = build_music_output_path(result_path)
         mix_config = MixConfig(
             ducking=DuckingConfig(
                 music_volume_db=-20 + (music_volume * 20),

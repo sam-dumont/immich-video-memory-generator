@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.filename_builder import build_music_output_path
 from immich_memories.processing.assembly_config import AssemblyClip
 
 if TYPE_CHECKING:
@@ -137,7 +138,7 @@ def apply_music_file(video_path: Path, music_path: Path, volume: float) -> None:
     """Mix a music file into the assembled video."""
     from immich_memories.audio.mixer import DuckingConfig, MixConfig, mix_audio_with_ducking
 
-    final_path = video_path.with_suffix(".with_music.mp4")
+    final_path = build_music_output_path(video_path)
     mix_config = MixConfig(
         ducking=DuckingConfig(
             music_volume_db=-20 + (volume * 20),

@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Literal
 
 
+def build_music_output_path(video_path: Path) -> Path:
+    """Return a sibling music-mix path while preserving the video container."""
+    return video_path.with_name(f"{video_path.stem}.with_music{video_path.suffix}")
+
+
 def normalize_output_path(path: Path, container: Literal["mp4", "mov"]) -> Path:
     """Return an output path whose suffix matches the resolved container."""
     expected_suffix = f".{container}"
