@@ -70,9 +70,13 @@ def _save_completed_run(
     memory_key: str | None = None,
     source: str = "auto",
     created_at: datetime | None = None,
+    automation_attempt_id: str | None = None,
 ) -> None:
     """Seed the exact pipeline record that run_one validates after execution."""
     started = created_at or datetime.now() + timedelta(milliseconds=10)
+    if automation_attempt_id is None:
+        attempt = runner.state.get_last_attempt()
+        automation_attempt_id = attempt.id if attempt is not None else None
     runner.db.save_run(
         RunMetadata(
             run_id=run_id,
@@ -83,6 +87,7 @@ def _save_completed_run(
             memory_type=candidate.memory_type,
             memory_key=memory_key or candidate.memory_key,
             memory_category=candidate.category.value,
+            automation_attempt_id=automation_attempt_id,
             output_path=str(output_path) if output_path else None,
         )
     )
@@ -660,6 +665,189 @@ class TestRunOneNoCandidates:
 
 
 class TestRunOneOutcomes:
+    def test_held_configured_lease_skips_before_suggest_or_execute(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        """A second wake becomes a durable skip without doing library work."""
+        from immich_memories.automation.runner import AutomationLease
+
+        suggest = MagicMock(return_value=[candidate])
+        execute = MagicMock(return_value=ProcessResult(0, "", ""))
+        runner = AutoRunner(config, execute=execute)
+        lease_path = config.cache.database_path.parent / ".auto.lock"
+
+        with (
+            AutomationLease(lease_path),
+            patch.object(runner, "suggest", suggest),
+            patch("immich_memories.automation.runner._send_notification") as notify,
+        ):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.SKIPPED
+        assert result.reason == "automation already running"
+        assert runner.state.get_last_attempt().outcome is AutoOutcome.SKIPPED
+        suggest.assert_not_called()
+        execute.assert_not_called()
+        notify.assert_not_called()
+
+    def test_lease_uses_temp_database_scope_without_touching_real_home(
+        self, config: Config, candidate: MemoryCandidate
+    ) -> None:
+        """A temp automation run cannot create or rewrite the production lease."""
+        real_lease = Path.home() / ".immich-memories" / ".auto.lock"
+
+        def file_state(path: Path) -> tuple[bool, int | None, int | None]:
+            try:
+                stat = path.stat()
+            except FileNotFoundError:
+                return False, None, None
+            return True, stat.st_mtime_ns, stat.st_size
+
+        before = file_state(real_lease)
+        runner = AutoRunner(config)
+        with patch.object(runner, "suggest", return_value=[]):
+            runner.run_one(force=True)
+
+        assert (config.cache.database_path.parent / ".auto.lock").exists()
+        assert file_state(real_lease) == before
+
+    @pytest.mark.parametrize("terminal", ["completed", "failed"])
+    def test_lease_releases_after_terminal_generation(
+        self,
+        config: Config,
+        candidate: MemoryCandidate,
+        tmp_path: Path,
+        terminal: str,
+    ) -> None:
+        """No terminal branch may strand the OS lease for the next daily wake."""
+        import fcntl
+
+        output = tmp_path / "released.mp4"
+        output.write_bytes(b"video")
+        runner = AutoRunner(config)
+
+        def execute(argv: list[str]) -> ProcessResult:
+            if terminal == "failed":
+                return ProcessResult(2, "", "failed")
+            attempt_id = next(
+                value.split("=", 1)[1]
+                for value in argv
+                if value.startswith("--automation-attempt-id=")
+            )
+            _save_completed_run(
+                runner,
+                candidate,
+                output,
+                automation_attempt_id=attempt_id,
+            )
+            return ProcessResult(0, "", "")
+
+        runner.execute = execute
+        with patch.object(runner, "suggest", return_value=[candidate]):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is (
+            AutoOutcome.COMPLETED if terminal == "completed" else AutoOutcome.FAILED
+        )
+        lease_path = config.cache.database_path.parent / ".auto.lock"
+        with lease_path.open("w") as lease_file:
+            fcntl.flock(lease_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(lease_file, fcntl.LOCK_UN)
+
+    def test_child_argv_and_completed_run_share_exact_attempt_id(
+        self, config: Config, candidate: MemoryCandidate, tmp_path: Path
+    ) -> None:
+        """Removing the UUID from either side breaks durable parent-child correlation."""
+        output = tmp_path / "exact.mp4"
+        output.write_bytes(b"video")
+        runner = AutoRunner(config)
+        captured_id = ""
+
+        def execute(argv: list[str]) -> ProcessResult:
+            nonlocal captured_id
+            captured_id = next(
+                value.split("=", 1)[1]
+                for value in argv
+                if value.startswith("--automation-attempt-id=")
+            )
+            _save_completed_run(
+                runner,
+                candidate,
+                output,
+                run_id="exact-child",
+                automation_attempt_id=captured_id,
+            )
+            return ProcessResult(0, "", "")
+
+        runner.execute = execute
+        with patch.object(runner, "suggest", return_value=[candidate]):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.COMPLETED
+        assert captured_id == runner.state.get_last_attempt().id
+        assert runner.db.get_run("exact-child").automation_attempt_id == captured_id
+
+    def test_lease_is_held_through_output_file_verification(
+        self, config: Config, candidate: MemoryCandidate, tmp_path: Path
+    ) -> None:
+        """The parent lease covers the final filesystem integrity check."""
+        from immich_memories.automation.runner import (
+            AutomationAlreadyRunningError,
+            AutomationLease,
+        )
+
+        output = tmp_path / "verified.mp4"
+        output.write_bytes(b"video")
+        runner = AutoRunner(config)
+        real_is_file = Path.is_file
+        lease_path = config.cache.database_path.parent / ".auto.lock"
+
+        def execute(_argv: list[str]) -> ProcessResult:
+            _save_completed_run(runner, candidate, output)
+            return ProcessResult(0, "", "")
+
+        def verify_file(path: Path) -> bool:
+            if path == output:
+                with (
+                    pytest.raises(AutomationAlreadyRunningError),
+                    AutomationLease(lease_path),
+                ):
+                    pass
+            return real_is_file(path)
+
+        runner.execute = execute
+        with (
+            patch.object(runner, "suggest", return_value=[candidate]),
+            patch.object(Path, "is_file", verify_file),
+        ):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.COMPLETED
+
+    def test_same_key_run_from_another_attempt_cannot_prove_success(
+        self, config: Config, candidate: MemoryCandidate, tmp_path: Path
+    ) -> None:
+        """Key/time proximity is not proof that this wake generated the file."""
+        output = tmp_path / "wrong-parent.mp4"
+        output.write_bytes(b"video")
+        runner = AutoRunner(config)
+
+        def execute(_argv: list[str]) -> ProcessResult:
+            _save_completed_run(
+                runner,
+                candidate,
+                output,
+                automation_attempt_id="some-other-attempt",
+            )
+            return ProcessResult(0, "", "")
+
+        runner.execute = execute
+        with patch.object(runner, "suggest", return_value=[candidate]):
+            result = runner.run_one(force=True)
+
+        assert result.outcome is AutoOutcome.FAILED
+        assert result.reason == "no matching completed auto run"
+
     def test_failed_process_uses_stdout_error_and_finishes_once(
         self, config: Config, candidate: MemoryCandidate
     ) -> None:

@@ -307,6 +307,7 @@ def register_generate_commands(main: click.Group) -> None:
     )
     @click.option("--memory-key", type=str, default=None, hidden=True)
     @click.option("--memory-category", type=str, default=None, hidden=True)
+    @click.option("--automation-attempt-id", type=str, default=None, hidden=True)
     @click.option("--quiet", is_flag=True, help="Suppress interactive progress, emit log lines")
     @click.pass_context
     def generate(
@@ -351,6 +352,7 @@ def register_generate_commands(main: click.Group) -> None:
         source: str,
         memory_key: str | None,
         memory_category: str | None,
+        automation_attempt_id: str | None,
         quiet: bool,
     ) -> None:
         """Generate a video compilation.
@@ -384,6 +386,9 @@ def register_generate_commands(main: click.Group) -> None:
         if not config.immich.url or not config.immich.api_key:
             print_error("Immich not configured. Run 'immich-memories config' first.")
             sys.exit(1)
+
+        if automation_attempt_id is not None and source != "auto":
+            raise click.UsageError("--automation-attempt-id requires --source=auto")
 
         # Validate memory type constraints
         if memory_type in ("person_spotlight", "multi_person") and not person_names:
@@ -578,6 +583,7 @@ def register_generate_commands(main: click.Group) -> None:
                             source=source,
                             memory_key=memory_key,
                             memory_category=memory_category,
+                            automation_attempt_id=automation_attempt_id,
                         )
                         return
 
@@ -699,6 +705,7 @@ def register_generate_commands(main: click.Group) -> None:
                         source=source,
                         memory_key=memory_key,
                         memory_category=memory_category,
+                        automation_attempt_id=automation_attempt_id,
                     )
 
                 print_success(f"Video saved to: {result_path}")

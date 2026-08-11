@@ -19,7 +19,6 @@ from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.cache import database as cache_database
 from immich_memories.cache.database import VideoAnalysisCache
 from immich_memories.config_loader import Config
-from immich_memories.tracking.models import RunMetadata
 from immich_memories.tracking.run_database import RunDatabase
 
 
@@ -182,30 +181,32 @@ def test_v11_canonical_utc_keeps_completion_order_and_cooldown_chronological(
     """Different explicit offsets cannot invert completion history after migration."""
     db_path = tmp_path / "offset-order-v10.db"
     monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 10)
-    legacy_db = RunDatabase(db_path)
-    legacy_db.save_run(
-        RunMetadata(
-            run_id="older-plus-two",
-            created_at=datetime.fromisoformat("2026-08-10T09:00:00+02:00"),
-            completed_at=datetime.fromisoformat("2026-08-10T09:30:00+02:00"),
-            status="completed",
-            source="auto",
-            memory_type="trip",
-            memory_category="trip",
-        )
-    )
-    legacy_db.save_run(
-        RunMetadata(
-            run_id="newer-utc",
-            created_at=datetime.fromisoformat("2026-08-10T07:45:00+00:00"),
-            completed_at=datetime.fromisoformat("2026-08-10T08:00:00+00:00"),
-            status="completed",
-            source="auto",
-            memory_type="monthly_highlights",
-            memory_category="monthly_review",
-        )
-    )
+    RunDatabase(db_path)
     with sqlite3.connect(db_path) as conn:
+        conn.executemany(
+            """
+            INSERT INTO pipeline_runs (
+                run_id, created_at, completed_at, status, source,
+                memory_type, memory_category, memory_people_json
+            ) VALUES (?, ?, ?, 'completed', 'auto', ?, ?, '[]')
+            """,
+            [
+                (
+                    "older-plus-two",
+                    "2026-08-10T09:00:00+02:00",
+                    "2026-08-10T09:30:00+02:00",
+                    "trip",
+                    "trip",
+                ),
+                (
+                    "newer-utc",
+                    "2026-08-10T07:45:00+00:00",
+                    "2026-08-10T08:00:00+00:00",
+                    "monthly_highlights",
+                    "monthly_review",
+                ),
+            ],
+        )
         conn.executemany(
             """
             INSERT INTO automation_attempts (
@@ -316,16 +317,16 @@ def test_brussels_daily_auto_run_is_not_inside_24_hour_cooldown(
     """Local 09:00 on consecutive summer days is exactly 24 hours apart."""
     db_path = tmp_path / "cooldown-v10.db"
     monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 10)
-    legacy_db = RunDatabase(db_path)
-    legacy_db.save_run(
-        RunMetadata(
-            run_id="daily-auto",
-            created_at=datetime(2026, 8, 10, 8, 50),
-            completed_at=datetime(2026, 8, 10, 9, 0),
-            status="completed",
-            source="auto",
+    RunDatabase(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO pipeline_runs (
+                run_id, created_at, completed_at, status, source, memory_people_json
+            ) VALUES ('daily-auto', '2026-08-10T08:50:00', '2026-08-10T09:00:00',
+                      'completed', 'auto', '[]')
+            """
         )
-    )
     monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 11)
     config = Config(
         immich={"url": "http://immich.test:2283", "api_key": "test-key"},

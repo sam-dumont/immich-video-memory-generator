@@ -53,6 +53,7 @@ def run_pipeline_and_generate(
     source: str = "manual",
     memory_key: str | None = None,
     memory_category: str | None = None,
+    automation_attempt_id: str | None = None,
 ) -> tuple[Path, bool, str | None]:
     """Run smart pipeline analysis + video generation.
 
@@ -182,6 +183,7 @@ def run_pipeline_and_generate(
         memory_key_override=memory_key,
         memory_category=memory_category,
         memory_people=normalize_memory_people(person_names),
+        automation_attempt_id=automation_attempt_id,
         include_photos=False,
         photo_assets=None,
         target_duration_seconds=duration,

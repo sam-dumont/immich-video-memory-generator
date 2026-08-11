@@ -162,6 +162,7 @@ def handle_trip_generation(
     source: str = "manual",
     memory_key: str | None = None,
     memory_category: str | None = None,
+    automation_attempt_id: str | None = None,
 ) -> None:
     """Detect trips, select, and generate video for each."""
     from datetime import datetime as dt_cls
@@ -280,6 +281,7 @@ def handle_trip_generation(
             source=source,
             memory_key=memory_key,
             memory_category=memory_category,
+            automation_attempt_id=automation_attempt_id,
         )
 
         console.print()

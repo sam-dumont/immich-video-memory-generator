@@ -39,6 +39,39 @@ class ImmichDiscoveryError(RuntimeError):
     """A live Immich library snapshot could not be collected."""
 
 
+class AutomationAlreadyRunningError(RuntimeError):
+    """Another process owns the configured automation lease."""
+
+
+class AutomationLease:
+    """Nonblocking OS lease for one config-scoped automation decision."""
+
+    def __init__(self, lock_path: Path) -> None:
+        self._lock_path = lock_path
+        self._fd: Any = None
+
+    def __enter__(self) -> AutomationLease:
+        import fcntl
+
+        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self._fd = self._lock_path.open("w")
+        try:
+            fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            self._fd.close()
+            self._fd = None
+            raise AutomationAlreadyRunningError("automation already running") from None
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        import fcntl
+
+        if self._fd is not None:
+            fcntl.flock(self._fd, fcntl.LOCK_UN)
+            self._fd.close()
+            self._fd = None
+
+
 class SuggestOutcome(StrEnum):
     """Status of the most recent candidate discovery call."""
 
@@ -156,11 +189,19 @@ def _build_last_runs_by_type(db: RunDatabase) -> dict[str, date]:
     return result
 
 
-def _build_generate_command(candidate: MemoryCandidate, upload: bool) -> list[str]:
+def _build_generate_command(
+    candidate: MemoryCandidate,
+    upload: bool,
+    automation_attempt_id: str | None = None,
+) -> list[str]:
     """Build CLI subprocess command from an exhaustively validated candidate."""
     from immich_memories.automation.generation_request import GenerationRequest
 
-    return GenerationRequest.from_candidate(candidate, upload).to_argv()
+    return GenerationRequest.from_candidate(
+        candidate,
+        upload,
+        automation_attempt_id=automation_attempt_id,
+    ).to_argv()
 
 
 def _cooldown_status(
@@ -628,6 +669,43 @@ class AutoRunner:
     ) -> AutoRunResult:
         """Run one durable automation decision and return its exact outcome."""
         attempt = self.state.start_attempt(reason="daily wake")
+        lease_path = self.config.cache.database_path.parent / ".auto.lock"
+        try:
+            with AutomationLease(lease_path):
+                return self._run_one_under_lease(
+                    attempt,
+                    force=force,
+                    cooldown_hours=cooldown_hours,
+                    upload=upload,
+                    dry_run=dry_run,
+                )
+        except AutomationAlreadyRunningError:
+            return self._finish(
+                attempt,
+                AutoOutcome.SKIPPED,
+                "automation already running",
+            )
+        except Exception as exc:
+            reason = "automation failed"
+            error = _safe_tail(exc, self._secrets()) or exc.__class__.__name__
+            logger.error("%s: %s", reason, error)
+            return self._finish(
+                attempt,
+                AutoOutcome.FAILED,
+                reason,
+                error=error,
+            )
+
+    def _run_one_under_lease(
+        self,
+        attempt: AutomationAttempt,
+        *,
+        force: bool,
+        cooldown_hours: int | None,
+        upload: bool,
+        dry_run: bool,
+    ) -> AutoRunResult:
+        """Execute and persist one automation decision while its lease is held."""
         candidate: MemoryCandidate | None = None
 
         try:
@@ -644,7 +722,11 @@ class AutoRunner:
                 return candidate_result
             assert candidate is not None
             effective_upload = upload or self.config.automation.upload_to_immich
-            cmd = _build_generate_command(candidate, effective_upload)
+            cmd = _build_generate_command(
+                candidate,
+                effective_upload,
+                automation_attempt_id=attempt.id,
+            )
 
             if dry_run:
                 logger.info("Dry run — would execute: %s", " ".join(cmd))
@@ -697,10 +779,9 @@ class AutoRunner:
                     error=error,
                 )
 
-            matching_run = self.db.get_completed_run_by_identity(
-                candidate.memory_key,
-                "auto",
-                attempt.started_at,
+            matching_run = self.db.get_completed_run_by_automation_attempt(
+                attempt.id,
+                memory_key=candidate.memory_key,
             )
             if matching_run is None:
                 reason = "no matching completed auto run"

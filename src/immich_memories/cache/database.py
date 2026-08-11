@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Current schema version - increment when schema changes
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 # Scoring algorithm version — bump when score computation changes
 # so cached scores from the old algorithm get re-analyzed
@@ -94,6 +94,7 @@ class VideoAnalysisCache:
             9: self._migration_v9_automation,
             10: self._migration_v10_automation_state,
             11: self._migration_v11_automation_history,
+            12: self._migration_v12_automation_attempt_identity,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):
@@ -390,6 +391,17 @@ class VideoAnalysisCache:
         """Normalize legacy local timestamps and restore conservative run identity."""
         migrate_automation_history(conn)
         logger.info("Normalized automation history timestamps and identity")
+
+    def _migration_v12_automation_attempt_identity(self, conn: sqlite3.Connection) -> None:
+        """Link generated pipeline runs to the exact parent automation attempt."""
+        conn.execute("ALTER TABLE pipeline_runs ADD COLUMN automation_attempt_id TEXT")
+        conn.execute(
+            """
+            CREATE INDEX idx_runs_automation_attempt
+            ON pipeline_runs(automation_attempt_id)
+            """
+        )
+        logger.info("Added exact automation attempt identity to pipeline runs")
 
     # =========================================================================
     # Quick Video Metadata Methods

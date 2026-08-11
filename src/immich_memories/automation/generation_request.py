@@ -19,9 +19,15 @@ class GenerationRequest:
     end: date
     people: tuple[str, ...] = ()
     upload: bool = False
+    automation_attempt_id: str | None = None
 
     @classmethod
-    def from_candidate(cls, candidate: MemoryCandidate, upload: bool) -> GenerationRequest:
+    def from_candidate(
+        cls,
+        candidate: MemoryCandidate,
+        upload: bool,
+        automation_attempt_id: str | None = None,
+    ) -> GenerationRequest:
         """Validate a candidate category and choose its rendering preset."""
         match candidate.category:
             case CandidateCategory.MONTHLY_REVIEW | CandidateCategory.ACTIVITY_BURST:
@@ -47,6 +53,7 @@ class GenerationRequest:
             end=candidate.date_range_end,
             people=tuple(candidate.person_names),
             upload=upload,
+            automation_attempt_id=automation_attempt_id,
         )
 
     def to_argv(self) -> list[str]:
@@ -92,4 +99,6 @@ class GenerationRequest:
         )
         if self.upload:
             argv.append("--upload-to-immich")
+        if self.automation_attempt_id is not None:
+            argv.append(f"--automation-attempt-id={self.automation_attempt_id}")
         return argv

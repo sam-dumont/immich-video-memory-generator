@@ -196,6 +196,7 @@ class TestRunTrackerMemoryFields:
             memory_category="birthday",
             memory_people=(" Alice ", "BOB\tJones"),
             source="auto",
+            automation_attempt_id="attempt-tracker-1",
         )
         saved_run = tracker.db.save_run.call_args[0][0]
         assert saved_run.memory_type == "year_in_review"
@@ -203,6 +204,7 @@ class TestRunTrackerMemoryFields:
         assert saved_run.memory_category == "birthday"
         assert saved_run.memory_people == ("alice", "bob jones")
         assert saved_run.source == "auto"
+        assert saved_run.automation_attempt_id == "attempt-tracker-1"
 
     # WHY: RunDatabase opens a SQLite connection — isolate run lifecycle from disk I/O
     @patch("immich_memories.tracking.run_tracker.RunDatabase")
@@ -214,6 +216,7 @@ class TestRunTrackerMemoryFields:
         assert saved_run.source == "manual"
         assert saved_run.memory_type is None
         assert saved_run.memory_key is None
+        assert saved_run.automation_attempt_id is None
 
     def test_run_metadata_json_round_trips_memory_identity(self):
         """Automation category and people survive metadata JSON export/import."""

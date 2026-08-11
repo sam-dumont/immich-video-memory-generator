@@ -145,19 +145,21 @@ def test_v10_migrates_populated_v9_database_without_losing_rows(
     assert loaded.memory_people == ()
 
 
-def test_v11_fresh_database_has_automation_state_schema(tmp_path: Path) -> None:
-    """A fresh database reaches v11 and creates the automation attempt table."""
+def test_v12_fresh_database_has_exact_automation_run_identity(tmp_path: Path) -> None:
+    """A fresh database can correlate a pipeline run to one automation attempt."""
     db_path = tmp_path / "fresh.db"
     VideoAnalysisCache(db_path)
 
     with sqlite3.connect(db_path) as conn:
         version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
-        columns = {
+        attempt_columns = {
             row[1] for row in conn.execute("PRAGMA table_info(automation_attempts)").fetchall()
         }
+        run_columns = {row[1] for row in conn.execute("PRAGMA table_info(pipeline_runs)")}
+        run_indexes = {row[1] for row in conn.execute("PRAGMA index_list(pipeline_runs)")}
 
-    assert version == 11
-    assert columns == {
+    assert version == 12
+    assert attempt_columns == {
         "id",
         "started_at",
         "finished_at",
@@ -169,6 +171,46 @@ def test_v11_fresh_database_has_automation_state_schema(tmp_path: Path) -> None:
         "run_id",
         "error",
     }
+    assert "automation_attempt_id" in run_columns
+    assert "idx_runs_automation_attempt" in run_indexes
+
+
+def test_v12_migrates_populated_v11_database_without_losing_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The additive v12 column leaves existing manual and automation rows intact."""
+    db_path = tmp_path / "v11.db"
+    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 11)
+    VideoAnalysisCache(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO pipeline_runs (
+                run_id, created_at, completed_at, status,
+                memory_type, memory_key, memory_category, memory_people_json, source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "existing-v11",
+                "2026-07-02T09:00:00+00:00",
+                "2026-07-02T09:01:00+00:00",
+                "completed",
+                "trip",
+                "trip:key",
+                "trip",
+                "[]",
+                "auto",
+            ),
+        )
+        conn.commit()
+
+    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 12)
+    migrated = RunDatabase(db_path)
+    loaded = migrated.get_run("existing-v11")
+
+    assert loaded is not None
+    assert loaded.run_id == "existing-v11"
+    assert loaded.automation_attempt_id is None
 
 
 def test_run_identity_fields_round_trip_with_normalized_people(db: RunDatabase) -> None:
@@ -176,12 +218,14 @@ def test_run_identity_fields_round_trip_with_normalized_people(db: RunDatabase) 
     run = _make_completed_run("normalized", datetime(2026, 7, 2, 9, 0))
     run.memory_category = "person_spotlight"
     run.memory_people = ("  ALICE\tSmith ", "Straße   Example")
+    run.automation_attempt_id = "attempt-round-trip"
     db.save_run(run)
 
     loaded = db.get_run("normalized")
     assert loaded is not None
     assert loaded.memory_category == "person_spotlight"
     assert loaded.memory_people == ("alice smith", "strasse example")
+    assert loaded.automation_attempt_id == "attempt-round-trip"
     assert loaded.to_dict()["memory_people"] == ["alice smith", "strasse example"]
     assert RunMetadata.from_json(loaded.to_json()).memory_people == (
         "alice smith",
@@ -292,3 +336,43 @@ def test_completed_identity_filters_source_and_time(db: RunDatabase) -> None:
     actual = db.get_completed_run_by_identity("trip:key", "auto", started_after)
 
     assert actual == expected
+
+
+def test_completed_automation_attempt_identity_is_exact(db: RunDatabase) -> None:
+    """A same-key completion from another wake cannot satisfy this parent attempt."""
+    wrong = _make_completed_run("wrong-attempt", datetime(2026, 7, 2, 9, 0))
+    wrong.automation_attempt_id = "attempt-other"
+    expected = _make_completed_run("exact-attempt", datetime(2026, 7, 2, 9, 1))
+    expected.automation_attempt_id = "attempt-exact"
+    db.save_run(wrong)
+    db.save_run(expected)
+
+    actual = db.get_completed_run_by_automation_attempt(
+        "attempt-exact",
+        memory_key="trip:key",
+    )
+
+    assert actual == expected
+    assert (
+        db.get_completed_run_by_automation_attempt(
+            "attempt-other",
+            memory_key="different:key",
+        )
+        is None
+    )
+
+
+def test_completed_automation_attempt_identity_rejects_ambiguity(db: RunDatabase) -> None:
+    """Two matching child rows are corruption, not a license to pick one."""
+    first = _make_completed_run("duplicate-first", datetime(2026, 7, 2, 9, 0))
+    first.automation_attempt_id = "attempt-duplicate"
+    second = _make_completed_run("duplicate-second", datetime(2026, 7, 2, 9, 1))
+    second.automation_attempt_id = "attempt-duplicate"
+    db.save_run(first)
+    db.save_run(second)
+
+    with pytest.raises(RuntimeError, match="Multiple completed auto runs"):
+        db.get_completed_run_by_automation_attempt(
+            "attempt-duplicate",
+            memory_key="trip:key",
+        )

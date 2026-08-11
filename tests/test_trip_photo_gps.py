@@ -172,11 +172,16 @@ class TestTripGenerationPhotoFetch:
                 subtitle_override=None,
                 upload_to_immich=False,
                 album=None,
+                source="auto",
+                memory_key="trip:key",
+                memory_category="trip",
+                automation_attempt_id="attempt-trip-1",
             )
 
             # Photos fetched and pipeline called (not skipped)
             mock_client.get_photos_for_date_range.assert_called_once()
             mock_generate.assert_called_once()
+            assert mock_generate.call_args.kwargs["automation_attempt_id"] == "attempt-trip-1"
 
     def test_empty_trip_skipped_gracefully(self):
         """Trip with no videos, no live photos, and no photos → skipped with error."""

@@ -772,6 +772,7 @@ class TestPipelineRunner:
                 source="auto",
                 memory_key="candidate:key",
                 memory_category="birthday",
+                automation_attempt_id="attempt-pipeline-1",
             )
 
         assert result_path == output
@@ -784,6 +785,7 @@ class TestPipelineRunner:
         assert gen_params.source == "auto"
         assert gen_params.memory_key_override == "candidate:key"
         assert gen_params.memory_category == "birthday"
+        assert gen_params.automation_attempt_id == "attempt-pipeline-1"
         assert gen_params.memory_people == ("alice", "bob jones")
         assert gen_params.target_duration_seconds == 60.0
 

@@ -208,6 +208,19 @@ def test_upload_is_an_independent_flag() -> None:
     assert argv[-1] == "--upload-to-immich"
 
 
+def test_automation_attempt_id_is_forwarded_as_hidden_child_identity() -> None:
+    """Dropping the attempt ID would make parent completion correlation ambiguous."""
+    candidate = _candidate(CandidateCategory.YEAR_IN_REVIEW, "year_in_review")
+
+    argv = GenerationRequest.from_candidate(
+        candidate,
+        upload=False,
+        automation_attempt_id="attempt-4f2d",
+    ).to_argv()
+
+    assert argv[-1] == "--automation-attempt-id=attempt-4f2d"
+
+
 def test_unknown_category_fails_before_request_creation() -> None:
     candidate = _candidate(CandidateCategory.YEAR_IN_REVIEW, "year_in_review")
     unknown = replace(candidate, category=cast(CandidateCategory, "unknown"))

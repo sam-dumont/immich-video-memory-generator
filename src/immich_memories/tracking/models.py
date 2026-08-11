@@ -142,6 +142,7 @@ class RunMetadata:
     memory_category: str | None = None
     memory_people: tuple[str, ...] = ()
     source: str = "manual"  # "manual" | "scheduled" | "auto"
+    automation_attempt_id: str | None = None
 
     # Input parameters
     person_name: str | None = None
@@ -188,6 +189,7 @@ class RunMetadata:
             "memory_category": self.memory_category,
             "memory_people": list(self.memory_people),
             "source": self.source,
+            "automation_attempt_id": self.automation_attempt_id,
             "person_name": self.person_name,
             "person_id": self.person_id,
             "date_range_start": (
@@ -221,6 +223,7 @@ class RunMetadata:
             memory_category=data.get("memory_category"),
             memory_people=tuple(data.get("memory_people") or ()),
             source=data.get("source", "manual"),
+            automation_attempt_id=data.get("automation_attempt_id"),
             person_name=data.get("person_name"),
             person_id=data.get("person_id"),
             date_range_start=(

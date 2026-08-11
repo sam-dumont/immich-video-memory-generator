@@ -115,6 +115,7 @@ class GenerationParams:
     memory_key_override: str | None = None
     memory_category: str | None = None
     memory_people: tuple[str, ...] = ()
+    automation_attempt_id: str | None = None
 
     # Music
     music_path: Path | None = None
@@ -321,6 +322,7 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         memory_category=params.memory_category,
         memory_people=params.memory_people,
         source=params.source,
+        automation_attempt_id=params.automation_attempt_id,
     )
 
     assembly_clips: list = []  # WHY: populated in try, needed in finally for cleanup

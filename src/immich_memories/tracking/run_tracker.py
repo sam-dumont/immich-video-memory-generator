@@ -60,6 +60,7 @@ class RunTracker:
         memory_category: str | None = None,
         memory_people: tuple[str, ...] = (),
         source: str = "manual",
+        automation_attempt_id: str | None = None,
     ) -> str:
         """Start tracking a new run.
 
@@ -73,6 +74,7 @@ class RunTracker:
             memory_category: Detector category used for automation variety.
             memory_people: Person identities used for automation variety.
             source: How the run was triggered ("manual", "scheduled", "auto").
+            automation_attempt_id: Durable parent automation attempt identity.
 
         Returns:
             The run ID.
@@ -93,6 +95,7 @@ class RunTracker:
             memory_category=memory_category,
             memory_people=memory_people,
             source=source,
+            automation_attempt_id=automation_attempt_id,
             person_name=person_name,
             person_id=person_id,
             date_range_start=date_range.start.date() if date_range else None,

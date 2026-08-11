@@ -40,6 +40,9 @@ def row_to_run(row: sqlite3.Row) -> RunMetadata:
             else ()
         ),
         source=row["source"] if "source" in dict(row) else "manual",
+        automation_attempt_id=(
+            row["automation_attempt_id"] if "automation_attempt_id" in dict(row) else None
+        ),
         person_name=row["person_name"],
         person_id=row["person_id"],
         date_range_start=(
@@ -126,11 +129,12 @@ class RunDatabase:
                 INSERT OR REPLACE INTO pipeline_runs (
                     run_id, created_at, completed_at, status,
                     memory_type, memory_key, memory_category, memory_people_json, source,
+                    automation_attempt_id,
                     person_name, person_id, date_range_start, date_range_end,
                     target_duration_minutes, output_path, output_size_bytes,
                     output_duration_seconds, clips_analyzed, clips_selected,
                     errors_count, system_info
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.run_id,
@@ -142,6 +146,7 @@ class RunDatabase:
                     run.memory_category,
                     json.dumps(normalize_memory_people(run.memory_people)),
                     run.source,
+                    run.automation_attempt_id,
                     run.person_name,
                     run.person_id,
                     run.date_range_start.isoformat() if run.date_range_start else None,
@@ -473,3 +478,29 @@ class RunDatabase:
                 (memory_key, source, created_after.isoformat()),
             ).fetchone()
         return row_to_run(row) if row else None
+
+    def get_completed_run_by_automation_attempt(
+        self,
+        automation_attempt_id: str,
+        *,
+        memory_key: str,
+    ) -> RunMetadata | None:
+        """Find the completed auto run created by one exact automation attempt."""
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM pipeline_runs
+                WHERE automation_attempt_id = ?
+                  AND memory_key = ?
+                  AND source = 'auto'
+                  AND status = 'completed'
+                ORDER BY created_at DESC
+                LIMIT 2
+                """,
+                (automation_attempt_id, memory_key),
+            ).fetchall()
+        if len(rows) > 1:
+            raise RuntimeError(
+                f"Multiple completed auto runs matched automation attempt {automation_attempt_id}"
+            )
+        return row_to_run(rows[0]) if rows else None
