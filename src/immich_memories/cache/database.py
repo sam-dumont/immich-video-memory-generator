@@ -17,6 +17,7 @@ from immich_memories.cache.database_models import (  # noqa: F401
     SimilarVideo,
     _hamming_distance,
 )
+from immich_memories.cache.migration_v11 import migrate_automation_history
 
 if TYPE_CHECKING:
     from immich_memories.analysis.scenes import Scene
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Current schema version - increment when schema changes
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 # Scoring algorithm version — bump when score computation changes
 # so cached scores from the old algorithm get re-analyzed
@@ -92,6 +93,7 @@ class VideoAnalysisCache:
             8: self._migration_v8_scoring_version,
             9: self._migration_v9_automation,
             10: self._migration_v10_automation_state,
+            11: self._migration_v11_automation_history,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):
@@ -383,6 +385,11 @@ class VideoAnalysisCache:
             """
         )
         logger.info("Added automation attempt state and exact run identity columns")
+
+    def _migration_v11_automation_history(self, conn: sqlite3.Connection) -> None:
+        """Normalize legacy local timestamps and restore conservative run identity."""
+        migrate_automation_history(conn)
+        logger.info("Normalized automation history timestamps and identity")
 
     # =========================================================================
     # Quick Video Metadata Methods

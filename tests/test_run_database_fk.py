@@ -145,8 +145,8 @@ def test_v10_migrates_populated_v9_database_without_losing_rows(
     assert loaded.memory_people == ()
 
 
-def test_v10_fresh_database_has_automation_state_schema(tmp_path: Path) -> None:
-    """A fresh database reaches v10 and creates the automation attempt table."""
+def test_v11_fresh_database_has_automation_state_schema(tmp_path: Path) -> None:
+    """A fresh database reaches v11 and creates the automation attempt table."""
     db_path = tmp_path / "fresh.db"
     VideoAnalysisCache(db_path)
 
@@ -156,7 +156,7 @@ def test_v10_fresh_database_has_automation_state_schema(tmp_path: Path) -> None:
             row[1] for row in conn.execute("PRAGMA table_info(automation_attempts)").fetchall()
         }
 
-    assert version == 10
+    assert version == 11
     assert columns == {
         "id",
         "started_at",

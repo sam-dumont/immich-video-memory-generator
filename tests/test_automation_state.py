@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
 from immich_memories.automation.models import AutoOutcome
-from immich_memories.automation.state_store import AutomationStateStore
+from immich_memories.automation.state_store import (
+    AttemptAlreadyFinishedError,
+    AutomationStateStore,
+)
 
 
 def test_automation_attempt_round_trip_preserves_start_row(tmp_path: Path) -> None:
@@ -58,8 +62,19 @@ def test_running_attempt_round_trips_enum_and_optional_fields(tmp_path: Path) ->
     )
 
     assert attempt.outcome is AutoOutcome.RUNNING
+    assert attempt.started_at.utcoffset() == timedelta(0)
     assert attempt.finished_at is None
     assert store.get_last_attempt() == attempt
+
+
+def test_finished_attempt_uses_aware_utc_timestamp(tmp_path: Path) -> None:
+    store = AutomationStateStore(tmp_path / "cache.db")
+    attempt = store.start_attempt(reason="daily wake")
+
+    finished = store.finish_attempt(attempt.id, AutoOutcome.SKIPPED, reason="no candidates")
+
+    assert finished.finished_at is not None
+    assert finished.finished_at.utcoffset() == timedelta(0)
 
 
 def test_finish_attempt_rejects_running_without_changing_start_row(tmp_path: Path) -> None:
@@ -71,3 +86,40 @@ def test_finish_attempt_rejects_running_without_changing_start_row(tmp_path: Pat
         store.finish_attempt(attempt.id, AutoOutcome.RUNNING, reason="still working")
 
     assert store.get_last_attempt() == attempt
+
+
+def test_finish_attempt_cannot_overwrite_a_terminal_attempt(tmp_path: Path) -> None:
+    """The first terminal result is immutable, including its completion timestamp."""
+    store = AutomationStateStore(tmp_path / "cache.db")
+    attempt = store.start_attempt(reason="daily wake", memory_key="trip:first")
+    first = store.finish_attempt(
+        attempt.id,
+        AutoOutcome.COMPLETED,
+        reason="generated",
+        candidate_category="trip",
+        memory_type="trip",
+        memory_key="trip:first",
+        run_id="run-first",
+    )
+
+    with pytest.raises(AttemptAlreadyFinishedError, match=attempt.id):
+        store.finish_attempt(
+            attempt.id,
+            AutoOutcome.FAILED,
+            reason="late failure",
+            candidate_category="monthly_review",
+            memory_type="monthly_highlights",
+            memory_key="month:replacement",
+            run_id="run-replacement",
+            error="must not win",
+        )
+
+    assert store.get_last_attempt() == first
+
+
+def test_finish_attempt_reports_unknown_id_separately(tmp_path: Path) -> None:
+    """Missing rows remain a lookup error, not a duplicate-terminal transition."""
+    store = AutomationStateStore(tmp_path / "cache.db")
+
+    with pytest.raises(KeyError, match="Unknown automation attempt: missing"):
+        store.finish_attempt("missing", AutoOutcome.FAILED, reason="not found")

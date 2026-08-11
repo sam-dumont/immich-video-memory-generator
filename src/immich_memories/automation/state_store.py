@@ -5,12 +5,16 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from immich_memories.automation.models import AutomationAttempt, AutoOutcome
 from immich_memories.cache.database import VideoAnalysisCache
+
+
+class AttemptAlreadyFinishedError(RuntimeError):
+    """Raised when a caller tries to replace an attempt's terminal result."""
 
 
 def _row_to_attempt(row: sqlite3.Row) -> AutomationAttempt:
@@ -56,7 +60,7 @@ class AutomationStateStore:
         """Insert and return a new running attempt."""
         attempt = AutomationAttempt(
             id=str(uuid4()),
-            started_at=datetime.now(),
+            started_at=datetime.now(tz=UTC),
             finished_at=None,
             outcome=AutoOutcome.RUNNING,
             reason=reason,
@@ -100,11 +104,16 @@ class AutomationStateStore:
         run_id: str | None = None,
         error: str | None = None,
     ) -> AutomationAttempt:
-        """Set terminal fields on the original attempt row."""
+        """Set terminal fields once.
+
+        Raises:
+            KeyError: If ``attempt_id`` does not exist.
+            AttemptAlreadyFinishedError: If the attempt is already terminal.
+        """
         if outcome is AutoOutcome.RUNNING:
             raise ValueError("RUNNING is not a terminal automation outcome")
 
-        finished_at = datetime.now()
+        finished_at = datetime.now(tz=UTC)
         with self._get_connection() as conn:
             cursor = conn.execute(
                 """
@@ -115,7 +124,7 @@ class AutomationStateStore:
                     memory_key = COALESCE(?, memory_key),
                     run_id = COALESCE(?, run_id),
                     error = ?
-                WHERE id = ?
+                WHERE id = ? AND outcome = ?
                 """,
                 (
                     finished_at.isoformat(),
@@ -127,10 +136,18 @@ class AutomationStateStore:
                     run_id,
                     error,
                     attempt_id,
+                    AutoOutcome.RUNNING.value,
                 ),
             )
             if cursor.rowcount != 1:
-                raise KeyError(f"Unknown automation attempt: {attempt_id}")
+                existing = conn.execute(
+                    "SELECT outcome FROM automation_attempts WHERE id = ?", (attempt_id,)
+                ).fetchone()
+                if existing is None:
+                    raise KeyError(f"Unknown automation attempt: {attempt_id}")
+                raise AttemptAlreadyFinishedError(
+                    f"Automation attempt already finished: {attempt_id} ({existing['outcome']})"
+                )
             row = conn.execute(
                 "SELECT * FROM automation_attempts WHERE id = ?", (attempt_id,)
             ).fetchone()

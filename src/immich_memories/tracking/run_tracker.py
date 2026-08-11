@@ -6,7 +6,7 @@ import json
 import logging
 import subprocess
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -86,7 +86,7 @@ class RunTracker:
 
         self._run = RunMetadata(
             run_id=self.run_id,
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=UTC),
             status="running",
             memory_type=memory_type,
             memory_key=memory_key,
@@ -122,7 +122,7 @@ class RunTracker:
             self.complete_phase()
 
         self._current_phase = phase_name
-        self._phase_start = datetime.now()
+        self._phase_start = datetime.now(tz=UTC)
         self._phase_start_time = time.time()
         self._phase_items_total = total_items
 
@@ -144,7 +144,7 @@ class RunTracker:
         if not self._current_phase or not self._phase_start:
             return
 
-        now = datetime.now()
+        now = datetime.now(tz=UTC)
         duration = time.time() - (self._phase_start_time or time.time())
 
         if items_processed is None:
@@ -211,7 +211,7 @@ class RunTracker:
         if self._current_phase:
             self.complete_phase()
 
-        now = datetime.now()
+        now = datetime.now(tz=UTC)
 
         # Get output file info
         output_size_bytes = 0
@@ -259,7 +259,7 @@ class RunTracker:
         if self._current_phase:
             self.complete_phase(errors=[{"error": error}])
 
-        now = datetime.now()
+        now = datetime.now(tz=UTC)
 
         self.db.update_run_status(
             run_id=self.run_id,
@@ -275,7 +275,7 @@ class RunTracker:
         if self._current_phase:
             self.complete_phase()
 
-        now = datetime.now()
+        now = datetime.now(tz=UTC)
 
         self.db.update_run_status(
             run_id=self.run_id,

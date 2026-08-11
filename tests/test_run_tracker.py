@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -158,6 +159,24 @@ class TestRunTrackerStartRun:
         tracker = RunTracker(db_path=_TEST_DB_PATH, capture_system=True)
         run_id = tracker.start_run()  # Should not raise
         assert run_id is not None
+
+    # WHY: RunDatabase opens a SQLite connection — inspect persisted timestamps without disk I/O
+    @patch("immich_memories.tracking.run_tracker.RunDatabase")
+    def test_lifecycle_timestamps_are_aware_utc(self, mock_db_cls: MagicMock):
+        tracker = RunTracker(db_path=_TEST_DB_PATH, capture_system=False)
+
+        tracker.start_run()
+        saved_run = tracker.db.save_run.call_args.args[0]
+        tracker.start_phase("analysis")
+        tracker.complete_phase()
+        phase = tracker.db.save_phase_stats.call_args.args[1]
+        tracker.complete_run()
+        completed_at = tracker.db.update_run_status.call_args.kwargs["completed_at"]
+
+        assert saved_run.created_at.utcoffset() == timedelta(0)
+        assert phase.started_at.utcoffset() == timedelta(0)
+        assert phase.completed_at.utcoffset() == timedelta(0)
+        assert completed_at.utcoffset() == timedelta(0)
 
 
 class TestRunTrackerMemoryFields:
