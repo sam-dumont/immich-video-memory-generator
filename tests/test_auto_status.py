@@ -24,7 +24,7 @@ from immich_memories.automation.system_scheduler import SchedulerStatus
 from immich_memories.automation.variety import RejectedCandidate, VarietyDecision
 from immich_memories.cli import main
 from immich_memories.config_loader import Config
-from immich_memories.tracking.models import RunMetadata
+from immich_memories.tracking.models import DeliveryStatus, RunMetadata
 from immich_memories.tracking.run_database import RunDatabase
 
 
@@ -164,6 +164,80 @@ def test_status_json_reports_durable_attempt_rotation_and_scheduler(tmp_path: Pa
         "paths": [str(tmp_path / "scheduler.plist")],
     }
     get_scheduler.assert_called_once_with()
+
+
+def test_status_reports_pending_queue_when_all_artifacts_are_missing(tmp_path: Path) -> None:
+    """A missing file makes a retry unavailable, not the durable queue empty."""
+    config = _config(tmp_path)
+    db = RunDatabase(config.cache.database_path)
+    completed = datetime(2026, 8, 12, 8, 30)
+    db.save_run(
+        RunMetadata(
+            run_id="missing-pending",
+            created_at=completed - timedelta(minutes=5),
+            completed_at=completed,
+            status="completed",
+            source="auto",
+            output_path=str(tmp_path / "missing-memory.mp4"),
+            delivery_status=DeliveryStatus.PENDING,
+            delivery_attempts=2,
+            delivery_error="network unavailable",
+            delivery_album="Daily Memories",
+        )
+    )
+    scheduler = SchedulerStatus(platform="crontab", installed=True, active=True)
+
+    with (
+        patch.object(AutoRunner, "suggest", return_value=[]),
+        patch(
+            "immich_memories.automation.system_scheduler.get_scheduler_status",
+            return_value=scheduler,
+        ),
+    ):
+        json_result = _invoke(config, ["auto", "status", "--json"])
+        human_result = _invoke(config, ["auto", "status"])
+
+    assert json_result.exit_code == 0
+    payload = json.loads(json_result.output)
+    assert payload["pending_delivery_count"] == 1
+    assert payload["oldest_pending_delivery"] is None
+    assert human_result.exit_code == 0
+    assert "Pending delivery queue: 1 item; no retryable artifact exists" in human_result.output
+
+
+def test_status_exposes_typed_oldest_retryable_delivery_details(tmp_path: Path) -> None:
+    """Operators can identify the oldest actionable item without querying SQLite."""
+    config = _config(tmp_path)
+    db = RunDatabase(config.cache.database_path)
+    output = tmp_path / "retry-me.mp4"
+    output.write_bytes(b"video")
+    completed = datetime(2026, 8, 12, 8, 30)
+    db.save_run(
+        RunMetadata(
+            run_id="retry-me",
+            created_at=completed - timedelta(minutes=5),
+            completed_at=completed,
+            status="completed",
+            source="auto",
+            output_path=str(output),
+            delivery_status=DeliveryStatus.PENDING,
+            delivery_attempts=1,
+            delivery_error="temporary error",
+            delivery_album="Daily Memories",
+        )
+    )
+
+    payload = AutoRunner(config).status().to_dict()
+
+    assert payload["pending_delivery_count"] == 1
+    assert payload["oldest_pending_delivery"] == {
+        "run_id": "retry-me",
+        "completed_at": completed.isoformat(),
+        "output_path": str(output),
+        "delivery_attempts": 1,
+        "delivery_error": "temporary error",
+        "delivery_album": "Daily Memories",
+    }
 
 
 def test_status_refreshes_and_reports_current_rejection_reasons(tmp_path: Path) -> None:

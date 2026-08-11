@@ -842,6 +842,7 @@ class TestRunOneOutcomes:
 
         assert result.outcome is AutoOutcome.SKIPPED
         assert result.reason == "automation already running"
+        assert result.action is None
         last_attempt = runner.state.get_last_attempt()
         assert last_attempt is not None
         assert last_attempt.id == active.id

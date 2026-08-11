@@ -5,6 +5,7 @@ from __future__ import annotations
 import json as json_mod
 import logging
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.table import Table
@@ -63,6 +64,7 @@ def _auto_result_to_json(result: AutoRunResult) -> str:
     return json_mod.dumps(
         {
             "outcome": result.outcome.value,
+            "action": result.action.value if result.action is not None else None,
             "reason": result.reason,
             "candidate_key": result.candidate.memory_key if result.candidate else None,
             "category": result.candidate.category.value if result.candidate else None,
@@ -79,6 +81,23 @@ def _auto_result_to_json(result: AutoRunResult) -> str:
             ],
         }
     )
+
+
+def _print_pending_delivery_status(payload: dict[str, Any]) -> None:
+    """Render durable queue size separately from artifact retryability."""
+    pending_count = payload["pending_delivery_count"]
+    oldest_pending = payload["oldest_pending_delivery"]
+    if oldest_pending:
+        noun = "item" if pending_count == 1 else "items"
+        print_info(
+            f"Pending delivery queue: {pending_count} {noun}; "
+            f"oldest retryable run {oldest_pending['run_id']}"
+        )
+    elif pending_count:
+        noun = "item" if pending_count == 1 else "items"
+        print_info(f"Pending delivery queue: {pending_count} {noun}; no retryable artifact exists")
+    else:
+        print_info("Pending delivery queue: empty")
 
 
 def _print_history_table(runs: list) -> None:
@@ -276,6 +295,7 @@ def status(ctx: click.Context, as_json: bool) -> None:
     suggestion = payload["suggestion"]
     if suggestion["outcome"] in {"preflight_failed", "discovery_failed"}:
         print_info(f"Suggestion snapshot unavailable: {suggestion['error']}")
+    _print_pending_delivery_status(payload)
 
 
 @auto.command()

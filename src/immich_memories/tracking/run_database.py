@@ -490,6 +490,22 @@ class RunDatabase:
             )
         return None
 
+    def count_pending_deliveries(self, source: str = "auto") -> int:
+        """Count durable pending deliveries without hiding missing artifacts."""
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS pending_count
+                FROM pipeline_runs
+                WHERE status = 'completed'
+                  AND delivery_status = ?
+                  AND output_path IS NOT NULL
+                  AND source = ?
+                """,
+                (DeliveryStatus.PENDING.value, source),
+            ).fetchone()
+        return int(row["pending_count"])
+
     # =========================================================================
     # Query Methods (from RunQueriesMixin)
     # =========================================================================

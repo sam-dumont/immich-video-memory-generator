@@ -20,6 +20,13 @@ class AutoOutcome(StrEnum):
     FAILED = "failed"
 
 
+class AutoAction(StrEnum):
+    """Work selected for one automation invocation."""
+
+    DELIVERY_RETRY = "delivery_retry"
+    GENERATION = "generation"
+
+
 @dataclass(frozen=True)
 class AutoRejection:
     """One bounded, machine-readable hard-variety rejection."""
@@ -35,6 +42,7 @@ class AutoRunResult:
 
     outcome: AutoOutcome
     reason: str
+    action: AutoAction | None = None
     candidate: MemoryCandidate | None = None
     run_id: str | None = None
     output_path: Path | None = None
