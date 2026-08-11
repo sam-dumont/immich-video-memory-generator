@@ -9,7 +9,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from immich_memories.tracking.models import (
     DeliveryStatus,
@@ -20,6 +20,26 @@ from immich_memories.tracking.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class InvalidRunLifecycleError(RuntimeError):
+    """Raised when a run's lifecycle state forbids a requested transition."""
+
+
+class DuplicateRunError(RuntimeError):
+    """Raised when a new tracker tries to claim an existing run identity."""
+
+
+def _raise_invalid_delivery_transition(
+    conn: sqlite3.Connection,
+    run_id: str,
+) -> NoReturn:
+    row = conn.execute("SELECT status FROM pipeline_runs WHERE run_id = ?", (run_id,)).fetchone()
+    if row is None:
+        raise KeyError(f"Unknown pipeline run: {run_id}")
+    raise InvalidRunLifecycleError(
+        f"Delivery transition requires a completed run; run '{run_id}' is '{row['status']}'"
+    )
 
 
 def _row_value(row: sqlite3.Row, column: str, default: Any = None) -> Any:
@@ -140,11 +160,11 @@ class RunDatabase:
             conn.close()
 
     def save_run(self, run: RunMetadata) -> None:
-        """Insert or update a run record."""
+        """Insert a new run without replacing an existing authoritative identity."""
         with self._get_connection() as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """
-                INSERT OR REPLACE INTO pipeline_runs (
+                INSERT INTO pipeline_runs (
                     run_id, created_at, completed_at, status,
                     memory_type, memory_key, memory_category, memory_people_json, source,
                     automation_attempt_id,
@@ -154,6 +174,7 @@ class RunDatabase:
                     errors_count, system_info, delivery_status, delivery_attempts,
                     delivery_error, immich_asset_id, delivery_album, warnings_json
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(run_id) DO NOTHING
                 """,
                 (
                     run.run_id,
@@ -186,6 +207,8 @@ class RunDatabase:
                     json.dumps(run.warnings),
                 ),
             )
+            if cursor.rowcount != 1:
+                raise DuplicateRunError(f"Pipeline run already exists: {run.run_id}")
             conn.commit()
 
     def save_phase_stats(self, run_id: str, stats: PhaseStats) -> None:
@@ -322,18 +345,80 @@ class RunDatabase:
                     delivery_attempts = delivery_attempts + ?,
                     delivery_error = ?,
                     immich_asset_id = NULL
-                WHERE run_id = ?
+                WHERE run_id = ? AND status = 'completed'
                 """,
                 (DeliveryStatus.PENDING.value, int(attempted), error, run_id),
             )
             if cursor.rowcount != 1:
-                raise KeyError(f"Unknown pipeline run: {run_id}")
+                _raise_invalid_delivery_transition(conn, run_id)
             conn.commit()
 
         updated = self.get_run(run_id)
         if updated is None:  # pragma: no cover - row was updated in the transaction above
             raise KeyError(f"Unknown pipeline run: {run_id}")
         return updated
+
+    def complete_artifact(
+        self,
+        run_id: str,
+        *,
+        completed_at: datetime,
+        output_path: str,
+        output_size_bytes: int,
+        output_duration_seconds: float,
+        delivery_requested: bool,
+        delivery_album: str | None,
+        warnings: list[str],
+        clips_analyzed: int,
+        clips_selected: int,
+        errors_count: int,
+    ) -> RunMetadata:
+        """Atomically commit artifact facts and its initial delivery lifecycle."""
+        delivery_status = (
+            DeliveryStatus.PENDING if delivery_requested else DeliveryStatus.NOT_REQUESTED
+        )
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE pipeline_runs
+                SET status = 'completed',
+                    completed_at = ?,
+                    output_path = ?,
+                    output_size_bytes = ?,
+                    output_duration_seconds = ?,
+                    clips_analyzed = ?,
+                    clips_selected = ?,
+                    errors_count = ?,
+                    delivery_status = ?,
+                    delivery_attempts = 0,
+                    delivery_error = NULL,
+                    immich_asset_id = NULL,
+                    delivery_album = ?,
+                    warnings_json = ?
+                WHERE run_id = ?
+                """,
+                (
+                    completed_at.isoformat(),
+                    output_path,
+                    output_size_bytes,
+                    output_duration_seconds,
+                    clips_analyzed,
+                    clips_selected,
+                    errors_count,
+                    delivery_status.value,
+                    delivery_album,
+                    json.dumps(warnings),
+                    run_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise KeyError(f"Unknown pipeline run: {run_id}")
+            conn.commit()
+
+        completed = self.get_run(run_id)
+        if completed is None:  # pragma: no cover - row updated in the transaction above
+            raise KeyError(f"Unknown pipeline run: {run_id}")
+        return completed
 
     def mark_delivered(self, run_id: str, asset_id: str) -> RunMetadata:
         """Record one successful delivery call without changing artifact completion."""
@@ -348,12 +433,12 @@ class RunDatabase:
                     delivery_attempts = delivery_attempts + 1,
                     delivery_error = NULL,
                     immich_asset_id = ?
-                WHERE run_id = ?
+                WHERE run_id = ? AND status = 'completed'
                 """,
                 (DeliveryStatus.DELIVERED.value, normalized_asset_id, run_id),
             )
             if cursor.rowcount != 1:
-                raise KeyError(f"Unknown pipeline run: {run_id}")
+                _raise_invalid_delivery_transition(conn, run_id)
             conn.commit()
 
         updated = self.get_run(run_id)

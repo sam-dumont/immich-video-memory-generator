@@ -71,6 +71,7 @@ class TestRunTrackerPhases:
     def test_start_phase_sets_state(self, mock_db_cls: MagicMock):
         """start_phase records the phase name and time."""
         tracker = RunTracker(db_path=_TEST_DB_PATH)
+        tracker.start_run()
         tracker.start_phase("discovery", total_items=100)
         assert tracker._current_phase == "discovery"
         assert tracker._phase_items_total == 100
@@ -81,6 +82,7 @@ class TestRunTrackerPhases:
     def test_start_phase_completes_previous(self, mock_db_cls: MagicMock):
         """Starting a new phase completes the previous one."""
         tracker = RunTracker(db_path=_TEST_DB_PATH)
+        tracker.start_run()
         tracker.start_phase("phase1", total_items=10)
         tracker.start_phase("phase2", total_items=20)
         # Previous phase should be cleared
@@ -93,6 +95,7 @@ class TestRunTrackerPhases:
     def test_complete_phase_resets_state(self, mock_db_cls: MagicMock):
         """complete_phase clears phase state."""
         tracker = RunTracker(db_path=_TEST_DB_PATH)
+        tracker.start_run()
         tracker.start_phase("analysis", total_items=50)
         tracker.complete_phase(items_processed=50)
         assert tracker._current_phase is None
@@ -104,6 +107,7 @@ class TestRunTrackerPhases:
     def test_complete_phase_noop_without_active_phase(self, mock_db_cls: MagicMock):
         """complete_phase does nothing if no phase is active."""
         tracker = RunTracker(db_path=_TEST_DB_PATH)
+        tracker.start_run()
         tracker.complete_phase()  # Should not raise
         tracker.db.save_phase_stats.assert_not_called()
 
@@ -112,6 +116,7 @@ class TestRunTrackerPhases:
     def test_complete_phase_defaults_items_to_total(self, mock_db_cls: MagicMock):
         """complete_phase defaults items_processed to total_items."""
         tracker = RunTracker(db_path=_TEST_DB_PATH)
+        tracker.start_run()
         tracker.start_phase("export", total_items=25)
         tracker.complete_phase()
         call_args = tracker.db.save_phase_stats.call_args
@@ -261,6 +266,7 @@ class TestRunTrackerFailCancel:
     def test_fail_run_updates_status(self, mock_db_cls: MagicMock):
         """fail_run marks the run as failed in the database."""
         tracker = RunTracker(db_path=_TEST_DB_PATH)
+        tracker.start_run()
         tracker.fail_run("out of memory", errors_count=3)
         tracker.db.update_run_status.assert_called_once()
         call_kwargs = tracker.db.update_run_status.call_args[1]
@@ -272,6 +278,7 @@ class TestRunTrackerFailCancel:
     def test_fail_run_completes_active_phase(self, mock_db_cls: MagicMock):
         """fail_run completes any active phase before failing."""
         tracker = RunTracker(db_path=_TEST_DB_PATH)
+        tracker.start_run()
         tracker.start_phase("analysis")
         tracker.fail_run("crash")
         # Phase should be completed first, then status updated
@@ -283,6 +290,7 @@ class TestRunTrackerFailCancel:
     def test_cancel_run_updates_status(self, mock_db_cls: MagicMock):
         """cancel_run marks the run as cancelled."""
         tracker = RunTracker(db_path=_TEST_DB_PATH)
+        tracker.start_run()
         tracker.cancel_run()
         call_kwargs = tracker.db.update_run_status.call_args[1]
         assert call_kwargs["status"] == "cancelled"

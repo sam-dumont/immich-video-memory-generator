@@ -725,6 +725,7 @@ class TestRunTrackerCompleteRun:
     def test_complete_run_no_output(self, mock_db_cls):
         """complete_run without output_path still finalizes the run."""
         tracker = RunTracker(db_path=Path("/tmp/t.db"))
+        tracker.start_run()
         tracker.db.get_run.return_value = _make_run(status="completed")
         result = tracker.complete_run(clips_analyzed=10, clips_selected=5)
         tracker.db.update_run_status.assert_called_once()
@@ -735,6 +736,7 @@ class TestRunTrackerCompleteRun:
     def test_complete_run_closes_active_phase(self, mock_db_cls):
         """complete_run completes any active phase before finalizing."""
         tracker = RunTracker(db_path=Path("/tmp/t.db"))
+        tracker.start_run()
         tracker.db.get_run.return_value = _make_run(status="completed")
         tracker.start_phase("encoding", total_items=5)
         tracker.complete_run()
@@ -746,6 +748,7 @@ class TestRunTrackerCompleteRun:
     def test_complete_run_with_output_file(self, mock_db_cls, tmp_path):
         """complete_run reads output file size when path exists."""
         tracker = RunTracker(db_path=Path("/tmp/t.db"))
+        tracker.start_run()
         tracker.db.get_run.return_value = _make_run(status="completed")
         output = tmp_path / "video.mp4"
         output.write_bytes(b"x" * 1000)
@@ -762,6 +765,7 @@ class TestRunTrackerCompleteRun:
         """complete_run writes run_metadata.json alongside the output."""
         run = _make_run(status="completed")
         tracker = RunTracker(db_path=Path("/tmp/t.db"))
+        tracker.start_run()
         tracker.db.get_run.return_value = run
         output = tmp_path / "out" / "video.mp4"
         output.parent.mkdir(parents=True)
@@ -782,6 +786,7 @@ class TestRunTrackerUpdatePhaseProgress:
     def test_update_phase_progress_no_crash(self, mock_db_cls):
         """update_phase_progress logs but does not crash."""
         tracker = RunTracker(db_path=Path("/tmp/t.db"))
+        tracker.start_run()
         tracker.start_phase("analysis", total_items=10)
         tracker.update_phase_progress(5)  # should not raise
 
@@ -790,6 +795,7 @@ class TestRunTrackerUpdatePhaseProgress:
     def test_update_phase_progress_noop_without_phase(self, mock_db_cls):
         """update_phase_progress is a no-op when no phase is active."""
         tracker = RunTracker(db_path=Path("/tmp/t.db"))
+        tracker.start_run()
         tracker.update_phase_progress(5)  # should not raise
 
 
@@ -801,6 +807,7 @@ class TestRunTrackerCancelWithPhase:
     def test_cancel_completes_active_phase(self, mock_db_cls):
         """cancel_run completes any active phase before cancelling."""
         tracker = RunTracker(db_path=Path("/tmp/t.db"))
+        tracker.start_run()
         tracker.start_phase("export", total_items=3)
         tracker.cancel_run()
         tracker.db.save_phase_stats.assert_called_once()

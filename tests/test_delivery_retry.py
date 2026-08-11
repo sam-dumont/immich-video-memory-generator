@@ -120,6 +120,145 @@ def test_database_round_trip_preserves_delivery_and_automation_identity(tmp_path
     assert loaded.automation_attempt_id == "attempt-v12-preserved"
 
 
+def test_resaving_stale_run_cannot_replace_authoritative_state_or_delete_phases(
+    tmp_path: Path,
+) -> None:
+    """A duplicate save cannot cascade-delete children or erase completed delivery facts."""
+    from immich_memories.tracking import DuplicateRunError, PhaseStats
+
+    database = RunDatabase(tmp_path / "non-destructive-save.db")
+    created_at = datetime(2026, 8, 11, 10, 0, tzinfo=UTC)
+    database.save_run(
+        RunMetadata(
+            run_id="authoritative-run",
+            created_at=created_at,
+            status="running",
+            source="auto",
+            automation_attempt_id="attempt-authoritative",
+        )
+    )
+    database.save_phase_stats(
+        "authoritative-run",
+        PhaseStats(
+            phase_name="assembly",
+            started_at=created_at,
+            completed_at=created_at + timedelta(minutes=1),
+            duration_seconds=60.0,
+            items_processed=4,
+            items_total=4,
+        ),
+    )
+    output_path = tmp_path / "authoritative.mp4"
+    output_path.write_bytes(b"validated")
+    database.complete_artifact(
+        "authoritative-run",
+        completed_at=created_at + timedelta(minutes=2),
+        output_path=str(output_path),
+        output_size_bytes=4096,
+        output_duration_seconds=42.5,
+        delivery_requested=True,
+        delivery_album="Original Album",
+        warnings=["music fallback"],
+        clips_analyzed=8,
+        clips_selected=4,
+        errors_count=1,
+    )
+    before = database.mark_delivered("authoritative-run", "asset-authoritative")
+
+    with pytest.raises(DuplicateRunError, match="already exists"):
+        database.save_run(
+            RunMetadata(
+                run_id="authoritative-run",
+                created_at=created_at + timedelta(hours=1),
+                status="running",
+                source="manual",
+                automation_attempt_id=None,
+            )
+        )
+    after = database.get_run("authoritative-run")
+
+    assert after is not None
+    assert after.to_dict() == before.to_dict()
+    assert len(after.phases) == 1
+    assert after.phases[0].phase_name == "assembly"
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        "start_phase",
+        "complete_phase",
+        "update_phase_progress",
+        "complete_run",
+        "complete_artifact",
+        "mark_delivery_pending",
+        "mark_delivered",
+        "fail_run",
+        "cancel_run",
+    ],
+)
+def test_duplicate_tracker_cannot_claim_or_mutate_existing_run(
+    tmp_path: Path,
+    operation: str,
+) -> None:
+    """A rejected tracker never owns enough state to overwrite the original run."""
+    from immich_memories.tracking import DuplicateRunError
+
+    db_path = tmp_path / "duplicate-tracker.db"
+    original_output = tmp_path / "original.mp4"
+    original_output.write_bytes(b"original")
+    original = RunTracker("shared-run-id", db_path=db_path, capture_system=False)
+    original.start_run(source="auto", automation_attempt_id="original-attempt")
+    original.start_phase("assembly", total_items=1)
+    original.complete_phase(items_processed=1)
+    original.complete_artifact(
+        original_output,
+        _authoritative_probe(),
+        warnings=["original warning"],
+        delivery_requested=True,
+        delivery_album="Original Album",
+    )
+    before = original.mark_delivered("original-asset")
+
+    duplicate_output = tmp_path / "duplicate.mp4"
+    duplicate_output.write_bytes(b"duplicate")
+    duplicate = RunTracker("shared-run-id", db_path=db_path, capture_system=False)
+    with pytest.raises(DuplicateRunError, match="already exists"):
+        duplicate.start_run(source="manual", automation_attempt_id="replacement-attempt")
+
+    assert duplicate.current_run is None
+    with pytest.raises(RuntimeError, match="not started"):
+        if operation == "start_phase":
+            duplicate.start_phase("intruder")
+        elif operation == "complete_phase":
+            duplicate.complete_phase()
+        elif operation == "update_phase_progress":
+            duplicate.update_phase_progress(1)
+        elif operation == "complete_run":
+            duplicate.complete_run(duplicate_output)
+        elif operation == "complete_artifact":
+            duplicate.complete_artifact(
+                duplicate_output,
+                _authoritative_probe(),
+                warnings=[],
+                delivery_requested=True,
+                delivery_album="Replacement Album",
+            )
+        elif operation == "mark_delivery_pending":
+            duplicate.mark_delivery_pending("intruder error")
+        elif operation == "mark_delivered":
+            duplicate.mark_delivered("intruder-asset")
+        elif operation == "fail_run":
+            duplicate.fail_run("intruder error")
+        else:
+            duplicate.cancel_run()
+
+    after = RunDatabase(db_path).get_run("shared-run-id")
+    assert after is not None
+    assert after.to_dict() == before.to_dict()
+    assert [phase.phase_name for phase in after.phases] == ["assembly"]
+
+
 def test_populated_v12_migrates_additively_without_changing_attempt_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -162,6 +301,35 @@ def test_populated_v12_migrates_additively_without_changing_attempt_identity(
     assert migrated.immich_asset_id is None
     assert migrated.delivery_album is None
     assert migrated.warnings == []
+
+
+def test_v13_delivery_migration_keeps_v12_analysis_cache_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A delivery-only schema migration cannot force expensive video reanalysis."""
+    from immich_memories.cache import database as cache_database
+    from tests.conftest import make_asset
+
+    db_path = tmp_path / "populated-analysis-v12.db"
+    asset = make_asset("analysis-v12")
+    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 12)
+    v12_cache = VideoAnalysisCache(db_path)
+    v12_cache.save_analysis(asset, segments=[])
+
+    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 13)
+    migrated_cache = VideoAnalysisCache(db_path)
+
+    with sqlite3.connect(db_path) as conn:
+        schema_version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+        analysis_version = conn.execute(
+            "SELECT analysis_version FROM video_analysis WHERE asset_id = ?",
+            (asset.id,),
+        ).fetchone()[0]
+    assert schema_version == 13
+    assert cache_database.ANALYSIS_VERSION == 12
+    assert analysis_version == 12
+    assert migrated_cache.needs_reanalysis(asset, max_age_days=365) is False
 
 
 def test_database_marks_delivery_pending_atomically_without_changing_artifact(
@@ -253,6 +421,60 @@ def test_database_rejects_empty_delivered_asset_identity(
     assert unchanged.delivery_status is DeliveryStatus.PENDING
     assert unchanged.delivery_attempts == 0
     assert unchanged.immich_asset_id is None
+
+
+@pytest.mark.parametrize("status", ["running", "failed", "interrupted", "cancelled"])
+@pytest.mark.parametrize("transition", ["pending", "delivered"])
+def test_delivery_transitions_reject_noncompleted_runs_without_mutation(
+    tmp_path: Path,
+    status: str,
+    transition: str,
+) -> None:
+    """Only a completed artifact may enter either delivery transition."""
+    from immich_memories.tracking import InvalidRunLifecycleError
+
+    database = RunDatabase(tmp_path / f"{status}-{transition}.db")
+    database.save_run(
+        RunMetadata(
+            run_id="noncompleted-run",
+            created_at=datetime(2026, 8, 11, 10, 0, tzinfo=UTC),
+            status=status,  # type: ignore[arg-type]
+            source="auto",
+            automation_attempt_id="attempt-must-stay",
+            output_path=str(tmp_path / "partial.mp4"),
+            output_size_bytes=123,
+            delivery_status=DeliveryStatus.NOT_REQUESTED,
+            delivery_album="Album Must Stay",
+            warnings=["warning must stay"],
+        )
+    )
+    before = database.get_run("noncompleted-run")
+    assert before is not None
+
+    with pytest.raises(InvalidRunLifecycleError, match="requires a completed run"):
+        if transition == "pending":
+            database.mark_delivery_pending("noncompleted-run", "must not persist")
+        else:
+            database.mark_delivered("noncompleted-run", "asset-must-not-persist")
+
+    after = database.get_run("noncompleted-run")
+    assert after is not None
+    assert after.to_dict() == before.to_dict()
+
+
+@pytest.mark.parametrize("transition", ["pending", "delivered"])
+def test_delivery_transitions_distinguish_missing_runs(
+    tmp_path: Path,
+    transition: str,
+) -> None:
+    """A missing identity remains distinct from an invalid lifecycle state."""
+    database = RunDatabase(tmp_path / f"missing-{transition}.db")
+
+    with pytest.raises(KeyError, match="Unknown pipeline run"):
+        if transition == "pending":
+            database.mark_delivery_pending("absent-run", "not found")
+        else:
+            database.mark_delivered("absent-run", "asset-not-found")
 
 
 def _save_delivery_candidate(
@@ -473,6 +695,92 @@ def test_tracker_completes_artifact_from_authoritative_probe_without_reprobing(
     assert sidecar.to_dict() == completed.to_dict()
 
 
+def test_tracker_completes_requested_artifact_as_retryable_before_upload(
+    tmp_path: Path,
+) -> None:
+    """Requested delivery is pending with zero attempts in the artifact commit itself."""
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"validated")
+    tracker = RunTracker(
+        "requested-artifact", db_path=tmp_path / "requested.db", capture_system=False
+    )
+    tracker.start_run(automation_attempt_id="attempt-requested")
+
+    completed = tracker.complete_artifact(
+        output_path,
+        _authoritative_probe(),
+        warnings=["music fallback"],
+        delivery_requested=True,
+        delivery_album="Album At Request Time",
+    )
+
+    assert completed.status == "completed"
+    assert completed.delivery_status is DeliveryStatus.PENDING
+    assert completed.delivery_attempts == 0
+    assert completed.delivery_error is None
+    assert completed.immich_asset_id is None
+    assert completed.delivery_album == "Album At Request Time"
+    assert completed.automation_attempt_id == "attempt-requested"
+
+
+def test_legacy_completion_keeps_database_authoritative_when_sidecar_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The complete_run compatibility path also treats JSON as a diagnostic mirror."""
+    configured_literal = "legacy-sidecar-detail-must-not-be-logged"
+    output_path = tmp_path / "legacy.mp4"
+    output_path.write_bytes(b"legacy-output")
+    tracker = RunTracker("legacy-completion", db_path=tmp_path / "legacy.db", capture_system=False)
+    tracker.start_run(automation_attempt_id="attempt-legacy")
+    monkeypatch.setattr(tracker, "_get_video_duration", lambda _path: 3.5)
+    monkeypatch.setattr(
+        tracker,
+        "_save_metadata_json",
+        lambda *_args: (_ for _ in ()).throw(OSError(configured_literal)),
+    )
+    caplog.set_level(logging.WARNING)
+
+    completed = tracker.complete_run(output_path)
+    saved = RunDatabase(tmp_path / "legacy.db").get_run("legacy-completion")
+
+    assert completed.status == "completed"
+    assert saved is not None
+    assert saved.status == "completed"
+    assert saved.output_path == str(output_path)
+    assert saved.output_size_bytes == len(b"legacy-output")
+    assert saved.output_duration_seconds == 3.5
+    assert configured_literal not in caplog.text
+
+
+def test_sidecar_file_write_failure_logs_only_controlled_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The real JSON writer cannot leak filesystem exception details or break completion."""
+    configured_literal = "filesystem-detail-must-not-be-logged"
+    output_path = tmp_path / "write-failure.mp4"
+    output_path.write_bytes(b"validated")
+    tracker = RunTracker(
+        "write-failure", db_path=tmp_path / "write-failure.db", capture_system=False
+    )
+    tracker.start_run()
+    monkeypatch.setattr(
+        Path,
+        "write_text",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError(configured_literal)),
+    )
+    caplog.set_level(logging.WARNING)
+
+    completed = tracker.complete_artifact(output_path, _authoritative_probe(), warnings=[])
+
+    assert completed.status == "completed"
+    assert configured_literal not in caplog.text
+    assert "Failed to refresh run metadata sidecar" in caplog.text
+
+
 def test_tracker_marks_delivery_pending_and_refreshes_sidecar(tmp_path: Path) -> None:
     """A failed API call stays completed and persists its retry state to the sidecar."""
     output_path = tmp_path / "memory.mp4"
@@ -659,6 +967,9 @@ def _prepare_generation(
         artifact = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
         assert artifact is not None
         assert artifact.status == "completed"
+        assert artifact.delivery_status is DeliveryStatus.PENDING
+        assert artifact.delivery_attempts == 0
+        assert artifact.delivery_album == upload_album
         events.append("upload")
         if isinstance(upload_result, Exception):
             raise upload_result
@@ -886,3 +1197,152 @@ def test_pending_state_persistence_failure_logs_no_exception_literal(
 
     assert configured_literal not in caplog.text
     assert "Could not persist pending delivery state" in caplog.text
+
+
+def test_generation_delivers_from_completed_database_state_when_sidecar_mirroring_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A JSON mirror failure cannot downgrade or block an authoritative artifact."""
+    from immich_memories.generate import generate_memory
+
+    configured_literal = "sidecar-write-detail-must-not-be-logged"
+    params, events = _prepare_generation(
+        tmp_path,
+        monkeypatch,
+        upload_enabled=True,
+        client=object(),
+        upload_album="Durable Album",
+        upload_result={"asset_id": "asset-after-sidecar-failure"},
+    )
+    monkeypatch.setattr(
+        RunTracker,
+        "_save_metadata_json",
+        lambda *_args: (_ for _ in ()).throw(OSError(configured_literal)),
+    )
+    caplog.set_level(logging.WARNING)
+
+    result = generate_memory(params)  # type: ignore[arg-type]
+    saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
+
+    assert result.read_bytes() == b"validated-artifact"
+    assert events == ["music", "final-probe", "upload"]
+    assert saved is not None
+    assert saved.status == "completed"
+    assert saved.output_path == str(result)
+    assert saved.delivery_status is DeliveryStatus.DELIVERED
+    assert saved.delivery_attempts == 1
+    assert saved.immich_asset_id == "asset-after-sidecar-failure"
+    assert configured_literal not in caplog.text
+
+
+def test_generation_queues_failed_delivery_when_sidecar_mirroring_also_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A mirror failure cannot override the primary retryable delivery state."""
+    from immich_memories.generate import DeliveryError, generate_memory
+
+    configured_literal = "secondary-sidecar-detail-must-not-be-logged"
+    params, events = _prepare_generation(
+        tmp_path,
+        monkeypatch,
+        upload_enabled=True,
+        client=object(),
+        upload_album="Queued Album",
+        upload_result=RuntimeError("Immich unavailable"),
+    )
+    monkeypatch.setattr(
+        RunTracker,
+        "_save_metadata_json",
+        lambda *_args: (_ for _ in ()).throw(OSError(configured_literal)),
+    )
+    caplog.set_level(logging.WARNING)
+
+    with pytest.raises(DeliveryError, match="Immich unavailable"):
+        generate_memory(params)  # type: ignore[arg-type]
+    saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
+
+    assert events == ["music", "final-probe", "upload"]
+    assert saved is not None
+    assert saved.status == "completed"
+    assert saved.output_path is not None
+    assert Path(saved.output_path).read_bytes() == b"validated-artifact"
+    assert saved.delivery_status is DeliveryStatus.PENDING
+    assert saved.delivery_attempts == 1
+    assert saved.delivery_album == "Queued Album"
+    assert configured_literal not in caplog.text
+
+
+def test_hard_stop_after_artifact_commit_leaves_requested_delivery_pending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A process stop between artifact commit and upload leaves durable retry work."""
+    from immich_memories.generate import generate_memory
+
+    params, events = _prepare_generation(
+        tmp_path,
+        monkeypatch,
+        upload_enabled=True,
+        client=object(),
+        upload_album="Interrupted Album",
+    )
+    original_complete = RunTracker.complete_artifact
+
+    def stop_after_commit(tracker: RunTracker, *args: object, **kwargs: object) -> None:
+        original_complete(tracker, *args, **kwargs)  # type: ignore[arg-type]
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(RunTracker, "complete_artifact", stop_after_commit)
+
+    with pytest.raises(KeyboardInterrupt):
+        generate_memory(params)  # type: ignore[arg-type]
+    saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
+
+    assert events == ["music", "final-probe"]
+    assert saved is not None
+    assert saved.status == "completed"
+    assert saved.delivery_status is DeliveryStatus.PENDING
+    assert saved.delivery_attempts == 0
+    assert saved.delivery_album == "Interrupted Album"
+    assert saved.output_path is not None
+    assert Path(saved.output_path).is_file()
+
+
+def test_hard_stop_during_upload_leaves_requested_delivery_pending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A process stop inside the API call retains the pre-call retry record."""
+    from immich_memories import generate as generate_module
+    from immich_memories.generate import generate_memory
+
+    params, events = _prepare_generation(
+        tmp_path,
+        monkeypatch,
+        upload_enabled=True,
+        client=object(),
+        upload_album="In Flight Album",
+    )
+
+    def stop_during_upload(*_args: object, **_kwargs: object) -> None:
+        events.append("upload-started")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(generate_module, "_upload_to_immich", stop_during_upload)
+
+    with pytest.raises(KeyboardInterrupt):
+        generate_memory(params)  # type: ignore[arg-type]
+    saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
+
+    assert events == ["music", "final-probe", "upload-started"]
+    assert saved is not None
+    assert saved.status == "completed"
+    assert saved.delivery_status is DeliveryStatus.PENDING
+    assert saved.delivery_attempts == 0
+    assert saved.delivery_album == "In Flight Album"
+    assert saved.output_path is not None
+    assert Path(saved.output_path).is_file()

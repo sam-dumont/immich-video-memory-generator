@@ -19,7 +19,9 @@ from immich_memories.cache.database_models import (  # noqa: F401
 )
 from immich_memories.cache.migration_sql import execute_migration_script
 from immich_memories.cache.migration_v11 import migrate_automation_history
+from immich_memories.cache.migration_v12 import migrate_automation_attempt_identity
 from immich_memories.cache.migration_v13 import migrate_delivery_state
+from immich_memories.cache.versions import ANALYSIS_VERSION, SCHEMA_VERSION, SCORING_VERSION
 
 if TYPE_CHECKING:
     from immich_memories.analysis.scenes import Scene
@@ -27,9 +29,6 @@ if TYPE_CHECKING:
     from immich_memories.api.models import Asset, VideoClipInfo
 
 logger = logging.getLogger(__name__)
-
-SCHEMA_VERSION = 13  # Also invalidates cached analysis_version rows; increment deliberately.
-SCORING_VERSION = 2  # Bump when score computation changes
 
 
 class VideoAnalysisCache:
@@ -97,7 +96,7 @@ class VideoAnalysisCache:
             9: self._migration_v9_automation,
             10: self._migration_v10_automation_state,
             11: self._migration_v11_automation_history,
-            12: self._migration_v12_automation_attempt_identity,
+            12: migrate_automation_attempt_identity,
             13: migrate_delivery_state,
         }
 
@@ -407,17 +406,6 @@ class VideoAnalysisCache:
         migrate_automation_history(conn)
         logger.info("Normalized automation history timestamps and identity")
 
-    def _migration_v12_automation_attempt_identity(self, conn: sqlite3.Connection) -> None:
-        """Link generated pipeline runs to the exact parent automation attempt."""
-        conn.execute("ALTER TABLE pipeline_runs ADD COLUMN automation_attempt_id TEXT")
-        conn.execute(
-            """
-            CREATE INDEX idx_runs_automation_attempt
-            ON pipeline_runs(automation_attempt_id)
-            """
-        )
-        logger.info("Added exact automation attempt identity to pipeline runs")
-
     # =========================================================================
     # Quick Video Metadata Methods
     # =========================================================================
@@ -554,7 +542,7 @@ class VideoAnalysisCache:
                     asset.checksum,
                     (asset.file_modified_at.isoformat() if asset.file_modified_at else None),
                     now,
-                    SCHEMA_VERSION,
+                    ANALYSIS_VERSION,
                     SCORING_VERSION,
                     perceptual_hash,
                     thumbnail_hash,
@@ -867,7 +855,7 @@ class VideoAnalysisCache:
 
             if not row:
                 return True
-            if row["analysis_version"] != SCHEMA_VERSION:
+            if row["analysis_version"] != ANALYSIS_VERSION:
                 return True
             if row["scoring_version"] != SCORING_VERSION:
                 return True

@@ -500,6 +500,7 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
             result_path,
             final_probe,
             artifact_warnings,
+            delivery_requested=params.upload_enabled,
             delivery_album=params.upload_album,
             clips_analyzed=len(params.clips),
             clips_selected=len(assembly_clips),

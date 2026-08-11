@@ -50,6 +50,12 @@ class RunTracker:
         self._phase_start_time: float | None = None
         self._phase_items_total: int = 0
 
+    def _require_started(self) -> RunMetadata:
+        """Return the owned run or reject mutation by an unstarted tracker."""
+        if self._run is None:
+            raise RuntimeError("Run not started")
+        return self._run
+
     def start_run(
         self,
         person_name: str | None = None,
@@ -87,7 +93,7 @@ class RunTracker:
             except (OSError, subprocess.SubprocessError, RuntimeError) as e:
                 logger.warning(f"Failed to capture system info: {e}")
 
-        self._run = RunMetadata(
+        run = RunMetadata(
             run_id=self.run_id,
             created_at=datetime.now(tz=UTC),
             status="running",
@@ -105,7 +111,8 @@ class RunTracker:
             system_info=system_info,
         )
 
-        self.db.save_run(self._run)
+        self.db.save_run(run)
+        self._run = run
         logger.info(f"Started run {self.run_id}")
 
         return self.run_id
@@ -121,6 +128,7 @@ class RunTracker:
             phase_name: Name of the phase.
             total_items: Expected number of items to process.
         """
+        self._require_started()
         # Complete previous phase if any
         if self._current_phase:
             self.complete_phase()
@@ -145,6 +153,7 @@ class RunTracker:
             errors: List of error dictionaries.
             extra_metrics: Additional phase-specific metrics.
         """
+        self._require_started()
         if not self._current_phase or not self._phase_start:
             return
 
@@ -187,6 +196,7 @@ class RunTracker:
         Args:
             items_processed: Number of items processed so far.
         """
+        self._require_started()
         # This is for logging/debugging - actual stats saved on complete
         if self._current_phase:
             logger.debug(
@@ -211,6 +221,7 @@ class RunTracker:
         Returns:
             The completed RunMetadata.
         """
+        self._require_started()
         # Complete any pending phase
         if self._current_phase:
             self.complete_phase()
@@ -248,7 +259,7 @@ class RunTracker:
 
         # Save metadata JSON alongside video
         if output_path and run:
-            self._save_metadata_json(Path(output_path).parent, run)
+            self._mirror_metadata_sidecar(run, Path(output_path).parent)
 
         return self._run or run  # type: ignore
 
@@ -258,45 +269,45 @@ class RunTracker:
         probe: OutputProbe,
         warnings: list[str],
         *,
+        delivery_requested: bool = False,
         delivery_album: str | None = None,
         clips_analyzed: int = 0,
         clips_selected: int = 0,
         errors_count: int = 0,
     ) -> RunMetadata:
         """Complete a validated local artifact without probing or attempting delivery."""
+        self._require_started()
         if self._current_phase:
             self.complete_phase()
 
         output_path = Path(output_path)
-        self.db.update_run_status(
+        run = self.db.complete_artifact(
             run_id=self.run_id,
-            status="completed",
             completed_at=datetime.now(tz=UTC),
             output_path=str(output_path),
             output_size_bytes=probe.size_bytes,
             output_duration_seconds=probe.duration_seconds,
+            delivery_requested=delivery_requested,
+            delivery_album=delivery_album,
+            warnings=warnings,
             clips_analyzed=clips_analyzed,
             clips_selected=clips_selected,
             errors_count=errors_count,
-            delivery_album=delivery_album,
-            warnings=warnings,
         )
-
-        run = self.db.get_run(self.run_id)
-        if run is None:
-            raise RuntimeError(f"Completed run disappeared from database: {self.run_id}")
         self._run = run
-        self._save_metadata_json(output_path.parent, run)
+        self._mirror_metadata_sidecar(run, output_path.parent)
         logger.info("Completed artifact for run %s", self.run_id)
         return run
 
     def mark_delivery_pending(self, error: str, *, attempted: bool = True) -> RunMetadata:
         """Record one failed Immich call and refresh durable metadata."""
+        self._require_started()
         self.db.mark_delivery_pending(self.run_id, error, attempted=attempted)
         return self._reload_and_refresh_sidecar()
 
     def mark_delivered(self, asset_id: str) -> RunMetadata:
         """Record one successful Immich call and refresh durable metadata."""
+        self._require_started()
         self.db.mark_delivered(self.run_id, asset_id)
         return self._reload_and_refresh_sidecar()
 
@@ -306,9 +317,23 @@ class RunTracker:
         if run is None:
             raise RuntimeError(f"Run disappeared from database: {self.run_id}")
         self._run = run
-        if run.output_path:
-            self._save_metadata_json(Path(run.output_path).parent, run)
+        self._mirror_metadata_sidecar(run)
         return run
+
+    def _mirror_metadata_sidecar(
+        self,
+        run: RunMetadata,
+        output_dir: Path | None = None,
+    ) -> None:
+        """Best-effort mirror of authoritative database state beside an artifact."""
+        if output_dir is None:
+            if not run.output_path:
+                return
+            output_dir = Path(run.output_path).parent
+        try:
+            self._save_metadata_json(output_dir, run)
+        except Exception:  # WHY: a diagnostic mirror cannot change pipeline lifecycle
+            logger.warning("Failed to refresh run metadata sidecar")
 
     def fail_run(self, error: str, errors_count: int = 1) -> None:
         """Mark run as failed.
@@ -317,6 +342,7 @@ class RunTracker:
             error: Error message.
             errors_count: Total errors encountered.
         """
+        self._require_started()
         # Complete any pending phase
         if self._current_phase:
             self.complete_phase(errors=[{"error": error}])
@@ -334,6 +360,7 @@ class RunTracker:
 
     def cancel_run(self) -> None:
         """Mark run as cancelled."""
+        self._require_started()
         if self._current_phase:
             self.complete_phase()
 
@@ -393,8 +420,8 @@ class RunTracker:
             metadata_path = output_dir / "run_metadata.json"
             metadata_path.write_text(run.to_json())
             logger.debug(f"Saved run metadata to {metadata_path}")
-        except (OSError, ValueError) as e:
-            logger.warning(f"Failed to save run metadata: {e}")
+        except (OSError, ValueError):
+            logger.warning("Failed to refresh run metadata sidecar")
 
     @property
     def current_run(self) -> RunMetadata | None:

@@ -57,6 +57,7 @@ class TestCompletePhaseDBResilience:
     def test_complete_phase_survives_db_exception(self, mock_db_cls, caplog):
         """complete_phase logs a warning and continues if DB raises any exception."""
         tracker = RunTracker(db_path=Path("/tmp/test.db"))
+        tracker.start_run()
         tracker.start_phase("analysis", total_items=10)
 
         # Simulate DB failure (e.g. DB deleted, corruption, etc.)

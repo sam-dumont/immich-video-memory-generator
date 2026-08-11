@@ -427,7 +427,7 @@ class TestScoringVersion:
         from datetime import datetime
 
         from immich_memories.api.models import Asset
-        from immich_memories.cache.database import SCHEMA_VERSION, VideoAnalysisCache
+        from immich_memories.cache.database import ANALYSIS_VERSION, VideoAnalysisCache
 
         cache = VideoAnalysisCache(tmp_path / "test.db")
         asset = Asset(
@@ -452,7 +452,7 @@ class TestScoringVersion:
             # Keep analysis_version current so we test scoring_version specifically
             conn.execute(
                 "UPDATE video_analysis SET analysis_version = ? WHERE asset_id = ?",
-                (SCHEMA_VERSION, "test-asset-2"),
+                (ANALYSIS_VERSION, "test-asset-2"),
             )
             conn.commit()
 
