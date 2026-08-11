@@ -28,6 +28,8 @@ class TestBypassPaths:
         "path",
         [
             "/health",
+            "/health/live",
+            "/health/ready",
             "/login",
             "/logout",
             "/auth/callback",

@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import os
 import secrets
 import socket
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from immich_memories.config_models_auth import AuthConfig
@@ -22,6 +22,7 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from immich_memories import __version__
 from immich_memories.config import get_config, init_config_dir
+from immich_memories.security import configured_secret_values
 from immich_memories.ui.auth import (
     clear_session,
     is_auth_enabled,
@@ -321,14 +322,43 @@ def cache_page() -> None:
 # ============================================================================
 
 
-async def _check_immich_reachable(config) -> bool:
-    """Ping Immich server, return True if reachable."""
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        resp = await client.get(
-            f"{config.immich.url.rstrip('/')}/api/server/ping",
-            headers={"x-api-key": config.immich.api_key},
+@dataclass(frozen=True)
+class _ImmichDependency:
+    """Sanitized result of the dependency probe used by health responses."""
+
+    status: Literal["ready", "missing_configuration", "unreachable", "unsupported_version"]
+    reachable: bool
+    resolved_api_version: str | None = None
+
+
+async def _check_immich_dependency(config) -> _ImmichDependency:
+    """Resolve the configured API policy and authenticate within a bounded time."""
+    from immich_memories.api.compatibility import UnsupportedImmichVersion
+    from immich_memories.api.immich import ImmichAPIError, ImmichClient
+
+    try:
+        async with ImmichClient(
+            base_url=config.immich.url,
+            api_key=config.immich.api_key,
+            api_version=config.immich.api_version,
+            timeout=2.0,
+        ) as client:
+
+            async def resolve_and_authenticate() -> str:
+                resolved = await client.get_api_version()
+                await client.get_current_user()
+                return resolved.value
+
+            resolved_api_version = await asyncio.wait_for(resolve_and_authenticate(), timeout=5.0)
+        return _ImmichDependency(
+            status="ready",
+            reachable=True,
+            resolved_api_version=resolved_api_version,
         )
-        return resp.status_code == 200
+    except UnsupportedImmichVersion:
+        return _ImmichDependency(status="unsupported_version", reachable=True)
+    except (ImmichAPIError, TimeoutError, httpx.HTTPError, OSError, ValueError):
+        return _ImmichDependency(status="unreachable", reachable=False)
 
 
 def _get_last_successful_run() -> str | None:
@@ -342,31 +372,123 @@ def _get_last_successful_run() -> str | None:
     return None
 
 
-async def _health_handler(request: Request) -> JSONResponse:  # noqa: ARG001
-    """Return JSON health status with Immich connectivity and last run info."""
-    config = get_config()
+def _get_automation_status(config) -> dict[str, Any]:
+    """Return the durable, read-only smart automation status contract."""
+    from immich_memories.automation.runner import AutoRunner
 
-    immich_reachable = False
-    with contextlib.suppress(Exception):
-        immich_reachable = await _check_immich_reachable(config)
+    return AutoRunner(config).status().to_dict()
 
-    last_successful_run: str | None = None
-    with contextlib.suppress(Exception):
-        last_successful_run = _get_last_successful_run()
 
-    status = "ok" if immich_reachable else "degraded"
+def _redact_health_value(value: Any, secrets_to_redact: tuple[str, ...]) -> Any:
+    """Recursively remove configured credentials from operational state."""
+    if isinstance(value, str):
+        for secret in secrets_to_redact:
+            value = value.replace(secret, "***")
+        return value
+    if isinstance(value, dict):
+        return {key: _redact_health_value(item, secrets_to_redact) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_health_value(item, secrets_to_redact) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_health_value(item, secrets_to_redact) for item in value)
+    return value
 
-    return JSONResponse(
-        {
-            "status": status,
-            "immich_reachable": immich_reachable,
-            "last_successful_run": last_successful_run,
+
+async def _build_health_snapshot() -> dict[str, Any]:
+    """Build the shared detailed health payload for readiness and compatibility."""
+    try:
+        config = get_config()
+    except Exception:
+        return {
+            "status": "degraded",
+            "configuration": "unavailable",
+            "immich_reachable": False,
+            "immich": {
+                "status": "missing_configuration",
+                "reachable": False,
+                "api_version_policy": None,
+                "resolved_api_version": None,
+            },
+            "automation": None,
+            "last_automation_attempt": None,
+            "last_successful_auto_run": None,
+            "pending_delivery_count": None,
+            "oldest_pending_delivery": None,
+            "last_successful_run": None,
             "version": __version__,
         }
-    )
+
+    configured = bool(config.immich.url and config.immich.api_key)
+    if configured:
+        try:
+            immich = await _check_immich_dependency(config)
+        except Exception:
+            immich = _ImmichDependency(status="unreachable", reachable=False)
+    else:
+        immich = _ImmichDependency(status="missing_configuration", reachable=False)
+
+    automation: dict[str, Any] | None = None
+    try:
+        automation = _get_automation_status(config)
+    except Exception:
+        logger.warning("Could not read automation status for readiness", exc_info=True)
+
+    last_successful_run: str | None = None
+    try:
+        last_successful_run = _get_last_successful_run()
+    except Exception:
+        logger.warning("Could not read run status for readiness", exc_info=True)
+
+    if automation is not None:
+        automation = _redact_health_value(automation, configured_secret_values(config))
+
+    ready = configured and immich.status == "ready"
+    api_version_policy = getattr(config.immich.api_version, "value", config.immich.api_version)
+    return {
+        "status": "ready" if ready else "degraded",
+        "configuration": "configured" if configured else "missing",
+        "immich_reachable": immich.reachable,
+        "immich": {
+            "status": immich.status,
+            "reachable": immich.reachable,
+            "api_version_policy": api_version_policy,
+            "resolved_api_version": immich.resolved_api_version,
+        },
+        "automation": automation,
+        "last_automation_attempt": automation.get("last_attempt") if automation else None,
+        "last_successful_auto_run": (
+            automation.get("last_completed_auto_run") if automation else None
+        ),
+        "pending_delivery_count": (
+            automation.get("pending_delivery_count") if automation else None
+        ),
+        "oldest_pending_delivery": (
+            automation.get("oldest_pending_delivery") if automation else None
+        ),
+        "last_successful_run": last_successful_run,
+        "version": __version__,
+    }
+
+
+async def _liveness_handler(request: Request) -> JSONResponse:  # noqa: ARG001
+    """Report only that the web process is alive."""
+    return JSONResponse({"status": "alive", "version": __version__})
+
+
+async def _readiness_handler(request: Request) -> JSONResponse:  # noqa: ARG001
+    """Report whether configuration and Immich can support useful work."""
+    snapshot = await _build_health_snapshot()
+    return JSONResponse(snapshot, status_code=200 if snapshot["status"] == "ready" else 503)
+
+
+async def _health_handler(request: Request) -> JSONResponse:  # noqa: ARG001
+    """Keep the detailed compatibility payload without readiness status codes."""
+    return JSONResponse(await _build_health_snapshot())
 
 
 app.add_api_route("/health", _health_handler, methods=["GET"])
+app.add_api_route("/health/live", _liveness_handler, methods=["GET"])
+app.add_api_route("/health/ready", _readiness_handler, methods=["GET"])
 
 
 # ============================================================================

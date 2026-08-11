@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
+from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
 
 from .conftest import make_test_app
@@ -194,6 +195,22 @@ class TestMiddlewareIntegration:
         resp = client.get("/health")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
+
+    @pytest.mark.parametrize("path", ["/health", "/health/live", "/health/ready"])
+    def test_all_health_routes_bypass_auth(self, auth_config, path):
+        """All operational probes must remain usable before interactive login."""
+        app = make_test_app(auth_config)
+
+        async def probe(request):  # noqa: ARG001
+            return JSONResponse({"status": "probe"})
+
+        if path != "/health":
+            app.add_route(path, probe)
+        client = TestClient(app, follow_redirects=False)
+
+        resp = client.get(path)
+
+        assert resp.status_code == 200
 
     def test_protected_page_redirects(self, auth_config):
         app = make_test_app(auth_config)

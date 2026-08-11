@@ -65,7 +65,17 @@ def reset_rate_limiter() -> None:
 
 
 _BYPASS_PREFIXES = ("/_nicegui/",)
-_BYPASS_EXACT = frozenset({"/health", "/login", "/logout", "/auth/callback", "/auth/authorize"})
+_BYPASS_EXACT = frozenset(
+    {
+        "/health",
+        "/health/live",
+        "/health/ready",
+        "/login",
+        "/logout",
+        "/auth/callback",
+        "/auth/authorize",
+    }
+)
 
 
 def is_bypass_path(path: str) -> bool:
