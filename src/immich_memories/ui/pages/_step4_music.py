@@ -11,7 +11,10 @@ from typing import TYPE_CHECKING
 
 from nicegui import run, ui
 
-from immich_memories.generate_music import MusicPhaseResult, optional_music_warning
+from immich_memories.generate_music import (
+    MusicPhaseResult,
+    optional_music_warning,
+)
 
 if TYPE_CHECKING:
     from immich_memories.processing.encoding_plan import EncodingPlan
@@ -96,7 +99,7 @@ async def _mix_selected_ai_music(
     )
     from immich_memories.generate_music import publish_music_mix, staged_music_output
 
-    with staged_music_output(result_path) as staged_path:
+    with staged_music_output(result_path, encoding_plan) as staged_path:
         stems = selected_music.stems
         if stems and stems.drums and stems.bass and stems.vocals and stems.other:
             from immich_memories.audio.mixer_helpers import mix_audio_with_4stem_ducking
@@ -242,7 +245,7 @@ async def apply_uploaded_music(
 
         from immich_memories.generate_music import publish_music_mix, staged_music_output
 
-        with staged_music_output(result_path) as staged_path:
+        with staged_music_output(result_path, encoding_plan) as staged_path:
             await run.io_bound(
                 mix_audio_with_ducking,
                 video_path=result_path,

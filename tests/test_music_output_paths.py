@@ -791,30 +791,21 @@ async def test_uploaded_music_warning_redacts_unlabelled_configured_secret(
     config = Config()
     config.musicgen.api_key = "literal-secret-881"
 
-    def write_mix(**kwargs: object) -> None:
-        cast(Path, kwargs["output_path"]).write_bytes(b"staged-mix")
-
     async def io_bound(callback: Callable[..., object], **kwargs: object) -> object:
         return callback(**kwargs)
 
+    def write_mix(**kwargs: object) -> None:
+        cast(Path, kwargs["output_path"]).write_bytes(b"staged-mix")
+
     notify = MagicMock()
     tracker = MagicMock()
-    monkeypatch.setattr(
-        "immich_memories.audio.mixer.mix_audio_with_ducking",
-        write_mix,
-    )
-    monkeypatch.setattr(
-        "immich_memories.ui.pages._step4_music.run.io_bound",
-        io_bound,
-    )
+    monkeypatch.setattr("immich_memories.audio.mixer.mix_audio_with_ducking", write_mix)
+    monkeypatch.setattr("immich_memories.ui.pages._step4_music.run.io_bound", io_bound)
     monkeypatch.setattr(
         "immich_memories.generate_music.publish_music_mix",
         MagicMock(side_effect=RuntimeError("upload rejected literal-secret-881")),
     )
-    monkeypatch.setattr(
-        "immich_memories.ui.pages._step4_music.ui.notify",
-        notify,
-    )
+    monkeypatch.setattr("immich_memories.ui.pages._step4_music.ui.notify", notify)
     caplog.set_level("DEBUG")
 
     result = await apply_uploaded_music(
@@ -838,6 +829,44 @@ async def test_uploaded_music_warning_redacts_unlabelled_configured_secret(
     assert "literal-secret-881" not in caplog.text
     assert "literal-secret-881" not in str(notify.call_args)
     assert "literal-secret-881" not in str(tracker.complete_phase.call_args)
+
+
+@pytest.mark.asyncio
+async def test_uploaded_music_rejects_base_container_that_disagrees_with_plan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """UI must reject a stale base suffix before creating a mismatched staged mix."""
+    from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.ui.pages._step4_music import apply_uploaded_music
+
+    result_path = tmp_path / "memory.mp4"
+    result_path.write_bytes(b"validated-base")
+
+    async def io_bound(callback: Callable[..., object], **kwargs: object) -> object:
+        return callback(**kwargs)
+
+    def write_mix(**kwargs: object) -> None:
+        cast(Path, kwargs["output_path"]).write_bytes(b"should-not-be-written")
+
+    monkeypatch.setattr("immich_memories.audio.mixer.mix_audio_with_ducking", write_mix)
+    monkeypatch.setattr("immich_memories.ui.pages._step4_music.run.io_bound", io_bound)
+    monkeypatch.setattr("immich_memories.ui.pages._step4_music.ui.notify", MagicMock())
+
+    result = await apply_uploaded_music(
+        result_path,
+        gen_options={"music_file": b"uploaded", "music_volume": 0.5},
+        config=Config(),
+        run_tracker=MagicMock(),
+        progress_bar=_Progress(),
+        status_label=_Status(),
+        encoding_plan=_prores_output_plan(),
+    )
+
+    warning = "Optional music failed: Music input suffix '.mp4' does not match encoding plan container 'mov'"
+    assert result == MusicPhaseResult(applied=False, warning=warning)
+    assert result_path.read_bytes() == b"validated-base"
+    assert not (tmp_path / "memory.with_music.mp4").exists()
 
 
 @pytest.mark.integration
