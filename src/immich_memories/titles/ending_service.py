@@ -11,7 +11,7 @@ from pathlib import Path
 
 from immich_memories.processing.encoding_plan import EncodingPlan
 
-from .encoding import title_encoder_args
+from .encoding import title_color_filter, title_encoder_args
 from .styles import TitleStyle
 
 logger = logging.getLogger(__name__)
@@ -77,6 +77,8 @@ class EndingService:
             "lavfi",
             "-i",
             f"anullsrc=r=48000:cl=stereo:d={duration}",
+            "-vf",
+            title_color_filter(encoding_plan),
             # Video encoding follows the resolved output contract.
             *encoder_args,
             # Audio encoding

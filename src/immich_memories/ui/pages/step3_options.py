@@ -16,7 +16,19 @@ from immich_memories.ui.components import (
 )
 from immich_memories.ui.state import get_app_state
 
+OUTPUT_FORMAT_OPTIONS = ["MP4 (H.264)", "MP4 (H.265)", "MOV (ProRes)"]
+
 logger = logging.getLogger(__name__)
+
+
+def configured_output_format_label(config) -> str:
+    """Return the UI label for the configured codec without creating an override."""
+    codec = config.output.codec if config is not None else "h264"
+    if codec == "h265":
+        return "MP4 (H.265)"
+    if codec == "prores":
+        return "MOV (ProRes)"
+    return "MP4 (H.264)"
 
 
 def _render_volume_slider(options: dict, width: str = "w-64") -> None:
@@ -102,6 +114,7 @@ def render_step3() -> None:
     musicgen_available = (
         config is not None and config.musicgen.enabled and config.musicgen.base_url
     ) or ace_step_available
+    configured_format = configured_output_format_label(config)
 
     if not state.generation_options:
         state.generation_options = {
@@ -109,7 +122,7 @@ def render_step3() -> None:
             "scale_mode": "Smart Crop (keep faces)",
             "transition": "Smart (mix of fades & cuts)",
             "resolution": "Auto (match clips)",
-            "format": "MP4 (H.264)",
+            "format": configured_format,
             "add_date": False,
             "music_source": "AI Generated" if musicgen_available else "None",
             "music_file": None,
@@ -142,13 +155,14 @@ def render_step3() -> None:
 
             with ui.column().classes("flex-1 gap-4"):
                 format_select = ui.select(
-                    options=["MP4 (H.264)", "MOV (ProRes)"],
+                    options=OUTPUT_FORMAT_OPTIONS,
                     label="Output Format",
-                    value=options.get("format", "MP4 (H.264)"),
+                    value=options.get("format", configured_format),
                 ).classes("w-full")
 
                 def on_format_change(e):
                     options["format"] = e.value
+                    options["format_override"] = e.value
 
                 format_select.on_value_change(on_format_change)
 

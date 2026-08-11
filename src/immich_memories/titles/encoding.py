@@ -9,7 +9,11 @@ This module provides:
 from __future__ import annotations
 
 from immich_memories.processing.clip_encoder import encoder_args_for_plan
-from immich_memories.processing.encoding_plan import EncodingPlan, OutputCodec
+from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+from immich_memories.processing.hdr_utilities import (
+    _get_colorspace_filter,
+    _get_hdr_conversion_filter,
+)
 
 
 def standalone_title_encoding_plan() -> EncodingPlan:
@@ -18,7 +22,7 @@ def standalone_title_encoding_plan() -> EncodingPlan:
         codec=OutputCodec.H264,
         encoder="libx264",
         encoder_args=("-preset", "fast", "-crf", "17"),
-        hdr=False,
+        target_transfer=HdrTransfer.NONE,
         tone_map_to_sdr=False,
         pixel_format="yuv420p",
         container="mp4",
@@ -28,6 +32,24 @@ def standalone_title_encoding_plan() -> EncodingPlan:
 def title_encoder_args(plan: EncodingPlan) -> list[str]:
     """Build title-video FFmpeg arguments from an already-resolved plan."""
     return encoder_args_for_plan(plan)
+
+
+def title_color_filter(plan: EncodingPlan, *, rgb_input: bool = True) -> str:
+    """Convert rendered SDR/RGB title pixels to the plan's exact transfer."""
+    target = plan.target_transfer.value if plan.hdr else "sdr"
+    parts: list[str] = []
+    if rgb_input:
+        parts.append("format=yuv420p")
+    conversion = _get_hdr_conversion_filter("sdr", target, source_primaries="bt709")
+    if conversion:
+        parts.append(conversion.removeprefix(","))
+    parts.extend(
+        (
+            _get_colorspace_filter(target).removeprefix(","),
+            f"format={plan.pixel_format}",
+        )
+    )
+    return ",".join(parts)
 
 
 # Standard resolutions for each orientation

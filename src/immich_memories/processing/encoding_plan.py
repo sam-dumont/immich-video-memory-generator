@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, cast
 
 from immich_memories.processing.hardware import HWAccelCapabilities, get_ffmpeg_encoder
 
@@ -23,6 +23,14 @@ class HdrMode(StrEnum):
     AUTO = "auto"
     SDR = "sdr"
     HDR = "hdr"
+
+
+class HdrTransfer(StrEnum):
+    """Exact transfer function carried by the final-output contract."""
+
+    NONE = "none"
+    HLG = "hlg"
+    PQ = "pq"
 
 
 class UnsupportedEncodingCombination(ValueError):
@@ -93,10 +101,49 @@ class EncodingPlan:
     codec: OutputCodec
     encoder: str
     encoder_args: tuple[str, ...]
-    hdr: bool
+    target_transfer: HdrTransfer
     tone_map_to_sdr: bool
     pixel_format: str
     container: str
+
+    @property
+    def hdr(self) -> bool:
+        """Whether the exact target transfer is HDR."""
+        return self.target_transfer is not HdrTransfer.NONE
+
+
+@dataclass(frozen=True)
+class OutputSelection:
+    """Codec/container choice with explicit override provenance already applied."""
+
+    codec: OutputCodec
+    container: Literal["mp4", "mov"]
+
+
+def resolve_output_selection(
+    *,
+    config_codec: str,
+    config_container: str,
+    format_override: str | None,
+) -> OutputSelection:
+    """Resolve config defaults without manufacturing an omitted override."""
+    overrides: dict[str, OutputSelection] = {
+        "mp4": OutputSelection(OutputCodec.H264, "mp4"),
+        "h265": OutputSelection(OutputCodec.H265, "mp4"),
+        "prores": OutputSelection(OutputCodec.PRORES, "mov"),
+    }
+    if format_override is not None:
+        try:
+            return overrides[format_override.lower()]
+        except KeyError as exc:
+            raise UnsupportedEncodingCombination(
+                f"Unsupported format override: {format_override!r}"
+            ) from exc
+    container = _require_choice(config_container, "container", _OUTPUT_CONTAINERS)
+    return OutputSelection(
+        codec=_normalize_codec(config_codec),
+        container=cast(Literal["mp4", "mov"], container),
+    )
 
 
 def _validate_request_fields(request: EncodingRequest) -> None:
@@ -131,13 +178,32 @@ def _validate_encoder_family(codec: OutputCodec, encoder: str) -> None:
 def resolve_encoding_plan(
     request: EncodingRequest,
     capabilities: HWAccelCapabilities,
-    input_has_hdr: bool,
+    input_has_hdr: bool | None = None,
+    *,
+    input_transfer: HdrTransfer | str | None = None,
 ) -> EncodingPlan:
     """Resolve output codec and hardware preference without codec substitution."""
     codec = _normalize_codec(request.codec)
     hdr_mode = _normalize_hdr_mode(request.hdr_mode)
     hardware_enabled = _require_bool(request.hardware_enabled, "hardware_enabled")
-    has_hdr_input = _require_bool(input_has_hdr, "input_has_hdr")
+    if input_transfer is None:
+        has_hdr_input = _require_bool(input_has_hdr, "input_has_hdr")
+        source_transfer = HdrTransfer.HLG if has_hdr_input else HdrTransfer.NONE
+    else:
+        try:
+            source_transfer = HdrTransfer(input_transfer)
+        except (TypeError, ValueError) as exc:
+            raise UnsupportedEncodingCombination(
+                f"Unsupported input transfer: {input_transfer!r}"
+            ) from exc
+        has_hdr_input = source_transfer is not HdrTransfer.NONE
+        if (
+            input_has_hdr is not None
+            and _require_bool(input_has_hdr, "input_has_hdr") != has_hdr_input
+        ):
+            raise UnsupportedEncodingCombination(
+                "input_has_hdr conflicts with the exact input_transfer"
+            )
     _validate_request_fields(request)
     _validate_codec_policy(codec, hdr_mode, request.container)
 
@@ -153,6 +219,11 @@ def resolve_encoding_plan(
     hdr = codec is OutputCodec.H265 and (
         hdr_mode is HdrMode.HDR or (hdr_mode is HdrMode.AUTO and has_hdr_input)
     )
+    target_transfer = HdrTransfer.NONE
+    if hdr:
+        target_transfer = (
+            source_transfer if source_transfer is not HdrTransfer.NONE else HdrTransfer.HLG
+        )
     tone_map_to_sdr = has_hdr_input and not hdr
     pixel_format = "yuv420p"
     if hdr:
@@ -164,7 +235,7 @@ def resolve_encoding_plan(
         codec=codec,
         encoder=encoder,
         encoder_args=tuple(encoder_args),
-        hdr=hdr,
+        target_transfer=target_transfer,
         tone_map_to_sdr=tone_map_to_sdr,
         pixel_format=pixel_format,
         container=request.container,

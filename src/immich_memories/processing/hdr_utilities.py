@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from immich_memories.processing.encoding_plan import HdrTransfer
 from immich_memories.security import validate_video_path
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "_get_hdr_conversion_filter",
     "_get_clip_hdr_types",
     "_resolve_clip_hdr",
+    "detect_dominant_hdr_transfer",
     "quality_to_crf",
 ]
 
@@ -120,24 +122,34 @@ def _get_dominant_hdr_type(clips: list) -> str:
     Returns "hlg" or "pq" based on what most clips use.
     Defaults to "hlg" if detection fails (iPhone is most common).
     """
-    hdr_types: dict[str, int] = {"hlg": 0, "pq": 0}
+    transfer = detect_dominant_hdr_transfer(clips)
+    if transfer is HdrTransfer.NONE:
+        logger.info("No HDR detected, defaulting to HLG colorspace")
+        return HdrTransfer.HLG.value
+    return transfer.value
 
+
+def detect_dominant_hdr_transfer(clips: list) -> HdrTransfer:
+    """Return the exact dominant source transfer, or NONE for all-SDR input."""
+    counts = {HdrTransfer.HLG: 0, HdrTransfer.PQ: 0}
     for clip in clips:
         path = clip.path if hasattr(clip, "path") else clip
         hdr_type = _detect_hdr_type(path)
-        if hdr_type:
-            hdr_types[hdr_type] += 1
+        if hdr_type == HdrTransfer.HLG.value:
+            counts[HdrTransfer.HLG] += 1
+        elif hdr_type == HdrTransfer.PQ.value:
+            counts[HdrTransfer.PQ] += 1
 
-    # Return dominant type, default to HLG if tied or none detected
-    if hdr_types["pq"] > hdr_types["hlg"]:
-        logger.info(f"Detected HDR10/PQ format (Android/Samsung/Pixel) - {hdr_types['pq']} clips")
-        return "pq"
-    elif hdr_types["hlg"] > 0:
-        logger.info(f"Detected HLG format (iPhone) - {hdr_types['hlg']} clips")
-        return "hlg"
-    else:
-        logger.info("No HDR detected, defaulting to HLG colorspace")
-        return "hlg"
+    if counts[HdrTransfer.PQ] > counts[HdrTransfer.HLG]:
+        logger.info(
+            "Detected HDR10/PQ format (Android/Samsung/Pixel) - %d clips",
+            counts[HdrTransfer.PQ],
+        )
+        return HdrTransfer.PQ
+    if counts[HdrTransfer.HLG] > 0:
+        logger.info("Detected HLG format (iPhone) - %d clips", counts[HdrTransfer.HLG])
+        return HdrTransfer.HLG
+    return HdrTransfer.NONE
 
 
 def has_any_hdr_clip(clips: list) -> bool:
@@ -168,6 +180,8 @@ def _get_colorspace_filter(hdr_type: str) -> str:
     Returns:
         FFmpeg setparams filter string
     """
+    if hdr_type in ("sdr", HdrTransfer.NONE.value):
+        return ",setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709"
     if hdr_type == "pq":
         # HDR10/HDR10+ (Samsung, Pixel, etc.) - uses PQ/SMPTE2084 transfer
         return ",setparams=colorspace=bt2020nc:color_primaries=bt2020:color_trc=smpte2084"
@@ -329,43 +343,31 @@ def _resolve_clip_hdr(
 
     Returns (hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, clip_is_hdr).
     """
-    hdr_conversion = ""
-    colorspace_filter = ""
+    target_type = hdr_type or "sdr"
+    source_type: str | None = None
+    source_primaries: str | None = None
     output_pix_fmt = ""
-    clip_is_hdr = False
+    colorspace_filter = _get_colorspace_filter(target_type)
 
     if ctx is not None:
-        output_pix_fmt = getattr(ctx, "pix_fmt", "")
-        colorspace_filter = getattr(ctx, "colorspace_filter", "")
+        target_type = getattr(ctx, "hdr_type", target_type)
+        pix_fmt = getattr(ctx, "pix_fmt", "")
+        output_pix_fmt = f",format={pix_fmt}" if pix_fmt else ""
+        colorspace_filter = getattr(ctx, "colorspace_filter", "") or _get_colorspace_filter(
+            target_type
+        )
         clip_hdr_types = getattr(ctx, "clip_hdr_types", [])
         clip_primaries = getattr(ctx, "clip_primaries", [])
-        dominant_hdr = getattr(ctx, "hdr_type", "")
-
         if clip_idx < len(clip_hdr_types):
-            clip_is_hdr = clip_hdr_types[clip_idx] is not None
-            if clip_hdr_types[clip_idx] != dominant_hdr:
-                source_pri = clip_primaries[clip_idx] if clip_idx < len(clip_primaries) else None
-                hdr_conversion = _get_hdr_conversion_filter(
-                    clip_hdr_types[clip_idx], dominant_hdr, source_primaries=source_pri
-                )
+            source_type = clip_hdr_types[clip_idx]
+        if clip_idx < len(clip_primaries):
+            source_primaries = clip_primaries[clip_idx]
 
-    # WHY: SDR clip in HDR output needs zscale sRGB→HLG/PQ conversion.
-    # Without this, SDR full-range data tagged as TV-range HLG = red tint.
-    sdr_to_hdr_filter = ""
-    if hdr_type and not clip_is_hdr:
-        trc = "arib-std-b67" if hdr_type == "hlg" else "smpte2084"
-        # WHY: format=yuv420p normalizes yuvj444p (full range, 4:4:4) to
-        # yuv420p (TV range, 4:2:0) BEFORE the zscale HDR conversion.
-        # Without this, different SDR formats (yuvj444p from live merges
-        # vs yuv420p from regular clips) produce different chroma values
-        # after conversion → green flash during crossfade.
-        sdr_to_hdr_filter = (
-            "format=yuv420p,"
-            f"zscale=t={trc}:tin=iec61966-2-1"
-            ":p=bt2020:pin=bt709"
-            ":m=bt2020nc:min=bt709"
-            ":npl=203"
-            ",format=yuv420p10le"
-        )
-
-    return hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, clip_is_hdr
+    clip_is_hdr = source_type in {HdrTransfer.HLG.value, HdrTransfer.PQ.value}
+    normalized_source = source_type or "sdr"
+    hdr_conversion = _get_hdr_conversion_filter(
+        normalized_source,
+        target_type,
+        source_primaries=source_primaries,
+    )
+    return hdr_conversion, colorspace_filter, output_pix_fmt, "", clip_is_hdr

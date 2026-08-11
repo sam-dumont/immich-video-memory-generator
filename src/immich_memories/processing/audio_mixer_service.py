@@ -156,7 +156,7 @@ class AudioMixerService:
     def _add_music_simple(self, video_path: Path, output_path: Path) -> Path:
         """Add music with simple volume mixing (no ducking)."""
         if video_path == output_path:
-            temp_output = output_path.with_suffix(".temp.mp4")
+            temp_output = output_path.with_name(f"{output_path.stem}.temp{output_path.suffix}")
         else:
             temp_output = output_path
 

@@ -10,9 +10,11 @@ import immich_memories.processing.encoding_plan as encoding_plan_module
 from immich_memories.processing.encoding_plan import (
     EncodingRequest,
     HdrMode,
+    HdrTransfer,
     OutputCodec,
     UnsupportedEncodingCombination,
     resolve_encoding_plan,
+    resolve_output_selection,
 )
 from immich_memories.processing.hardware import HWAccelBackend, HWAccelCapabilities
 
@@ -42,6 +44,40 @@ def _apple_capabilities() -> HWAccelCapabilities:
         supports_h265_encode=True,
         prores_encode=True,
     )
+
+
+def test_output_selection_preserves_config_when_override_is_absent() -> None:
+    selection = resolve_output_selection(
+        config_codec="h265",
+        config_container="mp4",
+        format_override=None,
+    )
+
+    assert selection.codec is OutputCodec.H265
+    assert selection.container == "mp4"
+
+
+@pytest.mark.parametrize(
+    ("override", "expected_codec", "expected_container"),
+    [
+        ("mp4", OutputCodec.H264, "mp4"),
+        ("h265", OutputCodec.H265, "mp4"),
+        ("prores", OutputCodec.PRORES, "mov"),
+    ],
+)
+def test_output_selection_applies_only_explicit_override(
+    override: str,
+    expected_codec: OutputCodec,
+    expected_container: str,
+) -> None:
+    selection = resolve_output_selection(
+        config_codec="h264",
+        config_container="mp4",
+        format_override=override,
+    )
+
+    assert selection.codec is expected_codec
+    assert selection.container == expected_container
 
 
 @pytest.mark.parametrize(
@@ -268,6 +304,16 @@ def test_h265_auto_preserves_hdr_input() -> None:
     assert plan.hdr is True
     assert plan.tone_map_to_sdr is False
     assert plan.pixel_format == "p010le"
+
+
+def test_h265_auto_preserves_exact_pq_transfer() -> None:
+    plan = resolve_encoding_plan(
+        _request(OutputCodec.H265, hardware_enabled=True),
+        _apple_capabilities(),
+        input_transfer=HdrTransfer.PQ,
+    )
+
+    assert plan.target_transfer is HdrTransfer.PQ
 
 
 def test_h265_explicit_sdr_tone_maps_hdr_input() -> None:

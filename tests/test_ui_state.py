@@ -222,6 +222,21 @@ class TestScaleModeMap:
         assert len(_SCALE_MODE_MAP) == 4
 
 
+def test_ui_output_options_include_h265() -> None:
+    from immich_memories.ui.pages.step3_options import OUTPUT_FORMAT_OPTIONS
+
+    assert "MP4 (H.265)" in OUTPUT_FORMAT_OPTIONS
+
+
+def test_ui_output_label_is_initialized_from_config() -> None:
+    from immich_memories.ui.pages.step3_options import configured_output_format_label
+
+    config = Config()
+    config.output.codec = "h265"
+
+    assert configured_output_format_label(config) == "MP4 (H.265)"
+
+
 def test_generation_factory_passes_state_api_version_to_client(tmp_path) -> None:
     from immich_memories.ui.pages._step4_generate import _build_generation_params
 
@@ -240,6 +255,69 @@ def test_generation_factory_passes_state_api_version_to_client(tmp_path) -> None
         api_key="test-api-key",
         api_version=ApiVersionPolicy.V2,
     )
+
+
+def test_generation_factory_preserves_configured_h265_when_ui_untouched(tmp_path) -> None:
+    from immich_memories.ui.pages._step4_generate import _build_generation_params
+
+    config = Config()
+    config.output.codec = "h265"
+    state = AppState(
+        config=config,
+        generation_options={},
+        immich_url="https://immich.example.com",
+        immich_api_key="test-api-key",
+    )
+
+    with patch("immich_memories.api.immich.SyncImmichClient"):
+        params = _build_generation_params(state, [], tmp_path / "memory.mp4")
+
+    assert params.output_format is None
+
+
+def test_generation_factory_maps_explicit_ui_h265_override(tmp_path) -> None:
+    from immich_memories.ui.pages._step4_generate import _build_generation_params
+
+    state = AppState(
+        config=Config(),
+        generation_options={"format_override": "MP4 (H.265)"},
+        immich_url="https://immich.example.com",
+        immich_api_key="test-api-key",
+    )
+
+    with patch("immich_memories.api.immich.SyncImmichClient"):
+        params = _build_generation_params(state, [], tmp_path / "memory.mp4")
+
+    assert params.output_format == "h265"
+
+
+def test_config_initialized_ui_label_is_not_an_explicit_override(tmp_path) -> None:
+    from immich_memories.ui.pages._step4_generate import _build_generation_params
+
+    config = Config()
+    config.output.codec = "h265"
+    state = AppState(
+        config=config,
+        generation_options={"format": "MP4 (H.265)"},
+        immich_url="https://immich.example.com",
+        immich_api_key="test-api-key",
+    )
+
+    with patch("immich_memories.api.immich.SyncImmichClient"):
+        params = _build_generation_params(state, [], tmp_path / "memory.mp4")
+
+    assert params.output_format is None
+
+
+def test_ui_prores_output_path_uses_resolved_mov_container(tmp_path) -> None:
+    from immich_memories.ui.pages._step4_generate import normalize_ui_output_path
+
+    config = Config()
+    config.output.codec = "prores"
+    config.output.format = "mov"
+    state = AppState(config=config, generation_options={})
+
+    assert normalize_ui_output_path(state, tmp_path / "memory.mp4").suffix == ".mov"
 
 
 class TestFormatDuration:

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from immich_memories.processing.encoding_plan import EncodingPlan, OutputCodec
+from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 from immich_memories.titles.animations import (
     EASING_FUNCTIONS,
     TEXT_ANIMATIONS,
@@ -53,7 +53,7 @@ def _software_prores_plan() -> EncodingPlan:
         codec=OutputCodec.PRORES,
         encoder="prores_ks",
         encoder_args=(),
-        hdr=False,
+        target_transfer=HdrTransfer.NONE,
         tone_map_to_sdr=False,
         pixel_format="yuv422p10le",
         container="mov",

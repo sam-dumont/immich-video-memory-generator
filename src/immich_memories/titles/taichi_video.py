@@ -17,7 +17,7 @@ import numpy as np
 
 from immich_memories.processing.encoding_plan import EncodingPlan
 
-from .encoding import standalone_title_encoding_plan, title_encoder_args
+from .encoding import standalone_title_encoding_plan, title_color_filter, title_encoder_args
 from .renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
 
 logger = logging.getLogger(__name__)
@@ -97,19 +97,6 @@ def create_title_video_taichi(
     # already in the correct color space from the source clip.
     pix_fmt = "rgb48le" if plan.hdr else "rgb24"
 
-    # WHY: rawvideo input needs explicit color metadata for HDR —
-    # without it, the encoder strips bt2020 tags from the output.
-    input_color_args: list[str] = []
-    if plan.hdr:
-        input_color_args = [
-            "-color_primaries",
-            "bt2020",
-            "-color_trc",
-            "arib-std-b67",
-            "-colorspace",
-            "bt2020nc",
-        ]
-
     cmd = [
         "ffmpeg",
         "-y",
@@ -121,7 +108,6 @@ def create_title_video_taichi(
         f"{cfg.width}x{cfg.height}",
         "-pix_fmt",
         pix_fmt,
-        *input_color_args,
         "-r",
         str(cfg.fps),
         "-i",
@@ -130,6 +116,8 @@ def create_title_video_taichi(
         "lavfi",
         "-i",
         "anullsrc=r=48000:cl=stereo",
+        "-vf",
+        title_color_filter(plan),
         *encoder_args,
         "-c:a",
         "aac",

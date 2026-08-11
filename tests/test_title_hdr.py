@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from immich_memories.processing.assembly_config import AssemblySettings, TitleScreenSettings
-from immich_memories.processing.encoding_plan import EncodingPlan, OutputCodec
+from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 
 
 def _software_h264_plan() -> EncodingPlan:
@@ -18,7 +18,7 @@ def _software_h264_plan() -> EncodingPlan:
         codec=OutputCodec.H264,
         encoder="libx264",
         encoder_args=("-preset", "medium", "-crf", "18"),
-        hdr=False,
+        target_transfer=HdrTransfer.NONE,
         tone_map_to_sdr=False,
         pixel_format="yuv420p",
         container="mp4",
@@ -30,7 +30,7 @@ def _software_prores_plan() -> EncodingPlan:
         codec=OutputCodec.PRORES,
         encoder="prores_ks",
         encoder_args=(),
-        hdr=False,
+        target_transfer=HdrTransfer.NONE,
         tone_map_to_sdr=False,
         pixel_format="yuv422p10le",
         container="mov",
@@ -42,9 +42,21 @@ def _hardware_h265_hdr_plan() -> EncodingPlan:
         codec=OutputCodec.H265,
         encoder="hevc_videotoolbox",
         encoder_args=("-q:v", "50", "-allow_sw", "1"),
-        hdr=True,
+        target_transfer=HdrTransfer.HLG,
         tone_map_to_sdr=False,
         pixel_format="p010le",
+        container="mp4",
+    )
+
+
+def _software_h265_pq_plan() -> EncodingPlan:
+    return EncodingPlan(
+        codec=OutputCodec.H265,
+        encoder="libx265",
+        encoder_args=("-preset", "fast", "-crf", "18"),
+        target_transfer=HdrTransfer.PQ,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p10le",
         container="mp4",
     )
 
@@ -122,11 +134,13 @@ class TestPlanDerivedTitleEncoding:
 class TestVideoEncodingPlan:
     """PIL title encoding derives color conversion from the plan."""
 
-    def test_hdr_false_returns_empty_filter(self):
+    def test_sdr_plan_embeds_bt709_tags_in_filter(self):
         from immich_memories.titles.video_encoding import _get_best_encoder
 
         _, video_filter = _get_best_encoder(_software_h264_plan())
-        assert video_filter == ""
+        assert "setparams=colorspace=bt709" in video_filter
+        assert "color_primaries=bt709" in video_filter
+        assert "color_trc=bt709" in video_filter
 
     def test_hdr_true_returns_hlg_filter(self):
         from immich_memories.titles.video_encoding import _get_best_encoder
@@ -140,6 +154,15 @@ class TestVideoEncodingPlan:
             assert "format=" in video_filter or "zscale" in video_filter, (
                 f"HDR filter should contain format conversion, got: {video_filter}"
             )
+
+    def test_pq_plan_uses_smpte2084_not_hlg(self):
+        from immich_memories.titles.video_encoding import _get_best_encoder
+
+        encoder_args, video_filter = _get_best_encoder(_software_h265_pq_plan())
+
+        assert "smpte2084" in video_filter
+        assert "arib-std-b67" not in video_filter
+        assert encoder_args[encoder_args.index("-color_trc") + 1] == "smpte2084"
 
     def test_hdr_false_no_color_metadata(self):
         from immich_memories.titles.video_encoding import _get_best_encoder

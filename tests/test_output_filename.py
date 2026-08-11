@@ -3,16 +3,35 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
 from immich_memories.filename_builder import (
     build_output_filename,
     build_title_person_name,
     get_divider_mode,
+    normalize_output_path,
 )
 
 
 class TestBuildOutputFilename:
     """Test filename generation for different memory type presets."""
+
+    def test_prores_filename_uses_resolved_mov_container(self):
+        result = build_output_filename(
+            memory_type="year_in_review",
+            preset_params={"year": 2025},
+            person_name="sam",
+            date_start=date(2025, 1, 1),
+            date_end=date(2025, 12, 31),
+            container="mov",
+        )
+
+        assert result == "sam_2025_memories.mov"
+
+    def test_explicit_suffix_conflict_is_normalized_to_resolved_container(self):
+        result = normalize_output_path(Path("custom-name.mp4"), "mov")
+
+        assert result == Path("custom-name.mov")
 
     def test_custom_with_person_and_month_range(self):
         """Custom date range with a person selected: use person name + month + year."""

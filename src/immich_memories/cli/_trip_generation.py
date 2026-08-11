@@ -19,6 +19,7 @@ from immich_memories.cli._pipeline_runner import (
     fetch_videos_and_live_photos,
     run_pipeline_and_generate,
 )
+from immich_memories.processing.encoding_plan import resolve_output_selection
 from immich_memories.timeperiod import DateRange
 
 if TYPE_CHECKING:
@@ -202,6 +203,12 @@ def handle_trip_generation(
         )
         return
 
+    output_selection = resolve_output_selection(
+        config_codec=config.output.codec,
+        config_container=config.output.format,
+        format_override=output_format,
+    )
+
     for trip in selected:
         trip_date_range = DateRange(
             start=dt_cls.combine(trip.start_date, dt_cls.min.time()),
@@ -211,7 +218,9 @@ def handle_trip_generation(
         trip_duration = float(duration or max(60, min(600, trip_days * 35)))
 
         trip_slug = trip.location_name.lower().replace(" ", "_")[:30]
-        trip_output = output_path.parent / f"trip_{trip_slug}_{trip.start_date.isoformat()}.mp4"
+        trip_output = output_path.parent / (
+            f"trip_{trip_slug}_{trip.start_date.isoformat()}.{output_selection.container}"
+        )
 
         console.print(
             f"[bold cyan]Generating trip:[/bold cyan] {trip.location_name} "

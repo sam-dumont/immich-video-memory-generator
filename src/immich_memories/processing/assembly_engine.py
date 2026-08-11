@@ -8,7 +8,6 @@ Concat/xfade/batch operations are in ffmpeg_filter_graph.py.
 from __future__ import annotations
 
 import logging
-import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -17,7 +16,7 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     TransitionType,
 )
-from immich_memories.processing.clip_encoder import ClipEncoder, encoder_args_for_plan
+from immich_memories.processing.clip_encoder import ClipEncoder
 from immich_memories.processing.ffmpeg_filter_graph import ConcatService
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.ffmpeg_runner import AssemblyContext
@@ -26,7 +25,6 @@ from immich_memories.processing.hdr_utilities import (
     _detect_color_primaries,
     _get_clip_hdr_types,
     _get_colorspace_filter,
-    _get_dominant_hdr_type,
 )
 from immich_memories.processing.streaming_assembler import streaming_assemble_full
 
@@ -90,7 +88,7 @@ def create_assembly_context(
     inspect_source_hdr = plan.hdr or plan.tone_map_to_sdr
     pix_fmt = plan.pixel_format
     target_fps = prober.detect_max_framerate(clips)
-    hdr_type = _get_dominant_hdr_type(clips) if plan.hdr else "sdr"
+    hdr_type = plan.target_transfer.value if plan.hdr else "sdr"
 
     clip_hdr_types = _get_clip_hdr_types(clips) if inspect_source_hdr else [None] * len(clips)
     clip_primaries: list[str | None] = []
@@ -106,7 +104,7 @@ def create_assembly_context(
             f"Mixed HDR content detected: {unique_types} - converting all to {hdr_type.upper()}"
         )
 
-    colorspace_filter = _get_colorspace_filter(hdr_type) if plan.hdr else ""
+    colorspace_filter = _get_colorspace_filter(hdr_type)
 
     return AssemblyContext(
         target_w=target_w,
@@ -225,7 +223,6 @@ class AssemblyEngine:
         ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
         fade_duration = self.settings.transition_duration or 0.5
         plan = self.settings.encoding_plan
-        encoder_args = encoder_args_for_plan(plan, ctx.hdr_type)
         if plan.hdr:
             logger.info("Streaming %s HDR assembly with %s", ctx.hdr_type.upper(), plan.encoder)
         else:
@@ -241,13 +238,10 @@ class AssemblyEngine:
             height=target_h,
             fps=ctx.target_fps,
             fade_duration=fade_duration,
-            encoder_args=encoder_args,
+            encoding_plan=plan,
             ctx=ctx,
             normalize_audio=self.settings.normalize_clip_audio,
             privacy_mode=self.settings.privacy_mode,
-            # The output plan controls pipe depth. In explicit HDR mode, SDR inputs
-            # are converted to the plan's HLG/PQ target before entering the 10-bit pipe.
-            hdr_type=ctx.hdr_type if plan.hdr else None,
             scale_mode=self.settings.scale_mode,
             progress_callback=progress_callback,
             frame_preview_callback=frame_preview_callback,
@@ -255,17 +249,9 @@ class AssemblyEngine:
         return output_path
 
     def _assemble_single_clip(self, clip: AssemblyClip, output_path: Path) -> Path:
-        """Handle single clip: encode through FFmpeg if filters needed, else copy."""
-        needs_encoding = (
-            self.settings.privacy_mode
-            or (not self.settings.auto_resolution and self.settings.target_resolution)
-            or (clip.rotation_override is not None and clip.rotation_override != 0)
-        )
-        if needs_encoding:
-            target_resolution = resolve_target_resolution(self.settings, self.prober, [clip])
-            self.encoder.encode_single_clip(clip, output_path, target_resolution=target_resolution)
-            return output_path
-        shutil.copy2(clip.path, output_path)
+        """Encode a single clip under the resolved final-output plan."""
+        target_resolution = resolve_target_resolution(self.settings, self.prober, [clip])
+        self.encoder.encode_single_clip(clip, output_path, target_resolution=target_resolution)
         return output_path
 
     def assemble_with_cuts(

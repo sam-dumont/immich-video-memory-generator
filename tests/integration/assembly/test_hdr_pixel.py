@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 from tests.integration.conftest import requires_ffmpeg
 
 pytestmark = [pytest.mark.integration, requires_ffmpeg]
@@ -61,24 +62,22 @@ requires_zscale = pytest.mark.skipif(not _has_zscale(), reason="zscale filter no
 # Small resolution for fast tests
 WIDTH, HEIGHT, FPS, DURATION = 320, 240, 10, 1
 
-HLG_ENCODER_ARGS = [
-    "-c:v",
-    "libx265",
-    "-crf",
-    "18",
-    "-preset",
-    "ultrafast",
-    "-pix_fmt",
-    "yuv420p10le",
-    "-colorspace",
-    "bt2020nc",
-    "-color_primaries",
-    "bt2020",
-    "-color_trc",
-    "arib-std-b67",
-    "-x265-params",
-    "hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
-]
+HLG_ENCODING_PLAN = EncodingPlan(
+    codec=OutputCodec.H265,
+    encoder="libx265",
+    encoder_args=(
+        "-crf",
+        "18",
+        "-preset",
+        "ultrafast",
+        "-x265-params",
+        "hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
+    ),
+    target_transfer=HdrTransfer.HLG,
+    tone_map_to_sdr=False,
+    pixel_format="yuv420p10le",
+    container="mp4",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -280,8 +279,7 @@ class TestHDRPassthrough:
             height=HEIGHT,
             fps=FPS,
             fade_duration=0.0,
-            encoder_args=HLG_ENCODER_ARGS,
-            hdr_type="hlg",
+            encoding_plan=HLG_ENCODING_PLAN,
             scale_mode="black",
         )
 
@@ -327,8 +325,7 @@ class TestHDRPassthrough:
             height=HEIGHT,
             fps=FPS,
             fade_duration=0.0,
-            encoder_args=HLG_ENCODER_ARGS,
-            hdr_type="hlg",
+            encoding_plan=HLG_ENCODING_PLAN,
             scale_mode="black",
         )
 
@@ -370,8 +367,7 @@ class TestSDRInHDROutput:
             height=HEIGHT,
             fps=FPS,
             fade_duration=0.0,
-            encoder_args=HLG_ENCODER_ARGS,
-            hdr_type="hlg",
+            encoding_plan=HLG_ENCODING_PLAN,
             scale_mode="black",
         )
 
@@ -414,8 +410,7 @@ class TestSDRInHDROutput:
             height=HEIGHT,
             fps=FPS,
             fade_duration=0.0,
-            encoder_args=HLG_ENCODER_ARGS,
-            hdr_type="hlg",
+            encoding_plan=HLG_ENCODING_PLAN,
             scale_mode="black",
         )
 
@@ -454,8 +449,7 @@ class TestHDROutputMetadata:
             height=HEIGHT,
             fps=FPS,
             fade_duration=0.0,
-            encoder_args=HLG_ENCODER_ARGS,
-            hdr_type="hlg",
+            encoding_plan=HLG_ENCODING_PLAN,
             scale_mode="black",
         )
 
@@ -499,8 +493,7 @@ class TestHDROutputMetadata:
             height=HEIGHT,
             fps=FPS,
             fade_duration=0.0,
-            encoder_args=HLG_ENCODER_ARGS,
-            hdr_type="hlg",
+            encoding_plan=HLG_ENCODING_PLAN,
             scale_mode="black",
         )
 

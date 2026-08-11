@@ -273,6 +273,130 @@ class TestCLIGenerate:
     Click routes args correctly and handles edge cases.
     """
 
+    def test_omitted_format_preserves_configured_h265(self, tmp_path) -> None:
+        """An omitted CLI option must not become an explicit H.264 override."""
+        from click.testing import CliRunner
+
+        from immich_memories.cli import main
+        from immich_memories.config_loader import Config
+
+        config = Config(immich={"url": "http://immich.test", "api_key": "test-key"})
+        config.output.codec = "h265"
+        config.output.directory = str(tmp_path)
+        output = tmp_path / "all_memories_2025.mp4"
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        asset = MagicMock(duration_seconds=10.0)
+
+        with (
+            patch("immich_memories.cli.get_config", return_value=config),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+            patch(
+                "immich_memories.cli.generate.fetch_videos_and_live_photos",
+                return_value=([asset], []),
+            ),
+            patch(
+                "immich_memories.cli.generate.run_pipeline_and_generate",
+                return_value=(output, False, None),
+            ) as run_pipeline,
+        ):
+            result = CliRunner().invoke(
+                main,
+                ["generate", "--year", "2025", "--no-music", "--quiet"],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert run_pipeline.call_args.kwargs["output_format"] is None
+
+    def test_explicit_prores_normalizes_conflicting_output_suffix(self, tmp_path) -> None:
+        """The resolved MOV container is authoritative over a typed .mp4 suffix."""
+        from click.testing import CliRunner
+
+        from immich_memories.cli import main
+        from immich_memories.config_loader import Config
+
+        config = Config(immich={"url": "http://immich.test", "api_key": "test-key"})
+        requested = tmp_path / "custom-name.mp4"
+        expected = requested.with_suffix(".mov")
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        asset = MagicMock(duration_seconds=10.0)
+
+        with (
+            patch("immich_memories.cli.get_config", return_value=config),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+            patch(
+                "immich_memories.cli.generate.fetch_videos_and_live_photos",
+                return_value=([asset], []),
+            ),
+            patch(
+                "immich_memories.cli.generate.run_pipeline_and_generate",
+                return_value=(expected, False, None),
+            ) as run_pipeline,
+        ):
+            result = CliRunner().invoke(
+                main,
+                [
+                    "generate",
+                    "--year",
+                    "2025",
+                    "--format",
+                    "prores",
+                    "--output",
+                    str(requested),
+                    "--no-music",
+                    "--quiet",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert run_pipeline.call_args.kwargs["output_path"] == expected
+
+    def test_explicit_h265_override_is_available(self, tmp_path) -> None:
+        from click.testing import CliRunner
+
+        from immich_memories.cli import main
+        from immich_memories.config_loader import Config
+
+        config = Config(immich={"url": "http://immich.test", "api_key": "test-key"})
+        output = tmp_path / "memory.mp4"
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        asset = MagicMock(duration_seconds=10.0)
+
+        with (
+            patch("immich_memories.cli.get_config", return_value=config),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+            patch(
+                "immich_memories.cli.generate.fetch_videos_and_live_photos",
+                return_value=([asset], []),
+            ),
+            patch(
+                "immich_memories.cli.generate.run_pipeline_and_generate",
+                return_value=(output, False, None),
+            ) as run_pipeline,
+        ):
+            result = CliRunner().invoke(
+                main,
+                [
+                    "generate",
+                    "--year",
+                    "2025",
+                    "--format",
+                    "h265",
+                    "--output",
+                    str(output),
+                    "--no-music",
+                    "--quiet",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert run_pipeline.call_args.kwargs["output_format"] == "h265"
+
     def test_cli_generate_invokes_pipeline(self, tmp_path):
         """CLI generate with valid args reaches the pipeline."""
         from click.testing import CliRunner
@@ -1001,6 +1125,8 @@ class TestTripGenerationFlow:
         mock_config = MagicMock()
         mock_config.defaults.transition = "crossfade"
         mock_config.defaults.scale_mode = "blur"
+        mock_config.output.codec = "h264"
+        mock_config.output.format = "mp4"
         mock_config.trips.homebase_latitude = 48.8
         mock_config.trips.homebase_longitude = 2.3
 
@@ -1054,7 +1180,7 @@ class TestTripGenerationFlow:
                 no_music=True,
                 resolution="auto",
                 scale_mode=None,
-                output_format=None,
+                output_format="prores",
                 add_date=False,
                 keep_intermediates=False,
                 privacy_mode=False,
@@ -1068,6 +1194,7 @@ class TestTripGenerationFlow:
         call_kwargs = mock_pipeline.call_args[1]
         assert call_kwargs["memory_type"] == "trip"
         assert call_kwargs["no_music"] is True
+        assert call_kwargs["output_path"].suffix == ".mov"
 
     def test_exact_trip_range_selects_only_matching_trip(self, tmp_path):
         """Automation dates select the detected trip, not the nearest or first trip."""
@@ -1079,6 +1206,8 @@ class TestTripGenerationFlow:
         mock_config = MagicMock()
         mock_config.defaults.transition = "crossfade"
         mock_config.defaults.scale_mode = "blur"
+        mock_config.output.codec = "h264"
+        mock_config.output.format = "mp4"
         mock_config.trips.homebase_latitude = 48.8
         mock_config.trips.homebase_longitude = 2.3
         trips = [

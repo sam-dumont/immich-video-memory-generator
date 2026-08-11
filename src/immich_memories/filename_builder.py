@@ -4,6 +4,16 @@ from __future__ import annotations
 
 import calendar
 from datetime import date
+from pathlib import Path
+from typing import Literal
+
+
+def normalize_output_path(path: Path, container: Literal["mp4", "mov"]) -> Path:
+    """Return an output path whose suffix matches the resolved container."""
+    expected_suffix = f".{container}"
+    if path.suffix.lower() == expected_suffix:
+        return path
+    return path.with_suffix(expected_suffix)
 
 
 def build_output_filename(
@@ -12,6 +22,7 @@ def build_output_filename(
     person_name: str | None,
     date_start: date | None,
     date_end: date | None,
+    container: Literal["mp4", "mov"] = "mp4",
 ) -> str:
     """Build a human-readable output filename from memory context.
 
@@ -28,7 +39,7 @@ def build_output_filename(
         date_end: End date of the date range
 
     Returns:
-        Filename string ending in .mp4
+        Filename string ending in the resolved container suffix.
     """
     who = _build_who_part(memory_type, preset_params, person_name)
     when = _build_when_part(memory_type, preset_params, date_start, date_end)
@@ -36,7 +47,7 @@ def build_output_filename(
     parts = [p for p in (who, when) if p]
     slug = "_".join(parts) if parts else "memories"
 
-    return f"{slug}_memories.mp4"
+    return f"{slug}_memories.{container}"
 
 
 def build_title_person_name(

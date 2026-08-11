@@ -9,6 +9,32 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+
+
+def _prores_plan() -> EncodingPlan:
+    return EncodingPlan(
+        codec=OutputCodec.PRORES,
+        encoder="prores_ks",
+        encoder_args=("-profile:v", "3"),
+        target_transfer=HdrTransfer.NONE,
+        tone_map_to_sdr=False,
+        pixel_format="yuv422p10le",
+        container="mov",
+    )
+
+
+def _h264_plan() -> EncodingPlan:
+    return EncodingPlan(
+        codec=OutputCodec.H264,
+        encoder="libx264",
+        encoder_args=("-preset", "ultrafast", "-crf", "28"),
+        target_transfer=HdrTransfer.NONE,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p",
+        container="mp4",
+    )
+
 
 def _has_ffmpeg() -> bool:
     try:
@@ -79,16 +105,7 @@ class TestStreamingEncoder:
             width,
             height,
             fps,
-            encoder_args=[
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-crf",
-                "28",
-                "-pix_fmt",
-                "yuv420p",
-            ],
+            encoding_plan=_h264_plan(),
         )
         encoder.start()
         for i in range(n_frames):
@@ -163,6 +180,91 @@ class TestFrameBlender:
         assert np.all(out == 200)
 
 
+def test_full_streaming_prores_threads_plan_and_uses_mov_work_video(tmp_path) -> None:
+    from unittest.mock import patch
+
+    from immich_memories.processing.streaming_assembler import streaming_assemble_full
+
+    clip = type("Clip", (), {"path": tmp_path / "clip.mp4", "duration": 1.0})()
+    plan = _prores_plan()
+    with (
+        patch(
+            "immich_memories.processing.streaming_assembler.assemble_streaming",
+            return_value=[],
+        ) as assemble,
+        patch("immich_memories.processing.streaming_assembler._probe_duration", return_value=1.0),
+        patch("immich_memories.processing.streaming_assembler.extract_and_mix_audio"),
+        patch("immich_memories.processing.streaming_assembler.mux_video_audio"),
+    ):
+        streaming_assemble_full(
+            clips=[clip],
+            transitions=[],
+            output_path=tmp_path / "memory.mov",
+            width=320,
+            height=240,
+            fps=30,
+            encoding_plan=plan,
+        )
+
+    assert assemble.call_args.kwargs["encoding_plan"] is plan
+    assert assemble.call_args.kwargs["output_path"].name == "video.mov"
+
+
+def test_frame_decoder_applies_hdr_to_sdr_color_chain() -> None:
+    """Streaming decode must consume conversion, output tags, and pixel format."""
+    from immich_memories.processing.streaming_assembler import FrameDecoder
+
+    decoder = FrameDecoder(
+        Path("hlg.mp4"),
+        width=320,
+        height=240,
+        fps=30,
+        hdr_conversion=(
+            ",zscale=t=linear:tin=arib-std-b67:pin=bt2020:min=bt2020nc:rin=tv:npl=100"
+            ",format=gbrpf32le,tonemap=tonemap=hable:desat=0"
+            ",zscale=t=bt709:p=bt709:m=bt709:r=tv"
+        ),
+        colorspace_filter=(",setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709"),
+        output_pix_fmt=",format=yuv420p",
+    )
+
+    vf = decoder._build_vf()
+
+    assert "zscale=t=linear" in vf
+    assert "tonemap=tonemap=hable" in vf
+    assert "zscale=t=bt709" in vf
+    assert "setparams=colorspace=bt709" in vf
+    assert vf.endswith("setsar=1")
+
+
+def test_streaming_decoder_builds_plan_targeted_hlg_to_sdr_chain() -> None:
+    from unittest.mock import MagicMock, patch
+
+    from immich_memories.processing.streaming_assembler import _make_decoder
+
+    clip = MagicMock(path=Path("hlg.mp4"), is_title_screen=False, rotation_override=None)
+    ctx = MagicMock(
+        hdr_type="sdr",
+        pix_fmt="yuv420p",
+        clip_hdr_types=["hlg"],
+        clip_primaries=["bt2020"],
+        colorspace_filter=(",setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709"),
+    )
+
+    with patch(
+        "immich_memories.processing.hdr_utilities._check_zscale_available",
+        return_value=True,
+    ):
+        decoder = _make_decoder(clip, 0, 320, 240, 30, ctx=ctx, hdr_type=None)
+
+    vf = decoder._build_vf()
+    assert "zscale=t=linear" in vf
+    assert "tonemap=tonemap=hable" in vf
+    assert "zscale=t=bt709" in vf
+    assert "setparams=colorspace=bt709" in vf
+    assert ",format=yuv420p,setsar=1" in vf
+
+
 @requires_ffmpeg
 class TestStreamingAssemble:
     def test_assembles_two_clips_with_crossfade(self, tmp_path: object) -> None:
@@ -218,16 +320,7 @@ class TestStreamingAssemble:
             height=240,
             fps=10,
             fade_duration=0.3,
-            encoder_args=[
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-crf",
-                "28",
-                "-pix_fmt",
-                "yuv420p",
-            ],
+            encoding_plan=_h264_plan(),
         )
 
         assert output.exists()
@@ -292,16 +385,7 @@ class TestStreamingAssemble:
             height=240,
             fps=10,
             fade_duration=0.3,
-            encoder_args=[
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-crf",
-                "28",
-                "-pix_fmt",
-                "yuv420p",
-            ],
+            encoding_plan=_h264_plan(),
         )
 
         assert output.exists()
@@ -454,16 +538,7 @@ class TestFullStreamingPipeline:
             height=240,
             fps=10,
             fade_duration=0.3,
-            encoder_args=[
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-crf",
-                "28",
-                "-pix_fmt",
-                "yuv420p",
-            ],
+            encoding_plan=_h264_plan(),
         )
 
         assert output.exists()
@@ -558,12 +633,8 @@ class TestFrameDecoderFilterChain:
         assert "gblur=sigma=37" in vf
         assert "noise=alls=15" in vf
 
-    def test_hdr_not_in_decoder(self) -> None:
-        """HDR conversion must NOT be in the decoder — it happens on the encoder side.
-
-        Applying format=p010le in the decoder would do HLG→p010le→rgb24
-        (lossy tone-map), then the encoder tags SDR data as HLG = yellow tint.
-        """
+    def test_exact_transfer_conversion_is_applied_before_rawvideo_pipe(self) -> None:
+        """Per-source transfer normalization must happen before frame blending."""
         from pathlib import Path
 
         from immich_memories.processing.streaming_assembler import FrameDecoder
@@ -575,14 +646,13 @@ class TestFrameDecoderFilterChain:
             fps=30,
             hdr_conversion="zscale=t=arib-std-b67:tin=smpte2084",
             colorspace_filter=",setparams=colorspace=bt2020nc",
-            output_pix_fmt="p010le",
+            output_pix_fmt=",format=p010le",
         )
         vf = decoder._build_vf()
 
-        # HDR filters must NOT be in the decoder filter chain
-        assert "format=p010le" not in vf
-        assert "zscale" not in vf
-        assert "setparams" not in vf
+        assert "format=p010le" in vf
+        assert "zscale" in vf
+        assert "setparams" in vf
 
     def test_no_rotation_when_zero(self) -> None:
         """rotation=0 should NOT add any transpose filter."""
@@ -944,16 +1014,7 @@ class TestStreamingProgressCallback:
             width=320,
             height=240,
             fps=10,
-            encoder_args=[
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-crf",
-                "28",
-                "-pix_fmt",
-                "yuv420p",
-            ],
+            encoding_plan=_h264_plan(),
             progress_callback=lambda f, t: progress_calls.append((f, t)),
         )
         assert output.exists()
@@ -1008,16 +1069,7 @@ class TestStreamingProgressCallback:
             height=240,
             fps=10,
             fade_duration=0.3,
-            encoder_args=[
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-crf",
-                "28",
-                "-pix_fmt",
-                "yuv420p",
-            ],
+            encoding_plan=_h264_plan(),
             progress_callback=lambda p, m: progress_calls.append((p, m)),
         )
         assert output.exists()

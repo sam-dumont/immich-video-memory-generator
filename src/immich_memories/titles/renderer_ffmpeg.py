@@ -19,7 +19,7 @@ from pathlib import Path
 
 from immich_memories.processing.encoding_plan import EncodingPlan
 
-from .encoding import standalone_title_encoding_plan, title_encoder_args
+from .encoding import standalone_title_encoding_plan, title_color_filter, title_encoder_args
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +109,7 @@ def create_title_ffmpeg(
         Path to generated video.
     """
     cfg = config or FFmpegTitleConfig()
+    plan = encoding_plan or standalone_title_encoding_plan()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     font_path = _get_system_font()
@@ -179,7 +180,7 @@ def create_title_ffmpeg(
         filters.append(subtitle_filter)
 
     # Combine filters
-    filter_chain = ",".join(filters)
+    filter_chain = ",".join([*filters, title_color_filter(plan)])
 
     # Build FFmpeg command
     cmd = [
@@ -199,7 +200,7 @@ def create_title_ffmpeg(
         "-vf",
         filter_chain,
         # Encoding follows the supplied output contract.
-        *_get_encoder_args(encoding_plan),
+        *title_encoder_args(plan),
         "-c:a",
         "aac",
         "-b:a",
@@ -246,6 +247,7 @@ def create_title_with_effects(
         Path to generated video.
     """
     cfg = config or FFmpegTitleConfig()
+    plan = encoding_plan or standalone_title_encoding_plan()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     font_path = _get_system_font()
@@ -341,6 +343,7 @@ def create_title_with_effects(
         filters[-1] = filters[-1].replace("[t2]", "[out]")
         last_label = "out"
 
+    filters.append(f"[{last_label}]{title_color_filter(plan)}[encoded]")
     filter_complex = ";".join(filters)
 
     cmd = [
@@ -357,11 +360,11 @@ def create_title_with_effects(
         "-filter_complex",
         filter_complex,
         "-map",
-        f"[{last_label}]",
+        "[encoded]",
         "-map",
         "1:a",
         # Encoding follows the supplied output contract.
-        *_get_encoder_args(encoding_plan),
+        *title_encoder_args(plan),
         "-c:a",
         "aac",
         "-b:a",

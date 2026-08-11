@@ -48,6 +48,48 @@ class TestSingleClipAssembly:
         assert has_stream(probe, "video")
         assert get_duration(probe) > 0
 
+    def test_public_single_clip_honors_prores_mov_plan(self, test_clip_720p, tmp_path):
+        """An H.264 source cannot byte-copy past a resolved ProRes/MOV contract."""
+        from immich_memories.processing.assembly_config import AssemblyClip, AssemblySettings
+        from immich_memories.processing.encoding_plan import (
+            EncodingPlan,
+            HdrTransfer,
+            OutputCodec,
+        )
+        from immich_memories.processing.video_assembler import VideoAssembler
+
+        plan = EncodingPlan(
+            codec=OutputCodec.PRORES,
+            encoder="prores_ks",
+            encoder_args=("-profile:v", "3"),
+            target_transfer=HdrTransfer.NONE,
+            tone_map_to_sdr=False,
+            pixel_format="yuv422p10le",
+            container="mov",
+        )
+        assembler = VideoAssembler(
+            AssemblySettings(
+                encoding_plan=plan,
+                auto_resolution=False,
+                target_resolution=(320, 240),
+                scale_mode="black",
+            )
+        )
+        output = tmp_path / "single.mov"
+
+        assembler.assemble(
+            [AssemblyClip(path=test_clip_720p, duration=0.5)],
+            output,
+        )
+
+        probe = ffprobe_json(output)
+        video = next(stream for stream in probe["streams"] if stream["codec_type"] == "video")
+        assert video["codec_name"] == "prores"
+        assert video["color_space"] == "bt709"
+        assert video["color_primaries"] == "bt709"
+        assert video["color_transfer"] == "bt709"
+        assert "mov" in probe["format"]["format_name"]
+
 
 class TestDefaultSettings:
     def test_none_defaults_use_config_fallback(self, test_clip_720p, tmp_path):

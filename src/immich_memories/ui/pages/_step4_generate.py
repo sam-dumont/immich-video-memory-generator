@@ -54,8 +54,30 @@ _SCALE_MODE_MAP = {
 
 _FORMAT_MAP = {
     "MP4 (H.264)": "mp4",
+    "MP4 (H.265)": "h265",
     "MOV (ProRes)": "prores",
 }
+
+
+def resolve_ui_output_selection(state):
+    """Resolve UI/config output provenance through the shared output contract."""
+    from immich_memories.processing.encoding_plan import resolve_output_selection
+
+    if state.config is None:
+        raise ValueError("Output settings require a loaded configuration")
+    return resolve_output_selection(
+        config_codec=state.config.output.codec,
+        config_container=state.config.output.format,
+        format_override=_FORMAT_MAP.get(state.generation_options.get("format_override")),
+    )
+
+
+def normalize_ui_output_path(state, output_path: Path) -> Path:
+    """Make the selected UI filename suffix agree with the resolved container."""
+    from immich_memories.filename_builder import normalize_output_path
+
+    selection = resolve_ui_output_selection(state)
+    return normalize_output_path(output_path, selection.container)
 
 
 def _filter_selected_photos(state) -> list | None:
@@ -96,7 +118,7 @@ def _build_generation_params(state, selected_clips, output_path):
         scale_mode=_SCALE_MODE_MAP.get(
             gen_options.get("scale_mode", "Smart Crop (keep faces)"), "smart_crop"
         ),
-        output_format=_FORMAT_MAP.get(gen_options.get("format", "MP4 (H.264)"), "mp4"),
+        output_format=_FORMAT_MAP.get(gen_options.get("format_override")),
         add_date_overlay=gen_options.get("add_date", False),
         debug_preserve_intermediates=gen_options.get("keep_intermediates", False),
         privacy_mode=state.demo_mode,
@@ -162,7 +184,10 @@ async def run_generation(
     try:
         from immich_memories.generate import GenerationError, generate_memory
 
-        effective_output_path = output_dir / sanitize_filename(filename_input.value)
+        effective_output_path = normalize_ui_output_path(
+            state,
+            output_dir / sanitize_filename(filename_input.value),
+        )
 
         def on_progress(phase: str, progress: float, msg: str) -> None:
             if state.cancel_requested:

@@ -12,7 +12,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from immich_memories.processing.clips import ClipSegment
-from immich_memories.processing.encoding_plan import EncodingPlan, OutputCodec
+from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 
 __all__ = [
     "AssemblyClip",
@@ -33,7 +33,7 @@ def _default_encoding_plan() -> EncodingPlan:
         codec=OutputCodec.H264,
         encoder="libx264",
         encoder_args=("-preset", "medium", "-crf", "18"),
-        hdr=False,
+        target_transfer=HdrTransfer.NONE,
         tone_map_to_sdr=False,
         pixel_format="yuv420p",
         container="mp4",

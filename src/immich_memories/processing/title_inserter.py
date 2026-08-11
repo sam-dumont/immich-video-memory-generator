@@ -14,7 +14,9 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     TransitionType,
 )
+from immich_memories.processing.encoding_plan import HdrTransfer
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
+from immich_memories.processing.hdr_utilities import _get_colorspace_filter
 from immich_memories.processing.scaling_utilities import aggregate_mood_from_clips
 
 logger = logging.getLogger(__name__)
@@ -82,7 +84,7 @@ class TitleInserter:
             hdr_type=hdr_type,
         )
 
-        encoder_args = encoder_args_for_plan(plan, hdr_type or "sdr")
+        encoder_args = encoder_args_for_plan(plan)
 
         pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
         # WHY: rawvideo pipe strips color metadata — must tag input explicitly
@@ -94,7 +96,7 @@ class TitleInserter:
                 "-color_primaries",
                 "bt2020",
                 "-color_trc",
-                "arib-std-b67",
+                ("smpte2084" if plan.target_transfer is HdrTransfer.PQ else "arib-std-b67"),
                 "-colorspace",
                 "bt2020nc",
             ]
@@ -104,6 +106,7 @@ class TitleInserter:
             "-s", f"{target_w}x{target_h}", "-r", str(fps),
             *input_color_args,
             "-i", "pipe:0",
+            "-vf", _get_colorspace_filter(hdr_type or "sdr").removeprefix(","),
             *encoder_args,
             "-an", "-movflags", "+faststart",
             str(output_path),
@@ -307,7 +310,7 @@ class TitleInserter:
             hdr_type=hdr_type,
         )
 
-        encoder_args = encoder_args_for_plan(plan, hdr_type or "sdr")
+        encoder_args = encoder_args_for_plan(plan)
 
         pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
         input_color_args: list[str] = []
@@ -318,7 +321,7 @@ class TitleInserter:
                 "-color_primaries",
                 "bt2020",
                 "-color_trc",
-                "arib-std-b67",
+                ("smpte2084" if plan.target_transfer is HdrTransfer.PQ else "arib-std-b67"),
                 "-colorspace",
                 "bt2020nc",
             ]
@@ -328,6 +331,7 @@ class TitleInserter:
             "-s", f"{target_w}x{target_h}", "-r", str(fps),
             *input_color_args,
             "-i", "pipe:0",
+            "-vf", _get_colorspace_filter(hdr_type or "sdr").removeprefix(","),
             *encoder_args,
             "-an", "-movflags", "+faststart",
             str(output_path),

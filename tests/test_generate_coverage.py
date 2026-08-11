@@ -869,7 +869,7 @@ class TestBuildAssemblySettingsExtraBranches:
         settings = _build_assembly_settings(params, [])
         assert settings.output_codec == "prores"
 
-    def test_unknown_format_uses_config_codec(self):
+    def test_unknown_explicit_format_is_rejected(self):
         config = Config()
         config.output.codec = "h265"
         params = GenerationParams(
@@ -878,8 +878,8 @@ class TestBuildAssemblySettingsExtraBranches:
             config=config,
             output_format="webm",
         )
-        settings = _build_assembly_settings(params, [])
-        assert settings.output_codec == "h265"
+        with pytest.raises(ValueError, match="Unsupported format override"):
+            _build_assembly_settings(params, [])
 
     def test_scale_mode_from_params(self):
         params = GenerationParams(

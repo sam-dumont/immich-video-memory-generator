@@ -21,6 +21,8 @@ from immich_memories.cli._pipeline_runner import (
     run_pipeline_and_generate,
 )
 from immich_memories.cli._trip_generation import handle_trip_generation, resolve_music_arg
+from immich_memories.filename_builder import normalize_output_path
+from immich_memories.processing.encoding_plan import resolve_output_selection
 from immich_memories.timeperiod import DateRange, parse_date
 
 if TYPE_CHECKING:
@@ -38,7 +40,7 @@ def _build_params_table(
     scale_mode: str | None,
     transition: str,
     resolution: str,
-    output_format: str,
+    output_format: str | None,
     output_path: Path,
     add_date: bool,
     keep_intermediates: bool,
@@ -66,7 +68,7 @@ def _build_params_table(
     table.add_row("Scale Mode", scale_mode or config.defaults.scale_mode)
     table.add_row("Transition", transition)
     table.add_row("Resolution", resolution)
-    table.add_row("Format", output_format)
+    table.add_row("Format", output_format or config.output.codec)
     table.add_row("Output", str(output_path))
     if add_date:
         table.add_row("Date Overlay", "Enabled")
@@ -196,9 +198,9 @@ def register_generate_commands(main: click.Group) -> None:
     @click.option(
         "--format",
         "output_format",
-        type=click.Choice(["mp4", "prores"]),
-        default="mp4",
-        help="Output format",
+        type=click.Choice(["mp4", "h265", "prores"]),
+        default=None,
+        help="Output format override (default: config value)",
     )
     @click.option(
         "--quality",
@@ -330,7 +332,7 @@ def register_generate_commands(main: click.Group) -> None:
         transition: str,
         resolution: str,
         music_volume: float,
-        output_format: str,
+        output_format: str | None,
         quality: str | None,
         output: str | None,
         music: str | None,
@@ -378,6 +380,11 @@ def register_generate_commands(main: click.Group) -> None:
         from immich_memories.cli._live_display import LiveDisplay, ProgressDisplay, QuietDisplay
 
         config = ctx.obj["config"]
+        output_selection = resolve_output_selection(
+            config_codec=config.output.codec,
+            config_container=config.output.format,
+            format_override=output_format,
+        )
 
         # CLI quality flag overrides config
         if quality:
@@ -468,7 +475,7 @@ def register_generate_commands(main: click.Group) -> None:
 
         # Determine output path
         if output:
-            output_path = Path(output)
+            output_path = normalize_output_path(Path(output), output_selection.container)
         else:
             output_dir = config.output.output_path
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -484,7 +491,9 @@ def register_generate_commands(main: click.Group) -> None:
                 date_slug = (
                     f"{date_range.start.strftime('%Y%m%d')}-{date_range.end.strftime('%Y%m%d')}"
                 )
-            output_path = output_dir / f"{person_slug}_{type_slug}_{date_slug}.mp4"
+            output_path = output_dir / (
+                f"{person_slug}_{type_slug}_{date_slug}.{output_selection.container}"
+            )
 
         if not quiet:
             console.print()

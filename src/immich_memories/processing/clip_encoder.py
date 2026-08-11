@@ -4,17 +4,15 @@ from __future__ import annotations
 
 import logging
 import subprocess
-import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 from immich_memories.processing.assembly_config import (
     AssemblyClip,
     AssemblySettings,
     _get_rotation_filter,
 )
-from immich_memories.processing.encoding_plan import EncodingPlan
+from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.ffmpeg_runner import (
     AssemblyContext,
@@ -31,13 +29,13 @@ from immich_memories.security import validate_video_path
 logger = logging.getLogger(__name__)
 
 
-def encoder_args_for_plan(plan: EncodingPlan, hdr_type: str = "hlg") -> list[str]:
+def encoder_args_for_plan(plan: EncodingPlan) -> list[str]:
     """Build FFmpeg arguments from a resolved plan without selecting again."""
     args = ["-c:v", plan.encoder, *plan.encoder_args, "-pix_fmt", plan.pixel_format]
     if plan.codec.value == "h265" and plan.container == "mp4":
         args.extend(["-tag:v", "hvc1"])
     if plan.hdr:
-        color_trc = "smpte2084" if hdr_type == "pq" else "arib-std-b67"
+        color_trc = "smpte2084" if plan.target_transfer is HdrTransfer.PQ else "arib-std-b67"
         args.extend(
             [
                 "-colorspace",
@@ -60,38 +58,6 @@ def encoder_args_for_plan(plan: EncodingPlan, hdr_type: str = "hlg") -> list[str
             ]
         )
     return args
-
-
-def configure_pyav_output_stream(
-    output_container: Any,
-    target_fps: int,
-    is_hdr: bool,
-    width: int,
-    height: int,
-    crf: int,
-) -> Any:
-    """Configure a PyAV output stream. macOS uses VideoToolbox, Linux uses libx265."""
-    if sys.platform == "darwin":
-        output_stream = output_container.add_stream("hevc_videotoolbox", rate=target_fps)
-        if is_hdr:
-            output_stream.pix_fmt = "p010le"
-            output_stream.options = {
-                "tag": "hvc1",
-                "colorspace": "bt2020nc",
-                "color_primaries": "bt2020",
-                "color_trc": "arib-std-b67",
-            }
-        else:
-            output_stream.pix_fmt = "yuv420p"
-            output_stream.options = {"tag": "hvc1"}
-    else:
-        output_stream = output_container.add_stream("libx265", rate=target_fps)
-        output_stream.pix_fmt = "yuv420p10le" if is_hdr else "yuv420p"
-        output_stream.options = {"crf": str(crf), "preset": "fast"}
-
-    output_stream.width = width
-    output_stream.height = height
-    return output_stream
 
 
 def log_ffmpeg_error(result: subprocess.CompletedProcess) -> str:
@@ -135,12 +101,14 @@ class ClipEncoder:
         plan = self.settings.encoding_plan
         source_hdr = _detect_hdr_type(clip.path) if plan.hdr or plan.tone_map_to_sdr else None
         if plan.hdr:
-            target_hdr = source_hdr or "hlg"
+            target_hdr = plan.target_transfer.value
             conversion = _get_hdr_conversion_filter(source_hdr, target_hdr)
             return target_hdr, conversion + _get_colorspace_filter(target_hdr)
         if plan.tone_map_to_sdr and source_hdr:
-            return "sdr", _get_hdr_conversion_filter(source_hdr, "sdr")
-        return "sdr", ""
+            return "sdr", _get_hdr_conversion_filter(source_hdr, "sdr") + _get_colorspace_filter(
+                "sdr"
+            )
+        return "sdr", _get_colorspace_filter("sdr")
 
     def encode_single_clip(
         self,
@@ -192,7 +160,7 @@ class ClipEncoder:
             clip, target_w, target_h, rotation_filter, common_suffix, audio_filter
         )
 
-        video_codec_args = encoder_args_for_plan(self.settings.encoding_plan, hdr_type)
+        video_codec_args = encoder_args_for_plan(self.settings.encoding_plan)
 
         cmd = [
             "ffmpeg",
@@ -400,7 +368,7 @@ class ClipEncoder:
         ctx: AssemblyContext,
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> subprocess.CompletedProcess:
-        video_codec_args = encoder_args_for_plan(self.settings.encoding_plan, ctx.hdr_type)
+        video_codec_args = encoder_args_for_plan(self.settings.encoding_plan)
         logger.info(
             "Encoding final output with %s (%s)",
             self.settings.encoding_plan.encoder,

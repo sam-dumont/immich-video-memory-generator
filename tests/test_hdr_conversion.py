@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from immich_memories.processing.assembly_config import AssemblyClip, AssemblySettings
-from immich_memories.processing.encoding_plan import EncodingPlan, OutputCodec
+from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 
 
 class TestDetectHdrType:
@@ -226,7 +226,7 @@ class TestHdrConversionFilter:
             codec=OutputCodec.H264,
             encoder="libx264",
             encoder_args=("-preset", "medium", "-crf", "18"),
-            hdr=False,
+            target_transfer=HdrTransfer.NONE,
             tone_map_to_sdr=True,
             pixel_format="yuv420p",
             container="mp4",
@@ -257,6 +257,9 @@ class TestHdrConversionFilter:
 
         assert context.hdr_type == "sdr"
         assert context.pix_fmt == "yuv420p"
+        assert "setparams=colorspace=bt709" in context.colorspace_filter
+        assert "color_primaries=bt709" in context.colorspace_filter
+        assert "color_trc=bt709" in context.colorspace_filter
         assert "zscale=t=linear" in conversion
         assert "tonemap=" in conversion
         assert "zscale=t=bt709" in conversion

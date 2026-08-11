@@ -8,11 +8,19 @@ import shutil
 import subprocess
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 
-from immich_memories.processing.hdr_utilities import _resolve_clip_hdr
+from immich_memories.processing.clip_encoder import encoder_args_for_plan
+from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+from immich_memories.processing.hdr_utilities import (
+    _detect_color_primaries,
+    _detect_hdr_type,
+    _get_colorspace_filter,
+    _resolve_clip_hdr,
+)
 from immich_memories.processing.streaming_audio import (
     _probe_duration,
     extract_and_mix_audio,
@@ -20,6 +28,19 @@ from immich_memories.processing.streaming_audio import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _default_streaming_plan() -> EncodingPlan:
+    """Concrete SDR/H.264 contract for standalone streaming callers."""
+    return EncodingPlan(
+        codec=OutputCodec.H264,
+        encoder="libx264",
+        encoder_args=("-preset", "medium", "-crf", "18"),
+        target_transfer=HdrTransfer.NONE,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p",
+        container="mp4",
+    )
 
 
 def blend_crossfade(
@@ -134,6 +155,16 @@ class FrameDecoder:
         if self._sdr_to_hdr_filter:
             parts.append(self._sdr_to_hdr_filter)
 
+        # Apply the shared per-source transfer conversion and tag the decoded
+        # frames before they enter the metadata-free rawvideo pipe.
+        for color_filter in (
+            self._hdr_conversion,
+            self._colorspace_filter,
+            self._output_pix_fmt,
+        ):
+            if color_filter:
+                parts.append(color_filter.removeprefix(","))
+
         # Square pixels
         parts.append("setsar=1")
 
@@ -223,26 +254,17 @@ class StreamingEncoder:
         width: int,
         height: int,
         fps: int,
-        encoder_args: list[str] | None = None,
-        hdr_type: str | None = None,
+        encoding_plan: EncodingPlan | None = None,
     ) -> None:
         self._output_path = output_path
         self._width = width
         self._height = height
         self._fps = fps
-        self._encoder_args = encoder_args or [
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            "18",
-            "-pix_fmt",
-            "yuv420p",
-        ]
+        self._encoding_plan = encoding_plan or _default_streaming_plan()
+        self._encoder_args = encoder_args_for_plan(self._encoding_plan)
         # WHY: Frames arrive as rgb24 (sRGB). For HDR output, zscale converts
         # sRGB → HLG/PQ on the encoder side. Same pattern as photo pipeline.
-        self._hdr_type = hdr_type
+        self._target_transfer = self._encoding_plan.target_transfer
         self._proc: subprocess.Popen[bytes] | None = None
 
     def start(self) -> None:
@@ -251,9 +273,12 @@ class StreamingEncoder:
         # The rawvideo pipe STRIPS color range metadata — without explicit flags,
         # the encoder assumes full range (0-1023) when data is tv range (64-940)
         # = washed out colors. Must tag input with color metadata.
-        vf_args: list[str] = []
+        target_type = (
+            self._target_transfer.value if self._target_transfer is not HdrTransfer.NONE else "sdr"
+        )
+        vf_args = ["-vf", _get_colorspace_filter(target_type).removeprefix(",")]
         input_color_args: list[str] = []
-        if self._hdr_type == "hlg":
+        if self._target_transfer is HdrTransfer.HLG:
             input_color_args = [
                 "-color_range",
                 "tv",
@@ -264,7 +289,7 @@ class StreamingEncoder:
                 "-colorspace",
                 "bt2020nc",
             ]
-        elif self._hdr_type == "pq":
+        elif self._target_transfer is HdrTransfer.PQ:
             input_color_args = [
                 "-color_range",
                 "tv",
@@ -277,7 +302,7 @@ class StreamingEncoder:
             ]
 
         # WHY: yuv420p10le for HDR (native format, zero conversion), rgb24 for SDR
-        input_pix_fmt = "yuv420p10le" if self._hdr_type else "rgb24"
+        input_pix_fmt = "yuv420p10le" if self._encoding_plan.hdr else "rgb24"
 
         cmd = [
             "ffmpeg",
@@ -480,18 +505,25 @@ def _make_decoder(
     if rotation_override is not None and rotation_override != 0:
         rotation = rotation_override
 
-    # WHY: title screens are already encoded with the correct HDR settings
-    # by the title generator. Skip per-clip HDR detection which can fail
-    # when the context was rebuilt from the extended clip list (shifted indices).
-    if is_title and hdr_type:
-        hdr_conversion = ""
-        colorspace_filter = ""
-        output_pix_fmt = ""
-        sdr_to_hdr_filter = ""
-    else:
-        hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, _ = _resolve_clip_hdr(
-            clip_idx, ctx, hdr_type
+    if ctx is None and Path(clip.path).exists():
+        target_type = hdr_type or "sdr"
+        source_types: list[str | None] = [None] * (clip_idx + 1)
+        source_primaries: list[str | None] = [None] * (clip_idx + 1)
+        source_types[clip_idx] = _detect_hdr_type(clip.path)
+        source_primaries[clip_idx] = _detect_color_primaries(clip.path)
+        ctx = SimpleNamespace(
+            hdr_type=target_type,
+            pix_fmt="yuv420p10le" if hdr_type else "yuv420p",
+            clip_hdr_types=source_types,
+            clip_primaries=source_primaries,
+            colorspace_filter=_get_colorspace_filter(target_type),
         )
+
+    # Title videos may be pre-encoded, but only an exact transfer match may
+    # bypass conversion. The shared resolver makes the same decision for all clips.
+    hdr_conversion, colorspace_filter, output_pix_fmt, sdr_to_hdr_filter, _ = _resolve_clip_hdr(
+        clip_idx, ctx, hdr_type
+    )
     pix_fmt = "yuv420p10le" if hdr_type else "rgb24"
     logger.info(
         f"Decoder[{clip_idx}] pix={pix_fmt} title={is_title} hdr_type={hdr_type} "
@@ -551,10 +583,9 @@ def assemble_streaming(
     height: int,
     fps: int,
     fade_duration: float = 0.5,
-    encoder_args: list[str] | None = None,
+    encoding_plan: EncodingPlan | None = None,
     ctx: Any | None = None,
     privacy_mode: bool = False,
-    hdr_type: str | None = None,
     scale_mode: str = "blur",
     progress_callback: Callable[[int, int], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
@@ -569,9 +600,9 @@ def assemble_streaming(
 
     fade_frames = int(fade_duration * fps)
     total_frames = _estimate_total_frames(clips, transitions, fps, fade_duration)
-    encoder = StreamingEncoder(
-        output_path, width, height, fps, encoder_args=encoder_args, hdr_type=hdr_type
-    )
+    plan = encoding_plan or _default_streaming_plan()
+    hdr_type = plan.target_transfer.value if plan.hdr else None
+    encoder = StreamingEncoder(output_path, width, height, fps, encoding_plan=plan)
     encoder.start()
     blend_buf, temp_buf = _alloc_blend_bufs(width, height, hdr_type)
     # WHY: Throttle callbacks to every ~0.5s worth of frames to avoid UI overhead
@@ -736,20 +767,20 @@ def streaming_assemble_full(
     height: int,
     fps: int,
     fade_duration: float = 0.5,
-    encoder_args: list[str] | None = None,
+    encoding_plan: EncodingPlan | None = None,
     ctx: Any | None = None,
     normalize_audio: bool = True,
     privacy_mode: bool = False,
-    hdr_type: str | None = None,
     scale_mode: str = "blur",
     progress_callback: Callable[[float, str], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
 ) -> Path:
-    """Full streaming assembly: video encode + audio mix + mux → final MP4."""
+    """Full streaming assembly: plan-bound video encode + audio mix + mux."""
+    plan = encoding_plan or _default_streaming_plan()
     work_dir = output_path.parent / ".streaming_work"
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    video_only = work_dir / "video.mp4"
+    video_only = work_dir / f"video.{plan.container}"
     audio_only = work_dir / "audio.m4a"
     audio_work_dir = work_dir / "audio_clips"
     audio_work_dir.mkdir(exist_ok=True)
@@ -784,10 +815,9 @@ def streaming_assemble_full(
             height=height,
             fps=fps,
             fade_duration=fade_duration,
-            encoder_args=encoder_args,
+            encoding_plan=plan,
             ctx=ctx,
             privacy_mode=privacy_mode,
-            hdr_type=hdr_type,
             scale_mode=scale_mode,
             progress_callback=_frame_progress,
             frame_preview_callback=frame_preview_callback,

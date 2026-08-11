@@ -300,6 +300,21 @@ class TestSimpleMixing:
         mock_move.assert_called_once()
         assert result == video
 
+    def test_same_prores_output_keeps_mov_temp_container(
+        self, tmp_path: Path, music_path: Path
+    ) -> None:
+        video = tmp_path / "video.mov"
+        svc = _make_service(music_path=music_path, music_volume=0.3)
+        mock_result = MagicMock(returncode=0)
+
+        with (
+            patch("subprocess.run", return_value=mock_result) as mock_run,
+            patch("shutil.move"),
+        ):
+            svc._add_music_simple(video, video)
+
+        assert mock_run.call_args.args[0][-1].endswith(".temp.mov")
+
     def test_returns_output_path_on_success(self, tmp_path: Path, music_path: Path) -> None:
         svc = _make_service(music_path=music_path, music_volume=0.3)
         mock_result = MagicMock()

@@ -17,7 +17,7 @@ from staticmap import CircleMarker, StaticMap
 
 from immich_memories.processing.encoding_plan import EncodingPlan
 
-from .encoding import standalone_title_encoding_plan, title_encoder_args
+from .encoding import standalone_title_encoding_plan, title_color_filter, title_encoder_args
 from .map_renderer import _draw_gradient_band, _overlay_composite, _wrap_text
 
 logger = logging.getLogger(__name__)
@@ -388,6 +388,7 @@ def _pipe_frames(
     encoding_plan: EncodingPlan | None,
 ) -> None:
     """Render animation frames and pipe raw RGB to FFmpeg."""
+    plan = encoding_plan or standalone_title_encoding_plan()
     total = int(duration * fps)
     hold_s = int(hold_start * fps)
     hold_e = int(hold_end * fps)
@@ -414,7 +415,9 @@ def _pipe_frames(
         "lavfi",
         "-i",
         "anullsrc=r=48000:cl=stereo",
-        *title_encoder_args(encoding_plan or standalone_title_encoding_plan()),
+        "-vf",
+        title_color_filter(plan),
+        *title_encoder_args(plan),
         "-c:a",
         "aac",
         "-b:a",

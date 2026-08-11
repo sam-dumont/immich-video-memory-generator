@@ -104,9 +104,11 @@ def render_step4() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     from immich_memories.filename_builder import build_output_filename
+    from immich_memories.ui.pages._step4_generate import resolve_ui_output_selection
 
     date_range = state.date_range
     person = state.selected_person
+    output_selection = resolve_ui_output_selection(state)
 
     default_filename = build_output_filename(
         memory_type=state.memory_type,
@@ -114,6 +116,7 @@ def render_step4() -> None:
         person_name=person.name if person else None,
         date_start=date_range.start if date_range else None,
         date_end=date_range.end if date_range else None,
+        container=output_selection.container,
     )
 
     from immich_memories.ui.pages._step4_upload import init_upload_state, render_upload_controls

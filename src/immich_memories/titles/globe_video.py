@@ -11,7 +11,7 @@ import numpy as np
 
 from immich_memories.processing.encoding_plan import EncodingPlan
 
-from .encoding import standalone_title_encoding_plan, title_encoder_args
+from .encoding import standalone_title_encoding_plan, title_color_filter, title_encoder_args
 from .globe_renderer import GlobeCameraKeyframe, interpolate_camera
 from .taichi_globe import project_globe_frame
 
@@ -112,7 +112,8 @@ def _build_ffmpeg_command(
 
     Uses the shared encoder from encoding.py (single source of truth).
     """
-    encoder_args = title_encoder_args(encoding_plan or standalone_title_encoding_plan())
+    plan = encoding_plan or standalone_title_encoding_plan()
+    encoder_args = title_encoder_args(plan)
 
     return [
         "ffmpeg",
@@ -133,6 +134,8 @@ def _build_ffmpeg_command(
         "lavfi",
         "-i",
         "anullsrc=r=48000:cl=stereo",
+        "-vf",
+        title_color_filter(plan),
         *encoder_args,
         "-c:a",
         "aac",

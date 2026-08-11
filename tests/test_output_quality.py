@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from immich_memories.processing.clip_encoder import encoder_args_for_plan
-from immich_memories.processing.encoding_plan import EncodingPlan, OutputCodec
+from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 from immich_memories.processing.hdr_utilities import quality_to_crf
 
 
@@ -36,7 +36,7 @@ class TestEncoderArgsQuality:
             codec=OutputCodec.H264,
             encoder="libx264",
             encoder_args=("-preset", "medium", "-crf", str(crf)),
-            hdr=False,
+            target_transfer=HdrTransfer.NONE,
             tone_map_to_sdr=False,
             pixel_format="yuv420p",
             container="mp4",
