@@ -58,6 +58,7 @@ class TestAutoSuggest:
     def test_candidates_have_required_fields(self, candidates):
         for c in candidates:
             assert c.memory_type
+            assert c.category
             assert c.memory_key
             assert c.reason
             assert 0 <= c.score <= 1
@@ -133,6 +134,7 @@ class TestCliSuggest:
         assert isinstance(data, list)
         assert len(data) > 0
         assert "memory_type" in data[0]
+        assert "category" in data[0]
         assert "score" in data[0]
         assert "reason" in data[0]
 
@@ -141,6 +143,7 @@ class TestCliSuggest:
         result = runner.invoke(main, ["auto", "suggest", "--limit", "3"])
         assert result.exit_code == 0, result.output
         assert "Type" in result.output
+        assert "Category" in result.output
         assert "Score" in result.output
         assert "Reason" in result.output
 

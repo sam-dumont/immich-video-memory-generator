@@ -16,6 +16,7 @@ def _print_candidates_table(candidates: list) -> None:
     table = Table(title="Memory Candidates")
     table.add_column("#", style="dim", justify="right")
     table.add_column("Type", style="cyan")
+    table.add_column("Category", style="magenta")
     table.add_column("Date Range", style="green")
     table.add_column("Score", justify="right")
     table.add_column("Reason")
@@ -28,6 +29,7 @@ def _print_candidates_table(candidates: list) -> None:
         table.add_row(
             str(i),
             label,
+            c.category.value,
             f"{c.date_range_start} to {c.date_range_end}",
             f"{c.score:.3f}",
             c.reason,
@@ -41,6 +43,7 @@ def _candidates_to_json(candidates: list) -> str:
     rows = [
         {
             "memory_type": c.memory_type,
+            "category": c.category.value,
             "date_range": f"{c.date_range_start} to {c.date_range_end}",
             "score": round(c.score, 3),
             "reason": c.reason,

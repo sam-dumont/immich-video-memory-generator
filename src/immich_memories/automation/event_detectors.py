@@ -9,7 +9,11 @@ from datetime import date, timedelta
 from typing import Any
 
 from immich_memories.api.models import Asset
-from immich_memories.automation.candidates import MemoryCandidate, make_memory_key
+from immich_memories.automation.candidates import (
+    CandidateCategory,
+    MemoryCandidate,
+    make_memory_key,
+)
 from immich_memories.config_loader import Config
 
 logger = logging.getLogger(__name__)
@@ -67,6 +71,7 @@ class TripDetector:
             candidates.append(
                 MemoryCandidate(
                     memory_type="trip",
+                    category=CandidateCategory.TRIP,
                     date_range_start=trip.start_date,
                     date_range_end=trip.end_date,
                     person_names=[],
@@ -109,6 +114,7 @@ def _check_burst(
 
     return MemoryCandidate(
         memory_type="monthly_highlights",
+        category=CandidateCategory.ACTIVITY_BURST,
         date_range_start=start,
         date_range_end=end,
         person_names=[],
@@ -234,6 +240,7 @@ class MultiPersonDetector:
             candidates.append(
                 MemoryCandidate(
                     memory_type="multi_person",
+                    category=CandidateCategory.MULTI_PERSON,
                     date_range_start=start,
                     date_range_end=end,
                     person_names=display_names,

@@ -10,7 +10,11 @@ from immich_memories.automation.calendar_detectors import (
     PersonSpotlightDetector,
     YearlyDetector,
 )
-from immich_memories.automation.candidates import MemoryCandidate, make_memory_key
+from immich_memories.automation.candidates import (
+    CandidateCategory,
+    MemoryCandidate,
+    make_memory_key,
+)
 
 
 def _make_config():
@@ -39,6 +43,7 @@ class TestMonthlyDetector:
         assert len(result) == 3
         assert all(isinstance(c, MemoryCandidate) for c in result)
         assert result[0].memory_type == "monthly_highlights"
+        assert result[0].category is CandidateCategory.MONTHLY_REVIEW
         assert result[0].date_range_start == date(2026, 2, 1)
         assert result[0].date_range_end == date(2026, 2, 28)
         assert result[0].asset_count == 50

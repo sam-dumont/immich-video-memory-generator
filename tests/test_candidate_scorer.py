@@ -6,7 +6,7 @@ import math
 from datetime import date
 
 from immich_memories.automation.candidate_scorer import score_and_rank
-from immich_memories.automation.candidates import MemoryCandidate
+from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 
 
 def _make_candidate(
@@ -20,6 +20,7 @@ def _make_candidate(
     key = memory_key or f"{memory_type}:{start.isoformat()}:{end.isoformat()}:"
     return MemoryCandidate(
         memory_type=memory_type,
+        category=CandidateCategory.MONTHLY_REVIEW,
         date_range_start=start,
         date_range_end=end,
         person_names=[],

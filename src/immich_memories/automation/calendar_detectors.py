@@ -9,7 +9,11 @@ from __future__ import annotations
 import calendar
 from datetime import date
 
-from immich_memories.automation.candidates import MemoryCandidate, make_memory_key
+from immich_memories.automation.candidates import (
+    CandidateCategory,
+    MemoryCandidate,
+    make_memory_key,
+)
 from immich_memories.config_loader import Config
 from immich_memories.i18n import get_ordinal
 
@@ -58,6 +62,7 @@ class MonthlyDetector:
             candidates.append(
                 MemoryCandidate(
                     memory_type="monthly_highlights",
+                    category=CandidateCategory.MONTHLY_REVIEW,
                     date_range_start=start,
                     date_range_end=end,
                     person_names=[],
@@ -116,6 +121,7 @@ class YearlyDetector:
             candidates.append(
                 MemoryCandidate(
                     memory_type="year_in_review",
+                    category=CandidateCategory.YEAR_IN_REVIEW,
                     date_range_start=start,
                     date_range_end=end,
                     person_names=[],
@@ -189,6 +195,7 @@ class PersonSpotlightDetector:
             candidates.append(
                 MemoryCandidate(
                     memory_type="person_spotlight",
+                    category=CandidateCategory.PERSON_SPOTLIGHT,
                     date_range_start=start,
                     date_range_end=end,
                     person_names=[person.name],
@@ -247,6 +254,7 @@ class OnThisDayDetector:
         return [
             MemoryCandidate(
                 memory_type="on_this_day",
+                category=CandidateCategory.ON_THIS_DAY,
                 date_range_start=date(today.year, today.month, today.day),
                 date_range_end=date(today.year, today.month, today.day),
                 person_names=[],
@@ -312,6 +320,7 @@ class BirthdayDetector:
             candidates.append(
                 MemoryCandidate(
                     memory_type="person_spotlight",
+                    category=CandidateCategory.BIRTHDAY,
                     date_range_start=start,
                     date_range_end=end,
                     person_names=[person.name],

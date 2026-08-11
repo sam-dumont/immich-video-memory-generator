@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from immich_memories.analysis.trip_detection import DetectedTrip
 from immich_memories.api.models import Asset, AssetType, ExifInfo
-from immich_memories.automation.candidates import make_memory_key
+from immich_memories.automation.candidates import CandidateCategory, make_memory_key
 from immich_memories.automation.event_detectors import (
     ActivityBurstDetector,
     MultiPersonDetector,
@@ -69,6 +69,7 @@ class TestTripDetector:
         assert len(candidates) == 1
         c = candidates[0]
         assert c.memory_type == "trip"
+        assert c.category is CandidateCategory.TRIP
         assert c.date_range_start == date(2026, 1, 5)
         assert c.date_range_end == date(2026, 1, 15)
         assert "Barcelona" in c.reason
@@ -218,6 +219,7 @@ class TestActivityBurstDetector:
         assert len(candidates) == 1
         c = candidates[0]
         assert c.memory_type == "monthly_highlights"
+        assert c.category is CandidateCategory.ACTIVITY_BURST
         assert c.date_range_start == date(2026, 1, 1)
         assert c.date_range_end == date(2026, 1, 31)
         assert c.asset_count == 500

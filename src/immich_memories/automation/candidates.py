@@ -4,7 +4,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from enum import StrEnum
 from typing import Any
+
+
+class CandidateCategory(StrEnum):
+    """The detector identity of a proposed memory."""
+
+    MONTHLY_REVIEW = "monthly_review"
+    ACTIVITY_BURST = "activity_burst"
+    YEAR_IN_REVIEW = "year_in_review"
+    PERSON_SPOTLIGHT = "person_spotlight"
+    BIRTHDAY = "birthday"
+    MULTI_PERSON = "multi_person"
+    ON_THIS_DAY = "on_this_day"
+    TRIP = "trip"
 
 
 @dataclass
@@ -12,6 +26,7 @@ class MemoryCandidate:
     """A proposed memory that could be generated next."""
 
     memory_type: str
+    category: CandidateCategory
     date_range_start: date
     date_range_end: date
     person_names: list[str]

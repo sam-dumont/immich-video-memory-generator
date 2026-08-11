@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from rich.console import Console
 
-from immich_memories.automation.candidates import MemoryCandidate
+from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
 from immich_memories.automation.runner import AutoRunner, _build_generate_command
+from immich_memories.cli.auto_cmd import _candidates_to_json, _print_candidates_table
 from immich_memories.config_loader import Config
 
 
@@ -115,6 +118,7 @@ class TestRunOneDryRun:
         """Dry run logs the command but does not call subprocess."""
         candidate = MemoryCandidate(
             memory_type="monthly_highlights",
+            category=CandidateCategory.MONTHLY_REVIEW,
             date_range_start=date(2026, 2, 1),
             date_range_end=date(2026, 2, 28),
             person_names=[],
@@ -152,6 +156,7 @@ class TestBuildGenerateCommand:
     def test_monthly_command(self) -> None:
         candidate = MemoryCandidate(
             memory_type="monthly_highlights",
+            category=CandidateCategory.MONTHLY_REVIEW,
             date_range_start=date(2026, 2, 1),
             date_range_end=date(2026, 2, 28),
             person_names=[],
@@ -175,6 +180,7 @@ class TestBuildGenerateCommand:
     def test_person_spotlight_with_upload(self) -> None:
         candidate = MemoryCandidate(
             memory_type="person_spotlight",
+            category=CandidateCategory.PERSON_SPOTLIGHT,
             date_range_start=date(2025, 1, 1),
             date_range_end=date(2025, 12, 31),
             person_names=["Alice"],
@@ -190,6 +196,7 @@ class TestBuildGenerateCommand:
     def test_year_in_review_command(self) -> None:
         candidate = MemoryCandidate(
             memory_type="year_in_review",
+            category=CandidateCategory.YEAR_IN_REVIEW,
             date_range_start=date(2025, 1, 1),
             date_range_end=date(2025, 12, 31),
             person_names=[],
@@ -211,6 +218,7 @@ class TestBuildGenerateCommand:
     def test_trip_command(self) -> None:
         candidate = MemoryCandidate(
             memory_type="trip",
+            category=CandidateCategory.TRIP,
             date_range_start=date(2025, 7, 10),
             date_range_end=date(2025, 7, 17),
             person_names=[],
@@ -229,6 +237,7 @@ class TestBuildGenerateCommand:
         """Person names use --person=Name to prevent flag injection."""
         candidate = MemoryCandidate(
             memory_type="multi_person",
+            category=CandidateCategory.MULTI_PERSON,
             date_range_start=date(2025, 1, 1),
             date_range_end=date(2025, 12, 31),
             person_names=["Alice", "--evil"],
@@ -240,3 +249,30 @@ class TestBuildGenerateCommand:
         cmd = _build_generate_command(candidate, upload=False)
         assert "--person=Alice" in cmd
         assert "--person=--evil" in cmd
+
+
+class TestSuggestOutput:
+    def test_json_and_table_include_candidate_category(self) -> None:
+        candidate = MemoryCandidate(
+            memory_type="monthly_highlights",
+            category=CandidateCategory.MONTHLY_REVIEW,
+            date_range_start=date(2026, 2, 1),
+            date_range_end=date(2026, 2, 28),
+            person_names=[],
+            memory_key="monthly_highlights:2026-02-01:2026-02-28:",
+            score=0.7,
+            reason="150 assets",
+            asset_count=150,
+        )
+
+        row = json.loads(_candidates_to_json([candidate]))[0]
+        assert row["category"] == "monthly_review"
+
+        with patch(
+            "immich_memories.cli.auto_cmd.console", new=Console(record=True, width=200)
+        ) as console:
+            _print_candidates_table([candidate])
+
+        rendered = console.export_text()
+        assert "Category" in rendered
+        assert "monthly_review" in rendered
