@@ -14,6 +14,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
 
 from immich_memories.api.compatibility import ApiVersionPolicy
+from immich_memories.processing.encoding_plan import HdrMode
 
 
 def expand_env_vars(value: str) -> str:
@@ -275,8 +276,14 @@ class OutputConfig(BaseModel):
     format: Literal["mp4", "mov"] = "mp4"
     resolution: Literal["720p", "1080p", "4k"] = "1080p"
     codec: Literal["h264", "h265", "prores"] = "h264"
+    hdr_mode: HdrMode = HdrMode.AUTO
     quality: Literal["high", "medium", "low"] = "high"
     crf: int | None = Field(default=None, ge=0, le=51)
+
+    @field_serializer("hdr_mode")
+    def serialize_hdr_mode(self, value: HdrMode) -> str:
+        """Serialize the HDR policy as a portable YAML/JSON string."""
+        return value.value
 
     @property
     def effective_crf(self) -> int:

@@ -162,6 +162,14 @@ def get_ffmpeg_encoder(
     Returns:
         Tuple of (encoder_name, encoder_args).
     """
+    if codec not in {"h264", "h265", "prores"}:
+        raise ValueError(f"Unsupported codec: {codec}")
+
+    # ProRes hardware support varies by profile and platform.  Keep the
+    # release contract deterministic by using FFmpeg's portable encoder.
+    if codec == "prores":
+        return "prores_ks", []
+
     # Preset mappings for each backend
     _PRESET_VALUES: dict[str, dict[str, str]] = {
         "nvidia": {"fast": "p1", "balanced": "p4", "quality": "p7"},

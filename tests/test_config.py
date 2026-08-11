@@ -17,6 +17,7 @@ from immich_memories.config import (
     expand_env_vars,
 )
 from immich_memories.config_models import ServerConfig
+from immich_memories.processing.encoding_plan import HdrMode
 
 
 class TestExpandEnvVars:
@@ -208,6 +209,26 @@ class TestOutputConfig:
         """Test output path expansion."""
         config = OutputConfig(directory="~/Videos/Test")
         assert config.output_path == Path.home() / "Videos" / "Test"
+
+    def test_hdr_mode_defaults_to_auto(self):
+        config = OutputConfig()
+        assert config.hdr_mode is HdrMode.AUTO
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            pytest.param("auto", HdrMode.AUTO, id="auto"),
+            pytest.param("sdr", HdrMode.SDR, id="sdr"),
+            pytest.param("hdr", HdrMode.HDR, id="hdr"),
+        ],
+    )
+    def test_hdr_mode_strings_parse_to_enum(self, raw: str, expected: HdrMode) -> None:
+        config = OutputConfig(hdr_mode=raw)
+        assert config.hdr_mode is expected
+
+    def test_unknown_hdr_mode_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="hdr_mode"):
+            OutputConfig(hdr_mode="preserve")
 
     @pytest.mark.parametrize(
         "resolution,expected",

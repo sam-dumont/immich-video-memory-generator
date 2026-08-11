@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from immich_memories.processing.hardware import (
     HWAccelBackend,
     HWAccelCapabilities,
@@ -286,6 +288,20 @@ class TestGetFfmpegEncoder:
         caps = HWAccelCapabilities(backend=HWAccelBackend.NONE)
         encoder, args = get_ffmpeg_encoder(caps, codec="h265")
         assert encoder == "libx265"
+
+    def test_prores_uses_software_prores_encoder(self):
+        caps = HWAccelCapabilities(
+            backend=HWAccelBackend.APPLE,
+            prores_encode=True,
+        )
+        encoder, args = get_ffmpeg_encoder(caps, codec="prores")
+        assert encoder == "prores_ks"
+        assert args == []
+
+    def test_unknown_codec_is_rejected_instead_of_becoming_h265(self):
+        caps = HWAccelCapabilities(backend=HWAccelBackend.NONE)
+        with pytest.raises(ValueError, match="Unsupported codec"):
+            get_ffmpeg_encoder(caps, codec="vp9")  # type: ignore[arg-type]
 
 
 class TestGetFfmpegScaleFilter:
