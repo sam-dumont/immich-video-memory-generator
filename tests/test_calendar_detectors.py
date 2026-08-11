@@ -41,14 +41,14 @@ def _make_person(
 # MonthlyDetector
 # ---------------------------------------------------------------------------
 class TestMonthlyDetector:
-    def test_produces_candidates_for_ungenerated_months(self):
+    def test_produces_candidate_for_latest_completed_month(self):
         today = date(2026, 3, 15)
         assets = {"2026-02": 50, "2026-01": 30, "2025-12": 20}
         detector = MonthlyDetector()
 
         result = detector.detect(assets, [], set(), _make_config(), today)
 
-        assert len(result) == 3
+        assert len(result) == 1
         assert all(isinstance(c, MemoryCandidate) for c in result)
         assert result[0].memory_type == "monthly_highlights"
         assert result[0].category is CandidateCategory.MONTHLY_REVIEW
@@ -63,8 +63,7 @@ class TestMonthlyDetector:
 
         result = MonthlyDetector().detect(assets, [], {feb_key}, _make_config(), today)
 
-        assert len(result) == 1
-        assert result[0].date_range_start == date(2026, 1, 1)
+        assert result == []
 
     def test_handles_empty_assets(self):
         result = MonthlyDetector().detect({}, [], set(), _make_config(), date(2026, 3, 1))
@@ -80,7 +79,7 @@ class TestMonthlyDetector:
         assert len(result) == 1
         assert result[0].date_range_start == date(2026, 2, 1)
 
-    def test_recent_months_score_higher(self):
+    def test_does_not_emit_older_monthly_backlog(self):
         today = date(2026, 6, 15)
         assets = {
             "2026-05": 10,
@@ -93,11 +92,8 @@ class TestMonthlyDetector:
 
         result = MonthlyDetector().detect(assets, [], set(), _make_config(), today)
 
-        assert len(result) == 6
-        scores = [c.score for c in result]
-        # Scores should be monotonically decreasing
-        assert scores == sorted(scores, reverse=True)
-        assert scores[0] > scores[-1]
+        assert len(result) == 1
+        assert result[0].date_range_start == date(2026, 5, 1)
 
     def test_most_recent_month_gets_special_reason(self):
         today = date(2026, 3, 15)
@@ -105,8 +101,8 @@ class TestMonthlyDetector:
 
         result = MonthlyDetector().detect(assets, [], set(), _make_config(), today)
 
+        assert len(result) == 1
         assert "most recent month" in result[0].reason
-        assert "never generated" in result[1].reason
 
     def test_handles_year_boundary(self):
         """January should look back into prior year's months."""

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from immich_memories.automation.candidate_scorer import score_and_rank
 from immich_memories.automation.candidates import MemoryCandidate
+from immich_memories.automation.variety import VarietyDecision, apply_variety_rules
 from immich_memories.config_loader import Config
 from immich_memories.config_models import AutomationConfig
 from immich_memories.tracking.run_database import RunDatabase
@@ -277,12 +278,14 @@ class AutoRunner:
     def __init__(self, config: Config):
         self.config = config
         self.db = RunDatabase(db_path=config.cache.database_path)
+        self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
 
     def suggest(self, limit: int = 10) -> list[MemoryCandidate]:
         """Detect, score, and rank memory candidates from the Immich library."""
         from immich_memories.api.immich import SyncImmichClient
         from immich_memories.preflight import CheckStatus, check_immich
 
+        self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
         immich_result = check_immich(self.config)
         if immich_result.status == CheckStatus.ERROR:
             logger.error("Immich preflight failed: %s", immich_result.message)
@@ -291,6 +294,7 @@ class AutoRunner:
         auto_cfg = self.config.automation
         generated_keys = self.db.get_generated_memory_keys()
         last_runs = _build_last_runs_by_type(self.db)
+        recent_auto_runs = self.db.list_runs(limit=6, status="completed", source="auto")
         today = date.today()
 
         with SyncImmichClient(
@@ -334,7 +338,17 @@ class AutoRunner:
             gps_assets,
         )
 
-        ranked = score_and_rank(all_candidates, generated_keys, today, last_runs)
+        self.last_variety_decision = apply_variety_rules(
+            all_candidates,
+            recent_auto_runs,
+            today,
+        )
+        ranked = score_and_rank(
+            self.last_variety_decision.eligible,
+            generated_keys,
+            today,
+            last_runs,
+        )
         return ranked[:limit]
 
     def run_one(

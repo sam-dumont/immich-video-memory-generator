@@ -41,9 +41,9 @@ class TestSuggestReturnsCandidates:
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.get_time_buckets.return_value = [
-            _make_time_bucket(2026, 2, 150),
-            _make_time_bucket(2026, 1, 200),
-            _make_time_bucket(2025, 12, 100),
+            _make_time_bucket(2026, 7, 150),
+            _make_time_bucket(2026, 6, 200),
+            _make_time_bucket(2026, 5, 100),
         ]
         mock_client.get_all_people.return_value = []
 
@@ -60,13 +60,138 @@ class TestSuggestReturnsCandidates:
                 "immich_memories.preflight.check_immich",
                 return_value=MagicMock(status=CheckStatus.OK),
             ),
+            patch("immich_memories.automation.runner.date") as mock_date,
         ):
+            mock_date.today.return_value = date(2026, 8, 11)
             runner = AutoRunner(config)
             candidates = runner.suggest(limit=10)
 
         assert len(candidates) > 0
         types = {c.memory_type for c in candidates}
         assert "monthly_highlights" in types
+
+    def test_variety_history_uses_only_completed_auto_runs(self, config: Config) -> None:
+        """Manual, scheduled, failed, and running rows cannot block auto candidates."""
+        from immich_memories.preflight import CheckStatus
+        from immich_memories.tracking.models import RunMetadata
+
+        runner = AutoRunner(config)
+        histories = [
+            RunMetadata(
+                run_id="auto-trip",
+                created_at=datetime(2026, 8, 6, 9, 0),
+                completed_at=datetime(2026, 8, 6, 10, 0),
+                status="completed",
+                source="auto",
+                memory_category=CandidateCategory.TRIP.value,
+            ),
+            RunMetadata(
+                run_id="manual-monthly",
+                created_at=datetime(2026, 8, 10, 9, 0),
+                completed_at=datetime(2026, 8, 10, 10, 0),
+                status="completed",
+                source="manual",
+                memory_category=CandidateCategory.MONTHLY_REVIEW.value,
+            ),
+            RunMetadata(
+                run_id="scheduled-monthly",
+                created_at=datetime(2026, 8, 9, 9, 0),
+                completed_at=datetime(2026, 8, 9, 10, 0),
+                status="completed",
+                source="scheduled",
+                memory_category=CandidateCategory.MONTHLY_REVIEW.value,
+            ),
+            RunMetadata(
+                run_id="failed-auto-monthly",
+                created_at=datetime(2026, 8, 11, 7, 0),
+                status="failed",
+                source="auto",
+                memory_category=CandidateCategory.MONTHLY_REVIEW.value,
+            ),
+            RunMetadata(
+                run_id="running-auto-monthly",
+                created_at=datetime(2026, 8, 11, 8, 0),
+                status="running",
+                source="auto",
+                memory_category=CandidateCategory.MONTHLY_REVIEW.value,
+            ),
+        ]
+        for run in histories:
+            runner.db.save_run(run)
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get_time_buckets.return_value = [_make_time_bucket(2026, 7, 150)]
+        mock_client.get_all_people.return_value = []
+
+        with (
+            patch(
+                "immich_memories.api.immich.SyncImmichClient",
+                return_value=mock_client,
+            ),
+            patch(
+                "immich_memories.preflight.check_immich",
+                return_value=MagicMock(status=CheckStatus.OK),
+            ),
+            patch("immich_memories.automation.runner.date") as mock_date,
+            patch.object(runner.db, "list_runs", wraps=runner.db.list_runs) as mock_list_runs,
+        ):
+            mock_date.today.return_value = date(2026, 8, 11)
+            candidates = runner.suggest(limit=10)
+
+        assert [candidate.category for candidate in candidates] == [
+            CandidateCategory.MONTHLY_REVIEW
+        ]
+        assert runner.last_variety_decision.rejected == []
+        mock_list_runs.assert_called_once_with(limit=6, status="completed", source="auto")
+
+    def test_suggest_preserves_rejections_and_does_not_fallback(self, config: Config) -> None:
+        """An all-rejected day stays empty and exposes the stable rule."""
+        from immich_memories.automation.candidate_scorer import score_and_rank
+        from immich_memories.preflight import CheckStatus
+        from immich_memories.tracking.models import RunMetadata
+
+        runner = AutoRunner(config)
+        runner.db.save_run(
+            RunMetadata(
+                run_id="previous-monthly",
+                created_at=datetime(2026, 8, 10, 9, 0),
+                completed_at=datetime(2026, 8, 10, 10, 0),
+                status="completed",
+                source="auto",
+                memory_category=CandidateCategory.MONTHLY_REVIEW.value,
+            )
+        )
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get_time_buckets.return_value = [_make_time_bucket(2026, 7, 150)]
+        mock_client.get_all_people.return_value = []
+
+        with (
+            patch(
+                "immich_memories.api.immich.SyncImmichClient",
+                return_value=mock_client,
+            ),
+            patch(
+                "immich_memories.preflight.check_immich",
+                return_value=MagicMock(status=CheckStatus.OK),
+            ),
+            patch("immich_memories.automation.runner.date") as mock_date,
+            patch(
+                "immich_memories.automation.runner.score_and_rank",
+                wraps=score_and_rank,
+            ) as mock_score,
+        ):
+            mock_date.today.return_value = date(2026, 8, 11)
+            candidates = runner.suggest(limit=10)
+
+        assert candidates == []
+        assert [item.rule for item in runner.last_variety_decision.rejected] == [
+            "same_category_as_previous"
+        ]
+        assert mock_score.call_args.args[0] == []
 
 
 class TestSuggestEmptyLibrary:

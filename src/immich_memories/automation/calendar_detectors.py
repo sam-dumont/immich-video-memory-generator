@@ -19,9 +19,9 @@ from immich_memories.i18n import get_ordinal
 
 
 class MonthlyDetector:
-    """Proposes monthly highlight memories for recent un-generated months."""
+    """Proposes a monthly highlight for the latest completed month only."""
 
-    LOOKBACK_MONTHS = 6
+    LOOKBACK_MONTHS = 1
     BASE_SCORE = 0.7
 
     def detect(
