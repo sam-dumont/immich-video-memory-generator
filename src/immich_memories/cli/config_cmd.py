@@ -18,11 +18,29 @@ def register_config_commands(main: click.Group) -> None:
     @click.option("--url", "-u", type=str, help="Immich server URL")
     @click.option("--api-key", "-k", type=str, help="Immich API key")
     @click.option("--show", "-s", is_flag=True, help="Show current configuration")
+    @click.argument("action", required=False, type=click.Choice(["test"]))
     @click.pass_context
-    def config(ctx: click.Context, url: str | None, api_key: str | None, show: bool) -> None:
+    def config(
+        ctx: click.Context,
+        url: str | None,
+        api_key: str | None,
+        show: bool,
+        action: str | None,
+    ) -> None:
         """Configure Immich connection settings."""
         cfg = ctx.obj["config"]
         config_path = Config.get_default_path()
+
+        if action == "test":
+            from immich_memories.preflight import CheckStatus, check_immich
+
+            result = check_immich(cfg)
+            details = f": {result.details}" if result.details else ""
+            if result.status is CheckStatus.OK:
+                print_success(f"{result.message}{details}")
+                return
+            print_error(f"{result.message}{details}")
+            ctx.exit(1)
 
         if show:
             # Display current config

@@ -980,6 +980,50 @@ class TestConfigShowCommand:
         assert result.exit_code == 0
         assert "(not set)" in result.output
 
+    def test_config_test_reports_resolved_immich_version(self) -> None:
+        """`config test` is a read-only compatibility and authentication check."""
+        from immich_memories.preflight import CheckResult, CheckStatus
+
+        config = Config(
+            immich={
+                "url": "http://photos.test:2283",
+                "api_key": "test-key",
+                "api_version": "auto",
+            }
+        )
+        check_result = CheckResult(
+            name="Immich",
+            status=CheckStatus.OK,
+            message="Connected as Sam",
+            details="Server: http://photos.test:2283; API: v3",
+        )
+
+        with patch("immich_memories.preflight.check_immich", return_value=check_result) as check:
+            result = _invoke(["config", "test"], config=config)
+
+        assert result.exit_code == 0
+        assert "Connected as Sam" in result.output
+        assert "API: v3" in result.output
+        check.assert_called_once_with(config)
+
+    def test_config_test_exits_nonzero_for_unsupported_immich(self) -> None:
+        from immich_memories.preflight import CheckResult, CheckStatus
+
+        config = Config(immich={"url": "http://photos.test:2283", "api_key": "test-key"})
+        check_result = CheckResult(
+            name="Immich",
+            status=CheckStatus.ERROR,
+            message="Unsupported Immich version",
+            details="Unsupported Immich major version 4",
+        )
+
+        with patch("immich_memories.preflight.check_immich", return_value=check_result):
+            result = _invoke(["config", "test"], config=config)
+
+        assert result.exit_code == 1
+        assert "Unsupported Immich version" in result.output
+        assert "major version 4" in result.output
+
 
 class TestConfigUrlUpdate:
     """config --url and --api-key update behavior."""
