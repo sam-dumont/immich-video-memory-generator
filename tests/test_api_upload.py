@@ -10,7 +10,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from immich_memories.api.album_service import InvalidUploadResponse, build_upload_fields
+from immich_memories.api.album_service import (
+    AlbumService,
+    InvalidUploadResponse,
+    build_upload_fields,
+)
 from immich_memories.api.compatibility import ResolvedApiVersion, UnsupportedImmichVersion
 from immich_memories.api.immich import ImmichClient, SyncImmichClient
 
@@ -158,6 +162,32 @@ class TestUploadAsset:
             await client.upload_asset(video_path)
 
         client._client.request.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("filename", "error_pattern"),
+        [
+            pytest.param("holiday.mkv", r"\.mkv", id="unsupported-suffix"),
+            pytest.param("holiday", "<none>", id="suffixless"),
+        ],
+    )
+    async def test_unsupported_upload_is_rejected_before_version_resolution(
+        self,
+        tmp_path: Path,
+        filename: str,
+        error_pattern: str,
+    ) -> None:
+        video_path = tmp_path / filename
+        video_path.write_bytes(b"unsupported-container")
+        request_fn = AsyncMock()
+        api_version_fn = AsyncMock()
+        service = AlbumService(request_fn, api_version_fn)
+
+        with pytest.raises(ValueError, match=error_pattern):
+            await service.upload_asset(video_path)
+
+        api_version_fn.assert_not_awaited()
+        request_fn.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_v2_upload_sends_exact_multipart_contract(self, video_path: Path) -> None:
