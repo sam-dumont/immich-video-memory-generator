@@ -14,7 +14,13 @@ from typing import Any
 import numpy as np
 
 from immich_memories.processing.clip_encoder import encoder_args_for_plan
-from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+from immich_memories.processing.encoding_plan import (
+    EncodingPlan,
+    HdrTransfer,
+    OutputCodec,
+    software_fallback_plan,
+    uses_hardware_encoder,
+)
 from immich_memories.processing.hdr_utilities import (
     _detect_color_primaries,
     _detect_hdr_type,
@@ -590,6 +596,7 @@ def assemble_streaming(
     progress_callback: Callable[[int, int], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
     audio_work_dir: Path | None = None,
+    _allow_runtime_fallback: bool = True,
 ) -> list[Path]:
     """Assemble clips via streaming frame blending (constant memory).
 
@@ -633,9 +640,35 @@ def assemble_streaming(
         if progress_callback:
             progress_callback(total_frames, total_frames)
         logger.info(f"Streaming assembly complete: {len(clips)} clips → {output_path.name}")
-    except (
-        Exception
-    ):  # WHY: cleanup safety net — ensures encoder.finish() even on unexpected errors
+    except RuntimeError:
+        with contextlib.suppress(RuntimeError):
+            encoder.finish()
+        if _allow_runtime_fallback and uses_hardware_encoder(plan):
+            fallback_plan = software_fallback_plan(plan)
+            logger.warning(
+                "Hardware encoder %s failed; retrying %s streaming assembly in software",
+                plan.encoder,
+                fallback_plan.codec.value,
+            )
+            return assemble_streaming(
+                clips,
+                transitions,
+                output_path,
+                width,
+                height,
+                fps,
+                fade_duration,
+                fallback_plan,
+                ctx,
+                privacy_mode,
+                scale_mode,
+                progress_callback,
+                frame_preview_callback,
+                audio_work_dir,
+                _allow_runtime_fallback=False,
+            )
+        raise
+    except Exception:  # WHY: cleanup safety net — ensures encoder.finish() on non-encoder errors
         encoder.finish()
         raise
 

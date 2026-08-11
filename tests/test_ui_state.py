@@ -328,6 +328,23 @@ def test_generation_factory_maps_explicit_ui_h265_override(tmp_path) -> None:
     assert params.output_format == "h265"
 
 
+def test_generation_factory_disables_core_music_for_ui_export(tmp_path) -> None:
+    """Step 4 owns music selection, so core generation cannot auto-generate it."""
+    from immich_memories.ui.pages._step4_generate import _build_generation_params
+
+    state = AppState(
+        config=Config(),
+        generation_options={"music_source": "None"},
+        immich_url="https://immich.example.com",
+        immich_api_key="test-api-key",
+    )
+
+    with patch("immich_memories.api.immich.SyncImmichClient"):
+        params = _build_generation_params(state, [], tmp_path / "memory.mp4")
+
+    assert params.no_music is True
+
+
 def test_config_initialized_ui_label_is_not_an_explicit_override(tmp_path) -> None:
     from immich_memories.ui.pages._step4_generate import _build_generation_params
 

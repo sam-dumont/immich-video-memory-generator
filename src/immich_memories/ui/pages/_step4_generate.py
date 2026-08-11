@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from nicegui import app as nicegui_app
 from nicegui import run, ui
@@ -17,6 +18,10 @@ from immich_memories.ui.components import (
     im_info_card,
     im_separator,
 )
+from immich_memories.ui.pages._step4_upload import upload_to_immich
+
+if TYPE_CHECKING:
+    from immich_memories.processing.encoding_plan import EncodingPlan
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +147,7 @@ def _build_generation_params(state, selected_clips, output_path):
         selected_photo_ids=None,
         # Music and upload handled separately by UI (AI gen, 4-stem ducking, NiceGUI progress)
         music_path=None,
+        no_music=True,
         upload_enabled=False,
     )
 
@@ -212,21 +218,12 @@ async def run_generation(
 
         run_id_label.set_text(f"Output: {result_path.parent.name}")
 
-        # Phase 3: Music (UI-specific — supports AI generation + 4-stem ducking)
-        from immich_memories.config import get_config
-        from immich_memories.tracking import RunTracker, generate_run_id
-
-        run_tracker = RunTracker(
-            generate_run_id(),
-            db_path=get_config().cache.database_path,
-        )
-        await _apply_optional_music_and_upload(
+        await _run_post_assembly_phases(
             state,
             state.config,
             result_path,
             [],  # assembly_clips not needed for pre-generated music path
             result_path.parent,
-            run_tracker,
             progress_bar,
             status_label,
         )
@@ -248,66 +245,18 @@ async def run_generation(
             im_info_card(f"Generation failed: {safe_msg}", variant="error")
 
 
-async def _apply_optional_music_and_upload(
-    state,
-    config,
-    result_path,
-    assembly_clips,
-    run_output_dir,
-    run_tracker,
-    progress_bar,
-    status_label,
-) -> None:
-    """Run independent optional music and upload phases in order."""
-    music_source = state.generation_options.get("music_source", "None")
-    if music_source in {"AI Generated", "Upload file"}:
-        await _apply_music(
-            state,
-            config,
-            result_path,
-            assembly_clips,
-            run_output_dir,
-            run_tracker,
-            progress_bar,
-            status_label,
-        )
-
-    if state.upload_enabled:
-        from immich_memories.ui.pages._step4_upload import upload_to_immich
-
-        await upload_to_immich(result_path, state, progress_bar, status_label)
-
-
 async def _apply_music(
     state,
     config,
     result_path,
     assembly_clips,
     run_output_dir,
-    run_tracker,
     progress_bar,
     status_label,
+    *,
+    encoding_plan: EncodingPlan,
 ):
-    """Apply optional music using validation truth derived from the published base."""
-    from immich_memories.generate_music import (
-        MusicPhaseResult,
-        derive_music_validation_plan,
-        optional_music_warning,
-    )
-
-    try:
-        encoding_plan = await run.io_bound(derive_music_validation_plan, result_path)
-    except Exception as exc:  # WHY: Music must never invalidate a published base video.
-        warning = optional_music_warning(exc, config)
-        logger.warning(warning)
-        ui.notify(f"{warning}. Video saved without music.", type="warning")
-        run_tracker.start_phase("music", 1)
-        run_tracker.complete_phase(
-            items_processed=0,
-            errors=[{"error": warning}],
-        )
-        return MusicPhaseResult(applied=False, warning=warning)
-
+    """Apply selected UI music after its published artifact contract is derived."""
     gen_options = state.generation_options
     music_source = gen_options.get("music_source", "None")
 
@@ -320,7 +269,7 @@ async def _apply_music(
             gen_options,
             config,
             run_output_dir,
-            run_tracker,
+            None,
             progress_bar,
             status_label,
             encoding_plan=encoding_plan,
@@ -332,13 +281,77 @@ async def _apply_music(
         return await apply_uploaded_music(
             result_path,
             gen_options,
-            run_tracker,
+            None,
             progress_bar,
             status_label,
             encoding_plan=encoding_plan,
             config=config,
         )
+    from immich_memories.generate_music import MusicPhaseResult
+
     return MusicPhaseResult(applied=False)
+
+
+async def _run_ui_music_phase(
+    state,
+    config,
+    result_path: Path,
+    assembly_clips: list,
+    run_output_dir: Path,
+    progress_bar,
+    status_label,
+):
+    """Apply selected UI music as an optional post-assembly phase."""
+    from immich_memories.generate_music import (
+        MusicPhaseResult,
+        derive_music_validation_plan,
+        optional_music_warning,
+    )
+
+    music_source = state.generation_options.get("music_source", "None")
+    if music_source not in {"AI Generated", "Upload file"}:
+        return MusicPhaseResult(applied=False)
+    try:
+        encoding_plan = await run.io_bound(derive_music_validation_plan, result_path)
+        return await _apply_music(
+            state,
+            config,
+            result_path,
+            assembly_clips,
+            run_output_dir,
+            progress_bar,
+            status_label,
+            encoding_plan=encoding_plan,
+        )
+    except Exception as exc:  # WHY: an optional UI plan cannot invalidate the base artifact
+        warning = optional_music_warning(exc, config)
+        logger.warning(warning)
+        ui.notify(f"{warning}. Video saved without music.", type="warning")
+        return MusicPhaseResult(applied=False, warning=warning)
+
+
+async def _run_post_assembly_phases(
+    state,
+    config,
+    result_path: Path,
+    assembly_clips: list,
+    run_output_dir: Path,
+    progress_bar,
+    status_label,
+):
+    """Run optional UI music and upload after the base artifact is validated."""
+    music_result = await _run_ui_music_phase(
+        state,
+        config,
+        result_path,
+        assembly_clips,
+        run_output_dir,
+        progress_bar,
+        status_label,
+    )
+    if state.upload_enabled:
+        await upload_to_immich(result_path, state, progress_bar, status_label)
+    return music_result
 
 
 def _format_file_size(path: Path) -> str:

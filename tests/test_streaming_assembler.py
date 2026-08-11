@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -34,6 +36,59 @@ def _h264_plan() -> EncodingPlan:
         pixel_format="yuv420p",
         container="mp4",
     )
+
+
+def _hardware_h265_plan() -> EncodingPlan:
+    return EncodingPlan(
+        codec=OutputCodec.H265,
+        encoder="hevc_videotoolbox",
+        encoder_args=("-q:v", "50"),
+        target_transfer=HdrTransfer.NONE,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p",
+        container="mp4",
+    )
+
+
+def test_streaming_hardware_encoder_failure_retries_same_codec_in_software(tmp_path: Path) -> None:
+    """A failed H.265 streaming encoder retries once with libx265, never H.264."""
+    from immich_memories.processing.streaming_assembler import assemble_streaming
+
+    plans: list[EncodingPlan] = []
+
+    class FailingHardwareEncoder:
+        def __init__(self, *_args: object, encoding_plan: EncodingPlan, **_kwargs: object) -> None:
+            self.plan = encoding_plan
+            plans.append(encoding_plan)
+
+        def start(self) -> None:
+            pass
+
+        def finish(self) -> None:
+            if self.plan.encoder == "hevc_videotoolbox":
+                raise RuntimeError("Unknown encoder 'hevc_videotoolbox'")
+
+    clip = SimpleNamespace(duration=1.0, path=tmp_path / "input.mp4")
+    with (
+        patch(
+            "immich_memories.processing.streaming_assembler.StreamingEncoder",
+            FailingHardwareEncoder,
+        ),
+        patch("immich_memories.processing.streaming_assembler._encode_clip_sequence"),
+    ):
+        assemble_streaming(
+            clips=[clip],
+            transitions=[],
+            output_path=tmp_path / "output.mp4",
+            width=16,
+            height=16,
+            fps=1,
+            encoding_plan=_hardware_h265_plan(),
+        )
+
+    assert [plan.encoder for plan in plans] == ["hevc_videotoolbox", "libx265"]
+    assert len(plans) == 2
+    assert all(plan.codec is OutputCodec.H265 for plan in plans)
 
 
 def _has_ffmpeg() -> bool:

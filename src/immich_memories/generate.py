@@ -487,17 +487,23 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
 
         # Phase 3: Music
         _t = _time.monotonic()
-        pp.report("music", 0.0, "Generating music...")
-        music_result = _run_music_phase(
-            params,
-            assembly_clips,
-            result_path,
-            run_output_dir,
-            run_tracker,
-            encoding_plan=settings.encoding_plan,
-        )
+        if params.no_music:
+            from immich_memories.generate_music import MusicPhaseResult
+
+            music_result = MusicPhaseResult(applied=False)
+        else:
+            pp.report("music", 0.0, "Generating music...")
+            music_result = _run_music_phase(
+                params,
+                assembly_clips,
+                result_path,
+                run_output_dir,
+                run_tracker,
+                encoding_plan=settings.encoding_plan,
+            )
         _phase_times["music"] = _time.monotonic() - _t
-        pp.report("music", 1.0, music_result.warning or "Music ready")
+        if not params.no_music:
+            pp.report("music", 1.0, music_result.warning or "Music ready")
 
         final_probe = validate_output(result_path, settings.encoding_plan)
         artifact_warnings = [music_result.warning] if music_result.warning else []

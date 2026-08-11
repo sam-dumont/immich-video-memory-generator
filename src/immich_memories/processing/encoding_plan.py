@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Literal, cast
 
@@ -110,6 +110,27 @@ class EncodingPlan:
     def hdr(self) -> bool:
         """Whether the exact target transfer is HDR."""
         return self.target_transfer is not HdrTransfer.NONE
+
+
+def uses_hardware_encoder(plan: EncodingPlan) -> bool:
+    """Whether a plan depends on a non-portable FFmpeg video encoder."""
+    return plan.encoder not in {"libx264", "libx265", "prores_ks"}
+
+
+def software_fallback_plan(plan: EncodingPlan) -> EncodingPlan:
+    """Replace a failed hardware encoder without changing the requested codec."""
+    if not uses_hardware_encoder(plan):
+        return plan
+    encoder, encoder_args = get_ffmpeg_encoder(HWAccelCapabilities(), codec=plan.codec.value)
+    pixel_format = "yuv420p10le" if plan.hdr else "yuv420p"
+    if plan.codec is OutputCodec.PRORES:
+        pixel_format = "yuv422p10le"
+    return replace(
+        plan,
+        encoder=encoder,
+        encoder_args=tuple(encoder_args),
+        pixel_format=pixel_format,
+    )
 
 
 @dataclass(frozen=True)

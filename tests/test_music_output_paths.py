@@ -343,10 +343,6 @@ async def test_ui_music_conduit_forwards_one_artifact_validation_plan(
     )
 
     with (
-        patch(
-            "immich_memories.generate_music.derive_music_validation_plan",
-            return_value=plan,
-        ),
         patch(target, new_callable=AsyncMock) as music_helper,
     ):
         await _apply_music(
@@ -355,23 +351,147 @@ async def test_ui_music_conduit_forwards_one_artifact_validation_plan(
             tmp_path / "memory.mp4",
             [],
             tmp_path,
-            MagicMock(),
             _Progress(),
             _Status(),
+            encoding_plan=plan,
         )
 
     assert music_helper.await_args.kwargs["encoding_plan"] is plan
 
 
 @pytest.mark.asyncio
-async def test_ui_music_probe_failure_is_optional_and_sanitized(
+async def test_ui_music_none_skips_core_ui_music_and_tracker_writes(tmp_path: Path) -> None:
+    """None returns without deriving, mixing, or creating detached phase tracking."""
+    from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.ui.pages._step4_generate import _run_ui_music_phase
+
+    state = SimpleNamespace(generation_options={"music_source": "None"}, memory_type=None)
+    with (
+        patch(
+            "immich_memories.ui.pages._step4_generate.run.io_bound", new_callable=AsyncMock
+        ) as io_bound,
+        patch(
+            "immich_memories.ui.pages._step4_generate._apply_music", new_callable=AsyncMock
+        ) as apply_music,
+    ):
+        result = await _run_ui_music_phase(
+            state,
+            Config(),
+            tmp_path / "memory.mp4",
+            [],
+            tmp_path,
+            _Progress(),
+            _Status(),
+        )
+
+    assert result == MusicPhaseResult(applied=False)
+    io_bound.assert_not_awaited()
+    apply_music.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("music_source", ["AI Generated", "Upload file"])
+async def test_ui_music_source_applies_exactly_once_without_detached_tracker(
+    tmp_path: Path,
+    music_source: str,
+) -> None:
+    """The selected UI source is applied once after plan derivation, with no fresh tracker."""
+    from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.ui.pages._step4_generate import _run_ui_music_phase
+
+    plan = _h264_output_plan()
+    state = SimpleNamespace(
+        generation_options={"music_source": music_source, "music_file": b"uploaded"},
+        memory_type=None,
+    )
+
+    async def io_bound(
+        _callback: Callable[..., object], *_args: object, **_kwargs: object
+    ) -> object:
+        return plan
+
+    with (
+        patch("immich_memories.ui.pages._step4_generate.run.io_bound", side_effect=io_bound),
+        patch(
+            "immich_memories.ui.pages._step4_generate._apply_music",
+            new_callable=AsyncMock,
+            return_value=MusicPhaseResult(applied=True),
+        ) as apply_music,
+    ):
+        result = await _run_ui_music_phase(
+            state,
+            Config(),
+            tmp_path / "memory.mp4",
+            [],
+            tmp_path,
+            _Progress(),
+            _Status(),
+        )
+
+    assert result == MusicPhaseResult(applied=True)
+    apply_music.assert_awaited_once()
+    assert len(apply_music.await_args.args) == 7
+
+
+@pytest.mark.asyncio
+async def test_ui_music_plan_failure_preserves_base_and_continues_upload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Optional plan derivation failure warns once but cannot skip upload of the valid base."""
+    from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.ui.pages._step4_generate import _run_post_assembly_phases
+
+    result_path = tmp_path / "memory.mp4"
+    result_path.write_bytes(b"validated-base")
+    state = SimpleNamespace(
+        generation_options={"music_source": "AI Generated"},
+        memory_type=None,
+        upload_enabled=True,
+    )
+    uploads: list[bytes] = []
+
+    async def io_bound(
+        _callback: Callable[..., object], *_args: object, **_kwargs: object
+    ) -> object:
+        raise RuntimeError("probe backend unavailable")
+
+    async def upload(video_path: Path, *_args: object, **_kwargs: object) -> None:
+        uploads.append(video_path.read_bytes())
+
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.run.io_bound", io_bound)
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_generate.upload_to_immich",
+        upload,
+    )
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.ui.notify", MagicMock())
+
+    result = await _run_post_assembly_phases(
+        state,
+        Config(),
+        result_path,
+        [],
+        tmp_path,
+        _Progress(),
+        _Status(),
+    )
+
+    assert result == MusicPhaseResult(
+        applied=False,
+        warning="Optional music failed: probe backend unavailable",
+    )
+    assert uploads == [b"validated-base"]
+
+
+@pytest.mark.asyncio
+async def test_ui_music_plan_failure_is_sanitized_without_detached_tracking(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A failed artifact probe must preserve the base and return to the upload flow."""
+    """A failed optional plan keeps the base and emits one redacted UI warning."""
     from immich_memories.generate_music import MusicPhaseResult
-    from immich_memories.ui.pages._step4_generate import _apply_music
+    from immich_memories.ui.pages._step4_generate import _run_ui_music_phase
 
     credential_value = "probe-secret-427"
     config = Config()
@@ -379,31 +499,28 @@ async def test_ui_music_probe_failure_is_optional_and_sanitized(
     result_path = tmp_path / "memory.mp4"
     result_path.write_bytes(b"validated-base")
     state = SimpleNamespace(
-        generation_options={
-            "music_source": "Upload file",
-            "music_file": b"uploaded",
-        },
+        generation_options={"music_source": "Upload file", "music_file": b"uploaded"},
         memory_type=None,
     )
     notify = MagicMock()
-    tracker = MagicMock()
+
+    async def io_bound(callback: Callable[..., object], *_args: object) -> object:
+        return callback(result_path)
+
     monkeypatch.setattr(
         "immich_memories.generate_music.derive_music_validation_plan",
         MagicMock(side_effect=RuntimeError(f"probe rejected {credential_value}")),
     )
-    monkeypatch.setattr(
-        "immich_memories.ui.pages._step4_generate.ui.notify",
-        notify,
-    )
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.run.io_bound", io_bound)
+    monkeypatch.setattr("immich_memories.ui.pages._step4_generate.ui.notify", notify)
     caplog.set_level("DEBUG")
 
-    result = await _apply_music(
+    result = await _run_ui_music_phase(
         state,
         config,
         result_path,
         [],
         tmp_path,
-        tracker,
         _Progress(),
         _Status(),
     )
@@ -411,122 +528,9 @@ async def test_ui_music_probe_failure_is_optional_and_sanitized(
     warning = "Optional music failed: probe rejected ***"
     assert result == MusicPhaseResult(applied=False, warning=warning)
     assert result_path.read_bytes() == b"validated-base"
-    tracker.start_phase.assert_called_once_with("music", 1)
-    tracker.complete_phase.assert_called_once_with(
-        items_processed=0,
-        errors=[{"error": warning}],
-    )
     assert notify.call_args.args[0] == f"{warning}. Video saved without music."
     assert credential_value not in caplog.text
     assert credential_value not in str(notify.call_args)
-    assert credential_value not in str(tracker.complete_phase.call_args)
-
-
-@pytest.mark.asyncio
-async def test_ui_upload_continues_after_optional_music_plan_probe_failure(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A music validation-probe failure must not skip the independent upload phase."""
-    from immich_memories.ui.pages._step4_generate import _apply_optional_music_and_upload
-
-    result_path = tmp_path / "memory.mp4"
-    result_path.write_bytes(b"validated-base")
-    state = SimpleNamespace(
-        generation_options={
-            "music_source": "Upload file",
-            "music_file": b"uploaded",
-        },
-        memory_type=None,
-        upload_enabled=True,
-    )
-    monkeypatch.setattr(
-        "immich_memories.generate_music.derive_music_validation_plan",
-        MagicMock(side_effect=RuntimeError("probe failed")),
-    )
-    monkeypatch.setattr(
-        "immich_memories.ui.pages._step4_generate.ui.notify",
-        MagicMock(),
-    )
-    upload = AsyncMock()
-    monkeypatch.setattr(
-        "immich_memories.ui.pages._step4_upload.upload_to_immich",
-        upload,
-    )
-    tracker = MagicMock()
-    progress = _Progress()
-    status = _Status()
-
-    await _apply_optional_music_and_upload(
-        state,
-        Config(),
-        result_path,
-        [],
-        tmp_path,
-        tracker,
-        progress,
-        status,
-    )
-
-    upload.assert_awaited_once_with(result_path, state, progress, status)
-    tracker.start_phase.assert_called_once_with("music", 1)
-    tracker.complete_phase.assert_called_once()
-    assert result_path.read_bytes() == b"validated-base"
-
-
-@pytest.mark.asyncio
-async def test_ai_cleanup_failure_does_not_undo_successful_publication(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Cleanup after atomic publication is best-effort, not phase failure."""
-    from immich_memories.generate_music import MusicPhaseResult
-    from immich_memories.ui.pages._step4_music import apply_ai_music
-
-    result_path = tmp_path / "memory.mp4"
-    result_path.write_bytes(b"validated-base")
-    selected = SimpleNamespace(full_mix=tmp_path / "music.wav", stems=None)
-    music_result = SimpleNamespace(
-        versions=[selected],
-        selected=selected,
-        cleanup_unselected=MagicMock(side_effect=RuntimeError("cleanup-secret-912")),
-    )
-    monkeypatch.setattr(
-        "immich_memories.ui.state.get_app_state",
-        lambda: SimpleNamespace(music_preview_result=music_result),
-    )
-
-    async def publish_mix(*_args: object, **_kwargs: object) -> None:
-        result_path.write_bytes(b"validated-mix")
-
-    monkeypatch.setattr(
-        "immich_memories.ui.pages._step4_music._mix_selected_ai_music",
-        publish_mix,
-    )
-    monkeypatch.setattr(
-        "immich_memories.ui.pages._step4_music.ui.notify",
-        MagicMock(),
-    )
-    tracker = MagicMock()
-    caplog.set_level("DEBUG")
-
-    result = await apply_ai_music(
-        result_path,
-        assembly_clips=[],
-        gen_options={"music_volume": 0.5},
-        config=Config(),
-        run_output_dir=tmp_path,
-        run_tracker=tracker,
-        progress_bar=_Progress(),
-        status_label=_Status(),
-        encoding_plan=_h264_output_plan(),
-    )
-
-    assert result == MusicPhaseResult(applied=True)
-    assert result_path.read_bytes() == b"validated-mix"
-    tracker.complete_phase.assert_called_once_with(items_processed=1)
-    assert "cleanup-secret-912" not in caplog.text
 
 
 def _prores_plan():
@@ -1398,3 +1402,61 @@ def test_optional_music_failure_preserves_base_and_uploads_valid_artifact(
     assert tracker.complete_artifact.call_args.args[2] == [warning]
     tracker.mark_delivered.assert_called_once_with("asset-1")
     tracker.fail_run.assert_not_called()
+
+
+def test_no_music_skips_core_music_phase_entirely(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """UI-owned None music must not even enter core optional-music resolution."""
+    from immich_memories import generate as generate_module
+    from immich_memories.generate import generate_memory
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.assembly_config import AssemblyClip, AssemblySettings
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source-video")
+    assembly_clip = AssemblyClip(path=source, duration=5.0, asset_id="clip-1")
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=tmp_path / "memory.mp4",
+        config=Config(
+            cache={"directory": str(tmp_path / "cache"), "database": str(tmp_path / "runs.db")}
+        ),
+        no_music=True,
+    )
+    plan = _h264_output_plan()
+
+    class Assembler:
+        def assemble_with_titles(
+            self,
+            _clips: object,
+            output_path: Path,
+            _progress_callback: object,
+            **_kwargs: object,
+        ) -> Path:
+            output_path.write_bytes(b"validated-base")
+            return output_path
+
+    monkeypatch.setattr(
+        output_contract.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 0, json.dumps(_final_probe_payload()), ""
+        ),
+    )
+    with (
+        patch("immich_memories.tracking.RunTracker", return_value=MagicMock()),
+        patch("immich_memories.cache.video_cache.VideoDownloadCache", return_value=MagicMock()),
+        patch.object(generate_module, "_extract_clips", return_value=[assembly_clip]),
+        patch.object(
+            generate_module,
+            "_build_assembly_settings",
+            return_value=AssemblySettings(encoding_plan=plan),
+        ),
+        patch.object(generate_module, "_create_assembler", return_value=Assembler()),
+        patch.object(generate_module, "_run_music_phase") as music_phase,
+        patch.object(generate_module, "_cleanup_temp_clips"),
+    ):
+        generate_memory(params)
+
+    music_phase.assert_not_called()

@@ -361,6 +361,44 @@ def test_single_clip_reencode_uses_the_same_software_h264_plan(tmp_path: Path) -
     assert "libx265" not in command
 
 
+def test_single_clip_hardware_encoder_failure_retries_same_codec_in_software(
+    tmp_path: Path,
+) -> None:
+    """A failing H.264 hardware encoder gets one H.264 software retry."""
+    from immich_memories.processing.clip_encoder import ClipEncoder
+
+    hardware_plan = EncodingPlan(
+        codec=OutputCodec.H264,
+        encoder="h264_videotoolbox",
+        encoder_args=("-q:v", "50"),
+        target_transfer=HdrTransfer.NONE,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p",
+        container="mp4",
+    )
+    prober = MagicMock()
+    prober.has_audio_stream.return_value = False
+    prober.probe_framerate.return_value = 30.0
+    encoder = ClipEncoder(AssemblySettings(encoding_plan=hardware_plan), prober, lambda _path: None)
+    clip = _make_assembly_clip(tmp_path)
+
+    with (
+        patch("immich_memories.processing.clip_encoder._detect_hdr_type", return_value=None),
+        patch("immich_memories.processing.clip_encoder.subprocess.run") as run,
+    ):
+        run.side_effect = [
+            MagicMock(returncode=1, stderr="Unknown encoder 'h264_videotoolbox'"),
+            MagicMock(returncode=0, stderr=""),
+        ]
+        encoder.encode_single_clip(clip, tmp_path / "normalized.mp4", (1920, 1080))
+
+    commands = [call.args[0] for call in run.call_args_list]
+    encoders = [command[command.index("-c:v") + 1] for command in commands]
+    assert encoders == ["h264_videotoolbox", "libx264"]
+    assert len(commands) == 2
+    assert all("hevc" not in command and "libx265" not in command for command in commands)
+
+
 def test_frame_accurate_trim_uses_the_same_software_h264_plan(tmp_path: Path) -> None:
     """A re-encoded trim must remain concat-compatible with every other clip."""
     from immich_memories.processing.clip_encoder import ClipEncoder

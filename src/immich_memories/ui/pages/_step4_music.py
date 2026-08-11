@@ -135,7 +135,7 @@ async def apply_ai_music(
     gen_options: dict,
     config: object,
     run_output_dir: Path,
-    run_tracker: object,
+    run_tracker: object | None,
     progress_bar: object,
     status_label: object,
     encoding_plan: EncodingPlan,
@@ -156,7 +156,8 @@ async def apply_ai_music(
         progress_bar: NiceGUI progress bar element.
         status_label: NiceGUI status label element.
     """
-    run_tracker.start_phase("music", 1)
+    if run_tracker is not None:
+        run_tracker.start_phase("music", 1)
     progress_bar.value = 0.85
 
     try:
@@ -183,7 +184,8 @@ async def apply_ai_music(
             except Exception:  # WHY: Publication already committed a validated artifact.
                 logger.warning("Music cleanup failed after publication; keeping the validated mix")
 
-        run_tracker.complete_phase(items_processed=1)
+        if run_tracker is not None:
+            run_tracker.complete_phase(items_processed=1)
         return MusicPhaseResult(applied=selected_music is not None)
 
     except Exception as e:  # WHY: UI graceful degradation
@@ -193,17 +195,18 @@ async def apply_ai_music(
             f"{warning}. Video saved without music.",
             type="warning",
         )
-        run_tracker.complete_phase(
-            items_processed=0,
-            errors=[{"error": warning}],
-        )
+        if run_tracker is not None:
+            run_tracker.complete_phase(
+                items_processed=0,
+                errors=[{"error": warning}],
+            )
         return MusicPhaseResult(applied=False, warning=warning)
 
 
 async def apply_uploaded_music(
     result_path: Path,
     gen_options: dict,
-    run_tracker: object,
+    run_tracker: object | None,
     progress_bar: object,
     status_label: object,
     encoding_plan: EncodingPlan,
@@ -218,7 +221,8 @@ async def apply_uploaded_music(
         progress_bar: NiceGUI progress bar element.
         status_label: NiceGUI status label element.
     """
-    run_tracker.start_phase("music", 1)
+    if run_tracker is not None:
+        run_tracker.start_phase("music", 1)
     status_label.set_text("Adding music...")
     progress_bar.value = 0.9
 
@@ -259,7 +263,8 @@ async def apply_uploaded_music(
                 encoding_plan=encoding_plan,
             )
 
-        run_tracker.complete_phase(items_processed=1)
+        if run_tracker is not None:
+            run_tracker.complete_phase(items_processed=1)
         return MusicPhaseResult(applied=True)
 
     except Exception as e:  # WHY: UI graceful degradation
@@ -269,10 +274,11 @@ async def apply_uploaded_music(
             f"{warning}. Video saved without music.",
             type="warning",
         )
-        run_tracker.complete_phase(
-            items_processed=0,
-            errors=[{"error": warning}],
-        )
+        if run_tracker is not None:
+            run_tracker.complete_phase(
+                items_processed=0,
+                errors=[{"error": warning}],
+            )
         return MusicPhaseResult(applied=False, warning=warning)
     finally:
         if tmp_music_path is not None:
