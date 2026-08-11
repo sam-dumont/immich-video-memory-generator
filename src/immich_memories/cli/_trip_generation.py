@@ -7,8 +7,11 @@ from __future__ import annotations
 
 import logging
 import sys
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import click
 
 from immich_memories.analysis.trip_detection import DetectedTrip, haversine_km
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
@@ -66,6 +69,39 @@ def resolve_music_arg(music: str | None) -> str | None:
     return music
 
 
+def _select_requested_trips(
+    trips: list[DetectedTrip],
+    *,
+    trip_index: int | None,
+    all_trips: bool,
+    month: int | None,
+    near_date: str | None,
+    requested_start: date | None,
+    requested_end: date | None,
+) -> list[DetectedTrip]:
+    """Select one exact automation trip or preserve the manual selectors."""
+    if requested_start is not None and requested_end is not None:
+        exact_matches = [
+            trip
+            for trip in trips
+            if trip.start_date == requested_start and trip.end_date == requested_end
+        ]
+        if len(exact_matches) != 1:
+            raise click.ClickException(
+                "No detected trip exactly matches "
+                f"{requested_start.isoformat()} to {requested_end.isoformat()}"
+            )
+        return exact_matches
+
+    from immich_memories.cli._trip_display import select_trips
+
+    try:
+        return select_trips(trips, trip_index, all_trips, month=month, near_date=near_date)
+    except ValueError as e:
+        print_error(str(e))
+        sys.exit(1)
+
+
 def handle_trip_generation(
     *,
     client: SyncImmichClient,
@@ -96,6 +132,11 @@ def handle_trip_generation(
     upload_to_immich: bool,
     album: str | None,
     duration: float | int | None = None,
+    requested_start: date | None = None,
+    requested_end: date | None = None,
+    source: str = "manual",
+    memory_key: str | None = None,
+    memory_category: str | None = None,
 ) -> None:
     """Detect trips, select, and generate video for each."""
     from datetime import datetime as dt_cls
@@ -103,10 +144,18 @@ def handle_trip_generation(
     from immich_memories.cli._trip_display import (
         format_trips_table,
         run_trip_detection,
-        select_trips,
     )
 
     trips = run_trip_detection(client, config, year, progress, person_names)
+    selected = _select_requested_trips(
+        trips,
+        trip_index=trip_index,
+        all_trips=all_trips,
+        month=month,
+        near_date=near_date,
+        requested_start=requested_start,
+        requested_end=requested_end,
+    )
 
     trips_table = format_trips_table(trips)
     if trips_table:
@@ -117,12 +166,6 @@ def handle_trip_generation(
     else:
         print_error("No trips detected for this year")
         sys.exit(0)
-
-    try:
-        selected = select_trips(trips, trip_index, all_trips, month=month, near_date=near_date)
-    except ValueError as e:
-        print_error(str(e))
-        sys.exit(1)
 
     if not selected:
         print_info(
@@ -206,6 +249,9 @@ def handle_trip_generation(
             upload_to_immich=upload_to_immich,
             album=album,
             memory_preset_params=trip_preset,
+            source=source,
+            memory_key=memory_key,
+            memory_category=memory_category,
         )
 
         console.print()

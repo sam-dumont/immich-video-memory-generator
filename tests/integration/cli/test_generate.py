@@ -14,6 +14,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import click
 import pytest
 
 from immich_memories.api.models import Asset, VideoClipInfo
@@ -123,6 +124,19 @@ class TestGenerateMemoryPipeline:
             return output_path
 
         return _assemble
+
+    def test_automation_memory_key_override_is_authoritative(self, tmp_path) -> None:
+        from immich_memories.config_loader import Config
+        from immich_memories.generate import GenerationParams, _build_memory_key
+
+        params = GenerationParams(
+            clips=[],
+            output_path=tmp_path / "memory.mp4",
+            config=Config(),
+            memory_key_override="candidate:exact:key",
+        )
+
+        assert _build_memory_key(params) == "candidate:exact:key"
 
     def test_two_clips_crossfade(self, tmp_path, fixture_mp4):
         """2 clips → generate_memory completes with valid output."""
@@ -302,6 +316,65 @@ class TestCLIGenerate:
 
         # exit_code 1 is OK (no clips found), we just verify arg parsing worked
         assert result.exit_code in (0, 1), f"Unexpected: {result.output}"
+
+    def test_automation_identity_options_are_hidden_from_help(self) -> None:
+        from click.testing import CliRunner
+
+        from immich_memories.cli import main
+
+        result = CliRunner().invoke(main, ["generate", "--help"])
+
+        assert result.exit_code == 0
+        assert "--source" not in result.output
+        assert "--memory-key" not in result.output
+        assert "--memory-category" not in result.output
+
+    def test_automation_identity_options_reach_pipeline(self, tmp_path) -> None:
+        from click.testing import CliRunner
+
+        from immich_memories.cli import main
+        from immich_memories.config_loader import Config
+
+        config = Config(immich={"url": "http://immich.test", "api_key": "test-key"})
+        output = tmp_path / "auto.mp4"
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        asset = MagicMock(duration_seconds=10.0)
+
+        with (
+            patch("immich_memories.cli.get_config", return_value=config),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=mock_client),
+            patch(
+                "immich_memories.cli.generate.fetch_videos_and_live_photos",
+                return_value=([asset], []),
+            ),
+            patch(
+                "immich_memories.cli.generate.run_pipeline_and_generate",
+                return_value=(output, False, None),
+            ) as mock_pipeline,
+        ):
+            result = CliRunner().invoke(
+                main,
+                [
+                    "generate",
+                    "--memory-type",
+                    "year_in_review",
+                    "--year",
+                    "2025",
+                    "--source=auto",
+                    "--memory-key=candidate:key",
+                    "--memory-category=birthday",
+                    "--no-music",
+                    "--output",
+                    str(output),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert mock_pipeline.call_args.kwargs["source"] == "auto"
+        assert mock_pipeline.call_args.kwargs["memory_key"] == "candidate:key"
+        assert mock_pipeline.call_args.kwargs["memory_category"] == "birthday"
 
     @requires_immich
     def test_cli_generate_nonexistent_person(self, tmp_path):
@@ -692,10 +765,13 @@ class TestPipelineRunner:
                 no_music=True,
                 output_path=output,
                 memory_type="year_in_review",
-                person_names=[],
+                person_names=[" Alice ", "BOB\tJones"],
                 date_range=dr,
                 upload_to_immich=False,
                 album=None,
+                source="auto",
+                memory_key="candidate:key",
+                memory_category="birthday",
             )
 
         assert result_path == output
@@ -705,6 +781,10 @@ class TestPipelineRunner:
         assert gen_params.transition == "cut"
         assert gen_params.no_music is True
         assert gen_params.memory_type == "year_in_review"
+        assert gen_params.source == "auto"
+        assert gen_params.memory_key_override == "candidate:key"
+        assert gen_params.memory_category == "birthday"
+        assert gen_params.memory_people == ("alice", "bob jones")
         assert gen_params.target_duration_seconds == 60.0
 
 
@@ -912,6 +992,141 @@ class TestTripGenerationFlow:
         call_kwargs = mock_pipeline.call_args[1]
         assert call_kwargs["memory_type"] == "trip"
         assert call_kwargs["no_music"] is True
+
+    def test_exact_trip_range_selects_only_matching_trip(self, tmp_path):
+        """Automation dates select the detected trip, not the nearest or first trip."""
+        from immich_memories.analysis.trip_detection import DetectedTrip
+        from immich_memories.cli._trip_generation import handle_trip_generation
+
+        mock_client = MagicMock()
+        mock_progress = MagicMock()
+        mock_config = MagicMock()
+        mock_config.defaults.transition = "crossfade"
+        mock_config.defaults.scale_mode = "blur"
+        mock_config.trips.homebase_latitude = 48.8
+        mock_config.trips.homebase_longitude = 2.3
+        trips = [
+            DetectedTrip(
+                start_date=date(2025, 5, 1),
+                end_date=date(2025, 5, 4),
+                location_name="Wrong",
+                asset_count=12,
+                centroid_lat=50.0,
+                centroid_lon=4.0,
+            ),
+            DetectedTrip(
+                start_date=date(2025, 7, 10),
+                end_date=date(2025, 7, 17),
+                location_name="Exact",
+                asset_count=20,
+                centroid_lat=43.7,
+                centroid_lon=7.2,
+            ),
+        ]
+        output = tmp_path / "trip_exact_2025-07-10.mp4"
+
+        with (
+            patch("immich_memories.cli._trip_display.run_trip_detection", return_value=trips),
+            patch(
+                "immich_memories.cli._trip_generation.fetch_videos_and_live_photos",
+                return_value=([MagicMock()], []),
+            ) as mock_fetch,
+            patch(
+                "immich_memories.cli._trip_generation.run_pipeline_and_generate",
+                return_value=(output, False, None),
+            ) as mock_pipeline,
+        ):
+            handle_trip_generation(
+                client=mock_client,
+                config=mock_config,
+                progress=mock_progress,
+                year=2025,
+                month=None,
+                trip_index=None,
+                all_trips=False,
+                near_date=None,
+                person_names=[],
+                output_path=tmp_path / "trip.mp4",
+                use_live_photos=False,
+                use_photos=False,
+                effective_analysis_depth="fast",
+                transition="smart",
+                music=None,
+                music_volume=0.5,
+                no_music=True,
+                resolution="auto",
+                scale_mode=None,
+                output_format=None,
+                add_date=False,
+                keep_intermediates=False,
+                privacy_mode=False,
+                title_override=None,
+                subtitle_override=None,
+                upload_to_immich=False,
+                album=None,
+                requested_start=date(2025, 7, 10),
+                requested_end=date(2025, 7, 17),
+                source="auto",
+                memory_key="trip:exact:key",
+                memory_category="trip",
+            )
+
+        fetched_range = mock_fetch.call_args.kwargs["date_ranges"][0]
+        assert fetched_range.start.date() == date(2025, 7, 10)
+        assert fetched_range.end.date() == date(2025, 7, 17)
+        assert mock_pipeline.call_args.kwargs["source"] == "auto"
+        assert mock_pipeline.call_args.kwargs["memory_key"] == "trip:exact:key"
+        assert mock_pipeline.call_args.kwargs["memory_category"] == "trip"
+
+    def test_exact_trip_range_without_match_fails(self, tmp_path):
+        """A stale automation candidate cannot silently generate another trip."""
+        from immich_memories.analysis.trip_detection import DetectedTrip
+        from immich_memories.cli._trip_generation import handle_trip_generation
+
+        trip = DetectedTrip(
+            start_date=date(2025, 5, 1),
+            end_date=date(2025, 5, 4),
+            location_name="Different",
+            asset_count=12,
+            centroid_lat=50.0,
+            centroid_lon=4.0,
+        )
+
+        with (
+            patch("immich_memories.cli._trip_display.run_trip_detection", return_value=[trip]),
+            pytest.raises(click.ClickException, match="No detected trip exactly matches"),
+        ):
+            handle_trip_generation(
+                client=MagicMock(),
+                config=MagicMock(),
+                progress=MagicMock(),
+                year=2025,
+                month=None,
+                trip_index=None,
+                all_trips=False,
+                near_date=None,
+                person_names=[],
+                output_path=tmp_path / "trip.mp4",
+                use_live_photos=False,
+                use_photos=False,
+                effective_analysis_depth="fast",
+                transition="smart",
+                music=None,
+                music_volume=0.5,
+                no_music=True,
+                resolution="auto",
+                scale_mode=None,
+                output_format=None,
+                add_date=False,
+                keep_intermediates=False,
+                privacy_mode=False,
+                title_override=None,
+                subtitle_override=None,
+                upload_to_immich=False,
+                album=None,
+                requested_start=date(2025, 7, 10),
+                requested_end=date(2025, 7, 17),
+            )
 
 
 def _combined_mock(tmp_path, mock_client=None):

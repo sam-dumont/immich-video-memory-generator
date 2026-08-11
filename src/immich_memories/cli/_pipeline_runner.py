@@ -50,6 +50,9 @@ def run_pipeline_and_generate(
     upload_to_immich: bool,
     album: str | None,
     memory_preset_params: dict | None = None,
+    source: str = "manual",
+    memory_key: str | None = None,
+    memory_category: str | None = None,
 ) -> tuple[Path, bool, str | None]:
     """Run smart pipeline analysis + video generation.
 
@@ -59,6 +62,7 @@ def run_pipeline_and_generate(
     from immich_memories.cache.database import VideoAnalysisCache
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.generate import GenerationParams, assets_to_clips, generate_memory
+    from immich_memories.tracking.models import normalize_memory_people
 
     clips = assets_to_clips(assets)
     if live_photo_clips:
@@ -174,6 +178,10 @@ def run_pipeline_and_generate(
         person_name=person_name,
         date_start=date_range.start,
         date_end=date_range.end,
+        source=source,
+        memory_key_override=memory_key,
+        memory_category=memory_category,
+        memory_people=normalize_memory_people(person_names),
         include_photos=False,
         photo_assets=None,
         target_duration_seconds=duration,

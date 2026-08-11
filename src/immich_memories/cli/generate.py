@@ -299,6 +299,14 @@ def register_generate_commands(main: click.Group) -> None:
         default=None,
         help="Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip)",
     )
+    @click.option(
+        "--source",
+        type=click.Choice(["manual", "scheduled", "auto"]),
+        default="manual",
+        hidden=True,
+    )
+    @click.option("--memory-key", type=str, default=None, hidden=True)
+    @click.option("--memory-category", type=str, default=None, hidden=True)
     @click.option("--quiet", is_flag=True, help="Suppress interactive progress, emit log lines")
     @click.pass_context
     def generate(
@@ -340,6 +348,9 @@ def register_generate_commands(main: click.Group) -> None:
         all_trips: bool,
         years_back: int | None,
         near_date: str | None,
+        source: str,
+        memory_key: str | None,
+        memory_category: str | None,
         quiet: bool,
     ) -> None:
         """Generate a video compilation.
@@ -562,6 +573,11 @@ def register_generate_commands(main: click.Group) -> None:
                             upload_to_immich=upload_to_immich,
                             album=album,
                             duration=duration,
+                            requested_start=date_range.start.date() if start and end else None,
+                            requested_end=date_range.end.date() if start and end else None,
+                            source=source,
+                            memory_key=memory_key,
+                            memory_category=memory_category,
                         )
                         return
 
@@ -680,6 +696,9 @@ def register_generate_commands(main: click.Group) -> None:
                         date_range=date_range,
                         upload_to_immich=upload_to_immich,
                         album=album,
+                        source=source,
+                        memory_key=memory_key,
+                        memory_category=memory_category,
                     )
 
                 print_success(f"Video saved to: {result_path}")
@@ -692,6 +711,8 @@ def register_generate_commands(main: click.Group) -> None:
         except GenerationError as e:
             print_error(str(e))
             sys.exit(1)
+        except click.ClickException:
+            raise
         except Exception as e:  # WHY: CLI top-level error boundary — sanitizes and displays error
             from immich_memories.security import sanitize_error_message
 

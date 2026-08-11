@@ -174,11 +174,15 @@ class TestRunTrackerMemoryFields:
         tracker.start_run(
             memory_type="year_in_review",
             memory_key="year_in_review:2025-01-01:2025-12-31:",
+            memory_category="birthday",
+            memory_people=(" Alice ", "BOB\tJones"),
             source="auto",
         )
         saved_run = tracker.db.save_run.call_args[0][0]
         assert saved_run.memory_type == "year_in_review"
         assert saved_run.memory_key == "year_in_review:2025-01-01:2025-12-31:"
+        assert saved_run.memory_category == "birthday"
+        assert saved_run.memory_people == ("alice", "bob jones")
         assert saved_run.source == "auto"
 
     # WHY: RunDatabase opens a SQLite connection — isolate run lifecycle from disk I/O

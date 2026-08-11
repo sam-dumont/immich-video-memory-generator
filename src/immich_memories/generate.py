@@ -111,6 +111,10 @@ class GenerationParams:
     person_name: str | None = None
     date_start: date | None = None
     date_end: date | None = None
+    source: str = "manual"
+    memory_key_override: str | None = None
+    memory_category: str | None = None
+    memory_people: tuple[str, ...] = ()
 
     # Music
     music_path: Path | None = None
@@ -274,6 +278,8 @@ def generate_memory(params: GenerationParams) -> Path:
 
 def _build_memory_key(params: GenerationParams) -> str | None:
     """Compute deterministic dedup key from generation params, or None if incomplete."""
+    if params.memory_key_override is not None:
+        return params.memory_key_override
     if not (params.memory_type and params.date_start and params.date_end):
         return None
     from immich_memories.automation.candidates import make_memory_key
@@ -312,6 +318,9 @@ def _generate_memory_inner(params: GenerationParams) -> Path:
         target_duration_seconds=round(_total_clip_duration(params)),
         memory_type=params.memory_type,
         memory_key=_build_memory_key(params),
+        memory_category=params.memory_category,
+        memory_people=params.memory_people,
+        source=params.source,
     )
 
     assembly_clips: list = []  # WHY: populated in try, needed in finally for cleanup

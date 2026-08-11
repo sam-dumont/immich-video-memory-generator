@@ -57,6 +57,8 @@ class RunTracker:
         target_duration_seconds: int = 600,
         memory_type: str | None = None,
         memory_key: str | None = None,
+        memory_category: str | None = None,
+        memory_people: tuple[str, ...] = (),
         source: str = "manual",
     ) -> str:
         """Start tracking a new run.
@@ -68,6 +70,8 @@ class RunTracker:
             target_duration_seconds: Target video duration in seconds.
             memory_type: Memory preset type (year_in_review, trip, etc.).
             memory_key: Deterministic dedup fingerprint.
+            memory_category: Detector category used for automation variety.
+            memory_people: Person identities used for automation variety.
             source: How the run was triggered ("manual", "scheduled", "auto").
 
         Returns:
@@ -86,6 +90,8 @@ class RunTracker:
             status="running",
             memory_type=memory_type,
             memory_key=memory_key,
+            memory_category=memory_category,
+            memory_people=memory_people,
             source=source,
             person_name=person_name,
             person_id=person_id,

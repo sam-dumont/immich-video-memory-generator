@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -394,6 +395,9 @@ class TestBuildGenerateCommand:
             "2026",
             "--month",
             "2",
+            "--source=auto",
+            "--memory-key=monthly_highlights:2026-02-01:2026-02-28:",
+            "--memory-category=monthly_review",
         ]
 
     def test_person_spotlight_with_upload(self) -> None:
@@ -432,7 +436,33 @@ class TestBuildGenerateCommand:
             "year_in_review",
             "--year",
             "2025",
+            "--source=auto",
+            "--memory-key=year_in_review:2025-01-01:2025-12-31:",
+            "--memory-category=year_in_review",
         ]
+
+    def test_unknown_category_never_launches_subprocess(self, config: Config) -> None:
+        candidate = MemoryCandidate(
+            memory_type="year_in_review",
+            category=cast(CandidateCategory, "unknown"),
+            date_range_start=date(2025, 1, 1),
+            date_range_end=date(2025, 12, 31),
+            person_names=[],
+            memory_key="unknown:key",
+            score=0.8,
+            reason="unknown detector",
+            asset_count=500,
+        )
+        runner = AutoRunner(config)
+
+        with (
+            patch.object(runner, "suggest", return_value=[candidate]),
+            patch("immich_memories.automation.runner._execute_generate") as execute,
+            pytest.raises(ValueError, match="Unsupported automation category"),
+        ):
+            runner.run_one(force=True)
+
+        execute.assert_not_called()
 
     def test_trip_command(self) -> None:
         candidate = MemoryCandidate(
