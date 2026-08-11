@@ -46,8 +46,9 @@ class PendingDeliveryRetry:
         *,
         description: str,
         already_persisted: Callable[[], bool] | None = None,
+        retry_requires_readable_noncommit: bool = False,
     ) -> str | None:
-        """Retry one small durable write, probing after ambiguous write failures."""
+        """Retry a durable write only when any required non-commit proof is readable."""
         first_error: str | None = None
         for _ in range(_PERSISTENCE_ATTEMPTS):
             try:
@@ -56,8 +57,11 @@ class PendingDeliveryRetry:
             except Exception as exc:
                 safe_error = self._safe_error(exc) or exc.__class__.__name__
                 first_error = first_error or safe_error
-                if self._was_persisted(already_persisted, description):
+                persisted = self._was_persisted(already_persisted, description)
+                if persisted is True:
                     return None
+                if retry_requires_readable_noncommit and persisted is None:
+                    return first_error
         assert first_error is not None
         logger.error(
             "%s failed after %d attempts: %s",
@@ -71,10 +75,10 @@ class PendingDeliveryRetry:
         self,
         probe: Callable[[], bool] | None,
         description: str,
-    ) -> bool:
-        """Safely check whether a write committed before its connection failed."""
+    ) -> bool | None:
+        """Return committed, not committed, or unknown after an ambiguous write."""
         if probe is None:
-            return False
+            return None
         try:
             return probe()
         except Exception as exc:
@@ -83,7 +87,7 @@ class PendingDeliveryRetry:
                 description,
                 self._safe_error(exc) or exc.__class__.__name__,
             )
-            return False
+            return None
 
     def _attempt_is_finished(
         self,
@@ -190,6 +194,7 @@ class PendingDeliveryRetry:
             asset_id = upload.get("asset_id")
             if not isinstance(asset_id, str) or not asset_id.strip():
                 raise ValueError("Immich upload returned no asset ID")
+            asset_id = asset_id.strip()
         except Exception as exc:
             delivery_error = self._safe_error(exc) or "Immich delivery failed"
             logger.warning("Pending Immich delivery failed: %s", delivery_error)
@@ -201,6 +206,7 @@ class PendingDeliveryRetry:
                     delivery_error,
                     pending.delivery_attempts + 1,
                 ),
+                retry_requires_readable_noncommit=True,
             )
             if persistence_error is not None:
                 return self.finish(
