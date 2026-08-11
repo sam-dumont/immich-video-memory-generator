@@ -566,6 +566,38 @@ def test_missing_decoded_frame_evidence_is_rejected(
         probe_output(staged)
 
 
+def test_long_memory_full_decode_has_a_fifteen_minute_budget_without_waiting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A valid long memory must not inherit the old metadata-only 30-second timeout."""
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.output_contract import probe_output
+
+    staged = tmp_path / "memory.assembling.mp4"
+    staged.write_bytes(b"ten-minute-memory")
+    observed_timeouts: list[object] = []
+
+    def simulated_long_probe(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        timeout = kwargs["timeout"]
+        observed_timeouts.append(timeout)
+        if not isinstance(timeout, int) or timeout < 90:
+            raise subprocess.TimeoutExpired(command, timeout)
+        payload = _probe_payload(
+            stream={"nb_read_frames": "18000"},
+            format={"duration": "600.0"},
+        )
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    monkeypatch.setattr(output_contract.subprocess, "run", simulated_long_probe)
+
+    probe = probe_output(staged)
+
+    assert probe.duration_seconds == 600.0
+    assert observed_timeouts == [15 * 60]
+
+
 def test_ffprobe_timeout_is_reported_as_an_invalid_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -576,8 +608,8 @@ def test_ffprobe_timeout_is_reported_as_an_invalid_artifact(
     staged = tmp_path / "memory.assembling.mp4"
     staged.write_bytes(b"slow-container")
 
-    def timeout_probe(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        raise subprocess.TimeoutExpired(command, 30)
+    def timeout_probe(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
 
     monkeypatch.setattr(output_contract.subprocess, "run", timeout_probe)
 

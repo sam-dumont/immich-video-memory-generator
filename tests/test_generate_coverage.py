@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+import json
+import subprocess
 from datetime import UTC, date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -1039,15 +1041,39 @@ class TestGenerateMemoryInner:
 
     def _patch_inner_deps(self, tmp_path):
         """Return a context manager that patches all external boundaries in _generate_memory_inner."""
-        result_path = tmp_path / "result.mp4"
-        result_path.write_bytes(b"fake video")
+        source_path = tmp_path / "result.mp4"
+        source_path.write_bytes(b"fake video")
+        result_path = tmp_path / "output" / "memory_20250715_120000_abcd" / "memory.mp4"
 
         assembly_clip = AssemblyClip(
-            path=result_path, duration=5.0, asset_id="clip-1", date="2025-07-15"
+            path=source_path, duration=5.0, asset_id="clip-1", date="2025-07-15"
         )
 
+        def assemble_to_staged(_clips, output_path: Path, _callback, **_kwargs) -> Path:
+            output_path.write_bytes(b"fake video")
+            return output_path
+
         mock_assembler = MagicMock()
-        mock_assembler.assemble_with_titles.return_value = result_path
+        mock_assembler.assemble_with_titles.side_effect = assemble_to_staged
+        probe_payload = {
+            "streams": [
+                {
+                    "codec_name": "h264",
+                    "pix_fmt": "yuv420p",
+                    "color_transfer": "bt709",
+                    "color_primaries": "bt709",
+                    "width": 1920,
+                    "height": 1080,
+                    "nb_read_frames": "150",
+                }
+            ],
+            "format": {
+                "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+                "duration": "5.0",
+                "size": "10",
+                "tags": {"major_brand": "isom"},
+            },
+        }
 
         patches = {
             # WHY: VideoDownloadCache hits filesystem for video caching
@@ -1091,6 +1117,13 @@ class TestGenerateMemoryInner:
             ),
             # WHY: _run_music_phase calls external music generation APIs
             "music": patch("immich_memories.generate._run_music_phase"),
+            # WHY: ffprobe is the external validation process; keep the real validation contract.
+            "probe": patch(
+                "immich_memories.processing.output_contract.subprocess.run",
+                return_value=subprocess.CompletedProcess(
+                    ["ffprobe"], 0, json.dumps(probe_payload), ""
+                ),
+            ),
             # WHY: sanitize_filename is a security utility
             "sanitize": patch(
                 "immich_memories.security.sanitize_filename",
@@ -1124,10 +1157,13 @@ class TestGenerateMemoryInner:
                 call_order.append("extract"),
                 [AssemblyClip(path=result_path, duration=5.0, asset_id="c1", date="2025-07-15")],
             )[1]
-            mocks["assembler"].return_value.assemble_with_titles.side_effect = lambda *_a, **_kw: (  # noqa: ARG005
-                call_order.append("assemble"),
-                result_path,
-            )[1]
+
+            def assemble_in_order(_clips, output_path: Path, _callback, **_kwargs) -> Path:
+                call_order.append("assemble")
+                output_path.write_bytes(b"fake video")
+                return output_path
+
+            mocks["assembler"].return_value.assemble_with_titles.side_effect = assemble_in_order
             _generate_memory_inner(params)
 
         assert call_order == ["extract", "assemble"]

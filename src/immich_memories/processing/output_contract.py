@@ -26,6 +26,8 @@ _DECODED_PIXEL_FORMATS = {
     "nv12": "yuv420p",
     "p010le": "yuv420p10le",
 }
+# WHY: frame counting decodes the whole memory; supported presets run up to ten minutes.
+_FULL_DECODE_TIMEOUT_SECONDS = 15 * 60
 _UNSUPPORTED_FSYNC_ERRNOS = frozenset(
     {errno.EINVAL, getattr(errno, "ENOSYS", errno.EINVAL), getattr(errno, "ENOTSUP", errno.EINVAL)}
 )
@@ -95,7 +97,7 @@ def _run_ffprobe(path: Path) -> str:
             command,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=_FULL_DECODE_TIMEOUT_SECONDS,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
