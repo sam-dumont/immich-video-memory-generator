@@ -473,7 +473,10 @@ class AutoRunner:
             self.config.immich.api_key,
             self.config.llm.api_key,
             self.config.musicgen.api_key,
+            self.config.ace_step.api_key,
         ]
+        if self.config.title_llm is not None:
+            values.append(self.config.title_llm.api_key)
         values.extend(self.config.notifications.urls)
         return tuple(sorted({value for value in values if value}, key=len, reverse=True))
 

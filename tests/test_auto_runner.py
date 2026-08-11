@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
@@ -1129,6 +1130,56 @@ class TestRunOneOutcomes:
         assert "***" in result.error
         notify.assert_called_once()
         assert notify.call_args.kwargs["error"] == result.error
+
+    def test_failure_redacts_every_configured_generation_credential(
+        self,
+        config: Config,
+        candidate: MemoryCandidate,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Separate music and title credentials cannot reach any failure surface."""
+        secrets = {
+            "immich": "immich-secret-8d2a",
+            "llm": "primary-llm-secret-6f13",
+            "title_llm": "title-llm-secret-a497",
+            "musicgen": "musicgen-secret-32ce",
+            "ace_step": "ace-step-secret-4b81",
+            "notification": "https://notify.test/notification-secret-0ea5",
+        }
+        config.immich.api_key = secrets["immich"]
+        config.llm.api_key = secrets["llm"]
+        config.title_llm = config.llm.model_copy(update={"api_key": secrets["title_llm"]})
+        config.musicgen.api_key = secrets["musicgen"]
+        config.ace_step.api_key = secrets["ace_step"]
+        config.notifications.urls = [secrets["notification"]]
+        child_output = "child exposed " + " ".join(secrets.values())
+        runner = AutoRunner(
+            config,
+            execute=lambda _argv: ProcessResult(7, child_output, ""),
+        )
+
+        with (
+            patch.object(runner, "suggest", return_value=[candidate]),
+            patch("immich_memories.automation.runner._send_notification") as notify,
+            caplog.at_level(logging.ERROR),
+        ):
+            result = runner.run_one(force=True)
+
+        attempt = runner.state.get_last_attempt()
+        assert attempt is not None
+        assert result.error == attempt.error
+        assert notify.call_args.kwargs["error"] == result.error
+        exposed_surfaces = "\n".join(
+            (
+                result.error or "",
+                attempt.error or "",
+                notify.call_args.kwargs["error"] or "",
+                caplog.text,
+            )
+        )
+        for secret in secrets.values():
+            assert secret not in exposed_surfaces
+        assert "***" in exposed_surfaces
 
     def test_process_error_details_are_sanitized_and_bounded(
         self, config: Config, candidate: MemoryCandidate
