@@ -1,6 +1,6 @@
 ---
 date: 2026-08-11
-branch: fix/auth-env-expansion
+branch: codex/launch-hardening
 scope: launch readiness, automation, performance, Immich v2/v3 compatibility, and user flow
 verdict: public beta is close; stable launch is blocked by P0 items
 ---
@@ -18,6 +18,28 @@ The most urgent problem was operational: the installed daily automation could re
 without producing a new video, retry bad candidates every day, and generate files without a
 clear status surface. The installed LaunchAgent was unloaded on 2026-08-11 with the owner's
 approval. Its plist remains on disk and nothing was deleted.
+
+## Remediation status — 2026-08-11
+
+- **P0.1 smart automation: fixed and independently approved.** The single daily entry point
+  now returns typed outcomes, verifies the exact causal run and output, holds a process lease,
+  preserves custom-config provenance, records UTC-aware durable history, and reports bounded,
+  fully redacted failures. Schema upgrades are serialized across processes. The final review
+  passed 149 focused tests plus deterministic and real-process migration diagnostics. Key final
+  commits: `a0549cf`, `fc24d30`, `7af199f`, and `d4777b5`.
+- **P0.2 variety: fixed and independently approved.** Automatic monthly work is limited to the
+  latest completed month, hard category cadence/rotation rules are enforced without relaxation,
+  and status/dry-run output explains rejections. The full automation controller gate passed
+  318 tests with 16 live tests deselected.
+- **P0.3 Immich v2/v3: in progress.** Version policy/detection, duration normalization, and
+  version-selected upload schemas are implemented through `85e5475`. Structured v3 errors,
+  all-client policy propagation, offset-aware search dates, documentation, and live read-only
+  verification remain before this blocker can close.
+- **P0.4–P0.6: still open.** Output codec enforcement, unified version reporting, and required
+  browser E2E remain launch blockers and will be handled after the Immich compatibility slice.
+
+The LaunchAgent remains unloaded. Do not reactivate unattended generation until every P0 above
+is closed and the final release gate passes.
 
 ## Safety action already taken
 
