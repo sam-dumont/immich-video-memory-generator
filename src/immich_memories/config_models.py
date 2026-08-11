@@ -11,7 +11,9 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
+
+from immich_memories.api.compatibility import ApiVersionPolicy
 
 
 def expand_env_vars(value: str) -> str:
@@ -30,6 +32,12 @@ class ImmichConfig(BaseModel):
 
     url: str = Field(default="", description="Immich server URL")
     api_key: str = Field(default="", description="Immich API key")
+    api_version: ApiVersionPolicy = ApiVersionPolicy.AUTO
+
+    @field_serializer("api_version")
+    def serialize_api_version(self, value: ApiVersionPolicy) -> str:
+        """Serialize the policy as a portable YAML/JSON string."""
+        return value.value
 
     @field_validator("url", "api_key", mode="before")
     @classmethod

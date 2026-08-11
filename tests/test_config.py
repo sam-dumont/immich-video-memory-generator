@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
+from immich_memories.api.compatibility import ApiVersionPolicy
 from immich_memories.config import (
     AnalysisConfig,
     Config,
@@ -68,6 +70,27 @@ class TestImmichConfig:
         config = ImmichConfig(url="${TEST_IMMICH_URL}", api_key="direct_key")
         assert config.url == "https://test.example.com"
         assert config.api_key == "direct_key"
+
+    def test_api_version_defaults_to_auto(self):
+        """API compatibility is detected automatically unless configured."""
+        assert ImmichConfig().api_version is ApiVersionPolicy.AUTO
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            pytest.param("auto", ApiVersionPolicy.AUTO, id="auto"),
+            pytest.param("v2", ApiVersionPolicy.V2, id="v2"),
+            pytest.param("v3", ApiVersionPolicy.V3, id="v3"),
+        ],
+    )
+    def test_api_version_policy_is_explicit(self, raw: str, expected: ApiVersionPolicy) -> None:
+        """Supported strings parse to their exact compatibility policy."""
+        assert ImmichConfig(api_version=raw).api_version is expected
+
+    def test_arbitrary_api_version_is_rejected(self):
+        """Unknown compatibility policies fail configuration validation."""
+        with pytest.raises(ValidationError, match="api_version"):
+            ImmichConfig(api_version="latest")
 
 
 class TestDefaultsConfig:
@@ -268,6 +291,18 @@ class TestConfig:
         assert loaded.immich.url == "https://test.com"
         assert loaded.immich.api_key == "test_key"
         assert loaded.defaults.target_duration_seconds == 900
+
+    def test_api_version_yaml_roundtrip(self, tmp_path):
+        """The API-version override is stored as plain YAML and restored as an enum."""
+        config_path = tmp_path / "config.yaml"
+        Config(immich=ImmichConfig(api_version="v3")).save_yaml(config_path)
+
+        import yaml
+
+        with config_path.open() as f:
+            raw = yaml.safe_load(f)
+        assert raw["immich"]["api_version"] == "v3"
+        assert Config.from_yaml(config_path).immich.api_version is ApiVersionPolicy.V3
 
     def test_missing_yaml_returns_defaults(self):
         """Missing YAML file returns default config."""
