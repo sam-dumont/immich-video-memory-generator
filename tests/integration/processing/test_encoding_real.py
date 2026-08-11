@@ -309,7 +309,7 @@ class TestValidatedOutputPublication:
         with pytest.raises(InvalidOutputArtifact, match="decode errors"):
             validate_output(truncated, plan)
 
-    def test_real_hevc_10_bit_decode_matches_p010_encoder_input(self, tmp_path: Path):
+    def test_real_software_hevc_10_bit_decode_matches_p010_encoder_input(self, tmp_path: Path):
         from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
         from immich_memories.processing.output_contract import validate_output
 
@@ -317,11 +317,11 @@ class TestValidatedOutputPublication:
         _write_tiny_hlg_hevc(output)
         plan = EncodingPlan(
             codec=OutputCodec.H265,
-            encoder="hevc_videotoolbox",
-            encoder_args=("-c:v", "hevc_videotoolbox"),
+            encoder="libx265",
+            encoder_args=("-preset", "ultrafast"),
             target_transfer=HdrTransfer.HLG,
             tone_map_to_sdr=False,
-            pixel_format="p010le",
+            pixel_format="yuv420p10le",
             container="mp4",
         )
 
@@ -329,3 +329,90 @@ class TestValidatedOutputPublication:
 
         assert probe.pixel_format == "yuv420p10le"
         assert probe.decoded_frames == 3
+
+
+_HARDWARE_ENCODERS_BY_BACKEND = {
+    "apple": {"h264": "h264_videotoolbox", "h265": "hevc_videotoolbox"},
+    "nvidia": {"h264": "h264_nvenc", "h265": "hevc_nvenc"},
+    "qsv": {"h264": "h264_qsv", "h265": "hevc_qsv"},
+    "vaapi": {"h264": "h264_vaapi", "h265": "hevc_vaapi"},
+}
+
+
+@pytest.mark.parametrize(
+    ("codec_name", "support_attribute", "expected_probe_codec"),
+    [
+        pytest.param("h264", "supports_h264_encode", "h264", id="hardware-h264"),
+        pytest.param("h265", "supports_h265_encode", "hevc", id="hardware-h265"),
+    ],
+)
+def test_real_hardware_encoding_follows_resolved_plan(
+    codec_name: str,
+    support_attribute: str,
+    expected_probe_codec: str,
+    test_clip_720p: Path,
+    tmp_path: Path,
+) -> None:
+    """The detected hardware plan must drive encoding and survive exact validation."""
+    from immich_memories.processing.assembly_config import AssemblySettings
+    from immich_memories.processing.clip_encoder import ClipEncoder
+    from immich_memories.processing.encoding_plan import (
+        EncodingRequest,
+        HdrMode,
+        HdrTransfer,
+        OutputCodec,
+        resolve_encoding_plan,
+    )
+    from immich_memories.processing.ffmpeg_prober import FFmpegProber
+    from immich_memories.processing.hardware import detect_hardware_acceleration
+    from immich_memories.processing.output_contract import validate_output
+
+    detect_hardware_acceleration.cache_clear()
+    capabilities = detect_hardware_acceleration()
+    if not getattr(capabilities, support_attribute):
+        pytest.skip(f"production detection reports no {codec_name} hardware encoder")
+
+    expected_encoder = _HARDWARE_ENCODERS_BY_BACKEND[capabilities.backend.value][codec_name]
+    codec = OutputCodec(codec_name)
+    plan = resolve_encoding_plan(
+        EncodingRequest(
+            codec=codec,
+            hdr_mode=HdrMode.SDR,
+            hardware_enabled=True,
+            preset="fast",
+            crf=23,
+            container="mp4",
+        ),
+        capabilities,
+        input_transfer=HdrTransfer.NONE,
+    )
+
+    assert plan.codec is codec
+    assert plan.encoder == expected_encoder
+    assert plan.container == "mp4"
+    assert plan.target_transfer is HdrTransfer.NONE
+
+    settings = AssemblySettings(
+        encoding_plan=plan,
+        normalize_clip_audio=False,
+        scale_mode="black_bars",
+        target_resolution=(640, 360),
+    )
+    encoder = ClipEncoder(
+        settings=settings,
+        prober=FFmpegProber(settings),
+        face_center_fn=lambda _path: None,
+    )
+    output = tmp_path / f"hardware-{codec_name}.mp4"
+
+    encoder.encode_single_clip(_make_clip(test_clip_720p, duration=0.5), output)
+
+    validated = validate_output(output, plan)
+    ffprobe = ffprobe_json(output)
+    video_stream = next(stream for stream in ffprobe["streams"] if stream["codec_type"] == "video")
+    assert expected_encoder in video_stream["tags"]["encoder"]
+    assert validated.codec == expected_probe_codec
+    assert validated.container == "mp4"
+    assert validated.pixel_format == "yuv420p"
+    assert validated.color_transfer == "bt709"
+    assert validated.color_primaries == "bt709"
