@@ -17,6 +17,7 @@ from immich_memories.cache.database_models import (  # noqa: F401
     SimilarVideo,
     _hamming_distance,
 )
+from immich_memories.cache.migration_sql import execute_migration_script
 from immich_memories.cache.migration_v11 import migrate_automation_history
 
 if TYPE_CHECKING:
@@ -26,12 +27,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Current schema version - increment when schema changes
-SCHEMA_VERSION = 12
-
-# Scoring algorithm version — bump when score computation changes
-# so cached scores from the old algorithm get re-analyzed
-SCORING_VERSION = 2
+SCHEMA_VERSION = 12  # Increment when schema changes
+SCORING_VERSION = 2  # Bump when score computation changes
 
 
 class VideoAnalysisCache:
@@ -66,20 +63,25 @@ class VideoAnalysisCache:
 
     def _run_migrations(self) -> None:
         with self._get_connection() as conn:
-            # Check current version
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS schema_migrations (
-                    version INTEGER PRIMARY KEY,
-                    applied_at TEXT NOT NULL DEFAULT (datetime('now')),
-                    description TEXT
-                )
-            """)
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS schema_migrations (
+                        version INTEGER PRIMARY KEY,
+                        applied_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        description TEXT
+                    )
+                """)
 
-            result = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
-            current_version = result[0] or 0
+                result = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
+                current_version = result[0] or 0
 
-            if current_version < SCHEMA_VERSION:
-                self._apply_migrations(conn, current_version)
+                if current_version < SCHEMA_VERSION:
+                    self._apply_migrations(conn, current_version)
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
     def _apply_migrations(self, conn: sqlite3.Connection, from_version: int) -> None:
         migrations = {
@@ -105,10 +107,11 @@ class VideoAnalysisCache:
                     "INSERT INTO schema_migrations (version, description) VALUES (?, ?)",
                     (version, f"Migration to v{version}"),
                 )
-                conn.commit()
 
     def _migration_v1_initial(self, conn: sqlite3.Connection) -> None:
-        conn.executescript("""
+        execute_migration_script(
+            conn,
+            """
             CREATE TABLE IF NOT EXISTS video_analysis (
                 asset_id TEXT PRIMARY KEY,
                 checksum TEXT,
@@ -189,10 +192,13 @@ class VideoAnalysisCache:
                 ON hash_index(hash_chunk_2);
             CREATE INDEX IF NOT EXISTS idx_hash_chunk_3
                 ON hash_index(hash_chunk_3);
-        """)
+        """,
+        )
 
     def _migration_v2_thumbnails(self, conn: sqlite3.Connection) -> None:
-        conn.executescript("""
+        execute_migration_script(
+            conn,
+            """
             CREATE TABLE IF NOT EXISTS thumbnails (
                 asset_id TEXT NOT NULL,
                 size TEXT NOT NULL,  -- 'preview', 'thumbnail', etc.
@@ -223,7 +229,8 @@ class VideoAnalysisCache:
 
             CREATE INDEX IF NOT EXISTS idx_video_metadata_checksum
                 ON video_metadata(checksum);
-        """)
+        """,
+        )
 
     def _migration_v3_remove_thumbnail_blobs(self, conn: sqlite3.Connection) -> None:
         """Remove thumbnail BLOBs from database.
@@ -236,7 +243,9 @@ class VideoAnalysisCache:
         logger.info("Dropped thumbnails table - thumbnails now stored in file cache")
 
     def _migration_v4_run_tracking(self, conn: sqlite3.Connection) -> None:
-        conn.executescript("""
+        execute_migration_script(
+            conn,
+            """
             -- Pipeline runs table
             CREATE TABLE IF NOT EXISTS pipeline_runs (
                 run_id TEXT PRIMARY KEY,
@@ -283,7 +292,8 @@ class VideoAnalysisCache:
             CREATE INDEX IF NOT EXISTS idx_phase_run ON phase_stats(run_id);
             CREATE INDEX IF NOT EXISTS idx_phase_name
                 ON phase_stats(phase_name);
-        """)
+        """,
+        )
         logger.info("Created pipeline_runs and phase_stats tables for run tracking")
 
     def _migration_v5_add_rotation(self, conn: sqlite3.Connection) -> None:
@@ -313,7 +323,9 @@ class VideoAnalysisCache:
 
     def _migration_v7_asset_scores(self, conn: sqlite3.Connection) -> None:
         """Add asset_scores table for cache-first LLM scoring."""
-        conn.executescript("""
+        execute_migration_script(
+            conn,
+            """
             CREATE TABLE IF NOT EXISTS asset_scores (
                 asset_id TEXT PRIMARY KEY,
                 asset_type TEXT NOT NULL,
@@ -331,7 +343,8 @@ class VideoAnalysisCache:
                 ON asset_scores(asset_type);
             CREATE INDEX IF NOT EXISTS idx_asset_scores_combined
                 ON asset_scores(combined_score DESC);
-        """)
+        """,
+        )
         logger.info("Created asset_scores table for cache-first scoring")
 
     def _migration_v8_scoring_version(self, conn: sqlite3.Connection) -> None:

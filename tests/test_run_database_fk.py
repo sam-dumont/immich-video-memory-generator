@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -143,6 +144,74 @@ def test_v10_migrates_populated_v9_database_without_losing_rows(
     assert loaded is not None
     assert loaded.memory_category is None
     assert loaded.memory_people == ()
+
+
+def test_concurrent_connections_upgrade_v9_database_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second initializer cannot pass version discovery during a v10 migration."""
+    db_path = tmp_path / "concurrent-v9.db"
+    current_version = cache_database.SCHEMA_VERSION
+    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", 9)
+    RunDatabase(db_path)
+    monkeypatch.setattr(cache_database, "SCHEMA_VERSION", current_version)
+
+    original = cache_database.VideoAnalysisCache._migration_v10_automation_state
+    first_entered = threading.Event()
+    second_entered = threading.Event()
+    release_first = threading.Event()
+    call_lock = threading.Lock()
+    errors: list[BaseException] = []
+    calls = 0
+
+    def controlled_migration(
+        self: cache_database.VideoAnalysisCache, conn: sqlite3.Connection
+    ) -> None:
+        nonlocal calls
+        with call_lock:
+            calls += 1
+            call_number = calls
+        if call_number == 1:
+            first_entered.set()
+            if not release_first.wait(timeout=5):
+                raise TimeoutError("migration test did not release first initializer")
+        else:
+            second_entered.set()
+        original(self, conn)
+
+    monkeypatch.setattr(
+        cache_database.VideoAnalysisCache,
+        "_migration_v10_automation_state",
+        controlled_migration,
+    )
+
+    def initialize() -> None:
+        try:
+            RunDatabase(db_path)
+        except BaseException as exc:  # pragma: no cover - asserted below
+            errors.append(exc)
+
+    first = threading.Thread(target=initialize)
+    second = threading.Thread(target=initialize)
+    try:
+        first.start()
+        assert first_entered.wait(timeout=5)
+        second.start()
+        assert not second_entered.wait(timeout=0.25)
+    finally:
+        release_first.set()
+        first.join(timeout=5)
+        second.join(timeout=5)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert errors == []
+    assert calls == 1
+    with sqlite3.connect(db_path) as conn:
+        version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(pipeline_runs)")]
+    assert version == current_version
+    assert columns.count("memory_category") == 1
 
 
 def test_v12_fresh_database_has_exact_automation_run_identity(tmp_path: Path) -> None:
