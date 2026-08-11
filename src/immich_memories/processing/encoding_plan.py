@@ -38,6 +38,8 @@ _ENCODERS_BY_CODEC: dict[OutputCodec, frozenset[str]] = {
     ),
     OutputCodec.PRORES: frozenset({"prores_ks"}),
 }
+_OUTPUT_CONTAINERS = frozenset({"mp4", "mov"})
+_ENCODER_PRESETS = frozenset({"fast", "balanced", "quality"})
 
 
 def _normalize_codec(value: object) -> OutputCodec:
@@ -56,6 +58,20 @@ def _normalize_hdr_mode(value: object) -> HdrMode:
         return HdrMode(value)
     except ValueError as exc:
         raise UnsupportedEncodingCombination(f"Unsupported HDR mode: {value!r}") from exc
+
+
+def _require_bool(value: object, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise UnsupportedEncodingCombination(f"{field_name} must be a bool: {value!r}")
+    return value
+
+
+def _require_choice(value: object, field_name: str, choices: frozenset[str]) -> str:
+    if not isinstance(value, str):
+        raise UnsupportedEncodingCombination(f"{field_name} must be a string: {value!r}")
+    if value not in choices:
+        raise UnsupportedEncodingCombination(f"Unsupported {field_name}: {value!r}")
+    return value
 
 
 @dataclass(frozen=True)
@@ -84,10 +100,8 @@ class EncodingPlan:
 
 
 def _validate_request_fields(request: EncodingRequest) -> None:
-    if request.container not in {"mp4", "mov"}:
-        raise UnsupportedEncodingCombination(f"Unsupported output container: {request.container}")
-    if request.preset not in {"fast", "balanced", "quality"}:
-        raise UnsupportedEncodingCombination(f"Unsupported encoder preset: {request.preset!r}")
+    _require_choice(request.container, "container", _OUTPUT_CONTAINERS)
+    _require_choice(request.preset, "preset", _ENCODER_PRESETS)
     if (
         isinstance(request.crf, bool)
         or not isinstance(request.crf, int)
@@ -122,10 +136,12 @@ def resolve_encoding_plan(
     """Resolve output codec and hardware preference without codec substitution."""
     codec = _normalize_codec(request.codec)
     hdr_mode = _normalize_hdr_mode(request.hdr_mode)
+    hardware_enabled = _require_bool(request.hardware_enabled, "hardware_enabled")
+    has_hdr_input = _require_bool(input_has_hdr, "input_has_hdr")
     _validate_request_fields(request)
     _validate_codec_policy(codec, hdr_mode, request.container)
 
-    selected_capabilities = capabilities if request.hardware_enabled else HWAccelCapabilities()
+    selected_capabilities = capabilities if hardware_enabled else HWAccelCapabilities()
     encoder, encoder_args = get_ffmpeg_encoder(
         selected_capabilities,
         codec=codec.value,
@@ -135,9 +151,9 @@ def resolve_encoding_plan(
     if encoder in {"libx264", "libx265"}:
         encoder_args.extend(["-crf", str(request.crf)])
     hdr = codec is OutputCodec.H265 and (
-        hdr_mode is HdrMode.HDR or (hdr_mode is HdrMode.AUTO and input_has_hdr)
+        hdr_mode is HdrMode.HDR or (hdr_mode is HdrMode.AUTO and has_hdr_input)
     )
-    tone_map_to_sdr = input_has_hdr and not hdr
+    tone_map_to_sdr = has_hdr_input and not hdr
     pixel_format = "yuv420p"
     if hdr:
         pixel_format = "yuv420p10le" if encoder == "libx265" else "p010le"
