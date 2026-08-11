@@ -501,12 +501,14 @@ build-wheel:
 
 DOCKER_IMAGE := immich-memories
 DOCKER_TAG := latest
-APP_VERSION ?= $(shell uv run python -c 'from immich_memories._version import __version__; print(__version__)')
+GIT_SHORT_SHA := $(shell git rev-parse --short HEAD)
+GIT_TRACKED_CHANGES := $(shell git status --porcelain --untracked-files=no)
+APP_VERSION ?= 0+g$(GIT_SHORT_SHA)$(if $(GIT_TRACKED_CHANGES),.dirty)
 INSTALL_EXTRAS ?= all
 VCS_REF ?= $(shell git rev-parse HEAD)
 SOURCE_URL ?= https://github.com/sam-dumont/immich-video-memory-generator
-IMMICH_CONFIG_DIR ?= $(HOME)/.immich-memories
-IMMICH_OUTPUT_DIR ?= $(CURDIR)/output
+IMMICH_CONFIG_VOLUME ?= immich-memories-config
+IMMICH_OUTPUT_VOLUME ?= immich-memories-output
 
 docker:
 	docker build \
@@ -518,18 +520,16 @@ docker:
 		-f docker/Dockerfile .
 
 docker-run:
-	mkdir -p $(IMMICH_CONFIG_DIR) $(IMMICH_OUTPUT_DIR)
 	docker run -it --rm \
 		-p 8080:8080 \
-		-v $(IMMICH_CONFIG_DIR):/home/immich/.immich-memories \
-		-v $(IMMICH_OUTPUT_DIR):/app/output \
+		--mount type=volume,source=$(IMMICH_CONFIG_VOLUME),target=/home/immich/.immich-memories \
+		--mount type=volume,source=$(IMMICH_OUTPUT_VOLUME),target=/app/output \
 		$(DOCKER_IMAGE):$(DOCKER_TAG)
 
 docker-shell:
-	mkdir -p $(IMMICH_CONFIG_DIR) $(IMMICH_OUTPUT_DIR)
 	docker run -it --rm \
-		-v $(IMMICH_CONFIG_DIR):/home/immich/.immich-memories \
-		-v $(IMMICH_OUTPUT_DIR):/app/output \
+		--mount type=volume,source=$(IMMICH_CONFIG_VOLUME),target=/home/immich/.immich-memories \
+		--mount type=volume,source=$(IMMICH_OUTPUT_VOLUME),target=/app/output \
 		$(DOCKER_IMAGE):$(DOCKER_TAG) /bin/bash
 
 # =============================================================================

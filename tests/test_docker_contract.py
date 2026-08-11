@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -22,13 +23,14 @@ def _logical_instructions(source: str) -> str:
     return re.sub(r"[ \t]+", " ", joined)
 
 
-def _dry_run_make(target: str, *assignments: str) -> str:
+def _dry_run_make(target: str, *assignments: str, env: dict[str, str] | None = None) -> str:
     result = subprocess.run(
         ["make", "--no-print-directory", "-n", target, *assignments],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
         text=True,
+        env=env,
     )
     return _logical_instructions(result.stdout)
 
@@ -88,22 +90,69 @@ def test_local_docker_build_passes_version_and_feature_selection() -> None:
     assert "-t immich-memories:contract-test" in command
 
 
-@pytest.mark.parametrize("target", ["docker-run", "docker-shell"])
-def test_local_docker_commands_mount_nonroot_config_and_output(target: str) -> None:
-    """Local containers must persist state at paths owned by the runtime user."""
-    command = _dry_run_make(
-        target,
-        "IMMICH_CONFIG_DIR=/tmp/immich-config-contract",
-        "IMMICH_OUTPUT_DIR=/tmp/immich-output-contract",
-    )
+def test_local_docker_version_comes_from_current_git_state(tmp_path: Path) -> None:
+    """A stale generated Python version must not label a newer checkout."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_uv = fake_bin / "uv"
+    fake_uv.write_text("#!/bin/sh\nprintf '9.8.7\\n'\n")
+    fake_uv.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
 
-    assert "-v /tmp/immich-config-contract:/home/immich/.immich-memories" in command
-    assert "-v /tmp/immich-output-contract:/app/output" in command
-    assert ":/root/.immich-memories" not in command
+    command = _dry_run_make("docker", "DOCKER_TAG=vcs-contract", env=env)
+    short_sha = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    tracked_changes = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    expected_version = f"0+g{short_sha}{'.dirty' if tracked_changes else ''}"
+
+    assert f"--build-arg APP_VERSION={expected_version}" in command
+    assert "--build-arg APP_VERSION=9.8.7" not in command
+
+
+@pytest.mark.parametrize("target", ["docker-run", "docker-shell"])
+def test_local_docker_commands_use_docker_owned_volumes(target: str) -> None:
+    """Local persistence must retain the ownership baked into the image."""
+    command = _dry_run_make(target)
+
+    assert (
+        "--mount type=volume,source=immich-memories-config,"
+        "target=/home/immich/.immich-memories" in command
+    )
+    assert "--mount type=volume,source=immich-memories-output,target=/app/output" in command
+    assert "mkdir -p" not in command
+    assert " -v " not in command
     assert (
         "chown -R immich:immich /home/immich/.immich-memories /app/output"
         in _logical_instructions(_dockerfile())
     )
+
+
+@pytest.mark.parametrize("target", ["docker-run", "docker-shell"])
+def test_local_volume_overrides_remain_named_volumes(target: str) -> None:
+    """Operators may rename volumes without changing them into host binds."""
+    command = _dry_run_make(
+        target,
+        "IMMICH_CONFIG_VOLUME=contract-config",
+        "IMMICH_OUTPUT_VOLUME=contract-output",
+    )
+
+    assert (
+        "--mount type=volume,source=contract-config,target=/home/immich/.immich-memories" in command
+    )
+    assert "--mount type=volume,source=contract-output,target=/app/output" in command
+    assert " -v " not in command
 
 
 def test_release_images_receive_one_explicit_build_identity() -> None:
