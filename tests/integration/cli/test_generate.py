@@ -1094,6 +1094,7 @@ class TestTripGenerationFlow:
 
         with (
             patch("immich_memories.cli._trip_display.run_trip_detection", return_value=[trip]),
+            patch("immich_memories.cli._trip_generation.run_pipeline_and_generate") as pipeline,
             pytest.raises(click.ClickException, match="No detected trip exactly matches"),
         ):
             handle_trip_generation(
@@ -1126,7 +1127,155 @@ class TestTripGenerationFlow:
                 album=None,
                 requested_start=date(2025, 7, 10),
                 requested_end=date(2025, 7, 17),
+                source="auto",
+                memory_key="trip:missing:key",
+                memory_category="trip",
             )
+
+        pipeline.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("selector_args", "expected_starts"),
+        [
+            (["--trip-index", "2"], (date(2025, 8, 10),)),
+            (["--month", "8"], (date(2025, 8, 10),)),
+            (["--near-date", "2025-08-12"], (date(2025, 8, 10),)),
+            (["--all-trips"], (date(2025, 1, 2), date(2025, 8, 10))),
+        ],
+    )
+    def test_manual_custom_range_preserves_trip_selector_precedence(
+        self,
+        tmp_path,
+        selector_args: list[str],
+        expected_starts: tuple[date, ...],
+    ) -> None:
+        """Manual custom dates must not replace the established trip selectors."""
+        from click.testing import CliRunner
+
+        from immich_memories.analysis.trip_detection import DetectedTrip
+        from immich_memories.cli import main
+        from immich_memories.config_loader import Config
+
+        trips = [
+            DetectedTrip(
+                start_date=date(2025, 1, 2),
+                end_date=date(2025, 1, 5),
+                location_name="Exact Range",
+                asset_count=12,
+                centroid_lat=50.0,
+                centroid_lon=4.0,
+            ),
+            DetectedTrip(
+                start_date=date(2025, 8, 10),
+                end_date=date(2025, 8, 15),
+                location_name="Selected Trip",
+                asset_count=20,
+                centroid_lat=43.7,
+                centroid_lon=7.2,
+            ),
+        ]
+        config = Config(immich={"url": "http://immich.test", "api_key": "test-key"})
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        output = tmp_path / "trip.mp4"
+
+        with (
+            patch("immich_memories.cli.get_config", return_value=config),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=mock_client),
+            patch("immich_memories.cli._trip_display.run_trip_detection", return_value=trips),
+            patch(
+                "immich_memories.cli._trip_generation.fetch_videos_and_live_photos",
+                return_value=([MagicMock()], []),
+            ),
+            patch(
+                "immich_memories.cli._trip_generation.run_pipeline_and_generate",
+                return_value=(output, False, None),
+            ) as mock_pipeline,
+        ):
+            result = CliRunner().invoke(
+                main,
+                [
+                    "generate",
+                    "--memory-type",
+                    "trip",
+                    "--year",
+                    "2025",
+                    "--start",
+                    "2025-01-02",
+                    "--end",
+                    "2025-01-05",
+                    *selector_args,
+                    "--no-music",
+                    "--output",
+                    str(output),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        selected_starts = tuple(
+            call.kwargs["date_range"].start.date() for call in mock_pipeline.call_args_list
+        )
+        assert selected_starts == expected_starts
+
+    def test_exact_trip_range_with_duplicate_matches_fails(self, tmp_path) -> None:
+        """Ambiguous detector output cannot pick an arbitrary trip."""
+        from immich_memories.analysis.trip_detection import DetectedTrip
+        from immich_memories.cli._trip_generation import handle_trip_generation
+
+        duplicates = [
+            DetectedTrip(
+                start_date=date(2025, 7, 10),
+                end_date=date(2025, 7, 17),
+                location_name=location,
+                asset_count=20,
+                centroid_lat=43.7,
+                centroid_lon=7.2,
+            )
+            for location in ("Duplicate A", "Duplicate B")
+        ]
+
+        with (
+            patch("immich_memories.cli._trip_display.run_trip_detection", return_value=duplicates),
+            patch("immich_memories.cli._trip_generation.run_pipeline_and_generate") as pipeline,
+            pytest.raises(click.ClickException, match="found 2"),
+        ):
+            handle_trip_generation(
+                client=MagicMock(),
+                config=MagicMock(),
+                progress=MagicMock(),
+                year=2025,
+                month=None,
+                trip_index=None,
+                all_trips=False,
+                near_date=None,
+                person_names=[],
+                output_path=tmp_path / "trip.mp4",
+                use_live_photos=False,
+                use_photos=False,
+                effective_analysis_depth="fast",
+                transition="smart",
+                music=None,
+                music_volume=0.5,
+                no_music=True,
+                resolution="auto",
+                scale_mode=None,
+                output_format=None,
+                add_date=False,
+                keep_intermediates=False,
+                privacy_mode=False,
+                title_override=None,
+                subtitle_override=None,
+                upload_to_immich=False,
+                album=None,
+                requested_start=date(2025, 7, 10),
+                requested_end=date(2025, 7, 17),
+                source="auto",
+                memory_key="trip:duplicate:key",
+                memory_category="trip",
+            )
+
+        pipeline.assert_not_called()
 
 
 def _combined_mock(tmp_path, mock_client=None):

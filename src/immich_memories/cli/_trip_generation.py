@@ -69,6 +69,26 @@ def resolve_music_arg(music: str | None) -> str | None:
     return music
 
 
+def _has_trusted_automation_identity(
+    source: str,
+    memory_key: str | None,
+    memory_category: str | None,
+) -> bool:
+    """Return whether hidden context identifies an automation trip candidate."""
+    return source == "auto" and bool(memory_key) and memory_category == "trip"
+
+
+def _exact_trip_match_error(start: date, end: date, match_count: int) -> click.ClickException:
+    if match_count == 0:
+        message = f"No detected trip exactly matches {start.isoformat()} to {end.isoformat()}"
+    else:
+        message = (
+            f"Exact trip range {start.isoformat()} to {end.isoformat()} found "
+            f"{match_count} detected trips; expected exactly one"
+        )
+    return click.ClickException(message)
+
+
 def _select_requested_trips(
     trips: list[DetectedTrip],
     *,
@@ -78,19 +98,24 @@ def _select_requested_trips(
     near_date: str | None,
     requested_start: date | None,
     requested_end: date | None,
+    source: str,
+    memory_key: str | None,
+    memory_category: str | None,
 ) -> list[DetectedTrip]:
     """Select one exact automation trip or preserve the manual selectors."""
-    if requested_start is not None and requested_end is not None:
+    exact_automation_request = _has_trusted_automation_identity(
+        source,
+        memory_key,
+        memory_category,
+    )
+    if exact_automation_request and requested_start is not None and requested_end is not None:
         exact_matches = [
             trip
             for trip in trips
             if trip.start_date == requested_start and trip.end_date == requested_end
         ]
         if len(exact_matches) != 1:
-            raise click.ClickException(
-                "No detected trip exactly matches "
-                f"{requested_start.isoformat()} to {requested_end.isoformat()}"
-            )
+            raise _exact_trip_match_error(requested_start, requested_end, len(exact_matches))
         return exact_matches
 
     from immich_memories.cli._trip_display import select_trips
@@ -155,6 +180,9 @@ def handle_trip_generation(
         near_date=near_date,
         requested_start=requested_start,
         requested_end=requested_end,
+        source=source,
+        memory_key=memory_key,
+        memory_category=memory_category,
     )
 
     trips_table = format_trips_table(trips)
