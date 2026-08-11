@@ -101,6 +101,9 @@ class AutomationStateStore:
         error: str | None = None,
     ) -> AutomationAttempt:
         """Set terminal fields on the original attempt row."""
+        if outcome is AutoOutcome.RUNNING:
+            raise ValueError("RUNNING is not a terminal automation outcome")
+
         finished_at = datetime.now()
         with self._get_connection() as conn:
             cursor = conn.execute(

@@ -219,7 +219,7 @@ class RunMetadata:
             memory_type=data.get("memory_type"),
             memory_key=data.get("memory_key"),
             memory_category=data.get("memory_category"),
-            memory_people=tuple(data.get("memory_people", [])),
+            memory_people=tuple(data.get("memory_people") or ()),
             source=data.get("source", "manual"),
             person_name=data.get("person_name"),
             person_id=data.get("person_id"),

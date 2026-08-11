@@ -199,6 +199,16 @@ def test_list_runs_filters_source_before_limit(db: RunDatabase) -> None:
     assert [run.run_id for run in runs] == ["auto"]
 
 
+def test_list_runs_treats_empty_source_as_a_concrete_filter(db: RunDatabase) -> None:
+    """Only None disables source filtering; an empty string remains queryable."""
+    db.save_run(_make_completed_run("empty", datetime(2026, 7, 2, 9, 0), source=""))
+    db.save_run(_make_completed_run("manual", datetime(2026, 7, 3, 9, 0), source="manual"))
+
+    runs = db.list_runs(status="completed", source="")
+
+    assert [run.run_id for run in runs] == ["empty"]
+
+
 def test_completed_identity_filters_source_and_time(db: RunDatabase) -> None:
     """Exact run lookup rejects wrong-source and pre-attempt completions."""
     started_after = datetime(2026, 7, 2, 9, 0)

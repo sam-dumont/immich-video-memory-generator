@@ -5,6 +5,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from immich_memories.automation.models import AutoOutcome
 from immich_memories.automation.state_store import AutomationStateStore
 
@@ -57,4 +59,15 @@ def test_running_attempt_round_trips_enum_and_optional_fields(tmp_path: Path) ->
 
     assert attempt.outcome is AutoOutcome.RUNNING
     assert attempt.finished_at is None
+    assert store.get_last_attempt() == attempt
+
+
+def test_finish_attempt_rejects_running_without_changing_start_row(tmp_path: Path) -> None:
+    """A rejected non-terminal transition leaves durable state untouched."""
+    store = AutomationStateStore(tmp_path / "cache.db")
+    attempt = store.start_attempt(reason="daily wake")
+
+    with pytest.raises(ValueError, match="RUNNING is not a terminal automation outcome"):
+        store.finish_attempt(attempt.id, AutoOutcome.RUNNING, reason="still working")
+
     assert store.get_last_attempt() == attempt

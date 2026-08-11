@@ -321,7 +321,7 @@ class RunDatabase:
                 query += " AND status = ?"
                 params.append(status)
 
-            if source:
+            if source is not None:
                 query += " AND source = ?"
                 params.append(source)
 

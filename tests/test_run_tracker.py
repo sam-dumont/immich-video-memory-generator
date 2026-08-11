@@ -210,6 +210,22 @@ class TestRunTrackerMemoryFields:
         assert restored.memory_category == "multi_person"
         assert restored.memory_people == ("alice", "bob jones")
 
+    def test_run_metadata_treats_null_memory_people_as_empty(self):
+        """Explicit JSON null from older or external metadata loads as no people."""
+        from datetime import datetime
+
+        from immich_memories.tracking.models import RunMetadata
+
+        payload = RunMetadata(
+            run_id="identity-null",
+            created_at=datetime(2026, 8, 11, 9, 0),
+        ).to_dict()
+        payload["memory_people"] = None
+
+        restored = RunMetadata.from_dict(payload)
+
+        assert restored.memory_people == ()
+
 
 class TestRunTrackerFailCancel:
     """Tests for fail_run and cancel_run."""
