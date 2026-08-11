@@ -2,14 +2,88 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import tempfile
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
+from immich_memories import config_loader
 from immich_memories.api.models import Asset, AssetType, ExifInfo, VideoClipInfo
 from immich_memories.config_loader import Config
+
+_TEST_ROOT: Path | None = None
+_TEST_ENV_KEYS = {
+    "IMMICH_MEMORIES_CACHE__DATABASE": "cache.db",
+    "IMMICH_MEMORIES_CACHE__DIRECTORY": "cache",
+    "IMMICH_MEMORIES_OUTPUT__DIRECTORY": "output",
+}
+_ORIGINAL_TEST_ENV: dict[str, str | None] = {}
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Route test configuration paths to one disposable session directory."""
+    del config
+    global _TEST_ROOT
+    _TEST_ROOT = Path(tempfile.mkdtemp(prefix="immich-memories-pytest-"))
+
+    for key, relative in _TEST_ENV_KEYS.items():
+        _ORIGINAL_TEST_ENV[key] = os.environ.get(key)
+        os.environ[key] = str(_TEST_ROOT / relative)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Restore the process environment and remove the validated test root."""
+    del config
+    global _TEST_ROOT
+
+    for key, original_value in _ORIGINAL_TEST_ENV.items():
+        if original_value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = original_value
+    _ORIGINAL_TEST_ENV.clear()
+
+    if _TEST_ROOT is None:
+        return
+
+    test_root = _TEST_ROOT
+    _TEST_ROOT = None
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    resolved_test_root = test_root.resolve()
+    if not (
+        test_root.name.startswith("immich-memories-pytest-")
+        and resolved_test_root.is_relative_to(temp_root)
+    ):
+        raise RuntimeError(f"Refusing to remove unvalidated pytest root: {test_root}")
+
+    shutil.rmtree(test_root)
+
+
+@pytest.fixture(autouse=True)
+def isolated_user_paths() -> Iterator[Path]:
+    """Reset cached settings and assert tests never resolve user directories."""
+    assert _TEST_ROOT is not None
+    config_loader._config = None
+    yield _TEST_ROOT
+    config_loader._config = None
+
+    config = Config()
+    normal_user_paths = {
+        Path.home() / ".immich-memories" / "cache.db",
+        Path.home() / ".immich-memories" / "cache",
+        Path.home() / "Videos" / "Memories",
+    }
+    resolved_paths = {
+        config.cache.database_path,
+        config.cache.cache_path,
+        config.output.output_path,
+    }
+    assert not resolved_paths & normal_user_paths
 
 
 def make_asset(
