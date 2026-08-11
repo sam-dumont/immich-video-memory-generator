@@ -163,6 +163,11 @@ class AutomationStatus:
                 "outcome": self.suggestion.outcome.value,
                 "error": self.suggestion.error,
             },
+            # Encoding Task 5 will replace this with DeliveryStatus.PENDING-backed
+            # delivery persistence. Until then no durable pending-delivery state
+            # exists, so the producer says so instead of making health invent a queue.
+            "pending_delivery_count": 0,
+            "oldest_pending_delivery": None,
         }
 
 

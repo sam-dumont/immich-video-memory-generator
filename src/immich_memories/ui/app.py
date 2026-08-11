@@ -327,7 +327,13 @@ def cache_page() -> None:
 class _ImmichDependency:
     """Sanitized result of the dependency probe used by health responses."""
 
-    status: Literal["ready", "missing_configuration", "unreachable", "unsupported_version"]
+    status: Literal[
+        "ready",
+        "missing_configuration",
+        "unreachable",
+        "authentication_failed",
+        "unsupported_version",
+    ]
     reachable: bool
     resolved_api_version: str | None = None
 
@@ -335,7 +341,7 @@ class _ImmichDependency:
 async def _check_immich_dependency(config) -> _ImmichDependency:
     """Resolve the configured API policy and authenticate within a bounded time."""
     from immich_memories.api.compatibility import UnsupportedImmichVersion
-    from immich_memories.api.immich import ImmichAPIError, ImmichClient
+    from immich_memories.api.immich import ImmichAPIError, ImmichAuthError, ImmichClient
 
     try:
         async with ImmichClient(
@@ -358,15 +364,17 @@ async def _check_immich_dependency(config) -> _ImmichDependency:
         )
     except UnsupportedImmichVersion:
         return _ImmichDependency(status="unsupported_version", reachable=True)
+    except ImmichAuthError:
+        return _ImmichDependency(status="authentication_failed", reachable=True)
     except (ImmichAPIError, TimeoutError, httpx.HTTPError, OSError, ValueError):
         return _ImmichDependency(status="unreachable", reachable=False)
 
 
-def _get_last_successful_run() -> str | None:
+def _get_last_successful_run(config) -> str | None:
     """Return ISO timestamp of last completed run, or None."""
     from immich_memories.tracking.run_database import RunDatabase
 
-    db = RunDatabase(db_path=get_config().cache.database_path)
+    db = RunDatabase(db_path=config.cache.database_path)
     runs = db.list_runs(limit=1, status="completed")
     if runs and runs[0].completed_at:
         return runs[0].completed_at.isoformat()
@@ -440,17 +448,17 @@ async def _build_health_snapshot() -> dict[str, Any]:
         automation = _get_automation_status(config)
     except Exception as exc:
         logger.warning(
-            "Could not read automation status for readiness: %s",
-            _sanitize_health_text(exc, secrets_to_redact),
+            "Could not read automation status for readiness (%s)",
+            type(exc).__name__,
         )
 
     last_successful_run: str | None = None
     try:
-        last_successful_run = _get_last_successful_run()
+        last_successful_run = _get_last_successful_run(config)
     except Exception as exc:
         logger.warning(
-            "Could not read run status for readiness: %s",
-            _sanitize_health_text(exc, secrets_to_redact),
+            "Could not read run status for readiness (%s)",
+            type(exc).__name__,
         )
 
     if automation is not None:
@@ -497,7 +505,10 @@ async def _readiness_handler(request: Request) -> JSONResponse:  # noqa: ARG001
 
 async def _health_handler(request: Request) -> JSONResponse:  # noqa: ARG001
     """Keep the detailed compatibility payload without readiness status codes."""
-    return JSONResponse(await _build_health_snapshot())
+    snapshot = await _build_health_snapshot()
+    if snapshot["status"] == "ready":
+        snapshot["status"] = "ok"
+    return JSONResponse(snapshot)
 
 
 app.add_api_route("/health", _health_handler, methods=["GET"])
