@@ -20,11 +20,23 @@ import httpx
 import pytest
 from playwright.sync_api import Page
 
+from tests.e2e.fake_immich import FakeImmichServer
+
 _BASE_PORT = 8099
 _BASE_URL = f"http://localhost:{_BASE_PORT}"
 _STARTUP_TIMEOUT = 30  # seconds
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SERVER_COVERAGE_FILE = _REPO_ROOT / ".coverage.e2e-server"
+
+
+@pytest.fixture(scope="session")
+def fake_immich_server(tmp_path_factory: pytest.TempPathFactory) -> Generator[FakeImmichServer]:
+    """Run the deterministic Immich v3 test service for this test session."""
+    server = FakeImmichServer.start(tmp_path_factory.mktemp("fake-immich"))
+    try:
+        yield server
+    finally:
+        server.close()
 
 
 @pytest.fixture(scope="session")
