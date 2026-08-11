@@ -5,18 +5,25 @@ from __future__ import annotations
 import json
 import subprocess
 import threading
+import time
 from dataclasses import dataclass
 from email import policy
 from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Self
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 _MONTH_BUCKET = "2024-06-01T00:00:00.000Z"
 
 
-def _asset_payload(asset_id: str, asset_type: str, filename: str) -> dict[str, Any]:
+def _asset_payload(
+    asset_id: str,
+    asset_type: str,
+    filename: str,
+    *,
+    is_favorite: bool = False,
+) -> dict[str, Any]:
     created_at = f"2024-06-{1 + int(asset_id[-1]):02d}T12:00:00.000Z"
     is_video = asset_type == "VIDEO"
     return {
@@ -33,7 +40,7 @@ def _asset_payload(asset_id: str, asset_type: str, filename: str) -> dict[str, A
         "fileModifiedAt": created_at,
         "localDateTime": created_at,
         "updatedAt": created_at,
-        "isFavorite": False,
+        "isFavorite": is_favorite,
         "isArchived": False,
         "isTrashed": False,
         "duration": 2000 if is_video else None,
@@ -52,11 +59,16 @@ def _asset_payload(asset_id: str, asset_type: str, filename: str) -> dict[str, A
 
 
 _ASSETS = (
-    _asset_payload("video-1", "VIDEO", "video-1.mp4"),
+    _asset_payload("video-1", "VIDEO", "video-1.mp4", is_favorite=True),
     _asset_payload("video-2", "VIDEO", "video-2.mp4"),
     _asset_payload("photo-1", "IMAGE", "photo-1.jpg"),
     _asset_payload("photo-2", "IMAGE", "photo-2.jpg"),
 )
+
+
+def _assets_for_query(query: dict[str, list[str]]) -> list[dict[str, Any]]:
+    requested_type = query.get("type", [None])[0]
+    return [asset for asset in _ASSETS if requested_type is None or asset["type"] == requested_type]
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,14 +107,17 @@ class FakeImmichServer:
         self.base_url = f"http://{host}:{port}"
 
     @classmethod
-    def start(cls, root: Path) -> Self:
+    def start(cls, root: Path, *, upload_commit_delay: float = 0.0) -> Self:
         """Start the service on an operating-system-selected localhost port."""
         root.mkdir(parents=True, exist_ok=True)
         source_video = _generate_video(root)
         photo_paths = _generate_photos(root)
         media = {"video-1": source_video, "video-2": source_video} | photo_paths
         uploads: list[RecordedUpload] = []
-        httpd = ThreadingHTTPServer(("127.0.0.1", 0), _handler_type(media, uploads))
+        httpd = ThreadingHTTPServer(
+            ("127.0.0.1", 0),
+            _handler_type(media, uploads, upload_commit_delay),
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         return cls(root, httpd, thread, source_video, photo_paths, uploads)
@@ -198,8 +213,12 @@ def _generate_photos(root: Path) -> dict[str, Path]:
 
 
 def _handler_type(
-    media: dict[str, Path], uploads: list[RecordedUpload]
+    media: dict[str, Path],
+    uploads: list[RecordedUpload],
+    upload_commit_delay: float,
 ) -> type[BaseHTTPRequestHandler]:
+    upload_lock = threading.Lock()
+
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -207,7 +226,9 @@ def _handler_type(
             if self.headers.get("x-api-key") != FakeImmichServer.api_key:
                 self._send_json(401, {"message": "invalid API key"})
                 return
-            path = urlsplit(self.path).path
+            request_url = urlsplit(self.path)
+            path = request_url.path
+            query = parse_qs(request_url.query)
             if path == "/api/server/version":
                 self._send_json(200, {"major": 3, "minor": 1, "patch": 0})
                 return
@@ -242,15 +263,21 @@ def _handler_type(
                 )
                 return
             if path == "/api/timeline/buckets":
-                self._send_json(200, [{"count": 4, "timeBucket": _MONTH_BUCKET}])
+                self._send_json(
+                    200,
+                    [{"count": len(_assets_for_query(query)), "timeBucket": _MONTH_BUCKET}],
+                )
                 return
             if path == "/api/timeline/bucket":
-                self._send_json(200, _ASSETS)
+                self._send_json(200, _assets_for_query(query))
                 return
             parts = path.removeprefix("/api/assets/").split("/")
             if len(parts) == 2 and parts[0] in media and parts[1] == "original":
                 content_type = "video/mp4" if media[parts[0]].suffix == ".mp4" else "image/jpeg"
                 self._send_file(media[parts[0]], content_type)
+                return
+            if len(parts) == 2 and parts[0] in media and parts[1] == "thumbnail":
+                self._send_file(media["photo-1"], "image/jpeg")
                 return
             if (
                 len(parts) == 3
@@ -293,10 +320,14 @@ def _handler_type(
                 except ValueError as error:
                     self._send_json(400, {"message": str(error)})
                     return
-                uploads.append(upload)
+                with upload_lock:
+                    uploads.append(upload)
+                    if upload_commit_delay:
+                        time.sleep(upload_commit_delay)
+                    asset_id = f"uploaded-{len(uploads)}"
                 self._send_json(
                     201,
-                    {"id": f"uploaded-{len(uploads)}", "status": "created"},
+                    {"id": asset_id, "status": "created"},
                 )
                 return
             self._unexpected()
