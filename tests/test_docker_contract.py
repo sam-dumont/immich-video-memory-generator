@@ -243,3 +243,22 @@ def test_release_images_receive_one_explicit_build_identity() -> None:
     assert "INSTALL_EXTRAS=all" in build_args
     assert "VCS_REF=${{ github.sha }}" in build_args
     assert "SOURCE_URL=https://github.com/${{ github.repository }}" in build_args
+
+
+def test_pull_request_images_receive_required_build_arguments() -> None:
+    """Every PR image build must satisfy the Dockerfile's fail-closed arguments."""
+    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
+    build_steps = [
+        step
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        if str(step.get("uses", "")).startswith("docker/build-push-action@")
+    ]
+
+    assert build_steps
+    for step in build_steps:
+        build_args = str(step["with"].get("build-args", ""))
+        assert "APP_VERSION=0+g${{ github.sha }}" in build_args
+        assert "INSTALL_EXTRAS=all" in build_args
+        assert "VCS_REF=${{ github.sha }}" in build_args
+        assert "SOURCE_URL=https://github.com/${{ github.repository }}" in build_args

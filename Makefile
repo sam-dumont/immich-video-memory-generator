@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast mutation benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
+.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast mutation benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
 
 # Default target
 help:
@@ -38,6 +38,7 @@ help:
 	@echo "  commitlint   Validate commit messages (conventional commits)"
 	@echo "  pip-audit    Check dependencies for known vulnerabilities"
 	@echo "  check        Run all checks (lint + format + type + length + complexity + test)"
+	@echo "  launch-check Run every local launch gate (check + package + docs + E2E)"
 	@echo "  ci           Full CI pipeline (check + dead-code + security-lint)"
 	@echo ""
 	@echo "Building:"
@@ -459,6 +460,10 @@ ensure-dev:
 # Run all checks (same as CI)
 check: ensure-dev lint format-check typecheck file-length complexity test
 	@echo "All checks passed!"
+
+# One non-publishing launch gate shared by operators and pull-request CI.
+launch-check: check build build-check docs-check e2e
+	@echo "Launch readiness checks passed!"
 
 # Full CI-equivalent pipeline (locally)
 ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint refurb dep-check arch-check duplication critique test

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -94,6 +96,9 @@ def test_launch_flow_renders_real_video(
         container="mp4",
     )
     probe = validate_output(output_path, plan)
+    (launch_workspace.root / "output-probe.json").write_text(
+        json.dumps(asdict(probe), indent=2, sort_keys=True)
+    )
     assert probe.codec == "h264"
     assert (probe.width, probe.height) == (1280, 720)
     assert probe.duration_seconds > 0

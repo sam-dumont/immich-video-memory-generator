@@ -460,6 +460,11 @@ jobs:
           file: ./docker/Dockerfile
           push: false
           platforms: ${{ matrix.platform }}
+          build-args: |
+            APP_VERSION=0+g${{ github.sha }}
+            INSTALL_EXTRAS=all
+            VCS_REF=${{ github.sha }}
+            SOURCE_URL=https://github.com/${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -486,10 +491,50 @@ jobs:
       - run: cd docs-site && npm ci
       - run: make docs-check
 
+  launch-check:
+    name: Hermetic Launch Check
+    needs: [setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          prune-cache: false
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install project and browser dependencies
+        run: |
+          make dev-test
+          uv run playwright install --with-deps chromium
+          cd docs-site && npm ci
+      - name: Run launch readiness gate
+        run: make launch-check
+      - name: Upload launch diagnostics
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: launch-check-diagnostics
+          if-no-files-found: ignore
+          path: |
+            tests/e2e-junit.xml
+            /tmp/pytest-of-runner/**/server.log
+            /tmp/pytest-of-runner/**/output-probe.json
+
   # ── Summary gate ──────────────────────────────────────────────────────────
   ci-success:
     name: CI Success
-    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique, test, test-extras, build, docker, docs]
+    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique, test, test-extras, build, docker, docs, launch-check]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -513,6 +558,7 @@ jobs:
             "${{ needs.build.result }}"
             "${{ needs.docker.result }}"
             "${{ needs.docs.result }}"
+            "${{ needs['launch-check'].result }}"
           )
           for r in "${results[@]}"; do
             # Allow "success", "skipped" (conditional jobs), and "cancelled" (concurrency group)
