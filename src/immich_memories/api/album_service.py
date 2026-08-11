@@ -13,6 +13,11 @@ from immich_memories.api.compatibility import ResolvedApiVersion
 RequestFn = Callable[..., Any]
 ApiVersionFn = Callable[[], Awaitable[ResolvedApiVersion]]
 
+_UPLOAD_MEDIA_TYPES = {
+    ".mov": "video/quicktime",
+    ".mp4": "video/mp4",
+}
+
 
 class InvalidUploadResponse(ValueError):
     """Raised when Immich returns a malformed successful upload response."""
@@ -50,6 +55,14 @@ def _upload_asset_id(data: Any) -> str:
     return asset_id
 
 
+def _upload_media_type(file_path: Path) -> str:
+    suffix = file_path.suffix.lower()
+    try:
+        return _UPLOAD_MEDIA_TYPES[suffix]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported upload file suffix: {suffix or '<none>'}") from exc
+
+
 class AlbumService:
     """Upload and album management operations against the Immich API."""
 
@@ -62,6 +75,7 @@ class AlbumService:
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
+        content_type = _upload_media_type(file_path)
         version = await self._get_api_version()
         stat = file_path.stat()
         modified_at = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
@@ -72,7 +86,7 @@ class AlbumService:
                 "POST",
                 "/assets",
                 data=fields,
-                files={"assetData": (file_path.name, f, "video/mp4")},
+                files={"assetData": (file_path.name, f, content_type)},
                 timeout=600.0,  # 10 min for large video uploads on slow connections
             )
         return _upload_asset_id(data)

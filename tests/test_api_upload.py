@@ -100,6 +100,66 @@ class TestUploadAsset:
         assert request.kwargs["timeout"] == 600.0
 
     @pytest.mark.asyncio
+    async def test_v3_mov_upload_uses_quicktime_mime_and_preserves_bytes(
+        self, tmp_path: Path
+    ) -> None:
+        video_path = tmp_path / "holiday memory.mov"
+        video_bytes = b"prores-in-quicktime"
+        video_path.write_bytes(video_bytes)
+        client = ImmichClient(_TEST_URL, _TEST_KEY, api_version="v3")
+        captured_bytes: bytes | None = None
+
+        async def capture_upload(*_args, **kwargs):
+            nonlocal captured_bytes
+            captured_bytes = kwargs["files"]["assetData"][1].read()
+            return _json_response({"id": "asset-mov", "status": "created"})
+
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(side_effect=capture_upload)
+
+        result = await client.upload_asset(video_path)
+
+        assert result == "asset-mov"
+        request = client._client.request.await_args
+        assert request.kwargs["data"]["filename"] == "holiday memory.mov"
+        assert request.kwargs["files"]["assetData"][:1] == ("holiday memory.mov",)
+        assert request.kwargs["files"]["assetData"][2] == "video/quicktime"
+        assert captured_bytes == video_bytes
+
+    @pytest.mark.asyncio
+    async def test_mov_upload_suffix_is_case_insensitive(self, tmp_path: Path) -> None:
+        video_path = tmp_path / "holiday.MOV"
+        video_path.write_bytes(b"prores-in-quicktime")
+        client = ImmichClient(_TEST_URL, _TEST_KEY, api_version="v2")
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(
+            return_value=_json_response({"id": "asset-mov", "status": "created"})
+        )
+
+        await client.upload_asset(video_path)
+
+        request = client._client.request.await_args
+        assert request.kwargs["files"]["assetData"][2] == "video/quicktime"
+
+    @pytest.mark.asyncio
+    async def test_upload_rejects_unsupported_suffix_before_transport(self, tmp_path: Path) -> None:
+        video_path = tmp_path / "holiday.mkv"
+        video_path.write_bytes(b"matroska")
+        client = ImmichClient(_TEST_URL, _TEST_KEY, api_version="v3")
+        client._client = AsyncMock()
+        client._client.is_closed = False
+        client._client.request = AsyncMock(
+            return_value=_json_response({"id": "asset-mkv", "status": "created"})
+        )
+
+        with pytest.raises(ValueError, match=r"\.mkv"):
+            await client.upload_asset(video_path)
+
+        client._client.request.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_v2_upload_sends_exact_multipart_contract(self, video_path: Path) -> None:
         client = ImmichClient(_TEST_URL, _TEST_KEY, api_version="v2")
         # WHY: replace the external Immich write while preserving the real upload service.
