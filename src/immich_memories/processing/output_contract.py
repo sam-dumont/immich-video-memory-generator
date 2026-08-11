@@ -22,6 +22,10 @@ _TARGET_TRANSFERS = {
     HdrTransfer.HLG: ("HLG", "arib-std-b67"),
     HdrTransfer.PQ: ("PQ", "smpte2084"),
 }
+_DECODED_PIXEL_FORMATS = {
+    "nv12": "yuv420p",
+    "p010le": "yuv420p10le",
+}
 _UNSUPPORTED_FSYNC_ERRNOS = frozenset(
     {errno.EINVAL, getattr(errno, "ENOSYS", errno.EINVAL), getattr(errno, "ENOTSUP", errno.EINVAL)}
 )
@@ -44,6 +48,7 @@ class OutputProbe:
     color_primaries: str | None
     width: int
     height: int
+    decoded_frames: int
 
 
 def _container_name(format_data: dict[str, object]) -> str:
@@ -57,6 +62,16 @@ def _container_name(format_data: dict[str, object]) -> str:
     return format_name.split(",", maxsplit=1)[0]
 
 
+def _decoded_frame_count(stream: dict[str, object]) -> int:
+    raw_count = stream.get("nb_read_frames")
+    if raw_count in {None, "N/A"}:
+        raise InvalidOutputArtifact("ffprobe is missing decoded frame evidence")
+    try:
+        return int(str(raw_count))
+    except ValueError as exc:
+        raise InvalidOutputArtifact("ffprobe returned invalid decoded frame evidence") from exc
+
+
 def _run_ffprobe(path: Path) -> str:
     command = [
         "ffprobe",
@@ -64,9 +79,11 @@ def _run_ffprobe(path: Path) -> str:
         "error",
         "-select_streams",
         "v:0",
+        "-count_frames",
         "-show_entries",
         (
-            "stream=codec_type,codec_name,pix_fmt,color_transfer,color_primaries,width,height:"
+            "stream=codec_type,codec_name,pix_fmt,color_transfer,color_primaries,width,height,"
+            "nb_read_frames:"
             "format=format_name,duration,size:format_tags=major_brand"
         ),
         "-of",
@@ -85,6 +102,8 @@ def _run_ffprobe(path: Path) -> str:
         raise InvalidOutputArtifact("ffprobe failed to inspect output artifact") from exc
     if result.returncode != 0:
         raise InvalidOutputArtifact("ffprobe failed to inspect output artifact")
+    if result.stderr.strip():
+        raise InvalidOutputArtifact("ffprobe reported decode errors in output artifact")
     return result.stdout
 
 
@@ -109,6 +128,7 @@ def _parse_probe(stdout: str) -> OutputProbe:
             color_primaries=stream.get("color_primaries"),
             width=int(stream["width"]),
             height=int(stream["height"]),
+            decoded_frames=_decoded_frame_count(stream),
         )
     except InvalidOutputArtifact:
         raise
@@ -134,12 +154,15 @@ def _validate_media_shape(probe: OutputProbe) -> None:
         raise InvalidOutputArtifact("output artifact must have a positive size")
     if probe.width <= 0 or probe.height <= 0:
         raise InvalidOutputArtifact("output artifact must have a positive resolution")
+    if probe.decoded_frames <= 0:
+        raise InvalidOutputArtifact("output artifact must have a positive decoded frame count")
 
 
 def _validate_encoding_identity(probe: OutputProbe, plan: EncodingPlan) -> None:
     if probe.container != plan.container:
         raise InvalidOutputArtifact(f"expected {plan.container}, got {probe.container}")
-    if probe.pixel_format != plan.pixel_format:
+    expected_decoded_format = _DECODED_PIXEL_FORMATS.get(plan.pixel_format, plan.pixel_format)
+    if probe.pixel_format != expected_decoded_format:
         raise InvalidOutputArtifact(f"expected {plan.pixel_format}, got {probe.pixel_format}")
     expected_codec = _CODEC_NAMES[plan.codec]
     if probe.codec != expected_codec:
@@ -175,7 +198,12 @@ def _fsync_directory(directory: Path) -> None:
     directory_flag = getattr(os, "O_DIRECTORY", None)
     if directory_flag is None:
         return
-    directory_fd = os.open(directory, os.O_RDONLY | directory_flag)
+    try:
+        directory_fd = os.open(directory, os.O_RDONLY | directory_flag)
+    except OSError as exc:
+        if exc.errno in _UNSUPPORTED_FSYNC_ERRNOS:
+            return
+        raise
     try:
         try:
             os.fsync(directory_fd)
@@ -192,6 +220,8 @@ def publish_validated_output(
     plan: EncodingPlan,
 ) -> OutputProbe:
     """Validate a staged sibling before atomically replacing the final path."""
+    if staged_path == final_path:
+        raise InvalidOutputArtifact("output must use a distinct staged sibling")
     if staged_path.parent != final_path.parent:
         raise InvalidOutputArtifact("output must be rendered to a staged sibling")
     expected_suffix = f".{plan.container}"

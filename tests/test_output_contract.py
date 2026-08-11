@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
+from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+
 
 def _h264_plan():
-    from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
-
     return EncodingPlan(
         codec=OutputCodec.H264,
         encoder="libx264",
@@ -24,9 +24,19 @@ def _h264_plan():
     )
 
 
-def _h265_hdr_plan():
-    from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+def _h264_nv12_plan():
+    return EncodingPlan(
+        codec=OutputCodec.H264,
+        encoder="h264_videotoolbox",
+        encoder_args=("-c:v", "h264_videotoolbox"),
+        target_transfer=HdrTransfer.NONE,
+        tone_map_to_sdr=False,
+        pixel_format="nv12",
+        container="mp4",
+    )
 
+
+def _h265_hdr_plan():
     return EncodingPlan(
         codec=OutputCodec.H265,
         encoder="libx265",
@@ -39,8 +49,6 @@ def _h265_hdr_plan():
 
 
 def _h265_pq_plan():
-    from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
-
     return EncodingPlan(
         codec=OutputCodec.H265,
         encoder="libx265",
@@ -52,9 +60,19 @@ def _h265_pq_plan():
     )
 
 
-def _prores_plan():
-    from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+def _h265_hardware_hdr_plan():
+    return EncodingPlan(
+        codec=OutputCodec.H265,
+        encoder="hevc_videotoolbox",
+        encoder_args=("-c:v", "hevc_videotoolbox"),
+        target_transfer=HdrTransfer.HLG,
+        tone_map_to_sdr=False,
+        pixel_format="p010le",
+        container="mp4",
+    )
 
+
+def _prores_plan():
     return EncodingPlan(
         codec=OutputCodec.PRORES,
         encoder="prores_ks",
@@ -75,6 +93,7 @@ def _probe_payload(**overrides: object) -> dict[str, object]:
         "color_primaries": "bt709",
         "width": 1920,
         "height": 1080,
+        "nb_read_frames": "360",
     }
     format_data = {
         "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
@@ -121,13 +140,15 @@ def test_probe_output_reads_the_video_contract_in_one_json_pass(
         color_primaries="bt709",
         width=1920,
         height=1080,
+        decoded_frames=360,
     )
     assert len(calls) == 1
+    assert "-count_frames" in calls[0]
     assert "-of" in calls[0] and "json" in calls[0]
     entries = calls[0][calls[0].index("-show_entries") + 1]
     assert (
-        "stream=codec_type,codec_name,pix_fmt,color_transfer,color_primaries,width,height"
-        in entries
+        "stream=codec_type,codec_name,pix_fmt,color_transfer,color_primaries,width,height,"
+        "nb_read_frames" in entries
     )
     assert "format=format_name,duration,size:format_tags=major_brand" in entries
 
@@ -136,6 +157,7 @@ def test_codec_mismatch_keeps_the_previous_published_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A codec-family regression must not overwrite an already-valid memory."""
+    from immich_memories.processing import output_contract
     from immich_memories.processing.output_contract import (
         InvalidOutputArtifact,
         publish_validated_output,
@@ -149,10 +171,17 @@ def test_codec_mismatch_keeps_the_previous_published_artifact(
         monkeypatch,
         _probe_payload(stream={"codec_name": "hevc"}),
     )
+    replace_calls: list[tuple[Path, Path]] = []
+
+    def track_replace(source: Path, destination: Path) -> None:
+        replace_calls.append((source, destination))
+
+    monkeypatch.setattr(output_contract.os, "replace", track_replace)
 
     with pytest.raises(InvalidOutputArtifact, match="expected h264, got hevc"):
         publish_validated_output(staged, final, _h264_plan())
 
+    assert replace_calls == []
     assert final.read_bytes() == b"previous-valid-memory"
     assert staged.exists()
 
@@ -169,13 +198,22 @@ def test_valid_output_is_replaced_and_parent_directory_is_synced(
     staged.write_bytes(b"validated-video")
     _install_probe(monkeypatch, _probe_payload())
     synced: list[int] = []
+    replace_calls: list[tuple[Path, Path]] = []
+    real_replace = output_contract.os.replace
+
+    def track_replace(source: Path, destination: Path) -> None:
+        replace_calls.append((source, destination))
+        real_replace(source, destination)
+
     monkeypatch.setattr(output_contract.os, "fsync", synced.append)
+    monkeypatch.setattr(output_contract.os, "replace", track_replace)
 
     probe = publish_validated_output(staged, final, _h264_plan())
 
     assert probe.codec == "h264"
     assert final.read_bytes() == b"validated-video"
     assert not staged.exists()
+    assert replace_calls == [(staged, final)]
     assert len(synced) == 1
 
 
@@ -230,6 +268,30 @@ def test_ffprobe_failure_is_reported_as_an_invalid_artifact(
         probe_output(staged)
 
 
+def test_ffprobe_decode_errors_are_rejected_even_with_a_zero_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ffprobe reports truncated-frame errors on stderr while still returning zero."""
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.output_contract import InvalidOutputArtifact, probe_output
+
+    staged = tmp_path / "memory.assembling.mp4"
+    staged.write_bytes(b"partially-decodable-container")
+
+    def damaged_probe(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps(_probe_payload(stream={"nb_read_frames": "44"})),
+            "Invalid NAL unit; partial file",
+        )
+
+    monkeypatch.setattr(output_contract.subprocess, "run", damaged_probe)
+
+    with pytest.raises(InvalidOutputArtifact, match="decode errors"):
+        probe_output(staged)
+
+
 def test_zero_duration_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A container with metadata but no playable timeline is not a finished video."""
     from immich_memories.processing.output_contract import InvalidOutputArtifact, validate_output
@@ -239,6 +301,18 @@ def test_zero_duration_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     _install_probe(monkeypatch, _probe_payload(format={"duration": "0"}))
 
     with pytest.raises(InvalidOutputArtifact, match="positive duration"):
+        validate_output(staged, _h264_plan())
+
+
+def test_zero_decoded_frames_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Container duration is not enough when ffprobe cannot decode a single video frame."""
+    from immich_memories.processing.output_contract import InvalidOutputArtifact, validate_output
+
+    staged = tmp_path / "memory.assembling.mp4"
+    staged.write_bytes(b"header-without-decodable-frames")
+    _install_probe(monkeypatch, _probe_payload(stream={"nb_read_frames": "0"}))
+
+    with pytest.raises(InvalidOutputArtifact, match="positive decoded frame count"):
         validate_output(staged, _h264_plan())
 
 
@@ -293,6 +367,46 @@ def test_pixel_format_mismatch_is_rejected(tmp_path: Path, monkeypatch: pytest.M
 
     with pytest.raises(InvalidOutputArtifact, match="expected yuv420p, got yuv420p10le"):
         validate_output(staged, _h264_plan())
+
+
+def test_p010_encoder_input_accepts_the_equivalent_decoded_10_bit_format(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """VideoToolbox p010le output is exposed by ffprobe as planar yuv420p10le."""
+    from immich_memories.processing.output_contract import validate_output
+
+    staged = tmp_path / "memory.assembling.mp4"
+    staged.write_bytes(b"hevc-10-bit-video")
+    _install_probe(
+        monkeypatch,
+        _probe_payload(
+            stream={
+                "codec_name": "hevc",
+                "pix_fmt": "yuv420p10le",
+                "color_transfer": "arib-std-b67",
+                "color_primaries": "bt2020",
+            }
+        ),
+    )
+
+    probe = validate_output(staged, _h265_hardware_hdr_plan())
+
+    assert probe.pixel_format == "yuv420p10le"
+
+
+def test_nv12_encoder_input_accepts_the_equivalent_decoded_planar_format(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hardware NV12 output is exposed by ffprobe as planar yuv420p."""
+    from immich_memories.processing.output_contract import validate_output
+
+    staged = tmp_path / "memory.assembling.mp4"
+    staged.write_bytes(b"h264-hardware-video")
+    _install_probe(monkeypatch, _probe_payload(stream={"pix_fmt": "yuv420p"}))
+
+    probe = validate_output(staged, _h264_nv12_plan())
+
+    assert probe.pixel_format == "yuv420p"
 
 
 def test_sdr_plan_rejects_hdr_transfer_metadata(
@@ -436,6 +550,22 @@ def test_incomplete_ffprobe_metadata_is_reported_as_an_invalid_artifact(
         probe_output(staged)
 
 
+def test_missing_decoded_frame_evidence_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A probe without frame-count evidence cannot certify decodability."""
+    from immich_memories.processing.output_contract import InvalidOutputArtifact, probe_output
+
+    staged = tmp_path / "memory.assembling.mp4"
+    staged.write_bytes(b"metadata-without-frame-count")
+    payload = _probe_payload()
+    del payload["streams"][0]["nb_read_frames"]
+    _install_probe(monkeypatch, payload)
+
+    with pytest.raises(InvalidOutputArtifact, match="missing decoded frame evidence"):
+        probe_output(staged)
+
+
 def test_ffprobe_timeout_is_reported_as_an_invalid_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -488,6 +618,33 @@ def test_publication_rejects_a_staged_file_from_another_directory(
 
     assert staged.exists()
     assert not final.exists()
+
+
+def test_publication_rejects_identical_staged_and_final_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Atomic publication requires two distinct sibling directory entries."""
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.output_contract import (
+        InvalidOutputArtifact,
+        publish_validated_output,
+    )
+
+    path = tmp_path / "memory.mp4"
+    path.write_bytes(b"valid-video")
+    _install_probe(monkeypatch, _probe_payload())
+    replace_calls: list[tuple[Path, Path]] = []
+
+    def track_replace(source: Path, destination: Path) -> None:
+        replace_calls.append((source, destination))
+
+    monkeypatch.setattr(output_contract.os, "replace", track_replace)
+
+    with pytest.raises(InvalidOutputArtifact, match="distinct staged sibling"):
+        publish_validated_output(path, path, _h264_plan())
+
+    assert replace_calls == []
+    assert path.read_bytes() == b"valid-video"
 
 
 def test_prores_ffprobe_codec_name_and_mov_brand_are_accepted(
@@ -607,6 +764,29 @@ def test_unsupported_directory_fsync_does_not_undo_publication(
         raise OSError(errno.EINVAL, "directory fsync is unsupported")
 
     monkeypatch.setattr(output_contract.os, "fsync", unsupported_fsync)
+
+    probe = publish_validated_output(staged, final, _h264_plan())
+
+    assert probe.codec == "h264"
+    assert final.read_bytes() == b"validated-video"
+
+
+def test_unsupported_directory_open_does_not_undo_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Some platforms reject opening directories before fsync is attempted."""
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.output_contract import publish_validated_output
+
+    staged = tmp_path / "memory.assembling.mp4"
+    final = tmp_path / "memory.mp4"
+    staged.write_bytes(b"validated-video")
+    _install_probe(monkeypatch, _probe_payload())
+
+    def unsupported_open(_path: Path, _flags: int) -> int:
+        raise OSError(errno.EINVAL, "directory open is unsupported")
+
+    monkeypatch.setattr(output_contract.os, "open", unsupported_open)
 
     probe = publish_validated_output(staged, final, _h264_plan())
 

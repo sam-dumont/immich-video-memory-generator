@@ -5,6 +5,7 @@ Run with: make test-integration-processing
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -153,7 +154,35 @@ class TestResolveEncodeResolution:
 # ---------------------------------------------------------------------------
 
 
-def _write_tiny_sdr_video(output_path: Path, codec_args: list[str]) -> None:
+def _write_tiny_sdr_video(
+    output_path: Path,
+    codec_args: list[str],
+    *,
+    duration_seconds: float = 0.3,
+) -> None:
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=blue:size=160x90:rate=10:duration={duration_seconds}",
+            "-vf",
+            "setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709",
+            *codec_args,
+            "-an",
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ],
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+
+def _write_tiny_hlg_hevc(output_path: Path) -> None:
     subprocess.run(
         [
             "ffmpeg",
@@ -163,9 +192,23 @@ def _write_tiny_sdr_video(output_path: Path, codec_args: list[str]) -> None:
             "-i",
             "color=c=blue:size=160x90:rate=10:duration=0.3",
             "-vf",
-            "setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709",
-            *codec_args,
+            (
+                "format=yuv420p10le,"
+                "setparams=colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67"
+            ),
+            "-c:v",
+            "libx265",
+            "-preset",
+            "ultrafast",
+            "-x265-params",
+            "log-level=error",
+            "-pix_fmt",
+            "yuv420p10le",
+            "-tag:v",
+            "hvc1",
             "-an",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ],
         check=True,
@@ -228,3 +271,61 @@ class TestValidatedOutputPublication:
         assert final.exists()
         assert probe.codec == "prores"
         assert probe.container == "mov"
+
+    def test_real_valid_then_truncated_faststart_output_is_rejected(self, tmp_path: Path):
+        from immich_memories.processing.encoding_plan import (
+            EncodingPlan,
+            HdrTransfer,
+            OutputCodec,
+        )
+        from immich_memories.processing.output_contract import (
+            InvalidOutputArtifact,
+            validate_output,
+        )
+
+        valid = tmp_path / "valid.mp4"
+        truncated = tmp_path / "truncated.mp4"
+        _write_tiny_sdr_video(
+            valid,
+            ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"],
+            duration_seconds=2.0,
+        )
+        plan = EncodingPlan(
+            codec=OutputCodec.H264,
+            encoder="libx264",
+            encoder_args=("-c:v", "libx264"),
+            target_transfer=HdrTransfer.NONE,
+            tone_map_to_sdr=False,
+            pixel_format="yuv420p",
+            container="mp4",
+        )
+
+        valid_probe = validate_output(valid, plan)
+        shutil.copyfile(valid, truncated)
+        intact_bytes = truncated.read_bytes()
+        truncated.write_bytes(intact_bytes[: len(intact_bytes) * 3 // 4])
+
+        assert valid_probe.decoded_frames == 20
+        with pytest.raises(InvalidOutputArtifact, match="decode errors"):
+            validate_output(truncated, plan)
+
+    def test_real_hevc_10_bit_decode_matches_p010_encoder_input(self, tmp_path: Path):
+        from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+        from immich_memories.processing.output_contract import validate_output
+
+        output = tmp_path / "memory.mp4"
+        _write_tiny_hlg_hevc(output)
+        plan = EncodingPlan(
+            codec=OutputCodec.H265,
+            encoder="hevc_videotoolbox",
+            encoder_args=("-c:v", "hevc_videotoolbox"),
+            target_transfer=HdrTransfer.HLG,
+            tone_map_to_sdr=False,
+            pixel_format="p010le",
+            container="mp4",
+        )
+
+        probe = validate_output(output, plan)
+
+        assert probe.pixel_format == "yuv420p10le"
+        assert probe.decoded_frames == 3
