@@ -34,11 +34,30 @@ def _raise_invalid_delivery_transition(
     conn: sqlite3.Connection,
     run_id: str,
 ) -> NoReturn:
+    row = conn.execute(
+        "SELECT status, delivery_status FROM pipeline_runs WHERE run_id = ?", (run_id,)
+    ).fetchone()
+    if row is None:
+        raise KeyError(f"Unknown pipeline run: {run_id}")
+    if row["status"] == "completed":
+        raise InvalidRunLifecycleError(
+            f"Delivery transition requires requested delivery; run '{run_id}' is "
+            f"'{row['delivery_status']}'"
+        )
+    raise InvalidRunLifecycleError(
+        f"Delivery transition requires a completed run; run '{run_id}' is '{row['status']}'"
+    )
+
+
+def _raise_invalid_artifact_transition(
+    conn: sqlite3.Connection,
+    run_id: str,
+) -> NoReturn:
     row = conn.execute("SELECT status FROM pipeline_runs WHERE run_id = ?", (run_id,)).fetchone()
     if row is None:
         raise KeyError(f"Unknown pipeline run: {run_id}")
     raise InvalidRunLifecycleError(
-        f"Delivery transition requires a completed run; run '{run_id}' is '{row['status']}'"
+        f"Artifact completion requires a running run; run '{run_id}' is '{row['status']}'"
     )
 
 
@@ -395,7 +414,7 @@ class RunDatabase:
                     immich_asset_id = NULL,
                     delivery_album = ?,
                     warnings_json = ?
-                WHERE run_id = ?
+                WHERE run_id = ? AND status = 'running'
                 """,
                 (
                     completed_at.isoformat(),
@@ -412,7 +431,7 @@ class RunDatabase:
                 ),
             )
             if cursor.rowcount != 1:
-                raise KeyError(f"Unknown pipeline run: {run_id}")
+                _raise_invalid_artifact_transition(conn, run_id)
             conn.commit()
 
         completed = self.get_run(run_id)
@@ -433,9 +452,16 @@ class RunDatabase:
                     delivery_attempts = delivery_attempts + 1,
                     delivery_error = NULL,
                     immich_asset_id = ?
-                WHERE run_id = ? AND status = 'completed'
+                WHERE run_id = ?
+                  AND status = 'completed'
+                  AND delivery_status = ?
                 """,
-                (DeliveryStatus.DELIVERED.value, normalized_asset_id, run_id),
+                (
+                    DeliveryStatus.DELIVERED.value,
+                    normalized_asset_id,
+                    run_id,
+                    DeliveryStatus.PENDING.value,
+                ),
             )
             if cursor.rowcount != 1:
                 _raise_invalid_delivery_transition(conn, run_id)
