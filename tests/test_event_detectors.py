@@ -343,6 +343,7 @@ class TestMultiPersonDetector:
         assert len(result) == 1
         c = result[0]
         assert c.memory_type == "multi_person"
+        assert c.category is CandidateCategory.MULTI_PERSON
         assert "Alice" in c.reason
         assert "Bob" in c.reason
         estimated = int(min(500, 400) * 0.3)

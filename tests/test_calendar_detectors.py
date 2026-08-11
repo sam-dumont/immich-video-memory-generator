@@ -6,7 +6,9 @@ from datetime import date
 from unittest.mock import MagicMock
 
 from immich_memories.automation.calendar_detectors import (
+    BirthdayDetector,
     MonthlyDetector,
+    OnThisDayDetector,
     PersonSpotlightDetector,
     YearlyDetector,
 )
@@ -21,11 +23,17 @@ def _make_config():
     return MagicMock()
 
 
-def _make_person(name: str, *, thumbnail: str | None = "/thumb.jpg") -> MagicMock:
+def _make_person(
+    name: str,
+    *,
+    thumbnail: str | None = "/thumb.jpg",
+    birth_date: date | None = None,
+) -> MagicMock:
     p = MagicMock()
     p.name = name
     p.thumbnail_path = thumbnail
     p.id = f"id-{name.lower()}"
+    p.birth_date = birth_date
     return p
 
 
@@ -132,6 +140,7 @@ class TestYearlyDetector:
 
         assert len(result) == 1
         assert result[0].memory_type == "year_in_review"
+        assert result[0].category is CandidateCategory.YEAR_IN_REVIEW
         assert result[0].date_range_start == date(2025, 1, 1)
         assert result[0].date_range_end == date(2025, 12, 31)
         assert result[0].asset_count == 60
@@ -207,6 +216,7 @@ class TestPersonSpotlightDetector:
 
         assert len(result) == 3
         assert result[0].memory_type == "person_spotlight"
+        assert result[0].category is CandidateCategory.PERSON_SPOTLIGHT
         assert result[0].person_names == ["Alice"]
         assert result[0].date_range_start == date(2025, 1, 1)
         assert result[0].date_range_end == date(2025, 12, 31)
@@ -222,6 +232,42 @@ class TestPersonSpotlightDetector:
 
         assert len(result) == 1
         assert result[0].person_names == ["Bob"]
+
+
+# ---------------------------------------------------------------------------
+# OnThisDayDetector
+# ---------------------------------------------------------------------------
+class TestOnThisDayDetector:
+    def test_produces_on_this_day_category(self):
+        today = date(2026, 3, 15)
+        assets = {f"{year}-03": 10 for year in range(2021, 2026)}
+
+        result = OnThisDayDetector().detect(assets, [], set(), _make_config(), today)
+
+        assert len(result) == 1
+        assert result[0].memory_type == "on_this_day"
+        assert result[0].category is CandidateCategory.ON_THIS_DAY
+
+
+# ---------------------------------------------------------------------------
+# BirthdayDetector
+# ---------------------------------------------------------------------------
+class TestBirthdayDetector:
+    def test_uses_person_spotlight_preset_with_birthday_category(self):
+        person = _make_person("Alice", birth_date=date(2000, 3, 1))
+
+        result = BirthdayDetector().detect(
+            {},
+            [person],
+            set(),
+            _make_config(),
+            date(2026, 3, 10),
+            person_asset_counts={person.id: 100},
+        )
+
+        assert len(result) == 1
+        assert result[0].memory_type == "person_spotlight"
+        assert result[0].category is CandidateCategory.BIRTHDAY
 
     def test_handles_no_people(self):
         result = PersonSpotlightDetector().detect({}, [], set(), _make_config(), date(2026, 3, 1))
