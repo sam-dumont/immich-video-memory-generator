@@ -250,7 +250,7 @@ def status(ctx: click.Context, as_json: bool) -> None:
     rejections = payload["rejection_reasons"]
     print_info(f"Current rejection rules: {', '.join(rejections) if rejections else 'none'}")
     suggestion = payload["suggestion"]
-    if suggestion["outcome"] == "preflight_failed":
+    if suggestion["outcome"] in {"preflight_failed", "discovery_failed"}:
         print_info(f"Suggestion snapshot unavailable: {suggestion['error']}")
 
 

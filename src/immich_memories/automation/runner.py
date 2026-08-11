@@ -39,11 +39,12 @@ class SuggestOutcome(StrEnum):
 
     READY = "ready"
     PREFLIGHT_FAILED = "preflight_failed"
+    DISCOVERY_FAILED = "discovery_failed"
 
 
 @dataclass(frozen=True)
 class SuggestStatus:
-    """Per-call signal that distinguishes healthy emptiness from preflight failure."""
+    """Typed result for the most recent live candidate-discovery snapshot."""
 
     outcome: SuggestOutcome = SuggestOutcome.READY
     error: str | None = None
@@ -408,7 +409,18 @@ class AutoRunner:
     ) -> AutomationStatus:
         """Return durable automation state without candidate or scheduler side effects."""
         if refresh_suggestion:
-            self.suggest(limit=1)
+            try:
+                self.suggest(limit=1)
+            except Exception as exc:
+                # Status is a diagnostic surface: a live Immich discovery failure must
+                # not hide the durable attempt/run history that explains automation.
+                error = _safe_tail(exc, self._secrets()) or "candidate discovery failed"
+                self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
+                self.last_suggest_status = SuggestStatus(
+                    outcome=SuggestOutcome.DISCOVERY_FAILED,
+                    error=error,
+                )
+                logger.error("Candidate discovery failed while refreshing status: %s", error)
         effective_cooldown = (
             cooldown_hours if cooldown_hours is not None else self.config.automation.cooldown_hours
         )

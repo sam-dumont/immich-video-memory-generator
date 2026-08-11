@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
 
 from immich_memories.automation.candidates import CandidateCategory, MemoryCandidate
@@ -262,6 +263,134 @@ def test_status_keeps_durable_state_when_suggestion_preflight_fails(tmp_path: Pa
         "outcome": "preflight_failed",
         "error": "Immich preflight failed: offline",
     }
+
+
+def test_status_keeps_durable_state_when_live_discovery_fails(tmp_path: Path) -> None:
+    """A post-preflight Immich failure degrades only the live suggestion snapshot."""
+    from immich_memories.preflight import CheckStatus
+
+    secret = "immich-status-secret"  # noqa: S105 - synthetic credential for redaction test
+    config = Config(
+        immich={"url": "http://immich.test:2283", "api_key": secret},
+        cache={
+            "database": str(tmp_path / "status.db"),
+            "directory": str(tmp_path / "cache"),
+        },
+    )
+    state = AutomationStateStore(config.cache.database_path)
+    prior_attempt = state.start_attempt("previous daily wake")
+    state.finish_attempt(
+        prior_attempt.id,
+        AutoOutcome.SKIPPED,
+        "cooldown active",
+    )
+    db = RunDatabase(config.cache.database_path)
+    completed = datetime.now() - timedelta(hours=3)
+    db.save_run(
+        RunMetadata(
+            run_id="last-good-auto",
+            created_at=completed - timedelta(hours=1),
+            completed_at=completed,
+            status="completed",
+            source="auto",
+            memory_category="trip",
+        )
+    )
+    generate = MagicMock()
+    runner = AutoRunner(config, execute=generate)
+    stale_candidate = MemoryCandidate(
+        memory_type="monthly_highlights",
+        category=CandidateCategory.MONTHLY_REVIEW,
+        date_range_start=date(2026, 7, 1),
+        date_range_end=date(2026, 7, 31),
+        person_names=[],
+        memory_key="monthly:2026-07",
+        score=0.7,
+        reason="stale status snapshot",
+        asset_count=100,
+    )
+    runner.last_variety_decision = VarietyDecision(
+        eligible=[],
+        rejected=[
+            RejectedCandidate(
+                candidate=stale_candidate,
+                rule="same_category_as_previous",
+            )
+        ],
+    )
+    scheduler = SchedulerStatus("launchd", True, False, (tmp_path / "scheduler.plist",))
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.get_time_buckets.side_effect = RuntimeError(
+        ("x" * 3000) + f": metadata request rejected key={secret}"
+    )
+
+    def row_counts() -> tuple[int, int]:
+        with sqlite3.connect(config.cache.database_path) as conn:
+            attempts = conn.execute("SELECT COUNT(*) FROM automation_attempts").fetchone()[0]
+            runs = conn.execute("SELECT COUNT(*) FROM pipeline_runs").fetchone()[0]
+        return attempts, runs
+
+    before = row_counts()
+    with (
+        patch("immich_memories.preflight.check_immich") as preflight,
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        patch("immich_memories.automation.runner.AutoRunner", return_value=runner),
+        patch(
+            "immich_memories.automation.system_scheduler.get_scheduler_status",
+            return_value=scheduler,
+        ) as inspect_scheduler,
+        patch("immich_memories.automation.system_scheduler.install_scheduler") as install,
+        patch("immich_memories.automation.system_scheduler.uninstall_scheduler") as uninstall,
+    ):
+        preflight.return_value = MagicMock(status=CheckStatus.OK)
+        json_result = _invoke(config, ["auto", "status", "--json"])
+        human_result = _invoke(config, ["auto", "status"])
+
+    assert json_result.exit_code == 0
+    payload = json.loads(json_result.stdout)
+    assert json_result.stdout.count("\n") == 1
+    assert payload["last_attempt"]["id"] == prior_attempt.id
+    assert payload["last_attempt"]["outcome"] == "skipped"
+    assert payload["last_completed_auto_run"]["run_id"] == "last-good-auto"
+    assert payload["recent_categories"] == ["trip"]
+    assert payload["scheduler"]["state"] == "inactive"
+    assert payload["rejection_reasons"] == []
+    assert payload["suggestion"]["outcome"] == "discovery_failed"
+    assert len(payload["suggestion"]["error"]) <= 2000
+    assert secret not in json_result.output
+    assert human_result.exit_code == 0
+    assert "Scheduler: launchd, installed, inactive" in human_result.output
+    assert "Last completed auto run: last-good-auto (trip)" in human_result.output
+    assert "Suggestion snapshot unavailable" in human_result.output
+    assert secret not in human_result.output
+    assert row_counts() == before
+    assert inspect_scheduler.call_count == 2
+    generate.assert_not_called()
+    install.assert_not_called()
+    uninstall.assert_not_called()
+
+
+def test_direct_suggest_still_raises_post_preflight_discovery_errors(tmp_path: Path) -> None:
+    """Only status is best-effort; direct discovery retains its failing contract."""
+    from immich_memories.preflight import CheckStatus
+
+    config = _config(tmp_path)
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.get_time_buckets.side_effect = RuntimeError("metadata failed")
+
+    with (
+        patch(
+            "immich_memories.preflight.check_immich",
+            return_value=MagicMock(status=CheckStatus.OK),
+        ),
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        pytest.raises(RuntimeError, match="metadata failed"),
+    ):
+        AutoRunner(config).suggest(limit=1)
 
 
 def test_cooldown_uses_auto_completion_time_not_start_time(tmp_path: Path) -> None:
