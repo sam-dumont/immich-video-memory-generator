@@ -269,12 +269,11 @@ def test_benchmark_projection_rejects_incomplete_reproduction_metadata() -> None
     result = _complete_benchmark_result()
 
     projection = benchmark_comparison_projection({"results": [result]})
-    assert projection[0] | {"extra": "ignored"} == {
-        "name": "assembly",
-        "unit": "seconds",
-        "value": 1.0,
-        "extra": "ignored",
-    }
+    assert projection[0]["name"].startswith("assembly [")
+    assert projection[0]["name"].endswith("]")
+    assert projection[0]["unit"] == "seconds"
+    assert projection[0]["value"] == 1.0
+    assert isinstance(projection[0]["extra"], str)
     with pytest.raises(ValueError, match="full benchmark results"):
         benchmark_comparison_projection([])
     incomplete = result.copy()
@@ -307,6 +306,7 @@ def test_benchmark_projection_identity_changes_for_comparability_fields(
         {"results": [_complete_benchmark_result() | {field: changed}]}
     )[0]
 
+    assert baseline["name"] != modified["name"]
     assert baseline["extra"] != modified["extra"]
 
 
@@ -317,6 +317,7 @@ def test_benchmark_projection_identity_is_deterministic_for_identical_input() ->
     first = benchmark_comparison_projection({"results": [_complete_benchmark_result()]})[0]
     second = benchmark_comparison_projection({"results": [_complete_benchmark_result()]})[0]
 
+    assert first["name"] == second["name"]
     assert first["extra"] == second["extra"]
 
 
@@ -339,6 +340,7 @@ def test_benchmark_projection_identity_ignores_git_revision_and_timing() -> None
         }
     )[0]
 
+    assert baseline["name"] == modified["name"]
     assert baseline["extra"] == modified["extra"]
 
 

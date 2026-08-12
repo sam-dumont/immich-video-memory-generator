@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import cProfile
+import hashlib
 import json
 import math
 import os
@@ -160,12 +161,15 @@ def benchmark_comparison_projection(submitted: object) -> list[dict[str, object]
                 raise ValueError("raw_repetition_seconds must contain finite numeric values")
         _finite_number(result, "warmup_wall_seconds", positive=True)
         median = _finite_number(result, "median_wall_seconds", positive=True)
+        scenario = _nonempty_string(result, "scenario")
+        extra = _identity_extra(result)
+        identity_digest = hashlib.sha256(extra.encode()).hexdigest()[:12]
         projection.append(
             {
-                "name": _nonempty_string(result, "scenario"),
+                "name": f"{scenario} [{identity_digest}]",
                 "unit": "seconds",
                 "value": median,
-                "extra": _identity_extra(result),
+                "extra": extra,
             }
         )
     return projection
