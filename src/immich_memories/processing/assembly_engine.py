@@ -91,11 +91,12 @@ def create_assembly_context(
 
     # WHY: direct/standalone plans have no source provenance. Always inspect the
     # actual clips so an HDR source cannot be relabeled SDR without conversion.
-    clip_hdr_types = _get_clip_hdr_types(clips)
+    probe_cache = prober.probe_cache
+    clip_hdr_types = _get_clip_hdr_types(clips, probe_cache=probe_cache)
     clip_primaries: list[str | None] = []
     if plan.hdr:
         for clip in clips:
-            clip_primaries.append(_detect_color_primaries(clip.path))
+            clip_primaries.append(_detect_color_primaries(clip.path, probe_cache=probe_cache))
     else:
         clip_primaries = [None] * len(clips)
 
@@ -246,6 +247,7 @@ class AssemblyEngine:
             scale_mode=self.settings.scale_mode,
             progress_callback=progress_callback,
             frame_preview_callback=frame_preview_callback,
+            probe_cache=self.prober.probe_cache,
         )
         return output_path
 

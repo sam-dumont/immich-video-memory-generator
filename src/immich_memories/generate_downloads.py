@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
+
+from immich_memories.processing.probe_cache import ProbeError
 
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.cache.video_cache import CacheBatch, VideoDownloadCache
+    from immich_memories.processing.probe_cache import ProbeCache
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +27,7 @@ def download_clip(
     *,
     prefetched_path: Path | None = None,
     prefetched_burst_paths: dict[str, Path | None] | None = None,
+    probe_cache: ProbeCache | None = None,
 ) -> Path | None:
     """Download a single clip, handling live photo bursts.
 
@@ -44,6 +49,7 @@ def download_clip(
             clip,
             output_dir,
             prefetched_paths=prefetched_burst_paths,
+            probe_cache=probe_cache,
         )
 
     if prefetched_path is not None:
@@ -58,6 +64,7 @@ def _download_and_merge_burst(
     output_dir: Path,
     *,
     prefetched_paths: dict[str, Path | None] | None = None,
+    probe_cache: ProbeCache | None = None,
 ) -> Path | None:
     """Download live photo burst videos and merge into one file."""
     burst_ids = clip.live_burst_video_ids or []
@@ -95,6 +102,7 @@ def _download_and_merge_burst(
         trim_points,
         merged_path,
         shutter_timestamps=clip.live_burst_shutter_timestamps,
+        probe_cache=probe_cache,
     )
     if merged is not None or prefetched_paths is not None:
         return merged
@@ -111,25 +119,49 @@ def _download_burst_clips(
     """Download burst components and register every cache hit/miss with the batch."""
     clip_paths: list[Path] = []
     for vid in burst_ids:
-        subdir = vid[:2] if len(vid) >= 2 else "00"
-        dest = cache_batch.cache_dir / subdir / f"{vid}.MOV"
-        if prefetched_paths is not None and vid in prefetched_paths:
-            prefetched_path = prefetched_paths[vid]
-            if prefetched_path is not None and prefetched_path.exists():
-                clip_paths.append(cache_batch.record_path(prefetched_path))
-            else:
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                cache_batch.record_absence(dest)
+        was_prefetched, prefetched = _prefetched_burst_clip(cache_batch, vid, prefetched_paths)
+        if was_prefetched:
+            if prefetched is not None:
+                clip_paths.append(prefetched)
             continue
-        if dest.exists() and dest.stat().st_size > 0:
-            clip_paths.append(cache_batch.record_path(dest))
-            continue
-        path = cache_batch.download_video_id(client, vid)
+        path = _cached_or_download_burst_clip(client, cache_batch, vid)
         if path is not None:
             clip_paths.append(path)
-        else:
-            logger.warning("Live-photo burst component download failed for asset %s", vid)
     return clip_paths
+
+
+def _prefetched_burst_clip(
+    cache_batch: CacheBatch,
+    video_id: str,
+    prefetched_paths: dict[str, Path | None] | None,
+) -> tuple[bool, Path | None]:
+    """Return whether prefetch handled the ID and its usable path, if any."""
+    if prefetched_paths is None or video_id not in prefetched_paths:
+        return False, None
+    prefetched_path = prefetched_paths[video_id]
+    if prefetched_path is not None and prefetched_path.exists():
+        return True, cache_batch.record_path(prefetched_path)
+    subdir = video_id[:2] if len(video_id) >= 2 else "00"
+    dest = cache_batch.cache_dir / subdir / f"{video_id}.MOV"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    cache_batch.record_absence(dest)
+    return True, None
+
+
+def _cached_or_download_burst_clip(
+    client: SyncImmichClient,
+    cache_batch: CacheBatch,
+    video_id: str,
+) -> Path | None:
+    """Return the reusable/downloaded burst file, logging failed downloads."""
+    subdir = video_id[:2] if len(video_id) >= 2 else "00"
+    dest = cache_batch.cache_dir / subdir / f"{video_id}.MOV"
+    if dest.exists() and dest.stat().st_size > 0:
+        return cache_batch.record_path(dest)
+    path = cache_batch.download_video_id(client, video_id)
+    if path is None:
+        logger.warning("Live-photo burst component download failed for asset %s", video_id)
+    return path
 
 
 def _align_burst_subset(
@@ -160,6 +192,7 @@ def _try_merge_burst(
     trim_points: list,
     merged_path: Path,
     shutter_timestamps: list[float] | None = None,
+    probe_cache: ProbeCache | None = None,
 ) -> Path | None:
     """Try to merge burst clips with spectrogram-aligned audio/video.
 
@@ -175,53 +208,60 @@ def _try_merge_burst(
     )
 
     # Pre-validate: filter out clips with no valid video stream
-    valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points)
+    valid_paths, valid_trims = filter_valid_clips(clip_paths, trim_points, probe_cache=probe_cache)
     if not valid_paths:
         return None
 
-    # Spectrogram alignment for sample-accurate audio + frame-accurate video
     audio_trims = None
-    has_audio = probe_clip_has_audio(valid_paths[0]) if valid_paths else False
+    has_audio = probe_clip_has_audio(valid_paths[0], probe_cache=probe_cache)
     if not has_audio:
         logger.info("Burst clips have no audio — skipping spectrogram alignment")
     if has_audio and shutter_timestamps and len(valid_paths) > 1:
-        try:
-            import json
+        aligned = _spectrogram_aligned_trims(
+            valid_paths, shutter_timestamps, probe_cache, align_clips_spectrogram
+        )
+        if aligned is not None:
+            valid_trims, audio_trims, probe_cache = aligned
 
-            durations = []
-            for p in valid_paths:
-                probe = subprocess.run(  # noqa: S603, S607
-                    [
-                        "ffprobe",
-                        "-v",
-                        "error",
-                        "-show_entries",
-                        "format=duration",
-                        "-of",
-                        "json",
-                        str(p),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                durations.append(float(json.loads(probe.stdout)["format"]["duration"]))
-
-            video_trims, audio_trims = align_clips_spectrogram(
-                valid_paths, shutter_timestamps[: len(valid_paths)], durations
-            )
-            valid_trims = video_trims  # Use frame-aligned trims for video
-        except (OSError, subprocess.SubprocessError, ValueError) as e:
-            logger.warning(f"Spectrogram alignment failed, using timestamp trims: {e}")
-            audio_trims = None
-
-    cmd = build_merge_command(valid_paths, valid_trims, merged_path, audio_trim_points=audio_trims)
+    cmd = build_merge_command(
+        valid_paths,
+        valid_trims,
+        merged_path,
+        audio_trim_points=audio_trims,
+        probe_cache=probe_cache,
+    )
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603
         if result.returncode == 0 and merged_path.exists():
+            if probe_cache is not None:
+                probe_cache.invalidate(merged_path)
             return merged_path
         logger.warning(f"Live photo merge failed: {result.stderr[:500]}")
     except (OSError, subprocess.SubprocessError) as e:
         logger.warning(f"Live photo merge error: {e}")
 
     return None
+
+
+def _spectrogram_aligned_trims(
+    paths: list[Path],
+    shutter_timestamps: list[float],
+    probe_cache: ProbeCache | None,
+    align_clips_spectrogram: Callable[
+        [list[Path], list[float], list[float]],
+        tuple[list[tuple[float, float]], list[tuple[float, float]]],
+    ],
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]], ProbeCache] | None:
+    """Return frame/audio trims, retaining timestamp trims when probing fails."""
+    from immich_memories.processing.probe_cache import ProbeCache
+
+    cache = probe_cache or ProbeCache()
+    try:
+        durations = [cache.get(path).duration_seconds for path in paths]
+        video_trims, audio_trims = align_clips_spectrogram(
+            paths, shutter_timestamps[: len(paths)], durations
+        )
+    except (OSError, subprocess.SubprocessError, ValueError, ProbeError) as error:
+        logger.warning("Spectrogram alignment failed, using timestamp trims: %s", error)
+        return None
+    return video_trims, audio_trims, cache

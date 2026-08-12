@@ -179,8 +179,15 @@ def _init_face_detector() -> object | None:
         return None  # Will use OpenCV directly
 
 
-def _get_video_duration(video_path: Path) -> float:
+def _get_video_duration(video_path: Path, *, probe_cache=None) -> float:
     """Probe video duration using ffprobe, falling back to 10s."""
+    if probe_cache is not None:
+        from immich_memories.processing.probe_cache import ProbeError
+
+        try:
+            return probe_cache.get(video_path).duration_seconds or 10.0
+        except (OSError, ProbeError, ValueError):
+            return 10.0
     try:
         result = subprocess.run(
             [
@@ -259,7 +266,9 @@ def _detect_faces_opencv(frame_path: Path) -> list[tuple[float, float]]:
     return [((x + fw / 2) / w, (y + fh / 2) / h) for x, y, fw, fh in faces_cv]
 
 
-def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None:
+def _detect_face_center_in_video(
+    video_path: Path, *, probe_cache=None
+) -> tuple[float, float] | None:
     """Detect average face center position in a video.
 
     Samples multiple frames throughout the video and detects faces in each.
@@ -280,7 +289,7 @@ def _detect_face_center_in_video(video_path: Path) -> tuple[float, float] | None
         logger.debug("No face detection available (Apple Vision or OpenCV)")
         return None
 
-    duration = _get_video_duration(video_path)
+    duration = _get_video_duration(video_path, probe_cache=probe_cache)
     sample_times = [duration * p for p in (0.2, 0.5, 0.8)]
     all_face_positions: list[tuple[float, float]] = []
 

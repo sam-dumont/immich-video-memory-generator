@@ -205,9 +205,10 @@ class TestHdrConversionFilter:
         """Default SDR→HLG conversion should use bt709 primaries."""
         from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
 
-        # WHY: mock subprocess.run — filter builder checks zscale availability via ffmpeg
-        with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = "zscale"
+        with patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            return_value=True,
+        ):
             result = _get_hdr_conversion_filter(None, "hlg")
 
         assert "pin=bt709" in result
@@ -219,8 +220,10 @@ class TestHdrConversionFilter:
         """SDR→HLG with Display P3 source should use smpte432 primariesin."""
         from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
 
-        with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = "zscale"
+        with patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            return_value=True,
+        ):
             result = _get_hdr_conversion_filter(None, "hlg", source_primaries="smpte432")
 
         assert "pin=smpte432" in result
@@ -230,8 +233,10 @@ class TestHdrConversionFilter:
         """SDR→PQ with Display P3 source should use smpte432 primariesin."""
         from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
 
-        with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = "zscale"
+        with patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            return_value=True,
+        ):
             result = _get_hdr_conversion_filter(None, "pq", source_primaries="smpte432")
 
         assert "pin=smpte432" in result
@@ -242,8 +247,10 @@ class TestHdrConversionFilter:
         """HDR→HDR conversion already uses bt2020, source_primaries not needed."""
         from immich_memories.processing.hdr_utilities import _get_hdr_conversion_filter
 
-        with patch("immich_memories.processing.hdr_utilities.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = "zscale"
+        with patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            return_value=True,
+        ):
             result = _get_hdr_conversion_filter("hlg", "pq", source_primaries="smpte432")
 
         assert "pin=bt2020" in result
@@ -300,6 +307,7 @@ class TestHdrConversionFilter:
         """A plan without provenance must still discover HDR before building the graph."""
         from immich_memories.processing.assembly_engine import create_assembly_context
         from immich_memories.processing.filter_builder import FilterBuilder
+        from immich_memories.processing.probe_cache import ProbeCache
 
         plan = EncodingPlan(
             codec=OutputCodec.H264,
@@ -312,6 +320,8 @@ class TestHdrConversionFilter:
         )
         settings = AssemblySettings(encoding_plan=plan)
         prober = MagicMock()
+        probe_cache = ProbeCache()
+        prober.probe_cache = probe_cache
         prober.detect_max_framerate.return_value = 30
         clips = [
             AssemblyClip(path=Path("/tmp/hlg.mp4"), duration=5.0),
@@ -333,7 +343,7 @@ class TestHdrConversionFilter:
                 settings, prober, lambda _path: None
             ).get_clip_hdr_conversion(0, context)
 
-        detect_transfers.assert_called_once_with(clips)
+        detect_transfers.assert_called_once_with(clips, probe_cache=probe_cache)
         assert context.clip_hdr_types == ["hlg", None]
         assert "zscale=t=linear:tin=arib-std-b67" in conversion
         assert "tonemap=" in conversion

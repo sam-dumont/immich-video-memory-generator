@@ -36,6 +36,7 @@ from immich_memories.processing.hdr_utilities import (
     _get_colorspace_filter,
     _resolve_clip_hdr,
 )
+from immich_memories.processing.probe_cache import ProbeCache
 from immich_memories.processing.streaming_audio import (
     _probe_duration,
     extract_and_mix_audio,
@@ -535,6 +536,7 @@ def _make_decoder(
     scale_mode: str = "black",
     hdr_type: str | None = None,
     audio_work_dir: Path | None = None,
+    probe_cache: ProbeCache | None = None,
 ) -> FrameDecoder:
     """Create a FrameDecoder with per-clip normalization filters."""
     rotation = 0
@@ -548,8 +550,8 @@ def _make_decoder(
         target_type = hdr_type or "sdr"
         source_types: list[str | None] = [None] * (clip_idx + 1)
         source_primaries: list[str | None] = [None] * (clip_idx + 1)
-        source_types[clip_idx] = _detect_hdr_type(clip.path)
-        source_primaries[clip_idx] = _detect_color_primaries(clip.path)
+        source_types[clip_idx] = _detect_hdr_type(clip.path, probe_cache=probe_cache)
+        source_primaries[clip_idx] = _detect_color_primaries(clip.path, probe_cache=probe_cache)
         ctx = SimpleNamespace(
             hdr_type=target_type,
             pix_fmt="yuv420p10le" if hdr_type else "yuv420p",
@@ -685,6 +687,7 @@ def _run_streaming_attempt(
     progress_callback: Callable[[int, int], None] | None,
     frame_preview_callback: Callable[[bytes], None] | None,
     audio_work_dir: Path | None,
+    probe_cache: ProbeCache | None,
 ) -> list[Path]:
     """Run one streaming attempt, classifying failures only at encoder boundaries."""
     total_frames = _estimate_total_frames(clips, transitions, fps, fade_duration)
@@ -713,6 +716,7 @@ def _run_streaming_attempt(
             progress_callback,
             frame_preview_callback,
             audio_work_dir=audio_work_dir,
+            probe_cache=probe_cache,
         )
         encoder.finish()
     except BaseException:
@@ -739,11 +743,9 @@ def assemble_streaming(
     progress_callback: Callable[[int, int], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
     audio_work_dir: Path | None = None,
+    probe_cache: ProbeCache | None = None,
 ) -> list[Path]:
-    """Assemble clips via streaming frame blending (constant memory).
-
-    Returns list of per-clip audio WAV paths extracted during decoding.
-    """
+    """Assemble clips via streaming frame blending and return audio paths."""
     if len(transitions) != len(clips) - 1:
         raise ValueError(f"Expected {len(clips) - 1} transitions, got {len(transitions)}")
 
@@ -770,6 +772,7 @@ def assemble_streaming(
                 progress_callback,
                 frame_preview_callback,
                 audio_work_dir,
+                probe_cache,
             )
         except StreamingEncoderError as error:
             attempt_error = error
@@ -813,6 +816,7 @@ def _encode_clip_sequence(
     progress_callback: Callable[[int, int], None] | None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
     audio_work_dir: Path | None = None,
+    probe_cache: ProbeCache | None = None,
 ) -> int:
     """Encode all clips with transitions, tracking frame count for progress."""
     active_iter: Iterator[np.ndarray] | None = None
@@ -834,6 +838,7 @@ def _encode_clip_sequence(
                 scale_mode,
                 hdr_type,
                 audio_work_dir=audio_work_dir,
+                probe_cache=probe_cache,
             )
             active_iter = iter(decoder)
 
@@ -868,6 +873,7 @@ def _encode_clip_sequence(
                 scale_mode,
                 hdr_type,
                 audio_work_dir=audio_work_dir,
+                probe_cache=probe_cache,
             )
             next_iter = iter(next_decoder)
             last_preview_time = _emit_crossfade(
@@ -892,11 +898,7 @@ def _encode_clip_sequence(
             active_iter = None
             skip_frames = 0
 
-    # WHY: The last FrameDecoder's FFmpeg process inherits the encoder's
-    # stdin pipe FD. If not closed before encoder.finish(), the pipe never
-    # sees EOF and the encoder hangs waiting for input. Force-close the
-    # last iterator to trigger FrameDecoder.__iter__'s finally block
-    # (proc.terminate + wait), ensuring the FD is released.
+    # Close inherited encoder stdin before encoder.finish() waits for EOF.
     if active_iter is not None and hasattr(active_iter, "close"):
         active_iter.close()
     return frames_written
@@ -917,6 +919,7 @@ def streaming_assemble_full(
     scale_mode: str = "blur",
     progress_callback: Callable[[float, str], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
+    probe_cache: ProbeCache | None = None,
 ) -> Path:
     """Full streaming assembly: plan-bound video encode + audio mix + mux."""
     plan = encoding_plan or _default_streaming_plan()
@@ -932,8 +935,7 @@ def streaming_assemble_full(
         if progress_callback:
             progress_callback(0.07, "Streaming video assembly...")
 
-        # WHY: Scale frame-level progress into [0.07, 0.85) range so the caller
-        # sees continuous updates during the heavy encode phase.
+        # Scale frame-level progress into the encode range.
         def _frame_progress(frames_done: int, frames_total: int) -> None:
             if progress_callback and frames_total > 0:
                 frac = frames_done / frames_total
@@ -947,9 +949,7 @@ def streaming_assemble_full(
                     f"Encoding ({time_done} / {time_total}) — {frac * 100:.0f}%",
                 )
 
-        # WHY: Extract audio in the same FFmpeg pass as video decoding.
-        # This eliminates the separate audio extraction pass and ensures
-        # audio timing matches decoded video frames exactly.
+        # Extract audio with video decoding for frame-level timing.
         clip_audio_paths = assemble_streaming(
             clips=clips,
             transitions=transitions,
@@ -965,15 +965,16 @@ def streaming_assemble_full(
             progress_callback=_frame_progress,
             frame_preview_callback=frame_preview_callback,
             audio_work_dir=audio_work_dir,
+            probe_cache=probe_cache,
         )
 
         if progress_callback:
             progress_callback(0.85, "Mixing audio...")
 
-        # WHY: Probe actual video duration so the audio filter graph can
-        # clamp its output to match. This avoids re-encoding audio in the
-        # mux step (which would cause double-AAC priming delay).
-        video_dur = _probe_duration(video_only)
+        # Clamp mixed audio to actual encoded-video duration.
+        if probe_cache is not None:
+            probe_cache.invalidate(video_only)
+        video_dur = _probe_duration(video_only, probe_cache=probe_cache)
 
         extract_and_mix_audio(
             clips=clips,
@@ -985,6 +986,7 @@ def streaming_assemble_full(
             privacy_mode=privacy_mode,
             pre_extracted_audio=clip_audio_paths,
             video_duration=video_dur,
+            probe_cache=probe_cache,
         )
 
         if progress_callback:

@@ -82,6 +82,7 @@ class TitleInserter:
             privacy_mode=self.settings.privacy_mode,
             scale_mode=self.settings.scale_mode or "blur",
             hdr_type=hdr_type,
+            probe_cache=self.prober.probe_cache,
         )
 
         encoder_args = encoder_args_for_plan(plan)
@@ -308,6 +309,7 @@ class TitleInserter:
             privacy_mode=self.settings.privacy_mode,
             scale_mode=self.settings.scale_mode or "blur",
             hdr_type=hdr_type,
+            probe_cache=self.prober.probe_cache,
         )
 
         encoder_args = encoder_args_for_plan(plan)

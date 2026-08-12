@@ -168,8 +168,15 @@ def cluster_live_photos(
     return result
 
 
-def probe_clip_has_video(clip_path: Path) -> bool:
+def probe_clip_has_video(clip_path: Path, *, probe_cache=None) -> bool:
     """Check if a video clip has at least one video stream (fast, no frame decoding)."""
+    if probe_cache is not None:
+        from immich_memories.processing.probe_cache import ProbeError
+
+        try:
+            return probe_cache.get(clip_path).has_video
+        except (OSError, ProbeError, ValueError):
+            return False
     import subprocess
 
     try:
@@ -207,12 +214,21 @@ def _extract_rotation(stream: dict) -> int:
     return 0
 
 
-def _probe_clip_orientation(clip_path: Path) -> str | None:
+def _probe_clip_orientation(clip_path: Path, *, probe_cache=None) -> str | None:
     """Probe a clip's displayed orientation: 'landscape', 'portrait', or None on error.
 
     Uses side_data rotation and stream tags to detect the display orientation,
     since iPhone MOVs store landscape pixels + rotation metadata.
     """
+    if probe_cache is not None:
+        from immich_memories.processing.probe_cache import ProbeError
+
+        try:
+            resolution = probe_cache.get(clip_path).resolution
+            if resolution is not None:
+                return "landscape" if resolution[0] >= resolution[1] else "portrait"
+        except (OSError, ProbeError, ValueError):
+            return None
     import contextlib
     import json
     import subprocess
@@ -249,6 +265,8 @@ def _probe_clip_orientation(clip_path: Path) -> str | None:
 def filter_valid_clips(
     clip_paths: list[Path],
     trim_points: list[tuple[float, float]],
+    *,
+    probe_cache=None,
 ) -> tuple[list[Path], list[tuple[float, float]]]:
     """Remove clips that have no valid video stream or mismatched orientation.
 
@@ -263,7 +281,7 @@ def filter_valid_clips(
     video_paths: list[Path] = []
     video_trims: list[tuple[float, float]] = []
     for path, trim in zip(clip_paths, trim_points, strict=True):
-        if probe_clip_has_video(path):
+        if probe_clip_has_video(path, probe_cache=probe_cache):
             video_paths.append(path)
             video_trims.append(trim)
 
@@ -271,7 +289,7 @@ def filter_valid_clips(
         return video_paths, video_trims
 
     # Step 2: reject clips with mismatched orientation
-    orientations = [_probe_clip_orientation(p) for p in video_paths]
+    orientations = [_probe_clip_orientation(p, probe_cache=probe_cache) for p in video_paths]
     landscape_count = sum(1 for o in orientations if o == "landscape")
     portrait_count = sum(1 for o in orientations if o == "portrait")
     majority = "landscape" if landscape_count >= portrait_count else "portrait"
@@ -288,8 +306,15 @@ def filter_valid_clips(
     return valid_paths, valid_trims
 
 
-def probe_clip_has_audio(clip_path: Path) -> bool:
+def probe_clip_has_audio(clip_path: Path, *, probe_cache=None) -> bool:
     """Check if a video clip has at least one audio stream."""
+    if probe_cache is not None:
+        from immich_memories.processing.probe_cache import ProbeError
+
+        try:
+            return probe_cache.get(clip_path).has_audio
+        except (OSError, ProbeError, ValueError):
+            return False
     import subprocess
 
     try:
@@ -316,8 +341,15 @@ def probe_clip_has_audio(clip_path: Path) -> bool:
         return False
 
 
-def _detect_clip_hdr(clip_path: Path) -> bool:
+def _detect_clip_hdr(clip_path: Path, *, probe_cache=None) -> bool:
     """Check if a video clip is HDR by probing color_transfer."""
+    if probe_cache is not None:
+        from immich_memories.processing.probe_cache import ProbeError
+
+        try:
+            return probe_cache.get(clip_path).hdr_type is not None
+        except (OSError, ProbeError, ValueError):
+            return False
     import subprocess
 
     try:
@@ -494,6 +526,7 @@ def build_merge_command(
     output: Path,
     *,
     audio_trim_points: list[tuple[float, float]] | None = None,
+    probe_cache=None,
 ) -> list[str]:
     """Build an FFmpeg command that trims and merges Live Photo clips.
 
@@ -507,8 +540,8 @@ def build_merge_command(
     HDR clips (iPhone HLG) are encoded with libx265 10-bit to preserve
     color metadata. SDR clips use libx264.
     """
-    is_hdr = bool(clip_paths) and _detect_clip_hdr(clip_paths[0])
-    has_audio = all(probe_clip_has_audio(p) for p in clip_paths)
+    is_hdr = bool(clip_paths) and _detect_clip_hdr(clip_paths[0], probe_cache=probe_cache)
+    has_audio = all(probe_clip_has_audio(p, probe_cache=probe_cache) for p in clip_paths)
     a_trims = audio_trim_points or trim_points
     n = len(clip_paths)
 

@@ -20,6 +20,7 @@ from immich_memories.processing.audio_mixer_service import AudioMixerService
 from immich_memories.processing.clip_encoder import ClipEncoder
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.filter_builder import FilterBuilder
+from immich_memories.processing.probe_cache import ProbeCache
 from immich_memories.processing.scaling_utilities import (
     _detect_face_center_in_video,
 )
@@ -55,10 +56,13 @@ class VideoAssembler:
         output_crf: int = 23,
         default_transition_duration: float = 0.5,
         default_resolution: tuple[int, int] = (1920, 1080),
+        probe_cache: ProbeCache | None = None,
     ):
         self.settings = settings or AssemblySettings(
             encoding_plan=standalone_assembly_encoding_plan(output_crf)
         )
+        self._injected_probe_cache = probe_cache is not None
+        self._assembly_run_depth = 0
 
         # Face detection cache: path -> (center_x, center_y) or None
         self._face_cache: OrderedDict[Path, tuple[float, float] | None] = OrderedDict()
@@ -72,7 +76,7 @@ class VideoAssembler:
             self.settings.default_resolution = default_resolution
 
         # Wire composed services
-        self.prober = FFmpegProber(self.settings)
+        self.prober = FFmpegProber(self.settings, probe_cache=probe_cache)
         self.filter_builder = FilterBuilder(self.settings, self.prober, self._get_face_center)
         self.encoder = ClipEncoder(
             self.settings,
@@ -97,9 +101,19 @@ class VideoAssembler:
         while len(self._face_cache) >= MAX_FACE_CACHE_SIZE:
             self._face_cache.popitem(last=False)
 
-        result = _detect_face_center_in_video(video_path)
+        result = _detect_face_center_in_video(video_path, probe_cache=self.prober.probe_cache)
         self._face_cache[video_path] = result
         return result
+
+    def _run_public_assembly(self, action: Callable[[], Path]) -> Path:
+        """Give standalone calls a fresh cache while nested title work shares it."""
+        if self._assembly_run_depth == 0 and not self._injected_probe_cache:
+            self.prober.probe_cache = ProbeCache()
+        self._assembly_run_depth += 1
+        try:
+            return action()
+        finally:
+            self._assembly_run_depth -= 1
 
     def assemble_with_titles(
         self,
@@ -111,11 +125,24 @@ class VideoAssembler:
         def wrapped_assemble(clips, output_path, progress_callback=None):
             return self.assemble(clips, output_path, progress_callback, frame_preview_callback)
 
-        return self.title_inserter.assemble_with_titles(
-            clips, output_path, wrapped_assemble, progress_callback
+        return self._run_public_assembly(
+            lambda: self.title_inserter.assemble_with_titles(
+                clips, output_path, wrapped_assemble, progress_callback
+            )
         )
 
     def assemble(
+        self,
+        clips: list[AssemblyClip],
+        output_path: Path,
+        progress_callback: Callable[[float, str], None] | None = None,
+        frame_preview_callback: Callable[[bytes], None] | None = None,
+    ) -> Path:
+        return self._run_public_assembly(
+            lambda: self._assemble(clips, output_path, progress_callback, frame_preview_callback)
+        )
+
+    def _assemble(
         self,
         clips: list[AssemblyClip],
         output_path: Path,
@@ -169,10 +196,12 @@ def assemble_montage(
     music_accompaniment_path: Path | None = None,
 ) -> Path:
     from immich_memories.processing.clip_probing import get_video_duration
+    from immich_memories.processing.probe_cache import ProbeCache
 
+    probe_cache = ProbeCache()
     assembly_clips = []
     for path in clips:
-        duration = get_video_duration(path)
+        duration = get_video_duration(path, probe_cache=probe_cache)
         assembly_clips.append(
             AssemblyClip(
                 path=path,
@@ -189,7 +218,7 @@ def assemble_montage(
         music_accompaniment_path=music_accompaniment_path,
     )
 
-    return VideoAssembler(settings).assemble(assembly_clips, output_path)
+    return VideoAssembler(settings, probe_cache=probe_cache).assemble(assembly_clips, output_path)
 
 
 def create_preview(

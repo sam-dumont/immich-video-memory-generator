@@ -917,6 +917,10 @@ class TestStreamRenderToMp4:
                 "immich_memories.photos.photo_pipeline.render_ken_burns_streaming",
                 return_value=[img],
             ),
+            patch(
+                "immich_memories.processing.hdr_utilities.check_zscale_available",
+                return_value=True,
+            ),
         ):
             _stream_render_to_mp4(img, params, output, 100, 100, gain_map_hdr=True, peak_nits=1200)
 

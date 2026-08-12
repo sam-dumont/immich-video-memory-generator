@@ -202,6 +202,7 @@ def test_extract_clips_uses_prefetched_video_before_serial_ffmpeg(
 ) -> None:
     """Video network work is prefetched, while segment extraction remains serial."""
     from immich_memories import generate_clips
+    from immich_memories.processing.probe_cache import ProbeCache
 
     clip = make_clip("prefetched-video", duration=2.0)
     downloaded = tmp_path / "source.mp4"
@@ -215,6 +216,8 @@ def test_extract_clips_uses_prefetched_video_before_serial_ffmpeg(
         client=MagicMock(spec=SyncImmichClient),
     )
     calls: list[object] = []
+    probe_cache = ProbeCache()
+    observed_probe_caches: list[ProbeCache | None] = []
 
     class _Coordinator:
         def __init__(self, *args: object, **kwargs: object) -> None:
@@ -231,15 +234,26 @@ def test_extract_clips_uses_prefetched_video_before_serial_ffmpeg(
         "immich_memories.generate_downloads.download_clip",
         lambda *_args: (_ for _ in ()).throw(AssertionError("prefetch result was ignored")),
     )
-    monkeypatch.setattr(generate_clips, "_probe_file_duration", lambda _path: 2.0)
+
+    def _probe_duration(_path: Path, *, probe_cache: ProbeCache | None = None) -> float:
+        observed_probe_caches.append(probe_cache)
+        return 2.0
+
+    monkeypatch.setattr(generate_clips, "_probe_file_duration", _probe_duration)
     monkeypatch.setattr(
         "immich_memories.processing.clips.extract_clip", lambda *_args, **_kwargs: segment
     )
 
-    assembly_clips = generate_clips._extract_clips(params, MagicMock(), tmp_path)
+    assembly_clips = generate_clips._extract_clips(
+        params,
+        MagicMock(),
+        tmp_path,
+        probe_cache=probe_cache,
+    )
 
     assert len(calls) == 2
     assert calls[1] == [clip.asset]
+    assert observed_probe_caches == [probe_cache]
     assert [assembly_clip.path for assembly_clip in assembly_clips] == [segment]
 
 

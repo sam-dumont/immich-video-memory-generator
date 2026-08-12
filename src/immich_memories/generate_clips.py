@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from immich_memories.api.models import Asset, VideoClipInfo
     from immich_memories.cache.video_cache import CacheBatch, VideoDownloadCache
     from immich_memories.generate import GenerationParams
+    from immich_memories.processing.probe_cache import ProbeCache
 
 logger = logging.getLogger(__name__)
 
@@ -46,30 +47,13 @@ def _download_client_factory(params: GenerationParams):
     return factory
 
 
-def _probe_file_duration(path: Path) -> float | None:
+def _probe_file_duration(path: Path, *, probe_cache: ProbeCache | None = None) -> float | None:
     """Probe actual file duration via ffprobe. Returns None on failure."""
-    import subprocess
+    from immich_memories.processing.probe_cache import ProbeCache, ProbeError
 
-    try:
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "quiet",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "csv=p=0",
-                str(path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return float(result.stdout.strip())
-    except (ValueError, subprocess.TimeoutExpired):
-        pass
+    with contextlib.suppress(OSError, ProbeError, ValueError):
+        duration = (probe_cache or ProbeCache()).get(path).duration_seconds
+        return duration or None
     return None
 
 
@@ -122,6 +106,8 @@ def _download_video_path(
     clip: VideoClipInfo,
     output_dir: Path,
     prefetched: dict[str, DownloadResult],
+    *,
+    probe_cache: ProbeCache | None = None,
 ) -> Path | None:
     """Resolve a clip source, preserving burst prefetch reuse."""
     from immich_memories.generate_downloads import download_clip
@@ -138,18 +124,21 @@ def _download_video_path(
             clip,
             output_dir,
             prefetched_burst_paths=prefetched_burst_paths or None,
+            probe_cache=probe_cache,
         )
 
     prefetched_result = prefetched.get(clip.asset.id)
     if prefetched_result is not None:
         return prefetched_result.path
-    return download_clip(params.client, video_cache, clip, output_dir)
+    return download_clip(params.client, video_cache, clip, output_dir, probe_cache=probe_cache)
 
 
 def _extract_clips(
     params: GenerationParams,
     video_cache: VideoDownloadCache,
     output_dir: Path,
+    *,
+    probe_cache: ProbeCache | None = None,
 ) -> list[AssemblyClip]:
     """Download videos and extract clip segments. Renders IMAGE clips as photo animations."""
     from immich_memories.api.models import AssetType
@@ -179,7 +168,9 @@ def _extract_clips(
                     assembly_clips.append(photo_clip)
                 continue
 
-            video_path = _download_video_path(params, video_cache, clip, output_dir, prefetched)
+            video_path = _download_video_path(
+                params, video_cache, clip, output_dir, prefetched, probe_cache=probe_cache
+            )
             if not video_path or not video_path.exists():
                 logger.warning(f"Failed to download {clip.asset.id}, skipping")
                 continue
@@ -192,6 +183,8 @@ def _extract_clips(
             segment_path = extract_clip(
                 video_path, start_time=start_time, end_time=end_time, config=params.config
             )
+            if probe_cache is not None:
+                probe_cache.invalidate(segment_path)
 
             # WHY: extract_clip with -c copy can produce files shorter OR longer
             # than requested due to keyframe boundaries. Use min(actual, nominal)
@@ -199,7 +192,7 @@ def _extract_clips(
             # frame underruns) but also never more than what was requested
             # (prevents audio starting early).
             nominal_duration = end_time - start_time
-            actual_duration = _probe_file_duration(segment_path)
+            actual_duration = _probe_file_duration(segment_path, probe_cache=probe_cache)
             duration = (
                 min(actual_duration, nominal_duration) if actual_duration else nominal_duration
             )

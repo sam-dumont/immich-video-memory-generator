@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from immich_memories.config_loader import Config
     from immich_memories.generate import GenerationParams
     from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.processing.probe_cache import ProbeCache
     from immich_memories.tracking import RunTracker
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,8 @@ logger = logging.getLogger(__name__)
 def _build_assembly_settings(
     params: GenerationParams,
     assembly_clips: list[AssemblyClip],
+    *,
+    probe_cache: ProbeCache | None = None,
 ) -> AssemblySettings:
     """Build AssemblySettings from GenerationParams."""
     config = params.config
@@ -94,7 +97,7 @@ def _build_assembly_settings(
             container=output_selection.container,
         ),
         capabilities,
-        input_transfer=detect_dominant_hdr_transfer(assembly_clips),
+        input_transfer=detect_dominant_hdr_transfer(assembly_clips, probe_cache=probe_cache),
     )
 
     return AssemblySettings(
@@ -174,7 +177,12 @@ def _build_title_settings(
     return settings
 
 
-def _create_assembler(settings: AssemblySettings, config: Config):
+def _create_assembler(
+    settings: AssemblySettings,
+    config: Config,
+    *,
+    probe_cache: ProbeCache | None = None,
+):
     """Create a VideoAssembler with the given settings."""
     from immich_memories.processing.video_assembler import VideoAssembler
 
@@ -183,6 +191,7 @@ def _create_assembler(settings: AssemblySettings, config: Config):
         output_crf=config.output.effective_crf,
         default_transition_duration=config.defaults.transition_duration,
         default_resolution=config.output.resolution_tuple,
+        probe_cache=probe_cache,
     )
 
 

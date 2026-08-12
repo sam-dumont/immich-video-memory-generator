@@ -2017,8 +2017,11 @@ class TestTryMergeBurst:
                 return_value=([(0.1, 0.9), (0.1, 1.4)], [(0.05, 0.95), (0.05, 1.45)]),
             ) as mock_align,
         ):
-            # Simulate ffprobe returning duration JSON
-            probe_result = MagicMock(stdout='{"format":{"duration":"2.0"}}')
+            # Simulate the comprehensive probe used by the run-scoped cache.
+            probe_result = MagicMock(
+                returncode=0,
+                stdout='{"streams":[],"format":{"duration":"2.0"}}',
+            )
             run_result = MagicMock(returncode=0)
             mock_run.side_effect = [probe_result, probe_result, run_result]
             merged_path.write_bytes(b"merged")
@@ -2062,7 +2065,10 @@ class TestTryMergeBurst:
                 side_effect=ValueError("alignment failed"),
             ),
         ):
-            probe_result = MagicMock(stdout='{"format":{"duration":"2.0"}}')
+            probe_result = MagicMock(
+                returncode=0,
+                stdout='{"streams":[],"format":{"duration":"2.0"}}',
+            )
             run_result = MagicMock(returncode=0)
             mock_run.side_effect = [probe_result, probe_result, run_result]
             merged_path.write_bytes(b"merged")

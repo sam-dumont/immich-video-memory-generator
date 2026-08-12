@@ -5,10 +5,13 @@ from __future__ import annotations
 import logging
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from immich_memories.processing.encoding_plan import HdrTransfer
 from immich_memories.security import validate_video_path
+
+if TYPE_CHECKING:
+    from immich_memories.processing.probe_cache import ProbeCache
 
 __all__ = [
     "RequiredColorConversionUnavailable",
@@ -30,7 +33,7 @@ class RequiredColorConversionUnavailable(RuntimeError):
     """A required transfer conversion cannot be performed by this FFmpeg build."""
 
 
-def _detect_hdr_type(video_path: Path) -> str | None:
+def _detect_hdr_type(video_path: Path, *, probe_cache: ProbeCache | None = None) -> str | None:
     """Detect the HDR type of a video file.
 
     Cross-checks BOTH transfer function AND color primaries to avoid
@@ -42,6 +45,14 @@ def _detect_hdr_type(video_path: Path) -> str | None:
         "pq" for HDR10/HDR10+ (Samsung, Pixel, etc.)
         None if SDR or unknown
     """
+    if probe_cache is not None:
+        from immich_memories.processing.probe_cache import ProbeError
+
+        try:
+            return probe_cache.get(video_path).hdr_type
+        except (OSError, ProbeError, ValueError) as exc:
+            logger.debug("HDR detection failed for %s: %s", Path(video_path).name, exc)
+            return None
     video_path = validate_video_path(video_path, must_exist=True)
     try:
         result = subprocess.run(
@@ -85,12 +96,22 @@ def _detect_hdr_type(video_path: Path) -> str | None:
     return None
 
 
-def _detect_color_primaries(video_path: Path | str) -> str | None:
+def _detect_color_primaries(
+    video_path: Path | str, *, probe_cache: ProbeCache | None = None
+) -> str | None:
     """Detect the color primaries of a video file.
 
     Returns primaries string like "bt709", "smpte432" (Display P3),
     "bt2020", or None if detection fails.
     """
+    if probe_cache is not None:
+        from immich_memories.processing.probe_cache import ProbeError
+
+        try:
+            return probe_cache.get(video_path).color_primaries
+        except (OSError, ProbeError, ValueError) as exc:
+            logger.debug("Color primaries detection failed for %s: %s", Path(video_path).name, exc)
+            return None
     try:
         result = subprocess.run(
             [
@@ -121,25 +142,27 @@ def _detect_color_primaries(video_path: Path | str) -> str | None:
     return None
 
 
-def _get_dominant_hdr_type(clips: list) -> str:
+def _get_dominant_hdr_type(clips: list, *, probe_cache: ProbeCache | None = None) -> str:
     """Detect the dominant HDR type from a list of clips.
 
     Returns "hlg" or "pq" based on what most clips use.
     Defaults to "hlg" if detection fails (iPhone is most common).
     """
-    transfer = detect_dominant_hdr_transfer(clips)
+    transfer = detect_dominant_hdr_transfer(clips, probe_cache=probe_cache)
     if transfer is HdrTransfer.NONE:
         logger.info("No HDR detected, defaulting to HLG colorspace")
         return HdrTransfer.HLG.value
     return transfer.value
 
 
-def detect_dominant_hdr_transfer(clips: list) -> HdrTransfer:
+def detect_dominant_hdr_transfer(
+    clips: list, *, probe_cache: ProbeCache | None = None
+) -> HdrTransfer:
     """Return the exact dominant source transfer, or NONE for all-SDR input."""
     counts = {HdrTransfer.HLG: 0, HdrTransfer.PQ: 0}
     for clip in clips:
         path = clip.path if hasattr(clip, "path") else clip
-        hdr_type = _detect_hdr_type(path)
+        hdr_type = _detect_hdr_type(path, probe_cache=probe_cache)
         if hdr_type == HdrTransfer.HLG.value:
             counts[HdrTransfer.HLG] += 1
         elif hdr_type == HdrTransfer.PQ.value:
@@ -157,7 +180,7 @@ def detect_dominant_hdr_transfer(clips: list) -> HdrTransfer:
     return HdrTransfer.NONE
 
 
-def has_any_hdr_clip(clips: list) -> bool:
+def has_any_hdr_clip(clips: list, *, probe_cache: ProbeCache | None = None) -> bool:
     """Check if at least one clip has HDR metadata.
 
     Used to decide whether title screens should be HDR or SDR.
@@ -170,7 +193,7 @@ def has_any_hdr_clip(clips: list) -> bool:
     """
     for clip in clips:
         path = clip.path if hasattr(clip, "path") else clip
-        hdr_type = _detect_hdr_type(path)
+        hdr_type = _detect_hdr_type(path, probe_cache=probe_cache)
         if hdr_type is not None:
             return True
     return False
@@ -328,7 +351,7 @@ def _get_hdr_conversion_filter(
     return _get_hdr_to_hdr_filter(normalized_source, target_type, has_zscale)
 
 
-def _get_clip_hdr_types(clips: list) -> list[str | None]:
+def _get_clip_hdr_types(clips: list, *, probe_cache: ProbeCache | None = None) -> list[str | None]:
     """Get HDR type for each clip in the list.
 
     Returns:
@@ -337,7 +360,7 @@ def _get_clip_hdr_types(clips: list) -> list[str | None]:
     hdr_types = []
     for clip in clips:
         path = clip.path if hasattr(clip, "path") else clip
-        hdr_type = _detect_hdr_type(path)
+        hdr_type = _detect_hdr_type(path, probe_cache=probe_cache)
         hdr_types.append(hdr_type)
     return hdr_types
 

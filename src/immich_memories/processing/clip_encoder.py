@@ -160,7 +160,7 @@ class ClipEncoder:
 
     def resolve_encode_hdr(self, clip: AssemblyClip) -> tuple[str, str]:
         plan = self.settings.encoding_plan
-        source_hdr = _detect_hdr_type(clip.path)
+        source_hdr = _detect_hdr_type(clip.path, probe_cache=self.prober.probe_cache)
         if plan.hdr:
             target_hdr = plan.target_transfer.value
             conversion = _get_hdr_conversion_filter(source_hdr, target_hdr, required=True)

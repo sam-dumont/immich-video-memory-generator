@@ -6,14 +6,15 @@ All UI interaction is replaced by a progress callback.
 
 from __future__ import annotations
 
+import inspect
 import io
 import logging
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, NoReturn, cast, overload
+from typing import TYPE_CHECKING, Literal, NoReturn, TypeVar, cast, overload
 
 from immich_memories.filename_builder import normalize_output_path
 from immich_memories.generate_clips import (
@@ -57,9 +58,12 @@ if TYPE_CHECKING:
     from immich_memories.config_loader import Config
     from immich_memories.processing.assembly_config import AssemblyClip
     from immich_memories.processing.encoding_plan import EncodingPlan
+    from immich_memories.processing.probe_cache import ProbeCache
     from immich_memories.tracking import RunTracker
 
 logger = logging.getLogger(__name__)
+
+_CallResult = TypeVar("_CallResult")
 
 # Re-export all extracted symbols so existing callers continue to work
 __all__ = [
@@ -466,6 +470,29 @@ def _fail_run_if_running(run_tracker: RunTracker, message: str) -> None:
         logger.error("Could not persist generation failure state")
 
 
+def _call_with_optional_probe_cache(
+    callable_under_test: Callable[..., _CallResult],
+    *args: object,
+    probe_cache: ProbeCache,
+    **kwargs: object,
+) -> _CallResult:
+    """Keep legacy generation extension call shapes compatible with run probing."""
+    signature_target = getattr(callable_under_test, "side_effect", None)
+    if not callable(signature_target):
+        signature_target = callable_under_test
+    parameters: Iterable[inspect.Parameter]
+    try:
+        parameters = inspect.signature(signature_target).parameters.values()
+    except (TypeError, ValueError):
+        parameters = ()
+    if any(
+        parameter.name == "probe_cache" or parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    ):
+        kwargs["probe_cache"] = probe_cache
+    return callable_under_test(*args, **kwargs)
+
+
 def _generate_memory_inner(
     params: GenerationParams,
     *,
@@ -474,6 +501,7 @@ def _generate_memory_inner(
 ) -> Path | PreparedGeneration:
     """Inner pipeline — runs under PipelineLock."""
     from immich_memories.cache.video_cache import VideoDownloadCache
+    from immich_memories.processing.probe_cache import ProbeCache
     from immich_memories.security import sanitize_filename
     from immich_memories.tracking import RunTracker, generate_run_id
 
@@ -510,6 +538,7 @@ def _generate_memory_inner(
 
     assembly_clips: list = []  # WHY: populated in try, needed in finally for cleanup
     pending_error: GenerationError | None = None
+    probe_cache = ProbeCache()
     try:
         import time as _time
 
@@ -527,10 +556,12 @@ def _generate_memory_inner(
             max_age_days=params.config.cache.video_cache_max_age_days,
         )
         with video_cache.begin_batch() as cache_batch:
-            assembly_clips = _extract_clips(
+            assembly_clips = _call_with_optional_probe_cache(
+                _extract_clips,
                 params,
                 cast("VideoDownloadCache", cache_batch),
                 run_output_dir,
+                probe_cache=probe_cache,
             )
         run_tracker.complete_phase(items_processed=len(assembly_clips))
         _phase_times["download"] = _time.monotonic() - _phase_start
@@ -566,12 +597,22 @@ def _generate_memory_inner(
         assembly_cb = pp.assembly_callback()
         run_tracker.start_phase("assembly", len(assembly_clips))
 
-        settings = _build_assembly_settings(params, assembly_clips)
+        settings = _call_with_optional_probe_cache(
+            _build_assembly_settings,
+            params,
+            assembly_clips,
+            probe_cache=probe_cache,
+        )
         result_output_path = normalize_output_path(
             requested_output_path,
             cast(Literal["mp4", "mov"], settings.encoding_plan.container),
         )
-        assembler = _create_assembler(settings, params.config)
+        assembler = _call_with_optional_probe_cache(
+            _create_assembler,
+            settings,
+            params.config,
+            probe_cache=probe_cache,
+        )
         staged_output_path = result_output_path.with_name(
             f"{result_output_path.stem}.assembling{result_output_path.suffix}"
         )

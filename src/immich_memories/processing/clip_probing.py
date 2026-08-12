@@ -8,38 +8,38 @@ import logging
 import subprocess
 from itertools import starmap
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from immich_memories.security import validate_video_path
+if TYPE_CHECKING:
+    from immich_memories.processing.probe_cache import ProbeCache, VideoProbe
 
 logger = logging.getLogger(__name__)
 
 
-def get_video_duration(video_path: Path) -> float:
-    validated = validate_video_path(video_path, must_exist=True)
-    cmd = [
-        "ffprobe",
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration",
-        "-of",
-        "default=noprint_wrappers=1:nokey=1",
-        str(validated),
-    ]
+def _source_probe(video_path: Path, probe_cache: ProbeCache | None) -> VideoProbe:
+    from immich_memories.processing.probe_cache import ProbeCache
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    return (probe_cache or ProbeCache()).get(video_path)
 
-    if result.returncode != 0:
-        logger.error(f"FFprobe error: {result.stderr}")
-        return 0.0
+
+def get_video_duration(video_path: Path, *, probe_cache: ProbeCache | None = None) -> float:
+    """Return format duration, optionally reusing a caller-owned run cache."""
+    from immich_memories.processing.probe_cache import (
+        ProbeError,
+        ProbeMetadataError,
+        ProbeProcessError,
+    )
 
     try:
-        return float(result.stdout.strip())
-    except ValueError:
+        return _source_probe(video_path, probe_cache).duration_seconds
+    except (ProbeProcessError, ProbeMetadataError) as exc:
+        logger.error("FFprobe error: %s", exc)
         return 0.0
+    except ProbeError as exc:
+        raise ValueError(str(exc)) from None
 
 
-def get_main_video_stream_map(video_path: Path) -> str:
+def get_main_video_stream_map(video_path: Path, *, probe_cache: ProbeCache | None = None) -> str:
     """Find the main (highest-resolution) video stream in a file.
 
     iPhone Live Photo videos can embed a depth map as stream 0
@@ -49,69 +49,61 @@ def get_main_video_stream_map(video_path: Path) -> str:
     Returns:
         ffmpeg map string like "0:v:0" or "0:1" for use with -map.
     """
-    validated = validate_video_path(video_path, must_exist=True)
-    cmd = [
-        "ffprobe",
-        "-v",
-        "error",
-        "-select_streams",
-        "v",
-        "-show_entries",
-        "stream=index,width,height",
-        "-of",
-        "json",
-        str(validated),
-    ]
-    with contextlib.suppress(Exception):
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            data = json.loads(result.stdout)
-            streams = data.get("streams", [])
-            if len(streams) > 1:
-                best = max(streams, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                idx = best.get("index", 0)
-                logger.debug(
-                    "Multi-stream file: selected stream %d (%dx%d)",
-                    idx,
-                    best.get("width", 0),
-                    best.get("height", 0),
-                )
-                return f"0:{idx}"
+    from immich_memories.processing.probe_cache import (
+        ProbeError,
+        ProbeMetadataError,
+        ProbeProcessError,
+    )
+
+    try:
+        probe = _source_probe(video_path, probe_cache)
+        if probe.video_stream_index:
+            logger.debug(
+                "Selected video stream %d (%dx%d)",
+                probe.video_stream_index,
+                probe.width,
+                probe.height,
+            )
+            return f"0:{probe.video_stream_index}"
+    except (ProbeProcessError, ProbeMetadataError):
+        return "0:v:0"
+    except ProbeError as exc:
+        raise ValueError(str(exc)) from None
     return "0:v:0"
 
 
-def get_video_info(video_path: Path) -> dict:
+def get_video_info(video_path: Path, *, probe_cache: ProbeCache | None = None) -> dict:
     """Probes all video streams and picks the highest-resolution one
     (avoids iPhone depth maps in Live Photo videos).
     """
-    validated = validate_video_path(video_path, must_exist=True)
-    cmd = [
-        "ffprobe",
-        "-v",
-        "error",
-        "-select_streams",
-        "v",
-        "-show_entries",
-        "stream=index,width,height,r_frame_rate,codec_name,bit_rate,color_space,color_transfer,color_primaries,bits_per_raw_sample",
-        "-show_entries",
-        "format=duration,size,bit_rate",
-        "-of",
-        "json",
-        str(validated),
-    ]
-
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
-    if result.returncode != 0:
-        logger.error(f"FFprobe error: {result.stderr}")
-        return {}
+    from immich_memories.processing.probe_cache import (
+        ProbeError,
+        ProbeMetadataError,
+        ProbeProcessError,
+    )
 
     try:
-        data = json.loads(result.stdout)
-        return _parse_probe_streams(data)
-    except (json.JSONDecodeError, ValueError, KeyError) as e:
+        probe = _source_probe(video_path, probe_cache)
+        return {
+            "width": probe.width,
+            "height": probe.height,
+            "fps": probe.fps,
+            "codec": probe.codec,
+            "bitrate": probe.bitrate,
+            "duration": probe.duration_seconds,
+            "size": probe.size_bytes,
+            "color_space": probe.color_space,
+            "color_transfer": probe.color_transfer,
+            "color_primaries": probe.color_primaries,
+            "bit_depth": probe.bit_depth,
+            "rotation": probe.rotation,
+            "video_stream_index": probe.video_stream_index,
+        }
+    except (ProbeProcessError, ProbeMetadataError) as e:
         logger.error(f"Failed to parse video info: {e}")
         return {}
+    except ProbeError as exc:
+        raise ValueError(str(exc)) from None
 
 
 def _validate_url(url: str) -> str:
