@@ -7,6 +7,10 @@ because Taichi kernels require actual type objects, not string annotations.
 import contextlib
 import logging
 import os
+import queue
+import sys
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 
 import numpy as np
@@ -45,6 +49,48 @@ _taichi_initialized = False
 _taichi_backend = None
 _kernels_compiled = False
 
+_TAICHI_PROBE_TIMEOUT_SECONDS = 10.0
+_TAICHI_PROBE_STOP_TIMEOUT_SECONDS = 1.0
+
+
+class TaichiProbeOutcome(StrEnum):
+    """Bounded outcomes from an isolated backend dispatch probe."""
+
+    SUCCESS = "success"
+    DISPATCH_FAILED = "dispatch_failed"
+    CHILD_CRASHED = "child_crashed"
+    TIMED_OUT = "timed_out"
+
+
+@dataclass(frozen=True)
+class TaichiProbeResult:
+    """Small picklable result sent from the probe child to its parent."""
+
+    outcome: TaichiProbeOutcome
+    detail: str | None = None
+
+
+@contextlib.contextmanager
+def _silence_output_fds():
+    """Temporarily redirect process stdout/stderr to the null device."""
+    sys.stdout.flush()
+    sys.stderr.flush()
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    saved_stdout = os.dup(1)
+    saved_stderr = os.dup(2)
+    try:
+        os.dup2(devnull_fd, 1)
+        os.dup2(devnull_fd, 2)
+        yield
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os.dup2(saved_stdout, 1)
+        os.dup2(saved_stderr, 2)
+        os.close(saved_stdout)
+        os.close(saved_stderr)
+        os.close(devnull_fd)
+
 
 def _silent_init(**kwargs) -> None:
     """Call ti.init() with stdout/stderr silenced at the OS file descriptor level.
@@ -55,19 +101,121 @@ def _silent_init(**kwargs) -> None:
     API flags (verbose=False, log_level). The ONLY way to suppress it is
     to redirect the raw OS file descriptors during the call.
     """
-    devnull_fd = os.open(os.devnull, os.O_WRONLY)
-    saved_stdout = os.dup(1)
-    saved_stderr = os.dup(2)
-    try:
-        os.dup2(devnull_fd, 1)
-        os.dup2(devnull_fd, 2)
+    with _silence_output_fds():
         ti.init(**kwargs)
+
+
+def _taichi_probe_worker(backend_name: str, result_queue) -> None:
+    """Initialize one backend and dispatch a real kernel inside a child process."""
+    try:
+        with _silence_output_fds():
+            backend = getattr(ti, backend_name)
+            ti.init(arch=backend, offline_cache=True)
+
+            @ti.kernel
+            def increment(values: ti.types.ndarray(dtype=ti.i32, ndim=1)):
+                for index in values:
+                    values[index] += 1
+
+            values = np.zeros(1, dtype=np.int32)
+            increment(values)
+        if values[0] != 1:
+            result = TaichiProbeResult(
+                TaichiProbeOutcome.DISPATCH_FAILED,
+                "unexpected_kernel_result",
+            )
+        else:
+            result = TaichiProbeResult(TaichiProbeOutcome.SUCCESS)
+    except Exception as exc:
+        result = TaichiProbeResult(
+            TaichiProbeOutcome.DISPATCH_FAILED,
+            type(exc).__name__,
+        )
+    result_queue.put(result)
+
+
+def _stop_probe_process(process) -> None:
+    """Stop a stuck probe, escalating from terminate to kill."""
+    process.terminate()
+    process.join(_TAICHI_PROBE_STOP_TIMEOUT_SECONDS)
+    if process.is_alive():
+        process.kill()
+        process.join(_TAICHI_PROBE_STOP_TIMEOUT_SECONDS)
+
+
+def _probe_taichi_backend(
+    backend_name: str,
+    timeout: float = _TAICHI_PROBE_TIMEOUT_SECONDS,
+) -> TaichiProbeResult:
+    """Probe one non-CPU backend without changing parent Taichi state."""
+    import multiprocessing
+
+    context = multiprocessing.get_context("spawn")
+    result_queue = context.Queue(maxsize=1)
+    process = context.Process(
+        target=_taichi_probe_worker,
+        args=(backend_name, result_queue),
+        name=f"taichi-{backend_name}-probe",
+        daemon=True,
+    )
+    started = False
+    try:
+        process.start()
+        started = True
+        process.join(timeout)
+        if process.is_alive():
+            _stop_probe_process(process)
+            return TaichiProbeResult(TaichiProbeOutcome.TIMED_OUT)
+        try:
+            result = result_queue.get(timeout=0.25)
+        except queue.Empty:
+            return TaichiProbeResult(
+                TaichiProbeOutcome.CHILD_CRASHED,
+                f"exitcode={process.exitcode}",
+            )
+        if not isinstance(result, TaichiProbeResult):
+            return TaichiProbeResult(TaichiProbeOutcome.CHILD_CRASHED, "invalid_result")
+        return result
+    except (OSError, RuntimeError, TypeError) as exc:
+        return TaichiProbeResult(TaichiProbeOutcome.CHILD_CRASHED, type(exc).__name__)
     finally:
-        os.dup2(saved_stdout, 1)
-        os.dup2(saved_stderr, 2)
-        os.close(saved_stdout)
-        os.close(saved_stderr)
-        os.close(devnull_fd)
+        if started and process.is_alive():
+            _stop_probe_process(process)
+        result_queue.close()
+        result_queue.join_thread()
+        if started and not process.is_alive():
+            process.close()
+
+
+def _candidate_backends(
+    *, force_cpu: bool, operating_system: str
+) -> list[tuple[object, str, str | None]]:
+    """Return parent architecture objects and child-safe probe names in priority order."""
+    if force_cpu:
+        return [(ti.cpu, "CPU", None)]
+    if operating_system == "Darwin":
+        return [(ti.metal, "Metal", "metal"), (ti.cpu, "CPU", None)]
+    return [
+        (ti.cuda, "CUDA", "cuda"),
+        (ti.vulkan, "Vulkan", "vulkan"),
+        (ti.cpu, "CPU", None),
+    ]
+
+
+def _backend_dispatches(name: str, probe_name: str | None) -> bool:
+    """Prove a GPU backend can dispatch, while allowing CPU to bypass the probe."""
+    if probe_name is None:
+        return True
+    probe = _probe_taichi_backend(probe_name)
+    if probe.outcome is TaichiProbeOutcome.SUCCESS:
+        return True
+    logger.debug(
+        "Taichi %s dispatch probe failed (%s: %s)",
+        name,
+        probe.outcome.value,
+        probe.detail or "no detail",
+    )
+    return False
 
 
 def init_taichi() -> str | None:
@@ -86,15 +234,14 @@ def init_taichi() -> str | None:
     # Self-hosted GPU runners set their own env to use GPU.
     force_cpu = os.environ.get("IMMICH_FORCE_CPU", "").lower() in ("1", "true", "yes")
 
-    if force_cpu:
-        backends = [(ti.cpu, "CPU")]
-    elif platform.system() == "Darwin":
-        backends = [(ti.metal, "Metal"), (ti.cpu, "CPU")]
-    else:
-        backends = [(ti.cuda, "CUDA"), (ti.vulkan, "Vulkan"), (ti.cpu, "CPU")]
-
     last_error = None
-    for backend, name in backends:
+    backends = _candidate_backends(
+        force_cpu=force_cpu,
+        operating_system=platform.system(),
+    )
+    for backend, name, probe_name in backends:
+        if not _backend_dispatches(name, probe_name):
+            continue
         try:
             _silent_init(arch=backend, offline_cache=True)
             logger.info(f"Taichi initialized with {name} backend")
