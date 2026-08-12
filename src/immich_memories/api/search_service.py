@@ -40,6 +40,7 @@ class SearchService:
         asset_type: AssetType | None = None,
         taken_after: date | datetime | None = None,
         taken_before: date | datetime | None = None,
+        updated_after: date | datetime | None = None,
         page: int = 1,
         size: int = 100,
     ) -> MetadataSearchResult:
@@ -59,6 +60,8 @@ class SearchService:
             payload["takenAfter"] = _api_datetime(taken_after)
         if taken_before:
             payload["takenBefore"] = _api_datetime(taken_before, inclusive_end=True)
+        if updated_after:
+            payload["updatedAfter"] = _api_datetime(updated_after)
 
         data = await self._request("POST", "/search/metadata", json=payload)
         return MetadataSearchResult(**data)

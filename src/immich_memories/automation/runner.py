@@ -794,7 +794,7 @@ class AutoRunner:
                             server_url=self.config.immich.url,
                             buckets=buckets,
                             requested_range=dr,
-                            now=datetime.combine(today, datetime.min.time(), tzinfo=UTC),
+                            now=datetime.now(tz=UTC),
                         )
         except Exception as exc:
             raise ImmichDiscoveryError(str(exc)) from exc

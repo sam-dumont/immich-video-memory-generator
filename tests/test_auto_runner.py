@@ -144,7 +144,12 @@ class TestSuggestReturnsCandidates:
         config.automation.detect_person_spotlight = False
         config.automation.detect_activity_burst = False
         today = date(2026, 1, 20)
-        gps_assets = [MagicMock(id="new-year-photo")]
+        gps_assets = [
+            MagicMock(
+                id="new-year-photo",
+                file_created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+        ]
         trip = DetectedTrip(
             start_date=date(2025, 12, 29),
             end_date=date(2026, 1, 4),
@@ -157,6 +162,7 @@ class TestSuggestReturnsCandidates:
         client.__enter__.return_value = client
         client.__exit__.return_value = False
         client.get_time_buckets.return_value = []
+        client.api_key = "test-key"
         asset_service = MagicMock()
         query = object()
         asset_service.get_assets_for_date_range.return_value = query
@@ -184,7 +190,7 @@ class TestSuggestReturnsCandidates:
 
         requested = asset_service.get_assets_for_date_range.call_args.args[0]
         assert requested.start == datetime(2025, 1, 20)
-        assert requested.end == datetime(2026, 1, 20, 23, 59, 59, 999999)
+        assert requested.end == datetime(2026, 1, 27, 23, 59, 59, 999999)
         client._run.assert_called_once_with(query)
         assert [
             (candidate.date_range_start, candidate.date_range_end) for candidate in candidates
