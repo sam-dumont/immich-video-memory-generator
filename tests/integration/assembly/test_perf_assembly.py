@@ -17,7 +17,7 @@ import pytest
 from tests.integration.assembly.conftest import make_n_clips
 from tests.integration.assembly.perf_utils import (
     PerfResult,
-    measure_resources,
+    measure_repetitions,
     save_benchmark_json,
     save_results,
 )
@@ -65,16 +65,48 @@ def _make_assembler(**overrides):
     return VideoAssembler(AssemblySettings(**defaults))
 
 
+def _measure_assembly(
+    *,
+    scenario: str,
+    assembler,
+    clips,
+    output_dir: Path,
+    input_duration_seconds: float,
+) -> tuple[Path, PerfResult]:
+    """Produce a warm-up and three independent assembly measurements."""
+    outputs: dict[int, Path] = {}
+
+    def assemble(index: int) -> None:
+        output = output_dir / f"{scenario}_{index}.mp4"
+        outputs[index] = assembler.assemble(clips, output)
+
+    result = measure_repetitions(
+        scenario=scenario,
+        operation=assemble,
+        clip_count=len(clips),
+        resolution="1080p" if scenario != "minimal" else "720p",
+        input_duration_seconds=input_duration_seconds,
+        codec="h264",
+        frame_rate=30.0,
+        cache_mode="warm",
+    )
+    return outputs[3], result
+
+
 class TestMinimalScenario:
     """2 clips, 720p, 5s each — baseline measurement."""
 
     def test_minimal_assembly_resources(self, test_clip_720p, test_clip_720p_b, tmp_path):
-        output = tmp_path / "perf_minimal.mp4"
         assembler = _make_assembler(auto_resolution=False, target_resolution=(1280, 720))
         clips = _make_assembly_clips([test_clip_720p, test_clip_720p_b], duration=3.0)
 
-        with measure_resources("minimal", clip_count=2, resolution="720p") as result:
-            assembler.assemble(clips, output)
+        output, result = _measure_assembly(
+            scenario="minimal",
+            assembler=assembler,
+            clips=clips,
+            output_dir=tmp_path,
+            input_duration_seconds=3.0,
+        )
 
         result.output_size_mb = output.stat().st_size / (1024 * 1024)
 
@@ -92,12 +124,16 @@ class TestTypicalScenario:
 
     def test_typical_assembly_resources(self, fixtures_dir, tmp_path):
         clip_paths = make_n_clips(fixtures_dir, 5, "1920x1080", duration=5)
-        output = tmp_path / "perf_typical.mp4"
         assembler = _make_assembler(auto_resolution=False, target_resolution=(1920, 1080))
         clips = _make_assembly_clips(clip_paths, duration=5.0)
 
-        with measure_resources("typical", clip_count=5, resolution="1080p") as result:
-            assembler.assemble(clips, output)
+        output, result = _measure_assembly(
+            scenario="typical",
+            assembler=assembler,
+            clips=clips,
+            output_dir=tmp_path,
+            input_duration_seconds=5.0,
+        )
 
         result.output_size_mb = output.stat().st_size / (1024 * 1024)
 
@@ -114,12 +150,16 @@ class TestHeavyScenario:
 
     def test_heavy_assembly_resources(self, fixtures_dir, tmp_path):
         clip_paths = make_n_clips(fixtures_dir, 8, "1920x1080", duration=10)
-        output = tmp_path / "perf_heavy.mp4"
         assembler = _make_assembler(auto_resolution=False, target_resolution=(1920, 1080))
         clips = _make_assembly_clips(clip_paths, duration=10.0)
 
-        with measure_resources("heavy", clip_count=8, resolution="1080p") as result:
-            assembler.assemble(clips, output)
+        output, result = _measure_assembly(
+            scenario="heavy",
+            assembler=assembler,
+            clips=clips,
+            output_dir=tmp_path,
+            input_duration_seconds=10.0,
+        )
 
         result.output_size_mb = output.stat().st_size / (1024 * 1024)
 

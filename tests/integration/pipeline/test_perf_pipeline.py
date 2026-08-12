@@ -19,7 +19,7 @@ import pytest
 
 from tests.integration.assembly.perf_utils import (
     PerfResult,
-    measure_resources,
+    measure_repetitions,
     save_benchmark_json,
     save_results,
 )
@@ -70,6 +70,29 @@ def _extract_frame_pixels(video_path: Path, timestamp: float) -> np.ndarray:
     return np.frombuffer(result.stdout, dtype=np.uint8)
 
 
+def _measure_pipeline(
+    *, scenario: str, generate_memory, params_factory, clips, output_dir: Path
+) -> tuple[Path, PerfResult]:
+    """Produce a warm-up and three measured pipeline outputs without path reuse."""
+    outputs: dict[int, Path] = {}
+
+    def generate(index: int) -> None:
+        output = output_dir / f"{scenario}_{index}.mp4"
+        outputs[index] = generate_memory(params_factory(output))
+
+    result = measure_repetitions(
+        scenario=scenario,
+        operation=generate,
+        clip_count=len(clips),
+        resolution="720p",
+        input_duration_seconds=sum(clip.duration_seconds or 0.0 for clip in clips),
+        codec="h264",
+        frame_rate=30.0,
+        cache_mode="warm",
+    )
+    return outputs[3], result
+
+
 class TestFullPipelineBenchmark:
     """End-to-end pipeline timing with real Immich clips.
 
@@ -84,20 +107,21 @@ class TestFullPipelineBenchmark:
 
         clips, config, client = immich_short_clips
         config.title_screens.enabled = False
-        output = tmp_path / "immich_asm.mp4"
-
-        params = GenerationParams(
+        final, result = _measure_pipeline(
+            scenario="immich_assembly_only",
+            generate_memory=generate_memory,
             clips=clips[:2],
-            output_path=output,
-            config=config,
-            client=client,
-            transition="crossfade",
-            transition_duration=0.3,
-            output_resolution="720p",
+            output_dir=tmp_path,
+            params_factory=lambda output: GenerationParams(
+                clips=clips[:2],
+                output_path=output,
+                config=config,
+                client=client,
+                transition="crossfade",
+                transition_duration=0.3,
+                output_resolution="720p",
+            ),
         )
-
-        with measure_resources("immich_assembly_only", clip_count=2, resolution="720p") as result:
-            final = generate_memory(params)
 
         assert final.exists(), f"Output not created: {final}"
         result.output_size_mb = final.stat().st_size / (1024 * 1024)
@@ -126,24 +150,25 @@ class TestFullPipelineBenchmark:
         config.title_screens.enabled = True
         config.title_screens.title_duration = 2.0
         config.title_screens.ending_duration = 2.0
-        output = tmp_path / "immich_titles.mp4"
-
-        params = GenerationParams(
+        final, result = _measure_pipeline(
+            scenario="immich_with_titles",
+            generate_memory=generate_memory,
             clips=clips[:2],
-            output_path=output,
-            config=config,
-            client=client,
-            transition="crossfade",
-            transition_duration=0.3,
-            output_resolution="720p",
-            person_name="Benchmark Person",
-            date_start=date(2025, 1, 1),
-            date_end=date(2025, 12, 31),
-            memory_type="year_in_review",
+            output_dir=tmp_path,
+            params_factory=lambda output: GenerationParams(
+                clips=clips[:2],
+                output_path=output,
+                config=config,
+                client=client,
+                transition="crossfade",
+                transition_duration=0.3,
+                output_resolution="720p",
+                person_name="Benchmark Person",
+                date_start=date(2025, 1, 1),
+                date_end=date(2025, 12, 31),
+                memory_type="year_in_review",
+            ),
         )
-
-        with measure_resources("immich_with_titles", clip_count=2, resolution="720p") as result:
-            final = generate_memory(params)
 
         assert final.exists(), f"Output not created: {final}"
         result.output_size_mb = final.stat().st_size / (1024 * 1024)
@@ -172,24 +197,25 @@ class TestFullPipelineBenchmark:
         config.title_screens.enabled = True
         config.title_screens.title_duration = 2.0
         config.title_screens.ending_duration = 2.0
-        output = tmp_path / "immich_full.mp4"
-
-        params = GenerationParams(
+        final, result = _measure_pipeline(
+            scenario="immich_full_pipeline",
+            generate_memory=generate_memory,
             clips=clips[:2],
-            output_path=output,
-            config=config,
-            client=client,
-            transition="smart",
-            transition_duration=0.3,
-            output_resolution="720p",
-            person_name="Benchmark Person",
-            date_start=date(2025, 1, 1),
-            date_end=date(2025, 12, 31),
-            memory_type="year_in_review",
+            output_dir=tmp_path,
+            params_factory=lambda output: GenerationParams(
+                clips=clips[:2],
+                output_path=output,
+                config=config,
+                client=client,
+                transition="smart",
+                transition_duration=0.3,
+                output_resolution="720p",
+                person_name="Benchmark Person",
+                date_start=date(2025, 1, 1),
+                date_end=date(2025, 12, 31),
+                memory_type="year_in_review",
+            ),
         )
-
-        with measure_resources("immich_full_pipeline", clip_count=2, resolution="720p") as result:
-            final = generate_memory(params)
 
         assert final.exists(), f"Output not created: {final}"
         result.output_size_mb = final.stat().st_size / (1024 * 1024)

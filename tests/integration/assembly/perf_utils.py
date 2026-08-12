@@ -9,12 +9,30 @@ from __future__ import annotations
 import json
 import platform
 import resource
+import subprocess
 import time
 import tracemalloc
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from statistics import median
+
+REQUIRED_REPRODUCTION_KEYS = frozenset(
+    {
+        "input_duration_seconds",
+        "codec",
+        "frame_rate",
+        "cache_mode",
+        "python_version",
+        "platform",
+        "cpu",
+        "git_revision",
+        "warmup_wall_seconds",
+        "raw_repetition_seconds",
+        "median_wall_seconds",
+    }
+)
 
 
 @dataclass
@@ -32,6 +50,22 @@ class PerfResult:
     output_size_mb: float = 0.0
     clip_count: int = 0
     resolution: str = ""
+    input_duration_seconds: float = 0.0
+    codec: str = ""
+    frame_rate: float = 0.0
+    cache_mode: str = ""
+    python_version: str = ""
+    platform: str = ""
+    cpu: str = ""
+    git_revision: str = ""
+    warmup_wall_seconds: float | None = None
+    raw_repetition_seconds: list[float] = field(default_factory=list)
+    raw_repetition_metrics: list[dict[str, float]] = field(default_factory=list)
+    median_wall_seconds: float | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize the benchmark and its reproduction inputs."""
+        return asdict(self)
 
     @property
     def summary_line(self) -> str:
@@ -47,7 +81,13 @@ class PerfResult:
 
 @contextmanager
 def measure_resources(
-    scenario: str, clip_count: int = 0, resolution: str = ""
+    scenario: str,
+    clip_count: int = 0,
+    resolution: str = "",
+    input_duration_seconds: float = 0.0,
+    codec: str = "",
+    frame_rate: float = 0.0,
+    cache_mode: str = "",
 ) -> Generator[PerfResult, None, None]:
     """Context manager that measures Python peak memory, wall time, and CPU time.
 
@@ -71,6 +111,14 @@ def measure_resources(
         cpu_sys_seconds=0.0,
         clip_count=clip_count,
         resolution=resolution,
+        input_duration_seconds=input_duration_seconds,
+        codec=codec,
+        frame_rate=frame_rate,
+        cache_mode=cache_mode,
+        python_version=platform.python_version(),
+        platform=platform.platform(),
+        cpu=platform.processor() or platform.machine(),
+        git_revision=_git_revision(),
     )
 
     try:
@@ -96,13 +144,94 @@ def measure_resources(
             result.child_peak_rss_mb = rss_raw / 1024
 
 
+def _git_revision() -> str:
+    """Return the checked-out revision without making benchmarks depend on Git."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return "unknown"
+    return result.stdout.strip() or "unknown"
+
+
+def measure_repetitions(
+    *,
+    scenario: str,
+    operation: Callable[[int], None],
+    clip_count: int,
+    resolution: str,
+    input_duration_seconds: float,
+    codec: str,
+    frame_rate: float,
+    cache_mode: str,
+) -> PerfResult:
+    """Run one warm-up plus three measurements and return the median summary."""
+    with measure_resources(
+        scenario,
+        clip_count=clip_count,
+        resolution=resolution,
+        input_duration_seconds=input_duration_seconds,
+        codec=codec,
+        frame_rate=frame_rate,
+        cache_mode=cache_mode,
+    ) as warmup:
+        operation(0)
+
+    measurements: list[PerfResult] = []
+    for index in range(1, 4):
+        with measure_resources(
+            scenario,
+            clip_count=clip_count,
+            resolution=resolution,
+            input_duration_seconds=input_duration_seconds,
+            codec=codec,
+            frame_rate=frame_rate,
+            cache_mode=cache_mode,
+        ) as result:
+            operation(index)
+        measurements.append(result)
+
+    summary = measurements[-1]
+    summary.warmup_wall_seconds = warmup.wall_seconds
+    summary.raw_repetition_seconds = [result.wall_seconds for result in measurements]
+    summary.raw_repetition_metrics = [
+        {
+            "python_peak_mb": result.python_peak_mb,
+            "child_peak_rss_mb": result.child_peak_rss_mb,
+            "wall_seconds": result.wall_seconds,
+            "cpu_user_seconds": result.cpu_user_seconds,
+            "cpu_sys_seconds": result.cpu_sys_seconds,
+        }
+        for result in measurements
+    ]
+    summary.median_wall_seconds = median(summary.raw_repetition_seconds)
+    summary.wall_seconds = summary.median_wall_seconds
+    summary.python_peak_mb = median(result.python_peak_mb for result in measurements)
+    summary.cpu_user_seconds = median(result.cpu_user_seconds for result in measurements)
+    summary.cpu_sys_seconds = median(result.cpu_sys_seconds for result in measurements)
+    return summary
+
+
 def save_results(results: list[PerfResult], output_path: Path) -> None:
     """Save benchmark results to JSON for regression tracking."""
     data = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "platform": platform.platform(),
         "python": platform.python_version(),
-        "results": [asdict(r) for r in results],
+        "results": [r.to_dict() for r in results],
+        "summary": [
+            {
+                "scenario": result.scenario,
+                "median_wall_seconds": result.median_wall_seconds or result.wall_seconds,
+                "raw_repetition_seconds": result.raw_repetition_seconds,
+            }
+            for result in results
+        ],
     }
     output_path.write_text(json.dumps(data, indent=2) + "\n")
 
@@ -119,16 +248,19 @@ def save_benchmark_json(results: list[PerfResult], output_path: Path) -> None:
     """Export results in github-action-benchmark's customSmallerIsBetter format.
 
     Produces a JSON list where each entry has name, unit, value.
-    Wall time is the primary metric; peak memory (child RSS) is included
-    as a secondary metric with a `:peak-memory` suffix.
+    Wall time is the primary metric. Legacy single-run benchmarks also export
+    peak memory; repeated runs omit it because child RSS is a process-lifetime
+    high-water mark, not a comparable per-repetition measurement.
     """
     entries: list[dict[str, str | float]] = []
     for r in results:
         entries.append({"name": r.scenario, "unit": "seconds", "value": round(r.wall_seconds, 2)})
-        # WHY: child_peak_rss_mb captures FFmpeg subprocess memory, which is
-        # the dominant allocation — more useful than Python heap for regression tracking.
-        peak_mb = r.child_peak_rss_mb if r.child_peak_rss_mb > 0 else r.python_peak_mb
-        entries.append(
-            {"name": f"{r.scenario}:peak-memory", "unit": "MB", "value": round(peak_mb, 1)}
-        )
+        if not r.raw_repetition_seconds:
+            # WHY: child_peak_rss_mb captures FFmpeg subprocess memory, which is
+            # the dominant allocation — more useful than Python heap for legacy
+            # single-run regression tracking.
+            peak_mb = r.child_peak_rss_mb if r.child_peak_rss_mb > 0 else r.python_peak_mb
+            entries.append(
+                {"name": f"{r.scenario}:peak-memory", "unit": "MB", "value": round(peak_mb, 1)}
+            )
     output_path.write_text(json.dumps(entries, indent=2) + "\n")
