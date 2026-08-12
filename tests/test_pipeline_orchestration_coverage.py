@@ -129,9 +129,9 @@ class TestCapAnalysisCandidates:
 
 
 class TestPipelineRunExceptionBranches:
-    """Lines 228-231: generic exception during run() is re-raised after finish()."""
+    """A generic pipeline exception is re-raised without inventing completion."""
 
-    def test_generic_exception_reraises_after_tracker_finish(
+    def test_generic_exception_reraises_and_retains_actual_phase(
         self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
     ):
         pipeline = _make_pipeline(
@@ -149,7 +149,8 @@ class TestPipelineRunExceptionBranches:
 
         from immich_memories.analysis.progress import PipelinePhase
 
-        assert pipeline.tracker.progress.phase == PipelinePhase.COMPLETE
+        assert pipeline.tracker.progress.phase == PipelinePhase.NOT_STARTED
+        assert pipeline.tracker.progress.operational_event is None
 
 
 class TestApplyNonFavoriteFilters:

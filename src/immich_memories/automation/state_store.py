@@ -22,6 +22,11 @@ class AttemptAlreadyFinishedError(RuntimeError):
 
 
 def _row_to_attempt(row: sqlite3.Row) -> AutomationAttempt:
+    try:
+        last_phase = row["last_phase"]
+    except IndexError:
+        # Older additive schemas have no operational telemetry column.
+        last_phase = None
     return AutomationAttempt(
         id=row["id"],
         started_at=datetime.fromisoformat(row["started_at"]),
@@ -33,7 +38,7 @@ def _row_to_attempt(row: sqlite3.Row) -> AutomationAttempt:
         memory_key=row["memory_key"],
         run_id=row["run_id"],
         error=row["error"],
-        last_phase=(OperationalPhase(row["last_phase"]) if row["last_phase"] else None),
+        last_phase=OperationalPhase(last_phase) if last_phase else None,
     )
 
 
