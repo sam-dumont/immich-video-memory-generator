@@ -285,7 +285,8 @@ Closed result:
 - Codec selection is authoritative: H.264, H.265, and ProRes produce their requested codec.
 - Disabling hardware uses the matching software encoder.
 - Missing hardware falls back within the same codec.
-- H.264 tone-maps HDR to SDR; H.265/ProRes preserve HDR only when configured.
+- H.264 and ProRes are SDR; H.265 may preserve HDR when configured. Explicit HDR with H.264 or
+  ProRes is rejected before rendering.
 - Container/codec combinations are validated before rendering.
 - `ffprobe` validates the final codec, container, streams, resolution, and duration.
 
@@ -370,15 +371,12 @@ Required improvements:
   category history, and output directory usage.
 - Document the single-user/single-replica UI model.
 
-### P1.4 — Deployment and readiness need cleanup
+### P1.4 — Deployment exposure guidance remains
 
-- The Docker helper mount path targets `/root` while the image user home is `/home/immich`.
-- Docker can silently fall back from optional features to a smaller install.
-- Health always returns HTTP 200 with a degraded payload; useful for liveness, not readiness.
-- Default bind is `0.0.0.0` with auth disabled. Documentation must make exposure risk obvious.
-
-Required result: deterministic dependencies, correct paths, separate liveness/readiness, and
-clear public-exposure guidance.
+P0 fixed the Docker home/mount mismatch, made optional dependency selection fail closed, and split
+process liveness from dependency readiness. The remaining P1 work is narrower: keep the
+`0.0.0.0` plus disabled-auth exposure warning prominent in deployment entry points, and document
+the single-user/single-replica UI model alongside it.
 
 ## Approved product direction
 
