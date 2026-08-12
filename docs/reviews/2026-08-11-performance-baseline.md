@@ -107,3 +107,52 @@ them as regressions against the controlled 720p/1080p numbers above.
 
 The new contract rejects all five failure modes and keeps raw warm-up/repetition data beside the
 median.
+
+## Task 7 profile after structural fixes
+
+Profiles were captured on 2026-08-12 at git HEAD `d9052ba46d9c` with dirty describe state recorded
+alongside each run. The raw artifacts remain only under
+`/tmp/immich-memories-profile-20260811`; this review keeps the summarized values and environment.
+
+| Field | Value |
+| --- | --- |
+| Machine | MacBook Pro `Mac17,7`, Apple M5 Max / arm64, 128 GiB |
+| OS | macOS 26.5.1, Darwin 25.5.0 |
+| Python | CPython 3.12.11 |
+| FFmpeg | 8.1 Homebrew build |
+| Profile command | `uv run python scripts/profile_pipeline.py --scenario <scenario> --repetitions 3 --output-dir /tmp/immich-memories-profile-20260811` |
+
+The controlled cases assemble two isolated, synthetic 1280×720 H.264/AAC, one-second clips at 24
+fps through production analysis and `VideoAssembler`, with a 0.1-second crossfade and CRF 28. Cold
+uses a fresh caller-owned probe cache per repetition; warm reuses one caller-owned cache. No
+representative profile was configured, so no personal Immich library was accessed.
+
+| Scenario | Warm-up (s) | Measured repetitions (s) | Median (s) |
+| --- | ---: | --- | ---: |
+| controlled-cold | 0.643805 | 0.303688, 0.302126, 0.304088 | 0.303688 |
+| controlled-warm | 0.346721 | 0.266905, 0.264373, 0.271724 | 0.266905 |
+
+Tasks 2–6 structural counts: cache construction sites fell 3→2 with zero per-download global
+evictions; download workers are bounded 1–8 (default 3); analyzer GC counts fell from 4/1/2/3 to
+1/0/0/0; one unchanged source now needs exactly one comprehensive `ffprobe`; and eight ordered
+operational phases are persisted through schema v14.
+
+## Native-code threshold
+
+1. **One pure-Python function is at least 15% in controlled and representative profiles:** false.
+   `streaming_assembler.blend_crossfade` is 4.2% cold and 4.8% warm; no representative profile is
+   configured.
+2. **Inputs cross the Python/native boundary no more than once per batch:** false/not evaluated;
+   there is no qualifying function.
+3. **An algorithmic, cache, NumPy/OpenCV, or concurrency alternative was measured and rejected:**
+   false; Tasks 2–6 made structural changes but did not reject an alternative for a qualifying
+   native prototype.
+4. **A prototype improves end-to-end median by at least 20% without output changes:** false; no
+   prototype was justified or run.
+5. **CI builds wheels for supported Python/platform targets:** false; no Cython build or wheel
+   matrix exists.
+
+Decision: no Cython
+
+I/O and process waiting dominate the controlled profiles, and no pure-Python candidate crosses the
+first threshold. No dependency or build configuration is added.

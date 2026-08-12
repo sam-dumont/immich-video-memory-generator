@@ -1,6 +1,8 @@
 # Makefile for immich-memories
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
+BENCHMARK_OUTPUT_DIR ?= /tmp/immich-memories-benchmarks
+export BENCHMARK_OUTPUT_DIR
 
 .PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast mutation benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
 
@@ -21,9 +23,9 @@ help:
 	@echo "  test-fast    Run tests without slow integration tests"
 	@echo "  benchmark         Run pytest-benchmark suite"
 	@echo "  benchmark-perf    Run assembly performance benchmarks (requires FFmpeg)"
-	@echo "  benchmark-assembly  Assembly benchmarks → tests/benchmark-assembly.json"
-	@echo "  benchmark-pipeline  Pipeline benchmarks → tests/benchmark-pipeline.json (Immich)"
-	@echo "  benchmark-titles    Title benchmarks → tests/benchmark-titles.json"
+	@echo "  benchmark-assembly  Assembly benchmarks → $$BENCHMARK_OUTPUT_DIR/benchmark-assembly.json"
+	@echo "  benchmark-pipeline  Pipeline benchmarks → $$BENCHMARK_OUTPUT_DIR/benchmark-pipeline.json (Immich)"
+	@echo "  benchmark-titles    Title benchmarks → $$BENCHMARK_OUTPUT_DIR/benchmark-titles.json"
 	@echo "  benchmark-json    Run all benchmarks, produce JSON for CI"
 	@echo "  benchmark-submit  Submit local benchmark results to GitHub"
 	@echo ""
@@ -141,31 +143,45 @@ benchmark-titles-json:  ## Title benchmarks → tests/benchmark-titles.json
 	uv run pytest tests/integration/titles/test_perf_titles.py -v -m integration \
 		--log-cli-level=INFO --tb=short
 
-benchmark-json: benchmark-assembly benchmark-titles-json  ## Run all benchmarks, produce JSON for CI (no Immich)
+define run-benchmark-batch
+	@set -eu; \
+	parent=$$(python3 -c 'import pathlib,sys; from tests.integration.assembly.perf_utils import require_benchmark_temporary_root; print(require_benchmark_temporary_root(pathlib.Path(sys.argv[1])))' "$$BENCHMARK_OUTPUT_DIR"); \
+	batch=$$(mktemp -d "$$parent/batch.XXXXXXXX"); \
+	started=$$(python3 -c 'import time; print(time.time_ns())'); \
+	revision=$${BENCHMARK_REVISION:-$$(git rev-parse --short=12 HEAD)}; \
+	fingerprint=$$(python3 -c 'from tests.integration.assembly.perf_utils import current_source_fingerprint; print(current_source_fingerprint())'); \
+	for target in $(2); do \
+		$(MAKE) "$$target" BENCHMARK_OUTPUT_DIR="$$batch" BENCHMARK_REVISION="$$revision" IMMICH_BENCHMARK_BATCH_FINGERPRINT="$$fingerprint"; \
+	done; \
+	python3 -c "import pathlib,sys; from tests.integration.assembly.perf_utils import write_benchmark_batch_manifest; write_benchmark_batch_manifest(pathlib.Path(sys.argv[1]),sys.argv[5:],revision=sys.argv[2],fingerprint=sys.argv[3],started_ns=int(sys.argv[4]))" "$$batch" "$$revision" "$$fingerprint" "$$started" $(1); \
+	lock="$$parent/.benchmark-publish-lock"; until mkdir "$$lock" 2>/dev/null; do sleep 0.05; done; trap 'rmdir "$$lock"' EXIT; \
+	python3 -c "import pathlib,sys; from tests.integration.assembly.perf_utils import publish_benchmark_batch; publish_benchmark_batch(pathlib.Path(sys.argv[1]),pathlib.Path(sys.argv[2]),started_ns=int(sys.argv[3]))" "$$parent" "$$batch" "$$started"
+endef
 
-benchmark-json-full: benchmark-assembly benchmark-titles-json benchmark-pipeline  ## All benchmarks including pipeline (requires Immich)
-	@echo ""
-	@echo "Benchmark JSON files:"
-	@ls -la tests/benchmark-*.json 2>/dev/null || echo "  (none found — benchmarks may have been skipped)"
+benchmark-json:  ## Run local benchmarks into one fresh, submit-eligible batch (no Immich)
+	$(call run-benchmark-batch,benchmark-assembly.json benchmark-titles.json,benchmark-assembly benchmark-titles-json)
+
+benchmark-json-full:  ## Run assembly/title/pipeline into a complete batch (requires Immich)
+	$(call run-benchmark-batch,benchmark-assembly.json benchmark-titles.json benchmark-pipeline.json,benchmark-assembly benchmark-titles-json benchmark-pipeline)
 
 benchmark-submit:  ## Submit local benchmark results to GitHub (for non-CI runners)
-	@RUNNER_NAME=$${BENCHMARK_RUNNER:-$$(hostname)}; \
+	@set -eu; \
+	RUNNER_NAME=$${BENCHMARK_RUNNER:-$$(hostname)}; \
 	BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
-	SHA=$$(git rev-parse --short HEAD); \
+	SHA=$$(git rev-parse --short=12 HEAD); \
+	REVISION=$${BENCHMARK_REVISION:-$$(git rev-parse --short=12 HEAD)}; \
+	FINGERPRINT=$$(python3 -c 'from tests.integration.assembly.perf_utils import current_source_fingerprint; print(current_source_fingerprint())'); \
 	echo "Submitting benchmarks from $$RUNNER_NAME ($$BRANCH@$$SHA)..."; \
-	for f in tests/benchmark-*.json; do \
-		[ -f "$$f" ] || continue; \
-		SUITE=$$(basename "$$f" .json | sed 's/benchmark-//'); \
-		echo "  Uploading $$SUITE results..."; \
-		gh api repos/:owner/:repo/actions/workflows/benchmark.yml/dispatches \
-			-f ref=main \
-			-f "inputs[runner]=$$RUNNER_NAME" \
-			-f "inputs[suite]=$$SUITE" \
-			-f "inputs[sha]=$$SHA" \
-			-f "inputs[results]=$$(cat $$f)" \
-		&& echo "    ✓ $$SUITE submitted" \
-		|| echo "    ✗ $$SUITE failed (is GH_TOKEN set?)"; \
-	done
+	batch=$$(python3 -c "import pathlib,sys; from tests.integration.assembly.perf_utils import validate_benchmark_submission_batch; print(validate_benchmark_submission_batch(pathlib.Path(sys.argv[1]),revision=sys.argv[2],fingerprint=sys.argv[3],head_revision=sys.argv[4]))" "$$BENCHMARK_OUTPUT_DIR" "$$REVISION" "$$FINGERPRINT" "$$SHA"); \
+	payload=$$(python3 -c 'import json,pathlib,sys; from tests.integration.assembly.perf_utils import merge_benchmark_batch; print(json.dumps(merge_benchmark_batch(pathlib.Path(sys.argv[1])),separators=(",",":")))' "$$batch"); \
+	echo "  Uploading manifest-owned batch results..."; \
+	gh api repos/:owner/:repo/actions/workflows/benchmark.yml/dispatches \
+		-f ref=main \
+		-f "inputs[runner]=$$RUNNER_NAME" \
+		-f "inputs[suite]=all" \
+		-f "inputs[sha]=$$SHA" \
+		-f "inputs[results]=$$payload"; \
+	echo "    ✓ manifest-owned batch submitted"
 
 test-integration-live-photos:  ## Run ONLY live photo merge tests (~30s, needs Immich)
 	uv run pytest tests/integration/live_photos/ -v -s -m integration --log-cli-level=INFO --tb=short \

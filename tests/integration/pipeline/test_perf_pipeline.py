@@ -10,6 +10,7 @@ GPU comparison.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import date
 from fractions import Fraction
 from pathlib import Path
@@ -337,7 +338,9 @@ def test_save_pipeline_results(tmp_path):
     save_summary_results(_pipeline_summaries, output)
 
     # Export in github-action-benchmark format for CI comparison
-    benchmark_output = tmp_path / "benchmark-pipeline.json"
+    benchmark_output = (
+        Path(os.environ.get("BENCHMARK_OUTPUT_DIR", tmp_path)) / "benchmark-pipeline.json"
+    )
     save_benchmark_json(_pipeline_summaries, benchmark_output)
     logger.info(f"Results saved to {output}")
     logger.info(f"Benchmark JSON saved to {benchmark_output}")

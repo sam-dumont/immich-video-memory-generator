@@ -44,6 +44,7 @@ on:
         options:
           - all
           - assembly
+          - pipeline
           - titles
       sha:
         description: "Git SHA of the benchmarked commit"
@@ -95,35 +96,73 @@ jobs:
 
       - run: make dev-test
 
+      - name: Set benchmark output root
+        run: echo "BENCHMARK_OUTPUT_DIR=$RUNNER_TEMP/immich-memories-benchmarks" >> "$GITHUB_ENV"
+
       - name: Run assembly benchmarks
         run: make benchmark-assembly
-        continue-on-error: true
         env:
           IMMICH_FORCE_CPU: "1"
 
       - name: Run title benchmarks
         run: make benchmark-titles-json
-        continue-on-error: true
         env:
           IMMICH_FORCE_CPU: "1"
 
       - name: Merge benchmark JSON files
         run: |
           python3 -c "
-          import json, glob, sys
-          merged = []
-          for f in sorted(glob.glob('tests/benchmark-*.json')):
+          import json, glob, os, sys
+          benchmarks, results = [], []
+          for f in sorted(glob.glob(os.environ['BENCHMARK_OUTPUT_DIR'] + '/benchmark-*.json')):
               try:
-                  merged.extend(json.loads(open(f).read()))
+                  payload = json.loads(open(f).read())
+                  if not isinstance(payload, dict) or not isinstance(payload.get('benchmarks'), list) or not isinstance(payload.get('results'), list):
+                      raise ValueError('expected enriched {benchmarks, results} envelope; regenerate it')
+                  benchmarks.extend(payload['benchmarks'])
+                  results.extend(payload['results'])
               except Exception as e:
-                  print(f'WARN: skipping {f}: {e}', file=sys.stderr)
-          if not merged:
+                  print(f'ERROR: {f}: {e}', file=sys.stderr)
+                  sys.exit(1)
+          if not benchmarks or not results:
               print('No benchmark results found', file=sys.stderr)
               sys.exit(1)
-          out = 'tests/benchmark-results.json'
-          open(out, 'w').write(json.dumps(merged, indent=2))
-          print(f'Merged {len(merged)} entries to {out}')
+          out = 'tests/benchmark-upload.json'
+          open(out, 'w').write(json.dumps({'benchmarks': benchmarks, 'results': results}, indent=2))
+          print(f'Merged {len(results)} summaries to {out}')
           "
+
+      - name: Validate merged benchmark reproduction data
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          required = {
+              "input_duration_seconds", "codec", "frame_rate", "cache_mode",
+              "python_version", "platform", "cpu", "git_revision",
+          }
+          payload = json.loads(Path("tests/benchmark-upload.json").read_text())
+          summaries = payload.get("results") if isinstance(payload, dict) else None
+          benchmarks = payload.get("benchmarks") if isinstance(payload, dict) else None
+          if not isinstance(summaries, list) or not summaries:
+              raise SystemExit("Uploaded benchmark JSON must contain non-empty results")
+          if not isinstance(benchmarks, list) or not benchmarks:
+              raise SystemExit("Uploaded benchmark JSON must contain non-empty benchmarks")
+          for index, summary in enumerate(summaries):
+              warmup = summary.get("warmup") if isinstance(summary, dict) else None
+              repetitions = summary.get("repetitions") if isinstance(summary, dict) else None
+              if not isinstance(warmup, dict):
+                  raise SystemExit(f"Benchmark result {index} must contain a warmup object")
+              if not isinstance(repetitions, list) or len(repetitions) < 3:
+                  raise SystemExit(f"Benchmark result {index} requires at least three measured repetitions")
+              for run in [warmup, *repetitions]:
+                  missing = sorted(key for key in required if not isinstance(run, dict) or not run.get(key))
+                  if missing:
+                      raise SystemExit(f"Benchmark result {index} lacks reproduction fields: {', '.join(missing)}")
+          Path("tests/benchmark-results.json").write_text(json.dumps(benchmarks))
+          PY
 
       # WHY: restore BEFORE benchmark-action so it has historical data to compare against
       - name: Restore benchmark cache
@@ -134,6 +173,27 @@ jobs:
           restore-keys: |
             benchmark-linux-ci-main-
 
+      - name: Count comparable benchmark baselines
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          cache = Path("cache/benchmark-data.json")
+          try:
+              history = json.loads(cache.read_text()) if cache.is_file() else []
+          except json.JSONDecodeError:
+              history = []
+          entries = history.get("entries") if isinstance(history, dict) else None
+          records = entries.get("Benchmark") if isinstance(entries, dict) else None
+          count = sum(
+              1 for record in records if isinstance(record, dict) and isinstance(record.get("benches"), list)
+          ) if isinstance(records, list) else 0
+          with Path(os.environ["GITHUB_ENV"]).open("a") as environment:
+              environment.write(f"BENCHMARK_COMPARABLE_BASELINES={count}\n")
+          PY
+
       - name: Compare against baseline
         uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1
         with:
@@ -141,7 +201,9 @@ jobs:
           output-file-path: tests/benchmark-results.json
           external-data-json-path: ./cache/benchmark-data.json
           alert-threshold: "150%"
-          fail-on-alert: ${{ github.event_name == 'pull_request' }}
+          # Performance is advisory until this runner has ten comparable baselines.
+          # Correctness remains blocking through the earlier benchmark commands.
+          fail-on-alert: ${{ fromJSON(env.BENCHMARK_COMPARABLE_BASELINES) >= 10 }}
           comment-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -170,12 +232,59 @@ jobs:
 
       - name: Write results to file
         run: |
-          cat <<'RESULTS_EOF' > tests/benchmark-results.json
+          cat <<'RESULTS_EOF' > tests/benchmark-upload.json
           ${{ github.event.inputs.results }}
           RESULTS_EOF
           echo "Ingesting ${{ github.event.inputs.suite }} results from ${{ github.event.inputs.runner }}"
           echo "SHA: ${{ github.event.inputs.sha || 'not specified' }}"
-          python3 -c "import json; d=json.load(open('tests/benchmark-results.json')); print(f'{len(d)} benchmark entries')"
+
+      - name: Validate uploaded benchmark reproduction data
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          required = {
+              "input_duration_seconds",
+              "codec",
+              "frame_rate",
+              "cache_mode",
+              "python_version",
+              "platform",
+              "cpu",
+              "git_revision",
+          }
+          payload = json.loads(Path("tests/benchmark-upload.json").read_text())
+          if not isinstance(payload, dict):
+              raise SystemExit("Uploaded benchmark JSON must be an object")
+          summaries = payload.get("results")
+          benchmarks = payload.get("benchmarks")
+          if not isinstance(summaries, list) or not summaries:
+              raise SystemExit("Uploaded benchmark JSON must contain non-empty results")
+          if not isinstance(benchmarks, list) or not benchmarks:
+              raise SystemExit("Uploaded benchmark JSON must contain non-empty benchmarks")
+          for index, summary in enumerate(summaries):
+              if not isinstance(summary, dict):
+                  raise SystemExit(f"Benchmark result {index} must be an object")
+              warmup = summary.get("warmup")
+              repetitions = summary.get("repetitions")
+              if not isinstance(warmup, dict):
+                  raise SystemExit(f"Benchmark result {index} must contain a warmup object")
+              if not isinstance(repetitions, list) or len(repetitions) < 3:
+                  raise SystemExit(
+                      f"Benchmark result {index} requires at least three measured repetitions"
+                  )
+              for run in [warmup, *repetitions]:
+                  if not isinstance(run, dict):
+                      raise SystemExit(f"Benchmark result {index} contains a non-object measurement")
+                  missing = sorted(key for key in required if not run.get(key))
+                  if missing:
+                      raise SystemExit(
+                          f"Benchmark result {index} lacks reproduction fields: {', '.join(missing)}"
+                      )
+          Path("tests/benchmark-results.json").write_text(json.dumps(benchmarks))
+          print(f"Validated {len(summaries)} benchmark entries with reproduction data")
+          PY
 
       - name: Restore benchmark cache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -185,6 +294,27 @@ jobs:
           restore-keys: |
             benchmark-${{ github.event.inputs.runner }}-main-
 
+      - name: Count comparable benchmark baselines
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          cache = Path("cache/benchmark-data.json")
+          try:
+              history = json.loads(cache.read_text()) if cache.is_file() else []
+          except json.JSONDecodeError:
+              history = []
+          entries = history.get("entries") if isinstance(history, dict) else None
+          records = entries.get("Benchmark") if isinstance(entries, dict) else None
+          count = sum(
+              1 for record in records if isinstance(record, dict) and isinstance(record.get("benches"), list)
+          ) if isinstance(records, list) else 0
+          with Path(os.environ["GITHUB_ENV"]).open("a") as environment:
+              environment.write(f"BENCHMARK_COMPARABLE_BASELINES={count}\n")
+          PY
+
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1
         with:
@@ -192,7 +322,7 @@ jobs:
           output-file-path: tests/benchmark-results.json
           external-data-json-path: ./cache/benchmark-data.json
           alert-threshold: "150%"
-          fail-on-alert: false
+          fail-on-alert: ${{ fromJSON(env.BENCHMARK_COMPARABLE_BASELINES) >= 10 }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Save benchmark cache

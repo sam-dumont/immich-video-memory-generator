@@ -1,14 +1,18 @@
-"""Contracts that keep performance results reproducible and honest."""
+"""Contracts that keep the shared performance harness reproducible and honest."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
 import statistics
+import subprocess
 import tempfile
 from pathlib import Path
 
 import pytest
+import tests.integration.assembly.perf_utils as perf_utils
 from tests.integration.assembly.conftest import make_n_clips
 from tests.integration.assembly.perf_utils import (
     REQUIRED_REPRODUCTION_KEYS,
@@ -184,7 +188,99 @@ def test_measurement_populates_machine_and_git_reproduction_fields() -> None:
     assert result.python_version
     assert result.platform
     assert result.cpu not in {"", "unknown"}
-    assert result.git_revision not in {"", "unknown"}
+    expected_revision = subprocess.run(
+        ["git", "rev-parse", "--short=12", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    assert result.git_revision == expected_revision
+    assert len(result.git_revision) == 12
+
+
+def test_source_fingerprint_reads_only_relevant_tracked_and_untracked_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User scratch, dist, and temp files neither affect identity nor have their bytes read."""
+    reads: list[str] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        stdout = (
+            b"tracked-diff"
+            if command[1] == "diff"
+            else b"src/new.py\0MagicMock/secret\0dist/output\0/tmp/user-file\0"
+            b"tests/integration/titles/new.py\0"
+        )
+        return subprocess.CompletedProcess(command, 0, stdout=stdout)
+
+    def fake_read_bytes(path: Path) -> bytes:
+        name = path.as_posix()
+        reads.append(name)
+        return {"src/new.py": b"source", "tests/integration/titles/new.py": b"title"}[name]
+
+    def fake_lstat(path: Path) -> os.stat_result:
+        del path
+        values = [0] * 10
+        values[0] = stat.S_IFREG
+        return os.stat_result(values)
+
+    monkeypatch.setattr(perf_utils.subprocess, "run", fake_run)
+    monkeypatch.setattr(Path, "read_bytes", fake_read_bytes)
+    monkeypatch.setattr(Path, "lstat", fake_lstat)
+    expected = hashlib.sha256(
+        b"tracked-diffsrc/new.pysourcetests/integration/titles/new.pytitle"
+    ).hexdigest()
+
+    assert perf_utils.source_fingerprint() == expected
+    assert reads == ["src/new.py", "tests/integration/titles/new.py"]
+
+    def failed_git(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        raise subprocess.CalledProcessError(1, ["git"])
+
+    monkeypatch.setattr(perf_utils.subprocess, "run", failed_git)
+    with pytest.raises(perf_utils.SourceFingerprintError, match="Git"):
+        perf_utils.source_fingerprint()
+
+
+def test_source_fingerprint_rejects_a_relevant_untracked_symlink_without_reading_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Relevant source identity uses lstat and never hashes bytes reached through a symlink."""
+    source = tmp_path / "src"
+    source.mkdir()
+    outside = tmp_path / "outside-secret"
+    outside.write_bytes(b"must-not-be-fingerprinted")
+    (source / "linked.py").symlink_to(outside)
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        stdout = b"" if command[1] == "diff" else b"src/linked.py\0"
+        return subprocess.CompletedProcess(command, 0, stdout=stdout)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(perf_utils.subprocess, "run", fake_run)
+
+    with pytest.raises(perf_utils.SourceFingerprintError, match="symlink|regular"):
+        perf_utils.source_fingerprint()
+
+
+def test_source_fingerprint_rejects_a_symlinked_relevant_ancestor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A regular file reached through a symlinked source directory is never read."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "linked.py").write_bytes(b"must-not-be-fingerprinted")
+    (tmp_path / "src").symlink_to(outside, target_is_directory=True)
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        stdout = b"" if command[1] == "diff" else b"src/linked.py\0"
+        return subprocess.CompletedProcess(command, 0, stdout=stdout)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(perf_utils.subprocess, "run", fake_run)
+
+    with pytest.raises(perf_utils.SourceFingerprintError, match="symlink|regular"):
+        perf_utils.source_fingerprint()
 
 
 def test_repetition_summary_keeps_warmup_raw_runs_and_median(tmp_path: Path) -> None:
@@ -257,6 +353,36 @@ def test_repetition_rejects_repository_output_root() -> None:
         )
 
 
+@pytest.mark.parametrize("artifact_kind", ("missing", "empty", "symlink", "directory"))
+def test_repetition_rejects_a_non_regular_or_empty_artifact(
+    tmp_path: Path, artifact_kind: str
+) -> None:
+    """A timing without a nonempty regular output must not be exported as a benchmark."""
+
+    def write_invalid_artifact(output: Path) -> Path:
+        if artifact_kind == "empty":
+            output.write_bytes(b"")
+        elif artifact_kind == "symlink":
+            target = tmp_path / "outside-artifact"
+            target.write_bytes(b"measured")
+            output.symlink_to(target)
+        elif artifact_kind == "directory":
+            output.mkdir()
+        return output
+
+    with pytest.raises(ValueError, match="nonempty regular file"):
+        run_repetitions(
+            write_invalid_artifact,
+            scenario=f"{artifact_kind}-output",
+            output_dir=tmp_path,
+            clip_count=1,
+            resolution="640x360",
+            input_duration_seconds=1.0,
+            codec="h264",
+            frame_rate=30.0,
+        )
+
+
 def test_summary_exports_warmup_repetitions_and_median_to_temp_root(tmp_path: Path) -> None:
     """Both detailed and CI summaries preserve the median contract."""
     warmup = _perf_result(wall_seconds=9.0, cache_mode="cold")
@@ -280,7 +406,7 @@ def test_summary_exports_warmup_repetitions_and_median_to_temp_root(tmp_path: Pa
     ]
     assert details["results"][0]["median_wall_seconds"] == 6.0
     benchmark = json.loads(benchmark_path.read_text())
-    wall = next(entry for entry in benchmark if entry["unit"] == "seconds")
+    wall = next(entry for entry in benchmark["benchmarks"] if entry["unit"] == "seconds")
     assert wall["value"] == 6.0
 
 

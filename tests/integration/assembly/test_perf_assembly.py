@@ -10,6 +10,7 @@ to tests/perf-results.json for regression tracking.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 import pytest
@@ -184,6 +185,8 @@ def test_save_results(tmp_path):
     logger.info(f"Results saved to {output}")
 
     # Save benchmark JSON for github-action-benchmark
-    bench_output = tmp_path / "benchmark-assembly.json"
+    bench_output = (
+        Path(os.environ.get("BENCHMARK_OUTPUT_DIR", tmp_path)) / "benchmark-assembly.json"
+    )
     save_benchmark_json(_module_summaries, bench_output)
     logger.info(f"Benchmark JSON saved to {bench_output}")
