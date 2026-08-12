@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from tests.conftest import make_clip
 
 
@@ -267,6 +269,83 @@ def test_extraction_prefetches_live_burst_components_before_sequential_merge(
     prefetched = coordinator.prefetch.call_args.args[0]
     assert prefetched == [DownloadTarget(id="burst-a"), DownloadTarget(id="burst-b")]
     download_clip.assert_called_once()
+
+
+@pytest.mark.parametrize("cache_enabled", [True, False])
+def test_extraction_uses_burst_prefetch_results_without_component_retries(
+    tmp_path: Path, monkeypatch, cache_enabled: bool
+) -> None:
+    """A failed burst prefetch is excluded rather than retried during the serial merge."""
+    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.processing.download_coordinator import DownloadCoordinator
+
+    calls: list[str] = []
+
+    class _Client:
+        def download_asset(self, asset_id: str, output_path: Path) -> Path:
+            calls.append(asset_id)
+            if asset_id == "burst-failed":
+                raise OSError("network failure")
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(b"video")
+            return output_path
+
+        def close(self) -> None:
+            pass
+
+    def download(client: _Client, asset_id: str, root: Path) -> Path:
+        path = root / asset_id[:2] / f"{asset_id}.MOV"
+        return client.download_asset(asset_id, path)
+
+    class _CacheBatch:
+        cache_dir = tmp_path / "cache"
+
+        def download_or_get(self, client: _Client, asset) -> Path:
+            return download(client, asset.live_photo_video_id or asset.id, self.cache_dir)
+
+        def download_video_id(self, client: _Client, asset_id: str) -> Path:
+            return download(client, asset_id, self.cache_dir)
+
+    cache_batch = _CacheBatch() if cache_enabled else None
+    coordinator = DownloadCoordinator(
+        _Client,
+        cache_batch,
+        max_workers=1,
+        download_operation=(
+            None
+            if cache_enabled
+            else lambda client, asset: download(client, asset.id, tmp_path / ".temporary_downloads")
+        ),
+    )
+    clip = make_clip("burst-parent", duration=5.0)
+    clip.live_burst_video_ids = ["burst-failed", "burst-ready"]
+    clip.live_burst_trim_points = [(0.0, 1.0), (1.0, 2.0)]
+    params = MagicMock()
+    params.client = _Client()
+    params.clips = [clip]
+    params.progress_callback = None
+    params.clip_segments = {}
+    params.clip_rotations = {}
+    params.config = MagicMock()
+    merged = tmp_path / "merged.mp4"
+    segment = tmp_path / "segment.mp4"
+    segment.write_bytes(b"segment")
+
+    def merge(paths: list[Path], trims: list[tuple[float, float]], *_args, **_kwargs) -> Path:
+        assert paths[0].stem == "burst-ready"
+        assert trims == [(1.0, 2.0)]
+        merged.write_bytes(b"merged")
+        return merged
+
+    monkeypatch.setattr("immich_memories.generate_downloads._try_merge_burst", merge)
+    monkeypatch.setattr(
+        "immich_memories.processing.clips.extract_clip", lambda *_args, **_kwargs: segment
+    )
+    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 5.0)
+
+    _extract_clips(params, cache_batch, tmp_path, download_coordinator=coordinator)
+
+    assert calls == ["burst-failed", "burst-ready"]
 
 
 def test_extraction_does_not_prefetch_static_photo(tmp_path: Path, monkeypatch) -> None:

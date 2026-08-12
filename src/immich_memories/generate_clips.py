@@ -14,7 +14,11 @@ from immich_memories.processing.assembly_config import AssemblyClip
 if TYPE_CHECKING:
     from immich_memories.cache.video_cache import CacheBatch
     from immich_memories.generate import GenerationParams
-    from immich_memories.processing.download_coordinator import DownloadCoordinator, PrefetchAsset
+    from immich_memories.processing.download_coordinator import (
+        DownloadCoordinator,
+        DownloadResult,
+        PrefetchAsset,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +71,43 @@ def _prefetch_assets(clips: list) -> list[PrefetchAsset]:
     return targets
 
 
+def _download_video_path(
+    params: GenerationParams,
+    clip,
+    video_cache: CacheBatch | None,
+    output_dir: Path,
+    prefetched: dict[str, DownloadResult] | None,
+) -> Path | None:
+    """Resolve one clip's source without retrying completed burst prefetches."""
+    from immich_memories.generate_downloads import download_clip
+
+    if clip.live_burst_video_ids and clip.live_burst_trim_points:
+        burst_results = (
+            {
+                video_id: prefetched[video_id]
+                for video_id in clip.live_burst_video_ids
+                if video_id in prefetched
+            }
+            if prefetched is not None
+            else None
+        )
+        return download_clip(
+            params.client,
+            video_cache,
+            clip,
+            output_dir,
+            prefetched_burst_results=burst_results,
+        )
+
+    prefetched_result = prefetched.get(clip.asset.id) if prefetched is not None else None
+    if prefetched_result and prefetched_result.path is not None:
+        return prefetched_result.path
+    if prefetched_result and prefetched_result.error:
+        logger.warning("Failed to prefetch %s: %s", clip.asset.id, prefetched_result.error)
+        return None
+    return download_clip(params.client, video_cache, clip, output_dir)
+
+
 def _extract_clips(
     params: GenerationParams,
     video_cache: CacheBatch | None,
@@ -85,7 +126,7 @@ def _extract_clips(
 
     assembly_clips: list[AssemblyClip] = []
     total = len(params.clips)
-    prefetched = {}
+    prefetched: dict[str, DownloadResult] | None = None
     if download_coordinator is not None:
         prefetched = download_coordinator.prefetch(_prefetch_assets(params.clips))
 
@@ -104,17 +145,7 @@ def _extract_clips(
                     assembly_clips.append(photo_clip)
                 continue
 
-            from immich_memories.generate_downloads import download_clip
-
-            prefetched_result = prefetched.get(clip.asset.id)
-            video_path: Path | None
-            if prefetched_result and prefetched_result.path is not None:
-                video_path = prefetched_result.path
-            elif prefetched_result and prefetched_result.error:
-                logger.warning("Failed to prefetch %s: %s", clip.asset.id, prefetched_result.error)
-                continue
-            else:
-                video_path = download_clip(params.client, video_cache, clip, output_dir)
+            video_path = _download_video_path(params, clip, video_cache, output_dir, prefetched)
             if not video_path or not video_path.exists():
                 logger.warning(f"Failed to download {clip.asset.id}, skipping")
                 continue
