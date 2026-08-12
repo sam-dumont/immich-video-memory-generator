@@ -294,7 +294,8 @@ async def run_generation(
         )
         result_path = prepared.path
         state.output_path = result_path
-        _restore_completed_ui_state(state, getattr(run_tracker, "current_run", None), result_path)
+        persisted = _read_persisted_run(run_tracker)
+        _restore_completed_ui_state(state, persisted, result_path)
         run_id_label.set_text(f"Output: {result_path.parent.name}")
 
         progress_bar.value = 1.0
