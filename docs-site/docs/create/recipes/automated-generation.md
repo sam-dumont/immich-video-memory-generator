@@ -5,11 +5,13 @@ title: Automated Generation
 
 # Automated Generation
 
-Once you know your preferred settings, automate the whole thing. Three paths: smart automation (recommended), the built-in scheduler daemon, or classic cron/scripts.
+Once you know your preferred settings, automate the whole thing. Smart automation is the normal
+path. The exact-schedule daemon and hand-written cron jobs remain available for advanced setups.
 
 ## Smart Automation (Recommended)
 
-The `auto` system scans your library, detects what's worth turning into a memory video, and generates the best candidate. It runs 8 detectors (monthly, yearly, trips, person spotlights, birthdays, activity bursts, on-this-day, multi-person pairs) and picks the highest-scoring one.
+`auto run` is the recommended single daily entry point. It scans your library, applies the hard
+variety rules, and decides what that wake should do.
 
 ```bash
 # See what it would generate
@@ -18,15 +20,18 @@ immich-memories auto suggest
 # Generate the top candidate
 immich-memories auto run
 
-# Set up daily automatic runs (launchd on macOS, systemd on Linux)
+# Write a daily scheduler definition (launchd on macOS, systemd on Linux)
 immich-memories auto install --hour 9
 ```
 
-Each run generates one memory, then applies cooldowns so the next run picks something different. Over a week of daily runs, you get a diverse mix: monthlies, birthday videos, trip compilations, year-in-reviews.
+Each wake does at most one action: retry a pending delivery, generate one candidate, or skip.
+Delivery retries use the existing artifact and its original album; they do not rerender the video.
+`auto install` writes launchd or systemd files without activating them; the crontab fallback only
+prints its entry. Run the printed activation command when you are ready.
 
 See [auto CLI docs](../cli/auto.md) for the full reference including detector details and scoring.
 
-## Built-in Scheduler
+## Advanced/Legacy Scheduler
 
 :::tip Use smart automation instead
 Most users should use the `auto` system above — it figures out what to generate automatically. The scheduler below is for Docker/K8s deployments or when you need exact control over what generates when (specific memory types on specific dates).

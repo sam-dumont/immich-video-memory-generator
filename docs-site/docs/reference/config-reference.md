@@ -101,9 +101,23 @@ output:
   format: "mp4"                  # mp4 or mov
   resolution: "1080p"            # 720p, 1080p, 4k
   codec: "h264"                  # h264, h265, prores
+  hdr_mode: "auto"               # auto, sdr, hdr
   crf: 18                        # Quality (0-51, lower = better)
   quality: "high"                # high, medium, low (shorthand for CRF presets)
 ```
+
+The supported combinations are strict:
+
+- H.264 is SDR-only and accepts MP4 or MOV.
+- H.265 accepts MP4 or MOV and is the only codec that can preserve HLG or PQ HDR.
+- ProRes is SDR-only and requires MOV.
+
+`auto` preserves HDR only with H.265, while `sdr` tone-maps HDR input. An explicit `hdr` request
+requires H.265. Unsupported combinations fail before rendering. If required HDR/SDR conversion is
+unavailable, generation fails without replacing a valid artifact.
+
+A finished artifact is fully decoded and checked for codec, container, pixel format, transfer
+function, resolution, duration, and size before an atomic publish.
 
 ## Photos
 
@@ -132,6 +146,10 @@ hardware:
   gpu_decode: true               # Hardware video decoding
   gpu_memory_limit: 0            # GPU memory limit in MB (0 = unlimited)
 ```
+
+Turning hardware off selects the software encoder for the requested codec. If a hardware encoder
+is unavailable or fails, the app falls back to the matching software encoder. It never silently
+changes the requested codec.
 
 ## Audio and music
 

@@ -2,17 +2,17 @@
 date: 2026-08-11
 branch: codex/launch-hardening
 scope: launch readiness, automation, performance, Immich v2/v3 compatibility, and user flow
-verdict: public beta is close; stable launch is blocked by P0 items
+verdict: P0 remediation is complete; stable launch awaits the final release gate
 ---
 
 # Launch Readiness Audit — 2026-08-11
 
 ## Executive verdict
 
-The application is close to a public beta, but it is not ready for an unattended stable
-launch. The core pipeline is well tested and fast on small synthetic workloads. The launch
-blockers are contract failures around automation, Immich v3, output encoding, versioning,
-and browser E2E—not a need to rewrite the video engine or compile Python with Cython.
+At audit time, the application was close to a public beta but was not ready for unattended stable
+use. The blockers were contract failures around automation, Immich v3, output encoding, versioning,
+and browser E2E—not a need to rewrite the video engine or compile Python with Cython. The remediation
+status below records their closure. Stable launch still waits for the complete release gate.
 
 The most urgent problem was operational: the installed daily automation could report success
 without producing a new video, retry bad candidates every day, and generate files without a
@@ -40,8 +40,23 @@ approval. Its plist remains on disk and nothing was deleted.
   `immich-memories config test` passed with both default `auto` detection and an explicit `v3`
   override. Key final commits: `33745c6`, `5e46078`, `822a870`, `cecdf7a`, `c6cea3b`, `ee389a0`,
   `144c38f`, and `59e97b2`.
-- **P0.4–P0.6: still open.** Output codec enforcement, unified version reporting, and required
-  browser E2E remain launch blockers and will be handled after the Immich compatibility slice.
+- **P0.4 encoding and delivery: fixed and independently approved after final branch integration.**
+  Encoding-plan enforcement starts at `42accf2`; validated, decoded, atomic artifact publication
+  and safe optional music land through `982cdae`, `9057aa3`, and `e4b19af`. Durable delivery state,
+  retry-before-generation, and the single UI/CLI artifact lifecycle land through `694b199`,
+  `caed4b7`, `fb777fb`, and `5205d97`. Durable lifecycle and UI delivery truth were finalized in
+  `bba9885`, `0ba70b6`, and `bc455b6`; retry persistence in `7c5193e` and `bb2ecd6`; best-effort
+  completion observer policy in `40cc287`. Exact HDR,
+  container, trimming, music staging, and UI output semantics landed in `4dde2f3` and `9e19359`;
+  bounded same-codec hardware fallback landed in `4fc372e`. Focused codec, real FFmpeg, delivery,
+  music, and lifecycle gates passed, including the 24-test hermetic browser suite.
+- **P0.5 version reporting: fixed and independently approved.** Hatch VCS is the runtime and build
+  source through `b78af3c`; container labels and explicit build identity landed in `90ba156`.
+  Package metadata, CLI, health, UI, and OCI labels now consume the same build version.
+- **P0.6 browser E2E: fixed and independently approved.** The real fake-Immich browser render became
+  required in `485ff75`; hermetic failure handling landed through `ca001f7` and `35a88d2`; the
+  required CI launch gate landed in `e5367a2`. Missing startup, controls, output, or codec validation
+  now fails instead of becoming a skip.
 
 The LaunchAgent remains unloaded. Do not reactivate unattended generation until every P0 above
 is closed and the final release gate passes.
@@ -52,7 +67,7 @@ is closed and the final release gate passes.
 - Preserved plist: `/Users/sam/Library/LaunchAgents/com.immich-memories.auto.plist`
 - Verified state: `launchctl print` reports that the service is not loaded
 - Deleted files: none
-- Automatic reactivation: forbidden until the P0 automation fixes are verified
+- Automatic reactivation: forbidden until the final release gate passes
 
 ## Evidence baseline
 
@@ -232,11 +247,11 @@ Official references:
 - [Immich v3.1.0 OpenAPI specification](https://raw.githubusercontent.com/immich-app/immich/v3.1.0/open-api/immich-openapi-specs.json)
 - [Immich v3.1.0 release](https://github.com/immich-app/immich/discussions/30359)
 
-### P0.4 — Output codec and hardware settings are not honored
+### P0.4 — Output codec and hardware settings were not honored (audit-time finding, closed)
 
-The audited user configuration requested 4K H.264. Produced files were 4K HEVC.
+At audit time, the user configuration requested 4K H.264 and produced 4K HEVC.
 
-Root cause:
+Audit-time root cause:
 
 - `_build_assembly_settings()` stores `output_codec`.
 - `AssemblyEngine` ignores it and calls the HDR/GPU resolver.
@@ -249,13 +264,13 @@ Required result:
 - Codec selection is authoritative: H.264, H.265, and ProRes produce their requested codec.
 - Disabling hardware uses the matching software encoder.
 - Missing hardware falls back within the same codec.
-- H.264 tone-maps HDR to SDR; H.265/ProRes preserve HDR only when configured.
+- H.264 and ProRes are SDR-only and tone-map HDR input; H.265 alone can preserve configured HDR.
 - Container/codec combinations are validated before rendering.
 - `ffprobe` validates the final codec, container, streams, resolution, and duration.
 
-### P0.5 — Version reporting has four conflicting sources
+### P0.5 — Version reporting had four conflicting sources (audit-time finding, closed)
 
-Observed versions:
+Audit-time observed versions:
 
 - Git/tag line: around `v0.37.2`
 - `immich-memories --version`: `0.2.0`
@@ -265,9 +280,9 @@ Observed versions:
 Required result: Git-derived build metadata is the single source for CLI, UI, health,
 Python package, Docker metadata, and releases.
 
-### P0.6 — Browser E2E is not a launch gate
+### P0.6 — Browser E2E was not a launch gate (audit-time finding, closed)
 
-Confirmed gaps:
+Audit-time confirmed gaps:
 
 - `E2E_TEST_UPDATE_NOTES.md` says a selector must be fixed and 50+ screenshots recaptured.
 - The broken selector remains in `tests/e2e/test_screenshots.py` and is hidden by

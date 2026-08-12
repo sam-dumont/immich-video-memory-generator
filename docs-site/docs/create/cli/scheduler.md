@@ -5,6 +5,10 @@ title: scheduler
 
 # scheduler
 
+This is the advanced/legacy scheduler. It runs explicit memory types on exact cron expressions.
+For normal unattended use, schedule the single daily [`auto run`](./auto.md#auto-run) decision
+instead.
+
 :::tip Smart automation is the easier option
 Most users should use [`auto`](./auto.md) instead: it detects trips, birthdays, and highlights automatically. No cron expressions or explicit schedules needed. The scheduler below is for Docker/K8s deployments or when you want exact control over what generates when.
 :::

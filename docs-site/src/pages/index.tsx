@@ -120,8 +120,8 @@ type ShowcaseItem = {
 
 const showcaseItems: ShowcaseItem[] = [
   {
-    title: '6 memory types',
-    description: 'Year in review, monthly highlights, person spotlight, trip memory, season, on this day. Pick a preset and it handles the rest.',
+    title: '7 memory types',
+    description: 'Year in review, monthly highlights, person spotlight, multi-person, trip memory, season, on this day. Pick a preset and it handles the rest.',
     image: '/img/screenshots/step1-preset-cards.png',
     alt: 'Memory type preset selection cards',
   },
@@ -184,8 +184,8 @@ function ValuesSection() {
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
               </svg>
             </div>
-            <strong>Your data stays home</strong>
-            <p>Zero telemetry. Zero cloud calls. Everything runs on your hardware. The Immich API key never leaves your network.</p>
+            <strong>Local by default, not offline</strong>
+            <p>No telemetry. Video encoding runs locally. Remote AI, trip map tiles, and optional font downloads make outbound requests. Your Immich API key is sent only to your Immich server.</p>
           </div>
           <div className={styles.value}>
             <div className={styles.valueIcon}>
@@ -194,7 +194,7 @@ function ValuesSection() {
               </svg>
             </div>
             <strong>Read-only by default</strong>
-            <p>Your Immich library is never modified. Upload-back is opt-in. No risk of data loss, ever.</p>
+            <p>Upload-back is opt-in and adds the finished video; source assets stay untouched.</p>
           </div>
           <div className={styles.value}>
             <div className={styles.valueIcon}>
@@ -211,8 +211,8 @@ function ValuesSection() {
                 <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
               </svg>
             </div>
-            <strong>Runs on a schedule</strong>
-            <p>Built-in cron scheduler generates memories automatically. Monthly highlights on the 1st, yearly recap in January. Set it and forget it.</p>
+            <strong>One smart daily decision</strong>
+            <p><code>auto run</code> wakes once a day to retry delivery, generate one eligible memory, or skip. No monthly-review pile-up.</p>
           </div>
         </div>
       </div>

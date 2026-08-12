@@ -59,10 +59,15 @@ export IMMICH_MEMORIES_HARDWARE__ENCODER_PRESET="quality"
 
 ```bash
 export IMMICH_MEMORIES_OUTPUT__DIRECTORY="/mnt/nas/memories"
+export IMMICH_MEMORIES_OUTPUT__FORMAT="mp4"
 export IMMICH_MEMORIES_OUTPUT__RESOLUTION="4k"
 export IMMICH_MEMORIES_OUTPUT__CODEC="h265"
+export IMMICH_MEMORIES_OUTPUT__HDR_MODE="auto"
 export IMMICH_MEMORIES_OUTPUT__CRF="20"
 ```
+
+H.264 and ProRes are SDR-only; ProRes requires MOV; H.265 is the only HDR output. Hardware
+selection may change the encoder, never the requested codec.
 
 ### Music generation
 

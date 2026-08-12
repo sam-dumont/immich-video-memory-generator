@@ -41,6 +41,23 @@ The quickstart compose file sets `memory: 4G` and `cpus: 4`. That's fine for 108
 
 Temporary files during encoding can use 2x the size of your source clips. A 10-minute memory from 50 clips might need 5-10 GB of temp space.
 
+### Image feature set
+
+Published images use `INSTALL_EXTRAS=all`. That includes the cross-platform face, audio, audio ML,
+authentication, Demucs, and GPU extras.
+
+For a custom image, pass one explicit selector:
+
+```bash
+make docker INSTALL_EXTRAS=none DOCKER_TAG=base
+```
+
+Valid selectors are `none`, `face`, `mac`, `audio`, `audio-ml`, `auth`, `demucs`, `gpu`, `all`,
+`all-mac`, and `dev`. `dev` is for contributor/debug images, not production. A blank value, typo,
+or undeclared extra stops the build instead of installing the base package. ACE-Step is not a pip
+extra and is not added by `INSTALL_EXTRAS`. Run ACE-Step as a separate service or build a deliberate
+custom image for it.
+
 ## Standalone Docker run
 
 If you don't use compose:
@@ -137,14 +154,18 @@ The default tmpfs is 2 GB. If you're generating 4K videos, FFmpeg intermediates 
 
 ## Health check
 
-The container has a built-in health check hitting `/health`. Works with Docker's native health reporting and monitoring tools like Uptime Kuma:
+The image health check calls `/health/live`. Docker marks the container unhealthy when this probe
+fails; it does not restart it. An orchestrator may act on that unhealthy state. Immich being
+temporarily offline does not fail this process-liveness probe:
 
 ```bash
 # Check health status
 docker inspect --format='{{.State.Health.Status}}' immich-memories
 ```
 
-The `/health` endpoint returns JSON with `status`, `immich_reachable`, `last_successful_run`, and `version`.
+Use `/health/ready` for dependency readiness; it returns HTTP 503 when the configured Immich
+dependency is not ready. The legacy `/health` route always returns HTTP 200 and is not a readiness
+probe. See [Health, Logs & Cache](../maintenance/health-logs-cache.md) for the payload fields.
 
 ## Cache persistence
 
@@ -159,13 +180,13 @@ To back up or migrate the cache separately:
 
 ```bash
 # Backup
-docker exec immich-memories immich-memories cache backup /output/cache-backup.db
+docker exec immich-memories immich-memories cache backup /app/output/cache-backup.db
 
 # Export to JSON (portable)
-docker exec immich-memories immich-memories cache export /output/scores.json
+docker exec immich-memories immich-memories cache export /app/output/scores.json
 
 # Import on a new instance
-docker exec immich-memories immich-memories cache import /output/scores.json
+docker exec immich-memories immich-memories cache import /app/output/scores.json
 
 # Check what's cached
 docker exec immich-memories immich-memories cache stats

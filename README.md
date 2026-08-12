@@ -149,9 +149,10 @@ immich-memories generate --year 2024 --person "John" --output ~/Videos/john_2024
 - **Cinematic Titles** — GPU-rendered title screens with globe animations, satellite maps, month dividers
 - **Face-Aware Cropping** — Keeps faces centered when converting aspect ratios
 - **Hardware Acceleration** — NVIDIA NVENC, Apple VideoToolbox, Intel QSV, AMD VAAPI
+- **Truthful Output** — H.264, H.265, and SDR ProRes outputs keep the requested codec through hardware fallback and are decoded before atomic publication
 - **AI Music Generation** — ACE-Step or MusicGen with automatic mood detection and audio ducking
 - **Privacy Mode** — Blur all video, muffle audio, anonymize GPS/names for demos
-- **Smart Automation** — `auto suggest` detects interesting memories, `auto run` generates them on a schedule
+- **Smart Automation** — `immich-memories auto run` is the canonical daily entry point: retry one pending delivery, generate one eligible memory, or skip. `auto install` prepares the scheduler definition but leaves activation to you.
 - **Authentication** — Basic auth, OIDC/SSO (Auth0, Authelia, Keycloak), or trusted header proxy
 - **Web UI + CLI** — 4-step wizard or headless automation
 - **Docker & Kubernetes** — Containerized deployment with GPU support

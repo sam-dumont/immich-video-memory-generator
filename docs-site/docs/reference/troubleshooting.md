@@ -43,6 +43,15 @@ milliseconds, version-specific upload fields, and the UTC offset on search dates
 uploads. If a v3 upload fails, keep the error shown by the command doing the upload and check the
 relevant Immich server logs. API keys are redacted.
 
+## Pending Immich Delivery
+
+Run `immich-memories auto status --json` to inspect `pending_delivery_count` and
+`oldest_pending_delivery`. The next `auto run` retries the existing artifact and its original album
+before cooldown or discovery.
+
+A failed retry exits 1, keeps the run completed and pending, and does not rerender the video. A
+missing artifact remains in the pending count but is skipped until the file is restored.
+
 ## No Videos Found
 
 - Check the person name matches exactly what Immich has. Face recognition names are case-sensitive.

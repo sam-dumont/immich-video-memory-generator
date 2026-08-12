@@ -50,7 +50,8 @@ Say you set up `auto install` and it runs every morning at 9am:
 
 For the rest of August, another monthly review remains blocked because one already completed that month. In September, the detector can propose August: exactly one current monthly candidate, not a backlog of increasingly stale reviews.
 
-The exact order depends on your library. The guarantees are simpler: one generation subprocess at most, no category back-to-back, and no pile of monthly-review junk.
+The exact order depends on your library. The guarantees are simpler: one delivery retry or
+generation action per wake, no category back-to-back, and no pile of monthly-review junk.
 
 ### Birthday timing
 
@@ -123,7 +124,14 @@ After detectors assign raw scores, the scorer applies:
 immich-memories auto run [OPTIONS]
 ```
 
-Picks the #1 candidate from `suggest` and generates it. One memory per invocation, then exits.
+`auto run` performs at most one action per wake. Before cooldown or candidate discovery, it looks
+for the oldest retryable pending delivery. A delivery retry uploads the already-validated artifact
+to its original album. It does not render a new video. That retry consumes the wake whether it
+completes, fails, or is a dry run.
+
+If no artifact needs delivery, the command applies cooldown and variety rules, then generates the
+top eligible candidate. This is why `auto run` is the one command to schedule every day: it decides
+whether that wake should retry delivery, generate one memory, or do nothing.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -133,11 +141,15 @@ Picks the #1 candidate from `suggest` and generates it. One memory per invocatio
 | `--upload` | flag | `false` | Upload result to Immich |
 | `--quiet` | flag | `false` | Emit exactly one JSON result object on stdout |
 
-`skipped` and `dry_run` exit 0. `failed` exits nonzero. Quiet output is a stable JSON object, not a bare path:
+`action` is `generation` or `delivery_retry` after the automation lease is acquired. It is `null`
+when an overlapping wake is skipped before an action starts. `outcome` is `completed`, `skipped`,
+`dry_run`, or `failed`. `completed`, `skipped`, and `dry_run` exit 0. `failed` exits 1. Quiet output
+is a stable JSON object, not a bare path:
 
 ```json
 {
   "outcome": "dry_run",
+  "action": "generation",
   "reason": "dry run",
   "candidate_key": "trip:2026-07-02:2026-07-09:",
   "category": "trip",
@@ -162,7 +174,10 @@ When every candidate is rejected, `outcome` is `skipped`, `category` is `null`, 
 immich-memories auto install [OPTIONS]
 ```
 
-Sets up your OS scheduler. Detects the platform and generates the right config file.
+Detects the platform and generates the right scheduler definition. On macOS and Linux,
+`auto install` writes the platform definition but does not activate it. On the crontab fallback,
+it prints the entry and changes nothing. Run the printed `Activate` command when you are ready to
+enable daily runs.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -211,9 +226,17 @@ Shows recent auto-generated memories: date, type, date range, output file.
 immich-memories auto status [--json]
 ```
 
-Shows the external scheduler state, last automation attempt, last completed automatic run, cooldown, the last six categories, current variety rejection rules, and the live suggestion status. It is diagnostic: it does not generate a video or install, load, unload, or rewrite a scheduler.
+Shows the external scheduler state, last automation attempt, last completed automatic run,
+cooldown, the last six categories, current variety rejection rules, pending delivery queue, and the
+live suggestion status. It is diagnostic: it does not generate a video or install, load, unload, or
+rewrite a scheduler.
 
 Use `--json` for the full machine-readable object. If Immich discovery is temporarily unavailable, durable attempt and run history still appears and `suggestion.outcome` explains the discovery failure.
+
+`pending_delivery_count` includes every pending auto artifact, even when its file is missing.
+`oldest_pending_delivery` is the oldest pending artifact whose output file still exists. A missing
+file stays visible in the count but is skipped as retryable work. In human output, that distinction
+appears as a non-zero queue with no retryable artifact.
 
 ## auto test-notification
 

@@ -23,7 +23,10 @@ immich:
 # ── Output ────────────────────────────────────────────────
 output:
   directory: "~/Videos/Memories"
+  format: "mp4"                  # mp4 or mov container
   resolution: "1080p"            # 720p, 1080p, 4k
+  codec: "h264"                  # h264, h265, prores
+  hdr_mode: "auto"               # auto, sdr, hdr
 
 defaults:
   target_duration_seconds: 600   # 10-3600 seconds
@@ -50,6 +53,9 @@ scoring_priority:
   quality: medium    # low, medium, high: prioritize stable, well-shot clips
   moment: medium     # low, medium, high: prioritize clips with audio events
 ```
+
+H.264 and ProRes are SDR-only; ProRes requires MOV; H.265 is the only HDR output. The full
+compatibility matrix is in the [Config Reference](../../reference/config-reference.md#output).
 
 That's it. Everything else has sane defaults.
 

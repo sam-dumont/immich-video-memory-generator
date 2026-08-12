@@ -8,27 +8,40 @@ Three operational aspects you'll want to understand for any deployment beyond "r
 
 ## Health endpoint
 
-`GET /health` returns JSON with the current system status:
+There are three routes because process health and dependency health are different questions.
+
+`GET /health/live` is process liveness. It returns HTTP 200 while the web process can answer and
+does not read configuration, Immich, or SQLite. Use it for Docker and Kubernetes liveness probes:
+
+```json
+{"status": "alive", "version": "0.42.0"}
+```
+
+`GET /health/ready` is dependency readiness. It returns HTTP 200 only when Immich is configured,
+its API contract resolves, and authentication succeeds. Otherwise it returns HTTP 503. Use this
+route before sending work to the instance.
+
+The readiness payload includes the configured and resolved Immich API versions, the last automation
+attempt, the last successful automatic run, and pending delivery status:
 
 ```json
 {
-  "status": "ok",
+  "status": "ready",
+  "configuration": "configured",
   "immich_reachable": true,
-  "last_successful_run": "2025-12-15T10:30:00.000000",
-  "version": "0.2.0"
+  "immich": {
+    "status": "ready",
+    "api_version_policy": "auto",
+    "resolved_api_version": "v3"
+  },
+  "pending_delivery_count": 0,
+  "oldest_pending_delivery": null,
+  "version": "0.42.0"
 }
 ```
 
-| Field | Values | Meaning |
-|-------|--------|---------|
-| `status` | `ok` / `degraded` | `ok` when Immich is reachable, `degraded` when it's not |
-| `immich_reachable` | `true` / `false` | Result of pinging Immich's `/api/server/ping` endpoint |
-| `last_successful_run` | ISO timestamp or `null` | Last completed video generation, from the run database |
-| `version` | semver string | Installed version of Immich Memories |
-
-The health check pings Immich with a 5-second timeout. If Immich is down, the status flips to `degraded` but the application keeps running (you can still browse the UI, review cached clips, etc.).
-
-Use this endpoint with monitoring tools: Uptime Kuma, Prometheus blackbox exporter, or a simple `curl` in a cron job.
+`GET /health` is the legacy compatibility route. It returns the detailed payload with HTTP 200 even
+when `status` is `degraded`. Do not use the legacy route as a readiness gate.
 
 ## Logging
 
