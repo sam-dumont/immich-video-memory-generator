@@ -283,7 +283,7 @@ def test_v13_fresh_database_has_exact_automation_run_identity(tmp_path: Path) ->
         run_columns = {row[1] for row in conn.execute("PRAGMA table_info(pipeline_runs)")}
         run_indexes = {row[1] for row in conn.execute("PRAGMA index_list(pipeline_runs)")}
 
-    assert version == 13
+    assert version == 14
     assert attempt_columns == {
         "id",
         "started_at",
@@ -295,8 +295,10 @@ def test_v13_fresh_database_has_exact_automation_run_identity(tmp_path: Path) ->
         "memory_key",
         "run_id",
         "error",
+        "last_phase",
     }
     assert "automation_attempt_id" in run_columns
+    assert "last_phase" in run_columns
     assert "idx_runs_automation_attempt" in run_indexes
 
 

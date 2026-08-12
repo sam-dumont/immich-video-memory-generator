@@ -10,11 +10,18 @@ from nicegui import run, ui
 from immich_memories.analysis.live_photo_pipeline import fetch_live_photo_clips
 from immich_memories.api.immich import SyncImmichClient
 from immich_memories.api.models import VideoClipInfo
+from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.clip_probing import probe_video_url
 from immich_memories.security import sanitize_error_message
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
+
+
+def _set_phase_status(status_label, event: PhaseEvent) -> None:
+    """Render the shared operational message in the loading UI."""
+    status_label.set_text(event.message)
+
 
 MIN_CLIP_DURATION = 1.5
 
@@ -154,7 +161,10 @@ def _load_clips() -> None:
 
     async def do_load():
         try:
-            status_label.set_text("Fetching videos from Immich...")
+            _set_phase_status(
+                status_label,
+                PhaseEvent(OperationalPhase.DISCOVERY, 0, 0, "Fetching videos from Immich...", 0.0),
+            )
             progress_bar.value = 0.02
 
             date_range = state.date_range

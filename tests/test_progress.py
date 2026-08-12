@@ -12,6 +12,7 @@ from immich_memories.analysis.progress import (
     PipelineProgress,
     ProgressTracker,
 )
+from immich_memories.operations.phases import OperationalPhase
 
 # ---------------------------------------------------------------------------
 # PipelinePhase enum
@@ -44,6 +45,26 @@ class TestPipelinePhase:
 
 
 class TestPipelineProgress:
+    def test_operational_event_maps_analysis_and_selection_without_losing_message(self) -> None:
+        analysis = PipelineProgress(
+            phase=PipelinePhase.ANALYZING,
+            current_index=2,
+            total_items=5,
+            phase_start_time=0.0,
+        ).operational_event
+        selection = PipelineProgress(
+            phase=PipelinePhase.REFINING,
+            current_index=5,
+            total_items=5,
+            phase_start_time=0.0,
+        ).operational_event
+
+        assert analysis is not None
+        assert analysis.phase is OperationalPhase.ANALYSIS
+        assert analysis.message == PipelinePhase.ANALYZING.label
+        assert selection is not None
+        assert selection.phase is OperationalPhase.SELECTION
+
     def test_progress_fraction_zero_when_no_items(self) -> None:
         p = PipelineProgress(total_items=0, current_index=0)
         assert p.progress_fraction == 0.0

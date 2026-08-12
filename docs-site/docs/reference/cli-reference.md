@@ -440,6 +440,18 @@ Show aggregate statistics across all runs.
 immich-memories runs stats [OPTIONS]
 ```
 
+### `runs storage`
+
+Report configured output and cache storage without changing it.
+
+```bash
+immich-memories runs storage [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--json` | boolean | false | Machine-readable output |
+
 ## `scheduler`
 
 Manage scheduled automatic memory generation.

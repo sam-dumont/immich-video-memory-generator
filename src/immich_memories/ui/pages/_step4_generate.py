@@ -14,8 +14,10 @@ from nicegui import app as nicegui_app
 from nicegui import run, ui
 
 from immich_memories.generate import PreparedGeneration, generate_memory
+from immich_memories.operations.phases import OperationalPhase, PhaseEvent, format_phase_progress
 from immich_memories.processing.output_contract import validate_output
 from immich_memories.security import configured_secret_values, sanitize_error_message
+from immich_memories.tracking.models import DeliveryStatus
 from immich_memories.ui.components import (
     im_info_card,
     im_separator,
@@ -34,6 +36,19 @@ def _safe_ui_error_message(error: Exception, config: Config | None) -> str:
         for secret in configured_secret_values(config):
             message = message.replace(secret, "***")
     return message
+
+
+def _set_phase_status(status_label, event: PhaseEvent) -> None:
+    """Use the same event message as CLI status surfaces."""
+    status_label.set_text(event.message)
+
+
+def _record_ui_phase(run_tracker, phase: OperationalPhase, message: str) -> None:
+    """Best-effort UI post-processing phase persistence."""
+    try:
+        run_tracker.record_phase_event(PhaseEvent(phase, 0, 0, message, 0.0))
+    except Exception:
+        logger.warning("Could not persist UI operational phase '%s'", phase.value)
 
 
 def _restore_completed_ui_state(state, completed, fallback_output_path: Path | None = None) -> None:
@@ -263,7 +278,7 @@ async def run_generation(
             if state.cancel_requested:
                 raise GenerationError("Generation cancelled by user")
             progress_bar.value = progress
-            status_label.set_text(msg)
+            status_label.set_text(format_phase_progress(phase, msg))
 
         def on_frame_preview(jpeg_bytes: bytes) -> None:
             import base64
@@ -273,6 +288,7 @@ async def run_generation(
 
         params = _build_generation_params(state, selected_clips, effective_output_path)
         params.progress_callback = on_progress
+        params.phase_callback = lambda event: _set_phase_status(status_label, event)
         params.frame_preview_callback = on_frame_preview
 
         from immich_memories.tracking import RunTracker, generate_run_id
@@ -341,6 +357,11 @@ async def finalize_ui_generation(
 
     music_result = MusicPhaseResult(applied=False)
     music_source = state.generation_options.get("music_source", "None")
+    _record_ui_phase(
+        run_tracker,
+        OperationalPhase.MUSIC,
+        "Generating music" if music_source in {"AI Generated", "Upload file"} else "Music disabled",
+    )
     if music_source in {"AI Generated", "Upload file"}:
         music_result = await _apply_music(
             state,
@@ -367,6 +388,11 @@ async def finalize_ui_generation(
     )
     state.generation_warning = music_result.warning
     state.delivery_status = completed.delivery_status
+    _record_ui_phase(
+        run_tracker,
+        OperationalPhase.DELIVERY,
+        "Uploading to Immich" if params.upload_enabled else "Delivery not requested",
+    )
     if params.upload_enabled:
         from immich_memories.ui.pages._step4_upload import upload_to_immich
 
@@ -378,7 +404,9 @@ async def finalize_ui_generation(
             progress_bar,
             status_label,
         )
-    return completed
+    if not params.upload_enabled or completed.delivery_status is DeliveryStatus.DELIVERED:
+        _record_ui_phase(run_tracker, OperationalPhase.COMPLETE, "Complete")
+    return _read_persisted_run(run_tracker) or completed
 
 
 async def _apply_music(

@@ -8,6 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from immich_memories.automation.candidates import MemoryCandidate
+from immich_memories.operations.phases import OperationalPhase
 
 
 class AutoOutcome(StrEnum):
@@ -74,3 +75,4 @@ class AutomationAttempt:
     memory_key: str | None = None
     run_id: str | None = None
     error: str | None = None
+    last_phase: OperationalPhase | None = None

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -11,6 +12,9 @@ from uuid import uuid4
 
 from immich_memories.automation.models import AutomationAttempt, AutoOutcome
 from immich_memories.cache.database import VideoAnalysisCache
+from immich_memories.operations.phases import OperationalPhase, PhaseEvent
+
+logger = logging.getLogger(__name__)
 
 
 class AttemptAlreadyFinishedError(RuntimeError):
@@ -18,6 +22,8 @@ class AttemptAlreadyFinishedError(RuntimeError):
 
 
 def _row_to_attempt(row: sqlite3.Row) -> AutomationAttempt:
+    # Dict conversion supports sparse legacy rows while retaining typed key lookup.
+    last_phase = dict(row).get("last_phase")
     return AutomationAttempt(
         id=row["id"],
         started_at=datetime.fromisoformat(row["started_at"]),
@@ -29,6 +35,7 @@ def _row_to_attempt(row: sqlite3.Row) -> AutomationAttempt:
         memory_key=row["memory_key"],
         run_id=row["run_id"],
         error=row["error"],
+        last_phase=(OperationalPhase(last_phase) if last_phase else None),
     )
 
 
@@ -91,6 +98,34 @@ class AutomationStateStore:
             )
             conn.commit()
         return attempt
+
+    def update_phase(self, attempt_id: str, event: PhaseEvent) -> bool:
+        """Persist a forward-only phase update for one exact attempt."""
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT last_phase FROM automation_attempts WHERE id = ?", (attempt_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Unknown automation attempt: {attempt_id}")
+            previous = OperationalPhase(row["last_phase"]) if row["last_phase"] else None
+            if previous is not None and event.phase.order < previous.order:
+                return False
+            conn.execute(
+                "UPDATE automation_attempts SET last_phase = ? WHERE id = ?",
+                (event.phase.value, attempt_id),
+            )
+            conn.commit()
+        return True
+
+    def record_discovery(self, attempt_id: str) -> None:
+        """Record discovery without making status telemetry decision-critical."""
+        event = PhaseEvent(
+            OperationalPhase.DISCOVERY, 0, 0, "Discovering daily memory candidates", 0.0
+        )
+        try:
+            self.update_phase(attempt_id, event)
+        except Exception:
+            logger.warning("Could not persist automation discovery phase")
 
     def finish_attempt(
         self,

@@ -507,7 +507,7 @@ async def test_ui_reloads_delivered_truth_when_mark_delivered_commits_then_raise
     assert saved.delivery_status is DeliveryStatus.DELIVERED
     assert saved.immich_asset_id == "committed-asset"
     assert tracker.current_run is not None
-    assert tracker.current_run.delivery_status is DeliveryStatus.PENDING
+    assert tracker.current_run.delivery_status is DeliveryStatus.DELIVERED
     assert state.delivery_status is DeliveryStatus.DELIVERED
     assert state.upload_result == upload_result
     assert notifications == ["Uploaded to Immich! Album: Committed Album"]

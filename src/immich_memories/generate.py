@@ -10,8 +10,9 @@ import inspect
 import io
 import logging
 import shutil
+import time
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NoReturn, TypeVar, cast, overload
@@ -48,6 +49,7 @@ from immich_memories.generate_settings import (
     _run_music_phase,
     _upload_to_immich,
 )
+from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.clip_validation import validate_clips
 from immich_memories.processing.output_contract import publish_validated_output, validate_output
 from immich_memories.security import configured_secret_values, sanitize_error_message
@@ -163,6 +165,8 @@ class GenerationParams:
 
     # Progress callback: (phase, progress_fraction, status_message)
     progress_callback: Callable[[str, float, str], None] | None = None
+    phase_callback: Callable[[PhaseEvent], None] | None = None
+    completed_operational_phase: OperationalPhase | None = None
 
     # Frame preview callback: receives JPEG bytes for live UI thumbnail
     frame_preview_callback: Callable[[bytes], None] | None = None
@@ -237,6 +241,142 @@ def check_disk_space(output_dir: Path) -> None:
 def _report(params: GenerationParams, phase: str, progress: float, msg: str) -> None:
     if params.progress_callback:
         params.progress_callback(phase, progress, msg)
+
+
+_PROGRESS_PHASES = {
+    "download": OperationalPhase.DOWNLOAD,
+    "extract": OperationalPhase.DOWNLOAD,
+    "photos": OperationalPhase.RENDER,
+    "assembly": OperationalPhase.RENDER,
+    "render": OperationalPhase.RENDER,
+    "music": OperationalPhase.MUSIC,
+    "upload": OperationalPhase.DELIVERY,
+    "delivery": OperationalPhase.DELIVERY,
+    "done": OperationalPhase.COMPLETE,
+}
+
+
+def _wrap_progress_callback(
+    params: GenerationParams,
+) -> Callable[[str, float, str], None] | None:
+    """Map every visible progress update onto the monotonic outer lifecycle."""
+    callback = params.progress_callback
+    if callback is None:
+        return None
+    last_phase = params.completed_operational_phase
+
+    def report(internal_phase: str, progress: float, message: str) -> None:
+        nonlocal last_phase
+        candidate = _PROGRESS_PHASES.get(internal_phase, OperationalPhase.RENDER)
+        if last_phase is not None and candidate.order < last_phase.order:
+            candidate = last_phase
+        last_phase = candidate
+        callback(candidate.value, progress, message)
+
+    return report
+
+
+def _emit_phase(
+    params: GenerationParams,
+    tracker: RunTracker,
+    phase: OperationalPhase,
+    current: int,
+    total: int,
+    message: str,
+    elapsed_seconds: float = 0.0,
+) -> None:
+    """Publish a shared outer phase without making telemetry job-critical."""
+    completed_phase = params.completed_operational_phase
+    if completed_phase is not None and phase.order <= completed_phase.order:
+        return
+    event = PhaseEvent(phase, current, total, message, elapsed_seconds)
+    try:
+        if not tracker.record_phase_event(event):
+            return
+    except Exception:
+        logger.warning("Could not persist operational phase '%s'", phase.value)
+    if params.phase_callback is not None:
+        try:
+            params.phase_callback(event)
+        except Exception:
+            logger.warning("Operational phase observer failed for '%s'", phase.value)
+
+
+def _emit_direct_generation_discovery(params: GenerationParams, tracker: RunTracker) -> None:
+    """Mark discovery as deliberately skipped for a direct generation request."""
+    if params.completed_operational_phase is None:
+        _emit_phase(params, tracker, OperationalPhase.DISCOVERY, 0, 0, "Discovery not required")
+
+
+def _seed_completed_operational_phase(params: GenerationParams, tracker: RunTracker) -> None:
+    """Persist a pipeline handoff on the newly-created run without re-announcing it."""
+    phase = params.completed_operational_phase
+    if phase is None:
+        return
+    try:
+        tracker.record_phase_event(PhaseEvent(phase, 0, 0, f"{phase.label} complete", 0.0))
+    except Exception:
+        logger.warning("Could not seed completed operational phase '%s'", phase.value)
+
+
+def _emit_direct_generation_analysis(params: GenerationParams, tracker: RunTracker) -> None:
+    """Mark analysis and selection as deliberately skipped after direct download work."""
+    if params.completed_operational_phase is None:
+        _emit_phase(params, tracker, OperationalPhase.ANALYSIS, 0, 0, "Analysis not required")
+        _emit_phase(params, tracker, OperationalPhase.SELECTION, 0, 0, "Selection not required")
+
+
+def _complete_music_phase(
+    params: GenerationParams,
+    assembly_clips: list,
+    result_path: Path,
+    run_output_dir: Path,
+    tracker: RunTracker,
+    encoding_plan: EncodingPlan,
+    progress: _PipelineProgress,
+) -> tuple[str | None, float]:
+    """Run or explicitly skip music while keeping the outer lifecycle visible."""
+    if params.no_music:
+        _emit_phase(params, tracker, OperationalPhase.MUSIC, 0, 0, "Music disabled")
+        return None, 0.0
+    start = time.monotonic()
+    _emit_phase(params, tracker, OperationalPhase.MUSIC, 0, 1, "Generating music")
+    progress.report("music", 0.0, "Generating music...")
+    result = _run_music_phase(
+        params,
+        assembly_clips,
+        result_path,
+        run_output_dir,
+        tracker,
+        encoding_plan=encoding_plan,
+    )
+    elapsed = time.monotonic() - start
+    progress.report("music", 1.0, result.warning or "Music ready")
+    _emit_phase(
+        params,
+        tracker,
+        OperationalPhase.MUSIC,
+        1,
+        1,
+        result.warning or "Music ready",
+        elapsed_seconds=elapsed,
+    )
+    return result.warning, elapsed
+
+
+def _deliver_generation(params: GenerationParams, result_path: Path, tracker: RunTracker) -> None:
+    """Expose the delivery lifecycle without calling upload when it is disabled."""
+    _emit_phase(
+        params,
+        tracker,
+        OperationalPhase.DELIVERY,
+        0,
+        1 if params.upload_enabled else 0,
+        "Uploading to Immich" if params.upload_enabled else "Delivery not requested",
+    )
+    _deliver_completed_artifact(params, result_path, tracker)
+    if params.upload_enabled:
+        _emit_phase(params, tracker, OperationalPhase.DELIVERY, 1, 1, "Delivered to Immich")
 
 
 def _report_completed_best_effort(params: GenerationParams) -> None:
@@ -403,7 +543,7 @@ def deliver_completed_artifact(
             attempted=False,
         )
 
-    _report(params, "upload", 0.95, "Uploading to Immich...")
+    _report(params, "delivery", 0.95, "Uploading to Immich...")
     delivery_error: DeliveryError | None = None
     asset_id: str | None = None
     try:
@@ -505,6 +645,7 @@ def _generate_memory_inner(
     from immich_memories.security import sanitize_filename
     from immich_memories.tracking import RunTracker, generate_run_id
 
+    params = replace(params, progress_callback=_wrap_progress_callback(params))
     run_id = run_tracker.run_id if run_tracker is not None else generate_run_id()
 
     # Tag all log lines with run_id for correlation
@@ -536,6 +677,9 @@ def _generate_memory_inner(
         automation_attempt_id=params.automation_attempt_id,
     )
 
+    _seed_completed_operational_phase(params, run_tracker)
+    _emit_direct_generation_discovery(params, run_tracker)
+
     assembly_clips: list = []  # WHY: populated in try, needed in finally for cleanup
     pending_error: GenerationError | None = None
     probe_cache = ProbeCache()
@@ -547,6 +691,14 @@ def _generate_memory_inner(
         pp = _PipelineProgress(params, len(params.clips))
 
         # Phase 1: Download and extract clips
+        _emit_phase(
+            params,
+            run_tracker,
+            OperationalPhase.DOWNLOAD,
+            0,
+            len(params.clips),
+            "Preparing sources",
+        )
         pp.report("download", 0.0, "Downloading clips...")
         run_tracker.start_phase("clip_extraction", len(params.clips))
 
@@ -566,6 +718,17 @@ def _generate_memory_inner(
         run_tracker.complete_phase(items_processed=len(assembly_clips))
         _phase_times["download"] = _time.monotonic() - _phase_start
         pp.report("download", 1.0, "Clips downloaded")
+        _emit_phase(
+            params,
+            run_tracker,
+            OperationalPhase.DOWNLOAD,
+            len(assembly_clips),
+            len(params.clips),
+            "Sources prepared",
+            elapsed_seconds=_phase_times["download"],
+        )
+
+        _emit_direct_generation_analysis(params, run_tracker)
 
         # Phase 1b: Unified budget selection + render selected photos
         _t = _time.monotonic()
@@ -582,8 +745,6 @@ def _generate_memory_inner(
 
         # Privacy mode: anonymize GPS + names before title/assembly
         if params.privacy_mode:
-            from dataclasses import replace
-
             assembly_clips = anonymize_clips_for_privacy(assembly_clips)
             anon_preset = anonymize_preset_params(params.memory_preset_params)
             params = replace(
@@ -593,6 +754,9 @@ def _generate_memory_inner(
             )
 
         # Phase 2: Assemble (includes title generation + streaming encode)
+        _emit_phase(
+            params, run_tracker, OperationalPhase.RENDER, 0, len(assembly_clips), "Rendering memory"
+        )
         _t = _time.monotonic()
         assembly_cb = pp.assembly_callback()
         run_tracker.start_phase("assembly", len(assembly_clips))
@@ -626,6 +790,15 @@ def _generate_memory_inner(
         result_path = result_output_path
         run_tracker.complete_phase(items_processed=len(assembly_clips))
         _phase_times["assembly"] = _time.monotonic() - _t
+        _emit_phase(
+            params,
+            run_tracker,
+            OperationalPhase.RENDER,
+            len(assembly_clips),
+            len(assembly_clips),
+            "Render complete",
+            elapsed_seconds=_phase_times["assembly"],
+        )
 
         if defer_finalization:
             return PreparedGeneration(
@@ -636,22 +809,15 @@ def _generate_memory_inner(
                 clips_selected=len(assembly_clips),
             )
 
-        music_warning = None
-        if not params.no_music:
-            # Phase 3: Music
-            _t = _time.monotonic()
-            pp.report("music", 0.0, "Generating music...")
-            music_result = _run_music_phase(
-                params,
-                assembly_clips,
-                result_path,
-                run_output_dir,
-                run_tracker,
-                encoding_plan=settings.encoding_plan,
-            )
-            _phase_times["music"] = _time.monotonic() - _t
-            music_warning = music_result.warning
-            pp.report("music", 1.0, music_warning or "Music ready")
+        music_warning, _phase_times["music"] = _complete_music_phase(
+            params,
+            assembly_clips,
+            result_path,
+            run_output_dir,
+            run_tracker,
+            settings.encoding_plan,
+            pp,
+        )
 
         final_probe = validate_output(result_path, settings.encoding_plan)
         artifact_warnings = [music_warning] if music_warning else []
@@ -665,13 +831,13 @@ def _generate_memory_inner(
             clips_selected=len(assembly_clips),
         )
 
-        # Phase 4: Upload (if requested)
-        _deliver_completed_artifact(params, result_path, run_tracker)
+        _deliver_generation(params, result_path, run_tracker)
 
         _phase_times["total"] = _time.monotonic() - _phase_start
         _log_phase_timing(_phase_times, len(assembly_clips))
 
         _report_completed_best_effort(params)
+        _emit_phase(params, run_tracker, OperationalPhase.COMPLETE, 1, 1, "Complete")
 
         return result_path
 

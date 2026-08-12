@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from immich_memories.api.compatibility import ApiVersionPolicy
 from immich_memories.config_loader import Config
+from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.tracking import DeliveryStatus
 from immich_memories.ui.state import (
     AppState,
@@ -18,6 +19,15 @@ from tests.conftest import make_clip
 
 
 class TestAppStateDefaults:
+    def test_ui_phase_adapter_uses_the_shared_event_message(self):
+        from immich_memories.ui.pages._step4_generate import _set_phase_status
+
+        label = MagicMock()
+        event = PhaseEvent(OperationalPhase.RENDER, 0, 1, "Rendering memory", 0.0)
+        _set_phase_status(label, event)
+
+        label.set_text.assert_called_once_with(event.message)
+
     """Test AppState default values."""
 
     def test_default_step(self):

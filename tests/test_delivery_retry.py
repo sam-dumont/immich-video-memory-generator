@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from immich_memories.cache.database import VideoAnalysisCache
+from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.output_contract import OutputProbe
 from immich_memories.tracking import DeliveryStatus, RunDatabase, RunMetadata, RunTracker
 from tests.conftest import make_clip
@@ -85,7 +86,7 @@ def test_fresh_database_has_delivery_state_defaults(tmp_path: Path) -> None:
         schema_version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
 
     assert row == ("not_requested", 0, None, None, None, "[]")
-    assert schema_version == 13
+    assert schema_version == 14
 
 
 def test_database_round_trip_preserves_delivery_and_automation_identity(tmp_path: Path) -> None:
@@ -718,6 +719,38 @@ def _authoritative_probe() -> OutputProbe:
     )
 
 
+def test_phase_events_refresh_completed_artifact_sidecars_without_changing_delivery_failure(
+    tmp_path: Path,
+) -> None:
+    """The database and completed-artifact sidecar retain the exact accepted outer phase."""
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"validated")
+    tracker = RunTracker("phase-sidecar", db_path=tmp_path / "runs.db", capture_system=False)
+    tracker.start_run()
+    tracker.complete_artifact(
+        output_path, _authoritative_probe(), warnings=[], delivery_requested=True
+    )
+
+    assert tracker.record_phase_event(
+        PhaseEvent(OperationalPhase.DELIVERY, 0, 1, "Delivering memory", 1.0)
+    )
+    delivery_sidecar = RunMetadata.from_json((tmp_path / "run_metadata.json").read_text())
+    assert delivery_sidecar.last_phase is OperationalPhase.DELIVERY
+    tracker.mark_delivery_pending("Immich timed out")
+    pending_database = tracker.db.get_run("phase-sidecar")
+    pending_sidecar = RunMetadata.from_json((tmp_path / "run_metadata.json").read_text())
+    assert pending_database is not None
+    assert pending_database.last_phase is OperationalPhase.DELIVERY
+    assert pending_sidecar.last_phase is OperationalPhase.DELIVERY
+
+    assert tracker.record_phase_event(PhaseEvent(OperationalPhase.COMPLETE, 1, 1, "Complete", 2.0))
+    completed_database = tracker.db.get_run("phase-sidecar")
+    completed_sidecar = RunMetadata.from_json((tmp_path / "run_metadata.json").read_text())
+    assert completed_database is not None
+    assert completed_database.last_phase is OperationalPhase.COMPLETE
+    assert completed_sidecar.last_phase is OperationalPhase.COMPLETE
+
+
 def test_tracker_completes_artifact_from_authoritative_probe_without_reprobing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1170,7 +1203,7 @@ def test_final_progress_callback_failure_is_best_effort_after_authoritative_comp
     )
 
     def raise_after_completion(phase: str, _progress: float, _message: str) -> None:
-        if phase == "done":
+        if phase == "complete":
             raise RuntimeError(f"observer failed after durable completion: {configured_literal}")
 
     params.progress_callback = raise_after_completion  # type: ignore[attr-defined]

@@ -63,6 +63,11 @@ def run_pipeline_and_generate(
     from immich_memories.cache.database import VideoAnalysisCache
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.generate import GenerationParams, assets_to_clips, generate_memory
+    from immich_memories.operations.phases import (
+        OperationalPhase,
+        PhaseEvent,
+        format_phase_progress,
+    )
     from immich_memories.tracking.models import normalize_memory_people
 
     clips = assets_to_clips(assets)
@@ -78,6 +83,19 @@ def run_pipeline_and_generate(
 
     _runner_logger = logging.getLogger(__name__)
 
+    def emit(phase: OperationalPhase, current: int, total: int, message: str) -> None:
+        progress.update(task, description=message)
+        if automation_attempt_id is None:
+            return
+        from immich_memories.automation.state_store import AutomationStateStore
+
+        try:
+            AutomationStateStore(config.cache.database_path).update_phase(
+                automation_attempt_id, PhaseEvent(phase, current, total, message, 0.0)
+            )
+        except Exception:
+            _runner_logger.warning("Could not persist operational phase '%s'", phase.value)
+
     print_success(f"{len(clips)} clips ready for generation")
 
     # WHY: ONE unified task covers the entire pipeline (analysis → generation).
@@ -87,6 +105,8 @@ def run_pipeline_and_generate(
     # (Real timing data: analysis ~83s/22%, generation ~295s/78%)
     task = progress.add_task("Analyzing clips...", total=100)
     _pipeline_start = _time.monotonic()
+    emit(OperationalPhase.DISCOVERY, len(clips), len(clips), "Discovery complete")
+    emit(OperationalPhase.DOWNLOAD, 0, len(clips), "Preparing source downloads")
 
     pipeline_config = PipelineConfig(
         hdr_only=False,
@@ -120,6 +140,7 @@ def run_pipeline_and_generate(
         )
 
     # Phase 1-3: Analyze video clips
+    emit(OperationalPhase.ANALYSIS, 0, len(clips), "Analyzing clips")
     analyzed_videos = pipeline.run_analysis(clips, progress_callback=pipeline_progress)
 
     # Merge photos into the unified selection pool (if enabled)
@@ -133,6 +154,7 @@ def run_pipeline_and_generate(
     )
 
     # Phase 4: Unified selection (videos + photos compete together)
+    emit(OperationalPhase.SELECTION, 0, len(all_candidates), "Selecting clips")
     pipeline_result = pipeline.run_selection(all_candidates)
     _analysis_time = _time.monotonic() - _pipeline_start
     selected_clips = pipeline_result.selected_clips
@@ -150,7 +172,7 @@ def run_pipeline_and_generate(
 
     def gen_progress(phase: str, frac: float, msg: str) -> None:
         scaled = 20 + int(frac * 80)
-        progress.update(task, completed=scaled, description=msg)
+        progress.update(task, completed=scaled, description=format_phase_progress(phase, msg))
 
     # WHY: Photos are now in selected_clips as IMAGE-type assets.
     # generate.py's _extract_clips will detect IMAGE type and render them.
@@ -188,6 +210,8 @@ def run_pipeline_and_generate(
         photo_assets=None,
         target_duration_seconds=duration,
         progress_callback=gen_progress,
+        phase_callback=lambda event: emit(event.phase, event.current, event.total, event.message),
+        completed_operational_phase=OperationalPhase.SELECTION,
         memory_preset_params=memory_preset_params or {},
     )
 

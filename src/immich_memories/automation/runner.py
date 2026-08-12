@@ -140,6 +140,7 @@ class AutomationStatus:
                     "memory_key": attempt.memory_key,
                     "run_id": attempt.run_id,
                     "error": attempt.error,
+                    "last_phase": attempt.last_phase.value if attempt.last_phase else None,
                 }
                 if attempt
                 else None
@@ -689,11 +690,12 @@ class AutoRunner:
     def retry_pending_delivery(
         self,
         attempt: AutomationAttempt,
+        pending: RunMetadata,
         *,
         dry_run: bool,
-    ) -> AutoRunResult | None:
-        """Retry the oldest deliverable auto artifact, if one exists."""
-        return self._pending_delivery_retry().run(attempt, dry_run=dry_run)
+    ) -> AutoRunResult:
+        """Retry one executable artifact selected by the one daily preflight."""
+        return self._pending_delivery_retry().run(attempt, pending, dry_run=dry_run)
 
     def _pending_delivery_retry(self) -> PendingDeliveryRetry:
         """Bind this runner's durable collaborators to one retry state machine."""
@@ -708,18 +710,17 @@ class AutoRunner:
     def _prepare_pending_delivery_retry(
         self,
         attempt: AutomationAttempt,
-    ) -> AutoRunResult | None:
-        """Run the one retry preflight before selecting its queued artifact."""
+    ) -> tuple[RunMetadata | None, AutoRunResult | None]:
+        """Preflight once and select one executable retry artifact exactly once."""
         if not self.db.count_pending_deliveries(source="auto"):
-            return None
+            return None, None
         preflight = self._check_immich_preflight()
         preflight_error = self._preflight_error(preflight)
-        if preflight_error is None:
-            self._prepared_immich_preflight = preflight
-            return None
         pending = self.db.get_oldest_pending_delivery(source="auto")
+        if preflight_error is None:
+            return pending, None
         if pending is not None and pending.output_path is not None:
-            return self._pending_delivery_retry().finish(
+            return None, self._pending_delivery_retry().finish(
                 attempt,
                 AutoOutcome.FAILED,
                 "Immich preflight failed",
@@ -727,7 +728,7 @@ class AutoRunner:
                 output_path=Path(pending.output_path),
                 error=preflight_error,
             )
-        return self._finish(
+        return None, self._finish(
             attempt,
             AutoOutcome.FAILED,
             "Immich preflight failed",
@@ -857,13 +858,13 @@ class AutoRunner:
         candidate: MemoryCandidate | None = None
 
         try:
-            preflight_result = self._prepare_pending_delivery_retry(attempt)
+            self.state.record_discovery(attempt.id)
+            pending_retry, preflight_result = self._prepare_pending_delivery_retry(attempt)
             if preflight_result is not None:
                 return preflight_result
 
-            retry_result = self.retry_pending_delivery(attempt, dry_run=dry_run)
-            if retry_result is not None:
-                return retry_result
+            if pending_retry is not None:
+                return self.retry_pending_delivery(attempt, pending_retry, dry_run=dry_run)
 
             effective_cooldown = _resolve_cooldown_hours(
                 cooldown_hours,

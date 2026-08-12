@@ -24,6 +24,7 @@ from immich_memories.automation.system_scheduler import SchedulerStatus
 from immich_memories.automation.variety import RejectedCandidate, VarietyDecision
 from immich_memories.cli import main
 from immich_memories.config_loader import Config
+from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.tracking.models import DeliveryStatus, RunMetadata
 from immich_memories.tracking.run_database import RunDatabase
 
@@ -83,6 +84,10 @@ def test_status_json_reports_durable_attempt_rotation_and_scheduler(tmp_path: Pa
     config = _config(tmp_path)
     state = AutomationStateStore(config.cache.database_path)
     attempt = state.start_attempt("daily wake")
+    state.update_phase(
+        attempt.id,
+        PhaseEvent(OperationalPhase.ANALYSIS, 2, 10, "Analyzing clips", 3.5),
+    )
     state.finish_attempt(
         attempt.id,
         AutoOutcome.FAILED,
@@ -148,6 +153,7 @@ def test_status_json_reports_durable_attempt_rotation_and_scheduler(tmp_path: Pa
     }
     assert payload["last_attempt"]["outcome"] == "failed"
     assert payload["last_attempt"]["error"] == "connection refused"
+    assert payload["last_attempt"]["last_phase"] == "analysis"
     assert payload["last_completed_auto_run"]["run_id"] == "trip-run"
     assert payload["recent_categories"] == ["trip", "birthday"]
     assert payload["cooldown"]["hours"] == 24

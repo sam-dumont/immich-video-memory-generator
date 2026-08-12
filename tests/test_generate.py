@@ -247,6 +247,135 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
     extract_clips.assert_called_once()
     assert extract_clips.call_args.args[1] is cache_batch
     video_cache.evict_old.assert_not_called()
+    phase_events = [call.args[0] for call in tracker.record_phase_event.call_args_list]
+    phase_names = [event.phase.value for event in phase_events]
+    assert list(dict.fromkeys(phase_names)) == [
+        "discovery",
+        "download",
+        "analysis",
+        "selection",
+        "render",
+        "music",
+        "delivery",
+        "complete",
+    ]
+    assert [event.phase.order for event in phase_events] == sorted(
+        event.phase.order for event in phase_events
+    )
+    download = [event for event in phase_events if event.phase.value == "download"]
+    assert download[0].message == "Preparing sources"
+    assert download[0].total == 1
+    assert download[-1].elapsed_seconds >= 0.0
+
+
+def test_pipeline_handoff_generation_keeps_outer_phase_sequence_monotonic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Generation resumes after pipeline selection without re-announcing source work."""
+    from immich_memories import generate as generate_module
+    from immich_memories.generate import generate_memory
+    from immich_memories.operations.phases import OperationalPhase
+    from immich_memories.processing import output_contract
+    from immich_memories.processing.assembly_config import AssemblyClip, AssemblySettings
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source-video")
+    config = Config(
+        cache={"directory": str(tmp_path / "cache"), "database": str(tmp_path / "runs.db")}
+    )
+    observed = []
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=tmp_path / "memory.mp4",
+        config=config,
+        no_music=True,
+        completed_operational_phase=OperationalPhase.SELECTION,
+        phase_callback=observed.append,
+    )
+
+    class Assembler:
+        def assemble_with_titles(self, _clips, output_path: Path, _callback, **_kwargs) -> Path:
+            output_path.write_bytes(b"assembled-video")
+            return output_path
+
+    def run_probe(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 0, json.dumps(_final_probe_payload()), "")
+
+    monkeypatch.setattr(output_contract.subprocess, "run", run_probe)
+    tracker = MagicMock()
+    video_cache = MagicMock()
+    cache_batch = MagicMock()
+    video_cache.begin_batch.return_value.__enter__.return_value = cache_batch
+    with (
+        patch("immich_memories.tracking.RunTracker", return_value=tracker),
+        patch("immich_memories.cache.video_cache.VideoDownloadCache", return_value=video_cache),
+        patch.object(
+            generate_module,
+            "_extract_clips",
+            return_value=[AssemblyClip(path=source, duration=5.0, asset_id="clip-1")],
+        ),
+        patch.object(
+            generate_module,
+            "_build_assembly_settings",
+            return_value=AssemblySettings(encoding_plan=_h264_output_plan()),
+        ),
+        patch.object(generate_module, "_create_assembler", return_value=Assembler()),
+        patch.object(generate_module, "_run_music_phase"),
+        patch.object(generate_module, "_cleanup_temp_clips"),
+    ):
+        generate_memory(params)
+
+    assert [event.phase for event in observed] == [
+        OperationalPhase.RENDER,
+        OperationalPhase.RENDER,
+        OperationalPhase.MUSIC,
+        OperationalPhase.DELIVERY,
+        OperationalPhase.COMPLETE,
+    ]
+    assert all(event.phase.order > OperationalPhase.SELECTION.order for event in observed)
+
+
+def test_pipeline_handoff_seeds_selection_before_generation_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A handoff run retains selection if source preparation fails before render."""
+    from immich_memories import generate as generate_module
+    from immich_memories.automation.state_store import AutomationStateStore
+    from immich_memories.generate import generate_memory
+    from immich_memories.operations.phases import OperationalPhase
+    from immich_memories.tracking.run_database import RunDatabase
+
+    database_path = tmp_path / "runs.db"
+    config = Config(cache={"directory": str(tmp_path / "cache"), "database": str(database_path)})
+    attempt = AutomationStateStore(database_path).start_attempt("daily wake")
+    observed = []
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=tmp_path / "memory.mp4",
+        config=config,
+        no_music=True,
+        completed_operational_phase=OperationalPhase.SELECTION,
+        automation_attempt_id=attempt.id,
+        phase_callback=observed.append,
+    )
+    monkeypatch.setattr(
+        generate_module,
+        "_extract_clips",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            GenerationError("source preparation failed")
+        ),
+    )
+
+    with pytest.raises(GenerationError, match="source preparation failed"):
+        generate_memory(params)
+
+    run = RunDatabase(database_path).list_runs()[0]
+    persisted_attempt = AutomationStateStore(database_path).get_last_attempt()
+    assert run.status == "failed"
+    assert run.last_phase is OperationalPhase.SELECTION
+    assert persisted_attempt is not None
+    assert persisted_attempt.last_phase is OperationalPhase.SELECTION
+    assert observed == []
 
 
 def test_generation_validation_failure_preserves_old_final_and_stops_downstream_work(
@@ -716,6 +845,25 @@ class TestPhaseAllocation:
 
         assert calls == sorted(calls), f"Progress not monotonic: {calls}"
         assert calls[-1] == 1.0
+
+    def test_pipeline_handoff_never_reports_download_to_visible_progress_after_selection(self):
+        """CLI/UI callbacks retain selection while generation prepares its local sources."""
+        from immich_memories.generate import _PipelineProgress, _wrap_progress_callback
+        from immich_memories.operations.phases import OperationalPhase
+
+        visible: list[tuple[str, str]] = []
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/out.mp4"),
+            config=Config(),
+            completed_operational_phase=OperationalPhase.SELECTION,
+            progress_callback=lambda phase, _pct, message: visible.append((phase, message)),
+        )
+        params.progress_callback = _wrap_progress_callback(params)
+
+        _PipelineProgress(params, clip_count=1).report("download", 0.0, "Downloading clips")
+
+        assert visible == [("selection", "Downloading clips")]
 
     def test_assembly_callback_none_without_progress(self):
         """If no progress_callback on params, assembly callback should be None."""

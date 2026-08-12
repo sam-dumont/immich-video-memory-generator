@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 
 class TestScheduleEntryConfig:
     """Slice 1: Schedule entry and scheduler config models."""
@@ -300,3 +302,18 @@ class TestSchedulerCLI:
         assert result.exit_code == 0
         # Should indicate disabled since default config has scheduler.enabled=False
         assert "disabled" in result.output.lower() or "not enabled" in result.output.lower()
+
+    @pytest.mark.parametrize("subcommand", ["list", "status", "start"])
+    def test_explicit_scheduler_subcommand_recommends_auto_run_on_stderr(
+        self, subcommand: str
+    ) -> None:
+        from click.testing import CliRunner
+
+        from immich_memories.cli import main
+
+        result = CliRunner().invoke(main, ["scheduler", subcommand])
+
+        assert result.exit_code == 0
+        assert "auto run is recommended" in result.stderr
+        assert "immich-memories auto --help" in result.stderr
+        assert result.stderr.count("auto run is recommended") == 1

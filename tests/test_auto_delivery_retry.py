@@ -14,6 +14,7 @@ from immich_memories.automation.candidates import CandidateCategory, MemoryCandi
 from immich_memories.automation.models import AutoAction, AutoOutcome, ProcessResult
 from immich_memories.automation.runner import AutoRunner
 from immich_memories.config_loader import Config
+from immich_memories.operations.phases import OperationalPhase
 from immich_memories.tracking import DeliveryStatus, RunMetadata
 
 
@@ -605,6 +606,43 @@ def test_pending_delivery_count_is_source_scoped_and_keeps_missing_artifacts(
     assert Path(existing.output_path or "").is_file()
     assert runner.db.count_pending_deliveries(source="auto") == 2
     assert runner.db.count_pending_deliveries(source="manual") == 1
+
+
+def test_missing_pending_artifact_stays_at_discovery_not_delivery(tmp_path: Path) -> None:
+    """A queue row alone must not make a retry-only attempt claim delivery work."""
+    runner = AutoRunner(_config(tmp_path))
+    pending = _save_pending_auto_run(runner, tmp_path, run_id="missing-artifact")
+    Path(pending.output_path or "").unlink()
+
+    with patch.object(runner, "suggest", return_value=[]):
+        runner.run_one(force=True)
+
+    attempt = runner.state.get_last_attempt()
+    assert attempt is not None
+    assert attempt.last_phase is OperationalPhase.DISCOVERY
+
+
+def test_executable_pending_artifact_advances_retry_attempt_to_delivery(tmp_path: Path) -> None:
+    """Delivery status begins only after an existing regular output is selected."""
+    runner = AutoRunner(_config(tmp_path))
+    pending = _save_pending_auto_run(runner, tmp_path, run_id="executable-artifact")
+
+    original_get = runner.db.get_oldest_pending_delivery
+    with (
+        patch.object(runner.db, "get_oldest_pending_delivery", wraps=original_get) as select,
+        patch("immich_memories.api.immich.SyncImmichClient") as client_type,
+    ):
+        client = client_type.return_value
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.upload_memory.side_effect = RuntimeError("transport down")
+        runner.run_one(force=True)
+
+    attempt = runner.state.get_last_attempt()
+    assert attempt is not None
+    assert attempt.last_phase is OperationalPhase.DELIVERY
+    assert attempt.run_id == pending.run_id
+    select.assert_called_once_with(source="auto")
 
 
 def test_initial_automation_upload_uses_the_retry_album_provenance(tmp_path: Path) -> None:
