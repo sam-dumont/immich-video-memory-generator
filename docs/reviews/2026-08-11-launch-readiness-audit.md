@@ -520,3 +520,26 @@ was made.
 
 The generated `tests/perf-results.json` and `tests/benchmark-assembly.json` were inspected and then
 restored to their exact pre-run SHA-256 hashes. The benchmark left no source or fixture changes.
+
+### CI-equivalent local gate
+
+The complete local gate ran on `74c8ab7193c93789313138410ca16c3398c46248` before publishing the
+branch:
+
+- Source/policy: Ruff, format, mypy, file length, Xenon, complexipy, Vulture, Bandit, refurb,
+  deptry, import-linter, jscpd, critique, and pip-audit all passed.
+- Commit messages passed Commitizen validation for `origin/main..HEAD`.
+- Semgrep ran 777 rules over 249 tracked files with zero findings.
+- The focused Docker, benchmark, and workflow contracts passed 72 tests.
+- The hermetic launch gate passed 4,235 tests with 7 skips and 658 deliberate deselections.
+- The launch package built as `0.37.2.dev142`; every existing and new wheel/sdist passed Twine.
+- The Docusaurus production build passed.
+- Fake-Immich and Chromium launch E2E passed 24 tests, including a real rendered video.
+- The exact coverage job passed the same 4,235 tests at 71.99% branch coverage (minimum 65%).
+- `diff-cover-ci` followed repository policy and skipped changed-line scoring because this launch
+  refactor changes 10,901 source lines, above the 1,000-line safety threshold.
+
+After removing only the generated Bandit/JUnit reports, the index and tracked worktree were clean;
+the owner's pre-existing untracked `MagicMock/` directory remained untouched. The installed
+LaunchAgent remained unloaded. Cross-platform Python and Docker-image variance is left for the
+required GitHub matrix in the next promotion step.
