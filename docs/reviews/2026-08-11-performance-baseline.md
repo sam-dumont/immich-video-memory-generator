@@ -117,3 +117,87 @@ All five required conditions must pass; they do not.
 No representative real-library run was configured, so none was attempted. It cannot turn this into
 an approval because controlled condition 1 already fails. No Cython dependency or build configuration
 was added.
+
+## P1 Task 8 final comparison
+
+The controlled assembly benchmark was rerun after the structural changes with the same Apple M5
+Max, macOS 26.5.1, Python 3.12.11, warm-cache fixture identities, codecs, frame rates, resolutions,
+durations, warm-up, and three-repetition contract as the baseline.
+
+```bash
+uv run pytest tests/integration/assembly/test_perf_assembly.py -q -m integration
+```
+
+Result: 4 passed in 75.07 seconds. The generated JSON was inspected for comparison and restored to
+its tracked content; it is not committed benchmark evidence.
+
+| Scenario | Baseline median | Final warm-up | Final measured wall seconds | Final median | Change |
+|---|---:|---:|---:|---:|---:|
+| `minimal` | 0.776s | 0.744s | 0.688, 0.685, 0.699 | 0.688s | 11.3% faster |
+| `typical` | 4.214s | 4.160s | 4.075, 4.222, 4.151 | 4.151s | 1.5% faster |
+| `heavy` | 12.474s | 12.699s | 12.756, 13.317, 13.002 | 13.002s | 4.2% slower |
+
+The minimal and typical changes are improvements. The heavy result is a regression watch item,
+not a win: one three-sample local run is insufficient to distinguish a stable 4.2% regression from
+host noise. The CI comparison therefore remains advisory until it has ten histories with matching
+workload and environment identity. The benchmark name includes that identity, so the comparison
+action cannot silently select a run from different hardware.
+
+No before/after peak-memory claim is made. The baseline's child-process RSS field is a
+process-lifetime high-water mark on macOS and cannot be compared per repetition without a different
+measurement method.
+
+The deterministic structural gate passed 70 tests:
+
+```bash
+uv run pytest tests/test_pipeline_efficiency.py tests/test_download_coordinator.py \
+  tests/test_probe_cache.py tests/test_video_cache.py -q
+```
+
+| Contract | Final evidence |
+|---|---|
+| Cache maintenance | A batch of 20 downloads performs one manifest scan; legacy per-download global eviction is not called. |
+| Download overlap | Six 100ms downloads use at most three workers, finish under 350ms, retain input order, and close each worker-owned client. |
+| Probe reuse | Duration, resolution, codec, HDR, audio, rotation, and frame rate share one ffprobe process for an unchanged file; changed identity triggers a new probe. |
+| Analyzer lifecycle | Reusable analysis services close once per batch, including failure paths; full GC is no longer forced per clip. |
+
+The live pipeline benchmark remains unrun because its module imports and probes the configured
+personal Immich server. Running it would violate the isolation rule. No personal library was read,
+generated from, or uploaded to for this comparison.
+
+### Daily trip-discovery input cache
+
+The final P1 pass also closed the repeated full-year trip query. `auto run` now fingerprints the
+Immich server, API-key scope, and monthly bucket counts, stores a seven-day rolling-coverage
+snapshot with an atomic replacement, and hashes rather than stores the server URL and credential.
+Each read validates the serialized `Asset` models and both coverage boundaries, then filters them
+to the current day's one-year window. Before reuse, a one-result `updatedAfter` search checks for
+same-count replacements and edits to GPS, city, timestamp, or other asset metadata. A changed
+fingerprint, newer metadata, expired or undersized coverage, malformed JSON, a failed freshness
+probe, or a failed write falls back to the normal Immich query.
+
+The eleven cache-specific tests and the 293-test automation/API/status/storage neighborhood passed.
+They include credential separation, same-count metadata edits, rolling coverage, corrupt input,
+freshness failure, failed atomic replacement, and concurrent writers. Independent re-review found
+no Critical or Important issues. This change does not affect the controlled assembly timings above;
+it removes redundant Immich API work from the daily suggestion path.
+
+## Final launch verification
+
+After fixing the regressions found during the repeated full-suite and independent-review passes,
+the complete command was rerun from the start:
+
+```bash
+make launch-check
+uv run pytest tests/test_operational_phases.py tests/test_storage_report.py -q
+```
+
+The final result is 4,232 passed, 7 skipped, and 658 deselected in the full suite; 13 additional
+operational/storage tests passed. Ruff, formatting across 510 Python files, mypy across 244 source
+files, complexity, and the 1,000-line hard limit passed. The `0.37.2.dev138` wheel and sdist built
+and passed Twine validation. The production documentation build passed. The required hermetic E2E
+gate passed 24 tests, including a real Chromium render and output probe against the local fake
+Immich v3 service.
+
+The preserved `com.immich-memories.auto` LaunchAgent remains unloaded. The gate did not read from,
+generate from, or upload to the personal Immich library, and it performed no storage cleanup.

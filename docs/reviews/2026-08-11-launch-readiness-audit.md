@@ -1,8 +1,8 @@
 ---
-date: 2026-08-11
-branch: codex/launch-hardening
+date: 2026-08-12
+branch: codex/encoding-delivery-final
 scope: launch readiness, automation, performance, Immich v2/v3 compatibility, and user flow
-verdict: all identified P0 launch blockers are closed; P1 performance and operations work remains
+verdict: all identified P0 and P1 launch work is closed; promote to public beta after intentional scheduler activation
 ---
 
 # Launch Readiness Audit — 2026-08-11
@@ -13,9 +13,10 @@ The original review found the application close to a public beta but unsafe for 
 stable launch. The blockers were contract failures around automation, Immich v3, output encoding,
 versioning, and browser E2E—not a need to rewrite the video engine or compile Python with Cython.
 
-Those P0 blockers are now closed and independently reviewed. The complete launch-candidate gate
-passes. P1 still contains measured performance work and operational-flow cleanup, so this is a
-launch candidate rather than an excuse to skip the remaining work.
+Those P0 blockers and the approved P1 performance/operations work are now closed. The complete
+launch gate passes. This checkout is suitable for promotion to a public beta. Unattended operation
+still requires the owner to intentionally load the preserved daily scheduler; this review does not
+silently turn it back on.
 
 The most urgent problem was operational: the installed daily automation could report success
 without producing a new video, retry bad candidates every day, and generate files without a
@@ -59,23 +60,42 @@ approval. Its plist remains on disk and nothing was deleted.
   oldest pending artifact before new generation, and the UI uses the same authoritative run.
 - **P0 release gate: passed.** See the exact command evidence below. Documentation review also
   closed the one reported stable-JSON example omission.
+- **P1 performance: fixed, measured, and independently reviewed.** Cache maintenance now scans
+  once per batch, downloads prefetch through three bounded worker-owned clients, analyzers live for
+  one batch rather than one clip, unchanged media metadata shares one ffprobe result per run, and
+  unchanged trip-discovery inputs reuse a validated, freshness-checked trailing-year snapshot
+  instead of paginating through the same assets every day. The deterministic structural gate
+  passed 70 tests. Controlled medians changed from
+  0.776/4.214/12.474 seconds to 0.688/4.151/13.002 seconds for minimal/typical/heavy workloads.
+  The heavy +4.2% result remains a regression watch item, not a claimed improvement.
+- **P1 profiling/CI: fixed and independently approved.** Controlled cold/warm profiles found
+  FFmpeg/pipe I/O and native NumPy/OpenCV work, not a material pure-Python hotspot. The recorded
+  decision is `no Cython`. Benchmark alerts require ten comparable histories, and both the gate
+  and benchmark name bind comparisons to workload and environment identity.
+- **P1 operational flow: fixed and independently approved.** CLI, UI, run history, and automation
+  share discovery/download/analysis/selection/render/music/delivery/complete phases. Failed
+  uploads stay retryable. `runs storage` is read-only. Legacy exact scheduling warns operators to
+  use one daily `auto run` entry point.
+- **P1 deployment guidance: fixed.** An unauthenticated non-loopback UI bind prints a startup
+  warning. README, user, Docker, Kubernetes, Terraform, and authentication docs state that the UI
+  is single-user, single-replica and must not be exposed with authentication disabled.
 
-The LaunchAgent remains unloaded by explicit owner instruction. P0 completion does not reactivate
+The LaunchAgent remains unloaded by explicit owner instruction. Completion does not reactivate
 it; loading the job is a separate action that was not requested.
 
-## Final P0 gate evidence — 2026-08-12
+## Final P0 + P1 gate evidence — 2026-08-12
 
 | Check | Result |
 |---|---|
-| Full pytest suite | 4,084 passed, 7 skipped, 658 deselected, 20 warnings |
+| Full pytest suite | 4,232 passed, 7 skipped, 658 deselected, 20 warnings |
 | Required hermetic browser E2E | 24 passed, 0 skipped; Chromium rendered and probed a real video |
-| Ruff | Clean; 497 Python files already formatted |
-| Mypy | Clean across 237 source files |
-| Import contracts | 2 kept, 0 broken across 328 files and 2,033 dependencies |
-| Documentation contracts | 39 passed |
+| Ruff | Clean; 510 Python files already formatted |
+| Mypy | Clean across 244 source files |
+| Structural performance gate | 70 passed |
+| Trip-cache automation/API neighborhood | 293 passed, 16 deselected |
+| Operational phase/storage gate | 13 passed |
 | Docusaurus production build | Passed |
-| Package build | Wheel and sdist built; Twine accepted both |
-| Version consistency | CLI, Python, and wheel metadata all `0.37.2.dev113` |
+| Package build | `0.37.2.dev138` wheel and sdist built; Twine accepted both |
 | Installed LaunchAgent | Not loaded; `launchctl print` exited 113 with “Could not find service” |
 
 The plist is still present at
@@ -323,23 +343,24 @@ Closed result:
 - A tiny full flow validates an actual output artifact and the configured codec.
 - Screenshot maintenance no longer hides selector failures.
 
-## P1 — important after P0
+## P1 — closed after P0
 
 ### P1.1 — Performance work should target measured I/O and FFmpeg costs
 
-Confirmed opportunities:
+Closed changes:
 
-- `ClipAnalyzer.phase_analyze()` is sequential and forces `gc.collect()` per clip.
-- `VideoDownloadCache.download_or_get()` recursively scans for eviction after every
-  download, making a batch cost roughly downloads × cache files.
-- Clip extraction is sequential.
-- Analysis/probe results and heavyweight analyzers can be reused more aggressively.
-- Trip detection can fetch about 13,151 assets through many paginated requests every day.
-- Title insertion and assembly need profiling for avoidable re-encodes.
-
-Plan: fix the benchmark, capture cold/warm baselines, then add bounded concurrency, batch
-cache maintenance, metadata reuse, analyzer reuse, and trip-input caching. Cython is out of
-scope unless a later profile finds material pure-Python CPU time.
+- Cache maintenance scans once at batch start rather than after every download.
+- Three worker-owned clients overlap network downloads; FFmpeg extraction stays sequential.
+- Analysis services reset per video and close once per batch; full GC is not forced per clip.
+- One per-run probe cache supplies duration, resolution, codec, HDR, audio, rotation, and frame
+  rate for unchanged media.
+- Trip discovery hashes the server, API-key scope, and monthly bucket counts without persisting
+  either secret. A cache hit is reused only after a one-result `updatedAfter` query confirms that
+  Immich metadata has not changed. Both rolling-window boundaries are validated against a seven-day
+  coverage horizon. Corruption, expiry, a freshness error, or a failed write falls back to the full
+  Immich query. The final independent review found no Critical or Important issues.
+- Controlled profiles and exact before/after medians are saved in the performance review.
+- Cython was rejected because the measured pure-Python wrappers remain below 5% end-to-end.
 
 ### P1.2 — The built-in exact scheduler is a second, weaker product
 
@@ -353,9 +374,9 @@ Confirmed defects in the legacy daemon:
 - Album templates can be passed literally.
 - Docker starts only the UI and does not supervise this daemon.
 
-Decision: do not build a second scheduling platform. Keep it for one compatibility release
-with a deprecation warning, remove it from setup documentation, then delete it. External
-timers invoke the canonical `auto run` command.
+Closed decision: do not build a second scheduling platform. The legacy commands remain for one
+compatibility release but print a deprecation warning. Setup documentation uses external timers
+that invoke the canonical `auto run` command.
 
 ### P1.3 — The main flow hides expensive work and operational state
 
@@ -363,20 +384,39 @@ The four-page UI is coherent, but Step 2 hides discovery, analysis, selection, a
 behind a broad loading state. In-process session state also means restarts lose the workflow
 and multiple UI replicas are unsafe.
 
-Required improvements:
+Closed improvements:
 
-- Show `connect → discover → choose → download → analyze → assemble → validate → deliver`.
-- Show counts, elapsed time, cache hits, chosen candidate/reason, and output path.
-- Add automation status: last wake, decision, success, failure, pending delivery, cooldown,
-  category history, and output directory usage.
-- Document the single-user/single-replica UI model.
+- One shared operational phase model now drives CLI, UI, automation, and run status.
+- Failures retain their actual phase; a failed delivery retains the validated output and becomes
+  the next automatic retry before new rendering.
+- Automation status exposes the last attempt/phase, decision, failure, pending delivery, cooldown,
+  category history, and candidate rejections.
+- `runs storage` classifies configured output/cache roots without deleting or changing anything.
 
-### P1.4 — Deployment exposure guidance remains
+### P1.4 — Deployment exposure guidance — closed
 
 P0 fixed the Docker home/mount mismatch, made optional dependency selection fail closed, and split
-process liveness from dependency readiness. The remaining P1 work is narrower: keep the
-`0.0.0.0` plus disabled-auth exposure warning prominent in deployment entry points, and document
-the single-user/single-replica UI model alongside it.
+process liveness from dependency readiness. P1 adds a startup warning for non-loopback binds with
+authentication disabled. Every main deployment entry point now says the UI is single-user,
+single-replica and explains that a shared secret or volume does not make multiple replicas safe.
+
+## Read-only storage audit — 2026-08-12
+
+The final storage report inspected only configured roots and did not change the database or delete,
+rename, or upload anything.
+
+| Area | Bytes | Approximate size | Files |
+|---|---:|---:|---:|
+| Total classified storage | 6,700,673,589 | 6.24 GiB | 3,357 |
+| Preview cache | 5,455,153,242 | 5.08 GiB | 267 |
+| Thumbnails | 546,883,272 | 0.51 GiB | 2,729 |
+| Video cache | 534,583,336 | 0.50 GiB | 6 |
+| `photos_test` | 164,053,739 | 0.15 GiB | 355 |
+
+The report found four unknown cache directories and one empty orphan output directory:
+`/Users/sam/Videos/Memories/everyone_june_2024_memories_20260811_205324_8b49`. It remains in place.
+The configured output root also contains a 75,780-byte `.DS_Store`; there are no material loose
+video files there. Cleanup remains a separate owner-approved operation.
 
 ## Approved product direction
 
