@@ -6,6 +6,7 @@ from AppState, delegates pipeline work, then shows output.
 
 from __future__ import annotations
 
+import base64
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -21,7 +22,7 @@ from immich_memories.ui.components import (
     im_info_card,
     im_separator,
 )
-from immich_memories.ui.nicegui_compat import io_bound_result
+from immich_memories.ui.nicegui_compat import io_bound_result, run_ui_observer
 
 if TYPE_CHECKING:
     from immich_memories.processing.encoding_plan import EncodingPlan
@@ -68,6 +69,74 @@ def _request_cancel(state, cancel_btn: ui.button | None, status_label) -> None:
         cancel_btn.set_text("Cancelling...")
         cancel_btn.disable()
     status_label.set_text("Cancel requested — stopping after current phase...")
+
+
+def _write_progress_ui(progress_bar, status_label, progress: float, message: str) -> bool:
+    """Update progress widgets unless their NiceGUI client has disappeared."""
+
+    def write() -> None:
+        progress_bar.value = progress
+        status_label.set_text(message)
+
+    return run_ui_observer(write, description="generation progress UI")
+
+
+def _write_phase_ui(status_label, message: str) -> bool:
+    """Update the current phase unless its NiceGUI client has disappeared."""
+    return run_ui_observer(
+        lambda: status_label.set_text(message),
+        description="generation phase UI",
+    )
+
+
+def _write_preview_ui(preview_image, jpeg_bytes: bytes) -> bool:
+    """Update the frame preview unless its NiceGUI client has disappeared."""
+    source = f"data:image/jpeg;base64,{base64.b64encode(jpeg_bytes).decode()}"
+
+    def write() -> None:
+        preview_image.source = source
+
+    return run_ui_observer(write, description="generation preview UI")
+
+
+def _write_completion_ui(
+    run_id_label,
+    progress_bar,
+    status_label,
+    cancel_btn,
+    output_container,
+    result_path: Path,
+    state,
+) -> bool:
+    """Render completed-artifact facts unless the NiceGUI client disconnected."""
+
+    def write() -> None:
+        run_id_label.set_text(f"Output: {result_path.parent.name}")
+        progress_bar.value = 1.0
+        status_label.set_text("Complete!")
+        cancel_btn.set_visibility(False)
+        _show_output(output_container, result_path, state)
+
+    return run_ui_observer(write, description="generation completion UI")
+
+
+def _write_failure_ui(
+    cancel_btn,
+    progress_container,
+    notice: str,
+    *,
+    artifact_completed: bool,
+) -> bool:
+    """Render failure facts unless the NiceGUI client disconnected."""
+
+    def write() -> None:
+        ui.notify(notice, type="warning" if artifact_completed else "negative")
+        cancel_btn.set_visibility(False)
+        progress_container.clear()
+        with progress_container:
+            im_info_card(notice, variant="warning" if artifact_completed else "error")
+
+    return run_ui_observer(write, description="generation failure UI")
 
 
 # Maps UI labels from step3_options → GenerationParams values
@@ -268,17 +337,13 @@ async def run_generation(
         def on_progress(phase: str, progress: float, msg: str) -> None:
             if state.cancel_requested:
                 raise GenerationError("Generation cancelled by user")
-            progress_bar.value = progress
-            status_label.set_text(msg)
+            _write_progress_ui(progress_bar, status_label, progress, msg)
 
         def on_phase(event) -> None:
-            status_label.set_text(event.message)
+            _write_phase_ui(status_label, event.message)
 
         def on_frame_preview(jpeg_bytes: bytes) -> None:
-            import base64
-
-            b64 = base64.b64encode(jpeg_bytes).decode()
-            preview_image.source = f"data:image/jpeg;base64,{b64}"
+            _write_preview_ui(preview_image, jpeg_bytes)
 
         params = _build_generation_params(state, selected_clips, effective_output_path)
         params.progress_callback = on_progress
@@ -302,12 +367,15 @@ async def run_generation(
         state.output_path = result_path
         persisted = _read_persisted_run(run_tracker)
         _restore_completed_ui_state(state, persisted, result_path)
-        run_id_label.set_text(f"Output: {result_path.parent.name}")
-
-        progress_bar.value = 1.0
-        status_label.set_text("Complete!")
-        cancel_btn.set_visibility(False)
-        _show_output(output_container, result_path, state)
+        _write_completion_ui(
+            run_id_label,
+            progress_bar,
+            status_label,
+            cancel_btn,
+            output_container,
+            result_path,
+            state,
+        )
 
     except Exception as e:  # WHY: UI graceful degradation
         safe_msg = _safe_ui_error_message(e, state.config)
@@ -326,16 +394,15 @@ async def run_generation(
             _restore_completed_ui_state(state, persisted)
             logger.error("Completion screen failed after artifact publication")
             notice = f"Video saved, but the completion screen failed: {safe_msg}"
-            notice_type = "warning"
         else:
             logger.error("Video generation failed: %s", safe_msg)
             notice = f"Generation failed: {safe_msg}"
-            notice_type = "negative"
-        ui.notify(notice, type=notice_type)
-        cancel_btn.set_visibility(False)
-        progress_container.clear()
-        with progress_container:
-            im_info_card(notice, variant="warning" if artifact_completed else "error")
+        _write_failure_ui(
+            cancel_btn,
+            progress_container,
+            notice,
+            artifact_completed=artifact_completed,
+        )
 
 
 async def finalize_ui_generation(
