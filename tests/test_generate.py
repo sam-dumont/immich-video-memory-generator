@@ -162,11 +162,13 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
             "database": str(tmp_path / "runs.db"),
         }
     )
+    phase_events = []
     params = GenerationParams(
         clips=[make_clip("clip-1")],
         output_path=tmp_path / "memory.mp4",
         config=config,
         no_music=True,
+        phase_callback=phase_events.append,
     )
     assembled_paths: list[Path] = []
     encoding_plan = EncodingPlan(
@@ -247,6 +249,29 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
     run_probe_cache = extract_clips.call_args.kwargs["probe_cache"]
     assert build_settings.call_args.kwargs["probe_cache"] is run_probe_cache
     assert create_assembler.call_args.kwargs["probe_cache"] is run_probe_cache
+    phase_names = [event.phase.value for event in phase_events]
+    assert list(dict.fromkeys(phase_names)) == [
+        "discovery",
+        "download",
+        "analysis",
+        "selection",
+        "render",
+        "music",
+        "delivery",
+        "complete",
+    ]
+    assert [event.phase.order for event in phase_events] == sorted(
+        event.phase.order for event in phase_events
+    )
+    assert phase_events[1].current == phase_events[1].total == 0
+    assert next(event for event in phase_events if event.phase.value == "music").message == (
+        "Music disabled"
+    )
+    assert next(event for event in phase_events if event.phase.value == "delivery").message == (
+        "Delivery not requested"
+    )
+    render_messages = [event.message for event in phase_events if event.phase.value == "render"]
+    assert render_messages == ["Rendering memory", "Sources prepared", "Render complete"]
 
 
 def test_generation_validation_failure_preserves_old_final_and_stops_downstream_work(

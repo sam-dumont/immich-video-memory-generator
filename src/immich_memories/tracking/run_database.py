@@ -11,6 +11,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, NoReturn
 
+from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.tracking.models import (
     DeliveryStatus,
     PhaseStats,
@@ -90,6 +91,11 @@ def row_to_run(row: sqlite3.Row) -> RunMetadata:
         ),
         source=_row_value(row, "source", "manual"),
         automation_attempt_id=_row_value(row, "automation_attempt_id"),
+        last_phase=(
+            OperationalPhase(_row_value(row, "last_phase"))
+            if _row_value(row, "last_phase")
+            else None
+        ),
         person_name=row["person_name"],
         person_id=row["person_id"],
         date_range_start=(
@@ -187,12 +193,13 @@ class RunDatabase:
                     run_id, created_at, completed_at, status,
                     memory_type, memory_key, memory_category, memory_people_json, source,
                     automation_attempt_id,
+                    last_phase,
                     person_name, person_id, date_range_start, date_range_end,
                     target_duration_minutes, output_path, output_size_bytes,
                     output_duration_seconds, clips_analyzed, clips_selected,
                     errors_count, system_info, delivery_status, delivery_attempts,
                     delivery_error, immich_asset_id, delivery_album, warnings_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(run_id) DO NOTHING
                 """,
                 (
@@ -206,6 +213,7 @@ class RunDatabase:
                     json.dumps(normalize_memory_people(run.memory_people)),
                     run.source,
                     run.automation_attempt_id,
+                    run.last_phase.value if run.last_phase else None,
                     run.person_name,
                     run.person_id,
                     run.date_range_start.isoformat() if run.date_range_start else None,
@@ -229,6 +237,41 @@ class RunDatabase:
             if cursor.rowcount != 1:
                 raise DuplicateRunError(f"Pipeline run already exists: {run.run_id}")
             conn.commit()
+
+    def update_operational_phase(self, run_id: str, event: PhaseEvent) -> bool:
+        """Persist a monotonic run phase and mirror its exact automation attempt."""
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT last_phase, automation_attempt_id FROM pipeline_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Unknown pipeline run: {run_id}")
+            previous = OperationalPhase(row["last_phase"]) if row["last_phase"] else None
+            if previous is not None and event.phase.order < previous.order:
+                return False
+            conn.execute(
+                "UPDATE pipeline_runs SET last_phase = ? WHERE run_id = ?",
+                (event.phase.value, run_id),
+            )
+            attempt_id = row["automation_attempt_id"]
+            if attempt_id:
+                attempt_row = conn.execute(
+                    "SELECT last_phase FROM automation_attempts WHERE id = ?", (attempt_id,)
+                ).fetchone()
+                if attempt_row is not None:
+                    attempt_phase = (
+                        OperationalPhase(attempt_row["last_phase"])
+                        if attempt_row["last_phase"]
+                        else None
+                    )
+                    if attempt_phase is None or event.phase.order >= attempt_phase.order:
+                        conn.execute(
+                            "UPDATE automation_attempts SET last_phase = ? WHERE id = ?",
+                            (event.phase.value, attempt_id),
+                        )
+            conn.commit()
+        return True
 
     def save_phase_stats(self, run_id: str, stats: PhaseStats) -> None:
         """Save phase timing statistics.

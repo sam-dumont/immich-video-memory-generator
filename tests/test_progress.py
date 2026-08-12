@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from immich_memories.analysis.progress import (
     MAX_COMPLETED_HISTORY,
     MAX_ERROR_HISTORY,
@@ -12,6 +14,7 @@ from immich_memories.analysis.progress import (
     PipelineProgress,
     ProgressTracker,
 )
+from immich_memories.operations.phases import OperationalPhase
 
 # ---------------------------------------------------------------------------
 # PipelinePhase enum
@@ -44,6 +47,34 @@ class TestPipelinePhase:
 
 
 class TestPipelineProgress:
+    @pytest.mark.parametrize(
+        ("internal", "outer"),
+        [
+            (PipelinePhase.CLUSTERING, OperationalPhase.ANALYSIS),
+            (PipelinePhase.FILTERING, OperationalPhase.ANALYSIS),
+            (PipelinePhase.ANALYZING, OperationalPhase.ANALYSIS),
+            (PipelinePhase.REFINING, OperationalPhase.SELECTION),
+            (PipelinePhase.COMPLETE, OperationalPhase.SELECTION),
+        ],
+    )
+    def test_internal_phase_adapts_to_shared_outer_event(
+        self, internal: PipelinePhase, outer: OperationalPhase
+    ) -> None:
+        progress = PipelineProgress(
+            phase=internal,
+            current_index=2,
+            total_items=5,
+            phase_start_time=None,
+        )
+
+        event = progress.operational_event
+
+        assert event is not None
+        assert event.phase is outer
+        assert event.current == 2
+        assert event.total == 5
+        assert event.message == internal.label
+
     def test_progress_fraction_zero_when_no_items(self) -> None:
         p = PipelineProgress(total_items=0, current_index=0)
         assert p.progress_fraction == 0.0

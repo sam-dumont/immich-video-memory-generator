@@ -140,6 +140,7 @@ class AutomationStatus:
                     "memory_key": attempt.memory_key,
                     "run_id": attempt.run_id,
                     "error": attempt.error,
+                    "last_phase": attempt.last_phase.value if attempt.last_phase else None,
                 }
                 if attempt
                 else None
@@ -153,6 +154,7 @@ class AutomationStatus:
                     "memory_key": run.memory_key,
                     "category": run.memory_category,
                     "output_path": run.output_path,
+                    "last_phase": run.last_phase.value if run.last_phase else None,
                 }
                 if run
                 else None
@@ -857,6 +859,7 @@ class AutoRunner:
         candidate: MemoryCandidate | None = None
 
         try:
+            self.state.record_discovery(attempt.id)
             preflight_result = self._prepare_pending_delivery_retry(attempt)
             if preflight_result is not None:
                 return preflight_result

@@ -10,11 +10,28 @@ from nicegui import run, ui
 from immich_memories.analysis.live_photo_pipeline import fetch_live_photo_clips
 from immich_memories.api.immich import SyncImmichClient
 from immich_memories.api.models import VideoClipInfo
+from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.clip_probing import probe_video_url
 from immich_memories.security import sanitize_error_message
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
+
+
+def _set_phase_status(status_label, event: PhaseEvent) -> None:
+    """Render the shared operational message without persisting UI-only discovery."""
+    status_label.set_text(event.message)
+
+
+def _ui_phase(
+    phase: OperationalPhase,
+    message: str,
+    *,
+    current: int = 0,
+    total: int = 0,
+) -> PhaseEvent:
+    return PhaseEvent(phase, current, total, message, 0.0)
+
 
 MIN_CLIP_DURATION = 1.5
 
@@ -154,7 +171,10 @@ def _load_clips() -> None:
 
     async def do_load():
         try:
-            status_label.set_text("Fetching videos from Immich...")
+            _set_phase_status(
+                status_label,
+                _ui_phase(OperationalPhase.DISCOVERY, "Fetching videos from Immich..."),
+            )
             progress_bar.value = 0.02
 
             date_range = state.date_range
@@ -164,7 +184,15 @@ def _load_clips() -> None:
             assets = await run.io_bound(_fetch_assets, state)
             assets = _filter_near_home(assets, state)
 
-            status_label.set_text(f"Found {len(assets)} assets. Filtering...")
+            _set_phase_status(
+                status_label,
+                _ui_phase(
+                    OperationalPhase.DISCOVERY,
+                    f"Found {len(assets)} assets. Filtering...",
+                    current=len(assets),
+                    total=len(assets),
+                ),
+            )
             progress_bar.value = 0.05
 
             clips, _ = _build_clips(assets)
@@ -192,7 +220,10 @@ def _load_clips() -> None:
             total_msg = f"Found {len(clips)} videos"
             if photo_count:
                 total_msg += f" and {photo_count} photos"
-            status_label.set_text(f"{total_msg}. Loading thumbnails...")
+            _set_phase_status(
+                status_label,
+                _ui_phase(OperationalPhase.DOWNLOAD, f"{total_msg}. Loading thumbnails..."),
+            )
             progress_bar.value = 0.1
             await _load_thumbnails_and_metadata_async(clips, status_label, progress_bar)
 

@@ -112,12 +112,14 @@ async def test_ui_finalizer_validates_exact_plan_and_completes_no_upload_once(
         clips_analyzed=3,
         clips_selected=2,
     )
+    phase_events = []
     params = GenerationParams(
         clips=[make_clip("clip-1")],
         output_path=output_path,
         config=config,
         upload_enabled=False,
         upload_album="UI Album",
+        phase_callback=phase_events.append,
     )
     tracker = RunTracker("ui-finalize", db_path=db_path, capture_system=False)
     tracker.start_run(source="manual")
@@ -163,7 +165,46 @@ async def test_ui_finalizer_validates_exact_plan_and_completes_no_upload_once(
     assert saved.to_dict() == completed.to_dict()
     assert state.generation_warning is None
     assert state.delivery_status is DeliveryStatus.NOT_REQUESTED
+    assert [event.phase.value for event in phase_events] == ["music", "delivery", "complete"]
+    assert saved.last_phase.value == "complete"
     assert complete_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_ui_music_failure_retains_music_as_last_phase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from immich_memories.ui.pages import _step4_generate as step4_generate
+
+    db_path = tmp_path / "runs.db"
+    config = Config(cache={"database": str(db_path)})
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"validated-base")
+    prepared = PreparedGeneration(output_path, _h264_plan(), (), 1, 1)
+    params = GenerationParams(clips=[make_clip("clip-1")], output_path=output_path, config=config)
+    tracker = RunTracker("ui-music-failure", db_path=db_path, capture_system=False)
+    tracker.start_run(source="manual")
+    state = AppState(config=config, generation_options={"music_source": "AI Generated"})
+
+    async def fail_music(*_args, **_kwargs):
+        raise RuntimeError("music backend failed")
+
+    monkeypatch.setattr(step4_generate, "_apply_music", fail_music)
+    with pytest.raises(RuntimeError, match="music backend failed"):
+        await step4_generate.finalize_ui_generation(
+            state,
+            params,
+            prepared,
+            tracker,
+            progress_bar=object(),
+            status_label=object(),
+        )
+
+    saved = RunDatabase(db_path).get_run(tracker.run_id)
+    assert saved is not None
+    assert saved.status == "running"
+    assert saved.last_phase.value == "music"
 
 
 @pytest.mark.asyncio

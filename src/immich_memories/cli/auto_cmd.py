@@ -278,7 +278,12 @@ def status(ctx: click.Context, as_json: bool) -> None:
     print_info(f"Scheduler: {scheduler.platform}, {scheduler_installation}, {scheduler_state}")
     print_info(
         "Last attempt: "
-        + (f"{last_attempt['outcome']} — {last_attempt['reason']}" if last_attempt else "none")
+        + (
+            f"{last_attempt['outcome']} — {last_attempt['reason']}"
+            + (f" (phase: {last_attempt['last_phase']})" if last_attempt["last_phase"] else "")
+            if last_attempt
+            else "none"
+        )
     )
     print_info(
         "Last completed auto run: "

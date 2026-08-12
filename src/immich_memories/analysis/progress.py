@@ -8,6 +8,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
+from immich_memories.operations.phases import OperationalPhase, PhaseEvent
+
 # Memory optimization: limit accumulated history to prevent unbounded growth
 MAX_COMPLETED_HISTORY = 100  # Keep last 100 for rolling average calculations
 MAX_ERROR_HISTORY = 50  # Keep last 50 errors for display
@@ -100,6 +102,24 @@ class PipelineProgress:
         if self.phase_start_time is None:
             return 0.0
         return time.time() - self.phase_start_time
+
+    @property
+    def operational_event(self) -> PhaseEvent | None:
+        """Adapt internal analysis detail to the shared outer lifecycle."""
+        if self.phase is PipelinePhase.NOT_STARTED:
+            return None
+        outer = (
+            OperationalPhase.SELECTION
+            if self.phase in {PipelinePhase.REFINING, PipelinePhase.COMPLETE}
+            else OperationalPhase.ANALYSIS
+        )
+        return PhaseEvent(
+            phase=outer,
+            current=min(self.current_index, self.total_items) if self.total_items else 0,
+            total=self.total_items,
+            message=self.phase.label,
+            elapsed_seconds=self.phase_elapsed_seconds,
+        )
 
 
 class ProgressTracker:

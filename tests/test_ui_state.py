@@ -281,6 +281,18 @@ def test_ui_explicit_h265_mov_choice_preserves_both_dimensions() -> None:
     assert selection.container == "mov"
 
 
+def test_step2_status_consumes_shared_phase_event_message() -> None:
+    from immich_memories.operations.phases import OperationalPhase, PhaseEvent
+    from immich_memories.ui.pages.step2_loading import _set_phase_status
+
+    label = MagicMock()
+    event = PhaseEvent(OperationalPhase.DOWNLOAD, 2, 5, "Loading thumbnails 2/5", 1.0)
+
+    _set_phase_status(label, event)
+
+    label.set_text.assert_called_once_with("Loading thumbnails 2/5")
+
+
 def test_generation_factory_passes_state_api_version_to_client(tmp_path) -> None:
     from immich_memories.ui.pages._step4_generate import _build_generation_params
 

@@ -10,6 +10,7 @@ import inspect
 import io
 import logging
 import shutil
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date
@@ -48,6 +49,7 @@ from immich_memories.generate_settings import (
     _run_music_phase,
     _upload_to_immich,
 )
+from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.clip_validation import validate_clips
 from immich_memories.processing.output_contract import publish_validated_output, validate_output
 from immich_memories.security import configured_secret_values, sanitize_error_message
@@ -164,6 +166,10 @@ class GenerationParams:
     # Progress callback: (phase, progress_fraction, status_message)
     progress_callback: Callable[[str, float, str], None] | None = None
 
+    # Stable outer lifecycle. Legacy progress_callback remains a compatibility detail.
+    phase_callback: Callable[[PhaseEvent], None] | None = None
+    completed_operational_phase: OperationalPhase | None = None
+
     # Frame preview callback: receives JPEG bytes for live UI thumbnail
     frame_preview_callback: Callable[[bytes], None] | None = None
 
@@ -237,6 +243,71 @@ def check_disk_space(output_dir: Path) -> None:
 def _report(params: GenerationParams, phase: str, progress: float, msg: str) -> None:
     if params.progress_callback:
         params.progress_callback(phase, progress, msg)
+
+
+def emit_operational_phase(
+    params: GenerationParams,
+    run_tracker: RunTracker,
+    phase: OperationalPhase,
+    *,
+    current: int,
+    total: int,
+    message: str,
+    elapsed_seconds: float = 0.0,
+) -> PhaseEvent:
+    """Publish and persist an outer phase without making telemetry job-critical."""
+    event = PhaseEvent(phase, current, total, message, elapsed_seconds)
+    try:
+        run_tracker.record_phase_event(event)
+    except Exception:  # WHY: extension trackers must not make status telemetry fatal
+        logger.warning("Could not persist operational phase '%s'", phase.value)
+    if params.phase_callback is not None:
+        try:
+            params.phase_callback(event)
+        except Exception:  # WHY: observer failures cannot invalidate completed pipeline work
+            logger.warning("Operational phase observer failed for '%s'", phase.value)
+    return event
+
+
+class _OperationalProgress:
+    """Emit one monotonic outer lifecycle around generation internals."""
+
+    def __init__(self, params: GenerationParams, run_tracker: RunTracker) -> None:
+        self._params = params
+        self._run_tracker = run_tracker
+        self._started = time.monotonic()
+
+    def emit(
+        self,
+        phase: OperationalPhase,
+        current: int,
+        total: int,
+        message: str,
+    ) -> PhaseEvent:
+        now = time.monotonic()
+        event = emit_operational_phase(
+            self._params,
+            self._run_tracker,
+            phase,
+            current=current,
+            total=total,
+            message=message,
+            elapsed_seconds=now - self._started,
+        )
+        self._started = now
+        return event
+
+    def emit_unperformed_prerequisites(self) -> None:
+        completed = self._params.completed_operational_phase
+        messages = {
+            OperationalPhase.DISCOVERY: "Discovery not required",
+            OperationalPhase.DOWNLOAD: "Downloads already prepared",
+            OperationalPhase.ANALYSIS: "Analysis already prepared",
+            OperationalPhase.SELECTION: "Selection already prepared",
+        }
+        for phase, message in messages.items():
+            if completed is None or phase.order > completed.order:
+                self.emit(phase, 0, 0, message)
 
 
 class _PipelineProgress:
@@ -447,6 +518,56 @@ def _deliver_completed_artifact(
     return deliver_completed_artifact(params, result_path, run_tracker)
 
 
+def _deliver_with_operational_progress(
+    params: GenerationParams,
+    result_path: Path,
+    run_tracker: RunTracker,
+    operational: _OperationalProgress,
+) -> None:
+    """Expose optional delivery while preserving its existing error boundary."""
+    operational.emit(
+        OperationalPhase.DELIVERY,
+        0,
+        1 if params.upload_enabled else 0,
+        "Uploading to Immich" if params.upload_enabled else "Delivery not requested",
+    )
+    _deliver_completed_artifact(params, result_path, run_tracker)
+    if params.upload_enabled:
+        operational.emit(OperationalPhase.DELIVERY, 1, 1, "Delivered to Immich")
+
+
+def _complete_music_phase(
+    params: GenerationParams,
+    assembly_clips: list,
+    result_path: Path,
+    run_output_dir: Path,
+    run_tracker: RunTracker,
+    encoding_plan: EncodingPlan,
+    operational: _OperationalProgress,
+    progress: _PipelineProgress,
+):
+    """Run or explicitly skip music while emitting the shared outer phase."""
+    if params.no_music:
+        from immich_memories.generate_music import MusicPhaseResult
+
+        operational.emit(OperationalPhase.MUSIC, 0, 0, "Music disabled")
+        return MusicPhaseResult(applied=False)
+
+    operational.emit(OperationalPhase.MUSIC, 0, 1, "Generating music")
+    progress.report("music", 0.0, "Generating music...")
+    result = _run_music_phase(
+        params,
+        assembly_clips,
+        result_path,
+        run_output_dir,
+        run_tracker,
+        encoding_plan=encoding_plan,
+    )
+    progress.report("music", 1.0, result.warning or "Music ready")
+    operational.emit(OperationalPhase.MUSIC, 1, 1, result.warning or "Music ready")
+    return result
+
+
 def _fail_run_if_running(run_tracker: RunTracker, message: str) -> None:
     """Fail only the still-running authoritative row, never a committed artifact."""
     try:
@@ -617,6 +738,14 @@ def _generate_memory_inner(
         source=params.source,
         automation_attempt_id=params.automation_attempt_id,
     )
+    operational = _OperationalProgress(params, run_tracker)
+    operational.emit_unperformed_prerequisites()
+    operational.emit(
+        OperationalPhase.RENDER,
+        0,
+        len(params.clips),
+        "Rendering memory",
+    )
 
     assembly_clips: list = []  # WHY: populated in try, needed in finally for cleanup
     pending_error: GenerationError | None = None
@@ -659,6 +788,12 @@ def _generate_memory_inner(
                 probe_cache=probe_cache,
             )
         run_tracker.complete_phase(items_processed=len(assembly_clips))
+        operational.emit(
+            OperationalPhase.RENDER,
+            len(assembly_clips),
+            len(params.clips),
+            "Sources prepared",
+        )
         _phase_times["download"] = _time.monotonic() - _phase_start
         pp.report("download", 1.0, "Clips downloaded")
 
@@ -718,6 +853,12 @@ def _generate_memory_inner(
         publish_validated_output(staged_result_path, result_output_path, settings.encoding_plan)
         result_path = result_output_path
         run_tracker.complete_phase(items_processed=len(assembly_clips))
+        operational.emit(
+            OperationalPhase.RENDER,
+            len(assembly_clips),
+            len(assembly_clips),
+            "Render complete",
+        )
         _phase_times["assembly"] = _time.monotonic() - _t
 
         if defer_finalization:
@@ -731,23 +872,17 @@ def _generate_memory_inner(
 
         # Phase 3: Music
         _t = _time.monotonic()
-        if params.no_music:
-            from immich_memories.generate_music import MusicPhaseResult
-
-            music_result = MusicPhaseResult(applied=False)
-        else:
-            pp.report("music", 0.0, "Generating music...")
-            music_result = _run_music_phase(
-                params,
-                assembly_clips,
-                result_path,
-                run_output_dir,
-                run_tracker,
-                encoding_plan=settings.encoding_plan,
-            )
+        music_result = _complete_music_phase(
+            params,
+            assembly_clips,
+            result_path,
+            run_output_dir,
+            run_tracker,
+            settings.encoding_plan,
+            operational,
+            pp,
+        )
         _phase_times["music"] = _time.monotonic() - _t
-        if not params.no_music:
-            pp.report("music", 1.0, music_result.warning or "Music ready")
 
         final_probe = validate_output(result_path, settings.encoding_plan)
         artifact_warnings = [music_result.warning] if music_result.warning else []
@@ -762,12 +897,13 @@ def _generate_memory_inner(
         )
 
         # Phase 4: Upload (if requested)
-        _deliver_completed_artifact(params, result_path, run_tracker)
+        _deliver_with_operational_progress(params, result_path, run_tracker, operational)
 
         _phase_times["total"] = _time.monotonic() - _phase_start
         _log_phase_timing(_phase_times, len(assembly_clips))
 
         _report(params, "done", 1.0, "Complete!")
+        operational.emit(OperationalPhase.COMPLETE, 1, 1, "Complete")
 
         return result_path
 

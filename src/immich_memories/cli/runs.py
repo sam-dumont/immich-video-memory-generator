@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json as json_mod
 import shutil
 from pathlib import Path
 
@@ -9,6 +10,50 @@ import click
 from rich.table import Table
 
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
+
+
+def _print_storage_report(report) -> None:
+    """Render storage aggregates and largest directories as two compact tables."""
+    summary = Table(title="Storage by Status")
+    summary.add_column("Status", style="cyan")
+    summary.add_column("Directories", justify="right")
+    summary.add_column("Files", justify="right")
+    summary.add_column("Size", justify="right")
+    for classification, totals in report.summary.items():
+        summary.add_row(
+            classification.value,
+            str(totals.directory_count),
+            str(totals.file_count),
+            f"{totals.bytes / (1024 * 1024):.1f} MB",
+        )
+    console.print(summary)
+
+    largest = Table(title="Ten Largest Directories")
+    largest.add_column("Directory")
+    largest.add_column("Status", style="cyan")
+    largest.add_column("Files", justify="right")
+    largest.add_column("Size", justify="right")
+    for entry in report.largest_directories:
+        largest.add_row(
+            str(entry.path),
+            entry.classification.value,
+            str(entry.file_count),
+            f"{entry.bytes / (1024 * 1024):.1f} MB",
+        )
+    console.print(largest)
+
+
+def _run_storage_report(as_json: bool) -> None:
+    """Build the report through a genuinely read-only database adapter."""
+    from immich_memories.config import get_config
+    from immich_memories.operations.storage_report import ReadOnlyRunStore, build_storage_report
+
+    config = get_config()
+    report = build_storage_report(config, ReadOnlyRunStore(config.cache.database_path))
+    if as_json:
+        click.echo(json_mod.dumps(report.to_dict()))
+        return
+    _print_storage_report(report)
 
 
 def _print_run_details_table(run, format_duration) -> None:
@@ -262,6 +307,12 @@ def register_runs_commands(main: click.Group) -> None:
         table.add_row("Total Clips Processed", str(stats["total_clips"]))
 
         console.print(table)
+
+    @runs.command("storage")
+    @click.option("--json", "as_json", is_flag=True, help="Machine-readable output")
+    def runs_storage(as_json: bool) -> None:
+        """Report configured output and cache storage without changing it."""
+        _run_storage_report(as_json)
 
     @runs.command("delete")
     @click.argument("run_id")

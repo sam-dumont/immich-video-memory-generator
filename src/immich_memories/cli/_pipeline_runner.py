@@ -7,7 +7,9 @@ Immich, runs analysis, and generates the final video.
 from __future__ import annotations
 
 import logging
+import sqlite3
 import sys
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,6 +20,34 @@ if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.cli._live_display import ProgressDisplay
     from immich_memories.config_loader import Config
+
+
+class _AttemptPhaseReporter:
+    """Share semantic phase messages with CLI and an optional automation attempt."""
+
+    def __init__(self, config: Config, attempt_id: str | None, progress, task) -> None:
+        from immich_memories.automation.state_store import AutomationStateStore
+
+        self._attempt_id = attempt_id
+        self._store = AutomationStateStore(config.cache.database_path) if attempt_id else None
+        self._progress = progress
+        self._task = task
+        self._started = time.monotonic()
+
+    def emit(self, phase, current: int, total: int, message: str) -> None:
+        from immich_memories.operations.phases import PhaseEvent
+
+        now = time.monotonic()
+        event = PhaseEvent(phase, current, total, message, now - self._started)
+        self._started = now
+        if self._store is not None and self._attempt_id is not None:
+            try:
+                self._store.update_phase(self._attempt_id, event)
+            except (KeyError, OSError, RuntimeError, sqlite3.Error):
+                logging.getLogger(__name__).warning(
+                    "Could not persist operational phase %s", phase.value
+                )
+        self._progress.update(self._task, description=event.message)
 
 
 def run_pipeline_and_generate(
@@ -63,6 +93,7 @@ def run_pipeline_and_generate(
     from immich_memories.cache.database import VideoAnalysisCache
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.generate import GenerationParams, assets_to_clips, generate_memory
+    from immich_memories.operations.phases import OperationalPhase
     from immich_memories.tracking.models import normalize_memory_people
 
     clips = assets_to_clips(assets)
@@ -87,6 +118,9 @@ def run_pipeline_and_generate(
     # (Real timing data: analysis ~83s/22%, generation ~295s/78%)
     task = progress.add_task("Analyzing clips...", total=100)
     _pipeline_start = _time.monotonic()
+    phases = _AttemptPhaseReporter(config, automation_attempt_id, progress, task)
+    phases.emit(OperationalPhase.DISCOVERY, len(clips), len(clips), "Discovery complete")
+    phases.emit(OperationalPhase.DOWNLOAD, 0, len(clips), "Preparing source downloads")
 
     pipeline_config = PipelineConfig(
         hdr_only=False,
@@ -120,6 +154,7 @@ def run_pipeline_and_generate(
         )
 
     # Phase 1-3: Analyze video clips
+    phases.emit(OperationalPhase.ANALYSIS, 0, len(clips), "Analyzing clips")
     analyzed_videos = pipeline.run_analysis(clips, progress_callback=pipeline_progress)
 
     # Merge photos into the unified selection pool (if enabled)
@@ -133,6 +168,7 @@ def run_pipeline_and_generate(
     )
 
     # Phase 4: Unified selection (videos + photos compete together)
+    phases.emit(OperationalPhase.SELECTION, 0, len(all_candidates), "Selecting clips")
     pipeline_result = pipeline.run_selection(all_candidates)
     _analysis_time = _time.monotonic() - _pipeline_start
     selected_clips = pipeline_result.selected_clips
@@ -151,6 +187,9 @@ def run_pipeline_and_generate(
     def gen_progress(phase: str, frac: float, msg: str) -> None:
         scaled = 20 + int(frac * 80)
         progress.update(task, completed=scaled, description=msg)
+
+    def generation_phase(event) -> None:
+        progress.update(task, description=event.message)
 
     # WHY: Photos are now in selected_clips as IMAGE-type assets.
     # generate.py's _extract_clips will detect IMAGE type and render them.
@@ -188,6 +227,8 @@ def run_pipeline_and_generate(
         photo_assets=None,
         target_duration_seconds=duration,
         progress_callback=gen_progress,
+        phase_callback=generation_phase,
+        completed_operational_phase=OperationalPhase.SELECTION,
         memory_preset_params=memory_preset_params or {},
     )
 

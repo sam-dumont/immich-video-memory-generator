@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from immich_memories.operations.phases import PhaseEvent
 from immich_memories.tracking.models import PhaseStats, RunMetadata
 from immich_memories.tracking.run_database import RunDatabase
 from immich_memories.tracking.run_id import generate_run_id
@@ -202,6 +204,20 @@ class RunTracker:
             logger.debug(
                 f"Phase {self._current_phase}: {items_processed}/{self._phase_items_total}"
             )
+
+    def record_phase_event(self, event: PhaseEvent) -> bool:
+        """Record one public phase without letting stale telemetry move backwards."""
+        self._require_started()
+        try:
+            updated = self.db.update_operational_phase(self.run_id, event)
+        except (OSError, RuntimeError, sqlite3.Error):
+            logger.warning("Could not persist operational phase '%s'", event.phase.value)
+            return False
+        if updated and self._run is not None:
+            self._run.last_phase = event.phase
+        elif not updated:
+            logger.warning("Ignored backward operational phase '%s'", event.phase.value)
+        return updated
 
     def complete_run(
         self,

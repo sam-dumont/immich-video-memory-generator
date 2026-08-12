@@ -8,6 +8,8 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
+from immich_memories.operations.phases import OperationalPhase
+
 
 def normalize_memory_people(people: tuple[str, ...] | list[str]) -> tuple[str, ...]:
     """Canonicalize person identities for automation variety comparisons."""
@@ -152,6 +154,7 @@ class RunMetadata:
     memory_people: tuple[str, ...] = ()
     source: str = "manual"  # "manual" | "scheduled" | "auto"
     automation_attempt_id: str | None = None
+    last_phase: OperationalPhase | None = None
 
     # Input parameters
     person_name: str | None = None
@@ -205,6 +208,7 @@ class RunMetadata:
             "memory_people": list(self.memory_people),
             "source": self.source,
             "automation_attempt_id": self.automation_attempt_id,
+            "last_phase": self.last_phase.value if self.last_phase else None,
             "person_name": self.person_name,
             "person_id": self.person_id,
             "date_range_start": (
@@ -245,6 +249,7 @@ class RunMetadata:
             memory_people=tuple(data.get("memory_people") or ()),
             source=data.get("source", "manual"),
             automation_attempt_id=data.get("automation_attempt_id"),
+            last_phase=(OperationalPhase(data["last_phase"]) if data.get("last_phase") else None),
             person_name=data.get("person_name"),
             person_id=data.get("person_id"),
             date_range_start=(

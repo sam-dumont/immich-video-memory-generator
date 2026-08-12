@@ -757,7 +757,9 @@ class TestRunOneNoCandidates:
         assert result.reason == "automation failed"
         assert result.error == "preflight exploded"
         finish.assert_called_once()
-        assert runner.state.get_last_attempt().outcome is AutoOutcome.FAILED
+        failed_attempt = runner.state.get_last_attempt()
+        assert failed_attempt.outcome is AutoOutcome.FAILED
+        assert failed_attempt.last_phase.value == "discovery"
 
     def test_preflight_error_is_failed_and_finishes_attempt_once(self, config: Config) -> None:
         """A returned Immich preflight error is not a healthy empty candidate set."""

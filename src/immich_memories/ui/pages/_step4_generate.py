@@ -269,6 +269,9 @@ async def run_generation(
             progress_bar.value = progress
             status_label.set_text(msg)
 
+        def on_phase(event) -> None:
+            status_label.set_text(event.message)
+
         def on_frame_preview(jpeg_bytes: bytes) -> None:
             import base64
 
@@ -277,6 +280,7 @@ async def run_generation(
 
         params = _build_generation_params(state, selected_clips, effective_output_path)
         params.progress_callback = on_progress
+        params.phase_callback = on_phase
         params.frame_preview_callback = on_frame_preview
 
         from immich_memories.tracking import RunTracker, generate_run_id
@@ -341,10 +345,24 @@ async def finalize_ui_generation(
     status_label,
 ):
     """Finish UI-managed post-processing on the caller-owned run."""
+    from immich_memories.generate import emit_operational_phase
     from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.operations.phases import OperationalPhase
 
     music_result = MusicPhaseResult(applied=False)
     music_source = state.generation_options.get("music_source", "None")
+    emit_operational_phase(
+        params,
+        run_tracker,
+        OperationalPhase.MUSIC,
+        current=0,
+        total=1 if music_source in {"AI Generated", "Upload file"} else 0,
+        message=(
+            "Applying music"
+            if music_source in {"AI Generated", "Upload file"}
+            else "Music disabled"
+        ),
+    )
     if music_source in {"AI Generated", "Upload file"}:
         music_result = await _apply_music(
             state,
@@ -356,6 +374,14 @@ async def finalize_ui_generation(
             progress_bar,
             status_label,
             encoding_plan=prepared.encoding_plan,
+        )
+        emit_operational_phase(
+            params,
+            run_tracker,
+            OperationalPhase.MUSIC,
+            current=1,
+            total=1,
+            message=music_result.warning or "Music ready",
         )
     final_probe = await run.io_bound(validate_output, prepared.path, prepared.encoding_plan)
     warnings = [music_result.warning] if music_result.warning else []
@@ -370,6 +396,14 @@ async def finalize_ui_generation(
     )
     state.generation_warning = music_result.warning
     state.delivery_status = completed.delivery_status
+    emit_operational_phase(
+        params,
+        run_tracker,
+        OperationalPhase.DELIVERY,
+        current=0,
+        total=1 if params.upload_enabled else 0,
+        message="Uploading to Immich" if params.upload_enabled else "Delivery not requested",
+    )
     if params.upload_enabled:
         from immich_memories.ui.pages._step4_upload import upload_to_immich
 
@@ -381,6 +415,23 @@ async def finalize_ui_generation(
             progress_bar,
             status_label,
         )
+        emit_operational_phase(
+            params,
+            run_tracker,
+            OperationalPhase.DELIVERY,
+            current=1,
+            total=1,
+            message="Delivered to Immich",
+        )
+    emit_operational_phase(
+        params,
+        run_tracker,
+        OperationalPhase.COMPLETE,
+        current=1,
+        total=1,
+        message="Complete",
+    )
+    completed = run_tracker.db.get_run(run_tracker.run_id) or completed
     return completed
 
 

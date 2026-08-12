@@ -10,6 +10,14 @@ from rich.table import Table
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
 
 
+def _warn_auto_entry_point() -> None:
+    """Point explicit scheduler users at the safer daily decision engine."""
+    click.echo(
+        "Warning: auto run is recommended for daily automation; see immich-memories auto --help.",
+        err=True,
+    )
+
+
 def register_scheduler_commands(main: click.Group) -> None:
     """Register scheduler commands on the main CLI group."""
 
@@ -21,6 +29,7 @@ def register_scheduler_commands(main: click.Group) -> None:
     @click.pass_context
     def list_schedules(ctx: click.Context) -> None:
         """List all configured schedules."""
+        _warn_auto_entry_point()
         config = ctx.obj["config"]
         schedules = config.scheduler.schedules
 
@@ -62,6 +71,7 @@ def register_scheduler_commands(main: click.Group) -> None:
     @click.pass_context
     def status(ctx: click.Context) -> None:
         """Show scheduler status."""
+        _warn_auto_entry_point()
         config = ctx.obj["config"]
 
         if not config.scheduler.enabled:
@@ -94,6 +104,7 @@ def register_scheduler_commands(main: click.Group) -> None:
     @click.pass_context
     def start(ctx: click.Context, foreground: bool) -> None:
         """Start the scheduler daemon."""
+        _warn_auto_entry_point()
         config = ctx.obj["config"]
 
         if not config.scheduler.enabled:
