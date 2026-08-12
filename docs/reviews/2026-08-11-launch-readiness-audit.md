@@ -63,7 +63,7 @@ approval. Its plist remains on disk and nothing was deleted.
 The LaunchAgent remains unloaded by explicit owner instruction. P0 completion does not reactivate
 it; loading the job is a separate action that was not requested.
 
-## Final P0 gate evidence — 2026-08-11
+## Final P0 gate evidence — 2026-08-12
 
 | Check | Result |
 |---|---|
