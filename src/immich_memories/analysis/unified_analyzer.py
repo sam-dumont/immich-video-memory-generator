@@ -7,7 +7,6 @@ scene detection with audio analysis to find natural cut points.
 
 from __future__ import annotations
 
-import gc
 import logging
 import operator
 import subprocess
@@ -129,7 +128,9 @@ class UnifiedSegmentAnalyzer:
 
         self._scene_detector = SceneDetector(analysis_config=analysis_config)
         self._audio_analyzer = audio_analyzer  # Injected or lazy-created
+        self._owns_audio_analyzer = audio_analyzer is None
         self._audio_analysis_cache: dict[str, AudioAnalysisResult] = {}
+        self._closed = False
 
     def clear_cache(self, release_audio_analyzer: bool = False):
         """Clear internal caches to free memory.
@@ -143,6 +144,30 @@ class UnifiedSegmentAnalyzer:
             if hasattr(self._audio_analyzer, "cleanup"):
                 self._audio_analyzer.cleanup()
             self._audio_analyzer = None
+
+    def reset_for_video(self) -> None:
+        """Release state that belongs to the video most recently analyzed.
+
+        Model instances and immutable configuration remain available for the
+        next clip in the batch.
+        """
+        self._audio_analysis_cache.clear()
+        self.scorer.release_capture()
+
+    def close(self) -> None:
+        """Release the batch-owned capture and any lazy audio model once."""
+        if self._closed:
+            return
+        self._closed = True
+        self.reset_for_video()
+        if self._owns_audio_analyzer and self._audio_analyzer is not None:
+            if hasattr(self._audio_analyzer, "cleanup"):
+                self._audio_analyzer.cleanup()
+            self._audio_analyzer = None
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("UnifiedSegmentAnalyzer is closed")
 
     def _get_max_segment_for_source(
         self, source_duration: float, has_good_scene: bool = False
@@ -341,6 +366,7 @@ class UnifiedSegmentAnalyzer:
             List of ScoredSegment sorted by total_score (best first).
             Empty list if analysis fails.
         """
+        self._ensure_open()
         video_path = Path(video_path)
         if not video_path.exists():
             logger.error(f"Video not found: {video_path}")
@@ -503,6 +529,7 @@ class UnifiedSegmentAnalyzer:
                     min_confidence=ac_config.min_confidence,
                     laughter_confidence=ac_config.laughter_confidence,
                 )
+                self._owns_audio_analyzer = True
 
             result = self._audio_analyzer.analyze(video_path, video_duration)
             self._audio_analysis_cache[cache_key] = result
@@ -719,7 +746,7 @@ class UnifiedSegmentAnalyzer:
         """
         scored = []
 
-        for i, (start_cp, end_cp) in enumerate(candidates):
+        for _i, (start_cp, end_cp) in enumerate(candidates):
             segment = ScoredSegment(
                 start_time=start_cp.time,
                 end_time=end_cp.time,
@@ -759,15 +786,6 @@ class UnifiedSegmentAnalyzer:
             segment.total_score = self._compute_total_score(segment)
             scored.append(segment)
 
-            # Memory cleanup every 5 candidates to prevent OOM on long videos
-            if (i + 1) % 5 == 0:
-                gc.collect()
-                logger.debug(f"Memory cleanup after {i + 1}/{len(candidates)} candidates")
-
-        # Final cleanup after all candidates
-        # Release cached video capture to free memory
-        self.scorer.release_capture()
-        gc.collect()
         return scored
 
     def _run_llm_scoring(

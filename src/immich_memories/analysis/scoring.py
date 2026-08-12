@@ -6,7 +6,6 @@ and the main SceneScorer class. Factory functions are in scoring_factory.py.
 
 from __future__ import annotations
 
-import gc
 import logging
 import platform
 import subprocess
@@ -681,10 +680,8 @@ class SceneScorer:
 
             prev_frame = gray
 
-        # Memory cleanup (don't release cap - it's cached for reuse)
         if prev_frame is not None:
             del prev_frame
-        gc.collect()
 
         # Aggregate scores
         avg_face = np.mean(face_scores) if face_scores else 0.0
@@ -889,11 +886,7 @@ class SceneScorer:
             moments.append(s)
             if progress_callback:
                 progress_callback(i + 1, len(segments))
-            if (i + 1) % 10 == 0:
-                gc.collect()
-
         del segments
-        gc.collect()
 
         moments.sort(key=lambda m: self._compute_sort_key(m, video_duration))
         return moments

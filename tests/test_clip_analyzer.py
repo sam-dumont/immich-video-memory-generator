@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from immich_memories.analysis.clip_analyzer import ClipAnalyzer
 from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineConfig
+from immich_memories.audio.content_analyzer import AudioContentAnalyzer
 from immich_memories.config_loader import Config
 from tests.conftest import make_clip
 
@@ -588,6 +590,127 @@ class TestCleanupPipelineResources:
         assert analyzer._cached_audio_analyzer is None
 
 
+class TestClipAnalyzerClose:
+    def test_close_releases_shared_resources_once_and_prevents_reuse(self):
+        """A completed batch releases models once and cannot be analyzed again."""
+        analyzer, _, _, _ = _make_analyzer()
+        shared = MagicMock()
+        content = MagicMock()
+        audio = MagicMock()
+        analyzer._unified_analyzer = shared
+        analyzer._cached_content_analyzer = content
+        analyzer._cached_audio_analyzer = audio
+
+        analyzer.close()
+        analyzer.close()
+
+        shared.close.assert_called_once()
+        content.close.assert_called_once()
+        audio.cleanup.assert_called_once()
+        with pytest.raises(RuntimeError, match="closed"):
+            analyzer.phase_analyze([], _make_tracker())
+
+    def test_close_collects_garbage_once_across_repeated_calls(self):
+        """Repeated batch teardown does not re-run a full garbage collection."""
+        analyzer, _, _, _ = _make_analyzer()
+
+        with patch("immich_memories.analysis.clip_analyzer.gc.collect") as collect:
+            analyzer.close()
+            analyzer.close()
+
+        collect.assert_called_once()
+
+    def test_close_with_loaded_audio_model_collects_garbage_once(self):
+        """A loaded PANNs model still leaves one batch-level full collection."""
+        analyzer, _, _, _ = _make_analyzer()
+        audio = AudioContentAnalyzer()
+        audio._panns_model = object()
+        analyzer._cached_audio_analyzer = audio
+
+        with patch("immich_memories.analysis.clip_analyzer.gc.collect") as collect:
+            analyzer.close()
+
+        collect.assert_called_once()
+
+
+class TestBatchAnalyzerReuse:
+    def test_ten_legacy_clips_share_one_lazy_analysis_service_bundle(self):
+        """Ten fallback clips create one content, audio, scorer, and unified analyzer."""
+        config = Config()
+        config.content_analysis.enabled = True
+        config.audio_content.enabled = True
+        analyzer, _, _, preview = _make_analyzer(analysis_depth="fast", app_config=config)
+        tracker = _make_tracker()
+        shared = MagicMock()
+        content = MagicMock()
+        audio = MagicMock()
+
+        analyzer._download_analysis_video = MagicMock(
+            return_value=(Path("analysis.mp4"), Path("original.mp4"), None)
+        )
+        preview.run_legacy_analysis.return_value = (0.0, 3.0, 0.5)
+        preview.extract_and_log_preview.return_value = None
+
+        with (
+            patch(
+                "immich_memories.analysis.content_analyzer.get_content_analyzer",
+                return_value=content,
+            ) as content_factory,
+            patch(
+                "immich_memories.audio.content_analyzer.AudioContentAnalyzer",
+                return_value=audio,
+            ) as audio_factory,
+            patch("immich_memories.analysis.scoring.SceneScorer") as scorer_factory,
+            patch(
+                "immich_memories.analysis.unified_analyzer.UnifiedSegmentAnalyzer",
+                return_value=shared,
+            ) as unified_factory,
+        ):
+            analyzer.phase_analyze(
+                [make_clip(f"clip-{i}", duration=5.0, is_favorite=False) for i in range(10)],
+                tracker,
+            )
+
+        content_factory.assert_called_once()
+        audio_factory.assert_called_once()
+        scorer_factory.assert_called_once()
+        unified_factory.assert_called_once()
+        assert shared.reset_for_video.call_count == 10
+
+    def test_reset_runs_after_an_exception_before_the_next_clip(self):
+        """A failed first clip cannot leave reusable analyzer state for the second."""
+        analyzer, _, _, _ = _make_analyzer()
+        tracker = _make_tracker()
+        shared = MagicMock()
+        analyzer._unified_analyzer = shared
+        second = (1.0, 4.0, 0.7, None, None)
+        analyzer._analyze_clip_with_preview = MagicMock(side_effect=[RuntimeError("bad"), second])
+
+        results = analyzer.phase_analyze(
+            [make_clip("first", duration=5.0), make_clip("second", duration=5.0)], tracker
+        )
+
+        assert [result.score for result in results] == [0.0, 0.7]
+        assert shared.reset_for_video.call_count == 2
+
+    def test_second_clip_exception_still_resets_its_state(self):
+        """A second-clip failure cannot retain capture or cached candidate state."""
+        analyzer, _, _, _ = _make_analyzer()
+        tracker = _make_tracker()
+        shared = MagicMock()
+        analyzer._unified_analyzer = shared
+        analyzer._analyze_clip_with_preview = MagicMock(
+            side_effect=[(1.0, 4.0, 0.7, None, None), RuntimeError("bad second clip")]
+        )
+
+        results = analyzer.phase_analyze(
+            [make_clip("first", duration=5.0), make_clip("second", duration=5.0)], tracker
+        )
+
+        assert [result.score for result in results] == [0.7, 0.0]
+        assert shared.reset_for_video.call_count == 2
+
+
 # ---------------------------------------------------------------------------
 # _run_analysis_with_fallback
 # ---------------------------------------------------------------------------
@@ -711,11 +834,11 @@ class TestPhaseAnalyzeOrchestration:
         tracker.complete_phase.assert_called_once()
 
     @patch("immich_memories.analysis.content_analyzer.ContentAnalyzer")
-    def test_cleanup_runs_after_phase(self, mock_ca_cls):
+    def test_resources_remain_available_until_the_pipeline_closes(self, mock_ca_cls):
         analyzer, _, _, _ = _make_analyzer()
         tracker = _make_tracker()
 
-        # Pre-seed cached analyzers to verify cleanup clears them
+        # Pre-seed cached analyzers to verify analysis does not tear down a reusable batch.
         mock_content = MagicMock()
         mock_audio = MagicMock()
         analyzer._cached_content_analyzer = mock_content
@@ -725,6 +848,5 @@ class TestPhaseAnalyzeOrchestration:
 
         analyzer.phase_analyze([make_clip("y", duration=5.0)], tracker)
 
-        # Verify cleanup actually cleared the cached analyzers
-        assert analyzer._cached_content_analyzer is None
-        assert analyzer._cached_audio_analyzer is None
+        assert analyzer._cached_content_analyzer is mock_content
+        assert analyzer._cached_audio_analyzer is mock_audio

@@ -236,6 +236,10 @@ class SmartPipeline:
                 self.tracker.finish()
                 raise
             finally:
+                try:
+                    self.analyzer.close()
+                except Exception:
+                    logger.debug("Analysis resource cleanup failed")
                 self.analyzer.cache_batch = None
                 self.previewer.cache_batch = None
 

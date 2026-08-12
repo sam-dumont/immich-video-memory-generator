@@ -8,7 +8,6 @@ Uses audio event classification to:
 
 from __future__ import annotations
 
-import gc
 import logging
 import subprocess
 import tempfile
@@ -241,7 +240,6 @@ class AudioContentAnalyzer:
             self._panns_model = None
             self._panns_available = None
             self._class_names = None
-            gc.collect()
             logger.debug("PANNs cleanup complete")
 
     def _classify_frame(

@@ -2156,8 +2156,8 @@ class TestClipAnalyzerGetCachedAudioAnalyzer:
         assert result is None
 
 
-class TestClipAnalyzerCleanup:
-    """Cover lines 293-300: _cleanup_analyzer resource cleanup."""
+class TestClipAnalyzerCloseLifecycle:
+    """Cover public batch teardown instead of removed per-clip cleanup."""
 
     def _make_analyzer(self):
         from immich_memories.analysis.clip_analyzer import ClipAnalyzer
@@ -2170,18 +2170,18 @@ class TestClipAnalyzerCleanup:
             app_config=MagicMock(),
         )
 
-    def test_cleanup_with_unified_analyzer(self):
+    def test_close_releases_unified_analyzer(self):
         analyzer = self._make_analyzer()
         mock_unified = MagicMock()
-        mock_unified._audio_analyzer = MagicMock()
-        analyzer._cleanup_analyzer(mock_unified)
-        mock_unified.clear_cache.assert_called_once()
-        mock_unified.scorer.release_capture.assert_called_once()
+        analyzer._unified_analyzer = mock_unified
 
-    def test_cleanup_with_none(self):
+        analyzer.close()
+
+        mock_unified.close.assert_called_once()
+
+    def test_close_with_no_resources(self):
         analyzer = self._make_analyzer()
-        # Should not raise
-        analyzer._cleanup_analyzer(None)
+        analyzer.close()
 
 
 class TestClipAnalyzerRunUnifiedAnalysis:
@@ -2238,7 +2238,6 @@ class TestClipAnalyzerRunUnifiedAnalysis:
             ),
             patch.object(analyzer, "_init_content_analyzer", return_value=(None, 0.0)),
             patch.object(analyzer, "_get_cached_audio_analyzer", return_value=None),
-            patch.object(analyzer, "_cleanup_analyzer"),
         ):
             mock_unified = MagicMock()
             mock_unified.analyze.return_value = [mock_segment]
@@ -2265,7 +2264,6 @@ class TestClipAnalyzerRunUnifiedAnalysis:
             patch("immich_memories.analysis.scoring.SceneScorer"),
             patch.object(analyzer, "_init_content_analyzer", return_value=(None, 0.0)),
             patch.object(analyzer, "_get_cached_audio_analyzer", return_value=None),
-            patch.object(analyzer, "_cleanup_analyzer"),
         ):
             mock_cls.return_value.analyze.return_value = []
 

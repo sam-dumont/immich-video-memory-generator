@@ -109,10 +109,9 @@ class PreviewBuilder:
         video_duration: float,
         config: PipelineConfig,
         analysis_cache: VideoAnalysisCache,
+        unified_analyzer: object | None = None,
     ) -> tuple[float, float, float]:
         """Run legacy analysis using UnifiedSegmentAnalyzer (visual + silence boundaries)."""
-        import gc
-
         from immich_memories.analysis.scoring import SceneScorer
         from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
         from immich_memories.config_models import AudioContentConfig
@@ -121,47 +120,49 @@ class PreviewBuilder:
         min_segment = a_config.min_segment_duration
         max_segment = a_config.max_segment_duration
 
-        scorer = SceneScorer(
-            content_analysis_config=self._content_analysis_config,
-            analysis_config=a_config,
-        )
-        analyzer = UnifiedSegmentAnalyzer(
-            scorer=scorer,
-            min_segment_duration=min_segment,
-            max_segment_duration=max_segment,
-            audio_content_config=AudioContentConfig(),
-            analysis_config=a_config,
-        )
-        segments = analyzer.analyze(analysis_video, video_duration=video_duration)
+        analyzer = unified_analyzer
+        owns_analyzer = analyzer is None
+        if analyzer is None:
+            scorer = SceneScorer(
+                content_analysis_config=self._content_analysis_config,
+                analysis_config=a_config,
+            )
+            analyzer = UnifiedSegmentAnalyzer(
+                scorer=scorer,
+                min_segment_duration=min_segment,
+                max_segment_duration=max_segment,
+                audio_content_config=AudioContentConfig(),
+                analysis_config=a_config,
+            )
+        try:
+            segments = analyzer.analyze(analysis_video, video_duration=video_duration)
 
-        if not segments:
-            duration = clip.duration_seconds or 10
-            return 0.0, min(duration, config.avg_clip_duration), 0.0
+            if not segments:
+                duration = clip.duration_seconds or 10
+                return 0.0, min(duration, config.avg_clip_duration), 0.0
 
-        best = segments[0]  # Sorted by score, best first
-        segment_duration = max(min_segment, min(best.end_time - best.start_time, max_segment))
+            best = segments[0]  # Sorted by score, best first
+            segment_duration = max(min_segment, min(best.end_time - best.start_time, max_segment))
 
-        start = best.start_time
-        end = start + segment_duration
-        score = best.total_score
+            start = best.start_time
+            end = start + segment_duration
+            score = best.total_score
 
-        if end > video_duration:
-            end = video_duration
-            start = max(0, end - segment_duration)
+            if end > video_duration:
+                end = video_duration
+                start = max(0, end - segment_duration)
 
-        # Silence adjustment is handled by UnifiedSegmentAnalyzer's boundary detection
+            # Silence adjustment is handled by UnifiedSegmentAnalyzer's boundary detection
 
-        moments = [seg.to_moment_score() for seg in segments]
-        analysis_cache.save_analysis(
-            asset=clip.asset, video_info=clip, perceptual_hash=None, segments=moments
-        )
+            moments = [seg.to_moment_score() for seg in segments]
+            analysis_cache.save_analysis(
+                asset=clip.asset, video_info=clip, perceptual_hash=None, segments=moments
+            )
 
-        del segments, moments
-        analyzer.clear_cache()
-        del analyzer
-        gc.collect()
-
-        return start, end, score
+            return start, end, score
+        finally:
+            if owns_analyzer:
+                analyzer.close()
 
     def extract_and_log_preview(
         self,

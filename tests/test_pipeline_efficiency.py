@@ -201,6 +201,101 @@ class TestPipelineCacheBatch:
 
         assert batch.__exit__.call_args.args[0] is RuntimeError
 
+    def test_pipeline_closes_analyzer_once_before_batch_exit_on_failure(self, tmp_path):
+        """Pipeline cleanup owns one final analyzer teardown before cache cleanup."""
+        from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
+
+        config = Config(cache={"directory": str(tmp_path / "cache")})
+        batch = MagicMock()
+        batch.__enter__.return_value = batch
+        video_cache = MagicMock()
+        video_cache.begin_batch.return_value = batch
+
+        with patch(
+            "immich_memories.analysis.smart_pipeline.VideoDownloadCache",
+            return_value=video_cache,
+        ):
+            pipeline = SmartPipeline(
+                client=MagicMock(),
+                analysis_cache=MagicMock(),
+                thumbnail_cache=MagicMock(),
+                config=PipelineConfig(),
+                analysis_config=config.analysis,
+                app_config=config,
+            )
+            pipeline._phase_cluster = MagicMock(side_effect=RuntimeError("analysis failed"))
+            pipeline.analyzer.close = MagicMock()
+
+            with pytest.raises(RuntimeError, match="analysis failed"):
+                pipeline.run_analysis([])
+
+        pipeline.analyzer.close.assert_called_once()
+        assert batch.__exit__.call_args.args[0] is RuntimeError
+
+    def test_cleanup_failure_does_not_mask_pipeline_error(self, tmp_path, caplog):
+        """Resource cleanup logs generically while preserving the pipeline failure."""
+        from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
+
+        config = Config(cache={"directory": str(tmp_path / "cache")})
+        batch = MagicMock()
+        batch.__enter__.return_value = batch
+        video_cache = MagicMock()
+        video_cache.begin_batch.return_value = batch
+
+        with patch(
+            "immich_memories.analysis.smart_pipeline.VideoDownloadCache",
+            return_value=video_cache,
+        ):
+            pipeline = SmartPipeline(
+                client=MagicMock(),
+                analysis_cache=MagicMock(),
+                thumbnail_cache=MagicMock(),
+                config=PipelineConfig(),
+                analysis_config=config.analysis,
+                app_config=config,
+            )
+            pipeline._phase_cluster = MagicMock(side_effect=RuntimeError("analysis failed"))
+            pipeline.analyzer.close = MagicMock(side_effect=RuntimeError("secret cleanup detail"))
+
+            caplog.set_level("DEBUG")
+            with pytest.raises(RuntimeError, match="analysis failed"):
+                pipeline.run_analysis([])
+
+        pipeline.analyzer.close.assert_called_once()
+        assert "secret cleanup detail" not in caplog.text
+
+    def test_pipeline_closes_analyzer_once_before_batch_exit_on_success(self, tmp_path):
+        """The pipeline owns one final teardown for a successful analysis batch."""
+        from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
+
+        config = Config(cache={"directory": str(tmp_path / "cache")})
+        batch = MagicMock()
+        batch.__enter__.return_value = batch
+        video_cache = MagicMock()
+        video_cache.begin_batch.return_value = batch
+
+        with patch(
+            "immich_memories.analysis.smart_pipeline.VideoDownloadCache",
+            return_value=video_cache,
+        ):
+            pipeline = SmartPipeline(
+                client=MagicMock(),
+                analysis_cache=MagicMock(),
+                thumbnail_cache=MagicMock(),
+                config=PipelineConfig(),
+                analysis_config=config.analysis,
+                app_config=config,
+            )
+            pipeline._phase_cluster = MagicMock(return_value=[])
+            pipeline._phase_filter = MagicMock(return_value=[])
+            pipeline.analyzer.phase_analyze = MagicMock(return_value=[])
+            pipeline.analyzer.close = MagicMock()
+
+            assert pipeline.run_analysis([]) == []
+
+        pipeline.analyzer.close.assert_called_once()
+        batch.__exit__.assert_called_once()
+
 
 class TestUnifiedPhotoBudget:
     """Photo rendering should always use unified budget, never legacy render-all."""

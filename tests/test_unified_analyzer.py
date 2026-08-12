@@ -26,6 +26,7 @@ from immich_memories.analysis.unified_analyzer import (
     ScoredSegment,
     UnifiedSegmentAnalyzer,
 )
+from immich_memories.audio.audio_models import AudioAnalysisResult
 from immich_memories.config_loader import Config
 from immich_memories.config_models import AnalysisConfig, AudioContentConfig
 
@@ -353,6 +354,41 @@ class TestUnifiedSegmentAnalyzer:
         # total ≈ 0.99
         assert abs(score - 0.99) < 0.01
 
+    def test_reset_for_video_releases_capture_and_clears_per_video_cache(self, analyzer):
+        """The next video must not inherit cached audio analysis or a native capture."""
+        analyzer._audio_analysis_cache["first.mp4"] = MagicMock()
+
+        analyzer.reset_for_video()
+
+        analyzer.scorer.release_capture.assert_called_once()
+        assert analyzer._audio_analysis_cache == {}
+
+    def test_reset_for_video_keeps_the_shared_model_instances(self, analyzer):
+        """Reset clears only clip data, so the configured analyzers remain reusable."""
+        audio = MagicMock()
+        content = MagicMock()
+        analyzer._audio_analyzer = audio
+        analyzer.content_analyzer = content
+
+        analyzer.reset_for_video()
+
+        assert analyzer._audio_analyzer is audio
+        assert analyzer.content_analyzer is content
+
+    def test_close_cleans_a_lazy_audio_analyzer_once_and_blocks_reuse(self, analyzer):
+        """A fallback-created audio model is owned by the batch analyzer teardown."""
+        audio = MagicMock()
+        analyzer._audio_analyzer = audio
+        analyzer._owns_audio_analyzer = True
+
+        analyzer.close()
+        analyzer.close()
+
+        audio.cleanup.assert_called_once()
+        analyzer.scorer.release_capture.assert_called_once()
+        with pytest.raises(RuntimeError, match="closed"):
+            analyzer.analyze(Path("missing.mp4"))
+
 
 class TestUnifiedAnalyzerIntegration:
     """Integration tests for UnifiedSegmentAnalyzer."""
@@ -468,6 +504,105 @@ class TestUnifiedAnalyzerIntegration:
 
             # Should still return segments using visual-only
             assert isinstance(result, list)
+
+    def test_reset_between_real_analyses_isolates_second_video_state(self, tmp_path):
+        """A second analysis gets only its own cuts, frames, audio result, and cache entry."""
+        scorer = MagicMock()
+        scorer.score_scene.side_effect = lambda _path, scene, **_kwargs: MomentScore(
+            start_time=scene.start_time,
+            end_time=scene.end_time,
+            total_score=0.7,
+            face_score=0.8,
+            motion_score=0.6,
+            stability_score=0.7,
+        )
+        audio = MagicMock()
+        audio.analyze.side_effect = [AudioAnalysisResult(), AudioAnalysisResult()]
+        analyzer = UnifiedSegmentAnalyzer(
+            scorer=scorer,
+            min_segment_duration=2.0,
+            max_segment_duration=15.0,
+            audio_content_enabled=True,
+            audio_analyzer=audio,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
+        first = tmp_path / "first.mp4"
+        second = tmp_path / "second.mp4"
+        first.write_bytes(b"first")
+        second.write_bytes(b"second")
+
+        with (
+            patch(
+                "immich_memories.analysis.unified_analyzer.detect_visual_boundaries",
+                side_effect=[[0.0, 4.0, 8.0], [0.0, 6.0, 12.0]],
+            ),
+            patch(
+                "immich_memories.analysis.unified_analyzer.detect_audio_boundaries",
+                side_effect=[[0.0, 4.0, 8.0], [0.0, 6.0, 12.0]],
+            ),
+        ):
+            first_result = analyzer.analyze(first, video_duration=8.0)
+            assert analyzer._audio_analysis_cache.keys() == {str(first)}
+            first_score_calls = scorer.score_scene.call_count
+
+            analyzer.reset_for_video()
+
+            assert analyzer._audio_analysis_cache == {}
+            second_result = analyzer.analyze(second, video_duration=12.0)
+
+        assert first_result
+        assert second_result
+        assert all(segment.end_time <= 12.0 for segment in second_result)
+        assert all(segment.end_time not in {4.0, 8.0} for segment in second_result)
+        assert analyzer._audio_analysis_cache.keys() == {str(second)}
+        assert scorer.release_capture.call_count == 1
+        second_score_calls = scorer.score_scene.call_args_list[first_score_calls:]
+        assert all(call.args[1].end_time in {6.0, 12.0} for call in second_score_calls)
+
+    def test_reset_after_failed_real_analysis_allows_a_clean_second_video(self, tmp_path):
+        """A scoring failure cannot poison the reusable analyzer before the next video."""
+        scorer = MagicMock()
+        scorer.score_scene.side_effect = RuntimeError("first video failed")
+        analyzer = UnifiedSegmentAnalyzer(
+            scorer=scorer,
+            min_segment_duration=2.0,
+            max_segment_duration=15.0,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
+        first = tmp_path / "failed.mp4"
+        second = tmp_path / "second.mp4"
+        first.write_bytes(b"first")
+        second.write_bytes(b"second")
+
+        with (
+            patch(
+                "immich_memories.analysis.unified_analyzer.detect_visual_boundaries",
+                return_value=[0.0, 6.0],
+            ),
+            patch(
+                "immich_memories.analysis.unified_analyzer.detect_audio_boundaries",
+                return_value=[0.0, 6.0],
+            ),
+        ):
+            first_result = analyzer.analyze(first, video_duration=6.0)
+
+            analyzer.reset_for_video()
+            scorer.score_scene.side_effect = None
+            scorer.score_scene.return_value = MomentScore(
+                start_time=0.0,
+                end_time=6.0,
+                total_score=0.7,
+                face_score=0.8,
+                motion_score=0.6,
+                stability_score=0.7,
+            )
+            second_result = analyzer.analyze(second, video_duration=6.0)
+
+        assert first_result
+        assert second_result
+        assert scorer.release_capture.call_count == 1
 
 
 class TestCreateUnifiedAnalyzerFromConfig:

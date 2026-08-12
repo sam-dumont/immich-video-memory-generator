@@ -334,16 +334,22 @@ class TestSmartPipelineIntegration:
         self._setup_cache_for_clips(mock_analysis_cache, clips)
 
         config = PipelineConfig(target_clips=5, analyze_all=True)
-        pipeline = self._make_pipeline(
+        first_pipeline = self._make_pipeline(
             mock_immich_client,
             mock_analysis_cache,
             mock_thumbnail_cache,
             config=config,
         )
 
-        result1 = pipeline.run(clips)
+        result1 = first_pipeline.run(clips)
         # Reset cache call counts
         mock_analysis_cache.get_analysis.reset_mock()
-        result2 = pipeline.run(clips)
+        second_pipeline = self._make_pipeline(
+            mock_immich_client,
+            mock_analysis_cache,
+            mock_thumbnail_cache,
+            config=config,
+        )
+        result2 = second_pipeline.run(clips)
 
         assert len(result1.selected_clips) == len(result2.selected_clips)

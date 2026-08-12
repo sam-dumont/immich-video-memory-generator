@@ -263,3 +263,13 @@ class TestCleanup:
         assert analyzer._panns_model is None
         assert analyzer._panns_available is None
         assert analyzer._class_names is None
+
+    def test_cleanup_of_loaded_model_does_not_run_full_garbage_collection(self):
+        """The batch owner, not an individual model, decides when to collect garbage."""
+        analyzer = AudioContentAnalyzer()
+        analyzer._panns_model = object()
+
+        with patch("gc.collect") as collect:
+            analyzer.cleanup()
+
+        collect.assert_not_called()
