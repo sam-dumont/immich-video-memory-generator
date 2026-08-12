@@ -619,6 +619,111 @@ class TestRunAnalysisWithFallback:
 
 
 class TestReusableAnalysisServices:
+    def test_mixed_legacy_first_batch_uses_one_shared_service_stack(self):
+        from immich_memories.analysis.preview_builder import PreviewBuilder
+
+        config = Config()
+        preview_builder = PreviewBuilder(
+            MagicMock(),
+            cache_config=config.cache,
+            analysis_config=config.analysis,
+            content_analysis_config=config.content_analysis,
+        )
+        analyzer = ClipAnalyzer(
+            PipelineConfig(analysis_depth="fast"),
+            MagicMock(),
+            MagicMock(),
+            preview_builder,
+            app_config=config,
+        )
+        segment = MagicMock(
+            start_time=1.0,
+            end_time=5.0,
+            total_score=0.8,
+            audio_categories=None,
+            llm_description=None,
+            llm_emotion=None,
+            cut_quality=1.0,
+        )
+        segment.to_moment_score.return_value = MagicMock()
+        clips = [make_clip(f"mixed-{index}", duration=10.0) for index in range(10)]
+        pipeline_config = MagicMock(avg_clip_duration=5.0)
+
+        with (
+            patch("immich_memories.analysis.scoring.SceneScorer") as scorer_cls,
+            patch(
+                "immich_memories.analysis.unified_analyzer.UnifiedSegmentAnalyzer"
+            ) as unified_cls,
+            patch.object(analyzer, "_init_content_analyzer", return_value=(MagicMock(), 0.3)),
+            patch.object(analyzer, "_get_cached_audio_analyzer", return_value=MagicMock()),
+        ):
+            unified_cls.return_value.analyze.return_value = [segment]
+            for clip in clips[:5]:
+                preview_builder.run_legacy_analysis(
+                    clip, MagicMock(), None, 10.0, pipeline_config, MagicMock()
+                )
+            for clip in clips[5:]:
+                analyzer._run_unified_analysis(clip, MagicMock(), MagicMock(), 10.0)
+
+        scorer_cls.assert_called_once()
+        unified_cls.assert_called_once()
+        legacy_calls = unified_cls.return_value.analyze.call_args_list[:5]
+        assert all(call.kwargs["enable_content_analysis"] is False for call in legacy_calls)
+        assert all(call.kwargs["enable_audio_content_analysis"] is False for call in legacy_calls)
+        assert all(
+            "enable_content_analysis" not in call.kwargs
+            for call in unified_cls.return_value.analyze.call_args_list[5:]
+        )
+
+    def test_unified_zero_score_fallback_reuses_service_in_legacy_mode(self):
+        from immich_memories.analysis.preview_builder import PreviewBuilder
+
+        config = Config()
+        preview_builder = PreviewBuilder(
+            MagicMock(),
+            cache_config=config.cache,
+            analysis_config=config.analysis,
+            content_analysis_config=config.content_analysis,
+        )
+        analyzer = ClipAnalyzer(
+            PipelineConfig(), MagicMock(), MagicMock(), preview_builder, app_config=config
+        )
+        legacy_segment = MagicMock(
+            start_time=1.0,
+            end_time=5.0,
+            total_score=0.8,
+            audio_categories=None,
+            llm_description=None,
+            llm_emotion=None,
+            cut_quality=1.0,
+        )
+        legacy_segment.to_moment_score.return_value = MagicMock()
+        clip = make_clip("fallback", duration=10.0)
+
+        with (
+            patch("immich_memories.analysis.scoring.SceneScorer"),
+            patch(
+                "immich_memories.analysis.unified_analyzer.UnifiedSegmentAnalyzer"
+            ) as unified_cls,
+            patch.object(analyzer, "_init_content_analyzer", return_value=(MagicMock(), 0.3)),
+            patch.object(analyzer, "_get_cached_audio_analyzer", return_value=MagicMock()),
+        ):
+            unified_cls.return_value.analyze.side_effect = [[], [legacy_segment]]
+            analyzer._run_analysis_with_fallback(
+                clip, MagicMock(), MagicMock(), 10.0, use_unified=True
+            )
+
+        assert unified_cls.return_value.analyze.call_count == 2
+        assert (
+            "enable_content_analysis"
+            not in unified_cls.return_value.analyze.call_args_list[0].kwargs
+        )
+        assert unified_cls.return_value.analyze.call_args_list[1].kwargs == {
+            "video_duration": 10.0,
+            "enable_content_analysis": False,
+            "enable_audio_content_analysis": False,
+        }
+
     def test_unified_services_are_constructed_once_for_a_clip_batch(self):
         """Ten clips reuse one scorer and unified analyzer rather than rebuilding models."""
         analyzer, _, _, _ = _make_analyzer()

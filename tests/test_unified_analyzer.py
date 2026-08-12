@@ -88,6 +88,117 @@ class TestResetForVideo:
         scorer.release_capture.assert_called_once()
 
 
+class TestPerInvocationAnalysisModes:
+    def test_legacy_mode_skips_content_and_audio_then_unified_mode_restores_them(
+        self, tmp_path: Path, monkeypatch
+    ):
+        video = tmp_path / "video.mp4"
+        video.write_bytes(b"video")
+        audio_analyzer = MagicMock()
+        audio_analyzer.analyze.return_value = MagicMock(
+            audio_score=0.5,
+            has_laughter=False,
+            has_speech=False,
+            protected_ranges=[],
+        )
+        content_analyzer = MagicMock()
+        content_analyzer.analyze_segment.return_value = MagicMock(
+            content_score=0.9,
+            description="family at the beach",
+            emotion="joy",
+            setting="beach",
+            activities=["swimming"],
+            subjects=["family"],
+            interestingness=0.9,
+            quality=0.9,
+        )
+        analyzer = UnifiedSegmentAnalyzer(
+            scorer=MagicMock(),
+            content_analyzer=content_analyzer,
+            content_weight=0.3,
+            audio_content_enabled=True,
+            audio_analyzer=audio_analyzer,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
+        monkeypatch.setattr(
+            "immich_memories.analysis.unified_analyzer.detect_visual_boundaries", lambda *_: []
+        )
+        monkeypatch.setattr(
+            "immich_memories.analysis.unified_analyzer.detect_audio_boundaries", lambda *_: []
+        )
+        monkeypatch.setattr(
+            "immich_memories.analysis.unified_analyzer.merge_boundaries", lambda *_: []
+        )
+        monkeypatch.setattr(
+            "immich_memories.analysis.unified_analyzer.generate_candidate_segments", lambda *_: []
+        )
+        monkeypatch.setattr(
+            "immich_memories.analysis.unified_analyzer.generate_fallback_segments", lambda *_: []
+        )
+        analyzer._score_segments_visual_only = MagicMock(
+            return_value=[ScoredSegment(start_time=0.0, end_time=5.0, visual_score=0.6)]
+        )
+
+        analyzer.analyze(
+            video,
+            video_duration=10.0,
+            enable_content_analysis=False,
+            enable_audio_content_analysis=False,
+        )
+
+        audio_analyzer.analyze.assert_not_called()
+        content_analyzer.analyze_segment.assert_not_called()
+        analyzer._score_segments_visual_only.assert_called_once_with(
+            video,
+            [],
+            [],
+            None,
+            10.0,
+            enable_content_analysis=False,
+            enable_audio_content_analysis=False,
+        )
+
+        analyzer.analyze(video, video_duration=10.0)
+
+        audio_analyzer.analyze.assert_called_once()
+        content_analyzer.analyze_segment.assert_called_once()
+        assert analyzer._score_segments_visual_only.call_args.kwargs == {
+            "enable_content_analysis": True,
+            "enable_audio_content_analysis": True,
+        }
+
+        segment = ScoredSegment(
+            start_time=0.0,
+            end_time=5.0,
+            visual_score=0.6,
+            audio_score=1.0,
+            content_score=1.0,
+        )
+        legacy_score = analyzer._compute_total_score(
+            segment,
+            enable_content_analysis=False,
+            enable_audio_content_analysis=False,
+        )
+        visual_only = UnifiedSegmentAnalyzer(
+            scorer=MagicMock(),
+            content_weight=0.0,
+            audio_content_enabled=False,
+            audio_content_weight=analyzer.audio_content_weight,
+            duration_weight=analyzer.duration_weight,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
+        assert legacy_score == pytest.approx(visual_only._compute_total_score(segment))
+
+        unified_score = analyzer._compute_total_score(
+            segment,
+            enable_content_analysis=True,
+            enable_audio_content_analysis=True,
+        )
+        assert unified_score > legacy_score
+
+
 class TestScoredSegment:
     """Tests for ScoredSegment dataclass."""
 

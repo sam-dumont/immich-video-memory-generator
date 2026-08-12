@@ -83,6 +83,26 @@ def _make_segment(start: float, end: float, score: float) -> ScoredSegment:
 
 
 class TestRunLegacyAnalysis:
+    def test_bound_provider_reuses_batch_analyzer_in_legacy_mode(self):
+        builder = _make_builder()
+        shared_analyzer = MagicMock()
+        shared_analyzer.analyze.return_value = [_make_segment(1.0, 4.0, 0.8)]
+        provider = MagicMock(return_value=shared_analyzer)
+        clip = MagicMock(duration_seconds=10.0)
+        config = MagicMock(avg_clip_duration=5.0)
+
+        builder.bind_legacy_analyzer_provider(provider)
+        builder.run_legacy_analysis(clip, Path("/video.mp4"), None, 10.0, config, MagicMock())
+
+        provider.assert_called_once()
+        shared_analyzer.analyze.assert_called_once_with(
+            Path("/video.mp4"),
+            video_duration=10.0,
+            enable_content_analysis=False,
+            enable_audio_content_analysis=False,
+        )
+        shared_analyzer.reset_for_video.assert_called_once()
+
     def test_reuses_standalone_analyzer_across_legacy_calls(self):
         builder = _make_builder()
         segment = _make_segment(1.0, 4.0, 0.8)
@@ -99,6 +119,32 @@ class TestRunLegacyAnalysis:
 
         analyzer_cls.assert_called_once()
         assert analyzer_cls.return_value.reset_for_video.call_count == 2
+
+    def test_binding_provider_releases_existing_standalone_analyzer(self):
+        builder = _make_builder()
+        segment = _make_segment(1.0, 4.0, 0.8)
+        clip = MagicMock(duration_seconds=10.0)
+        config = MagicMock(avg_clip_duration=5.0)
+        cache = MagicMock()
+        shared_analyzer = MagicMock()
+        shared_analyzer.analyze.return_value = [segment]
+
+        with patch(
+            "immich_memories.analysis.unified_analyzer.UnifiedSegmentAnalyzer"
+        ) as standalone_cls:
+            standalone_cls.return_value.analyze.return_value = [segment]
+            builder.run_legacy_analysis(clip, Path("/first.mp4"), None, 10.0, config, cache)
+            builder.bind_legacy_analyzer_provider(MagicMock(return_value=shared_analyzer))
+            builder.run_legacy_analysis(clip, Path("/second.mp4"), None, 10.0, config, cache)
+
+        standalone_cls.return_value.clear_cache.assert_called_once_with(release_audio_analyzer=True)
+        standalone_cls.return_value.reset_for_video.assert_called()
+        shared_analyzer.analyze.assert_called_once_with(
+            Path("/second.mp4"),
+            video_duration=10.0,
+            enable_content_analysis=False,
+            enable_audio_content_analysis=False,
+        )
 
     def test_standalone_legacy_close_releases_reusable_service_without_gc(self):
         builder = _make_builder()

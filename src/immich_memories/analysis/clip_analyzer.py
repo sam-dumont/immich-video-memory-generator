@@ -66,6 +66,9 @@ class ClipAnalyzer:
         self._cached_audio_analyzer: AudioContentAnalyzer | None = None
         self._cached_scene_scorer: SceneScorer | None = None
         self._cached_unified_analyzer: UnifiedSegmentAnalyzer | None = None
+        bind_legacy_provider = getattr(self.preview_builder, "bind_legacy_analyzer_provider", None)
+        if bind_legacy_provider is not None:
+            bind_legacy_provider(self._get_unified_analyzer)
 
     def bind_cache_batch(self, batch: CacheBatch | None) -> None:
         """Use the SmartPipeline-owned batch for every cache download in this run."""

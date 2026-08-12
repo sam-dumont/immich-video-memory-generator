@@ -6,6 +6,7 @@ import contextlib
 import logging
 import subprocess
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -44,6 +45,7 @@ class PreviewBuilder:
         self._cache_batch: CacheBatch | None = None
         self._legacy_analyzer: UnifiedSegmentAnalyzer | None = None
         self._owns_legacy_analyzer = False
+        self._legacy_analyzer_provider: Callable[[], UnifiedSegmentAnalyzer] | None = None
 
     def bind_cache_batch(self, batch: CacheBatch | None) -> None:
         """Use the SmartPipeline-owned batch for download requests in this run."""
@@ -51,7 +53,25 @@ class PreviewBuilder:
 
     def bind_legacy_analyzer(self, analyzer: UnifiedSegmentAnalyzer | None) -> None:
         """Bind ClipAnalyzer's reusable service for legacy fallback analysis."""
+        self._release_owned_legacy_analyzer()
         self._legacy_analyzer = analyzer
+        self._owns_legacy_analyzer = False
+        self._legacy_analyzer_provider = None
+
+    def bind_legacy_analyzer_provider(
+        self, provider: Callable[[], UnifiedSegmentAnalyzer] | None
+    ) -> None:
+        """Use the ClipAnalyzer-owned service even when legacy analysis runs first."""
+        self._release_owned_legacy_analyzer()
+        self._legacy_analyzer = None
+        self._legacy_analyzer_provider = provider
+
+    def _release_owned_legacy_analyzer(self) -> None:
+        if self._owns_legacy_analyzer and self._legacy_analyzer is not None:
+            with contextlib.suppress(Exception):
+                self._legacy_analyzer.reset_for_video()
+            with contextlib.suppress(Exception):
+                self._legacy_analyzer.clear_cache(release_audio_analyzer=True)
         self._owns_legacy_analyzer = False
 
     def find_cached_preview(self, asset_id: str, start: float, end: float) -> str | None:
@@ -142,22 +162,30 @@ class PreviewBuilder:
 
         analyzer = self._legacy_analyzer
         if analyzer is None:
-            scorer = SceneScorer(
-                content_analysis_config=self._content_analysis_config,
-                analysis_config=a_config,
-            )
-            analyzer = UnifiedSegmentAnalyzer(
-                scorer=scorer,
-                min_segment_duration=min_segment,
-                max_segment_duration=max_segment,
-                audio_content_config=AudioContentConfig(),
-                analysis_config=a_config,
-            )
+            if self._legacy_analyzer_provider is not None:
+                analyzer = self._legacy_analyzer_provider()
+            else:
+                scorer = SceneScorer(
+                    content_analysis_config=self._content_analysis_config,
+                    analysis_config=a_config,
+                )
+                analyzer = UnifiedSegmentAnalyzer(
+                    scorer=scorer,
+                    min_segment_duration=min_segment,
+                    max_segment_duration=max_segment,
+                    audio_content_config=AudioContentConfig(),
+                    analysis_config=a_config,
+                )
+                self._owns_legacy_analyzer = True
             self._legacy_analyzer = analyzer
-            self._owns_legacy_analyzer = True
 
         try:
-            segments = analyzer.analyze(analysis_video, video_duration=video_duration)
+            segments = analyzer.analyze(
+                analysis_video,
+                video_duration=video_duration,
+                enable_content_analysis=False,
+                enable_audio_content_analysis=False,
+            )
 
             if not segments:
                 duration = clip.duration_seconds or 10
@@ -185,13 +213,9 @@ class PreviewBuilder:
 
     def close(self) -> None:
         """Release only standalone legacy resources; bound services belong to ClipAnalyzer."""
-        if self._owns_legacy_analyzer and self._legacy_analyzer is not None:
-            with contextlib.suppress(Exception):
-                self._legacy_analyzer.reset_for_video()
-            with contextlib.suppress(Exception):
-                self._legacy_analyzer.clear_cache(release_audio_analyzer=True)
+        self._release_owned_legacy_analyzer()
         self._legacy_analyzer = None
-        self._owns_legacy_analyzer = False
+        self._legacy_analyzer_provider = None
 
     def extract_and_log_preview(
         self,
