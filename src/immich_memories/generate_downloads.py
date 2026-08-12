@@ -7,6 +7,11 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import httpx
+
+from immich_memories.api.immich import ImmichAPIError
+from immich_memories.security import sanitize_error_message
+
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import Asset, VideoClipInfo
@@ -112,8 +117,10 @@ def _download_temporary_asset(
         if path.exists() and path.stat().st_size > 0:
             return path
         path.unlink(missing_ok=True)
-    except (OSError, RuntimeError) as exc:
-        logger.warning("Failed to download temporary video %s: %s", asset_id, exc)
+    except (ImmichAPIError, httpx.HTTPError, OSError, RuntimeError) as exc:
+        logger.warning(
+            "Failed to download temporary video %s: %s", asset_id, _safe_download_error(exc, client)
+        )
         path.unlink(missing_ok=True)
     return None
 
@@ -148,9 +155,21 @@ def _download_burst_clips(
             client.download_asset(vid, destination)
             if destination.exists() and destination.stat().st_size > 0:
                 clip_paths.append(destination)
-        except (OSError, RuntimeError) as exc:
-            logger.warning("Failed to download burst video %s: %s", vid, exc)
+        except (ImmichAPIError, httpx.HTTPError, OSError, RuntimeError) as exc:
+            logger.warning(
+                "Failed to download burst video %s: %s", vid, _safe_download_error(exc, client)
+            )
+            destination.unlink(missing_ok=True)
     return clip_paths
+
+
+def _safe_download_error(exc: Exception, client: SyncImmichClient) -> str:
+    """Keep credentials out of direct-download diagnostics."""
+    message = sanitize_error_message(str(exc))
+    api_key = getattr(client, "api_key", None)
+    if isinstance(api_key, str) and api_key:
+        message = message.replace(api_key, "***")
+    return message
 
 
 def _align_burst_subset(

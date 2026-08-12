@@ -11,11 +11,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import httpx
+
+from immich_memories.api.immich import ImmichAPIError
+from immich_memories.security import sanitize_error_message
+
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import Asset
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_download_error(exc: Exception, client: SyncImmichClient) -> str:
+    """Keep credentials out of cache-download diagnostics."""
+    message = sanitize_error_message(str(exc))
+    api_key = getattr(client, "api_key", None)
+    if isinstance(api_key, str) and api_key:
+        message = message.replace(api_key, "***")
+    return message
 
 
 @dataclass
@@ -275,8 +289,10 @@ class VideoDownloadCache:
                 return dest
             logger.warning("Downloaded file empty or missing: %s", dest)
             dest.unlink(missing_ok=True)
-        except (OSError, RuntimeError) as e:
-            logger.warning("Failed to download video %s: %s", download_id, e)
+        except (ImmichAPIError, httpx.HTTPError, OSError, RuntimeError) as e:
+            logger.warning(
+                "Failed to download video %s: %s", download_id, _safe_download_error(e, client)
+            )
             dest.unlink(missing_ok=True)
 
         return None

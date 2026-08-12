@@ -196,6 +196,15 @@ class TestClipStyle:
         assert config.optimal_clip_duration == 5.0
         assert config.max_optimal_duration == 15.0  # original default, not balanced's 10.0
 
+    def test_download_workers_defaults_and_is_bounded(self):
+        assert AnalysisConfig().download_workers == 3
+        assert AnalysisConfig(download_workers=1).download_workers == 1
+        assert AnalysisConfig(download_workers=8).download_workers == 8
+        with pytest.raises(ValueError):
+            AnalysisConfig(download_workers=0)
+        with pytest.raises(ValueError):
+            AnalysisConfig(download_workers=9)
+
     def test_invalid_clip_style_rejected(self):
         """Invalid clip_style value is rejected."""
         with pytest.raises(ValueError):

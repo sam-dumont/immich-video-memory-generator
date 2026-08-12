@@ -113,6 +113,35 @@ class TestDownloadOrGet:
         path = cache.download_or_get(client, mock_asset)
         assert path is None
 
+    def test_http_failure_removes_partial_file_before_retry(self, cache, mock_asset):
+        """A streamed HTTP failure cannot poison a later cache lookup."""
+        import httpx
+
+        attempts = 0
+
+        def partial_then_success(_asset_id: str, output_path: Path) -> None:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                output_path.write_bytes(b"partial")
+                request = httpx.Request("GET", "https://immich.example/download")
+                response = httpx.Response(503, request=request)
+                raise httpx.HTTPStatusError(
+                    "download interrupted", request=request, response=response
+                )
+            output_path.write_bytes(b"complete")
+
+        client = MagicMock()
+        client.download_asset.side_effect = partial_then_success
+
+        assert cache.download_or_get(client, mock_asset) is None
+        assert cache._find_cached(mock_asset.id) is None
+        path = cache.download_or_get(client, mock_asset)
+
+        assert path is not None
+        assert path.read_bytes() == b"complete"
+        assert client.download_asset.call_count == 2
+
 
 class TestCacheBatch:
     """Batch cache maintenance must scan once regardless of item count."""

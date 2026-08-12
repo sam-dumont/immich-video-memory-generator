@@ -133,6 +133,166 @@ def test_disabled_cache_download_is_run_owned_and_cleaned(tmp_path: Path) -> Non
     assert not path.exists()
 
 
+def test_disabled_cache_http_failure_removes_partial_run_owned_file(tmp_path: Path) -> None:
+    import httpx
+
+    from immich_memories.generate_downloads import _download_temporary_asset
+
+    asset = MagicMock()
+    asset.id = "partial-temporary"
+    asset.live_photo_video_id = None
+    asset.original_file_name = "clip.MOV"
+    attempts = 0
+
+    def partial_then_success(_asset_id: str, output_path: Path) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            output_path.write_bytes(b"partial")
+            request = httpx.Request("GET", "https://immich.example/download")
+            response = httpx.Response(503, request=request)
+            raise httpx.HTTPStatusError("download interrupted", request=request, response=response)
+        output_path.write_bytes(b"complete")
+
+    client = MagicMock()
+    client.download_asset.side_effect = partial_then_success
+
+    assert _download_temporary_asset(client, asset, tmp_path) is None
+    assert not list((tmp_path / ".temporary_downloads").rglob("*.*"))
+    path = _download_temporary_asset(client, asset, tmp_path)
+
+    assert path is not None
+    assert path.read_bytes() == b"complete"
+    assert client.download_asset.call_count == 2
+
+
+def test_extraction_uses_prefetched_video_and_keeps_ffmpeg_sequential(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Prefetch provides sources; segment extraction still runs in the caller thread."""
+    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.processing.download_coordinator import DownloadResult
+
+    source = tmp_path / "prefetched.mp4"
+    source.write_bytes(b"video")
+    segment = tmp_path / "segment.mp4"
+    segment.write_bytes(b"segment")
+    clip = make_clip("prefetched", duration=5.0)
+    params = MagicMock()
+    params.clips = [clip]
+    params.progress_callback = None
+    params.clip_segments = {}
+    params.clip_rotations = {}
+    params.config = MagicMock()
+    coordinator = MagicMock()
+    coordinator.prefetch.return_value = {
+        clip.asset.id: DownloadResult(clip.asset.id, clip.asset.id, source)
+    }
+
+    download_clip = MagicMock()
+    extract_clip = MagicMock(return_value=segment)
+    monkeypatch.setattr("immich_memories.generate_downloads.download_clip", download_clip)
+    monkeypatch.setattr("immich_memories.processing.clips.extract_clip", extract_clip)
+    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 5.0)
+
+    _extract_clips(params, MagicMock(), tmp_path, download_coordinator=coordinator)
+
+    coordinator.prefetch.assert_called_once_with([clip.asset])
+    download_clip.assert_not_called()
+    extract_clip.assert_called_once()
+
+
+def test_extraction_does_not_prefetch_existing_local_path(tmp_path: Path, monkeypatch) -> None:
+    from immich_memories.generate_clips import _extract_clips
+
+    local = tmp_path / "analysis-owned.mp4"
+    local.write_bytes(b"video")
+    segment = tmp_path / "segment.mp4"
+    segment.write_bytes(b"segment")
+    clip = make_clip("already-local", duration=5.0)
+    clip.local_path = str(local)
+    params = MagicMock()
+    params.clips = [clip]
+    params.progress_callback = None
+    params.clip_segments = {}
+    params.clip_rotations = {}
+    params.config = MagicMock()
+    coordinator = MagicMock()
+    coordinator.prefetch.return_value = {}
+
+    monkeypatch.setattr(
+        "immich_memories.generate_downloads.download_clip", MagicMock(return_value=local)
+    )
+    monkeypatch.setattr(
+        "immich_memories.processing.clips.extract_clip", lambda *_args, **_kwargs: segment
+    )
+    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 5.0)
+
+    _extract_clips(params, MagicMock(), tmp_path, download_coordinator=coordinator)
+
+    coordinator.prefetch.assert_called_once_with([])
+
+
+def test_extraction_prefetches_live_burst_components_before_sequential_merge(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from immich_memories.generate_clips import _extract_clips
+    from immich_memories.processing.download_coordinator import DownloadTarget
+
+    merged = tmp_path / "merged.mp4"
+    merged.write_bytes(b"video")
+    segment = tmp_path / "segment.mp4"
+    segment.write_bytes(b"segment")
+    clip = make_clip("burst-parent", duration=5.0)
+    clip.live_burst_video_ids = ["burst-a", "burst-b"]
+    clip.live_burst_trim_points = [(0.0, 1.0), (1.0, 2.0)]
+    params = MagicMock()
+    params.clips = [clip]
+    params.progress_callback = None
+    params.clip_segments = {}
+    params.clip_rotations = {}
+    params.config = MagicMock()
+    coordinator = MagicMock()
+    coordinator.prefetch.return_value = {}
+    download_clip = MagicMock(return_value=merged)
+
+    monkeypatch.setattr("immich_memories.generate_downloads.download_clip", download_clip)
+    monkeypatch.setattr(
+        "immich_memories.processing.clips.extract_clip", lambda *_args, **_kwargs: segment
+    )
+    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 5.0)
+
+    _extract_clips(params, MagicMock(), tmp_path, download_coordinator=coordinator)
+
+    prefetched = coordinator.prefetch.call_args.args[0]
+    assert prefetched == [DownloadTarget(id="burst-a"), DownloadTarget(id="burst-b")]
+    download_clip.assert_called_once()
+
+
+def test_extraction_does_not_prefetch_static_photo(tmp_path: Path, monkeypatch) -> None:
+    from immich_memories.api.models import AssetType
+    from immich_memories.generate_clips import _extract_clips
+
+    clip = make_clip("static-photo", duration=5.0)
+    clip.asset.type = AssetType.IMAGE
+    params = MagicMock()
+    params.clips = [clip]
+    params.progress_callback = None
+    params.clip_segments = {}
+    params.clip_rotations = {}
+    params.config = MagicMock()
+    coordinator = MagicMock()
+    coordinator.prefetch.return_value = {}
+
+    monkeypatch.setattr(
+        "immich_memories.generate_photos._render_photo_as_clip", lambda *_args: None
+    )
+
+    _extract_clips(params, MagicMock(), tmp_path, download_coordinator=coordinator)
+
+    coordinator.prefetch.assert_called_once_with([])
+
+
 class TestAlignBurstSubset:
     def test_aligns_downloaded_to_trim_points(self, tmp_path: Path) -> None:
         """Downloaded clips should be matched back to their trim points by ID."""

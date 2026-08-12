@@ -93,6 +93,12 @@ _CLIP_STYLE_PRESETS: dict[str, dict[str, float]] = {
 class AnalysisConfig(BaseModel):
     """Settings for video analysis."""
 
+    download_workers: int = Field(
+        default=3,
+        ge=1,
+        le=8,
+        description="Concurrent isolated clients used for video download prefetching",
+    )
     scene_threshold: float = Field(default=27.0, ge=1.0, le=100.0)
     min_scene_duration: float = Field(default=1.0, ge=0.5, le=10.0)
     duplicate_hash_threshold: int = Field(default=8, ge=0, le=64)

@@ -14,6 +14,7 @@ from immich_memories.processing.assembly_config import AssemblyClip
 if TYPE_CHECKING:
     from immich_memories.cache.video_cache import CacheBatch
     from immich_memories.generate import GenerationParams
+    from immich_memories.processing.download_coordinator import DownloadCoordinator, PrefetchAsset
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +49,30 @@ def _probe_file_duration(path: Path) -> float | None:
     return None
 
 
+def _prefetch_assets(clips: list) -> list[PrefetchAsset]:
+    """Return network-only video targets, including burst components."""
+    from immich_memories.api.models import AssetType
+    from immich_memories.processing.download_coordinator import DownloadTarget
+
+    targets: list[PrefetchAsset] = []
+    for clip in clips:
+        if clip.local_path and Path(clip.local_path).exists():
+            continue
+        if clip.asset.type == AssetType.IMAGE and not clip.asset.live_photo_video_id:
+            continue
+        if clip.live_burst_video_ids and clip.live_burst_trim_points:
+            targets.extend(DownloadTarget(id=video_id) for video_id in clip.live_burst_video_ids)
+        else:
+            targets.append(clip.asset)
+    return targets
+
+
 def _extract_clips(
     params: GenerationParams,
     video_cache: CacheBatch | None,
     output_dir: Path,
+    *,
+    download_coordinator: DownloadCoordinator | None = None,
 ) -> list[AssemblyClip]:
     """Download videos and extract clip segments. Renders IMAGE clips as photo animations."""
     from immich_memories.api.models import AssetType
@@ -64,6 +85,9 @@ def _extract_clips(
 
     assembly_clips: list[AssemblyClip] = []
     total = len(params.clips)
+    prefetched = {}
+    if download_coordinator is not None:
+        prefetched = download_coordinator.prefetch(_prefetch_assets(params.clips))
 
     for i, clip in enumerate(params.clips):
         progress = (i / total) * 0.7
@@ -82,7 +106,15 @@ def _extract_clips(
 
             from immich_memories.generate_downloads import download_clip
 
-            video_path = download_clip(params.client, video_cache, clip, output_dir)
+            prefetched_result = prefetched.get(clip.asset.id)
+            video_path: Path | None
+            if prefetched_result and prefetched_result.path is not None:
+                video_path = prefetched_result.path
+            elif prefetched_result and prefetched_result.error:
+                logger.warning("Failed to prefetch %s: %s", clip.asset.id, prefetched_result.error)
+                continue
+            else:
+                video_path = download_clip(params.client, video_cache, clip, output_dir)
             if not video_path or not video_path.exists():
                 logger.warning(f"Failed to download {clip.asset.id}, skipping")
                 continue
