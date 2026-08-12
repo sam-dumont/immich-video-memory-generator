@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.cache.database import VideoAnalysisCache
+    from immich_memories.cache.video_cache import CacheBatch, VideoDownloadCache
     from immich_memories.config_models import AnalysisConfig, CacheConfig, ContentAnalysisConfig
 
 logger = logging.getLogger(__name__)
@@ -32,11 +33,14 @@ class PreviewBuilder:
         cache_config: CacheConfig,
         analysis_config: AnalysisConfig,
         content_analysis_config: ContentAnalysisConfig,
+        video_cache: VideoDownloadCache | None = None,
     ):
         self.client = client
         self._cache_config = cache_config
         self._analysis_config = analysis_config
         self._content_analysis_config = content_analysis_config
+        self.video_cache = video_cache
+        self.cache_batch: CacheBatch | None = None
 
     def find_cached_preview(self, asset_id: str, start: float, end: float) -> str | None:
         """Find or build a preview for a cached clip from the video cache."""
@@ -82,17 +86,12 @@ class PreviewBuilder:
         return None
 
     def download_clip_video(self, clip: VideoClipInfo) -> tuple[Path, Path | None]:
-        """Download clip video, returning (video_path, temp_file_or_None)."""
-        from immich_memories.cache.video_cache import VideoDownloadCache
-
+        """Download a clip through the active pipeline batch, or a temp file if cache is off."""
         c_config = self._cache_config
         if c_config.video_cache_enabled:
-            video_cache = VideoDownloadCache(
-                cache_dir=c_config.video_cache_path,
-                max_size_gb=c_config.video_cache_max_size_gb,
-                max_age_days=c_config.video_cache_max_age_days,
-            )
-            video_path = video_cache.download_or_get(self.client, clip.asset)
+            if self.video_cache is None or self.cache_batch is None:
+                raise RuntimeError("Video cache batch was not provided by the pipeline")
+            video_path = self.cache_batch.download_or_get(self.client, clip.asset)
             return video_path, None
 
         safe_name = sanitize_filename(clip.asset.original_file_name or "video.mp4")

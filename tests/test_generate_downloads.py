@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 
 class TestDownloadClip:
     def test_returns_local_path_when_exists(self, tmp_path: Path) -> None:
@@ -113,3 +115,114 @@ class TestAlignBurstSubset:
 
         assert paths == []
         assert trims == []
+
+
+class TestBurstBatchManifest:
+    @pytest.mark.parametrize("cached", [True, False], ids=["hit", "miss"])
+    def test_component_path_updates_batch_without_finish_rescan(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        cached: bool,
+    ) -> None:
+        import os
+        import time
+
+        from immich_memories.cache.video_cache import VideoDownloadCache
+        from immich_memories.generate_downloads import _download_burst_clips
+
+        cache = VideoDownloadCache(tmp_path / "video-cache")
+        component = cache.cache_dir / "bu" / "burst-id.MOV"
+        old_mtime = time.time() - 3_600
+        if cached:
+            component.parent.mkdir(parents=True)
+            component.write_bytes(b"cached-burst")
+            os.utime(component, (old_mtime, old_mtime))
+
+        client = MagicMock()
+
+        def download(_asset_id: str, output_path: Path) -> Path:
+            output_path.write_bytes(b"downloaded-burst")
+            return output_path
+
+        client.download_asset.side_effect = download
+        original_rglob = Path.rglob
+        scans: list[Path] = []
+
+        def counting_rglob(path: Path, pattern: str):
+            if path == cache.cache_dir:
+                scans.append(path)
+            return original_rglob(path, pattern)
+
+        monkeypatch.setattr(Path, "rglob", counting_rglob)
+        with cache.begin_batch() as batch:
+            paths = _download_burst_clips(client, batch, ["burst-id"])
+
+        assert paths == [component]
+        assert len(scans) == 1
+        assert component.stat().st_mtime > old_mtime
+        assert client.download_asset.call_count == (0 if cached else 1)
+
+    def test_failed_component_updates_batch_without_finish_rescan(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from immich_memories.cache.video_cache import VideoDownloadCache
+        from immich_memories.generate_downloads import _download_burst_clips
+
+        cache = VideoDownloadCache(tmp_path / "video-cache")
+        component = cache.cache_dir / "bu" / "burst-id.MOV"
+        client = MagicMock()
+
+        def partial_download(_asset_id: str, output_path: Path) -> None:
+            output_path.write_bytes(b"partial")
+            raise OSError("download failed")
+
+        client.download_asset.side_effect = partial_download
+        original_rglob = Path.rglob
+        scans: list[Path] = []
+
+        def counting_rglob(path: Path, pattern: str):
+            if path == cache.cache_dir:
+                scans.append(path)
+            return original_rglob(path, pattern)
+
+        monkeypatch.setattr(Path, "rglob", counting_rglob)
+        with cache.begin_batch() as batch:
+            assert _download_burst_clips(client, batch, ["burst-id"]) == []
+
+        assert len(scans) == 1
+        assert not component.exists()
+
+    def test_propagated_component_error_updates_batch_without_finish_rescan(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from immich_memories.cache.video_cache import VideoDownloadCache
+        from immich_memories.generate_downloads import _download_burst_clips
+
+        cache = VideoDownloadCache(tmp_path / "video-cache")
+        component = cache.cache_dir / "bu" / "burst-id.MOV"
+        client = MagicMock()
+
+        def partial_download(_asset_id: str, output_path: Path) -> None:
+            output_path.write_bytes(b"partial")
+            raise ValueError("download size limit exceeded")
+
+        client.download_asset.side_effect = partial_download
+        original_rglob = Path.rglob
+        scans: list[Path] = []
+
+        def counting_rglob(path: Path, pattern: str):
+            if path == cache.cache_dir:
+                scans.append(path)
+            return original_rglob(path, pattern)
+
+        monkeypatch.setattr(Path, "rglob", counting_rglob)
+        with cache.begin_batch() as batch, pytest.raises(ValueError, match="size limit"):
+            _download_burst_clips(client, batch, ["burst-id"])
+
+        assert len(scans) == 1
+        assert not component.exists()

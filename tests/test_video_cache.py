@@ -105,6 +105,226 @@ class TestDownloadOrGet:
         assert path is None
 
 
+class TestCacheBatch:
+    """One explicit batch owns maintenance for any number of downloads."""
+
+    def test_twenty_downloads_scan_cache_once(self, cache, mock_client, monkeypatch):
+        assets = []
+        for index in range(20):
+            asset = MagicMock()
+            asset.id = f"asset-{index:02d}"
+            asset.original_file_name = f"clip-{index:02d}.mp4"
+            asset.live_photo_video_id = None
+            assets.append(asset)
+
+        original_rglob = Path.rglob
+        scans: list[Path] = []
+
+        def counting_rglob(path: Path, pattern: str):
+            if path == cache.cache_dir:
+                scans.append(path)
+            return original_rglob(path, pattern)
+
+        monkeypatch.setattr(Path, "rglob", counting_rglob)
+        with cache.begin_batch() as batch:
+            paths = [batch.download_or_get(mock_client, asset) for asset in assets]
+
+        assert len(scans) == 1
+        assert all(path is not None and path.exists() for path in paths)
+        assert mock_client.download_asset.call_count == 20
+
+    def test_failed_download_updates_batch_without_finish_rescan(
+        self, cache, mock_asset, monkeypatch
+    ):
+        client = MagicMock()
+        client.download_asset.side_effect = OSError("download failed")
+        original_rglob = Path.rglob
+        scans: list[Path] = []
+
+        def counting_rglob(path: Path, pattern: str):
+            if path == cache.cache_dir:
+                scans.append(path)
+            return original_rglob(path, pattern)
+
+        monkeypatch.setattr(Path, "rglob", counting_rglob)
+        with cache.begin_batch() as batch:
+            assert batch.download_or_get(client, mock_asset) is None
+
+        assert len(scans) == 1
+        assert list(cache.cache_dir.rglob("*.*")) == []
+
+    def test_propagated_download_error_updates_batch_without_finish_rescan(
+        self, cache, mock_asset, monkeypatch
+    ):
+        client = MagicMock()
+
+        def partial_download(_asset_id: str, output_path: Path) -> None:
+            output_path.write_bytes(b"partial")
+            raise ValueError("download size limit exceeded")
+
+        client.download_asset.side_effect = partial_download
+        original_rglob = Path.rglob
+        scans: list[Path] = []
+
+        def counting_rglob(path: Path, pattern: str):
+            if path == cache.cache_dir:
+                scans.append(path)
+            return original_rglob(path, pattern)
+
+        monkeypatch.setattr(Path, "rglob", counting_rglob)
+        with cache.begin_batch() as batch, pytest.raises(ValueError, match="size limit"):
+            batch.download_or_get(client, mock_asset)
+
+        assert len(scans) == 1
+        assert list(cache.cache_dir.rglob("*.*")) == []
+
+    def test_context_finishes_size_eviction_after_item_exception(self, cache_dir):
+        cache = VideoDownloadCache(cache_dir=cache_dir, max_size_gb=0.000001)
+        old = cache_dir / "old" / "old.mp4"
+        old.parent.mkdir(parents=True)
+        old.write_bytes(b"o" * 2_000)
+
+        with pytest.raises(RuntimeError, match="item failed"), cache.begin_batch():
+            raise RuntimeError("item failed")
+
+        assert not old.exists()
+
+    def test_new_download_is_added_to_manifest_and_evicted_at_finish(self, cache_dir, mock_asset):
+        cache = VideoDownloadCache(cache_dir=cache_dir, max_size_gb=0.000001)
+        client = MagicMock()
+
+        def oversized_download(_asset_id: str, output_path: Path) -> Path:
+            output_path.write_bytes(b"x" * 2_000)
+            return output_path
+
+        client.download_asset.side_effect = oversized_download
+        with cache.begin_batch() as batch:
+            downloaded = batch.download_or_get(client, mock_asset)
+            assert downloaded is not None and downloaded.exists()
+
+        assert not downloaded.exists()
+
+    def test_finish_evicts_oldest_manifest_entry_first(self, cache_dir):
+        import os
+
+        cache = VideoDownloadCache(cache_dir=cache_dir, max_size_gb=0.000001)
+        subdir = cache_dir / "ab"
+        subdir.mkdir(parents=True)
+        oldest = subdir / "oldest.mp4"
+        oldest.write_bytes(b"o" * 800)
+        older_mtime = time.time() - 3_600
+        os.utime(oldest, (older_mtime, older_mtime))
+        newest = subdir / "newest.mp4"
+        newest.write_bytes(b"n" * 500)
+
+        with cache.begin_batch():
+            pass
+
+        assert not oldest.exists()
+        assert newest.exists()
+
+    def test_cache_hit_refreshes_mtime_without_downloading(self, cache, mock_client, mock_asset):
+        cached = cache._video_path(mock_asset.id, ".MOV")
+        cached.parent.mkdir(parents=True)
+        cached.write_bytes(b"cached-video")
+        old_mtime = time.time() - 3_600
+        import os
+
+        os.utime(cached, (old_mtime, old_mtime))
+
+        with cache.begin_batch() as batch:
+            result = batch.download_or_get(mock_client, mock_asset)
+
+        assert result == cached
+        assert cached.stat().st_mtime > old_mtime
+        mock_client.download_asset.assert_not_called()
+
+    def test_cached_analysis_downscale_is_recorded_and_touched(self, cache, mock_asset):
+        import os
+
+        original = cache._video_path(mock_asset.id, ".MOV")
+        original.parent.mkdir(parents=True)
+        original.write_bytes(b"original")
+        downscaled = original.parent / f"{mock_asset.id}_480p.MOV"
+        downscaled.write_bytes(b"downscaled" * 200)
+        old_mtime = time.time() - 3_600
+        os.utime(downscaled, (old_mtime, old_mtime))
+        client = MagicMock()
+
+        with cache.begin_batch() as batch:
+            analysis, source = batch.get_analysis_video(client, mock_asset)
+
+        assert (analysis, source) == (downscaled, original)
+        assert downscaled.stat().st_mtime > old_mtime
+        client.download_asset.assert_not_called()
+
+    def test_record_path_rejects_files_outside_cache_root(self, cache, tmp_path):
+        outside = tmp_path / "not-cache-owned.mp4"
+        outside.write_bytes(b"external")
+
+        with (
+            cache.begin_batch() as batch,
+            pytest.raises(ValueError, match="inside its cache root"),
+        ):
+            batch.record_path(outside)
+
+        assert outside.read_bytes() == b"external"
+
+    def test_external_mutation_triggers_one_fallback_scan(self, cache_dir, monkeypatch):
+        cache = VideoDownloadCache(cache_dir=cache_dir, max_size_gb=0.000001)
+        subdir = cache_dir / "ab"
+        subdir.mkdir(parents=True)
+        original = subdir / "original.mp4"
+        original.write_bytes(b"o" * 500)
+
+        original_rglob = Path.rglob
+        scans: list[Path] = []
+
+        def counting_rglob(path: Path, pattern: str):
+            if path == cache.cache_dir:
+                scans.append(path)
+            return original_rglob(path, pattern)
+
+        monkeypatch.setattr(Path, "rglob", counting_rglob)
+        with cache.begin_batch():
+            external = subdir / "external.mp4"
+            external.write_bytes(b"e" * 2_000)
+
+        assert len(scans) == 2
+        assert sum(path.stat().st_size for path in subdir.iterdir()) <= 1_073
+
+    def test_start_scan_removes_expired_and_keeps_fresh_without_rescan(
+        self, cache_dir, monkeypatch
+    ):
+        import os
+
+        cache = VideoDownloadCache(cache_dir=cache_dir, max_age_days=1)
+        subdir = cache_dir / "ab"
+        subdir.mkdir(parents=True)
+        expired = subdir / "expired.mp4"
+        expired.write_bytes(b"expired")
+        expired_mtime = time.time() - (3 * 86_400)
+        os.utime(expired, (expired_mtime, expired_mtime))
+        fresh = subdir / "fresh.mp4"
+        fresh.write_bytes(b"fresh")
+
+        original_rglob = Path.rglob
+        scans: list[Path] = []
+
+        def counting_rglob(path: Path, pattern: str):
+            if path == cache.cache_dir:
+                scans.append(path)
+            return original_rglob(path, pattern)
+
+        monkeypatch.setattr(Path, "rglob", counting_rglob)
+        with cache.begin_batch():
+            pass
+
+        assert not expired.exists()
+        assert fresh.exists()
+        assert len(scans) == 1
+
+
 class TestGetStats:
     """Tests for get_stats method."""
 
@@ -265,8 +485,8 @@ class TestEvictIfOverLimit:
         assert count == 0
         assert f.exists()
 
-    def test_download_or_get_triggers_size_eviction(self, cache_dir):
-        """download_or_get calls evict_if_over_limit after downloading."""
+    def test_download_or_get_never_runs_global_size_eviction(self, cache_dir):
+        """Individual downloads leave size maintenance to an explicit batch."""
         import os
 
         # Tiny limit to force eviction
@@ -292,12 +512,13 @@ class TestEvictIfOverLimit:
 
         client = MagicMock()
         client.download_asset = MagicMock(side_effect=fake_download)
+        cache.evict_if_over_limit = MagicMock(wraps=cache.evict_if_over_limit)
 
         path = cache.download_or_get(client, asset)
         assert path is not None
         assert path.exists()
-        # Old file should have been evicted due to size pressure
-        assert not old_file.exists()
+        assert old_file.exists()
+        cache.evict_if_over_limit.assert_not_called()
 
 
 class TestCachedVideo:

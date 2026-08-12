@@ -218,13 +218,16 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
     monkeypatch.setattr(output_contract.subprocess, "run", run_probe)
     tracker = MagicMock()
     video_cache = MagicMock()
+    cache_batch = MagicMock()
+    video_cache.begin_batch.return_value.__enter__.return_value = cache_batch
+    extract_clips = MagicMock(return_value=[assembly_clip])
     with (
         patch("immich_memories.tracking.RunTracker", return_value=tracker),
         patch(
             "immich_memories.cache.video_cache.VideoDownloadCache",
             return_value=video_cache,
         ),
-        patch.object(generate_module, "_extract_clips", return_value=[assembly_clip]),
+        patch.object(generate_module, "_extract_clips", extract_clips),
         patch.object(
             generate_module,
             "_build_assembly_settings",
@@ -240,6 +243,10 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
     assert result.name == "memory.mov"
     assert result.read_bytes() == b"assembled-video"
     assert not assembled_paths[0].exists()
+    video_cache.begin_batch.assert_called_once_with()
+    extract_clips.assert_called_once()
+    assert extract_clips.call_args.args[1] is cache_batch
+    video_cache.evict_old.assert_not_called()
 
 
 def test_generation_validation_failure_preserves_old_final_and_stops_downstream_work(

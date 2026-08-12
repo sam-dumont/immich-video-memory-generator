@@ -526,9 +526,12 @@ def _generate_memory_inner(
             max_size_gb=params.config.cache.video_cache_max_size_gb,
             max_age_days=params.config.cache.video_cache_max_age_days,
         )
-        video_cache.evict_old()
-
-        assembly_clips = _extract_clips(params, video_cache, run_output_dir)
+        with video_cache.begin_batch() as cache_batch:
+            assembly_clips = _extract_clips(
+                params,
+                cast("VideoDownloadCache", cache_batch),
+                run_output_dir,
+            )
         run_tracker.complete_phase(items_processed=len(assembly_clips))
         _phase_times["download"] = _time.monotonic() - _phase_start
         pp.report("download", 1.0, "Clips downloaded")

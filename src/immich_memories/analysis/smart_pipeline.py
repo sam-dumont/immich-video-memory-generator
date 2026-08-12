@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -19,6 +20,7 @@ from immich_memories.analysis.clip_refiner import ClipRefiner
 from immich_memories.analysis.clip_scaler import ClipScaler
 from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
+from immich_memories.cache.video_cache import VideoDownloadCache
 
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
@@ -155,6 +157,15 @@ class SmartPipeline:
         self.run_id = run_id
         self._analysis_config = analysis_config
         self._app_config = app_config
+        self.video_cache = (
+            VideoDownloadCache(
+                cache_dir=app_config.cache.video_cache_path,
+                max_size_gb=app_config.cache.video_cache_max_size_gb,
+                max_age_days=app_config.cache.video_cache_max_age_days,
+            )
+            if app_config.cache.video_cache_enabled
+            else None
+        )
 
         # Wire composed services
         self.previewer = PreviewBuilder(
@@ -162,9 +173,15 @@ class SmartPipeline:
             cache_config=app_config.cache,
             analysis_config=analysis_config,
             content_analysis_config=app_config.content_analysis,
+            video_cache=self.video_cache,
         )
         self.analyzer = ClipAnalyzer(
-            self.config, client, analysis_cache, self.previewer, app_config=app_config
+            self.config,
+            client,
+            analysis_cache,
+            self.previewer,
+            app_config=app_config,
+            video_cache=self.video_cache,
         )
         self.scaler = ClipScaler()
         self.refiner = ClipRefiner(self.config, self.scaler)
@@ -196,24 +213,31 @@ class SmartPipeline:
 
         self.tracker.start()
 
-        try:
-            # Phase 1: Cluster by thumbnail
-            deduplicated = self._phase_cluster(clips)
+        cache_context = (
+            self.video_cache.begin_batch() if self.video_cache is not None else nullcontext(None)
+        )
+        with cache_context as active_batch:
+            self.analyzer.cache_batch = active_batch
+            self.previewer.cache_batch = active_batch
+            try:
+                # Phase 1: Cluster by thumbnail
+                deduplicated = self._phase_cluster(clips)
 
-            # Phase 2: Filter and pre-select
-            candidates = self._phase_filter(deduplicated)
+                # Phase 2: Filter and pre-select
+                candidates = self._phase_filter(deduplicated)
 
-            # Phase 3: Analyze selected clips
-            analyzed = self.analyzer.phase_analyze(candidates, self.tracker)
+                # Phase 3: Analyze selected clips
+                analyzed = self.analyzer.phase_analyze(candidates, self.tracker)
 
-            return analyzed
+                return analyzed
 
-        except (
-            Exception
-        ) as e:  # WHY: top-level pipeline boundary — logs + cleans up tracker before re-raise
-            logger.error(f"Pipeline failed: {e}")
-            self.tracker.finish()
-            raise
+            except Exception as e:  # WHY: top-level boundary logs + cleans tracker before re-raise
+                logger.error(f"Pipeline failed: {e}")
+                self.tracker.finish()
+                raise
+            finally:
+                self.analyzer.cache_batch = None
+                self.previewer.cache_batch = None
 
     def run_selection(
         self,

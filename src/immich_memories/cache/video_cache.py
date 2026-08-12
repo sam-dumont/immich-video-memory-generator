@@ -24,6 +24,127 @@ class CachedVideo:
     asset_id: str
 
 
+@dataclass(frozen=True, slots=True)
+class _CacheEntry:
+    """Manifest identity used for size eviction and external-mutation detection."""
+
+    size: int
+    mtime_ns: int
+
+
+def _current_entry(path: Path) -> _CacheEntry:
+    stat = path.stat()
+    return _CacheEntry(stat.st_size, stat.st_mtime_ns)
+
+
+class CacheBatch:
+    """One download batch with a single cache-maintenance lifecycle."""
+
+    def __init__(self, cache: VideoDownloadCache) -> None:
+        self._cache = cache
+        self._manifest, self._directory_mtimes = cache._scan_manifest()
+        self._finished = False
+
+    def __enter__(self) -> CacheBatch:
+        return self
+
+    @property
+    def cache_dir(self) -> Path:
+        """Expose the owned cache root for legacy live-burst download helpers."""
+        return self._cache.cache_dir
+
+    def __exit__(self, _exc_type: object, exc: object, _traceback: object) -> None:
+        try:
+            self.finish()
+        except OSError:
+            if exc is None:
+                raise
+            logger.warning("Cache batch cleanup failed after an item error")
+
+    def _record(self, path: Path, *, touch: bool = False) -> None:
+        if touch:
+            with contextlib.suppress(OSError):
+                path.touch()
+        stat = path.stat()
+        self._manifest[path] = _CacheEntry(stat.st_size, stat.st_mtime_ns)
+        self._refresh_directory_mtimes(path.parent)
+
+    def _refresh_directory_mtimes(self, directory: Path) -> None:
+        current = directory
+        while current.is_relative_to(self._cache.cache_dir):
+            self._directory_mtimes[current] = current.stat().st_mtime_ns
+            if current == self._cache.cache_dir:
+                break
+            current = current.parent
+
+    def record_path(self, path: Path, *, touch: bool = True) -> Path:
+        """Record one deterministic cache-owned path without exposing a tree operation."""
+        cache_root = self._cache.cache_dir.resolve()
+        resolved = path.resolve()
+        if not resolved.is_relative_to(cache_root):
+            raise ValueError("Cache batch can only record paths inside its cache root")
+        if not path.is_file() or path.stat().st_size <= 0:
+            raise ValueError("Cache batch can only record a non-empty file")
+        self._record(path, touch=touch)
+        return path
+
+    def record_absence(self, path: Path) -> None:
+        """Record one deterministic failed-download path after controlled cleanup."""
+        cache_root = self._cache.cache_dir.resolve()
+        resolved = path.resolve()
+        if not resolved.is_relative_to(cache_root):
+            raise ValueError("Cache batch can only record paths inside its cache root")
+        if path.exists():
+            raise ValueError("Cache batch can only record an absent path")
+        self._manifest.pop(path, None)
+        self._refresh_directory_mtimes(path.parent)
+
+    def download_or_get(self, client: SyncImmichClient, asset: Asset) -> Path | None:
+        """Return one cached/downloaded asset and update this batch's manifest."""
+        destination = self._cache._download_path(asset)
+        try:
+            path = self._cache.download_or_get(client, asset)
+        except BaseException:
+            destination.unlink(missing_ok=True)
+            self.record_absence(destination)
+            raise
+        if path is not None:
+            self._record(path, touch=True)
+        else:
+            self.record_absence(destination)
+        return path
+
+    def get_analysis_video(
+        self,
+        client: SyncImmichClient,
+        asset: Asset,
+        target_height: int = 480,
+        enable_downscaling: bool = True,
+    ) -> tuple[Path, Path]:
+        """Return analysis media while keeping generated cache files in the manifest."""
+        result = self._cache.get_analysis_video(
+            client,
+            asset,
+            target_height=target_height,
+            enable_downscaling=enable_downscaling,
+            batch=self,
+        )
+        analysis_video, original_video = result
+        self._record(original_video)
+        if analysis_video != original_video:
+            self.record_path(analysis_video)
+        return result
+
+    def finish(self) -> int:
+        """Evict from the manifest once; rescan only after external mutation."""
+        if self._finished:
+            return 0
+        self._finished = True
+        if not self._cache._manifest_matches(self._manifest, self._directory_mtimes):
+            self._manifest, self._directory_mtimes = self._cache._scan_manifest()
+        return self._cache._evict_manifest(self._manifest)
+
+
 class VideoDownloadCache:
     """File-based cache for downloaded Immich videos.
 
@@ -42,9 +163,83 @@ class VideoDownloadCache:
         self.max_age_days = max_age_days
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
+    def begin_batch(self) -> CacheBatch:
+        """Start one explicit expiry, download, and size-eviction lifecycle."""
+        return CacheBatch(self)
+
+    def _scan_manifest(
+        self, *, remove_expired: bool = True
+    ) -> tuple[dict[Path, _CacheEntry], dict[Path, int]]:
+        """Remove expired files and snapshot current file/directory identity once."""
+        cutoff = time.time() - (self.max_age_days * 86400)
+        manifest: dict[Path, _CacheEntry] = {}
+        found_directories = {self.cache_dir}
+        for path in self.cache_dir.rglob("*"):
+            try:
+                stat = path.stat()
+            except FileNotFoundError:
+                continue
+            if path.is_dir():
+                found_directories.add(path)
+                continue
+            if not path.is_file():
+                continue
+            if remove_expired and stat.st_mtime < cutoff:
+                path.unlink(missing_ok=True)
+                continue
+            manifest[path] = _CacheEntry(stat.st_size, stat.st_mtime_ns)
+        directories = {
+            directory: directory.stat().st_mtime_ns
+            for directory in found_directories
+            if directory.exists()
+        }
+        return manifest, directories
+
+    @staticmethod
+    def _manifest_matches(
+        manifest: dict[Path, _CacheEntry],
+        directory_mtimes: dict[Path, int],
+    ) -> bool:
+        """Check known paths without walking the tree again."""
+        try:
+            files_match = all(_current_entry(path) == entry for path, entry in manifest.items())
+            directories_match = all(
+                path.stat().st_mtime_ns == mtime_ns for path, mtime_ns in directory_mtimes.items()
+            )
+        except FileNotFoundError:
+            return False
+        return files_match and directories_match
+
+    def _evict_manifest(self, manifest: dict[Path, _CacheEntry]) -> int:
+        """Remove oldest manifest entries until the configured size limit is met."""
+        max_bytes = self.max_size_gb * 1_073_741_824
+        total_size = sum(entry.size for entry in manifest.values())
+        count = 0
+        for path, entry in sorted(manifest.items(), key=lambda item: item[1].mtime_ns):
+            if total_size <= max_bytes:
+                break
+            path.unlink(missing_ok=True)
+            total_size -= entry.size
+            count += 1
+        if count:
+            logger.info(
+                "Cache eviction: removed %d files to stay under %.1f GB",
+                count,
+                self.max_size_gb,
+            )
+        return count
+
     def _video_path(self, asset_id: str, ext: str) -> Path:
         subdir = asset_id[:2] if len(asset_id) >= 2 else "00"
         return self.cache_dir / subdir / f"{asset_id}{ext}"
+
+    def _download_path(self, asset: Asset) -> Path:
+        """Return the deterministic cache destination for one Immich asset."""
+        download_id = asset.live_photo_video_id or asset.id
+        ext = Path(asset.original_file_name or "video.mp4").suffix or ".mp4"
+        if asset.live_photo_video_id:
+            ext = ".MOV"
+        return self._video_path(download_id, ext)
 
     def _find_cached(self, asset_id: str) -> Path | None:
         subdir = asset_id[:2] if len(asset_id) >= 2 else "00"
@@ -73,16 +268,12 @@ class VideoDownloadCache:
         if cached is not None:
             return cached
 
-        ext = Path(asset.original_file_name or "video.mp4").suffix or ".mp4"
-        if asset.live_photo_video_id:
-            ext = ".MOV"  # Live photo videos are always MOV
-        dest = self._video_path(download_id, ext)
+        dest = self._download_path(asset)
         dest.parent.mkdir(parents=True, exist_ok=True)
 
         try:
             client.download_asset(download_id, dest)
             if dest.exists() and dest.stat().st_size > 0:
-                self.evict_if_over_limit()
                 return dest
             logger.warning("Downloaded file empty or missing: %s", dest)
             dest.unlink(missing_ok=True)
@@ -98,6 +289,8 @@ class VideoDownloadCache:
         asset: Asset,
         target_height: int = 480,
         enable_downscaling: bool = True,
+        *,
+        batch: CacheBatch | None = None,
     ) -> tuple[Path, Path]:
         """Download and optionally create a downscaled copy for analysis.
 
@@ -105,7 +298,11 @@ class VideoDownloadCache:
             Tuple of (analysis_video_path, original_video_path).
             If downscaling is disabled or fails, both are the same path.
         """
-        original = self.download_or_get(client, asset)
+        original = (
+            batch.download_or_get(client, asset)
+            if batch is not None
+            else self.download_or_get(client, asset)
+        )
         if original is None:
             msg = f"Failed to download video {asset.id}"
             raise ValueError(msg)
@@ -220,26 +417,5 @@ class VideoDownloadCache:
         if not self.cache_dir.exists():
             return 0
 
-        max_bytes = self.max_size_gb * 1_073_741_824  # 1 GB in bytes
-        files = [f for f in self.cache_dir.rglob("*") if f.is_file()]
-        total_size = sum(f.stat().st_size for f in files)
-
-        if total_size <= max_bytes:
-            return 0
-
-        # WHY: evict oldest first (LRU by mtime) to keep recently-used files
-        files.sort(key=lambda f: f.stat().st_mtime)
-        count = 0
-        for f in files:
-            if total_size <= max_bytes:
-                break
-            fsize = f.stat().st_size
-            f.unlink(missing_ok=True)
-            total_size -= fsize
-            count += 1
-
-        if count:
-            logger.info(
-                "Cache eviction: removed %d files to stay under %.1f GB", count, self.max_size_gb
-            )
-        return count
+        manifest, _ = self._scan_manifest(remove_expired=False)
+        return self._evict_manifest(manifest)

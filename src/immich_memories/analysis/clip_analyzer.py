@@ -21,13 +21,18 @@ if TYPE_CHECKING:
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.audio.content_analyzer import AudioContentAnalyzer
     from immich_memories.cache.database import VideoAnalysisCache
+    from immich_memories.cache.video_cache import CacheBatch, VideoDownloadCache
     from immich_memories.config_loader import Config
 
 logger = logging.getLogger(__name__)
 
 
 class ClipAnalyzer:
-    """Downloads, analyzes, and scores video clips for optimal segments."""
+    """Downloads, analyzes, and scores video clips for optimal segments.
+
+    Cache-enabled download methods require the active ``CacheBatch`` that
+    ``SmartPipeline.run_analysis()`` installs for the duration of one run.
+    """
 
     def __init__(
         self,
@@ -37,12 +42,15 @@ class ClipAnalyzer:
         preview_builder: PreviewBuilder,
         *,
         app_config: Config,
+        video_cache: VideoDownloadCache | None = None,
     ):
         self.config = config
         self.client = client
         self.analysis_cache = analysis_cache
         self.preview_builder = preview_builder
         self._app_config = app_config
+        self.video_cache = video_cache
+        self.cache_batch: CacheBatch | None = None
         self._cached_content_analyzer: ContentAnalyzer | None = None
         self._cached_audio_analyzer: AudioContentAnalyzer | None = None
 
@@ -186,18 +194,13 @@ class ClipAnalyzer:
         """Download video for analysis, potentially downscaled."""
         import tempfile
 
-        from immich_memories.cache.video_cache import VideoDownloadCache
-
         config = self._app_config
         temp_file: Path | None = None
 
         if config.cache.video_cache_enabled:
-            video_cache = VideoDownloadCache(
-                cache_dir=config.cache.video_cache_path,
-                max_size_gb=config.cache.video_cache_max_size_gb,
-                max_age_days=config.cache.video_cache_max_age_days,
-            )
-            analysis_video, original_video = video_cache.get_analysis_video(
+            if self.video_cache is None or self.cache_batch is None:
+                raise RuntimeError("Video cache batch was not provided by the pipeline")
+            analysis_video, original_video = self.cache_batch.get_analysis_video(
                 self.client,
                 clip.asset,
                 target_height=config.analysis.analysis_resolution,
@@ -471,7 +474,12 @@ class ClipAnalyzer:
             if temp_file:
                 with contextlib.suppress(Exception):
                     temp_file.unlink(missing_ok=True)
-            if analysis_video and original_video and analysis_video != original_video:
+            if (
+                self.cache_batch is None
+                and analysis_video
+                and original_video
+                and analysis_video != original_video
+            ):
                 with contextlib.suppress(Exception):
                     cleanup_downscaled(original_video)
                     logger.debug(f"Cleaned up downscaled video for: {original_video.name}")

@@ -1824,6 +1824,7 @@ class TestDownloadAndMergeBurst:
 
 class TestDownloadBurstClips:
     def test_cached_clips_returned_without_download(self, tmp_path):
+        from immich_memories.cache.video_cache import VideoDownloadCache
         from immich_memories.generate_downloads import _download_burst_clips
 
         cache_dir = tmp_path / "cache"
@@ -1832,10 +1833,13 @@ class TestDownloadBurstClips:
         clip_file = subdir / "abcdef.MOV"
         clip_file.write_bytes(b"video")
 
-        result = _download_burst_clips(MagicMock(), cache_dir, ["abcdef"])
+        cache = VideoDownloadCache(cache_dir)
+        with cache.begin_batch() as batch:
+            result = _download_burst_clips(MagicMock(), batch, ["abcdef"])
         assert result == [clip_file]
 
     def test_download_failure_skips_clip(self, tmp_path):
+        from immich_memories.cache.video_cache import VideoDownloadCache
         from immich_memories.generate_downloads import _download_burst_clips
 
         cache_dir = tmp_path / "cache"
@@ -1843,10 +1847,13 @@ class TestDownloadBurstClips:
         mock_client = MagicMock()
         mock_client.download_asset.side_effect = ConnectionError("network failure")
 
-        result = _download_burst_clips(mock_client, cache_dir, ["abcdef"])
+        cache = VideoDownloadCache(cache_dir)
+        with cache.begin_batch() as batch:
+            result = _download_burst_clips(mock_client, batch, ["abcdef"])
         assert result == []
 
     def test_successful_download_appended(self, tmp_path):
+        from immich_memories.cache.video_cache import VideoDownloadCache
         from immich_memories.generate_downloads import _download_burst_clips
 
         cache_dir = tmp_path / "cache"
@@ -1858,11 +1865,14 @@ class TestDownloadBurstClips:
         mock_client = MagicMock()
         mock_client.download_asset.side_effect = fake_download
 
-        result = _download_burst_clips(mock_client, cache_dir, ["abcdef"])
+        cache = VideoDownloadCache(cache_dir)
+        with cache.begin_batch() as batch:
+            result = _download_burst_clips(mock_client, batch, ["abcdef"])
         assert len(result) == 1
         assert result[0].name == "abcdef.MOV"
 
     def test_short_burst_id_uses_fallback_subdir(self, tmp_path):
+        from immich_memories.cache.video_cache import VideoDownloadCache
         from immich_memories.generate_downloads import _download_burst_clips
 
         cache_dir = tmp_path / "cache"
@@ -1873,7 +1883,9 @@ class TestDownloadBurstClips:
         mock_client = MagicMock()
         mock_client.download_asset.side_effect = fake_download
 
-        result = _download_burst_clips(mock_client, cache_dir, ["x"])
+        cache = VideoDownloadCache(cache_dir)
+        with cache.begin_batch() as batch:
+            result = _download_burst_clips(mock_client, batch, ["x"])
         assert len(result) == 1
         # Short ID (<2 chars) uses "00" as subdir
         assert "00" in str(result[0].parent)

@@ -1911,7 +1911,12 @@ class TestSceneScorerMemoryCleanup:
 class TestClipAnalyzerDownloadVideo:
     """Cover lines 188-228: _download_analysis_video with cache and temp file paths."""
 
-    def _make_analyzer(self, *, video_cache_enabled=True):
+    def _make_analyzer(
+        self,
+        *,
+        video_cache_enabled=True,
+        video_cache=None,
+    ):
         from immich_memories.analysis.clip_analyzer import ClipAnalyzer
 
         # WHY: Config has dozens of nested settings — mock to isolate download logic
@@ -1940,30 +1945,34 @@ class TestClipAnalyzerDownloadVideo:
             analysis_cache=mock_cache,
             preview_builder=mock_preview,
             app_config=mock_config,
+            video_cache=video_cache,
         )
 
     def test_video_cache_enabled_uses_cache(self):
-        analyzer = self._make_analyzer(video_cache_enabled=True)
-        clip = make_clip("vid1", duration=10.0)
-
-        # WHY: VideoDownloadCache performs disk I/O — mock
         mock_video_cache = MagicMock()
+        analyzer = self._make_analyzer(
+            video_cache_enabled=True,
+            video_cache=mock_video_cache,
+        )
+        clip = make_clip("vid1", duration=10.0)
         analysis_path = Path("/tmp/cache/analysis.mp4")
         original_path = Path("/tmp/cache/original.mp4")
-        mock_video_cache.get_analysis_video.return_value = (analysis_path, original_path)
+        cache_batch = MagicMock()
+        cache_batch.get_analysis_video.return_value = (analysis_path, original_path)
+        analyzer.cache_batch = cache_batch
 
-        with (
-            patch(
-                "immich_memories.cache.video_cache.VideoDownloadCache",
-                return_value=mock_video_cache,
-            ),
-            patch.object(Path, "exists", return_value=True),
-        ):
+        with patch.object(Path, "exists", return_value=True):
             a_vid, o_vid, temp = analyzer._download_analysis_video(clip)
 
         assert a_vid == analysis_path
         assert o_vid == original_path
         assert temp is None
+        cache_batch.get_analysis_video.assert_called_once_with(
+            analyzer.client,
+            clip.asset,
+            target_height=480,
+            enable_downscaling=True,
+        )
 
     def test_video_cache_disabled_uses_tempfile(self, tmp_path):
         analyzer = self._make_analyzer(video_cache_enabled=False)

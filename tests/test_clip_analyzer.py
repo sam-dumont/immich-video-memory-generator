@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from immich_memories.analysis.clip_analyzer import ClipAnalyzer
 from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineConfig
 from immich_memories.config_loader import Config
@@ -508,6 +510,32 @@ class TestAnalyzeClipZeroScore:
 
         assert result == (0.0, 5.0, 0.0, None, None)
         mock_preview.extract_and_log_preview.assert_not_called()
+
+
+class TestAnalyzeClipCachedDownscaleLifecycle:
+    def test_cache_enabled_download_requires_pipeline_batch(self):
+        analyzer, _, _, _ = _make_analyzer()
+
+        with pytest.raises(RuntimeError, match="batch was not provided"):
+            analyzer._download_analysis_video(make_clip("missing-batch", duration=10.0))
+
+    def test_cache_owned_downscale_survives_per_clip_cleanup(self, tmp_path):
+        analyzer, _, mock_cache, mock_preview = _make_analyzer()
+        analyzer.cache_batch = MagicMock()
+        mock_cache.get_analysis.return_value = None
+        original = tmp_path / "original.mp4"
+        original.write_bytes(b"original")
+        downscaled = tmp_path / "original_480p.mp4"
+        downscaled.write_bytes(b"cached-downscale")
+        analyzer._download_analysis_video = MagicMock(return_value=(downscaled, original, None))
+        analyzer._run_analysis_with_fallback = MagicMock(return_value=(1.0, 4.0, 0.5, None))
+        mock_preview.extract_and_log_preview.return_value = None
+
+        with patch("immich_memories.analysis.clip_analyzer.cleanup_downscaled") as cleanup:
+            analyzer._analyze_clip_with_preview(make_clip("cached-downscale", duration=10.0))
+
+        cleanup.assert_not_called()
+        assert downscaled.read_bytes() == b"cached-downscale"
 
 
 # ---------------------------------------------------------------------------
