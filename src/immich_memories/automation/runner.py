@@ -23,6 +23,7 @@ from immich_memories.automation.models import (
     ProcessResult,
 )
 from immich_memories.automation.state_store import AutomationStateStore
+from immich_memories.automation.trip_input_cache import load_or_fetch_trip_assets
 from immich_memories.automation.variety import VarietyDecision, apply_variety_rules
 from immich_memories.config_loader import Config
 from immich_memories.config_models import AutomationConfig
@@ -786,12 +787,15 @@ class AutoRunner:
                 if auto_cfg.detect_trips:
                     trips_cfg = self.config.trips
                     if not (trips_cfg.homebase_latitude == trips_cfg.homebase_longitude == 0.0):
-                        from immich_memories.api.all_assets_service import AllAssetsService
-
                         dr = _trailing_year_range(today)
-                        asset_service = AllAssetsService(client._async_client.search)
-                        gps_assets = client._run(asset_service.get_assets_for_date_range(dr))
-                        logger.info("Fetched %d assets for trip detection", len(gps_assets))
+                        gps_assets = load_or_fetch_trip_assets(
+                            client,
+                            cache_root=self.config.cache.cache_path,
+                            server_url=self.config.immich.url,
+                            buckets=buckets,
+                            requested_range=dr,
+                            now=datetime.combine(today, datetime.min.time(), tzinfo=UTC),
+                        )
         except Exception as exc:
             raise ImmichDiscoveryError(str(exc)) from exc
 
