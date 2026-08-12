@@ -6,7 +6,10 @@ title: scheduler
 # scheduler
 
 :::tip Smart automation is the easier option
-Most users should use [`auto`](./auto.md) instead: it detects trips, birthdays, and highlights automatically. No cron expressions or explicit schedules needed. The scheduler below is for Docker/K8s deployments or when you want exact control over what generates when.
+Most users should schedule one daily [`auto run`](./auto.md#auto-run) instead: it detects trips,
+birthdays, and highlights automatically. No cron expressions or explicit schedules needed. The
+scheduler below is the advanced/legacy cron daemon for Docker/K8s deployments or exact control
+over what generates when.
 :::
 
 :::caution Background mode not yet implemented
@@ -41,7 +44,9 @@ immich-memories scheduler start --foreground
 |------|------|---------|-------------|
 | `--foreground` | flag | `false` | Run in foreground (required: background mode is not yet implemented) |
 
-Starts the scheduler daemon. Needs `scheduler.enabled: true` and at least one schedule in the config.
+Starts the advanced/legacy scheduler daemon. Needs `scheduler.enabled: true` and at least one
+schedule in the config. It is separate from `auto run`; do not run both daily unless you deliberately
+want independent automation paths.
 
 ## Auto-resolved parameters
 

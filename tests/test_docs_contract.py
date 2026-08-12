@@ -1,5 +1,7 @@
 """Contract checks for launch-critical Immich compatibility documentation."""
 
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -291,3 +293,103 @@ def test_launch_audit_closes_the_immich_code_and_docs_blocker() -> None:
         in section
     )
     assert "an explicit `v3` override" in section
+
+
+def test_auto_docs_state_the_daily_variety_contract() -> None:
+    text = " ".join(_read("docs-site/docs/create/cli/auto.md").lower().split())
+
+    for phrase in (
+        "latest completed month",
+        "cannot run twice in the same calendar month",
+        "previous category cannot repeat",
+        "more than twice in the last six completed automatic runs",
+        "one memory per invocation",
+    ):
+        assert phrase in text
+
+
+def test_daily_auto_run_is_the_recommended_entry_point() -> None:
+    text = _read("docs-site/docs/create/recipes/automated-generation.md").lower()
+
+    assert "immich-memories auto run" in text
+    assert "single daily entry point" in text
+
+
+def test_scheduler_docs_call_the_daemon_advanced_or_legacy() -> None:
+    text = _read("docs-site/docs/create/cli/scheduler.md").lower()
+
+    assert "advanced/legacy" in text
+    assert "auto" in text
+
+
+def test_health_docs_distinguish_liveness_from_readiness() -> None:
+    text = " ".join(_read("docs-site/docs/deploy/maintenance/health-logs-cache.md").split())
+
+    assert "/health/live" in text
+    assert "/health/ready" in text
+    assert "200" in text
+    assert "503" in text
+    assert '"status": "ready"' in text
+    assert "`status: degraded`" in text
+    assert "`GET /health` always returns HTTP `200`" in text
+    assert "rewrites a ready payload to `ok`" in text
+
+
+def test_docker_docs_name_the_required_writable_mount_and_build_extras() -> None:
+    text = _read("docs-site/docs/deploy/installation/docker.md")
+
+    assert "/home/immich/.immich-memories" in text
+    assert "INSTALL_EXTRAS" in text
+    assert "all" in text
+
+
+def test_api_compatibility_docs_describe_auto_and_manual_overrides() -> None:
+    text = _read("docs-site/docs/reference/config-reference.md").lower()
+    upgrade = _read("docs-site/docs/deploy/maintenance/upgrading.md").lower()
+
+    assert "api_version: auto  # auto | v2 | v3" in text
+    assert "runtime" in text
+    assert "manual" in text
+    assert "duration" in upgrade
+    assert "upload" in upgrade
+
+
+def test_homepage_promises_a_daily_smart_decision_not_a_cron_daemon() -> None:
+    text = _read("docs-site/src/pages/index.tsx").lower()
+
+    assert "immich-memories auto run" in text
+    assert "daily" in text
+    assert "built-in cron scheduler generates memories automatically" not in text
+
+
+def test_cli_reference_generator_targets_the_tracked_document() -> None:
+    text = _read("scripts/generate_cli_docs.py")
+
+    assert 'Path("docs-site/docs/reference/cli-reference.md")' in text
+    assert "docs-site/docs/cli/reference.md" not in text
+
+
+def test_output_docs_distinguish_cli_format_choices_from_config_pairs() -> None:
+    text = " ".join(_read("docs-site/docs/reference/config-reference.md").split())
+
+    assert "`generate --format` accepts only `mp4`, `h265`, and `prores`" in text
+    assert "`h264_mov` and `h265_mov` are not CLI choices" in text
+
+
+def test_docs_check_preserves_the_underlying_build_exit_status(tmp_path: Path) -> None:
+    fake_npm = tmp_path / "npm"
+    fake_npm.write_text("#!/bin/sh\nprintf '%s\\n' 'synthetic nonzero build'\nexit 23\n")
+    fake_npm.chmod(0o755)
+    environment = os.environ | {"PATH": f"{tmp_path}:{os.environ['PATH']}"}
+
+    result = subprocess.run(
+        ["make", "docs-check"],
+        cwd=REPO_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert "synthetic nonzero build" in result.stdout
+    assert result.returncode != 0

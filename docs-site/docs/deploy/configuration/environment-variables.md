@@ -30,6 +30,9 @@ contract.
 Run the read-only `immich-memories config test` command to verify the connection and see the
 resolved API version.
 
+`IMMICH_MEMORIES_IMMICH__API_VERSION=auto` is the normal runtime policy. Set `v2` or `v3` only as
+a manual troubleshooting override, not as an every-run choice or upgrade toggle.
+
 ### Analysis settings
 
 ```bash

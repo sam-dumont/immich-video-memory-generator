@@ -73,6 +73,9 @@ immich-memories config test
 
 This check is read-only.
 
+`auto` is a runtime detection policy, not a switch you set before each generation. Use `v2` or
+`v3` only to diagnose a deployment that prevents detection, then return to `auto`.
+
 ## Clip pacing
 
 Control how clips are cut with a single option:

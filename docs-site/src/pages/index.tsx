@@ -211,8 +211,8 @@ function ValuesSection() {
                 <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
               </svg>
             </div>
-            <strong>Runs on a schedule</strong>
-            <p>Built-in cron scheduler generates memories automatically. Monthly highlights on the 1st, yearly recap in January. Set it and forget it.</p>
+            <strong>One smart decision a day</strong>
+            <p>Schedule <code>immich-memories auto run</code> daily. It picks one eligible memory or retries one pending delivery, with variety rules that stop repeat spam.</p>
           </div>
         </div>
       </div>

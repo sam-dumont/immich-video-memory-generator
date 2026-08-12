@@ -6,13 +6,22 @@ sidebar_label: "Health, Logs & Cache"
 
 Three operational aspects you'll want to understand for any deployment beyond "run it once and forget."
 
-## Health endpoint
+## Health endpoints
 
-`GET /health` returns JSON with the current system status:
+Use `GET /health/live` for liveness and `GET /health/ready` for readiness. Liveness always returns
+`200` while the web process can answer, with `{"status": "alive", "version": "..."}`. It does not
+contact Immich.
+
+Readiness checks configuration and Immich. Its payload is `status: ready` with HTTP `200` when both
+are usable, or `status: degraded` with HTTP `503` when configuration is missing or Immich cannot
+be reached. `GET /health` always returns HTTP `200` for compatibility; it rewrites a ready payload
+to `ok` and leaves a degraded payload as `degraded`. Do not use `/health` as a readiness probe.
+
+`/health/ready` returns JSON with the current system status:
 
 ```json
 {
-  "status": "ok",
+  "status": "ready",
   "immich_reachable": true,
   "last_successful_run": "2025-12-15T10:30:00.000000",
   "version": "0.2.0"
@@ -21,12 +30,14 @@ Three operational aspects you'll want to understand for any deployment beyond "r
 
 | Field | Values | Meaning |
 |-------|--------|---------|
-| `status` | `ok` / `degraded` | `ok` when Immich is reachable, `degraded` when it's not |
-| `immich_reachable` | `true` / `false` | Result of pinging Immich's `/api/server/ping` endpoint |
+| `status` | `ready` / `degraded` | `ready` only when configuration and authenticated Immich access work; otherwise `degraded` |
+| `immich_reachable` | `true` / `false` | Whether the dependency probe reached Immich; authentication or version failures can still make readiness fail |
 | `last_successful_run` | ISO timestamp or `null` | Last completed video generation, from the run database |
 | `version` | semver string | Installed version of Immich Memories |
 
-The health check pings Immich with a 5-second timeout. If Immich is down, the status flips to `degraded` but the application keeps running (you can still browse the UI, review cached clips, etc.).
+The readiness check probes Immich and authenticates the current user, bounded by 5 seconds. If
+Immich is down, the status flips to `degraded` and readiness returns `503`, but the application
+keeps running (you can still browse the UI, review cached clips, etc.).
 
 Use this endpoint with monitoring tools: Uptime Kuma, Prometheus blackbox exporter, or a simple `curl` in a cron job.
 

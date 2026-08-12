@@ -639,11 +639,20 @@ docs-build:
 	cd docs-site && npm run build
 
 docs-check:
-	@cd docs-site && npm run build 2>&1 | tee /tmp/docs-build.log; \
-	if grep -qiE '(error|broken link)' /tmp/docs-build.log; then \
+	@log_file=$$(mktemp "$${TMPDIR:-/tmp}/docs-build.XXXXXX") || exit $$?; \
+	status=0; \
+	(cd docs-site && npm run build) >"$$log_file" 2>&1 || status=$$?; \
+	cat "$$log_file"; \
+	if [ "$$status" -ne 0 ]; then \
+		rm -f "$$log_file"; \
+		exit "$$status"; \
+	fi; \
+	if grep -qiE '(error|broken link)' "$$log_file"; then \
 		echo "Docs build has errors — see output above"; \
+		rm -f "$$log_file"; \
 		exit 1; \
 	fi; \
+	rm -f "$$log_file"; \
 	echo "Docs build passed."
 
 demo-music:  ## Generate 12 ACE-Step candidate tracks for demo video

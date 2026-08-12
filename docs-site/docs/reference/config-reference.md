@@ -105,6 +105,12 @@ output:
   quality: "high"                # high, medium, low (shorthand for CRF presets)
 ```
 
+The final encoding plan permits only `mp4` and `mov` containers with `h264`, `h265`, or `prores`
+codecs. `generate --format` accepts only `mp4`, `h265`, and `prores`: they select H.264/MP4,
+H.265/MP4, and ProRes/MOV respectively. Config can select compatible codec/container pairs;
+internal and UI overrides also represent `h264_mov` and `h265_mov`, but `h264_mov` and `h265_mov`
+are not CLI choices. ProRes requires MOV; H.264 and ProRes do not support HDR output.
+
 ## Photos
 
 ```yaml

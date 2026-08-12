@@ -37,6 +37,9 @@ hides or rewrites `/api/server/version`, use `v2` or `v3` as a manual troublesho
 The override forces that contract, so match the real server major and return to `auto` once
 detection works.
 
+Do not flip the override as part of a routine v2-to-v3 upgrade. `auto` is runtime detection; the
+manual values exist to diagnose broken version discovery.
+
 The compatibility layer handles the known v2-to-v3 differences: duration strings versus integer
 milliseconds, version-specific upload fields, and the UTC offset on search dates. The read-only
 `immich-memories config test` reports the server version and authentication errors; it does not test

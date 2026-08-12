@@ -27,6 +27,10 @@ docker compose up -d
 
 UI is at [http://localhost:8080](http://localhost:8080).
 
+The compose volume at `/home/immich/.immich-memories` must stay writable. It holds config, cache,
+automation history, and pending-delivery state. Keep `/app/output` writable too if you want output
+to survive a container replacement.
+
 ## Resource requirements
 
 The container's resource usage depends on what phase it's in:
@@ -55,6 +59,17 @@ docker run -d \
   -v ./output:/app/output \
   ghcr.io/sam-dumont/immich-video-memory-generator:latest
 ```
+
+## Building the image yourself
+
+Published images include the `all` dependency set. For a local build, make the extras explicit:
+
+```bash
+docker build --build-arg APP_VERSION=0.0.0 --build-arg INSTALL_EXTRAS=all -f docker/Dockerfile .
+```
+
+`INSTALL_EXTRAS` is validated at build time; use an explicit supported extra set rather than
+assuming a base image happens to include optional features.
 
 ## Adding to your existing Immich stack
 
@@ -137,14 +152,19 @@ The default tmpfs is 2 GB. If you're generating 4K videos, FFmpeg intermediates 
 
 ## Health check
 
-The container has a built-in health check hitting `/health`. Works with Docker's native health reporting and monitoring tools like Uptime Kuma:
+The Dockerfile health check hits `/health/live`, which reports only that the web process is alive.
+It works with Docker's native health reporting and monitoring tools like Uptime Kuma. Use
+`/health/ready` for dependency readiness; it returns `200` only when configuration and Immich are
+usable, otherwise `503`. `/health` always returns HTTP `200` and rewrites only a ready payload to
+`ok`; it is a compatibility endpoint, not the readiness status endpoint.
 
 ```bash
 # Check health status
 docker inspect --format='{{.State.Health.Status}}' immich-memories
 ```
 
-The `/health` endpoint returns JSON with `status`, `immich_reachable`, `last_successful_run`, and `version`.
+`/health/live` returns `200` with `status: alive`; `/health/ready` returns the detailed status and
+the readiness code above.
 
 ## Cache persistence
 

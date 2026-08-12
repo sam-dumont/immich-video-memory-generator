@@ -123,7 +123,9 @@ After detectors assign raw scores, the scorer applies:
 immich-memories auto run [OPTIONS]
 ```
 
-Picks the #1 candidate from `suggest` and generates it. One memory per invocation, then exits.
+Runs one daily decision. It retries the oldest retryable pending delivery first; if there is none,
+it picks the #1 candidate from `suggest` and generates it. That generation is one memory per
+invocation. Exactly one action per invocation, then it exits.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -133,7 +135,9 @@ Picks the #1 candidate from `suggest` and generates it. One memory per invocatio
 | `--upload` | flag | `false` | Upload result to Immich |
 | `--quiet` | flag | `false` | Emit exactly one JSON result object on stdout |
 
-`skipped` and `dry_run` exit 0. `failed` exits nonzero. Quiet output is a stable JSON object, not a bare path:
+The typed terminal outcomes are `skipped`, `dry_run`, `completed`, and `failed`. `skipped`,
+`dry_run`, and `completed` exit 0; `failed` exits 1. Quiet output is a stable JSON object, not a
+bare path. Its `action` is `generation` or `delivery_retry` when work was selected:
 
 ```json
 {
@@ -155,6 +159,10 @@ Picks the #1 candidate from `suggest` and generates it. One memory per invocatio
 ```
 
 When every candidate is rejected, `outcome` is `skipped`, `category` is `null`, and `rejections` explains why. Human `--dry-run` output prints the same rotation and rejection details.
+
+If upload delivery failed after generation, the durable output stays pending. The next `auto run`
+attempts the oldest retryable pending delivery before it considers a fresh candidate. A failed retry
+is still a `failed` result; it does not quietly begin another generation.
 
 ## auto install
 

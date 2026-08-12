@@ -1,62 +1,12 @@
 ---
-title: CLI Reference
-sidebar_label: CLI Reference
+title: CLI Reference (Auto-Generated)
+sidebar_label: Reference
 ---
 
 # CLI Reference
 
 This page is auto-generated from the Click command definitions.
 Run `make docs-cli` to regenerate.
-
-## Global options
-
-These apply to every subcommand:
-
-| Flag | Type | Description |
-| --- | --- | --- |
-| `--config`, `-c` | path | Path to config file (default: `~/.immich-memories/config.yaml`) |
-| `--version` | flag | Show version and exit |
-| `--help` | flag | Show help and exit |
-
-## `cache`
-
-Manage the analysis cache (LLM scores, video metadata).
-
-```bash
-immich-memories cache [COMMAND]
-```
-
-### `cache stats`
-
-Show cache statistics: total scored assets, breakdown by type, oldest/newest entries.
-
-```bash
-immich-memories cache stats
-```
-
-### `cache export`
-
-Export asset scores to JSON. Safe to run while the pipeline is active.
-
-```bash
-immich-memories cache export scores.json
-```
-
-### `cache import`
-
-Import asset scores from a JSON backup. Useful for migrating between hosts.
-
-```bash
-immich-memories cache import scores.json
-```
-
-### `cache backup`
-
-Full SQLite backup using the safe backup API (no corruption risk, even during writes).
-
-```bash
-immich-memories cache backup cache-backup.db
-```
 
 ## `analyze`
 
@@ -71,6 +21,141 @@ immich-memories analyze [OPTIONS]
 | `--year`, `-y` | integer | - | Year to analyze |
 | `--force`, `-f` | boolean | false | Force re-analysis of cached videos |
 
+## `auto`
+
+Smart automation -- detect and generate memory candidates.
+
+```bash
+immich-memories auto [OPTIONS]
+```
+
+### `auto history`
+
+Show recent auto-generated memories.
+
+```bash
+immich-memories auto history [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--limit` | integer | 10 | Number of entries to show |
+
+### `auto install`
+
+Install system-level scheduler (launchd/systemd/cron).
+
+```bash
+immich-memories auto install [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--hour` | integer range | 9 | Hour to run (0-23) |
+| `--minute` | integer range | 0 | Minute to run (0-59) |
+| `--cooldown` | integer | 24 | Cooldown hours between runs |
+| `--uninstall` | boolean | false | Remove installed scheduler |
+| `--show` | boolean | false | Show config without installing |
+
+### `auto run`
+
+Generate the top-scoring memory candidate.
+
+```bash
+immich-memories auto run [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--dry-run` | boolean | false | Show what would be generated |
+| `--force` | boolean | false | Skip cooldown check |
+| `--cooldown` | integer | - | Min hours since last auto-run |
+| `--upload` | boolean | false | Upload to Immich |
+| `--quiet` | boolean | false | Machine-friendly output |
+
+### `auto status`
+
+Show durable automation and external scheduler state.
+
+```bash
+immich-memories auto status [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--json` | boolean | false | Machine-readable output |
+
+### `auto suggest`
+
+Show prioritized memory candidates.
+
+```bash
+immich-memories auto suggest [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--json` | boolean | false | Machine-readable output |
+| `--limit` | integer | 10 | Max candidates to show |
+| `--type` | text | - | Filter by memory type |
+
+### `auto test-notification`
+
+Send a test notification to verify Apprise URL configuration.
+
+```bash
+immich-memories auto test-notification [OPTIONS]
+```
+
+## `cache`
+
+Manage the analysis cache (LLM scores, video metadata).
+
+```bash
+immich-memories cache [OPTIONS]
+```
+
+### `cache backup`
+
+Backup the entire cache DB (safe SQLite backup API).
+
+```bash
+immich-memories cache backup [OPTIONS]
+```
+
+**Arguments:**
+- `output_path` (path)
+
+### `cache export`
+
+Export asset scores to JSON (safe, lock-aware).
+
+```bash
+immich-memories cache export [OPTIONS]
+```
+
+**Arguments:**
+- `output_path` (path)
+
+### `cache import`
+
+Import asset scores from JSON backup.
+
+```bash
+immich-memories cache import [OPTIONS]
+```
+
+**Arguments:**
+- `input_path` (path)
+
+### `cache stats`
+
+Show cache statistics.
+
+```bash
+immich-memories cache stats [OPTIONS]
+```
+
 ## `config`
 
 Configure Immich connection settings.
@@ -84,6 +169,9 @@ immich-memories config [OPTIONS]
 | `--url`, `-u` | text | - | Immich server URL |
 | `--api-key`, `-k` | text | - | Immich API key |
 | `--show`, `-s` | boolean | false | Show current configuration |
+
+**Arguments:**
+- `action` (choice)
 
 ## `export-project`
 
@@ -103,6 +191,21 @@ immich-memories export-project [OPTIONS]
 
 Generate a video compilation.
 
+        
+        Memory type presets:
+          --memory-type season --season summer --year 2024
+          --memory-type person_spotlight --person "Alice" --year 2024
+          --memory-type multi_person --person "Alice" --person "Bob" --year 2024
+          --memory-type monthly_highlights --month 7 --year 2024
+          --memory-type on_this_day
+
+        
+        Manual time period options:
+          --year 2024                    Calendar year
+          --year 2024 --birthday 02/07   Birthday-based year
+          --start 2024-01-01 --end 2024-06-30   Custom range
+          --start 2024-01-01 --period 6m        Period from start
+
 ```bash
 immich-memories generate [OPTIONS]
 ```
@@ -113,96 +216,45 @@ immich-memories generate [OPTIONS]
 | `--start` | text | - | Start date (YYYY-MM-DD or DD/MM/YYYY) |
 | `--end` | text | - | End date (use with --start) |
 | `--period` | text | - | Period from start date (e.g., 6m, 1y, 2w) |
-| `--birthday`, `-b` | flag/text | - | Birthday-based year. Bare flag auto-detects from Immich; or pass MM/DD |
-| `--memory-type` | choice | - | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `trip` |
-| `--person`, `-p` | text | - | Person name to filter by (repeatable) |
-| `--season` | choice | - | `spring`, `summer`, `fall`, `autumn`, `winter` |
-| `--month` | integer | - | Month 1-12 (narrows yearly types; selects trip by month) |
-| `--hemisphere` | choice | north | `north` or `south` (for season calculation) |
-| `--years-back` | integer | all | Years to look back for `on_this_day` |
-| `--duration`, `-d` | integer | - | Target duration in seconds |
+| `--birthday`, `-b` | text | - | Use birthday-based year (auto-detects from Immich, or specify MM/DD) |
+| `--person`, `-p` | text | - | Person name (repeatable) |
+| `--memory-type` | choice | - | Memory type preset |
+| `--season` | choice | - | Season (use with --memory-type season) |
+| `--month` | integer | - | Month 1-12 (narrows any yearly memory type; selects trip by month) |
+| `--hemisphere` | choice | north | Hemisphere for season calculation |
+| `--duration`, `-d` | integer | - | Target duration in seconds (default: from memory type preset) |
 | `--orientation`, `-o` | choice | landscape | Output orientation |
-| `--resolution`, `-r` | choice | config | `auto`, `4k`, `1080p`, `720p` (default: from config, or `auto` to match source) |
-| `--scale-mode`, `-s` | choice | blur | Scaling mode |
-| `--transition`, `-t` | choice | smart | Transition style |
-| `--quality`, `-q` | choice | high | Output quality (high, medium, low) |
-| `--format` | choice | mp4 | `mp4` or `prores` |
+| `--scale-mode`, `-s` | choice | - | Scale mode (default: from config or smart_crop) |
+| `--transition`, `-t` | choice | smart | Transition style (default: smart — mix of fades & cuts) |
+| `--resolution`, `-r` | choice | - | Output resolution (default: config value, 'auto' to match source clips) |
+| `--music-volume` | float | 0.5 | Music volume 0.0-1.0 (default: 0.5) |
+| `--format` | choice | - | Output format override (default: config value) |
+| `--quality`, `-q` | choice | - | Output quality (default: from config, typically high) |
 | `--output`, `-O` | path | - | Output file path |
-| `--title` | text | - | Override title screen text |
-| `--subtitle` | text | - | Override subtitle text |
-| `--add-date` | flag | false | Add date overlay to clips |
-| `--music`, `-m` | text | - | Path to audio file, or `auto` to generate |
-| `--no-music` | flag | false | Disable all music |
-| `--music-volume` | float | 0.5 | Music volume 0.0-1.0 |
-| `--analysis-depth` | choice | fast | `fast` (metadata gap-fill) or `thorough` (LLM gap-fill for top candidates) |
-| `--include-photos` | flag | false | Include photos alongside videos |
-| `--photo-duration` | float | 4.0 | Seconds per photo clip |
-| `--include-live-photos` | flag | false | Include Live Photo video clips |
-| `--privacy-mode` | flag | false | Blur all video and mute speech |
-| `--keep-intermediates` | flag | false | Keep intermediate files for debugging |
-| `--upload-to-immich` | flag | false | Upload generated video back to Immich |
-| `--album` | text | - | Album name for uploaded video |
-| `--trip-index` | integer | - | Select a specific trip by index |
-| `--all-trips` | flag | false | Generate for every detected trip |
-| `--near-date` | text | - | Select trip closest to this date (YYYY-MM-DD) |
-| `--dry-run` | flag | false | Show what would be done without generating |
-| `--quiet` | flag | false | Suppress interactive progress, emit log lines |
-
-## `auto`
-
-Smart automation: detect, score, and generate memory candidates from your library.
-
-```bash
-immich-memories auto [COMMAND]
-```
-
-### `auto suggest`
-
-Show ranked memory candidates with scores and reasons.
-
-| Flag | Type | Default | Description |
-| --- | --- | --- | --- |
-| `--json` | flag | false | Machine-readable JSON output |
-| `--limit` | integer | 10 | Max candidates to show |
-| `--type` | text | all | Filter by memory type |
-
-### `auto run`
-
-Generate the top-ranked candidate.
-
-| Flag | Type | Default | Description |
-| --- | --- | --- | --- |
-| `--dry-run` | flag | false | Show what would be generated |
-| `--force` | flag | false | Skip cooldown check |
-| `--cooldown` | integer | 24 | Min hours since last auto-run |
-| `--upload` | flag | false | Upload result to Immich |
-| `--quiet` | flag | false | Machine-friendly output |
-
-### `auto install`
-
-Set up OS scheduler (launchd/systemd/cron).
-
-| Flag | Type | Default | Description |
-| --- | --- | --- | --- |
-| `--hour` | integer | 9 | Hour to run (0-23) |
-| `--minute` | integer | 0 | Minute to run (0-59) |
-| `--cooldown` | integer | 24 | Cooldown hours between runs |
-| `--uninstall` | flag | false | Remove installed scheduler |
-| `--show` | flag | false | Print config without installing |
-
-### `auto history`
-
-Show recent auto-generated memories.
-
-| Flag | Type | Default | Description |
-| --- | --- | --- | --- |
-| `--limit` | integer | 10 | Max entries to show |
-
-### `auto test-notification`
-
-Send a test notification through configured Apprise URLs.
-
-See [auto CLI docs](../create/cli/auto.md) for detailed usage and detector documentation.
+| `--music`, `-m` | text | - | Music: path to audio file, 'auto' to generate from config, or omit for default behavior |
+| `--no-music` | boolean | false | Disable all music (skip both provided files and AI generation) |
+| `--dry-run` | boolean | false | Show what would be done without generating |
+| `--upload-to-immich` | boolean | false | Upload generated video back to Immich |
+| `--album` | text | - | Immich album name for uploaded video |
+| `--add-date` | boolean | false | Add date overlay to clips |
+| `--keep-intermediates` | boolean | false | Keep intermediate files for debugging |
+| `--privacy-mode` | boolean | false | Blur faces and mute speech |
+| `--title` | text | - | Override video title text |
+| `--subtitle` | text | - | Override video subtitle text |
+| `--include-live-photos` | boolean | false | Include Live Photo video clips (3s iPhone clips, merged when burst-captured) |
+| `--include-photos` | boolean | false | Include photos as animated Ken Burns clips (blur background, face-aware pan) |
+| `--photo-duration` | float | - | Duration per photo clip in seconds (default: 4.0) |
+| `--analysis-depth` | choice | - | Analysis depth: fast (metadata gap-fill) or thorough (LLM gap-fill) |
+| `--trip-index` | integer | - | Select a specific trip by index (use with --memory-type trip) |
+| `--all-trips` | boolean | false | Generate a video for every detected trip (use with --memory-type trip) |
+| `--years-back` | integer | - | Years to look back for on_this_day (default: all) |
+| `--near-date` | text | - | Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip) |
+| `--source` | choice | manual |  |
+| `--memory-key` | text | - |  |
+| `--memory-category` | text | - |  |
+| `--automation-attempt-id` | text | - |  |
+| `--automation-target-date` | text | - |  |
+| `--quiet` | boolean | false | Suppress interactive progress, emit log lines |
 
 ## `hardware`
 
@@ -223,6 +275,9 @@ immich-memories music [OPTIONS]
 ### `music add`
 
 Add background music to a video with automatic ducking.
+
+        If no music file is provided, automatically selects music based on video mood.
+        Music volume is automatically lowered when speech/sounds are detected.
 
 ```bash
 immich-memories music add [OPTIONS]
@@ -285,6 +340,11 @@ immich-memories people [OPTIONS]
 
 Run preflight checks to validate all provider connections.
 
+        Checks:
+        - Immich server connection and API key
+        - LLM availability (Ollama or OpenAI-compatible)
+        - Hardware acceleration
+
 ```bash
 immich-memories preflight [OPTIONS]
 ```
@@ -297,19 +357,191 @@ immich-memories preflight [OPTIONS]
 
 Browse and manage pipeline run history.
 
-See [runs CLI docs](../create/cli/runs.md) for detailed usage.
+```bash
+immich-memories runs [OPTIONS]
+```
+
+### `runs delete`
+
+Delete a run and optionally its output files.
+
+        Examples:
+
+        
+        # Delete run and its output
+        immich-memories runs delete 20260105_143052_a7b3
+
+        
+        # Delete run but keep the video
+        immich-memories runs delete 20260105_143052_a7b3 --keep-output
+
+```bash
+immich-memories runs delete [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--keep-output` | boolean | false | Keep the output video file |
+| `--yes` | boolean | false | Confirm the action without prompting. |
+
+**Arguments:**
+- `run_id` (text)
+
+### `runs list`
+
+List recent pipeline runs.
+
+        Examples:
+
+        
+        # List recent runs
+        immich-memories runs list
+
+        
+        # Filter by person
+        immich-memories runs list --person "John"
+
+        
+        # Show only failed runs
+        immich-memories runs list --status failed
+
+```bash
+immich-memories runs list [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--limit`, `-n` | integer | 20 | Number of runs to show |
+| `--person`, `-p` | text | - | Filter by person name |
+| `--status`, `-s` | choice | - | Filter by status |
+
+### `runs show`
+
+Show detailed information about a specific run.
+
+        Example:
+            immich-memories runs show 20260105_143052_a7b3
+
+```bash
+immich-memories runs show [OPTIONS]
+```
+
+**Arguments:**
+- `run_id` (text)
+
+### `runs stats`
+
+Show aggregate statistics across all runs.
+
+```bash
+immich-memories runs stats [OPTIONS]
+```
 
 ## `scheduler`
 
-Manage the background scheduler.
+Manage scheduled automatic memory generation.
 
-See [scheduler CLI docs](../create/cli/scheduler.md) for detailed usage.
+```bash
+immich-memories scheduler [OPTIONS]
+```
+
+### `scheduler list`
+
+List all configured schedules.
+
+```bash
+immich-memories scheduler list [OPTIONS]
+```
+
+### `scheduler start`
+
+Start the scheduler daemon.
+
+```bash
+immich-memories scheduler start [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--foreground` | boolean | false | Run in foreground (don't daemonize) |
+
+### `scheduler status`
+
+Show scheduler status.
+
+```bash
+immich-memories scheduler status [OPTIONS]
+```
 
 ## `titles`
 
 Title screen generation and testing commands.
 
-See [titles CLI docs](../create/cli/titles.md) for detailed usage.
+```bash
+immich-memories titles [OPTIONS]
+```
+
+### `titles fonts`
+
+Manage title screen fonts.
+
+        Downloads OFL-licensed fonts from Google Fonts and caches
+        them locally in ~/.immich-memories/fonts/.
+
+```bash
+immich-memories titles fonts [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--download`, `-d` | boolean | false | Download all fonts |
+| `--clear` | boolean | false | Clear font cache |
+| `--list` | boolean | false | List cached fonts |
+
+### `titles test`
+
+Generate a test title screen to preview styles.
+
+        Examples:
+
+        
+        # Simple year title
+        immich-memories titles test --year 2024
+
+        
+        # Birthday title with person name
+        immich-memories titles test --birthday-age 1 --person "Emma"
+
+        
+        # Month divider
+        immich-memories titles test --month 6 --year 2024 --type month
+
+        
+        # Portrait orientation (for social media)
+        immich-memories titles test --year 2024 --orientation portrait
+
+        
+        # French locale with specific style
+        immich-memories titles test --year 2024 --locale fr --style vintage_charm
+
+```bash
+immich-memories titles test [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--year`, `-y` | integer | - | Year for title screen (e.g., 2024) |
+| `--birthday-age` | integer | - | Age for birthday title (e.g., 1 for '1st Year') |
+| `--person`, `-p` | text | - | Person name for subtitle |
+| `--month`, `-m` | integer | - | Month for month divider (1-12) |
+| `--orientation`, `-o` | choice | landscape | Output orientation |
+| `--resolution`, `-r` | choice | 1080p | Output resolution |
+| `--locale`, `-l` | choice | en | Language |
+| `--style`, `-s` | choice | random | Visual style |
+| `--output`, `-O` | path | - | Output file path |
+| `--type` | choice | title | Screen type |
+| `--download-fonts` | boolean | false | Download fonts before generating |
+| `--no-animated-background` | boolean | false | Disable animated backgrounds (static gradient) |
 
 ## `ui`
 
@@ -321,8 +553,8 @@ immich-memories ui [OPTIONS]
 
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
-| `--port`, `-p` | integer | 8080 | Port to run the UI on |
-| `--host`, `-h` | text | 0.0.0.0 | Host to bind to |
+| `--port`, `-p` | integer | - | Port to run the UI on (default: config or 8080) |
+| `--host`, `-h` | text | - | Host to bind to (default: config or 0.0.0.0) |
 | `--reload` | boolean | false | Enable hot reload (for development only) |
 
 ## `years`

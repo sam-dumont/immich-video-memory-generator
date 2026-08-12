@@ -103,7 +103,7 @@ def main() -> None:
     # Import the CLI group
     from immich_memories.cli import main as cli_main
 
-    output_path = Path("docs-site/docs/cli/reference.md")
+    output_path = Path("docs-site/docs/reference/cli-reference.md")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     content = generate_reference(cli_main)

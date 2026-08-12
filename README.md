@@ -151,10 +151,23 @@ immich-memories generate --year 2024 --person "John" --output ~/Videos/john_2024
 - **Hardware Acceleration** — NVIDIA NVENC, Apple VideoToolbox, Intel QSV, AMD VAAPI
 - **AI Music Generation** — ACE-Step or MusicGen with automatic mood detection and audio ducking
 - **Privacy Mode** — Blur all video, muffle audio, anonymize GPS/names for demos
-- **Smart Automation** — `auto suggest` detects interesting memories, `auto run` generates them on a schedule
+- **Smart Automation** — one daily `auto run` decides what deserves to run, then performs one action
 - **Authentication** — Basic auth, OIDC/SSO (Auth0, Authelia, Keycloak), or trusted header proxy
 - **Web UI + CLI** — 4-step wizard or headless automation
 - **Docker & Kubernetes** — Containerized deployment with GPU support
+
+## Daily automation
+
+Schedule one daily invocation of `immich-memories auto run`. It first retries the oldest pending
+Immich delivery when a completed output still needs uploading; otherwise it selects and generates
+one eligible memory. It never tries to catch up by doing several things in one invocation.
+
+The terminal outcome is `skipped`, `dry_run`, `completed`, or `failed`. The first three exit 0;
+`failed` exits 1. Use `--quiet` when a scheduler needs the stable JSON result.
+
+The selector keeps variety on purpose: latest completed month only, at most one monthly review per
+calendar month, no category twice in a row, and no category more than twice in the last six
+completed automatic runs. See the [auto CLI docs](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/cli/auto).
 
 ## Documentation
 

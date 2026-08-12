@@ -5,7 +5,8 @@ title: Automated Generation
 
 # Automated Generation
 
-Once you know your preferred settings, automate the whole thing. Three paths: smart automation (recommended), the built-in scheduler daemon, or classic cron/scripts.
+Once you know your preferred settings, automate the whole thing. The recommended path is one daily
+smart decision; the scheduler daemon and hand-written cron are advanced/legacy alternatives.
 
 ## Smart Automation (Recommended)
 
@@ -15,24 +16,30 @@ The `auto` system scans your library, detects what's worth turning into a memory
 # See what it would generate
 immich-memories auto suggest
 
-# Generate the top candidate
+# The single daily entry point: decide and perform one action
 immich-memories auto run
 
 # Set up daily automatic runs (launchd on macOS, systemd on Linux)
 immich-memories auto install --hour 9
 ```
 
-Each run generates one memory, then applies cooldowns so the next run picks something different. Over a week of daily runs, you get a diverse mix: monthlies, birthday videos, trip compilations, year-in-reviews.
+`immich-memories auto run` is the recommended single daily entry point. Each invocation performs
+exactly one action: retry one pending delivery, generate one eligible memory, or return a typed
+skip/dry-run result. Variety rules keep the outputs from becoming a monthly-highlight vending
+machine: only the latest completed month is eligible, monthly runs are capped at one per calendar
+month, categories cannot repeat back-to-back, and each category is capped at two of the last six
+completed automatic runs.
 
 See [auto CLI docs](../cli/auto.md) for the full reference including detector details and scoring.
 
-## Built-in Scheduler
+## Scheduler daemon (advanced/legacy)
 
 :::tip Use smart automation instead
 Most users should use the `auto` system above — it figures out what to generate automatically. The scheduler below is for Docker/K8s deployments or when you need exact control over what generates when (specific memory types on specific dates).
 :::
 
-The scheduler daemon runs inside immich-memories and handles timezone-aware cron, auto-resolved date parameters, and upload-back. No shell scripting required.
+The advanced/legacy scheduler daemon runs inside immich-memories and handles timezone-aware cron,
+auto-resolved date parameters, and upload-back. No shell scripting required.
 
 ```yaml
 # config.yaml

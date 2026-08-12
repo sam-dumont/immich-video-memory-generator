@@ -46,7 +46,7 @@ immich:
 You do not need to switch this setting for each run. On the next client start, `auto` detects the
 server major and uses its API contract. Explicit `v2` and `v3` are manual troubleshooting escape
 hatches for unusual proxies or deployments that prevent correct detection; they force the selected
-contract.
+contract. They are the escape hatch if detection is wrong, not an upgrade ritual.
 
 The client handles the three v3 wire changes that affect generation:
 
