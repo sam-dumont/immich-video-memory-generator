@@ -495,6 +495,7 @@ class AutoRunner:
         self.last_recent_categories: tuple[str, ...] = ()
         self.last_suggest_status = SuggestStatus()
         self._prepared_immich_preflight: Any | None = None
+        self._prepared_pending_delivery: RunMetadata | None = None
 
     def _secrets(self) -> tuple[str, ...]:
         """Return configured credential values that must never enter attempt history."""
@@ -695,7 +696,11 @@ class AutoRunner:
         dry_run: bool,
     ) -> AutoRunResult | None:
         """Retry the oldest deliverable auto artifact, if one exists."""
-        return self._pending_delivery_retry().run(attempt, dry_run=dry_run)
+        return self._pending_delivery_retry().run(
+            attempt,
+            dry_run=dry_run,
+            pending=self._prepared_pending_delivery,
+        )
 
     def _pending_delivery_retry(self) -> PendingDeliveryRetry:
         """Bind this runner's durable collaborators to one retry state machine."""
@@ -711,29 +716,24 @@ class AutoRunner:
         self,
         attempt: AutomationAttempt,
     ) -> AutoRunResult | None:
-        """Run the one retry preflight before selecting its queued artifact."""
-        if not self.db.count_pending_deliveries(source="auto"):
+        """Run retry preflight only after selecting an executable artifact."""
+        pending = self.db.get_oldest_pending_delivery(source="auto")
+        if pending is None or pending.output_path is None:
             return None
-        self._pending_delivery_retry().start_delivery(attempt)
+        retry = self._pending_delivery_retry()
+        retry.start_delivery(attempt)
         preflight = self._check_immich_preflight()
         preflight_error = self._preflight_error(preflight)
         if preflight_error is None:
             self._prepared_immich_preflight = preflight
+            self._prepared_pending_delivery = pending
             return None
-        pending = self.db.get_oldest_pending_delivery(source="auto")
-        if pending is not None and pending.output_path is not None:
-            return self._pending_delivery_retry().finish(
-                attempt,
-                AutoOutcome.FAILED,
-                "Immich preflight failed",
-                run_id=pending.run_id,
-                output_path=Path(pending.output_path),
-                error=preflight_error,
-            )
-        return self._finish(
+        return retry.finish(
             attempt,
             AutoOutcome.FAILED,
             "Immich preflight failed",
+            run_id=pending.run_id,
+            output_path=Path(pending.output_path),
             error=preflight_error,
         )
 
@@ -988,3 +988,4 @@ class AutoRunner:
             )
         finally:
             self._prepared_immich_preflight = None
+            self._prepared_pending_delivery = None

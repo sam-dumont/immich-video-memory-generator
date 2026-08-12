@@ -597,6 +597,31 @@ def test_no_pending_delivery_preserves_candidate_flow_and_generation_action(
     suggest.assert_called_once_with(limit=1)
 
 
+def test_missing_pending_artifacts_preserve_discovery_phase_and_candidate_flow(
+    tmp_path: Path,
+) -> None:
+    """A queue-health row without a file is not executable delivery work."""
+    runner = AutoRunner(_config(tmp_path))
+    missing = _save_pending_auto_run(runner, tmp_path, run_id="missing-output")
+    Path(missing.output_path or "").unlink()
+
+    with (
+        patch("immich_memories.api.immich.SyncImmichClient") as client_factory,
+        patch.object(runner, "suggest", return_value=[]) as suggest,
+    ):
+        result = runner.run_one(force=True)
+
+    attempt = runner.state.get_last_attempt()
+    assert result.outcome is AutoOutcome.SKIPPED
+    assert result.action is AutoAction.GENERATION
+    assert result.reason == "no eligible candidates"
+    assert attempt is not None
+    assert attempt.last_phase is not None
+    assert attempt.last_phase.value == "discovery"
+    client_factory.assert_not_called()
+    suggest.assert_called_once_with(limit=1)
+
+
 def test_pending_delivery_count_is_source_scoped_and_keeps_missing_artifacts(
     tmp_path: Path,
 ) -> None:

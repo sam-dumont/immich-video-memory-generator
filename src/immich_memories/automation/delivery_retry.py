@@ -16,7 +16,7 @@ from immich_memories.automation.models import (
 from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.config_loader import Config
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
-from immich_memories.tracking.models import DeliveryStatus
+from immich_memories.tracking.models import DeliveryStatus, RunMetadata
 from immich_memories.tracking.run_database import RunDatabase
 
 logger = logging.getLogger(__name__)
@@ -178,9 +178,15 @@ class PendingDeliveryRetry:
             recent_categories=self._recent_categories,
         )
 
-    def run(self, attempt: AutomationAttempt, *, dry_run: bool) -> AutoRunResult | None:
+    def run(
+        self,
+        attempt: AutomationAttempt,
+        *,
+        dry_run: bool,
+        pending: RunMetadata | None = None,
+    ) -> AutoRunResult | None:
         """Retry the oldest retryable auto artifact and immediately return its result."""
-        pending = self._db.get_oldest_pending_delivery(source="auto")
+        pending = pending or self._db.get_oldest_pending_delivery(source="auto")
         if pending is None:
             return None
         if pending.output_path is None:  # guarded by the database query
