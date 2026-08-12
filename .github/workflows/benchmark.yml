@@ -125,26 +125,12 @@ jobs:
           except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
               print(f'Invalid benchmark reproduction metadata: {error}', file=sys.stderr)
               sys.exit(1)
+          open('tests/benchmark-results.json', 'w').write(json.dumps(projection, indent=2))
           print(f'Validated full reproduction metadata for {len(projection)} benchmark results')
           "
 
-      - name: Merge benchmark JSON files
-        run: |
-          python3 -c "
-          import json, glob, sys
-          merged = []
-          for f in sorted(glob.glob('tests/benchmark-*.json')):
-              try:
-                  merged.extend(json.loads(open(f).read()))
-              except Exception as e:
-                  print(f'WARN: skipping {f}: {e}', file=sys.stderr)
-          if not merged:
-              print('No benchmark results found', file=sys.stderr)
-              sys.exit(1)
-          out = 'tests/benchmark-results.json'
-          open(out, 'w').write(json.dumps(merged, indent=2))
-          print(f'Merged {len(merged)} entries to {out}')
-          "
+      - name: Record title comparison limitation
+        run: echo "Title performance comparison is advisory-unavailable until it exports reproduction metadata."
 
       # WHY: restore BEFORE benchmark-action so it has historical data to compare against
       - name: Restore benchmark cache
@@ -163,7 +149,8 @@ jobs:
           from scripts.profile_pipeline import count_comparable_baselines
           try:
               data = json.load(open('./cache/benchmark-data.json'))
-              count = count_comparable_baselines(data)
+              current = json.load(open('tests/benchmark-results.json'))
+              count = count_comparable_baselines(data, current)
           except (OSError, ValueError, TypeError, json.JSONDecodeError):
               count = 0
           open('$GITHUB_OUTPUT', 'a').write(f'count={count}\\nready={str(count >= 10).lower()}\\n')
@@ -244,7 +231,8 @@ jobs:
           from scripts.profile_pipeline import count_comparable_baselines
           try:
               data = json.load(open('./cache/benchmark-data.json'))
-              count = count_comparable_baselines(data)
+              current = json.load(open('tests/benchmark-results.json'))
+              count = count_comparable_baselines(data, current)
           except (OSError, ValueError, TypeError, json.JSONDecodeError):
               count = 0
           open('$GITHUB_OUTPUT', 'a').write(f'count={count}\\nready={str(count >= 10).lower()}\\n')

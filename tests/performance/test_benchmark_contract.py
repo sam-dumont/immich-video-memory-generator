@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import math
 import os
 import subprocess
 import sys
@@ -45,6 +46,9 @@ def test_profile_harness_requires_an_isolated_explicit_output_directory(tmp_path
         "XDG_CONFIG_HOME": str(user_state / "config"),
         "XDG_DATA_HOME": str(user_state / "data"),
     }
+    forbidden_temp = tmp_path / "forbidden-temp"
+    forbidden_temp.mkdir()
+    environment["TMPDIR"] = str(forbidden_temp)
 
     help_result = subprocess.run(
         [sys.executable, str(script), "--help"],
@@ -82,7 +86,7 @@ def test_profile_harness_requires_an_isolated_explicit_output_directory(tmp_path
             "--scenario",
             "controlled-tiny",
             "--repetitions",
-            "1",
+            "3",
             "--output-dir",
             str(output_dir),
         ],
@@ -107,7 +111,7 @@ def test_profile_harness_requires_an_isolated_explicit_output_directory(tmp_path
         "--scenario",
         "controlled-tiny",
         "--repetitions",
-        "1",
+        "3",
         "--output-dir",
         str(output_dir),
     ]
@@ -146,7 +150,9 @@ def test_profile_harness_requires_an_isolated_explicit_output_directory(tmp_path
     assert metadata["environment"]["cpu"] == perf_utils._cpu_fingerprint()
     assert metadata["stage_wall_seconds"].keys() == {"analysis", "assembly"}
     assert metadata["warmup_stage_wall_seconds"].keys() == {"analysis", "assembly"}
-    assert all(metadata["stage_wall_seconds"][stage][0] > 0 for stage in ("analysis", "assembly"))
+    assert all(
+        len(metadata["stage_wall_seconds"][stage]) == 3 for stage in ("analysis", "assembly")
+    )
     assert all(
         metadata["warmup_stage_wall_seconds"][stage] > 0 for stage in ("analysis", "assembly")
     )
@@ -156,12 +162,37 @@ def test_profile_harness_requires_an_isolated_explicit_output_directory(tmp_path
         <= metadata["stage_wall_seconds"][stage][0] + 0.01
         for stage in ("analysis", "assembly")
     )
-    assert (output_dir / "controlled-tiny-1-assembly.prof").is_file()
-    assert (output_dir / "controlled-tiny-1-assembly-cumulative.txt").is_file()
-    assert (output_dir / "controlled-tiny-1-assembly-self.txt").is_file()
-    assert (output_dir / "controlled-tiny-1-analysis.prof").is_file()
-    assert (output_dir / "controlled-tiny-1-analysis-self.txt").is_file()
+    for index in range(1, 4):
+        assert (output_dir / f"controlled-tiny-{index}-assembly.prof").is_file()
+        assert (output_dir / f"controlled-tiny-{index}-assembly-cumulative.txt").is_file()
+        assert (output_dir / f"controlled-tiny-{index}-assembly-self.txt").is_file()
+        assert (output_dir / f"controlled-tiny-{index}-analysis.prof").is_file()
+        assert (output_dir / f"controlled-tiny-{index}-analysis-self.txt").is_file()
     assert not user_state.exists()
+    assert list(forbidden_temp.iterdir()) == []
+
+
+def test_profile_harness_rejects_less_than_three_repetitions(tmp_path: Path) -> None:
+    """A profile needs one warm-up plus at least three comparable samples."""
+    project_root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(project_root / "scripts" / "profile_pipeline.py"),
+            "--scenario",
+            "controlled-tiny",
+            "--repetitions",
+            "2",
+            "--output-dir",
+            str(tmp_path / "output"),
+        ],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "at least three" in result.stderr
 
 
 def test_local_benchmark_submission_requires_full_assembly_metadata() -> None:
@@ -170,6 +201,21 @@ def test_local_benchmark_submission_requires_full_assembly_metadata() -> None:
 
     assert "inputs[results]=$$(cat tests/perf-results.json)" in makefile
     assert "titles skipped: full reproduction metadata is not exported yet" in makefile
+
+
+def test_ci_comparison_uses_validated_assembly_projection_only() -> None:
+    """Title JSON cannot dilute assembly comparison identity before it exports metadata."""
+    workflow = (
+        Path(__file__).resolve().parents[2] / ".github" / "workflows" / "benchmark.yml"
+    ).read_text()
+
+    assert (
+        "open('tests/benchmark-results.json', 'w').write(json.dumps(projection, indent=2))"
+        in workflow
+    )
+    assert "Title performance comparison is advisory-unavailable" in workflow
+    assert "Merge benchmark JSON files" not in workflow
+    assert "count_comparable_baselines(data, current)" in workflow
 
 
 @pytest.mark.parametrize(
@@ -188,22 +234,47 @@ def test_benchmark_baseline_threshold_uses_action_datajson_history(
 
     data = {"lastUpdate": 0, "repoUrl": "example", "entries": {"Benchmark": [{}] * history_count}}
 
-    assert count_comparable_baselines(data) == expected
-    assert (count_comparable_baselines(data) >= 10) is (history_count >= 10)
+    projection = [{"name": "assembly", "extra": "identity"}]
+    data["entries"]["Benchmark"] = [
+        {"benches": [{"name": "assembly", "extra": "identity"}]} for _ in range(history_count)
+    ]
+    assert count_comparable_baselines(data, projection) == expected
+    assert (count_comparable_baselines(data, projection) >= 10) is (history_count >= 10)
+
+
+def test_benchmark_baseline_history_excludes_mismatched_and_partial_suites() -> None:
+    """A cached run is comparable only when every current workload identity matches."""
+    from scripts.profile_pipeline import count_comparable_baselines
+
+    projection = [
+        {"name": "assembly", "extra": "cpu-a"},
+        {"name": "analysis", "extra": "cpu-a"},
+    ]
+    matching = {
+        "benches": [{"name": "assembly", "extra": "cpu-a"}, {"name": "analysis", "extra": "cpu-a"}]
+    }
+    mismatched = {
+        "benches": [{"name": "assembly", "extra": "cpu-b"}, {"name": "analysis", "extra": "cpu-b"}]
+    }
+    partial = {"benches": [{"name": "assembly", "extra": "cpu-a"}]}
+    data = {"entries": {"Benchmark": [matching] * 10 + [mismatched, partial]}}
+
+    assert count_comparable_baselines(data, projection) == 10
 
 
 def test_benchmark_projection_rejects_incomplete_reproduction_metadata() -> None:
     """CI dispatch cannot convert stripped or incomplete results into comparisons."""
     from scripts.profile_pipeline import benchmark_comparison_projection
 
-    result = dict.fromkeys(REQUIRED_REPRODUCTION_KEYS, "value")
-    result.update(
-        {"scenario": "assembly", "median_wall_seconds": 1.0, "raw_repetition_seconds": [1, 1, 1]}
-    )
+    result = _complete_benchmark_result()
 
-    assert benchmark_comparison_projection({"results": [result]}) == [
-        {"name": "assembly", "unit": "seconds", "value": 1.0}
-    ]
+    projection = benchmark_comparison_projection({"results": [result]})
+    assert projection[0] | {"extra": "ignored"} == {
+        "name": "assembly",
+        "unit": "seconds",
+        "value": 1.0,
+        "extra": "ignored",
+    }
     with pytest.raises(ValueError, match="full benchmark results"):
         benchmark_comparison_projection([])
     incomplete = result.copy()
@@ -213,6 +284,108 @@ def test_benchmark_projection_rejects_incomplete_reproduction_metadata() -> None
     two_repetitions = result | {"raw_repetition_seconds": [1, 1]}
     with pytest.raises(ValueError, match="exactly three"):
         benchmark_comparison_projection({"results": [two_repetitions]})
+
+
+@pytest.mark.parametrize(
+    ("field", "changed"),
+    [
+        pytest.param("cpu", "different CPU", id="cpu"),
+        pytest.param("platform", "linux-x86_64", id="platform"),
+        pytest.param("python_version", "3.13.0", id="python"),
+        pytest.param("cache_mode", "cold", id="config"),
+        pytest.param("codec", "h265", id="workload"),
+    ],
+)
+def test_benchmark_projection_identity_changes_for_comparability_fields(
+    field: str, changed: object
+) -> None:
+    """Workload and environment changes produce a distinct benchmark history identity."""
+    from scripts.profile_pipeline import benchmark_comparison_projection
+
+    baseline = benchmark_comparison_projection({"results": [_complete_benchmark_result()]})[0]
+    modified = benchmark_comparison_projection(
+        {"results": [_complete_benchmark_result() | {field: changed}]}
+    )[0]
+
+    assert baseline["extra"] != modified["extra"]
+
+
+def test_benchmark_projection_identity_is_deterministic_for_identical_input() -> None:
+    """The same workload and environment always create the same cache identity."""
+    from scripts.profile_pipeline import benchmark_comparison_projection
+
+    first = benchmark_comparison_projection({"results": [_complete_benchmark_result()]})[0]
+    second = benchmark_comparison_projection({"results": [_complete_benchmark_result()]})[0]
+
+    assert first["extra"] == second["extra"]
+
+
+def test_benchmark_projection_identity_ignores_git_revision_and_timing() -> None:
+    """Comparable workload identity excludes revision and timing observations."""
+    from scripts.profile_pipeline import benchmark_comparison_projection
+
+    baseline = benchmark_comparison_projection({"results": [_complete_benchmark_result()]})[0]
+    modified = benchmark_comparison_projection(
+        {
+            "results": [
+                _complete_benchmark_result()
+                | {
+                    "git_revision": "different",
+                    "warmup_wall_seconds": 9.0,
+                    "raw_repetition_seconds": [9.0, 9.0, 9.0],
+                    "median_wall_seconds": 9.0,
+                }
+            ]
+        }
+    )[0]
+
+    assert baseline["extra"] == modified["extra"]
+
+
+@pytest.mark.parametrize(
+    "raw", ["123", {"seconds": [1, 1, 1]}, [1, 1, True], [1, 1, math.nan], [1, 1, "one"]]
+)
+def test_benchmark_projection_rejects_non_numeric_repetition_values(raw: object) -> None:
+    """Only three finite numeric sample values are comparable benchmark evidence."""
+    from scripts.profile_pipeline import benchmark_comparison_projection
+
+    result = _complete_benchmark_result() | {"raw_repetition_seconds": raw}
+
+    with pytest.raises(ValueError, match="raw_repetition_seconds"):
+        benchmark_comparison_projection({"results": [result]})
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [("cpu", ""), ("frame_rate", True), ("input_duration_seconds", math.nan), ("codec", 1)],
+)
+def test_benchmark_projection_rejects_malformed_identity_values(field: str, value: object) -> None:
+    """Identity metadata must be valid before it becomes a comparison signature."""
+    from scripts.profile_pipeline import benchmark_comparison_projection
+
+    result = _complete_benchmark_result() | {field: value}
+
+    with pytest.raises(ValueError, match=field):
+        benchmark_comparison_projection({"results": [result]})
+
+
+def _complete_benchmark_result() -> dict[str, object]:
+    return {
+        "scenario": "assembly",
+        "clip_count": 2,
+        "resolution": "1280x720",
+        "input_duration_seconds": 3.0,
+        "codec": "h264",
+        "frame_rate": 30.0,
+        "cache_mode": "warm",
+        "python_version": "3.12.11",
+        "platform": "darwin-arm64",
+        "cpu": "Apple M5 Max",
+        "git_revision": "abcdef0",
+        "warmup_wall_seconds": 1.0,
+        "raw_repetition_seconds": [1.0, 1.0, 1.0],
+        "median_wall_seconds": 1.0,
+    }
 
 
 def test_minimal_assembly_uses_identity_checked_three_second_fixtures() -> None:

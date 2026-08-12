@@ -73,36 +73,36 @@ uv run python scripts/profile_pipeline.py --scenario controlled-cold --repetitio
 uv run python scripts/profile_pipeline.py --scenario controlled-warm --repetitions 3 --output-dir /tmp/immich-memories-profile-20260811
 ```
 
-Environment: revision `ad72ab4` (dirty Task 7 worktree); macOS-26.5.1-arm64-arm-64bit; Python
+Environment: revision `4b4cdb8` (dirty Task 7 review-fix worktree); macOS-26.5.1-arm64-arm-64bit; Python
 3.12.11; CPU fingerprint `Apple M5 Max`; FFmpeg/ffprobe 8.1. `cProfile` sees Python execution and wait time,
 not child-process internals. The subprocess values below are non-overlapping `subprocess.run` plus
 direct `Popen.wait` cumulative-time estimates, not FFmpeg CPU time.
 
 | Scenario | Stage | Three wall seconds | Median wall seconds | Subprocess-wait estimate, seconds |
 |---|---|---:|---:|---:|
-| cold | assembly | 0.736, 0.737, 0.734 | 0.736 | 0.216, 0.219, 0.219 |
-| cold | analysis | 0.089, 0.091, 0.092 | 0.091 | 0.029, 0.030, 0.030 |
-| warm | assembly | 0.691, 0.710, 0.693 | 0.693 | 0.175, 0.179, 0.174 |
-| warm | analysis | 0.090, 0.090, 0.091 | 0.090 | 0.028, 0.029, 0.029 |
+| cold | assembly | 0.749, 0.745, 0.735 | 0.745 | 0.220, 0.217, 0.215 |
+| cold | analysis | 0.090, 0.091, 0.090 | 0.090 | 0.028, 0.028, 0.029 |
+| warm | assembly | 0.721, 0.741, 0.698 | 0.721 | 0.176, 0.176, 0.174 |
+| warm | analysis | 0.091, 0.092, 0.091 | 0.091 | 0.030, 0.030, 0.029 |
 
-An unprofiled warm-up preceded the three measurements: cold assembly/analysis 0.853/0.163 seconds;
-warm assembly/analysis 0.729/0.165 seconds. End-to-end medians (assembly plus analysis for each
-matching repetition) are 0.826 seconds cold and 0.784 seconds warm. The stable assembly bottleneck
-is native I/O: buffered-reader self time is 0.351–0.361 seconds (about 51% of the warm median),
-followed by poll wait at 0.160–0.200 seconds and buffered writes at
-0.127–0.134 seconds. `blend_crossfade` is a Python wrapper around per-frame NumPy operations, not a
-standalone pure-Python candidate; its 0.038-second self time is 4.6% of the cold 0.826-second
-assembly-plus-analysis median and 4.8% of the warm 0.784-second median. `_mean_pixel_distance`
-likewise delegates per-frame work to NumPy/OpenCV; its 0.012–0.014 cumulative seconds are roughly
-1.4–1.6% of cold end-to-end and 1.5–1.7% of warm end-to-end. The next bottleneck is therefore
-FFmpeg/pipe I/O, not a Python loop.
+An unprofiled warm-up preceded the three measurements: cold assembly/analysis 0.843/0.163 seconds;
+warm assembly/analysis 0.732/0.167 seconds. End-to-end medians (assembly plus analysis for each
+matching repetition) are 0.837 seconds cold and 0.812 seconds warm. The stable assembly bottleneck
+is native I/O: buffered-reader self time is 0.342–0.371 seconds (49.1–50.1% of warm assembly samples),
+followed by poll wait at 0.159–0.198 seconds and buffered writes at
+0.123–0.138 seconds. `blend_crossfade` is a Python wrapper around per-frame NumPy operations, not a
+standalone pure-Python candidate; its 0.038-second self time is 4.5% of the cold 0.837-second
+assembly-plus-analysis median and 4.7% of the warm 0.812-second median. `_mean_pixel_distance`
+likewise delegates per-frame work to NumPy/OpenCV; its cold cumulative time is 0.012 seconds in all
+three samples (about 1.4% end-to-end) and warm is 0.012–0.014 seconds (about 1.5–1.7%). The next
+bottleneck is therefore FFmpeg/pipe I/O, not a Python loop.
 
 ### Decision: no Cython
 
 All five required conditions must pass; they do not.
 
 1. **No.** No pure-Python function consumes 15% of end-to-end wall time in both controlled modes:
-   `blend_crossfade` is a 4.6% cold and 4.8% warm end-to-end wrapper, while
+   `blend_crossfade` is a 4.5% cold and 4.7% warm end-to-end wrapper, while
    `_mean_pixel_distance` is below 2% of either assembly-plus-analysis path. No representative
    profile was explicitly configured.
 2. **Not reached.** No candidate clears condition 1, so Python/native boundary crossings were not

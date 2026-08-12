@@ -6,16 +6,20 @@ from __future__ import annotations
 import argparse
 import cProfile
 import json
+import math
 import os
 import platform
 import pstats
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any, TypedDict, cast
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = {
@@ -54,17 +58,80 @@ REQUIRED_REPRODUCTION_KEYS = frozenset(
         "median_wall_seconds",
     }
 )
+IDENTITY_FIELDS = (
+    "scenario",
+    "clip_count",
+    "resolution",
+    "input_duration_seconds",
+    "codec",
+    "frame_rate",
+    "cache_mode",
+    "python_version",
+    "platform",
+    "cpu",
+)
 
 
-def count_comparable_baselines(data: object) -> int:
-    """Count github-action-benchmark's saved `Benchmark` run histories."""
+def count_comparable_baselines(data: object, current_projection: list[dict[str, object]]) -> int:
+    """Count cached suites containing every current benchmark name and identity."""
     if not isinstance(data, dict):
         return 0
     entries = data.get("entries")
     if not isinstance(entries, dict):
         return 0
     histories = entries.get("Benchmark")
-    return len(histories) if isinstance(histories, list) else 0
+    if not isinstance(histories, list):
+        return 0
+    expected = {(entry.get("name"), entry.get("extra")) for entry in current_projection}
+    if not expected or any(
+        not isinstance(name, str) or not isinstance(extra, str) for name, extra in expected
+    ):
+        return 0
+    comparable = 0
+    for suite in histories:
+        if not isinstance(suite, dict):
+            continue
+        benches = suite.get("benches")
+        if not isinstance(benches, list):
+            continue
+        observed = {
+            (bench.get("name"), bench.get("extra")) for bench in benches if isinstance(bench, dict)
+        }
+        if expected <= observed:
+            comparable += 1
+    return comparable
+
+
+def _nonempty_string(result: dict[str, object], field: str) -> str:
+    value = result.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty string")
+    return value
+
+
+def _finite_number(result: dict[str, object], field: str, *, positive: bool = False) -> float:
+    value = result.get(field)
+    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
+        raise ValueError(f"{field} must be a finite number")
+    numeric = float(value)
+    if positive and numeric <= 0:
+        raise ValueError(f"{field} must be greater than zero")
+    return numeric
+
+
+def _identity_extra(result: dict[str, object]) -> str:
+    identity: dict[str, object] = {}
+    for field in IDENTITY_FIELDS:
+        if field in {"clip_count"}:
+            value = result.get(field)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{field} must be a positive integer")
+            identity[field] = value
+        elif field in {"input_duration_seconds", "frame_rate"}:
+            identity[field] = _finite_number(result, field, positive=True)
+        else:
+            identity[field] = _nonempty_string(result, field)
+    return json.dumps(identity, sort_keys=True, separators=(",", ":"))
 
 
 def benchmark_comparison_projection(submitted: object) -> list[dict[str, object]]:
@@ -81,10 +148,25 @@ def benchmark_comparison_projection(submitted: object) -> list[dict[str, object]
         missing = REQUIRED_REPRODUCTION_KEYS - result.keys()
         if missing:
             raise ValueError(f"{result.get('scenario', 'unknown')}: missing {sorted(missing)}")
-        if len(result["raw_repetition_seconds"]) != 3:
-            raise ValueError(f"{result['scenario']}: expected exactly three repetitions")
+        raw_repetitions = result["raw_repetition_seconds"]
+        if not isinstance(raw_repetitions, list) or len(raw_repetitions) != 3:
+            raise ValueError("raw_repetition_seconds must be a list of exactly three values")
+        for value in raw_repetitions:
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int | float)
+                or not math.isfinite(value)
+            ):
+                raise ValueError("raw_repetition_seconds must contain finite numeric values")
+        _finite_number(result, "warmup_wall_seconds", positive=True)
+        median = _finite_number(result, "median_wall_seconds", positive=True)
         projection.append(
-            {"name": result["scenario"], "unit": "seconds", "value": result["median_wall_seconds"]}
+            {
+                "name": _nonempty_string(result, "scenario"),
+                "unit": "seconds",
+                "value": median,
+                "extra": _identity_extra(result),
+            }
         )
     return projection
 
@@ -95,8 +177,8 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--output-dir", type=Path, required=True)
     arguments = parser.parse_args()
-    if arguments.repetitions < 1:
-        parser.error("--repetitions must be at least one")
+    if arguments.repetitions < 3:
+        parser.error("--repetitions must be at least three")
     return arguments
 
 
@@ -264,7 +346,7 @@ def _assemble(
     )
 
 
-def _analyze(video_path: Path) -> None:
+def _analyze(video_path: Path, *, temp_dir: Path) -> None:
     """Run hermetic visual and audio analysis without LLM or network clients."""
     from immich_memories.analysis.scenes import SceneDetector
     from immich_memories.analysis.segment_generation import detect_audio_boundaries
@@ -272,11 +354,17 @@ def _analyze(video_path: Path) -> None:
 
     config = AnalysisConfig()
     SceneDetector(analysis_config=config).detect(video_path, extract_keyframes=False)
-    detect_audio_boundaries(
-        video_path,
-        silence_threshold_db=config.silence_threshold_db,
-        min_silence_duration=config.min_silence_duration,
-    )
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    named_temporary_file = partial(tempfile.NamedTemporaryFile, dir=temp_dir)
+    with patch(
+        "immich_memories.analysis.silence_detection.tempfile.NamedTemporaryFile",
+        named_temporary_file,
+    ):
+        detect_audio_boundaries(
+            video_path,
+            silence_threshold_db=config.silence_threshold_db,
+            min_silence_duration=config.min_silence_duration,
+        )
 
 
 def _analysis_config() -> dict[str, object]:
@@ -357,7 +445,7 @@ def _run_warmup(
     _assemble(clips, assembled_path, duration=duration, assembler=assembler)
     assembly_seconds = time.perf_counter() - started
     started = time.perf_counter()
-    _analyze(assembled_path)
+    _analyze(assembled_path, temp_dir=work_dir / "analysis-tmp")
     return {"assembly": assembly_seconds, "analysis": time.perf_counter() - started}
 
 
@@ -409,8 +497,11 @@ def main() -> int:
                 )
             )
 
-            def analysis_stage(assembled_path: Path = assembled_path) -> None:
-                _analyze(assembled_path)
+            def analysis_stage(
+                assembled_path: Path = assembled_path,
+                work_dir: Path = work_dir,
+            ) -> None:
+                _analyze(assembled_path, temp_dir=work_dir / "analysis-tmp")
 
             stage_timings["analysis"].append(
                 _profile_stage(
