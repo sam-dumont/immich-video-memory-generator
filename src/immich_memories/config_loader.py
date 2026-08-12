@@ -274,7 +274,8 @@ def init_config_dir() -> Path:
     # This protects API keys and cached data on multi-user systems.
     with contextlib.suppress(OSError):
         for d in (config_dir, cache_dir, projects_dir):
-            d.chmod(0o700)
+            if stat.S_IMODE(d.stat().st_mode) != 0o700:
+                d.chmod(0o700)
 
         # Warn if config file has overly permissive permissions
         config_file = config_dir / "config.yaml"

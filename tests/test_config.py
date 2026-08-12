@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from immich_memories.config import (
     OutputConfig,
     expand_env_vars,
 )
+from immich_memories.config_loader import init_config_dir
 from immich_memories.config_models import ServerConfig
 from immich_memories.processing.encoding_plan import HdrMode
 
@@ -418,3 +420,51 @@ class TestConfig:
         )
         loaded = Config.from_yaml(config_path)
         assert loaded.analysis.scene_threshold == 99.0
+
+
+class TestInitConfigDir:
+    """Tests for idempotent configuration-directory permission setup."""
+
+    def test_already_secure_directories_are_not_chmodded_or_metadata_mutated(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_dir = tmp_path / ".immich-memories"
+        directories = (config_dir, config_dir / "cache", config_dir / "projects")
+        for directory in directories:
+            directory.mkdir(parents=True, exist_ok=True)
+            directory.chmod(0o700)
+        before_ctimes = {directory: directory.stat().st_ctime_ns for directory in directories}
+        original_chmod = Path.chmod
+        chmod_calls: list[tuple[Path, int]] = []
+
+        def record_chmod(path: Path, mode: int) -> None:
+            chmod_calls.append((path, mode))
+            original_chmod(path, mode)
+
+        monkeypatch.setattr(Path, "home", classmethod(lambda _cls: tmp_path))
+        monkeypatch.setattr(Path, "chmod", record_chmod)
+
+        assert init_config_dir() == config_dir
+
+        assert chmod_calls == []
+        assert {
+            directory: directory.stat().st_ctime_ns for directory in directories
+        } == before_ctimes
+
+    def test_insecure_directories_are_normalized_to_owner_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_dir = tmp_path / ".immich-memories"
+        directories = (config_dir, config_dir / "cache", config_dir / "projects")
+        for directory in directories:
+            directory.mkdir(parents=True, exist_ok=True)
+            directory.chmod(0o755)
+        monkeypatch.setattr(Path, "home", classmethod(lambda _cls: tmp_path))
+
+        init_config_dir()
+
+        assert [stat.S_IMODE(directory.stat().st_mode) for directory in directories] == [
+            0o700,
+            0o700,
+            0o700,
+        ]
