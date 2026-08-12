@@ -370,20 +370,25 @@ commitlint:
 
 # Cognitive complexity (complements cyclomatic complexity)
 cognitive-complexity:
-	@OUTPUT=$$(uvx complexipy src/ --max-complexity-allowed 15 2>&1); \
+	@OUTPUT=$$(uvx complexipy==5.2.0 src/ --max-complexity-allowed 15 2>&1); \
+	ANALYZER_STATUS=$$?; \
 	if echo "$$OUTPUT" | grep -q "Snapshot watermark passed"; then \
 		echo "Cognitive complexity: snapshot watermark passed (no new violations)"; \
 	elif echo "$$OUTPUT" | grep -q "FAILED"; then \
 		echo "$$OUTPUT" | grep "FAILED"; \
 		echo "Cognitive complexity gate FAILED: new violations detected"; \
 		exit 1; \
+	elif [ "$$ANALYZER_STATUS" -ne 0 ]; then \
+		echo "$$OUTPUT"; \
+		echo "Cognitive complexity gate FAILED: analyzer exited $$ANALYZER_STATUS"; \
+		exit "$$ANALYZER_STATUS"; \
 	else \
 		echo "Cognitive complexity: all functions under threshold"; \
 	fi
 
 # Code duplication detection
 duplication:
-	npx jscpd src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python --gitignore
+	npx --yes jscpd@5.0.14 src/ --threshold 5 --min-lines 5 --min-tokens 50 --format python
 
 # Modernization lint (cd src avoids duplicate module detection, --config-file reads ignores)
 refurb:

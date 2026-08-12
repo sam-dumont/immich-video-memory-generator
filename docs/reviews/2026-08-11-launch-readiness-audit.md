@@ -438,3 +438,54 @@ The implementation design is saved in
 
 This audit did not delete, move, or rewrite generated videos, run directories, caches, or
 database rows. Cleanup requires a backup, a concrete manifest, and separate owner approval.
+
+## CI promotion addendum — 2026-08-12
+
+### Cognitive-complexity gate
+
+The checked-in snapshot was created with `complexipy` 5.2.0, but the Make target installed the
+latest release on every run. Version 7.0.0 changed scoring and made the existing watermark
+non-comparable. The gate also discarded the analyzer exit code, so an installation or analyzer
+failure was incorrectly reported as “all functions under threshold.”
+
+Closed contract:
+
+- Pin `complexipy==5.2.0` until a separate, reviewed analyzer migration regenerates the baseline.
+- Fail closed when the analyzer process exits non-zero.
+- Keep snapshot-watermark parsing because 5.2.0 reports new violations in output while exiting
+  zero.
+- Use only the basename exclusion supported by 5.2.0. The previous path/glob exclusions did not
+  work; CLI and Taichi debt remains visible in the snapshot.
+
+Every branch-introduced or increased function above 15 was reviewed before refreshing the
+watermark. The launch branch keeps these as explicit post-launch refactoring debt; none is hidden
+by an exclusion.
+
+| Function | 5.2 score | Review disposition |
+|---|---:|---|
+| `BirthdayDetector.detect` | 17 | Accept bounded birthday eligibility/candidate construction orchestration. |
+| `AutoRunner.suggest` | 21 | Accept one Immich discovery transaction plus detector/ranking orchestration. |
+| `AutoRunner._run_one_under_lease` | 25 | Accept durable retry/cooldown/generation failure state machine. |
+| `register_config_commands` | 52 (from 44) | Accept existing Click registration closure; growth is v2/v3 configuration reporting. |
+| `register_generate_commands` | 188 (from 177) | Accept existing Click registration closure; growth wires automation metadata into generation. |
+| `_generate_memory_inner` | 21 | Accept top-level operational phase and run-tracker orchestration. |
+| `_extract_clips` | 25 (from 21) | Accept download-prefetch, photo/video, probe, and skip boundary in the existing loop. |
+| `_download_burst_clips` | 16 | Accept cache-batch and direct-download compatibility boundary. |
+| `ClipEncoder.encode_single_clip` | 18 | Accept same-codec hardware-to-software retry state machine. |
+| `resolve_encoding_plan` | 21 | Accept validated codec/HDR/hardware policy resolution as one atomic decision. |
+| `_detect_hdr_type` | 17 | Accept cached-probe and direct-ffprobe compatibility path. |
+| `_frame_rate` | 17 | Accept rational/decimal/invalid ffprobe fallback parsing. |
+| `streaming_assemble_full` | 16 | Accept full-assembly resource and progress orchestration. |
+| `assemble_streaming` | 24 | Accept streaming encoder setup, fallback, and final validation boundary. |
+| `TitleInserter._pre_render_first_clip` | 16 | Accept first-title rendering and clip insertion boundary. |
+| `TitleInserter._pre_render_last_clip` | 16 | Accept ending-title rendering and clip insertion boundary. |
+| `configured_secret_values` | 23 | Accept exhaustive Pydantic/container traversal required for redaction. |
+| `RunDatabase.update_run_status` | 18 | Accept optional-field SQL update construction with parameterized values. |
+| `RunDatabase.update_operational_phase` | 21 | Accept monotonic pipeline/automation phase mirroring in one transaction. |
+
+Behavioral evidence before snapshot refresh:
+
+- Automation/calendar/delivery: 196 passed.
+- Generation/download/encoding/HDR/probe: 307 passed.
+- Streaming/title/security/tracking: 87 passed.
+- Analyzer contract: pin, fail-closed status handling, and supported exclusions passed.

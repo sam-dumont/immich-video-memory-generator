@@ -15,6 +15,24 @@ from immich_memories._version import __version__ as generated_version
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _parse_make_target_prerequisites(output: str, target: str) -> set[str]:
+    """Extract real prerequisites from Make's database output."""
+    prefix = f"{target}:"
+    prerequisites: set[str] = set()
+    for line in output.splitlines():
+        if not line.startswith(prefix):
+            continue
+        declaration = line.removeprefix(prefix).strip()
+        # GNU Make emits target-specific variable assignments using the same
+        # ``target:`` prefix as dependency declarations.
+        if " = " in declaration:
+            continue
+        prerequisites.update(
+            prerequisite for prerequisite in declaration.split() if prerequisite != "|"
+        )
+    return prerequisites
+
+
 def _make_target_prerequisites(target: str) -> set[str]:
     result = subprocess.run(
         ["make", "--no-print-directory", "-qp"],
@@ -24,9 +42,7 @@ def _make_target_prerequisites(target: str) -> set[str]:
         text=True,
     )
     assert result.returncode in {0, 1}, result.stderr
-    prefix = f"{target}:"
-    declaration = next(line for line in result.stdout.splitlines() if line.startswith(prefix))
-    return set(declaration.removeprefix(prefix).split())
+    return _parse_make_target_prerequisites(result.stdout, target)
 
 
 def _make_dry_run(target: str) -> str:
@@ -93,6 +109,21 @@ def test_launch_check_composes_every_release_gate() -> None:
     }
 
 
+def test_make_prerequisite_parser_ignores_target_specific_variables() -> None:
+    """GNU Make may print target-specific assignments before prerequisites in CI."""
+    output = """launch-check: ENSURE_DEV_COMMAND = echo preinstalled
+launch-check: check build build-check docs-check e2e
+"""
+
+    assert _parse_make_target_prerequisites(output, "launch-check") == {
+        "check",
+        "build",
+        "build-check",
+        "docs-check",
+        "e2e",
+    }
+
+
 def test_launch_check_consumes_the_preinstalled_ci_environment() -> None:
     """The launch job must not replace dev-test with every heavyweight extra."""
     commands = _make_dry_run("launch-check")
@@ -114,6 +145,14 @@ def test_ci_runs_the_hermetic_launch_check_with_runtime_dependencies() -> None:
     assert "make launch-check" in commands
     assert all("IMMICH_API_KEY" not in str(step) for step in steps)
 
+    lfs_pull_index = next(
+        index for index, step in enumerate(steps) if "git lfs pull" in str(step.get("run", ""))
+    )
+    launch_index = next(
+        index for index, step in enumerate(steps) if "make launch-check" in str(step.get("run", ""))
+    )
+    assert lfs_pull_index < launch_index
+
     upload = next(
         step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")
     )
@@ -122,6 +161,25 @@ def test_ci_runs_the_hermetic_launch_check_with_runtime_dependencies() -> None:
     for expected in ("tests/e2e-junit.xml", "server.log", "output-probe.json"):
         assert expected in artifact_paths
     assert "launch-smoke*/output/**" in artifact_paths
+
+
+def test_duplication_gate_pins_a_supported_jscpd_cli() -> None:
+    """The duplication gate must not install an arbitrary future CLI release."""
+    commands = _make_dry_run("duplication")
+
+    assert "jscpd@5.0.14" in commands
+    assert "--gitignore" not in commands
+
+
+def test_cognitive_complexity_gate_pins_snapshot_analyzer() -> None:
+    """The snapshot must be evaluated by the analyzer version that created it."""
+    commands = _make_dry_run("cognitive-complexity")
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+
+    assert "complexipy==5.2.0" in commands
+    assert "ANALYZER_STATUS=$?" in commands
+    assert 'if [ "$ANALYZER_STATUS" -ne 0 ]' in commands
+    assert pyproject["tool"]["complexipy"]["exclude"] == ["_version.py"]
 
 
 @pytest.mark.parametrize(

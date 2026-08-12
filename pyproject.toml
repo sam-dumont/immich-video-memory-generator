@@ -461,12 +461,9 @@ ignore_missing_imports = true
 [tool.complexipy]
 paths = ["src"]
 max_complexity_allowed = 15
-exclude = [
-    "src/immich_memories/_version.py",
-    "src/immich_memories/cli/",              # Click decorators inflate complexity scores
-    "src/immich_memories/titles/taichi_*",    # GPU kernel compilation is inherently complex
-    "src/immich_memories/titles/sdf_*",       # SDF font rendering kernels
-]
+# complexipy 5.2 matches exclusions by basename, not path or glob.
+# Reviewed over-threshold CLI/Taichi functions remain visible in the snapshot.
+exclude = ["_version.py"]
 
 # Dependency hygiene
 [tool.deptry]
