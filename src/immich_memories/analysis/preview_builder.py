@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.cache.database import VideoAnalysisCache
+    from immich_memories.cache.video_cache import CacheBatch, VideoDownloadCache
     from immich_memories.config_models import AnalysisConfig, CacheConfig, ContentAnalysisConfig
 
 logger = logging.getLogger(__name__)
@@ -32,11 +33,18 @@ class PreviewBuilder:
         cache_config: CacheConfig,
         analysis_config: AnalysisConfig,
         content_analysis_config: ContentAnalysisConfig,
+        video_cache: VideoDownloadCache | None = None,
     ):
         self.client = client
         self._cache_config = cache_config
         self._analysis_config = analysis_config
         self._content_analysis_config = content_analysis_config
+        self._video_cache = video_cache
+        self._cache_batch: CacheBatch | None = None
+
+    def bind_cache_batch(self, batch: CacheBatch | None) -> None:
+        """Use the SmartPipeline-owned batch for download requests in this run."""
+        self._cache_batch = batch
 
     def find_cached_preview(self, asset_id: str, start: float, end: float) -> str | None:
         """Find or build a preview for a cached clip from the video cache."""
@@ -83,15 +91,19 @@ class PreviewBuilder:
 
     def download_clip_video(self, clip: VideoClipInfo) -> tuple[Path, Path | None]:
         """Download clip video, returning (video_path, temp_file_or_None)."""
-        from immich_memories.cache.video_cache import VideoDownloadCache
-
         c_config = self._cache_config
         if c_config.video_cache_enabled:
-            video_cache = VideoDownloadCache(
-                cache_dir=c_config.video_cache_path,
-                max_size_gb=c_config.video_cache_max_size_gb,
-                max_age_days=c_config.video_cache_max_age_days,
-            )
+            video_cache = self._cache_batch or self._video_cache
+            if video_cache is None:
+                from immich_memories.cache.video_cache import VideoDownloadCache
+
+                # Standalone PreviewBuilder callers retain bounded one-off cache
+                # semantics; SmartPipeline always injects its shared instance.
+                video_cache = VideoDownloadCache(
+                    cache_dir=c_config.video_cache_path,
+                    max_size_gb=c_config.video_cache_max_size_gb,
+                    max_age_days=c_config.video_cache_max_age_days,
+                )
             video_path = video_cache.download_or_get(self.client, clip.asset)
             return video_path, None
 

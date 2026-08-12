@@ -12,7 +12,7 @@ from immich_memories.generate_privacy import clip_location_name
 from immich_memories.processing.assembly_config import AssemblyClip
 
 if TYPE_CHECKING:
-    from immich_memories.cache.video_cache import VideoDownloadCache
+    from immich_memories.cache.video_cache import CacheBatch
     from immich_memories.generate import GenerationParams
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ def _probe_file_duration(path: Path) -> float | None:
 
 def _extract_clips(
     params: GenerationParams,
-    video_cache: VideoDownloadCache,
+    video_cache: CacheBatch,
     output_dir: Path,
 ) -> list[AssemblyClip]:
     """Download videos and extract clip segments. Renders IMAGE clips as photo animations."""

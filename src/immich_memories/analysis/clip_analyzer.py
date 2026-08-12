@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.audio.content_analyzer import AudioContentAnalyzer
     from immich_memories.cache.database import VideoAnalysisCache
+    from immich_memories.cache.video_cache import CacheBatch, VideoDownloadCache
     from immich_memories.config_loader import Config
 
 logger = logging.getLogger(__name__)
@@ -37,14 +38,34 @@ class ClipAnalyzer:
         preview_builder: PreviewBuilder,
         *,
         app_config: Config,
+        video_cache: VideoDownloadCache | None = None,
     ):
         self.config = config
         self.client = client
         self.analysis_cache = analysis_cache
         self.preview_builder = preview_builder
         self._app_config = app_config
+        self._video_cache = video_cache
+        self._cache_batch: CacheBatch | None = None
+        cache_config = app_config.cache
+        if (
+            self._video_cache is None
+            and cache_config.video_cache_enabled
+            and isinstance(cache_config.video_cache_path, Path)
+        ):
+            from immich_memories.cache.video_cache import VideoDownloadCache
+
+            self._video_cache = VideoDownloadCache(
+                cache_dir=cache_config.video_cache_path,
+                max_size_gb=cache_config.video_cache_max_size_gb,
+                max_age_days=cache_config.video_cache_max_age_days,
+            )
         self._cached_content_analyzer: ContentAnalyzer | None = None
         self._cached_audio_analyzer: AudioContentAnalyzer | None = None
+
+    def bind_cache_batch(self, batch: CacheBatch | None) -> None:
+        """Use the SmartPipeline-owned batch for every cache download in this run."""
+        self._cache_batch = batch
 
     def phase_analyze(
         self,
@@ -186,17 +207,13 @@ class ClipAnalyzer:
         """Download video for analysis, potentially downscaled."""
         import tempfile
 
-        from immich_memories.cache.video_cache import VideoDownloadCache
-
         config = self._app_config
         temp_file: Path | None = None
 
         if config.cache.video_cache_enabled:
-            video_cache = VideoDownloadCache(
-                cache_dir=config.cache.video_cache_path,
-                max_size_gb=config.cache.video_cache_max_size_gb,
-                max_age_days=config.cache.video_cache_max_age_days,
-            )
+            video_cache = self._cache_batch or self._video_cache
+            if video_cache is None:
+                raise RuntimeError("Video cache is enabled but unavailable")
             analysis_video, original_video = video_cache.get_analysis_video(
                 self.client,
                 clip.asset,

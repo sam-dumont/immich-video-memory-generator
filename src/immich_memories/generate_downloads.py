@@ -10,14 +10,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import VideoClipInfo
-    from immich_memories.cache.video_cache import VideoDownloadCache
+    from immich_memories.cache.video_cache import CacheBatch
 
 logger = logging.getLogger(__name__)
 
 
 def download_clip(
     client: SyncImmichClient | None,
-    video_cache: VideoDownloadCache,
+    video_cache: CacheBatch,
     clip: VideoClipInfo,
     output_dir: Path,
 ) -> Path | None:
@@ -40,7 +40,7 @@ def download_clip(
 
 def _download_and_merge_burst(
     client: SyncImmichClient,
-    video_cache: VideoDownloadCache,
+    video_cache: CacheBatch,
     clip: VideoClipInfo,
     output_dir: Path,
 ) -> Path | None:
@@ -54,7 +54,7 @@ def _download_and_merge_burst(
     if merged_path.exists() and merged_path.stat().st_size > 1000:
         return merged_path
 
-    clip_paths = _download_burst_clips(client, video_cache.cache_dir, burst_ids)
+    clip_paths = _download_burst_clips(client, video_cache, burst_ids)
 
     if not clip_paths:
         return video_cache.download_or_get(client, clip.asset)
@@ -75,23 +75,14 @@ def _download_and_merge_burst(
 
 
 def _download_burst_clips(
-    client: SyncImmichClient, cache_dir: Path, burst_ids: list[str]
+    client: SyncImmichClient, video_cache: CacheBatch, burst_ids: list[str]
 ) -> list[Path]:
     """Download each burst video component and return local paths."""
     clip_paths: list[Path] = []
     for vid in burst_ids:
-        subdir = vid[:2] if len(vid) >= 2 else "00"
-        dest = cache_dir / subdir / f"{vid}.MOV"
-        if dest.exists() and dest.stat().st_size > 0:
-            clip_paths.append(dest)
-            continue
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            client.download_asset(vid, dest)
-            if dest.exists() and dest.stat().st_size > 0:
-                clip_paths.append(dest)
-        except (OSError, RuntimeError) as e:
-            logger.warning(f"Failed to download burst video {vid}: {e}", exc_info=True)
+        path = video_cache.download_video_id(client, vid)
+        if path is not None:
+            clip_paths.append(path)
     return clip_paths
 
 

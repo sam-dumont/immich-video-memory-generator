@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.analysis.clip_analyzer import ClipAnalyzer
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.cache.database import VideoAnalysisCache
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
+    from immich_memories.cache.video_cache import VideoDownloadCache
     from immich_memories.config_loader import Config
     from immich_memories.config_models import AnalysisConfig
 
@@ -155,6 +157,16 @@ class SmartPipeline:
         self.run_id = run_id
         self._analysis_config = analysis_config
         self._app_config = app_config
+        self._video_cache: VideoDownloadCache | None = None
+        cache_config = app_config.cache
+        if cache_config.video_cache_enabled and isinstance(cache_config.video_cache_path, Path):
+            from immich_memories.cache.video_cache import VideoDownloadCache
+
+            self._video_cache = VideoDownloadCache(
+                cache_dir=cache_config.video_cache_path,
+                max_size_gb=cache_config.video_cache_max_size_gb,
+                max_age_days=cache_config.video_cache_max_age_days,
+            )
 
         # Wire composed services
         self.previewer = PreviewBuilder(
@@ -162,9 +174,15 @@ class SmartPipeline:
             cache_config=app_config.cache,
             analysis_config=analysis_config,
             content_analysis_config=app_config.content_analysis,
+            video_cache=self._video_cache,
         )
         self.analyzer = ClipAnalyzer(
-            self.config, client, analysis_cache, self.previewer, app_config=app_config
+            self.config,
+            client,
+            analysis_cache,
+            self.previewer,
+            app_config=app_config,
+            video_cache=self._video_cache,
         )
         self.scaler = ClipScaler()
         self.refiner = ClipRefiner(self.config, self.scaler)
@@ -203,8 +221,8 @@ class SmartPipeline:
             # Phase 2: Filter and pre-select
             candidates = self._phase_filter(deduplicated)
 
-            # Phase 3: Analyze selected clips
-            analyzed = self.analyzer.phase_analyze(candidates, self.tracker)
+            # Phase 3: one cache batch covers every candidate download.
+            analyzed = self._analyze_with_cache_batch(candidates)
 
             return analyzed
 
@@ -214,6 +232,20 @@ class SmartPipeline:
             logger.error(f"Pipeline failed: {e}")
             self.tracker.finish()
             raise
+
+    def _analyze_with_cache_batch(self, candidates: list[VideoClipInfo]) -> list[ClipWithSegment]:
+        """Run analysis with one shared cache manifest when file caching is enabled."""
+        if self._video_cache is None:
+            return self.analyzer.phase_analyze(candidates, self.tracker)
+
+        with self._video_cache.begin_batch() as batch:
+            self.analyzer.bind_cache_batch(batch)
+            self.previewer.bind_cache_batch(batch)
+            try:
+                return self.analyzer.phase_analyze(candidates, self.tracker)
+            finally:
+                self.analyzer.bind_cache_batch(None)
+                self.previewer.bind_cache_batch(None)
 
     def run_selection(
         self,

@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import MagicMock, call, patch
+
+import pytest
+
+from immich_memories.config_loader import Config
 
 
 class TestDensityBudgetCap:
@@ -108,6 +113,62 @@ class TestDensityBudgetCap:
         result = pipeline._phase_filter(clips)
         # With 1.3x multiplier + 1.5x cap, should be well under 200
         assert len(result) < 100
+
+
+class TestSharedVideoCacheBatch:
+    def test_pipeline_owns_and_injects_one_cache_batch(self, tmp_path: Path):
+        """All analysis downloads share the pipeline's one active batch."""
+        from immich_memories.analysis.smart_pipeline import SmartPipeline
+
+        cache = MagicMock()
+        batch = MagicMock()
+        cache.begin_batch.return_value.__enter__.return_value = batch
+        pipeline = SmartPipeline(
+            client=MagicMock(),
+            analysis_cache=MagicMock(),
+            thumbnail_cache=MagicMock(),
+            analysis_config=MagicMock(),
+            app_config=Config(cache={"directory": str(tmp_path / "cache")}),
+        )
+        pipeline._video_cache = cache
+        pipeline.analyzer._video_cache = cache
+        pipeline.previewer._video_cache = cache
+        pipeline.analyzer.bind_cache_batch = MagicMock()
+        pipeline.previewer.bind_cache_batch = MagicMock()
+        pipeline.analyzer.phase_analyze = MagicMock(return_value=[])
+
+        result = pipeline._analyze_with_cache_batch([])
+
+        assert result == []
+        cache.begin_batch.assert_called_once()
+        pipeline.analyzer.bind_cache_batch.assert_has_calls([call(batch), call(None)])
+        pipeline.previewer.bind_cache_batch.assert_has_calls([call(batch), call(None)])
+
+    def test_pipeline_releases_shared_batch_after_analysis_failure(self, tmp_path: Path):
+        """A failed item cannot strand the active cache batch on the pipeline."""
+        from immich_memories.analysis.smart_pipeline import SmartPipeline
+
+        cache = MagicMock()
+        batch = MagicMock()
+        cache.begin_batch.return_value.__enter__.return_value = batch
+        pipeline = SmartPipeline(
+            client=MagicMock(),
+            analysis_cache=MagicMock(),
+            thumbnail_cache=MagicMock(),
+            analysis_config=MagicMock(),
+            app_config=Config(cache={"directory": str(tmp_path / "cache")}),
+        )
+        pipeline._video_cache = cache
+        pipeline.analyzer.bind_cache_batch = MagicMock()
+        pipeline.previewer.bind_cache_batch = MagicMock()
+        pipeline.analyzer.phase_analyze = MagicMock(side_effect=RuntimeError("analysis failed"))
+
+        with pytest.raises(RuntimeError, match="analysis failed"):
+            pipeline._analyze_with_cache_batch([])
+
+        cache.begin_batch.return_value.__exit__.assert_called_once()
+        pipeline.analyzer.bind_cache_batch.assert_has_calls([call(batch), call(None)])
+        pipeline.previewer.bind_cache_batch.assert_has_calls([call(batch), call(None)])
 
 
 class TestUnifiedPhotoBudget:
