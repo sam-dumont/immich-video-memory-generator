@@ -182,6 +182,14 @@ def test_cognitive_complexity_gate_pins_snapshot_analyzer() -> None:
     assert pyproject["tool"]["complexipy"]["exclude"] == ["_version.py"]
 
 
+def test_dependency_audit_uses_the_frozen_ci_resolution() -> None:
+    """Security results must not depend on the caller's ambient virtualenv."""
+    commands = _make_dry_run("pip-audit")
+
+    assert "uv export --frozen --extra dev --no-emit-project --no-hashes" in commands
+    assert "uv pip freeze" not in commands
+
+
 @pytest.mark.parametrize(
     ("event_name", "setup_result", "launch_result", "expected_returncode"),
     [

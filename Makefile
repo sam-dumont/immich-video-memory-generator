@@ -419,7 +419,8 @@ diff-cover:
 
 # Dependency vulnerability audit
 pip-audit:  ## Check dependencies for known vulnerabilities (warns on unfixable, fails on fixable)
-	uv pip freeze | grep -v -e '^-e ' -e '^immich-memories==' -e '^audioop-lts==' > /tmp/pip-audit-reqs.txt
+	uv export --frozen --extra dev --no-emit-project --no-hashes \
+		| grep -v -e '^audioop-lts==' > /tmp/pip-audit-reqs.txt
 	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict 2>&1 | python3 scripts/pip_audit_smart.py; \
 		EXIT=$$?; rm -f /tmp/pip-audit-reqs.txt; exit $$EXIT
 

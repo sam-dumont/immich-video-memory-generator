@@ -10,7 +10,9 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from nicegui import run, ui
+from nicegui import ui
+
+from immich_memories.ui.nicegui_compat import io_bound_result
 
 if TYPE_CHECKING:
     from immich_memories.generate import GenerationParams
@@ -99,7 +101,7 @@ async def upload_to_immich(
     try:
         from immich_memories.generate import deliver_completed_artifact
 
-        result = await run.io_bound(deliver_completed_artifact, params, video_path, run_tracker)
+        result = await io_bound_result(deliver_completed_artifact, params, video_path, run_tracker)
         completed = _authoritative_delivery_run(run_tracker)
         if completed is None:  # pragma: no cover - delivery requires an owned completed run
             raise RuntimeError("Run disappeared after Immich delivery")

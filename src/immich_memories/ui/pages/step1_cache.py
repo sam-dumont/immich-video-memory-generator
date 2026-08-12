@@ -6,7 +6,9 @@ import logging
 import shutil
 from pathlib import Path
 
-from nicegui import run, ui
+from nicegui import ui
+
+from immich_memories.ui.nicegui_compat import io_bound_result
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +94,7 @@ def render_cache_management() -> None:
                     "preview": _get_preview_cache_stats(),
                 }
 
-            all_stats = await run.io_bound(_gather)
+            all_stats = await io_bound_result(_gather)
 
             with stats_container:
                 # Analysis cache
@@ -104,7 +106,7 @@ def render_cache_management() -> None:
                     from immich_memories.config import get_config
 
                     _cfg = get_config()
-                    count = await run.io_bound(
+                    count = await io_bound_result(
                         VideoAnalysisCache(db_path=_cfg.cache.database_path).clear_all
                     )
                     ui.notify(f"Cleared {count} analysis entries", type="positive")
@@ -124,7 +126,7 @@ def render_cache_management() -> None:
                     from immich_memories.config import get_config
 
                     _cfg = get_config()
-                    count = await run.io_bound(
+                    count = await io_bound_result(
                         VideoDownloadCache(cache_dir=_cfg.cache.video_cache_path).clear
                     )
                     ui.notify(f"Cleared {count} cached videos", type="positive")
@@ -144,7 +146,7 @@ def render_cache_management() -> None:
                     from immich_memories.config import get_config
 
                     _cfg = get_config()
-                    count = await run.io_bound(
+                    count = await io_bound_result(
                         ThumbnailCache(cache_dir=_cfg.cache.cache_path / "thumbnails").clear
                     )
                     ui.notify(f"Cleared {count} cached thumbnails", type="positive")
@@ -157,7 +159,7 @@ def render_cache_management() -> None:
                 p_text = f"{p['file_count']} files, {_format_size(p['total_size_bytes'])}"
 
                 async def clear_preview():
-                    count = await run.io_bound(_clear_preview_cache)
+                    count = await io_bound_result(_clear_preview_cache)
                     ui.notify(f"Cleared {count} preview files", type="positive")
                     await refresh_stats()
 
@@ -183,7 +185,7 @@ def render_cache_management() -> None:
                         p = _clear_preview_cache()
                         return a + v + t + p
 
-                    total = await run.io_bound(_do_clear_all)
+                    total = await io_bound_result(_do_clear_all)
                     ui.notify(f"Cleared all caches ({total} items)", type="positive")
                     await refresh_stats()
 

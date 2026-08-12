@@ -13,6 +13,7 @@ from immich_memories.api.models import VideoClipInfo
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.clip_probing import probe_video_url
 from immich_memories.security import sanitize_error_message
+from immich_memories.ui.nicegui_compat import io_bound_result
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
@@ -181,7 +182,7 @@ def _load_clips() -> None:
             if date_range is None:
                 raise ValueError("No date range configured")
 
-            assets = await run.io_bound(_fetch_assets, state)
+            assets = await io_bound_result(_fetch_assets, state)
             assets = _filter_near_home(assets, state)
 
             _set_phase_status(
@@ -199,14 +200,14 @@ def _load_clips() -> None:
 
             if state.include_live_photos:
                 status_label.set_text("Fetching Live Photos...")
-                live_clips, live_video_ids = await run.io_bound(
+                live_clips, live_video_ids = await io_bound_result(
                     _fetch_live_photos, state, date_range
                 )
                 clips = _merge_live_photos(clips, live_clips, live_video_ids)
 
             if state.include_photos:
                 status_label.set_text("Fetching photos...")
-                photo_assets = await run.io_bound(_fetch_photos, state, date_range)
+                photo_assets = await io_bound_result(_fetch_photos, state, date_range)
                 state.photo_assets = photo_assets
                 state.selected_photo_ids = {a.id for a in photo_assets}
                 if photo_assets:

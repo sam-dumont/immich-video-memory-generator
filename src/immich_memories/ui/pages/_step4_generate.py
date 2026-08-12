@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from nicegui import app as nicegui_app
-from nicegui import run, ui
+from nicegui import run as run  # re-exported test seam shared by nicegui_compat
+from nicegui import ui
 
 from immich_memories.generate import PreparedGeneration, generate_memory
 from immich_memories.processing.output_contract import validate_output
@@ -20,6 +21,7 @@ from immich_memories.ui.components import (
     im_info_card,
     im_separator,
 )
+from immich_memories.ui.nicegui_compat import io_bound_result
 
 if TYPE_CHECKING:
     from immich_memories.processing.encoding_plan import EncodingPlan
@@ -194,7 +196,7 @@ async def execute_ui_generation(
     status_label,
 ) -> PreparedGeneration:
     """Run assembly and UI finalization with one caller-owned tracker."""
-    prepared = await run.io_bound(
+    prepared = await io_bound_result(
         generate_memory,
         params,
         run_tracker=run_tracker,
@@ -383,7 +385,7 @@ async def finalize_ui_generation(
             total=1,
             message=music_result.warning or "Music ready",
         )
-    final_probe = await run.io_bound(validate_output, prepared.path, prepared.encoding_plan)
+    final_probe = await io_bound_result(validate_output, prepared.path, prepared.encoding_plan)
     warnings = [music_result.warning] if music_result.warning else []
     completed = run_tracker.complete_artifact(
         prepared.path,
@@ -515,7 +517,7 @@ async def _run_ui_music_phase(
     if music_source not in {"AI Generated", "Upload file"}:
         return MusicPhaseResult(applied=False)
     try:
-        encoding_plan = await run.io_bound(derive_music_validation_plan, result_path)
+        encoding_plan = await io_bound_result(derive_music_validation_plan, result_path)
         return await _apply_music(
             state,
             config,

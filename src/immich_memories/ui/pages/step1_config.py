@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import date
 from typing import TYPE_CHECKING
 
-from nicegui import run, ui
+from nicegui import ui
 
 from immich_memories.api.immich import ImmichAPIError, SyncImmichClient
 from immich_memories.config import Config, set_config
@@ -25,6 +25,7 @@ from immich_memories.ui.components import (
     im_section_header,
     im_separator,
 )
+from immich_memories.ui.nicegui_compat import io_bound_result
 from immich_memories.ui.pages.step1_presets import render_preset_selector
 from immich_memories.ui.pages.step1_tabs import (
     _render_custom_tab,
@@ -100,7 +101,7 @@ def _render_immich_config_section(state) -> None:
                         return user, people, years
 
                 try:
-                    user, people, years = await run.io_bound(do_connect)
+                    user, people, years = await io_bound_result(do_connect)
                     state.connected_user = user.name or user.email
                     state.people = people
                     state.years = years

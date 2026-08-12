@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import base64
 
-from nicegui import run, ui
+from nicegui import ui
 
 from immich_memories.api.models import VideoClipInfo
+from immich_memories.ui.nicegui_compat import io_bound_result
 from immich_memories.ui.pages.step2_helpers import (
     _download_immich_preview,
     _get_preview_path,
@@ -37,9 +38,9 @@ def _make_preview_loader(video_aid: str, container: ui.element, vid_id: str):
         from nicegui import app as nicegui_app
 
         state = get_app_state()
-        preview_path = await run.io_bound(_get_preview_path, video_aid, config=state.config)
+        preview_path = await io_bound_result(_get_preview_path, video_aid, config=state.config)
         if not preview_path:
-            preview_path = await run.io_bound(
+            preview_path = await io_bound_result(
                 _download_immich_preview, video_aid, config=state.config
             )
 

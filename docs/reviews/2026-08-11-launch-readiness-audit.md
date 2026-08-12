@@ -505,10 +505,27 @@ The remaining failures on the older PR head were reproduced and closed on the fi
 
 ### Dependency and benchmark evidence
 
-`make pip-audit` reported `No known vulnerabilities found` for the final locked environment. The
-lock already resolves the fixed dependency line (including NiceGUI 3.9.0, Pillow 12.1.1,
-Starlette 0.52.1, aiohttp 3.13.5, and cryptography 46.0.7), so no speculative dependency upgrade
-was made.
+The first published CI run exposed a reproducibility bug in the local dependency audit. The old
+target audited `uv pip freeze`, so an already-updated local virtualenv could pass while CI installed
+known-vulnerable versions from `uv.lock`. GitHub correctly failed the Security Scan with 107
+fixable advisory rows across a much smaller repeated package set.
+
+Closed contract:
+
+- `make pip-audit` exports `--frozen --extra dev` from the committed lock instead of inspecting the
+  caller's ambient environment.
+- Direct dependency floors cover NiceGUI 3.12.0, Pillow 12.3.0, Pydantic Settings 2.14.2,
+  Click 8.3.3, Authlib 1.6.12, and pytest 9.0.3.
+- Transitive security floors remain UV constraints rather than fake application dependencies.
+- The refreshed resolution includes aiohttp 3.14.3, NiceGUI 3.16.0, Pillow 12.3.0,
+  cryptography 50.0.0, Starlette 1.6.0, GitPython 3.1.59, and yt-dlp 2026.7.4.
+- NiceGUI 3.16 cancellation is normalized to `CancelledError` for background callbacks that
+  promise a result; ordinary worker failures still propagate unchanged.
+
+The frozen-lock audit now reports `No known vulnerabilities found`. Compatibility verification
+passed 166 focused UI/auth/scene/build tests, Ruff, mypy across 245 source files, the full suite
+(4,239 passed, 7 skipped, 658 deselected), package/Twine checks, the Docusaurus production build,
+and all 24 Fake-Immich/Chromium launch E2E tests.
 
 `make benchmark-assembly` passed all four tests in 69.65 seconds:
 
