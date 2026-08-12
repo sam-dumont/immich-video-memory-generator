@@ -1145,14 +1145,16 @@ def test_generation_without_upload_completes_artifact_as_not_requested(
 
 
 @pytest.mark.parametrize("upload_enabled", [False, True], ids=["not-requested", "delivered"])
-def test_final_progress_callback_failure_preserves_authoritative_artifact_state(
+def test_final_progress_callback_failure_is_best_effort_after_authoritative_completion(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
     upload_enabled: bool,
 ) -> None:
-    """A final observer failure can escape, but cannot downgrade durable completion."""
-    from immich_memories.generate import GenerationError, generate_memory
+    """A final observer failure cannot downgrade or leak durable completion."""
+    from immich_memories.generate import generate_memory
 
+    configured_literal = "final-observer-secret-915"
     params, _events = _prepare_generation(
         tmp_path,
         monkeypatch,
@@ -1163,23 +1165,28 @@ def test_final_progress_callback_failure_preserves_authoritative_artifact_state(
 
     def raise_after_completion(phase: str, _progress: float, _message: str) -> None:
         if phase == "done":
-            raise RuntimeError("observer failed after durable completion")
+            raise RuntimeError(f"observer failed after durable completion: {configured_literal}")
 
     params.progress_callback = raise_after_completion  # type: ignore[attr-defined]
+    caplog.set_level(logging.WARNING, logger="immich_memories.generate")
 
-    with pytest.raises(GenerationError, match="observer failed after durable completion"):
-        generate_memory(params)  # type: ignore[arg-type]
+    result = generate_memory(params)  # type: ignore[arg-type]
 
     saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
+    assert result.read_bytes() == b"validated-artifact"
     assert saved is not None
     assert saved.status == "completed"
     assert saved.output_path is not None
     assert Path(saved.output_path).read_bytes() == b"validated-artifact"
+    assert "Final progress callback failed after artifact completion" in caplog.text
+    assert configured_literal not in caplog.text
     if upload_enabled:
         assert saved.delivery_status is DeliveryStatus.DELIVERED
+        assert saved.delivery_attempts == 1
         assert saved.immich_asset_id == "asset-final-callback"
     else:
         assert saved.delivery_status is DeliveryStatus.NOT_REQUESTED
+        assert saved.delivery_attempts == 0
         assert saved.immich_asset_id is None
 
 
