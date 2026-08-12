@@ -20,6 +20,9 @@ def download_clip(
     video_cache: VideoDownloadCache | CacheBatch,
     clip: VideoClipInfo,
     output_dir: Path,
+    *,
+    prefetched_path: Path | None = None,
+    prefetched_burst_paths: dict[str, Path | None] | None = None,
 ) -> Path | None:
     """Download a single clip, handling live photo bursts.
 
@@ -40,8 +43,11 @@ def download_clip(
             cast("CacheBatch", video_cache),
             clip,
             output_dir,
+            prefetched_paths=prefetched_burst_paths,
         )
 
+    if prefetched_path is not None:
+        return prefetched_path
     return video_cache.download_or_get(client, clip.asset)
 
 
@@ -50,6 +56,8 @@ def _download_and_merge_burst(
     video_cache: CacheBatch,
     clip: VideoClipInfo,
     output_dir: Path,
+    *,
+    prefetched_paths: dict[str, Path | None] | None = None,
 ) -> Path | None:
     """Download live photo burst videos and merge into one file."""
     burst_ids = clip.live_burst_video_ids or []
@@ -61,16 +69,26 @@ def _download_and_merge_burst(
     if merged_path.exists() and merged_path.stat().st_size > 1000:
         return merged_path
 
-    clip_paths = _download_burst_clips(client, video_cache, burst_ids)
+    clip_paths = _download_burst_clips(
+        client, video_cache, burst_ids, prefetched_paths=prefetched_paths
+    )
 
     if not clip_paths:
-        return video_cache.download_or_get(client, clip.asset)
+        return (
+            None
+            if prefetched_paths is not None
+            else video_cache.download_or_get(client, clip.asset)
+        )
 
     # If some downloads failed, filter to the valid subset instead of abandoning
     if len(clip_paths) != len(trim_points):
         clip_paths, trim_points = _align_burst_subset(clip_paths, burst_ids, trim_points)
         if not clip_paths:
-            return video_cache.download_or_get(client, clip.asset)
+            return (
+                None
+                if prefetched_paths is not None
+                else video_cache.download_or_get(client, clip.asset)
+            )
 
     merged = _try_merge_burst(
         clip_paths,
@@ -78,36 +96,39 @@ def _download_and_merge_burst(
         merged_path,
         shutter_timestamps=clip.live_burst_shutter_timestamps,
     )
-    return merged or video_cache.download_or_get(client, clip.asset)
+    if merged is not None or prefetched_paths is not None:
+        return merged
+    return video_cache.download_or_get(client, clip.asset)
 
 
 def _download_burst_clips(
-    client: SyncImmichClient, cache_batch: CacheBatch, burst_ids: list[str]
+    client: SyncImmichClient,
+    cache_batch: CacheBatch,
+    burst_ids: list[str],
+    *,
+    prefetched_paths: dict[str, Path | None] | None = None,
 ) -> list[Path]:
     """Download burst components and register every cache hit/miss with the batch."""
     clip_paths: list[Path] = []
     for vid in burst_ids:
         subdir = vid[:2] if len(vid) >= 2 else "00"
         dest = cache_batch.cache_dir / subdir / f"{vid}.MOV"
+        if prefetched_paths is not None and vid in prefetched_paths:
+            prefetched_path = prefetched_paths[vid]
+            if prefetched_path is not None and prefetched_path.exists():
+                clip_paths.append(cache_batch.record_path(prefetched_path))
+            else:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                cache_batch.record_absence(dest)
+            continue
         if dest.exists() and dest.stat().st_size > 0:
             clip_paths.append(cache_batch.record_path(dest))
             continue
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            client.download_asset(vid, dest)
-            if dest.exists() and dest.stat().st_size > 0:
-                clip_paths.append(cache_batch.record_path(dest))
-            else:
-                dest.unlink(missing_ok=True)
-                cache_batch.record_absence(dest)
-        except (OSError, RuntimeError) as e:
-            dest.unlink(missing_ok=True)
-            cache_batch.record_absence(dest)
-            logger.warning(f"Failed to download burst video {vid}: {e}", exc_info=True)
-        except BaseException:
-            dest.unlink(missing_ok=True)
-            cache_batch.record_absence(dest)
-            raise
+        path = cache_batch.download_video_id(client, vid)
+        if path is not None:
+            clip_paths.append(path)
+        else:
+            logger.warning("Live-photo burst component download failed for asset %s", vid)
     return clip_paths
 
 

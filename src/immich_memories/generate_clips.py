@@ -6,19 +6,44 @@ import contextlib
 import logging
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from immich_memories.generate_privacy import clip_location_name
 from immich_memories.processing.assembly_config import AssemblyClip
+from immich_memories.processing.download_coordinator import DownloadCoordinator, DownloadResult
 
 if TYPE_CHECKING:
-    from immich_memories.cache.video_cache import VideoDownloadCache
+    from immich_memories.api.models import Asset, VideoClipInfo
+    from immich_memories.cache.video_cache import CacheBatch, VideoDownloadCache
     from immich_memories.generate import GenerationParams
 
 logger = logging.getLogger(__name__)
 
 # Minimum clip duration filter (matches UI pipeline)
 MIN_CLIP_DURATION = 1.5
+
+
+def _download_client_factory(params: GenerationParams):
+    """Build isolated clients only when the caller supplied a real sync client."""
+    from immich_memories.api.immich import SyncImmichClient
+
+    if not isinstance(params.client, SyncImmichClient):
+        return None
+
+    base_url = params.config.immich.url
+    api_key = params.config.immich.api_key
+    api_version = params.config.immich.api_version
+    timeout = params.client.timeout
+
+    def factory() -> SyncImmichClient:
+        return SyncImmichClient(
+            base_url=base_url,
+            api_key=api_key,
+            api_version=api_version,
+            timeout=timeout,
+        )
+
+    return factory
 
 
 def _probe_file_duration(path: Path) -> float | None:
@@ -48,6 +73,79 @@ def _probe_file_duration(path: Path) -> float | None:
     return None
 
 
+def _prefetch_remote_assets(params: GenerationParams) -> list[Asset]:
+    """Return video-only download targets, including live-burst components."""
+    from immich_memories.api.models import AssetType
+
+    remote_video_assets: list[Asset] = []
+    for clip in params.clips:
+        if (clip.asset.type == AssetType.IMAGE and not clip.asset.live_photo_video_id) or (
+            clip.local_path and Path(clip.local_path).exists()
+        ):
+            continue
+        if clip.live_burst_video_ids:
+            remote_video_assets.extend(
+                clip.asset.model_copy(
+                    update={
+                        "id": burst_id,
+                        "live_photo_video_id": None,
+                        "original_file_name": f"{burst_id}.MOV",
+                    }
+                )
+                for burst_id in clip.live_burst_video_ids
+            )
+        else:
+            remote_video_assets.append(clip.asset)
+    return remote_video_assets
+
+
+def _prefetch_downloads(
+    params: GenerationParams, video_cache: VideoDownloadCache
+) -> dict[str, DownloadResult]:
+    """Prefetch remote videos when the caller owns a clonable sync client."""
+    client_factory = _download_client_factory(params)
+    if client_factory is None:
+        return {}
+    remote_video_assets = _prefetch_remote_assets(params)
+    if not remote_video_assets:
+        return {}
+    return DownloadCoordinator(
+        client_factory=client_factory,
+        cache_batch=cast("CacheBatch", video_cache),
+        max_workers=params.config.analysis.download_workers,
+    ).prefetch(remote_video_assets)
+
+
+def _download_video_path(
+    params: GenerationParams,
+    video_cache: VideoDownloadCache,
+    clip: VideoClipInfo,
+    output_dir: Path,
+    prefetched: dict[str, DownloadResult],
+) -> Path | None:
+    """Resolve a clip source, preserving burst prefetch reuse."""
+    from immich_memories.generate_downloads import download_clip
+
+    if clip.live_burst_video_ids:
+        prefetched_burst_paths = {
+            burst_id: prefetched[burst_id].path
+            for burst_id in clip.live_burst_video_ids
+            if burst_id in prefetched
+        }
+        return download_clip(
+            params.client,
+            video_cache,
+            clip,
+            output_dir,
+            prefetched_burst_paths=prefetched_burst_paths or None,
+        )
+
+    prefetched_result = prefetched.get(clip.asset.id)
+    if prefetched_result is not None:
+        return prefetched_result.path
+    return download_clip(params.client, video_cache, clip, output_dir)
+
+
 def _extract_clips(
     params: GenerationParams,
     video_cache: VideoDownloadCache,
@@ -64,6 +162,7 @@ def _extract_clips(
 
     assembly_clips: list[AssemblyClip] = []
     total = len(params.clips)
+    prefetched = _prefetch_downloads(params, video_cache)
 
     for i, clip in enumerate(params.clips):
         progress = (i / total) * 0.7
@@ -80,9 +179,7 @@ def _extract_clips(
                     assembly_clips.append(photo_clip)
                 continue
 
-            from immich_memories.generate_downloads import download_clip
-
-            video_path = download_clip(params.client, video_cache, clip, output_dir)
+            video_path = _download_video_path(params, video_cache, clip, output_dir, prefetched)
             if not video_path or not video_path.exists():
                 logger.warning(f"Failed to download {clip.asset.id}, skipping")
                 continue

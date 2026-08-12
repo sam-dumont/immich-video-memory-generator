@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +45,10 @@ class CacheBatch:
         self._cache = cache
         self._manifest, self._directory_mtimes = cache._scan_manifest()
         self._finished = False
+        self._finishing = False
+        self._active_operations = 0
+        self._active_by_thread: dict[int, int] = {}
+        self._condition = threading.Condition(threading.RLock())
 
     def __enter__(self) -> CacheBatch:
         return self
@@ -77,42 +82,120 @@ class CacheBatch:
                 break
             current = current.parent
 
+    def _begin_operation(self) -> None:
+        """Reserve one operation before its network body starts."""
+        with self._condition:
+            thread_id = threading.get_ident()
+            reentrant = self._active_by_thread.get(thread_id, 0) > 0
+            if self._finished or (self._finishing and not reentrant):
+                raise RuntimeError("Cache batch is closed")
+            self._active_operations += 1
+            self._active_by_thread[thread_id] = self._active_by_thread.get(thread_id, 0) + 1
+
+    def _end_operation(self) -> None:
+        with self._condition:
+            self._active_operations -= 1
+            thread_id = threading.get_ident()
+            remaining = self._active_by_thread[thread_id] - 1
+            if remaining:
+                self._active_by_thread[thread_id] = remaining
+            else:
+                del self._active_by_thread[thread_id]
+            self._condition.notify_all()
+
     def record_path(self, path: Path, *, touch: bool = True) -> Path:
         """Record one deterministic cache-owned path without exposing a tree operation."""
-        cache_root = self._cache.cache_dir.resolve()
-        resolved = path.resolve()
-        if not resolved.is_relative_to(cache_root):
-            raise ValueError("Cache batch can only record paths inside its cache root")
-        if not path.is_file() or path.stat().st_size <= 0:
-            raise ValueError("Cache batch can only record a non-empty file")
-        self._record(path, touch=touch)
-        return path
+        self._begin_operation()
+        try:
+            with self._condition:
+                cache_root = self._cache.cache_dir.resolve()
+                resolved = path.resolve()
+                if not resolved.is_relative_to(cache_root):
+                    raise ValueError("Cache batch can only record paths inside its cache root")
+                if not path.is_file() or path.stat().st_size <= 0:
+                    raise ValueError("Cache batch can only record a non-empty file")
+                self._record(path, touch=touch)
+                return path
+        finally:
+            self._end_operation()
 
     def record_absence(self, path: Path) -> None:
         """Record one deterministic failed-download path after controlled cleanup."""
-        cache_root = self._cache.cache_dir.resolve()
-        resolved = path.resolve()
-        if not resolved.is_relative_to(cache_root):
-            raise ValueError("Cache batch can only record paths inside its cache root")
-        if path.exists():
-            raise ValueError("Cache batch can only record an absent path")
-        self._manifest.pop(path, None)
-        self._refresh_directory_mtimes(path.parent)
+        self._begin_operation()
+        try:
+            with self._condition:
+                cache_root = self._cache.cache_dir.resolve()
+                resolved = path.resolve()
+                if not resolved.is_relative_to(cache_root):
+                    raise ValueError("Cache batch can only record paths inside its cache root")
+                if path.exists():
+                    raise ValueError("Cache batch can only record an absent path")
+                self._manifest.pop(path, None)
+                self._refresh_directory_mtimes(path.parent)
+        finally:
+            self._end_operation()
 
     def download_or_get(self, client: SyncImmichClient, asset: Asset) -> Path | None:
         """Return one cached/downloaded asset and update this batch's manifest."""
-        destination = self._cache._download_path(asset)
+        self._begin_operation()
         try:
-            path = self._cache.download_or_get(client, asset)
-        except BaseException:
+            destination = self._cache._download_path(asset)
+            try:
+                path = self._cache.download_or_get(client, asset)
+            except BaseException:
+                destination.unlink(missing_ok=True)
+                with self._condition:
+                    self._manifest.pop(destination, None)
+                    self._refresh_directory_mtimes(destination.parent)
+                raise
+            with self._condition:
+                if path is not None:
+                    self._record(path, touch=True)
+                else:
+                    self._manifest.pop(destination, None)
+                    self._refresh_directory_mtimes(destination.parent)
+            return path
+        finally:
+            self._end_operation()
+
+    def download_video_id(self, client: SyncImmichClient, video_id: str) -> Path | None:
+        """Download one deterministic live-photo component within this batch admission."""
+        self._begin_operation()
+        destination = self._cache._video_path(video_id, ".MOV")
+        try:
+            cached = self._cache._find_cached(video_id)
+            if cached is not None:
+                with self._condition:
+                    self._record(cached, touch=True)
+                return cached
+
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                client.download_asset(video_id, destination)
+            except (OSError, RuntimeError):
+                destination.unlink(missing_ok=True)
+                with self._condition:
+                    self._manifest.pop(destination, None)
+                    self._refresh_directory_mtimes(destination.parent)
+                return None
+            except BaseException:
+                destination.unlink(missing_ok=True)
+                with self._condition:
+                    self._manifest.pop(destination, None)
+                    self._refresh_directory_mtimes(destination.parent)
+                raise
+
+            if destination.exists() and destination.stat().st_size > 0:
+                with self._condition:
+                    self._record(destination)
+                return destination
             destination.unlink(missing_ok=True)
-            self.record_absence(destination)
-            raise
-        if path is not None:
-            self._record(path, touch=True)
-        else:
-            self.record_absence(destination)
-        return path
+            with self._condition:
+                self._manifest.pop(destination, None)
+                self._refresh_directory_mtimes(destination.parent)
+            return None
+        finally:
+            self._end_operation()
 
     def get_analysis_video(
         self,
@@ -122,27 +205,47 @@ class CacheBatch:
         enable_downscaling: bool = True,
     ) -> tuple[Path, Path]:
         """Return analysis media while keeping generated cache files in the manifest."""
-        result = self._cache.get_analysis_video(
-            client,
-            asset,
-            target_height=target_height,
-            enable_downscaling=enable_downscaling,
-            batch=self,
-        )
-        analysis_video, original_video = result
-        self._record(original_video)
-        if analysis_video != original_video:
-            self.record_path(analysis_video)
-        return result
+        self._begin_operation()
+        try:
+            result = self._cache.get_analysis_video(
+                client,
+                asset,
+                target_height=target_height,
+                enable_downscaling=enable_downscaling,
+                batch=self,
+            )
+            analysis_video, original_video = result
+            with self._condition:
+                self._record(original_video)
+                if analysis_video != original_video:
+                    self._record(analysis_video, touch=True)
+            return result
+        finally:
+            self._end_operation()
 
     def finish(self) -> int:
         """Evict from the manifest once; rescan only after external mutation."""
-        if self._finished:
-            return 0
-        self._finished = True
-        if not self._cache._manifest_matches(self._manifest, self._directory_mtimes):
-            self._manifest, self._directory_mtimes = self._cache._scan_manifest()
-        return self._cache._evict_manifest(self._manifest)
+        with self._condition:
+            thread_id = threading.get_ident()
+            if self._active_by_thread.get(thread_id):
+                raise RuntimeError("Cannot finish a cache batch from an active operation")
+            if self._finished:
+                return 0
+            if self._finishing:
+                while self._finishing:
+                    self._condition.wait()
+                return 0
+            self._finishing = True
+            while self._active_operations:
+                self._condition.wait()
+            try:
+                if not self._cache._manifest_matches(self._manifest, self._directory_mtimes):
+                    self._manifest, self._directory_mtimes = self._cache._scan_manifest()
+                return self._cache._evict_manifest(self._manifest)
+            finally:
+                self._finished = True
+                self._finishing = False
+                self._condition.notify_all()
 
 
 class VideoDownloadCache:
@@ -277,8 +380,8 @@ class VideoDownloadCache:
                 return dest
             logger.warning("Downloaded file empty or missing: %s", dest)
             dest.unlink(missing_ok=True)
-        except (OSError, RuntimeError) as e:
-            logger.warning("Failed to download video %s: %s", download_id, e)
+        except (OSError, RuntimeError):
+            logger.warning("Video download failed for asset %s", download_id)
             dest.unlink(missing_ok=True)
 
         return None
@@ -357,8 +460,8 @@ class VideoDownloadCache:
             if downscaled.exists():
                 downscaled.unlink()  # Remove corrupted file
                 logger.warning("Downscaled file too small/corrupt for %s, using original", asset.id)
-        except (OSError, subprocess.SubprocessError) as e:
-            logger.debug("Downscaling failed for %s: %s, using original", asset.id, e)
+        except (OSError, subprocess.SubprocessError):
+            logger.debug("Downscaling failed for asset %s; using original", asset.id)
             if downscaled.exists():
                 downscaled.unlink()
 

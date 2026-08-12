@@ -97,6 +97,7 @@ class AnalysisConfig(BaseModel):
     min_scene_duration: float = Field(default=1.0, ge=0.5, le=10.0)
     duplicate_hash_threshold: int = Field(default=8, ge=0, le=64)
     keyframe_interval: float = Field(default=1.0, ge=0.5, le=5.0)
+    download_workers: int = Field(default=3, ge=1, le=8)
 
     # Clip style preset — sets the 5 duration params below.
     # Explicit overrides win over the preset.

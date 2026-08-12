@@ -7,6 +7,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from immich_memories.api.sync_client import SyncImmichClient
+from immich_memories.config_loader import Config
+from immich_memories.generate import GenerationParams
+from immich_memories.processing.download_coordinator import DownloadResult
+from tests.conftest import make_clip
+
 
 class TestDownloadClip:
     def test_returns_local_path_when_exists(self, tmp_path: Path) -> None:
@@ -77,6 +83,275 @@ class TestDownloadClip:
 
         assert result == expected
         mock_cache.download_or_get.assert_called_once_with(mock_client, clip.asset)
+
+    def test_burst_merge_reuses_prefetched_components(self, tmp_path: Path) -> None:
+        """Serial live-photo merge must not download components prefetch already fetched."""
+        from unittest.mock import patch
+
+        from immich_memories.cache.video_cache import VideoDownloadCache
+        from immich_memories.generate_downloads import _download_and_merge_burst
+
+        cache = VideoDownloadCache(tmp_path / "video-cache")
+        first = cache.cache_dir / "id" / "id-one.MOV"
+        second = cache.cache_dir / "id" / "id-two.MOV"
+        first.parent.mkdir(parents=True)
+        first.write_bytes(b"one")
+        second.write_bytes(b"two")
+        clip = MagicMock()
+        clip.asset.id = "burst-parent"
+        clip.live_burst_video_ids = ["id-one", "id-two"]
+        clip.live_burst_trim_points = [(0.0, 1.0), (1.0, 2.0)]
+        clip.live_burst_shutter_timestamps = None
+        client = MagicMock()
+        merged = tmp_path / "merged.mp4"
+
+        with (
+            cache.begin_batch() as batch,
+            patch("immich_memories.generate_downloads._try_merge_burst", return_value=merged),
+        ):
+            result = _download_and_merge_burst(
+                client,
+                batch,
+                clip,
+                tmp_path,
+                prefetched_paths={"id-one": first, "id-two": second},
+            )
+
+        assert result == merged
+        client.download_asset.assert_not_called()
+
+    def test_burst_with_all_failed_prefetches_never_retries_components(
+        self, tmp_path: Path
+    ) -> None:
+        """A prefetched failure is final for the current burst generation run."""
+        from immich_memories.cache.video_cache import VideoDownloadCache
+        from immich_memories.generate_downloads import _download_and_merge_burst
+
+        cache = VideoDownloadCache(tmp_path / "video-cache")
+        clip = MagicMock()
+        clip.asset.id = "burst-parent"
+        clip.live_burst_video_ids = ["id-one", "id-two"]
+        clip.live_burst_trim_points = [(0.0, 1.0), (1.0, 2.0)]
+        clip.live_burst_shutter_timestamps = None
+        client = MagicMock()
+
+        with cache.begin_batch() as batch:
+            result = _download_and_merge_burst(
+                client,
+                batch,
+                clip,
+                tmp_path,
+                prefetched_paths={"id-one": None, "id-two": None},
+            )
+
+        assert result is None
+        client.download_asset.assert_not_called()
+
+    def test_failed_prefetched_burst_merge_never_retries_components(self, tmp_path: Path) -> None:
+        """A merge failure does not fall back to a serial component download after prefetch."""
+        from unittest.mock import patch
+
+        from immich_memories.cache.video_cache import VideoDownloadCache
+        from immich_memories.generate_downloads import _download_and_merge_burst
+
+        cache = VideoDownloadCache(tmp_path / "video-cache")
+        component = cache.cache_dir / "id" / "id-one.MOV"
+        component.parent.mkdir(parents=True)
+        component.write_bytes(b"one")
+        clip = MagicMock()
+        clip.asset.id = "burst-parent"
+        clip.live_burst_video_ids = ["id-one", "id-two"]
+        clip.live_burst_trim_points = [(0.0, 1.0), (1.0, 2.0)]
+        clip.live_burst_shutter_timestamps = None
+        client = MagicMock()
+
+        with (
+            cache.begin_batch() as batch,
+            patch("immich_memories.generate_downloads._try_merge_burst", return_value=None),
+        ):
+            result = _download_and_merge_burst(
+                client,
+                batch,
+                clip,
+                tmp_path,
+                prefetched_paths={"id-one": component, "id-two": None},
+            )
+
+        assert result is None
+        client.download_asset.assert_not_called()
+
+    def test_burst_failure_log_does_not_include_raw_exception(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Burst download diagnostics do not include raw server error text or tracebacks."""
+        from immich_memories.cache.video_cache import VideoDownloadCache
+        from immich_memories.generate_downloads import _download_burst_clips
+
+        cache = VideoDownloadCache(tmp_path / "video-cache")
+        client = MagicMock()
+        client.download_asset.side_effect = OSError("token=unlabelled-secret-value")
+
+        with cache.begin_batch() as batch:
+            assert _download_burst_clips(client, batch, ["burst-id"]) == []
+
+        assert "unlabelled-secret-value" not in caplog.text
+
+
+def test_extract_clips_uses_prefetched_video_before_serial_ffmpeg(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Video network work is prefetched, while segment extraction remains serial."""
+    from immich_memories import generate_clips
+
+    clip = make_clip("prefetched-video", duration=2.0)
+    downloaded = tmp_path / "source.mp4"
+    downloaded.write_bytes(b"video")
+    segment = tmp_path / "segment.mp4"
+    segment.write_bytes(b"segment")
+    params = GenerationParams(
+        clips=[clip],
+        output_path=tmp_path / "memory.mp4",
+        config=Config(),
+        client=MagicMock(spec=SyncImmichClient),
+    )
+    calls: list[object] = []
+
+    class _Coordinator:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            calls.append((args, kwargs))
+
+        def prefetch(
+            self, assets: list[object], progress: object = None
+        ) -> dict[str, DownloadResult]:
+            calls.append(assets)
+            return {clip.asset.id: DownloadResult(downloaded)}
+
+    monkeypatch.setattr(generate_clips, "DownloadCoordinator", _Coordinator)
+    monkeypatch.setattr(
+        "immich_memories.generate_downloads.download_clip",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("prefetch result was ignored")),
+    )
+    monkeypatch.setattr(generate_clips, "_probe_file_duration", lambda _path: 2.0)
+    monkeypatch.setattr(
+        "immich_memories.processing.clips.extract_clip", lambda *_args, **_kwargs: segment
+    )
+
+    assembly_clips = generate_clips._extract_clips(params, MagicMock(), tmp_path)
+
+    assert len(calls) == 2
+    assert calls[1] == [clip.asset]
+    assert [assembly_clip.path for assembly_clip in assembly_clips] == [segment]
+
+
+def test_download_factory_uses_config_connection_policy_and_source_timeout_without_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Worker clients are isolated clones with configuration-owned connection policy."""
+    from immich_memories import generate_clips
+    from immich_memories.api.compatibility import ApiVersionPolicy
+
+    constructed: list[dict[str, object]] = []
+    closed: list[str] = []
+
+    class _AsyncClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            if args:
+                kwargs = {
+                    "base_url": args[0],
+                    "api_key": args[1],
+                    **kwargs,
+                }
+            constructed.append(kwargs)
+            self.base_url = str(kwargs["base_url"])
+            self.api_key = str(kwargs["api_key"])
+            self.timeout = float(kwargs["timeout"])
+
+        async def close(self) -> None:
+            closed.append(self.base_url)
+
+    monkeypatch.setattr("immich_memories.api.immich.ImmichClient", _AsyncClient)
+    source = SyncImmichClient("https://source.invalid", "source-key", timeout=47.0)
+    source.get_api_version = MagicMock(side_effect=AssertionError("must not probe"))
+    params = GenerationParams(
+        clips=[],
+        output_path=Path("memory.mp4"),
+        config=Config(
+            immich={
+                "url": "https://configured.invalid",
+                "api_key": "configured-key",
+                "api_version": "v3",
+            }
+        ),
+        client=source,
+    )
+
+    try:
+        factory = generate_clips._download_client_factory(params)
+        assert factory is not None
+        worker = factory()
+
+        assert isinstance(worker, SyncImmichClient)
+        assert constructed[-1] == {
+            "base_url": "https://configured.invalid",
+            "api_key": "configured-key",
+            "api_version": ApiVersionPolicy.V3,
+            "timeout": 47.0,
+        }
+        source.get_api_version.assert_not_called()
+    finally:
+        worker.close()
+        source.close()
+
+    assert closed == ["https://configured.invalid", "https://source.invalid"]
+
+
+def test_real_sync_worker_owns_and_closes_its_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An isolated real sync worker creates and closes its loop in the worker thread."""
+    import threading
+
+    from immich_memories.cache.video_cache import VideoDownloadCache
+    from immich_memories.processing.download_coordinator import DownloadCoordinator
+
+    main_thread = threading.get_ident()
+    worker_threads: list[int] = []
+
+    class _AsyncClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def download_asset(self, _asset_id: str, output_path: Path) -> Path:
+            worker_threads.append(threading.get_ident())
+            output_path.write_bytes(b"video")
+            return output_path
+
+        async def close(self) -> None:
+            worker_threads.append(threading.get_ident())
+
+    monkeypatch.setattr("immich_memories.api.immich.ImmichClient", _AsyncClient)
+    created: list[SyncImmichClient] = []
+
+    def factory() -> SyncImmichClient:
+        worker = SyncImmichClient("https://configured.invalid", "configured-key")
+        created.append(worker)
+        return worker
+
+    cache = VideoDownloadCache(tmp_path / "video-cache")
+    with cache.begin_batch() as batch:
+        result = DownloadCoordinator(factory, batch, max_workers=1).prefetch(
+            [make_clip("worker").asset]
+        )
+
+    source = SyncImmichClient("https://source.invalid", "source-key")
+    source.close()
+
+    assert result["worker"].path is not None
+    assert worker_threads[:2] == [worker_threads[0], worker_threads[0]]
+    assert worker_threads[0] != main_thread
+    assert worker_threads[-1] == main_thread
+    assert len(created) == 1
+    assert created[0]._loop is not None and created[0]._loop.is_closed()
 
 
 class TestAlignBurstSubset:

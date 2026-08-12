@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from threading import Event, Thread
 from unittest.mock import MagicMock
 
 import pytest
@@ -103,6 +104,15 @@ class TestDownloadOrGet:
 
         path = cache.download_or_get(client, mock_asset)
         assert path is None
+
+    def test_download_failure_log_does_not_include_raw_exception(self, cache, mock_asset, caplog):
+        """Cache logs a safe failure diagnostic instead of server error text."""
+        client = MagicMock()
+        client.download_asset.side_effect = OSError("token=unlabelled-secret-value")
+
+        assert cache.download_or_get(client, mock_asset) is None
+
+        assert "unlabelled-secret-value" not in caplog.text
 
 
 class TestCacheBatch:
@@ -323,6 +333,168 @@ class TestCacheBatch:
         assert not expired.exists()
         assert fresh.exists()
         assert len(scans) == 1
+
+    def test_finish_closes_admission_and_waits_for_admitted_download(
+        self, cache, mock_asset
+    ) -> None:
+        """Finish waits for in-flight network work, then rejects new operations."""
+        started = Event()
+        release = Event()
+        completed = Event()
+        client = MagicMock()
+
+        def blocked_download(_asset_id: str, output_path: Path) -> Path:
+            started.set()
+            assert release.wait(timeout=2)
+            output_path.write_bytes(b"video")
+            return output_path
+
+        client.download_asset.side_effect = blocked_download
+        batch = cache.begin_batch()
+        download_thread = Thread(target=batch.download_or_get, args=(client, mock_asset))
+        download_thread.start()
+        assert started.wait(timeout=2)
+
+        finish_thread = Thread(target=lambda: (batch.finish(), completed.set()), daemon=True)
+        finish_thread.start()
+        time.sleep(0.05)
+        assert not completed.is_set()
+        with pytest.raises(RuntimeError, match="closed"):
+            batch.download_or_get(client, mock_asset)
+
+        release.set()
+        download_thread.join(timeout=2)
+        finish_thread.join(timeout=2)
+        assert completed.is_set()
+        with pytest.raises(RuntimeError, match="closed"):
+            batch.download_or_get(client, mock_asset)
+
+    def test_failed_admitted_download_unblocks_finish(self, cache, mock_asset) -> None:
+        """An item exception still releases finish's in-flight operation wait."""
+        started = Event()
+        release = Event()
+        completed = Event()
+        client = MagicMock()
+
+        def blocked_failure(_asset_id: str, _output_path: Path) -> None:
+            started.set()
+            assert release.wait(timeout=2)
+            raise ValueError("download failed")
+
+        client.download_asset.side_effect = blocked_failure
+        batch = cache.begin_batch()
+
+        def run_download() -> None:
+            with pytest.raises(ValueError, match="download failed"):
+                batch.download_or_get(client, mock_asset)
+
+        download_thread = Thread(target=run_download)
+        download_thread.start()
+        assert started.wait(timeout=2)
+        finish_thread = Thread(target=lambda: (batch.finish(), completed.set()))
+        finish_thread.start()
+        time.sleep(0.05)
+        assert not completed.is_set()
+
+        release.set()
+        download_thread.join(timeout=2)
+        finish_thread.join(timeout=2)
+        assert completed.is_set()
+
+    def test_admitted_analysis_operation_can_nest_after_finish_starts(
+        self, cache, mock_asset, monkeypatch
+    ) -> None:
+        """Finish cannot reject the nested cache read of an already-admitted analysis call."""
+        outer_started = Event()
+        allow_nested_download = Event()
+        nested_started = Event()
+        completed = Event()
+        client = MagicMock()
+
+        def download(_asset_id: str, output_path: Path) -> Path:
+            nested_started.set()
+            output_path.write_bytes(b"video")
+            return output_path
+
+        client.download_asset.side_effect = download
+        batch = cache.begin_batch()
+        original_get_analysis_video = cache.get_analysis_video
+
+        def delayed_get_analysis_video(*args, **kwargs):
+            outer_started.set()
+            assert allow_nested_download.wait(timeout=2)
+            return original_get_analysis_video(*args, **kwargs)
+
+        monkeypatch.setattr(cache, "get_analysis_video", delayed_get_analysis_video)
+        analysis_thread = Thread(
+            target=lambda: batch.get_analysis_video(client, mock_asset, enable_downscaling=False)
+        )
+        analysis_thread.start()
+        assert outer_started.wait(timeout=2)
+        finish_thread = Thread(target=lambda: (batch.finish(), completed.set()))
+        finish_thread.start()
+        time.sleep(0.05)
+        allow_nested_download.set()
+
+        analysis_thread.join(timeout=2)
+        finish_thread.join(timeout=2)
+        assert nested_started.is_set()
+        assert completed.is_set()
+
+    def test_concurrent_finish_calls_are_idempotent(self, cache, monkeypatch) -> None:
+        """Only one finisher performs cache maintenance; the other returns cleanly."""
+        batch = cache.begin_batch()
+        started = Event()
+        release = Event()
+        original_evict = cache._evict_manifest
+        calls = 0
+
+        def blocked_evict(manifest):
+            nonlocal calls
+            calls += 1
+            started.set()
+            assert release.wait(timeout=2)
+            return original_evict(manifest)
+
+        monkeypatch.setattr(cache, "_evict_manifest", blocked_evict)
+        first = Thread(target=batch.finish)
+        second = Thread(target=batch.finish)
+        first.start()
+        assert started.wait(timeout=2)
+        second.start()
+        time.sleep(0.05)
+        assert second.is_alive()
+        release.set()
+        first.join(timeout=2)
+        second.join(timeout=2)
+        assert calls == 1
+
+    def test_finish_waits_for_admitted_burst_component_download(self, cache) -> None:
+        """Component downloads hold batch admission through their network body."""
+        started = Event()
+        release = Event()
+        finished = Event()
+        client = MagicMock()
+
+        def blocked_download(_asset_id: str, output_path: Path) -> Path:
+            started.set()
+            assert release.wait(timeout=2)
+            output_path.write_bytes(b"component")
+            return output_path
+
+        client.download_asset.side_effect = blocked_download
+        batch = cache.begin_batch()
+        worker = Thread(target=lambda: batch.download_video_id(client, "burst-id"))
+        worker.start()
+        assert started.wait(timeout=2)
+        finisher = Thread(target=lambda: (batch.finish(), finished.set()))
+        finisher.start()
+        time.sleep(0.05)
+        assert not finished.is_set()
+        release.set()
+        worker.join(timeout=2)
+        finisher.join(timeout=2)
+        assert finished.is_set()
 
 
 class TestGetStats:
