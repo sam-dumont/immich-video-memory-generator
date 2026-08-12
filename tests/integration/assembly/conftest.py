@@ -150,7 +150,7 @@ def _fixture_matches(
         return False
     try:
         metadata = json.loads(metadata_path.read_text())
-        if metadata.get("identity_hash") != identity["identity_hash"]:
+        if metadata != identity:
             return False
         probe = subprocess.run(
             [

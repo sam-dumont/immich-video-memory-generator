@@ -88,6 +88,7 @@ def measure_resources(
     codec: str = "",
     frame_rate: float = 0.0,
     cache_mode: str = "",
+    metadata_collector: Callable[[], dict[str, str]] | None = None,
 ) -> Generator[PerfResult, None, None]:
     """Context manager that measures Python peak memory, wall time, and CPU time.
 
@@ -99,9 +100,7 @@ def measure_resources(
     Python peak memory is measured via tracemalloc (tracks Python allocations).
     CPU time is measured via resource.getrusage (includes child processes on macOS).
     """
-    tracemalloc.start()
-    start_wall = time.monotonic()
-    start_usage = resource.getrusage(resource.RUSAGE_CHILDREN)
+    metadata = (metadata_collector or _collect_reproduction_metadata)()
 
     result = PerfResult(
         scenario=scenario,
@@ -115,11 +114,15 @@ def measure_resources(
         codec=codec,
         frame_rate=frame_rate,
         cache_mode=cache_mode,
-        python_version=platform.python_version(),
-        platform=platform.platform(),
-        cpu=platform.processor() or platform.machine(),
-        git_revision=_git_revision(),
+        python_version=metadata["python_version"],
+        platform=metadata["platform"],
+        cpu=metadata["cpu"],
+        git_revision=metadata["git_revision"],
     )
+
+    tracemalloc.start()
+    start_wall = time.monotonic()
+    start_usage = resource.getrusage(resource.RUSAGE_CHILDREN)
 
     try:
         yield result
@@ -157,6 +160,58 @@ def _git_revision() -> str:
     except (FileNotFoundError, subprocess.SubprocessError):
         return "unknown"
     return result.stdout.strip() or "unknown"
+
+
+def _command_output(command: list[str]) -> str | None:
+    """Return stripped stdout from a small identity probe, if available."""
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() or None
+
+
+def _cpu_fingerprint() -> str:
+    """Return a useful, portable CPU identity for benchmark reproduction."""
+    system = platform.system()
+    if system == "Darwin":
+        hardware = _command_output(["system_profiler", "SPHardwareDataType"])
+        if hardware:
+            for line in hardware.splitlines():
+                label, separator, value = line.strip().partition(":")
+                if separator and label in {"Chip", "Processor Name"} and value.strip():
+                    return value.strip()
+        sysctl_brand = _command_output(["sysctl", "-n", "machdep.cpu.brand_string"])
+        if sysctl_brand:
+            return sysctl_brand
+    elif system == "Linux":
+        try:
+            cpuinfo = Path("/proc/cpuinfo").read_text()
+        except OSError:
+            cpuinfo = ""
+        for label in ("model name", "hardware", "processor"):
+            for line in cpuinfo.splitlines():
+                key, separator, value = line.partition(":")
+                if separator and key.strip().lower() == label and value.strip():
+                    return value.strip()
+
+    return platform.processor() or platform.machine() or "unknown"
+
+
+def _collect_reproduction_metadata() -> dict[str, str]:
+    """Collect benchmark identity before any resource snapshot starts."""
+    return {
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+        "cpu": _cpu_fingerprint(),
+        "git_revision": _git_revision(),
+    }
 
 
 def measure_repetitions(

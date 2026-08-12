@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -46,7 +47,7 @@ def _make_assembly_clips(clip_paths: list[Path], duration: float = 5.0):
     ]
 
 
-def _make_assembler(**overrides):
+def _make_assembler(**overrides: Any):
     """Create an assembler with settings tuned for benchmarking."""
     from immich_memories.processing.assembly_config import (
         AssemblySettings,
@@ -55,7 +56,7 @@ def _make_assembler(**overrides):
     )
     from immich_memories.processing.video_assembler import VideoAssembler
 
-    defaults = {
+    defaults: dict[str, Any] = {
         "encoding_plan": standalone_assembly_encoding_plan(28),
         "transition": TransitionType.CROSSFADE,
         "transition_duration": 0.3,
@@ -94,11 +95,12 @@ def _measure_assembly(
 
 
 class TestMinimalScenario:
-    """2 clips, 720p, 5s each — baseline measurement."""
+    """2 clips, 720p, 3s each — baseline measurement."""
 
-    def test_minimal_assembly_resources(self, test_clip_720p, test_clip_720p_b, tmp_path):
+    def test_minimal_assembly_resources(self, fixtures_dir, tmp_path):
+        clip_paths = make_n_clips(fixtures_dir, 2, "1280x720", duration=3, fps=30, codec="h264")
         assembler = _make_assembler(auto_resolution=False, target_resolution=(1280, 720))
-        clips = _make_assembly_clips([test_clip_720p, test_clip_720p_b], duration=3.0)
+        clips = _make_assembly_clips(clip_paths, duration=3.0)
 
         output, result = _measure_assembly(
             scenario="minimal",

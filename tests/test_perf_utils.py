@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+import time
 from pathlib import Path
+from types import SimpleNamespace
 
+from tests.integration.assembly import perf_utils
 from tests.integration.assembly.perf_utils import (
     PerfResult,
     measure_resources,
@@ -31,6 +36,38 @@ class TestMeasureResources:
 
         assert result.python_peak_mb >= 0.9
 
+    def test_reproduction_metadata_collection_is_outside_every_measurement(self) -> None:
+        """Slow metadata probes must not inflate wall, heap, or child CPU samples."""
+        retained_allocations: list[bytearray] = []
+
+        def collect_metadata() -> dict[str, str]:
+            retained_allocations.append(bytearray(4_000_000))
+            subprocess.run(
+                [sys.executable, "-c", "sum(range(3_000_000))"],
+                check=True,
+                capture_output=True,
+            )
+            time.sleep(0.08)
+            return {
+                "python_version": "test-python",
+                "platform": "test-platform",
+                "cpu": "test-cpu",
+                "git_revision": "test-revision",
+            }
+
+        outer_start = time.monotonic()
+        with measure_resources("metadata", metadata_collector=collect_metadata) as result:
+            pass
+        outer_seconds = time.monotonic() - outer_start
+
+        assert outer_seconds >= 0.08
+        assert result.wall_seconds < 0.04
+        assert result.python_peak_mb < 1.0
+        assert result.cpu_user_seconds < 0.04
+        assert result.cpu_sys_seconds < 0.04
+        assert result.python_version == "test-python"
+        assert result.git_revision == "test-revision"
+
     def test_summary_line_format(self) -> None:
         """PerfResult.summary_line should produce parseable output."""
         r = PerfResult(
@@ -46,6 +83,40 @@ class TestMeasureResources:
         assert "python_peak_mb=100" in line
         assert "child_peak_rss_mb=500" in line
         assert "wall_s=5.2" in line
+
+
+class TestCpuFingerprint:
+    def test_macos_uses_the_hardware_chip_name(self, monkeypatch) -> None:
+        """Apple Silicon should be identified as the actual chip, not generic arm."""
+        monkeypatch.setattr(perf_utils.platform, "system", lambda: "Darwin")
+
+        def run(command, **_kwargs):
+            assert command == ["system_profiler", "SPHardwareDataType"]
+            return SimpleNamespace(stdout="Hardware:\n    Chip: Apple M5 Max\n")
+
+        monkeypatch.setattr(perf_utils.subprocess, "run", run)
+
+        assert perf_utils._cpu_fingerprint() == "Apple M5 Max"
+
+    def test_macos_falls_back_when_system_profiler_is_unavailable(self, monkeypatch) -> None:
+        monkeypatch.setattr(perf_utils.platform, "system", lambda: "Darwin")
+
+        def run(command, **_kwargs):
+            if command[0] == "system_profiler":
+                raise FileNotFoundError
+            assert command == ["sysctl", "-n", "machdep.cpu.brand_string"]
+            return SimpleNamespace(stdout="Apple M4 Pro\n")
+
+        monkeypatch.setattr(perf_utils.subprocess, "run", run)
+
+        assert perf_utils._cpu_fingerprint() == "Apple M4 Pro"
+
+    def test_unknown_platform_falls_back_to_machine(self, monkeypatch) -> None:
+        monkeypatch.setattr(perf_utils.platform, "system", lambda: "Plan9")
+        monkeypatch.setattr(perf_utils.platform, "processor", lambda: "")
+        monkeypatch.setattr(perf_utils.platform, "machine", lambda: "riscv64")
+
+        assert perf_utils._cpu_fingerprint() == "riscv64"
 
 
 class TestBenchmarkJsonExport:
