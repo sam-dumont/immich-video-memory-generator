@@ -231,7 +231,6 @@ class SmartPipeline:
             Exception
         ) as e:  # WHY: top-level pipeline boundary — logs + cleans up tracker before re-raise
             logger.error(f"Pipeline failed: {e}")
-            self.tracker.finish()
             raise
         finally:
             # Analysis owns native captures/models regardless of cache mode or failure.

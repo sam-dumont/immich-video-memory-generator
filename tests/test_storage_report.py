@@ -117,6 +117,28 @@ def test_storage_report_does_not_create_missing_configured_roots(tmp_path: Path)
     assert not config.cache.cache_path.exists()
 
 
+def test_storage_report_rejects_symlinked_configured_roots(tmp_path: Path) -> None:
+    """Configured root symlinks must not expose arbitrary directories outside the app."""
+    outside_output = tmp_path / "outside-output"
+    outside_cache = tmp_path / "outside-cache"
+    _write(outside_output / "secret-output", "private.mp4", 41)
+    _write(outside_cache / "secret-cache", "private.bin", 43)
+    output_link = tmp_path / "outputs-link"
+    cache_link = tmp_path / "cache-link"
+    output_link.symlink_to(outside_output, target_is_directory=True)
+    cache_link.symlink_to(outside_cache, target_is_directory=True)
+    config = Config(
+        output={"directory": str(output_link)},
+        cache={"directory": str(cache_link), "database": str(tmp_path / "state.db")},
+    )
+
+    report = build_storage_report(config, RunDatabase(config.cache.database_path))
+
+    assert report.directories == ()
+    assert report.total_files == 0
+    assert report.total_bytes == 0
+
+
 def test_runs_storage_json_is_one_read_only_document(tmp_path: Path) -> None:
     config = _config(tmp_path)
     _write(config.output.output_path / "orphan", "junk.bin", 7)

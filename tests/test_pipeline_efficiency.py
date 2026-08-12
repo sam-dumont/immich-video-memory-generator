@@ -193,6 +193,35 @@ class TestSharedVideoCacheBatch:
         pipeline.analyzer.close.assert_called_once()
         pipeline.previewer.close.assert_called_once()
 
+    def test_analysis_failure_retains_analysis_phase(self, tmp_path: Path):
+        """A failed analysis must not be reported as completed selection work."""
+        from immich_memories.analysis.progress import PipelinePhase
+        from immich_memories.analysis.smart_pipeline import SmartPipeline
+        from immich_memories.operations.phases import OperationalPhase
+
+        pipeline = SmartPipeline(
+            client=MagicMock(),
+            analysis_cache=MagicMock(),
+            thumbnail_cache=MagicMock(),
+            analysis_config=MagicMock(),
+            app_config=Config(cache={"directory": str(tmp_path / "cache")}),
+        )
+        pipeline._phase_cluster = MagicMock(return_value=[])
+        pipeline._phase_filter = MagicMock(return_value=[])
+
+        def fail_during_analysis(_candidates):
+            pipeline.tracker.start_phase(PipelinePhase.ANALYZING, 1)
+            raise RuntimeError("analysis failed")
+
+        pipeline._analyze_with_cache_batch = MagicMock(side_effect=fail_during_analysis)
+
+        with pytest.raises(RuntimeError, match="analysis failed"):
+            pipeline.run_analysis([])
+
+        assert pipeline.tracker.progress.phase is PipelinePhase.ANALYZING
+        assert pipeline.tracker.progress.operational_event is not None
+        assert pipeline.tracker.progress.operational_event.phase is OperationalPhase.ANALYSIS
+
     def test_pipeline_closes_analysis_services_once_after_success(self, tmp_path: Path):
         """The successful no-cache path has the same one-batch teardown ownership."""
         from immich_memories.analysis.smart_pipeline import SmartPipeline

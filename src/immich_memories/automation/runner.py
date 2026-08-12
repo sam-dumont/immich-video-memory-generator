@@ -714,6 +714,7 @@ class AutoRunner:
         """Run the one retry preflight before selecting its queued artifact."""
         if not self.db.count_pending_deliveries(source="auto"):
             return None
+        self._pending_delivery_retry().start_delivery(attempt)
         preflight = self._check_immich_preflight()
         preflight_error = self._preflight_error(preflight)
         if preflight_error is None:

@@ -237,8 +237,10 @@ def _summarize(entries: list[StorageDirectory]) -> dict[StorageClass, StorageSum
 
 def build_storage_report(config: Config, db: RunReader) -> StorageReport:
     """Inspect configured roots and exact output-path joins without mutating state."""
-    output_root = config.output.output_path.resolve(strict=False)
-    cache_root = config.cache.cache_path.resolve(strict=False)
+    # Keep configured roots lexical so _configured_child_directories can reject
+    # a root symlink before resolving it to an arbitrary external directory.
+    output_root = config.output.output_path
+    cache_root = config.cache.cache_path
     runs_by_directory = _run_by_exact_output_directory(db)
     entries = _inspect_root("output", output_root, runs_by_directory)
     entries.extend(_inspect_root("cache", cache_root, runs_by_directory))

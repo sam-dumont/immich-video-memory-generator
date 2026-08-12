@@ -15,6 +15,7 @@ from immich_memories.automation.models import (
 )
 from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.config_loader import Config
+from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.tracking.models import DeliveryStatus
 from immich_memories.tracking.run_database import RunDatabase
 
@@ -120,6 +121,21 @@ class PendingDeliveryRetry:
             and saved.delivery_attempts == expected_attempts
         )
 
+    def start_delivery(self, attempt: AutomationAttempt) -> None:
+        """Advance retry telemetry before any delivery preflight or upload work."""
+        self._record_phase(attempt, OperationalPhase.DELIVERY, "Retrying pending delivery")
+
+    def _record_phase(
+        self,
+        attempt: AutomationAttempt,
+        phase: OperationalPhase,
+        message: str,
+    ) -> None:
+        try:
+            self._state.update_phase(attempt.id, PhaseEvent(phase, 0, 0, message, 0.0))
+        except Exception:  # WHY: delivery telemetry cannot change retry semantics
+            logger.warning("Could not persist pending delivery phase %s", phase.value)
+
     def finish(
         self,
         attempt: AutomationAttempt,
@@ -150,6 +166,8 @@ class PendingDeliveryRetry:
             )
             outcome = AutoOutcome.FAILED
             reason = "pending delivery persistence failed"
+        if outcome is AutoOutcome.COMPLETED:
+            self._record_phase(attempt, OperationalPhase.COMPLETE, "Pending delivery complete")
         return AutoRunResult(
             outcome=outcome,
             reason=reason,
@@ -167,6 +185,8 @@ class PendingDeliveryRetry:
             return None
         if pending.output_path is None:  # guarded by the database query
             raise RuntimeError(f"Pending delivery run has no output path: {pending.run_id}")
+
+        self.start_delivery(attempt)
 
         output_path = Path(pending.output_path)
         if dry_run:

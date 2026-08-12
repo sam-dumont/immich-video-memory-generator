@@ -769,6 +769,8 @@ async def test_ui_delivery_failure_preserves_retryable_artifact(
         upload_enabled=True,
         upload_album="Stable Retry Album",
     )
+    phase_events = []
+    params.phase_callback = phase_events.append
     state = AppState(
         config=config,
         generation_options={"music_source": "None"},
@@ -809,6 +811,8 @@ async def test_ui_delivery_failure_preserves_retryable_artifact(
     assert configured_literal not in completed.delivery_error
     assert configured_literal not in " ".join(notifications)
     assert configured_literal not in caplog.text
+    assert [event.phase.value for event in phase_events][-1] == "delivery"
+    assert saved.last_phase.value == "delivery"
 
 
 @pytest.mark.asyncio

@@ -276,6 +276,7 @@ class _OperationalProgress:
         self._params = params
         self._run_tracker = run_tracker
         self._started = time.monotonic()
+        self._last_phase: OperationalPhase | None = None
 
     def emit(
         self,
@@ -295,9 +296,11 @@ class _OperationalProgress:
             elapsed_seconds=now - self._started,
         )
         self._started = now
+        self._last_phase = phase
         return event
 
-    def emit_unperformed_prerequisites(self) -> None:
+    def emit_unperformed_prerequisites(self, through: OperationalPhase) -> None:
+        """Mark only prerequisites not owned by this generation call as complete."""
         completed = self._params.completed_operational_phase
         messages = {
             OperationalPhase.DISCOVERY: "Discovery not required",
@@ -306,8 +309,16 @@ class _OperationalProgress:
             OperationalPhase.SELECTION: "Selection already prepared",
         }
         for phase, message in messages.items():
-            if completed is None or phase.order > completed.order:
+            if (
+                phase.order <= through.order
+                and (completed is None or phase.order > completed.order)
+                and (self._last_phase is None or phase.order > self._last_phase.order)
+            ):
                 self.emit(phase, 0, 0, message)
+
+    def phase_is_unperformed(self, phase: OperationalPhase) -> bool:
+        completed = self._params.completed_operational_phase
+        return completed is None or phase.order > completed.order
 
 
 class _PipelineProgress:
@@ -697,6 +708,18 @@ def _extract_clips_with_optional_prefetch(
     )
 
 
+def _emit_download_phase(
+    operational: _OperationalProgress,
+    params: GenerationParams,
+    current: int,
+    total: int,
+    message: str,
+) -> None:
+    """Report direct-generation download work only while this call owns it."""
+    if operational.phase_is_unperformed(OperationalPhase.DOWNLOAD):
+        operational.emit(OperationalPhase.DOWNLOAD, current, total, message)
+
+
 def _generate_memory_inner(
     params: GenerationParams,
     *,
@@ -739,13 +762,7 @@ def _generate_memory_inner(
         automation_attempt_id=params.automation_attempt_id,
     )
     operational = _OperationalProgress(params, run_tracker)
-    operational.emit_unperformed_prerequisites()
-    operational.emit(
-        OperationalPhase.RENDER,
-        0,
-        len(params.clips),
-        "Rendering memory",
-    )
+    operational.emit_unperformed_prerequisites(OperationalPhase.DISCOVERY)
 
     assembly_clips: list = []  # WHY: populated in try, needed in finally for cleanup
     pending_error: GenerationError | None = None
@@ -762,6 +779,13 @@ def _generate_memory_inner(
         # Phase 1: Download and extract clips
         pp.report("download", 0.0, "Downloading clips...")
         run_tracker.start_phase("clip_extraction", len(params.clips))
+        _emit_download_phase(
+            operational,
+            params,
+            0,
+            len(params.clips),
+            "Preparing source downloads",
+        )
 
         if params.config.cache.video_cache_enabled:
             video_cache = VideoDownloadCache(
@@ -788,12 +812,15 @@ def _generate_memory_inner(
                 probe_cache=probe_cache,
             )
         run_tracker.complete_phase(items_processed=len(assembly_clips))
-        operational.emit(
-            OperationalPhase.RENDER,
+        _emit_download_phase(
+            operational,
+            params,
             len(assembly_clips),
             len(params.clips),
             "Sources prepared",
         )
+        operational.emit_unperformed_prerequisites(OperationalPhase.SELECTION)
+        operational.emit(OperationalPhase.RENDER, 0, len(params.clips), "Rendering memory")
         _phase_times["download"] = _time.monotonic() - _phase_start
         pp.report("download", 1.0, "Clips downloaded")
 

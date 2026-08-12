@@ -139,6 +139,7 @@ def test_pending_delivery_succeeds_before_cooldown_or_candidate_selection(
     assert attempt is not None
     assert attempt.run_id == pending.run_id
     assert attempt.outcome is AutoOutcome.COMPLETED
+    assert attempt.last_phase.value == "complete"
 
 
 def test_failed_pending_delivery_stays_pending_and_stops_the_invocation(
@@ -185,6 +186,27 @@ def test_failed_pending_delivery_stays_pending_and_stops_the_invocation(
     assert attempt.outcome is AutoOutcome.FAILED
     assert attempt.run_id == pending.run_id
     assert attempt.error == "server echoed ***"
+    assert attempt.last_phase.value == "delivery"
+
+
+def test_retry_phase_telemetry_failure_does_not_block_delivery(tmp_path: Path) -> None:
+    """The retry's phase write is status-only and cannot block a durable upload."""
+    runner = AutoRunner(_config(tmp_path))
+    pending = _save_pending_auto_run(runner, tmp_path)
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.upload_memory.return_value = {"asset_id": "asset-after-telemetry-failure"}
+
+    with (
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        patch.object(runner.state, "update_phase", side_effect=OSError("phase DB busy")),
+    ):
+        result = runner.run_one(force=True)
+
+    assert result.outcome is AutoOutcome.COMPLETED
+    assert result.run_id == pending.run_id
+    client.upload_memory.assert_called_once()
 
 
 def test_pending_delivery_dry_run_is_read_only_and_stops_the_invocation(

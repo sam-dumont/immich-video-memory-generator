@@ -217,6 +217,12 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
     def run_probe(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 0, json.dumps(probe_payload), "")
 
+    def extract_at_download_ownership(*_args, **_kwargs):
+        assert [event.phase.value for event in phase_events] == ["discovery", "download"]
+        assert phase_events[-1].current == 0
+        assert phase_events[-1].total == 1
+        return [assembly_clip]
+
     monkeypatch.setattr(output_contract.subprocess, "run", run_probe)
     tracker = MagicMock()
     video_cache = MagicMock()
@@ -227,7 +233,7 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
             return_value=video_cache,
         ),
         patch.object(
-            generate_module, "_extract_clips", return_value=[assembly_clip]
+            generate_module, "_extract_clips", side_effect=extract_at_download_ownership
         ) as extract_clips,
         patch.object(
             generate_module,
@@ -263,7 +269,8 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
     assert [event.phase.order for event in phase_events] == sorted(
         event.phase.order for event in phase_events
     )
-    assert phase_events[1].current == phase_events[1].total == 0
+    assert phase_events[1].current == 0
+    assert phase_events[1].total == 1
     assert next(event for event in phase_events if event.phase.value == "music").message == (
         "Music disabled"
     )
@@ -271,7 +278,7 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
         "Delivery not requested"
     )
     render_messages = [event.message for event in phase_events if event.phase.value == "render"]
-    assert render_messages == ["Rendering memory", "Sources prepared", "Render complete"]
+    assert render_messages == ["Rendering memory", "Render complete"]
 
 
 def test_generation_validation_failure_preserves_old_final_and_stops_downstream_work(

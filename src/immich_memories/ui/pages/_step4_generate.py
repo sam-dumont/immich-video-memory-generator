@@ -405,6 +405,7 @@ async def finalize_ui_generation(
         message="Uploading to Immich" if params.upload_enabled else "Delivery not requested",
     )
     if params.upload_enabled:
+        from immich_memories.tracking.models import DeliveryStatus
         from immich_memories.ui.pages._step4_upload import upload_to_immich
 
         completed = await upload_to_immich(
@@ -415,6 +416,16 @@ async def finalize_ui_generation(
             progress_bar,
             status_label,
         )
+        if completed.delivery_status is not DeliveryStatus.DELIVERED:
+            emit_operational_phase(
+                params,
+                run_tracker,
+                OperationalPhase.DELIVERY,
+                current=0,
+                total=1,
+                message="Delivery pending",
+            )
+            return run_tracker.db.get_run(run_tracker.run_id) or completed
         emit_operational_phase(
             params,
             run_tracker,
