@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -49,6 +50,14 @@ def mock_client(tmp_path):
     client = MagicMock()
     client.download_asset = MagicMock(side_effect=fake_download)
     return client
+
+
+def _download_in_thread(batch, client, asset, errors: list[BaseException]) -> None:
+    """Collect worker errors without letting a thread hide a failed assertion."""
+    try:
+        batch.download_or_get(client, asset)
+    except BaseException as exc:  # pragma: no cover - assertion safety in worker threads
+        errors.append(exc)
 
 
 class TestVideoDownloadCacheInit:
@@ -238,6 +247,77 @@ class TestCacheBatch:
             )
             assert analysis != original
             assert analysis in batch._manifest
+
+    def test_concurrent_distinct_downloads_record_every_manifest_entry(self, cache):
+        """Task 3 workers may update one batch without losing an entry."""
+        started = threading.Barrier(3)
+        errors: list[BaseException] = []
+
+        def make_asset(asset_id: str):
+            asset = MagicMock()
+            asset.id = asset_id
+            asset.original_file_name = "clip.MOV"
+            asset.live_photo_video_id = None
+            return asset
+
+        def download(_asset_id: str, destination: Path) -> None:
+            started.wait(timeout=1)
+            destination.write_bytes(b"video")
+
+        client = MagicMock()
+        client.download_asset.side_effect = download
+        assets = [make_asset("aa-one"), make_asset("bb-two")]
+
+        with cache.begin_batch() as batch:
+            threads = [
+                threading.Thread(
+                    target=lambda asset=asset: _download_in_thread(batch, client, asset, errors)
+                )
+                for asset in assets
+            ]
+            for thread in threads:
+                thread.start()
+            started.wait(timeout=1)
+            for thread in threads:
+                thread.join(timeout=1)
+
+            assert not errors
+            assert {path.name for path in batch._manifest} == {"aa-one.MOV", "bb-two.MOV"}
+
+    def test_finish_waits_for_active_download_then_rejects_new_work(self, cache):
+        """Final eviction cannot race a Task 3 worker's manifest update."""
+        operation_started = threading.Event()
+        release_operation = threading.Event()
+        finish_returned = threading.Event()
+        errors: list[BaseException] = []
+        asset = MagicMock()
+        asset.id = "aa-active"
+        asset.original_file_name = "clip.MOV"
+        asset.live_photo_video_id = None
+
+        def download(_asset_id: str, destination: Path) -> None:
+            operation_started.set()
+            assert release_operation.wait(timeout=1)
+            destination.write_bytes(b"video")
+
+        client = MagicMock()
+        client.download_asset.side_effect = download
+        batch = cache.begin_batch()
+        worker = threading.Thread(target=lambda: _download_in_thread(batch, client, asset, errors))
+        worker.start()
+        assert operation_started.wait(timeout=1)
+        finisher = threading.Thread(target=lambda: (batch.finish(), finish_returned.set()))
+        finisher.start()
+
+        assert not finish_returned.wait(timeout=0.05)
+        release_operation.set()
+        worker.join(timeout=1)
+        finisher.join(timeout=1)
+
+        assert not errors
+        assert finish_returned.is_set()
+        with pytest.raises(RuntimeError, match="finished"):
+            batch.download_or_get(client, asset)
 
 
 class TestGetStats:

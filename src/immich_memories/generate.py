@@ -513,16 +513,20 @@ def _generate_memory_inner(
         pp.report("download", 0.0, "Downloading clips...")
         run_tracker.start_phase("clip_extraction", len(params.clips))
 
-        video_cache = VideoDownloadCache(
-            cache_dir=params.config.cache.video_cache_path,
-            max_size_gb=params.config.cache.video_cache_max_size_gb,
-            max_age_days=params.config.cache.video_cache_max_age_days,
-        )
-        # One cache lifecycle owns all video downloads for this generation.
-        # It removes expired files and scans once before extraction, then evicts
-        # from the same manifest on exit even if one clip fails.
-        with video_cache.begin_batch() as cache_batch:
-            assembly_clips = _extract_clips(params, cache_batch, run_output_dir)
+        if params.config.cache.video_cache_enabled:
+            video_cache = VideoDownloadCache(
+                cache_dir=params.config.cache.video_cache_path,
+                max_size_gb=params.config.cache.video_cache_max_size_gb,
+                max_age_days=params.config.cache.video_cache_max_age_days,
+            )
+            # One cache lifecycle owns all persistent-cache downloads for this
+            # generation. It scans once, then evicts from the manifest on exit.
+            with video_cache.begin_batch() as cache_batch:
+                assembly_clips = _extract_clips(params, cache_batch, run_output_dir)
+        else:
+            # Disabled cache means no interaction with the configured persistent
+            # video cache. Extraction uses disposable run-local downloads.
+            assembly_clips = _extract_clips(params, None, run_output_dir)
         run_tracker.complete_phase(items_processed=len(assembly_clips))
         _phase_times["download"] = _time.monotonic() - _phase_start
         pp.report("download", 1.0, "Clips downloaded")

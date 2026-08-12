@@ -1188,6 +1188,49 @@ class TestGenerateMemoryInner:
 
         assert call_order == ["extract", "assemble"]
 
+    def test_disabled_video_cache_never_constructs_or_mutates_persistent_cache(self, tmp_path):
+        """Disabled caching uses disposable downloads, not the configured cache root."""
+        from immich_memories.generate import _generate_memory_inner
+
+        persistent_root = tmp_path / "persistent-cache"
+        params = self._make_params(
+            tmp_path,
+            config=Config(
+                cache={
+                    "directory": str(persistent_root),
+                    "database": str(tmp_path / "runs.db"),
+                    "video_cache_enabled": False,
+                }
+            ),
+        )
+        patches, _, _ = self._patch_inner_deps(tmp_path)
+
+        with contextlib.ExitStack() as stack:
+            mocks = {name: stack.enter_context(patch) for name, patch in patches.items()}
+            _generate_memory_inner(params)
+
+        mocks["cache"].assert_not_called()
+        assert not params.config.cache.video_cache_path.exists()
+        assert mocks["extract"].call_args.args[1] is None
+
+    def test_enabled_video_cache_passes_one_batch_to_extraction(self, tmp_path):
+        """Enabled generation owns exactly one batch for all extraction downloads."""
+        from immich_memories.generate import _generate_memory_inner
+
+        params = self._make_params(tmp_path)
+        patches, _, _ = self._patch_inner_deps(tmp_path)
+        cache = MagicMock()
+        batch = MagicMock()
+        cache.begin_batch.return_value.__enter__.return_value = batch
+
+        with contextlib.ExitStack() as stack:
+            mocks = {name: stack.enter_context(patch) for name, patch in patches.items()}
+            mocks["cache"].return_value = cache
+            _generate_memory_inner(params)
+
+        cache.begin_batch.assert_called_once()
+        assert mocks["extract"].call_args.args[1] is batch
+
     def test_no_clips_after_extraction_raises(self, tmp_path):
         from immich_memories.generate import _generate_memory_inner
 

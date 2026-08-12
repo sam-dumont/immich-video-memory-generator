@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from tests.conftest import make_clip
+
 
 class TestDownloadClip:
     def test_returns_local_path_when_exists(self, tmp_path: Path) -> None:
@@ -20,6 +22,7 @@ class TestDownloadClip:
         result = download_clip(client=None, video_cache=MagicMock(), clip=clip, output_dir=tmp_path)
 
         assert result == local
+        assert local.exists()
 
     def test_returns_none_when_no_client(self, tmp_path: Path) -> None:
         """If client is None and no local path, return None."""
@@ -75,6 +78,59 @@ class TestDownloadClip:
 
         assert result == expected
         mock_cache.download_or_get.assert_called_once_with(mock_client, clip.asset)
+
+
+def test_disabled_cache_extraction_preserves_existing_local_path(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Only run-owned temporary downloads are cleaned up after extraction."""
+    from immich_memories.generate_clips import _extract_clips
+
+    local = tmp_path / "caller-owned.mp4"
+    local.write_bytes(b"caller video")
+    segment = tmp_path / "segment.mp4"
+    segment.write_bytes(b"segment")
+    clip = make_clip("existing-local", duration=5.0)
+    clip.local_path = str(local)
+    params = MagicMock()
+    params.clips = [clip]
+    params.progress_callback = None
+    params.clip_segments = {}
+    params.clip_rotations = {}
+    params.config = MagicMock()
+
+    monkeypatch.setattr("immich_memories.generate_downloads.download_clip", lambda *_args: local)
+    monkeypatch.setattr(
+        "immich_memories.processing.clips.extract_clip", lambda *_args, **_kwargs: segment
+    )
+    monkeypatch.setattr("immich_memories.generate_clips._probe_file_duration", lambda _path: 5.0)
+
+    _extract_clips(params, None, tmp_path)
+
+    assert local.exists()
+
+
+def test_disabled_cache_download_is_run_owned_and_cleaned(tmp_path: Path) -> None:
+    """Disabled cache downloads stay under the run directory, never OS temp or persistent cache."""
+    from immich_memories.generate_clips import _cleanup_temp_dirs
+    from immich_memories.generate_downloads import download_clip
+
+    clip = MagicMock()
+    clip.local_path = None
+    clip.live_burst_video_ids = None
+    clip.live_burst_trim_points = None
+    clip.asset.id = "ab-temporary"
+    clip.asset.live_photo_video_id = None
+    clip.asset.original_file_name = "clip.MOV"
+    client = MagicMock()
+    client.download_asset.side_effect = lambda _asset_id, path: path.write_bytes(b"video")
+
+    path = download_clip(client, None, clip, tmp_path)
+
+    assert path is not None
+    assert path.is_relative_to(tmp_path / ".temporary_downloads")
+    _cleanup_temp_dirs(tmp_path)
+    assert not path.exists()
 
 
 class TestAlignBurstSubset:

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -44,14 +46,22 @@ class CacheBatch:
 
     def __init__(self, cache: VideoDownloadCache) -> None:
         self._cache = cache
-        self._manifest = cache._scan_manifest()
+        self._condition = threading.Condition(cache._batch_lock)
+        self._manifest: dict[Path, _ManifestEntry] = {}
         self._invalidated = False
+        self._closing = False
         self._finished = False
+        self._active_operations = 0
+
+    def _initialize_manifest(self) -> None:
+        """Capture the initial manifest before this batch is returned to callers."""
+        self._manifest = self._cache._scan_manifest()
 
     @property
     def finished(self) -> bool:
         """Whether the batch has completed its final size maintenance."""
-        return self._finished
+        with self._condition:
+            return self._finished
 
     @property
     def cache_dir(self) -> Path:
@@ -59,8 +69,9 @@ class CacheBatch:
         return self._cache.cache_dir
 
     def __enter__(self) -> CacheBatch:
-        if self._finished:
-            raise RuntimeError("Cannot enter a finished cache batch")
+        with self._condition:
+            if self._finished:
+                raise RuntimeError("Cannot enter a finished cache batch")
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -68,20 +79,21 @@ class CacheBatch:
 
     def invalidate_manifest(self) -> None:
         """Require a replacement scan before finish after an external mutation."""
-        self._require_open()
-        self._invalidated = True
+        with self._condition:
+            self._require_open_locked()
+            self._invalidated = True
 
     def download_or_get(self, client: SyncImmichClient, asset: Asset) -> Path | None:
         """Return a cached video or download it, updating only this manifest."""
-        self._require_open()
-        return self._cache._download_or_get(client, asset, self._manifest)
+        return self._run_operation(lambda: self._cache._download_or_get(client, asset, self))
 
     def download_video_id(
         self, client: SyncImmichClient, video_id: str, extension: str = ".MOV"
     ) -> Path | None:
         """Download a known live-photo component into this batch manifest."""
-        self._require_open()
-        return self._cache._download_id(client, video_id, extension, self._manifest)
+        return self._run_operation(
+            lambda: self._cache._download_id(client, video_id, extension, self)
+        )
 
     def get_analysis_video(
         self,
@@ -91,31 +103,67 @@ class CacheBatch:
         enable_downscaling: bool = True,
     ) -> tuple[Path, Path]:
         """Download and optionally downscale within this batch lifecycle."""
-        self._require_open()
-        return self._cache._get_analysis_video(
-            client,
-            asset,
-            target_height=target_height,
-            enable_downscaling=enable_downscaling,
-            manifest=self._manifest,
+        return self._run_operation(
+            lambda: self._cache._get_analysis_video(
+                client,
+                asset,
+                target_height=target_height,
+                enable_downscaling=enable_downscaling,
+                batch=self,
+            )
         )
 
     def finish(self) -> int:
         """Evict from the in-memory manifest once; safe to call repeatedly."""
-        if self._finished:
-            return 0
+        with self._condition:
+            if self._finished:
+                return 0
+            if self._closing:
+                while not self._finished:
+                    self._condition.wait()
+                return 0
+            self._closing = True
+            while self._active_operations:
+                self._condition.wait()
+            invalidated = self._invalidated
         try:
-            if self._invalidated:
-                self._manifest = self._cache._scan_manifest()
-            return self._cache._evict_manifest(self._manifest)
+            if invalidated:
+                refreshed_manifest = self._cache._scan_manifest()
+                with self._condition:
+                    self._manifest = refreshed_manifest
+            with self._condition:
+                manifest = self._manifest.copy()
+            return self._cache._evict_manifest(manifest)
         finally:
             # A maintenance failure must never strand the cache in an active
             # state; the original error still propagates to the caller.
-            self._finished = True
-            self._cache._active_batch = None
+            with self._condition:
+                self._finished = True
+                self._closing = False
+                if self._cache._active_batch is self:
+                    self._cache._active_batch = None
+                self._condition.notify_all()
 
-    def _require_open(self) -> None:
-        if self._finished:
+    def _run_operation(self, operation: Callable[[], Path | None | tuple[Path, Path]]):
+        """Keep finish from racing an operation without locking network or FFmpeg I/O."""
+        with self._condition:
+            self._require_open_locked()
+            self._active_operations += 1
+        try:
+            return operation()
+        finally:
+            with self._condition:
+                self._active_operations -= 1
+                if self._active_operations == 0:
+                    self._condition.notify_all()
+
+    def _record_manifest_entry(self, path: Path) -> None:
+        """Update one manifest entry under the narrow batch lock."""
+        with self._condition:
+            self._cache._record_manifest_entry(self._manifest, path)
+
+    def _require_open_locked(self) -> None:
+        if self._finished or self._closing:
             raise RuntimeError("Cannot use a finished cache batch")
 
 
@@ -135,6 +183,7 @@ class VideoDownloadCache:
         self.cache_dir = cache_dir
         self.max_size_gb = max_size_gb
         self.max_age_days = max_age_days
+        self._batch_lock = threading.RLock()
         self._active_batch: CacheBatch | None = None
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -145,10 +194,18 @@ class VideoDownloadCache:
         one-off methods create a short-lived batch themselves so they continue
         to enforce the size cap instead of allowing unbounded cache growth.
         """
-        if self._active_batch is not None:
-            raise RuntimeError("A cache batch is already active")
-        batch = CacheBatch(self)
-        self._active_batch = batch
+        with self._batch_lock:
+            if self._active_batch is not None:
+                raise RuntimeError("A cache batch is already active")
+            batch = CacheBatch(self)
+            self._active_batch = batch
+        try:
+            batch._initialize_manifest()
+        except Exception:
+            with self._batch_lock:
+                if self._active_batch is batch:
+                    self._active_batch = None
+            raise
         return batch
 
     def _video_path(self, asset_id: str, ext: str) -> Path:
@@ -185,7 +242,7 @@ class VideoDownloadCache:
         self,
         client: SyncImmichClient,
         asset: Asset,
-        manifest: dict[Path, _ManifestEntry],
+        batch: CacheBatch,
     ) -> Path | None:
         """Download implementation that updates a caller-owned manifest."""
         # For live photos, the video is a separate asset
@@ -193,19 +250,19 @@ class VideoDownloadCache:
         ext = Path(asset.original_file_name or "video.mp4").suffix or ".mp4"
         if asset.live_photo_video_id:
             ext = ".MOV"  # Live photo videos are always MOV
-        return self._download_id(client, download_id, ext, manifest)
+        return self._download_id(client, download_id, ext, batch)
 
     def _download_id(
         self,
         client: SyncImmichClient,
         download_id: str,
         extension: str,
-        manifest: dict[Path, _ManifestEntry],
+        batch: CacheBatch,
     ) -> Path | None:
         """Download one resolved video ID and update the active manifest."""
         cached = self._find_cached(download_id)
         if cached is not None:
-            self._record_manifest_entry(manifest, cached)
+            batch._record_manifest_entry(cached)
             return cached
 
         dest = self._video_path(download_id, extension)
@@ -214,7 +271,7 @@ class VideoDownloadCache:
         try:
             client.download_asset(download_id, dest)
             if dest.exists() and dest.stat().st_size > 0:
-                self._record_manifest_entry(manifest, dest)
+                batch._record_manifest_entry(dest)
                 return dest
             logger.warning("Downloaded file empty or missing: %s", dest)
             dest.unlink(missing_ok=True)
@@ -253,10 +310,10 @@ class VideoDownloadCache:
         asset: Asset,
         target_height: int,
         enable_downscaling: bool,
-        manifest: dict[Path, _ManifestEntry],
+        batch: CacheBatch,
     ) -> tuple[Path, Path]:
         """Batch-aware implementation for an analysis source video."""
-        original = self._download_or_get(client, asset, manifest)
+        original = self._download_or_get(client, asset, batch)
         if original is None:
             msg = f"Failed to download video {asset.id}"
             raise ValueError(msg)
@@ -307,7 +364,7 @@ class VideoDownloadCache:
                 timeout=120,
             )
             if result.returncode == 0 and downscaled.exists() and downscaled.stat().st_size > 1024:
-                self._record_manifest_entry(manifest, downscaled)
+                batch._record_manifest_entry(downscaled)
                 return downscaled, original
             if downscaled.exists():
                 downscaled.unlink()  # Remove corrupted file
