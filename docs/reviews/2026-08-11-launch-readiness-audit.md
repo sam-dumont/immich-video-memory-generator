@@ -489,3 +489,34 @@ Behavioral evidence before snapshot refresh:
 - Generation/download/encoding/HDR/probe: 307 passed.
 - Streaming/title/security/tracking: 87 passed.
 - Analyzer contract: pin, fail-closed status handling, and supported exclusions passed.
+
+### CI-only launch repairs
+
+The remaining failures on the older PR head were reproduced and closed on the final branch:
+
+- The hermetic `launch-check` job now materializes Git LFS fixtures before running Ultra HDR tests.
+- The Make prerequisite contract parser ignores GNU Make target-specific variable assignments and
+  combines real prerequisite declarations.
+- The duplication gate pins `jscpd@5.0.14` and removes the deleted `--gitignore` flag; jscpd 5
+  respects `.gitignore` by default.
+- Focused contract and Ultra HDR coverage passed: 24 tests.
+- The duplication gate passed at 3.34%, below the 5% limit.
+- Commit `1dc0c3f` passed every configured pre-commit policy gate, including diff coverage.
+
+### Dependency and benchmark evidence
+
+`make pip-audit` reported `No known vulnerabilities found` for the final locked environment. The
+lock already resolves the fixed dependency line (including NiceGUI 3.9.0, Pillow 12.1.1,
+Starlette 0.52.1, aiohttp 3.13.5, and cryptography 46.0.7), so no speculative dependency upgrade
+was made.
+
+`make benchmark-assembly` passed all four tests in 69.65 seconds:
+
+| Scenario | Clips/profile | Wall time | Peak child RSS |
+|---|---|---:|---:|
+| Minimal | 2 × 720p/3s | 0.7s | 415 MB |
+| Typical | 5 × 1080p/5s | 3.9s | 961 MB |
+| Heavy | 8 × 1080p/10s | 12.0s | 964 MB |
+
+The generated `tests/perf-results.json` and `tests/benchmark-assembly.json` were inspected and then
+restored to their exact pre-run SHA-256 hashes. The benchmark left no source or fixture changes.
