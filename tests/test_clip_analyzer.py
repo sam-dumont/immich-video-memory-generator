@@ -618,6 +618,63 @@ class TestRunAnalysisWithFallback:
         assert result == (0.0, 3.0, 0.2, None)
 
 
+class TestReusableAnalysisServices:
+    def test_unified_services_are_constructed_once_for_a_clip_batch(self):
+        """Ten clips reuse one scorer and unified analyzer rather than rebuilding models."""
+        analyzer, _, _, _ = _make_analyzer()
+        clips = [make_clip(f"reused-{index}", duration=10.0) for index in range(10)]
+        segment = MagicMock(
+            start_time=1.0,
+            end_time=5.0,
+            total_score=0.8,
+            audio_categories=None,
+            llm_description=None,
+            llm_emotion=None,
+            cut_quality=1.0,
+        )
+
+        with (
+            patch("immich_memories.analysis.scoring.SceneScorer") as scorer_cls,
+            patch(
+                "immich_memories.analysis.unified_analyzer.UnifiedSegmentAnalyzer"
+            ) as unified_cls,
+            patch("immich_memories.analysis.clip_analyzer.gc.collect") as collect,
+            patch.object(
+                analyzer, "_init_content_analyzer", return_value=(MagicMock(), 0.3)
+            ) as content,
+            patch.object(analyzer, "_get_cached_audio_analyzer", return_value=MagicMock()) as audio,
+        ):
+            unified_cls.return_value.analyze.return_value = [segment]
+            for clip in clips:
+                analyzer._run_unified_analysis(clip, MagicMock(), MagicMock(), 10.0)
+            analyzer.close()
+
+        scorer_cls.assert_called_once()
+        unified_cls.assert_called_once()
+        content.assert_called_once()
+        audio.assert_called_once()
+        assert unified_cls.return_value.reset_for_video.call_count == 11
+        collect.assert_called_once()
+
+    def test_close_continues_cleanup_and_collects_once_after_resource_failure(self):
+        analyzer, _, _, _ = _make_analyzer()
+        unified = MagicMock()
+        unified.reset_for_video.side_effect = RuntimeError("capture release failed")
+        content = MagicMock()
+        audio = MagicMock()
+        analyzer._cached_unified_analyzer = unified
+        analyzer._cached_content_analyzer = content
+        analyzer._cached_audio_analyzer = audio
+
+        with patch("immich_memories.analysis.clip_analyzer.gc.collect") as collect:
+            analyzer.close()
+
+        unified.clear_cache.assert_called_once()
+        content.close.assert_called_once()
+        audio.cleanup.assert_called_once()
+        collect.assert_called_once()
+
+
 # ---------------------------------------------------------------------------
 # phase_analyze — end-to-end orchestration
 # ---------------------------------------------------------------------------
@@ -683,11 +740,11 @@ class TestPhaseAnalyzeOrchestration:
         tracker.complete_phase.assert_called_once()
 
     @patch("immich_memories.analysis.content_analyzer.ContentAnalyzer")
-    def test_cleanup_runs_after_phase(self, mock_ca_cls):
+    def test_resources_survive_phase_until_explicit_close(self, mock_ca_cls):
         analyzer, _, _, _ = _make_analyzer()
         tracker = _make_tracker()
 
-        # Pre-seed cached analyzers to verify cleanup clears them
+        # Pre-seed reusable analyzers; SmartPipeline owns their final teardown.
         mock_content = MagicMock()
         mock_audio = MagicMock()
         analyzer._cached_content_analyzer = mock_content
@@ -697,6 +754,10 @@ class TestPhaseAnalyzeOrchestration:
 
         analyzer.phase_analyze([make_clip("y", duration=5.0)], tracker)
 
-        # Verify cleanup actually cleared the cached analyzers
+        assert analyzer._cached_content_analyzer is mock_content
+        assert analyzer._cached_audio_analyzer is mock_audio
+
+        analyzer.close()
+
         assert analyzer._cached_content_analyzer is None
         assert analyzer._cached_audio_analyzer is None

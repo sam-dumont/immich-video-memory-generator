@@ -1952,13 +1952,8 @@ class TestClipAnalyzerDownloadVideo:
         original_path = Path("/tmp/cache/original.mp4")
         mock_video_cache.get_analysis_video.return_value = (analysis_path, original_path)
 
-        with (
-            patch(
-                "immich_memories.cache.video_cache.VideoDownloadCache",
-                return_value=mock_video_cache,
-            ),
-            patch.object(Path, "exists", return_value=True),
-        ):
+        analyzer._video_cache = mock_video_cache
+        with patch.object(Path, "exists", return_value=True):
             a_vid, o_vid, temp = analyzer._download_analysis_video(clip)
 
         assert a_vid == analysis_path
@@ -2166,8 +2161,7 @@ class TestClipAnalyzerCleanup:
         mock_unified = MagicMock()
         mock_unified._audio_analyzer = MagicMock()
         analyzer._cleanup_analyzer(mock_unified)
-        mock_unified.clear_cache.assert_called_once()
-        mock_unified.scorer.release_capture.assert_called_once()
+        mock_unified.reset_for_video.assert_called_once()
 
     def test_cleanup_with_none(self):
         analyzer = self._make_analyzer()

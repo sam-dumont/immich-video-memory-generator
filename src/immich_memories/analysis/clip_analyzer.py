@@ -16,7 +16,9 @@ if TYPE_CHECKING:
     from immich_memories.analysis.llm_response_parser import ContentAnalyzer
     from immich_memories.analysis.preview_builder import PreviewBuilder
     from immich_memories.analysis.progress import ProgressTracker
+    from immich_memories.analysis.scoring import SceneScorer
     from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineConfig
+    from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.audio.content_analyzer import AudioContentAnalyzer
@@ -62,6 +64,8 @@ class ClipAnalyzer:
             )
         self._cached_content_analyzer: ContentAnalyzer | None = None
         self._cached_audio_analyzer: AudioContentAnalyzer | None = None
+        self._cached_scene_scorer: SceneScorer | None = None
+        self._cached_unified_analyzer: UnifiedSegmentAnalyzer | None = None
 
     def bind_cache_batch(self, batch: CacheBatch | None) -> None:
         """Use the SmartPipeline-owned batch for every cache download in this run."""
@@ -150,10 +154,7 @@ class ClipAnalyzer:
                     )
                 )
 
-            gc.collect()
-
         tracker.complete_phase()
-        self._cleanup_pipeline_resources()
 
         logger.info(f"Phase 3: Analyzed {len(results)} clips")
 
@@ -305,31 +306,41 @@ class ClipAnalyzer:
     def _cleanup_analyzer(
         self, unified_analyzer: object | None, content_analyzer: object | None = None
     ) -> None:
-        """Clean up analyzer resources to prevent OOM."""
+        """Reset per-video analyzer state while retaining reusable services."""
+        with contextlib.suppress(Exception):
+            if unified_analyzer is not None:
+                unified_analyzer.reset_for_video()
+
+    def close(self) -> None:
+        """Release reusable native/model resources once after an analysis batch."""
+        unified_analyzer = self._cached_unified_analyzer
+        self._cached_unified_analyzer = None
+        self._cached_scene_scorer = None
+        content_analyzer = self._cached_content_analyzer
+        self._cached_content_analyzer = None
+        audio_analyzer = self._cached_audio_analyzer
+        self._cached_audio_analyzer = None
+
+        with contextlib.suppress(Exception):
+            if unified_analyzer is not None:
+                unified_analyzer.reset_for_video()
         with contextlib.suppress(Exception):
             if unified_analyzer is not None:
                 unified_analyzer.clear_cache()
-                unified_analyzer.scorer.release_capture()
-                if hasattr(unified_analyzer, "_audio_analyzer"):
-                    unified_analyzer._audio_analyzer = None
-                del unified_analyzer
+        with contextlib.suppress(Exception):
+            if content_analyzer is not None and hasattr(content_analyzer, "close"):
+                content_analyzer.close()
+        with contextlib.suppress(Exception):
+            if audio_analyzer is not None and hasattr(audio_analyzer, "cleanup"):
+                audio_analyzer.cleanup()
+        try:
             gc.collect()
+        finally:
+            logger.debug("Pipeline resources cleaned up")
 
     def _cleanup_pipeline_resources(self) -> None:
-        """Clean up long-lived pipeline resources after analysis phase."""
-        with contextlib.suppress(Exception):
-            if self._cached_content_analyzer:
-                if hasattr(self._cached_content_analyzer, "close"):
-                    self._cached_content_analyzer.close()
-                del self._cached_content_analyzer
-                self._cached_content_analyzer = None
-            if self._cached_audio_analyzer:
-                if hasattr(self._cached_audio_analyzer, "cleanup"):
-                    self._cached_audio_analyzer.cleanup()
-                del self._cached_audio_analyzer
-                self._cached_audio_analyzer = None
-            gc.collect()
-            logger.debug("Pipeline resources cleaned up")
+        """Compatibility wrapper for the explicit batch teardown."""
+        self.close()
 
     def _run_unified_analysis(
         self,
@@ -339,30 +350,7 @@ class ClipAnalyzer:
         video_duration: float,
     ) -> tuple[float, float, float, dict[str, object] | None]:
         """Run unified audio-aware analysis."""
-        from immich_memories.analysis.scoring import SceneScorer
-        from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
-
-        config = self._app_config
-        content_analyzer, content_weight = self._init_content_analyzer()
-        audio_analyzer = self._get_cached_audio_analyzer()
-
-        unified_analyzer = UnifiedSegmentAnalyzer(
-            scorer=SceneScorer(
-                content_analysis_config=config.content_analysis,
-                analysis_config=config.analysis,
-            ),
-            content_analyzer=content_analyzer,
-            min_segment_duration=config.analysis.min_segment_duration,
-            max_segment_duration=config.analysis.max_segment_duration,
-            silence_threshold_db=config.analysis.silence_threshold_db,
-            cut_point_merge_tolerance=config.analysis.cut_point_merge_tolerance,
-            content_weight=content_weight,
-            audio_content_enabled=config.audio_content.enabled,
-            audio_content_weight=config.audio_content.weight,
-            audio_analyzer=audio_analyzer,
-            audio_content_config=config.audio_content,
-            analysis_config=config.analysis,
-        )
+        unified_analyzer = self._get_unified_analyzer()
 
         try:
             segments = unified_analyzer.analyze(
@@ -410,7 +398,38 @@ class ClipAnalyzer:
             del segments
             return start, end, score, llm_analysis
         finally:
-            self._cleanup_analyzer(unified_analyzer, content_analyzer)
+            self._cleanup_analyzer(unified_analyzer)
+
+    def _get_unified_analyzer(self) -> UnifiedSegmentAnalyzer:
+        """Create the immutable-config analysis services once for this batch."""
+        if self._cached_unified_analyzer is not None:
+            return self._cached_unified_analyzer
+
+        from immich_memories.analysis.scoring import SceneScorer
+        from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
+
+        config = self._app_config
+        content_analyzer, content_weight = self._init_content_analyzer()
+        audio_analyzer = self._get_cached_audio_analyzer()
+        self._cached_scene_scorer = SceneScorer(
+            content_analysis_config=config.content_analysis,
+            analysis_config=config.analysis,
+        )
+        self._cached_unified_analyzer = UnifiedSegmentAnalyzer(
+            scorer=self._cached_scene_scorer,
+            content_analyzer=content_analyzer,
+            min_segment_duration=config.analysis.min_segment_duration,
+            max_segment_duration=config.analysis.max_segment_duration,
+            silence_threshold_db=config.analysis.silence_threshold_db,
+            cut_point_merge_tolerance=config.analysis.cut_point_merge_tolerance,
+            content_weight=content_weight,
+            audio_content_enabled=config.audio_content.enabled,
+            audio_content_weight=config.audio_content.weight,
+            audio_analyzer=audio_analyzer,
+            audio_content_config=config.audio_content,
+            analysis_config=config.analysis,
+        )
+        return self._cached_unified_analyzer
 
     def _run_analysis_with_fallback(
         self,
@@ -492,4 +511,3 @@ class ClipAnalyzer:
                 with contextlib.suppress(Exception):
                     cleanup_downscaled(original_video)
                     logger.debug(f"Cleaned up downscaled video for: {original_video.name}")
-            gc.collect()

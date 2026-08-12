@@ -14,6 +14,7 @@ from immich_memories.security import sanitize_filename
 
 if TYPE_CHECKING:
     from immich_memories.analysis.smart_pipeline import PipelineConfig
+    from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.cache.database import VideoAnalysisCache
@@ -41,10 +42,17 @@ class PreviewBuilder:
         self._content_analysis_config = content_analysis_config
         self._video_cache = video_cache
         self._cache_batch: CacheBatch | None = None
+        self._legacy_analyzer: UnifiedSegmentAnalyzer | None = None
+        self._owns_legacy_analyzer = False
 
     def bind_cache_batch(self, batch: CacheBatch | None) -> None:
         """Use the SmartPipeline-owned batch for download requests in this run."""
         self._cache_batch = batch
+
+    def bind_legacy_analyzer(self, analyzer: UnifiedSegmentAnalyzer | None) -> None:
+        """Bind ClipAnalyzer's reusable service for legacy fallback analysis."""
+        self._legacy_analyzer = analyzer
+        self._owns_legacy_analyzer = False
 
     def find_cached_preview(self, asset_id: str, start: float, end: float) -> str | None:
         """Find or build a preview for a cached clip from the video cache."""
@@ -123,9 +131,7 @@ class PreviewBuilder:
         config: PipelineConfig,
         analysis_cache: VideoAnalysisCache,
     ) -> tuple[float, float, float]:
-        """Run legacy analysis using UnifiedSegmentAnalyzer (visual + silence boundaries)."""
-        import gc
-
+        """Run legacy analysis using a bound or standalone reusable analyzer."""
         from immich_memories.analysis.scoring import SceneScorer
         from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
         from immich_memories.config_models import AudioContentConfig
@@ -134,47 +140,58 @@ class PreviewBuilder:
         min_segment = a_config.min_segment_duration
         max_segment = a_config.max_segment_duration
 
-        scorer = SceneScorer(
-            content_analysis_config=self._content_analysis_config,
-            analysis_config=a_config,
-        )
-        analyzer = UnifiedSegmentAnalyzer(
-            scorer=scorer,
-            min_segment_duration=min_segment,
-            max_segment_duration=max_segment,
-            audio_content_config=AudioContentConfig(),
-            analysis_config=a_config,
-        )
-        segments = analyzer.analyze(analysis_video, video_duration=video_duration)
+        analyzer = self._legacy_analyzer
+        if analyzer is None:
+            scorer = SceneScorer(
+                content_analysis_config=self._content_analysis_config,
+                analysis_config=a_config,
+            )
+            analyzer = UnifiedSegmentAnalyzer(
+                scorer=scorer,
+                min_segment_duration=min_segment,
+                max_segment_duration=max_segment,
+                audio_content_config=AudioContentConfig(),
+                analysis_config=a_config,
+            )
+            self._legacy_analyzer = analyzer
+            self._owns_legacy_analyzer = True
 
-        if not segments:
-            duration = clip.duration_seconds or 10
-            return 0.0, min(duration, config.avg_clip_duration), 0.0
+        try:
+            segments = analyzer.analyze(analysis_video, video_duration=video_duration)
 
-        best = segments[0]  # Sorted by score, best first
-        segment_duration = max(min_segment, min(best.end_time - best.start_time, max_segment))
+            if not segments:
+                duration = clip.duration_seconds or 10
+                return 0.0, min(duration, config.avg_clip_duration), 0.0
 
-        start = best.start_time
-        end = start + segment_duration
-        score = best.total_score
+            best = segments[0]  # Sorted by score, best first
+            segment_duration = max(min_segment, min(best.end_time - best.start_time, max_segment))
 
-        if end > video_duration:
-            end = video_duration
-            start = max(0, end - segment_duration)
+            start = best.start_time
+            end = start + segment_duration
+            score = best.total_score
 
-        # Silence adjustment is handled by UnifiedSegmentAnalyzer's boundary detection
+            if end > video_duration:
+                end = video_duration
+                start = max(0, end - segment_duration)
 
-        moments = [seg.to_moment_score() for seg in segments]
-        analysis_cache.save_analysis(
-            asset=clip.asset, video_info=clip, perceptual_hash=None, segments=moments
-        )
+            moments = [seg.to_moment_score() for seg in segments]
+            analysis_cache.save_analysis(
+                asset=clip.asset, video_info=clip, perceptual_hash=None, segments=moments
+            )
 
-        del segments, moments
-        analyzer.clear_cache()
-        del analyzer
-        gc.collect()
+            return start, end, score
+        finally:
+            analyzer.reset_for_video()
 
-        return start, end, score
+    def close(self) -> None:
+        """Release only standalone legacy resources; bound services belong to ClipAnalyzer."""
+        if self._owns_legacy_analyzer and self._legacy_analyzer is not None:
+            with contextlib.suppress(Exception):
+                self._legacy_analyzer.reset_for_video()
+            with contextlib.suppress(Exception):
+                self._legacy_analyzer.clear_cache(release_audio_analyzer=True)
+        self._legacy_analyzer = None
+        self._owns_legacy_analyzer = False
 
     def extract_and_log_preview(
         self,

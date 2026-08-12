@@ -9,6 +9,7 @@ Orchestrates the 4-phase pipeline:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -232,6 +233,12 @@ class SmartPipeline:
             logger.error(f"Pipeline failed: {e}")
             self.tracker.finish()
             raise
+        finally:
+            # Analysis owns native captures/models regardless of cache mode or failure.
+            with contextlib.suppress(Exception):
+                self.analyzer.close()
+            with contextlib.suppress(Exception):
+                self.previewer.close()
 
     def _analyze_with_cache_batch(self, candidates: list[VideoClipInfo]) -> list[ClipWithSegment]:
         """Run analysis with one shared cache manifest when file caching is enabled."""

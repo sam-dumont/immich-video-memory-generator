@@ -83,6 +83,44 @@ def _make_segment(start: float, end: float, score: float) -> ScoredSegment:
 
 
 class TestRunLegacyAnalysis:
+    def test_reuses_standalone_analyzer_across_legacy_calls(self):
+        builder = _make_builder()
+        segment = _make_segment(1.0, 4.0, 0.8)
+        clip = MagicMock(duration_seconds=10.0)
+        config = MagicMock(avg_clip_duration=5.0)
+        cache = MagicMock()
+
+        with patch(
+            "immich_memories.analysis.unified_analyzer.UnifiedSegmentAnalyzer"
+        ) as analyzer_cls:
+            analyzer_cls.return_value.analyze.return_value = [segment]
+            builder.run_legacy_analysis(clip, Path("/first.mp4"), None, 10.0, config, cache)
+            builder.run_legacy_analysis(clip, Path("/second.mp4"), None, 10.0, config, cache)
+
+        analyzer_cls.assert_called_once()
+        assert analyzer_cls.return_value.reset_for_video.call_count == 2
+
+    def test_standalone_legacy_close_releases_reusable_service_without_gc(self):
+        builder = _make_builder()
+        segment = _make_segment(1.0, 4.0, 0.8)
+        clip = MagicMock(duration_seconds=10.0)
+        config = MagicMock(avg_clip_duration=5.0)
+        cache = MagicMock()
+
+        with (
+            patch(
+                "immich_memories.analysis.unified_analyzer.UnifiedSegmentAnalyzer"
+            ) as analyzer_cls,
+            patch("gc.collect") as collect,
+        ):
+            analyzer_cls.return_value.analyze.return_value = [segment]
+            builder.run_legacy_analysis(clip, Path("/video.mp4"), None, 10.0, config, cache)
+            builder.close()
+
+        analyzer_cls.return_value.reset_for_video.assert_called()
+        analyzer_cls.return_value.clear_cache.assert_called_once_with(release_audio_analyzer=True)
+        collect.assert_not_called()
+
     def test_returns_best_segment(self):
         builder = _make_builder()
         seg = _make_segment(1.0, 4.0, 0.8)

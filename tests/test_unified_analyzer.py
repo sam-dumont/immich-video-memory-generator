@@ -66,6 +66,28 @@ class TestCutPoint:
         assert sorted_points[2].time == 15.0
 
 
+class TestResetForVideo:
+    def test_releases_capture_and_clears_audio_cache_without_destroying_models(self):
+        scorer = MagicMock()
+        audio_analyzer = MagicMock()
+        content_analyzer = MagicMock()
+        analyzer = UnifiedSegmentAnalyzer(
+            scorer=scorer,
+            content_analyzer=content_analyzer,
+            audio_analyzer=audio_analyzer,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
+        analyzer._audio_analysis_cache["first-video"] = MagicMock()
+
+        analyzer.reset_for_video()
+
+        assert analyzer._audio_analysis_cache == {}
+        assert analyzer.content_analyzer is content_analyzer
+        assert analyzer._audio_analyzer is audio_analyzer
+        scorer.release_capture.assert_called_once()
+
+
 class TestScoredSegment:
     """Tests for ScoredSegment dataclass."""
 

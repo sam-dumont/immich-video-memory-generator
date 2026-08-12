@@ -7,7 +7,6 @@ scene detection with audio analysis to find natural cut points.
 
 from __future__ import annotations
 
-import gc
 import logging
 import operator
 import subprocess
@@ -143,6 +142,11 @@ class UnifiedSegmentAnalyzer:
             if hasattr(self._audio_analyzer, "cleanup"):
                 self._audio_analyzer.cleanup()
             self._audio_analyzer = None
+
+    def reset_for_video(self) -> None:
+        """Release current-video state while retaining reusable configuration and models."""
+        self._audio_analysis_cache.clear()
+        self.scorer.release_capture()
 
     def _get_max_segment_for_source(
         self, source_duration: float, has_good_scene: bool = False
@@ -719,7 +723,7 @@ class UnifiedSegmentAnalyzer:
         """
         scored = []
 
-        for i, (start_cp, end_cp) in enumerate(candidates):
+        for start_cp, end_cp in candidates:
             segment = ScoredSegment(
                 start_time=start_cp.time,
                 end_time=end_cp.time,
@@ -759,15 +763,8 @@ class UnifiedSegmentAnalyzer:
             segment.total_score = self._compute_total_score(segment)
             scored.append(segment)
 
-            # Memory cleanup every 5 candidates to prevent OOM on long videos
-            if (i + 1) % 5 == 0:
-                gc.collect()
-                logger.debug(f"Memory cleanup after {i + 1}/{len(candidates)} candidates")
-
-        # Final cleanup after all candidates
-        # Release cached video capture to free memory
+        # Direct UnifiedSegmentAnalyzer callers have no ClipAnalyzer lifecycle.
         self.scorer.release_capture()
-        gc.collect()
         return scored
 
     def _run_llm_scoring(
