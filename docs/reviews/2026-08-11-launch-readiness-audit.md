@@ -2,17 +2,20 @@
 date: 2026-08-11
 branch: codex/launch-hardening
 scope: launch readiness, automation, performance, Immich v2/v3 compatibility, and user flow
-verdict: public beta is close; stable launch is blocked by P0 items
+verdict: all identified P0 launch blockers are closed; P1 performance and operations work remains
 ---
 
 # Launch Readiness Audit — 2026-08-11
 
 ## Executive verdict
 
-The application is close to a public beta, but it is not ready for an unattended stable
-launch. The core pipeline is well tested and fast on small synthetic workloads. The launch
-blockers are contract failures around automation, Immich v3, output encoding, versioning,
-and browser E2E—not a need to rewrite the video engine or compile Python with Cython.
+The original review found the application close to a public beta but unsafe for an unattended
+stable launch. The blockers were contract failures around automation, Immich v3, output encoding,
+versioning, and browser E2E—not a need to rewrite the video engine or compile Python with Cython.
+
+Those P0 blockers are now closed and independently reviewed. The complete launch-candidate gate
+passes. P1 still contains measured performance work and operational-flow cleanup, so this is a
+launch candidate rather than an excuse to skip the remaining work.
 
 The most urgent problem was operational: the installed daily automation could report success
 without producing a new video, retry bad candidates every day, and generate files without a
@@ -40,11 +43,44 @@ approval. Its plist remains on disk and nothing was deleted.
   `immich-memories config test` passed with both default `auto` detection and an explicit `v3`
   override. Key final commits: `33745c6`, `5e46078`, `822a870`, `cecdf7a`, `c6cea3b`, `ee389a0`,
   `144c38f`, and `59e97b2`.
-- **P0.4–P0.6: still open.** Output codec enforcement, unified version reporting, and required
-  browser E2E remain launch blockers and will be handled after the Immich compatibility slice.
+- **P0.4 output contract: fixed and independently approved.** One immutable encoding plan now
+  controls final assembly, clips, titles, optional music, container choice, HDR policy, and
+  hardware fallback. FFprobe validates codec, container, streams, dimensions, duration, and
+  decodability before the artifact is published. Optional music or delivery failure cannot erase
+  a valid video.
+- **P0.5 version identity: fixed and independently approved.** Hatch VCS owns runtime and build
+  identity. CLI, Python, health, wheel metadata, and Docker build metadata consume the same value.
+  The final local package reported `0.37.2.dev113` on CLI, Python, and wheel metadata.
+- **P0.6 required E2E: fixed and independently approved.** The required browser gate uses a local
+  fake Immich v3 service, has no environment-based skip, drives Chromium through the real UI,
+  renders a real video, and validates the output probe. CI and `make launch-check` require it.
+- **P0.7 artifact delivery lifecycle: fixed and independently approved.** Artifact completion is
+  durable before optional delivery. Failed uploads remain pending, the next daily run retries the
+  oldest pending artifact before new generation, and the UI uses the same authoritative run.
+- **P0 release gate: passed.** See the exact command evidence below. Documentation review also
+  closed the one reported stable-JSON example omission.
 
-The LaunchAgent remains unloaded. Do not reactivate unattended generation until every P0 above
-is closed and the final release gate passes.
+The LaunchAgent remains unloaded by explicit owner instruction. P0 completion does not reactivate
+it; loading the job is a separate action that was not requested.
+
+## Final P0 gate evidence — 2026-08-11
+
+| Check | Result |
+|---|---|
+| Full pytest suite | 4,084 passed, 7 skipped, 658 deselected, 20 warnings |
+| Required hermetic browser E2E | 24 passed, 0 skipped; Chromium rendered and probed a real video |
+| Ruff | Clean; 497 Python files already formatted |
+| Mypy | Clean across 237 source files |
+| Import contracts | 2 kept, 0 broken across 328 files and 2,033 dependencies |
+| Documentation contracts | 39 passed |
+| Docusaurus production build | Passed |
+| Package build | Wheel and sdist built; Twine accepted both |
+| Version consistency | CLI, Python, and wheel metadata all `0.37.2.dev113` |
+| Installed LaunchAgent | Not loaded; `launchctl print` exited 113 with “Could not find service” |
+
+The plist is still present at
+`/Users/sam/Library/LaunchAgents/com.immich-memories.auto.plist`. No scheduler was loaded and no
+user videos, run directories, caches, database rows, or generated output were deleted.
 
 ## Safety action already taken
 
@@ -52,7 +88,7 @@ is closed and the final release gate passes.
 - Preserved plist: `/Users/sam/Library/LaunchAgents/com.immich-memories.auto.plist`
 - Verified state: `launchctl print` reports that the service is not loaded
 - Deleted files: none
-- Automatic reactivation: forbidden until the P0 automation fixes are verified
+- Automatic reactivation: not performed; loading requires a separate explicit owner request
 
 ## Evidence baseline
 
@@ -116,7 +152,7 @@ it must not all be attributed to the scheduler.
 
 ## P0 — launch blockers
 
-### P0.1 — Smart automation can lie, repeat, and generate the wrong thing
+### P0.1 — Smart automation correctness — closed
 
 Confirmed root causes:
 
@@ -149,7 +185,7 @@ Additional automation defects:
 - The current candidate scorer limits list display but does not enforce cross-run variety.
   Monthly and activity-burst backlogs can win on consecutive days.
 
-Required result:
+Closed result:
 
 - One daily `auto run` entry point decides what, if anything, should happen.
 - At most one generation candidate is attempted per invocation.
@@ -160,7 +196,7 @@ Required result:
 - A failed delivery retries the existing artifact before any new render.
 - The legacy exact-time scheduler is deprecated and cannot activate implicitly.
 
-### P0.2 — Automation lacks hard variety controls
+### P0.2 — Automation variety controls — closed
 
 The visible monthly flood is explained by two candidate sources:
 
@@ -170,7 +206,7 @@ The visible monthly flood is explained by two candidate sources:
 Completing one candidate exposes the next monthly candidate on the following day. A score
 penalty cannot guarantee variety when the backlog is large.
 
-Required result:
+Closed result:
 
 - Automatic regular monthly reviews consider only the most recently completed month.
 - Older missing months are manual backfills.
@@ -232,7 +268,7 @@ Official references:
 - [Immich v3.1.0 OpenAPI specification](https://raw.githubusercontent.com/immich-app/immich/v3.1.0/open-api/immich-openapi-specs.json)
 - [Immich v3.1.0 release](https://github.com/immich-app/immich/discussions/30359)
 
-### P0.4 — Output codec and hardware settings are not honored
+### P0.4 — Output codec and hardware settings — closed
 
 The audited user configuration requested 4K H.264. Produced files were 4K HEVC.
 
@@ -244,7 +280,7 @@ Root cause:
 - Final assembly also ignores `hardware.enabled`.
 - `AssemblySettings.preserve_hdr` defaults to true and is not derived from output config.
 
-Required result:
+Closed result:
 
 - Codec selection is authoritative: H.264, H.265, and ProRes produce their requested codec.
 - Disabling hardware uses the matching software encoder.
@@ -253,7 +289,7 @@ Required result:
 - Container/codec combinations are validated before rendering.
 - `ffprobe` validates the final codec, container, streams, resolution, and duration.
 
-### P0.5 — Version reporting has four conflicting sources
+### P0.5 — Version reporting — closed
 
 Observed versions:
 
@@ -262,10 +298,10 @@ Observed versions:
 - Editable distribution metadata: `0.36.6.dev5`
 - Docker argument/label and semantic-release configuration: `0.2.0`
 
-Required result: Git-derived build metadata is the single source for CLI, UI, health,
+Closed result: Git-derived build metadata is the single source for CLI, UI, health,
 Python package, Docker metadata, and releases.
 
-### P0.6 — Browser E2E is not a launch gate
+### P0.6 — Browser E2E launch gate — closed
 
 Confirmed gaps:
 
@@ -278,7 +314,7 @@ Confirmed gaps:
 - The UI music path creates a tracker without starting a run, leading to swallowed foreign
   key warnings and missing phase statistics.
 
-Required result:
+Closed result:
 
 - Deterministic browser smoke runs in required CI without a live personal Immich server.
 - Startup and primary controls fail when absent.
