@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -302,4 +303,65 @@ def test_failed_atomic_replace_keeps_previous_snapshot(tmp_path: Path) -> None:
     loaded = cache.load(_fingerprint(), source_range, now=now + timedelta(hours=1))
     assert loaded is not None
     assert [asset.id for asset in loaded.assets] == ["kept"]
+    assert list(cache.path.parent.glob(".assets-*.tmp")) == []
+
+
+def test_freshness_probe_failure_falls_back_to_full_fetch(tmp_path: Path) -> None:
+    from immich_memories.automation.trip_input_cache import load_or_fetch_trip_assets
+
+    now = datetime(2026, 8, 12, 3, tzinfo=UTC)
+    client = MagicMock(api_key="api-key-one")
+    client.search_metadata.side_effect = OSError("connection reset")
+    client._run.side_effect = [
+        [_asset("cached", datetime(2026, 1, 5, tzinfo=UTC))],
+        [_asset("refetched", datetime(2026, 1, 6, tzinfo=UTC))],
+    ]
+
+    with patch("immich_memories.api.all_assets_service.AllAssetsService") as service_type:
+        service_type.return_value.get_assets_for_date_range.side_effect = [object(), object()]
+        load_or_fetch_trip_assets(
+            client,
+            cache_root=tmp_path,
+            server_url="https://immich.example",
+            buckets=_buckets(),
+            requested_range=_range(date(2025, 8, 12), date(2026, 8, 12)),
+            now=now,
+        )
+        refreshed = load_or_fetch_trip_assets(
+            client,
+            cache_root=tmp_path,
+            server_url="https://immich.example",
+            buckets=_buckets(),
+            requested_range=_range(date(2025, 8, 13), date(2026, 8, 13)),
+            now=now + timedelta(days=1),
+        )
+
+    assert [asset.id for asset in refreshed] == ["refetched"]
+    assert client._run.call_count == 2
+
+
+def test_concurrent_writers_leave_one_complete_valid_snapshot(tmp_path: Path) -> None:
+    from immich_memories.automation.trip_input_cache import TripInputCache
+
+    cache = TripInputCache(tmp_path)
+    now = datetime(2026, 8, 12, 3, tzinfo=UTC)
+    source_range = _range(date(2025, 8, 12), date(2026, 8, 19))
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [
+            pool.submit(
+                cache.store,
+                _fingerprint(),
+                source_range,
+                [_asset(asset_id, now)],
+                now=now,
+            )
+            for asset_id in ("writer-one", "writer-two")
+        ]
+        for future in futures:
+            future.result()
+
+    loaded = cache.load(_fingerprint(), source_range, now=now)
+    assert loaded is not None
+    assert [asset.id for asset in loaded.assets] in (["writer-one"], ["writer-two"])
     assert list(cache.path.parent.glob(".assets-*.tmp")) == []
