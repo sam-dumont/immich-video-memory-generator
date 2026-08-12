@@ -2,6 +2,9 @@
 
 Deploy Immich Memories to Kubernetes using Terraform with NVIDIA GPU support.
 
+Authentication is disabled by default. Configure it before enabling Ingress. The UI is
+single-user, single-replica because active workflow state is in-process; do not scale past one pod.
+
 ## Features
 
 - Full Kubernetes deployment with GPU support

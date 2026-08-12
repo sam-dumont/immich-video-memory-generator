@@ -349,6 +349,20 @@ def test_docker_docs_name_the_required_writable_mount_and_build_extras() -> None
 
     assert "/home/immich/.immich-memories" in text
     assert "INSTALL_EXTRAS" in text
+
+
+def test_ui_deployment_docs_are_explicit_about_exposure_and_replica_limits() -> None:
+    """Deployment entry points must not imply that the stateful UI is safely scalable."""
+    for relative_path in (
+        "README.md",
+        "docs-site/docs/deploy/installation/docker.md",
+        "docs-site/docs/deploy/installation/kubernetes.md",
+        "docs-site/docs/deploy/installation/terraform.md",
+        "docs-site/docs/deploy/configuration/authentication.mdx",
+    ):
+        text = " ".join(_read(relative_path).lower().split())
+        assert "single-user, single-replica" in text, relative_path
+        assert "authentication is disabled" in text, relative_path
     assert "all" in text
 
 

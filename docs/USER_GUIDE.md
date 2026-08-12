@@ -24,6 +24,10 @@ immich-memories ui
 
 This opens a web interface at `http://localhost:8080`.
 
+Authentication is disabled by default. If the UI binds beyond loopback, anyone who can reach the
+port can use it. Enable authentication before exposing it. The UI is single-user,
+single-replica; run one instance.
+
 ### First-Time Setup
 
 1. Enter your Immich server URL (e.g., `https://photos.example.com`)

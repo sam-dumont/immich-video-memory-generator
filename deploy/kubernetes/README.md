@@ -2,6 +2,9 @@
 
 Deploy Immich Memories to Kubernetes with NVIDIA GPU support.
 
+Authentication is disabled by default. Do not expose the Service until auth is enabled. The UI is
+single-user, single-replica because active workflow state is in-process; keep `replicas: 1`.
+
 ## Prerequisites
 
 1. **NVIDIA GPU Operator** installed in your cluster:

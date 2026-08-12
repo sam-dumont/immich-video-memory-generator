@@ -9,6 +9,10 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 By default, the web UI has no authentication. If you expose it beyond localhost, add auth.
 
+When authentication is disabled and the server binds to `0.0.0.0`, anyone who can reach the port
+can use the app. The UI is single-user, single-replica because active workflow state lives in the
+process. A shared storage secret or volume does not make multiple replicas safe.
+
 <ThemedScreenshot name="login" alt="Login page" />
 
 ## Quick start (basic auth)

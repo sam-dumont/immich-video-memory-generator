@@ -1,6 +1,8 @@
 # Immich Memories — self-hoster quickstart
 # Usage: docker compose up -d
 # Then open http://localhost:8080
+# Authentication is disabled by default. Do not publish port 8080 outside a trusted network
+# until auth is enabled. The stateful UI supports one user flow in one replica.
 #
 # Resource requirements:
 #   Idle (UI): ~100MB RAM
@@ -23,7 +25,7 @@ services:
     environment:
       IMMICH_URL: "${IMMICH_URL:-http://immich-server:2283}"
       IMMICH_API_KEY: "${IMMICH_API_KEY}"
-      # Optional: session secret (auto-generated if not set, set for multi-replica/K8s)
+      # Optional: session secret (auto-generated if not set; set to preserve sessions on restart)
       # IMMICH_MEMORIES_STORAGE_SECRET: "${IMMICH_MEMORIES_STORAGE_SECRET}"
       # Optional: LLM for clip content analysis (any OpenAI-compatible API)
       # IMMICH_MEMORIES_LLM__BASE_URL: "http://your-llm:8080/v1"

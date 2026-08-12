@@ -27,6 +27,12 @@ docker compose up -d
 
 UI is at [http://localhost:8080](http://localhost:8080).
 
+:::caution Do not publish the default UI
+Authentication is disabled by default, and the container listens on `0.0.0.0`. Anyone who can
+reach port 8080 can use the app. Enable [authentication](../configuration/authentication) before
+exposing it. The UI is single-user, single-replica; keep this service at one instance.
+:::
+
 The compose volume at `/home/immich/.immich-memories` must stay writable. It holds config, cache,
 automation history, and pending-delivery state. Keep `/app/output` writable too if you want output
 to survive a container replacement.
@@ -106,7 +112,7 @@ If you're connecting from a separate compose stack (not added to Immich's), use 
 |----------|----------|-------------|
 | `IMMICH_URL` | Yes | Your Immich server URL |
 | `IMMICH_API_KEY` | Yes | Immich API key |
-| `IMMICH_MEMORIES_STORAGE_SECRET` | No | Session secret for the web UI. Auto-generated if not set. Set this explicitly if you run multiple replicas or restart frequently (avoids session invalidation). |
+| `IMMICH_MEMORIES_STORAGE_SECRET` | No | Session secret for the web UI. Auto-generated if not set. Set this explicitly to keep sessions across restarts. It does not make multiple replicas supported. |
 | `IMMICH_MEMORIES_LLM__BASE_URL` | No | LLM endpoint for content analysis (any OpenAI-compatible API) |
 | `IMMICH_MEMORIES_LLM__MODEL` | No | LLM model name (e.g., `qwen2.5-vl`) |
 | `IMMICH_MEMORIES_AUTH_USERNAME` | No | Basic auth username. Set with `IMMICH_MEMORIES_AUTH_PASSWORD` to enable auth. |

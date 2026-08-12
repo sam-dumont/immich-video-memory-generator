@@ -7,6 +7,12 @@ title: Terraform
 
 Deploy Immich Memories to Kubernetes using Terraform. The module lives in `deploy/terraform/`.
 
+:::caution Before enabling Ingress
+Authentication is disabled by default. An enabled Ingress exposes the UI to every client that can
+reach it, so configure authentication first. The UI is single-user, single-replica; do not scale
+the deployment beyond one pod.
+:::
+
 ## Prerequisites
 
 1. **Terraform** >= 1.0

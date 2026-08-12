@@ -63,6 +63,12 @@ kubectl port-forward -n immich-memories svc/immich-memories 8080:80
 # Open http://localhost:8080
 ```
 
+:::caution One private replica
+Authentication is disabled by default. Do not add an Ingress or otherwise expose the Service until
+authentication is enabled. The UI is single-user, single-replica because active workflow state is
+kept in-process; leave `replicas: 1` even when using shared storage.
+:::
+
 ## Batch Jobs
 
 Run one-off video generation via CLI instead of the UI:

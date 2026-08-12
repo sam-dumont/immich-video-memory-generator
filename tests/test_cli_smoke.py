@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import date
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner, Result
@@ -93,6 +95,47 @@ class TestCLIHelp:
         """ui --help works."""
         result = _invoke(["ui", "--help"])
         assert result.exit_code == 0
+
+
+class TestUIExposureWarning:
+    """The UI entry point must make unsafe network exposure hard to miss."""
+
+    @staticmethod
+    def _invoke_ui(config: Config) -> tuple[Result, MagicMock]:
+        fake_app = ModuleType("immich_memories.ui.app")
+        fake_main = MagicMock()
+        fake_app.main = fake_main  # type: ignore[attr-defined]
+        with patch.dict(sys.modules, {"immich_memories.ui.app": fake_app}):
+            return _invoke(["ui"], config=config), fake_main
+
+    def test_ui_warns_before_unauthenticated_external_bind(self) -> None:
+        config = Config(server={"host": "0.0.0.0"})  # noqa: S104
+
+        result, fake_main = self._invoke_ui(config)
+
+        assert result.exit_code == 0
+        assert "Warning: authentication is disabled" in result.stderr
+        assert "single-user, single-replica" in result.stderr
+        fake_main.assert_called_once_with(port=8080, host="0.0.0.0", reload=False)  # noqa: S104
+
+    def test_ui_does_not_warn_for_loopback_bind(self) -> None:
+        config = Config(server={"host": "127.0.0.1"})
+
+        result, _ = self._invoke_ui(config)
+
+        assert result.exit_code == 0
+        assert "authentication is disabled" not in result.stderr
+
+    def test_ui_does_not_warn_when_external_bind_has_auth(self) -> None:
+        config = Config(
+            server={"host": "0.0.0.0"},  # noqa: S104
+            auth={"enabled": True, "provider": "basic", "username": "admin", "password": "secret"},  # noqa: S106
+        )
+
+        result, _ = self._invoke_ui(config)
+
+        assert result.exit_code == 0
+        assert "authentication is disabled" not in result.stderr
 
 
 class TestCLIGenerateErrors:

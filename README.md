@@ -59,6 +59,11 @@ docker compose up -d
 # 4. Open http://localhost:8080
 ```
 
+> **Do not expose the default UI as-is.** Authentication is disabled by default, and the
+> container listens on `0.0.0.0`. Anyone who can reach port 8080 can use it. Enable
+> [authentication](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/authentication)
+> before publishing the port. The UI is single-user, single-replica; run one instance.
+
 ### Resource Requirements
 
 | Phase | RAM | CPU | Time estimate |
