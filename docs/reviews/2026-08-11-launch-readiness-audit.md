@@ -2,7 +2,7 @@
 date: 2026-08-11
 branch: codex/launch-hardening
 scope: launch readiness, automation, performance, Immich v2/v3 compatibility, and user flow
-verdict: P0 remediation is complete; stable launch awaits the final release gate
+verdict: P0 remediation and the final required gate passed; LaunchAgent remains deliberately unloaded
 ---
 
 # Launch Readiness Audit — 2026-08-11
@@ -12,7 +12,7 @@ verdict: P0 remediation is complete; stable launch awaits the final release gate
 At audit time, the application was close to a public beta but was not ready for unattended stable
 use. The blockers were contract failures around automation, Immich v3, output encoding, versioning,
 and browser E2E—not a need to rewrite the video engine or compile Python with Cython. The remediation
-status below records their closure. Stable launch still waits for the complete release gate.
+status below records their closure. The final required P0 release gate passed on 2026-08-12.
 
 The most urgent problem was operational: the installed daily automation could report success
 without producing a new video, retry bad candidates every day, and generate files without a
@@ -58,16 +58,30 @@ approval. Its plist remains on disk and nothing was deleted.
   required CI launch gate landed in `e5367a2`. Missing startup, controls, output, or codec validation
   now fails instead of becoming a skip.
 
-The LaunchAgent remains unloaded. Do not reactivate unattended generation until every P0 above
-is closed and the final release gate passes.
+Every required P0 item and the final gate are closed. The LaunchAgent remains deliberately
+unloaded; activation is a separate owner decision.
+
+## Final P0 release gate — 2026-08-12
+
+Final required P0 gate passed at `3ffecc5`.
+
+- `uv run pytest -q`: 4,123 passed, 7 optional tests skipped, and 660 deselected.
+- `make e2e` passed 24 tests with zero skips. Its real artifact was H.264 MP4 at 1280x720,
+  BT.709, yuv420p, 360 decoded frames, and 12.0 seconds.
+- Fresh wheel and sdist builds passed `twine check`; docs, static analysis, and build checks passed.
+- CLI, package, and wheel metadata all reported `0.37.2.dev107`.
+- `launchctl print` exited 113 because the job is not loaded, and the preserved plist is valid.
+
+The LaunchAgent deliberately remains unloaded. It will not be reactivated automatically. Loading
+it requires separate owner approval.
 
 ## Safety action already taken
 
 - Unloaded job: `gui/501/com.immich-memories.auto`
 - Preserved plist: `/Users/sam/Library/LaunchAgents/com.immich-memories.auto.plist`
-- Verified state: `launchctl print` reports that the service is not loaded
+- Verified state: `launchctl print` exits 113 because the service is not loaded
 - Deleted files: none
-- Automatic reactivation: forbidden until the final release gate passes
+- Automatic reactivation: disabled; loading requires separate owner approval
 
 ## Evidence baseline
 

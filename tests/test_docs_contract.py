@@ -185,6 +185,22 @@ def _assert_encoding_contract(section: str) -> None:
         assert claim in section, f"Missing encoding contract: {claim}"
 
 
+def _assert_final_p0_gate(section: str) -> None:
+    required_claims = (
+        "Final required P0 gate passed at `3ffecc5`.",
+        "4,123 passed, 7 optional tests skipped, and 660 deselected",
+        "`make e2e` passed 24 tests with zero skips",
+        "H.264 MP4 at 1280x720, BT.709, yuv420p, 360 decoded frames, and 12.0 seconds",
+        "Fresh wheel and sdist builds passed `twine check`; docs, static analysis, and build checks passed.",
+        "CLI, package, and wheel metadata all reported `0.37.2.dev107`.",
+        "`launchctl print` exited 113 because the job is not loaded, and the preserved plist is valid.",
+        "The LaunchAgent deliberately remains unloaded.",
+        "Loading it requires separate owner approval.",
+    )
+    for claim in required_claims:
+        assert claim in section, f"Missing final P0 gate evidence: {claim}"
+
+
 def test_auto_run_documents_one_action_and_delivery_retry_before_generation() -> None:
     section = _normalized_section(
         "docs-site/docs/create/cli/auto.md",
@@ -812,8 +828,38 @@ def test_launch_audit_closes_p0_encoding_version_and_browser_findings() -> None:
         "P0.6 browser E2E: fixed and independently approved",
         "The real fake-Immich browser render became required in `485ff75`",
         "the required CI launch gate landed in `e5367a2`",
-        "The LaunchAgent remains unloaded.",
+        "The LaunchAgent deliberately remains unloaded.",
     )
     for claim in required_claims:
         assert claim in section, f"Missing P0 closure evidence: {claim}"
     assert "P0.4–P0.6: still open" not in section
+
+
+def test_launch_audit_records_the_final_required_gate_and_activation_hold() -> None:
+    section = _normalized_section(
+        "docs/reviews/2026-08-11-launch-readiness-audit.md",
+        "## Final P0 release gate — 2026-08-12",
+        "## Safety action already taken",
+    )
+
+    _assert_final_p0_gate(section)
+
+
+@pytest.mark.parametrize(
+    "documented",
+    [
+        "Final required P0 gate passed at `3ffecc5`.",
+        "Loading it requires separate owner approval.",
+    ],
+)
+def test_final_gate_contract_rejects_evidence_or_approval_mutations(documented: str) -> None:
+    section = _normalized_section(
+        "docs/reviews/2026-08-11-launch-readiness-audit.md",
+        "## Final P0 release gate — 2026-08-12",
+        "## Safety action already taken",
+    )
+    mutated = section.replace(documented, "[final gate guarantee removed]", 1)
+
+    assert mutated != section
+    with pytest.raises(AssertionError):
+        _assert_final_p0_gate(mutated)
