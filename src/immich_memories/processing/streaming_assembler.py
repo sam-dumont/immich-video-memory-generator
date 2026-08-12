@@ -9,7 +9,7 @@ import subprocess
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -32,6 +32,9 @@ from immich_memories.processing.streaming_audio import (
     extract_and_mix_audio,
     mux_video_audio,
 )
+
+if TYPE_CHECKING:
+    from immich_memories.processing.probe_cache import ProbeCache
 
 logger = logging.getLogger(__name__)
 
@@ -836,6 +839,7 @@ def streaming_assemble_full(
     scale_mode: str = "blur",
     progress_callback: Callable[[float, str], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
+    probe_cache: ProbeCache | None = None,
 ) -> Path:
     """Full streaming assembly: plan-bound video encode + audio mix + mux."""
     plan = encoding_plan or _default_streaming_plan()
@@ -892,7 +896,7 @@ def streaming_assemble_full(
         # WHY: Probe actual video duration so the audio filter graph can
         # clamp its output to match. This avoids re-encoding audio in the
         # mux step (which would cause double-AAC priming delay).
-        video_dur = _probe_duration(video_only)
+        video_dur = _probe_duration(video_only, probe_cache=probe_cache)
 
         extract_and_mix_audio(
             clips=clips,
@@ -904,6 +908,7 @@ def streaming_assemble_full(
             privacy_mode=privacy_mode,
             pre_extracted_audio=clip_audio_paths,
             video_duration=video_dur,
+            probe_cache=probe_cache,
         )
 
         if progress_callback:

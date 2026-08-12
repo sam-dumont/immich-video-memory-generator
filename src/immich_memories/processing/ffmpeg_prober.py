@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import subprocess
 from pathlib import Path
 
 from immich_memories.processing.assembly_config import (
@@ -12,6 +10,7 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     TransitionType,
 )
+from immich_memories.processing.probe_cache import ProbeCache, ProbeError
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +18,18 @@ logger = logging.getLogger(__name__)
 class FFmpegProber:
     """FFmpeg-based implementation of video probing.
 
-    All methods are stateless probes that shell out to ffprobe, except
-    ``estimate_duration`` which uses ``self.settings`` for transition config.
+    Source metadata comes from one caller-owned cache. ``estimate_duration``
+    additionally uses ``self.settings`` for transition config.
     """
 
-    def __init__(self, settings: AssemblySettings) -> None:
+    def __init__(
+        self,
+        settings: AssemblySettings,
+        *,
+        probe_cache: ProbeCache | None = None,
+    ) -> None:
         self.settings = settings
+        self.probe_cache = probe_cache or ProbeCache()
 
     def parse_resolution_from_stream(self, stream: dict) -> tuple[int, int] | None:
         """Swaps width/height when rotation is 90 or 270 degrees."""
@@ -44,26 +49,8 @@ class FFmpegProber:
     def get_video_resolution(self, video_path: Path) -> tuple[int, int] | None:
         """Get resolution accounting for rotation (iPhones store portrait as rotated landscape)."""
         try:
-            cmd = [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "v",
-                "-show_entries",
-                "stream=width,height:stream_side_data=rotation",
-                "-of",
-                "json",
-                str(video_path),
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-            if result.returncode == 0 and result.stdout.strip():
-                data = json.loads(result.stdout)
-                streams = data.get("streams", [])
-                if streams:
-                    stream = max(streams, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                    return self.parse_resolution_from_stream(stream)
-        except (OSError, subprocess.SubprocessError, ValueError) as e:
+            return self.probe_cache.get(video_path).resolution
+        except (OSError, ProbeError, ValueError) as e:
             logger.debug(f"Failed to detect resolution: {e}")
         return None
 
@@ -149,139 +136,68 @@ class FFmpegProber:
     def probe_duration(self, file_path: Path, stream_type: str = "audio") -> float:
         """Falls back to format duration if stream duration unavailable."""
         try:
-            # Probe the specific stream's duration, not format duration
-            # This is important because audio and video durations can differ
-            stream_select = "a:0" if stream_type == "audio" else "v:0"
-            result = subprocess.run(
-                [
-                    "ffprobe",
-                    "-v",
-                    "quiet",
-                    "-select_streams",
-                    stream_select,
-                    "-show_entries",
-                    "stream=duration",
-                    "-of",
-                    "default=noprint_wrappers=1:nokey=1",
-                    str(file_path),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
+            probe = self.probe_cache.get(file_path)
+            stream_duration = (
+                probe.audio_duration_seconds
+                if stream_type == "audio"
+                else probe.video_duration_seconds
             )
-            duration = result.stdout.strip()
-            if duration and duration != "N/A":
-                return float(duration)
-
-            # Fallback to format duration if stream duration unavailable
-            result = subprocess.run(
-                [
-                    "ffprobe",
-                    "-v",
-                    "quiet",
-                    "-show_entries",
-                    "format=duration",
-                    "-of",
-                    "default=noprint_wrappers=1:nokey=1",
-                    str(file_path),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            return float(result.stdout.strip())
-        except (ValueError, subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
+            return stream_duration or probe.duration_seconds
+        except (OSError, ProbeError, ValueError) as e:
             logger.warning(f"Failed to probe {stream_type} duration of {file_path}: {e}")
             return 0.0
 
     def probe_framerate(self, path: Path) -> float:
         try:
-            result = subprocess.run(
-                [
-                    "ffprobe",
-                    "-v",
-                    "error",
-                    "-select_streams",
-                    "v:0",
-                    "-show_entries",
-                    "stream=r_frame_rate",
-                    "-of",
-                    "default=noprint_wrappers=1:nokey=1",
-                    str(path),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                fps_str = result.stdout.strip()
-                # Parse fraction like "30/1" or "60000/1001"
-                if "/" in fps_str:
-                    num, den = fps_str.split("/")
-                    return float(num) / float(den)
-                return float(fps_str)
-        except (ValueError, subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
+            fps = self.probe_cache.get(path).fps
+            if fps > 0:
+                return fps
+        except (OSError, ProbeError, ValueError) as e:
             logger.warning(f"Failed to probe framerate of {path}: {e}")
         return 60.0  # Default fallback
 
     def has_audio_stream(self, path: Path) -> bool:
         try:
-            cmd = [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "a",
-                "-show_entries",
-                "stream=index,codec_name,sample_rate,channels",
-                "-of",
-                "json",
-                str(path),
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            if result.returncode != 0:
-                logger.warning(f"Failed to probe audio for {path.name}: {result.stderr[:200]}")
-                return False
-
-            data = json.loads(result.stdout)
-            streams = data.get("streams", [])
-
-            if not streams:
+            probe = self.probe_cache.get(path)
+            if not probe.has_audio:
                 logger.debug(f"No audio stream in {path.name}")
                 return False
-
-            # Log audio stream info for debugging
-            for stream in streams:
-                logger.debug(
-                    f"Audio stream in {path.name}: "
-                    f"codec={stream.get('codec_name')}, "
-                    f"rate={stream.get('sample_rate')}, "
-                    f"channels={stream.get('channels')}"
-                )
+            logger.debug("Audio stream in %s: codec=%s", path.name, probe.audio_codec)
             return True
-        except (subprocess.SubprocessError, subprocess.TimeoutExpired, json.JSONDecodeError) as e:
+        except (OSError, ProbeError, ValueError) as e:
             logger.warning(f"Error checking audio stream for {path.name}: {e}")
             return False
 
     def has_video_stream(self, path: Path) -> bool:
         try:
-            cmd = [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "v",
-                "-show_entries",
-                "stream=index",
-                "-of",
-                "csv=p=0",
-                str(path),
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            return bool(result.stdout.strip())
-        except (subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
+            return self.probe_cache.get(path).has_video
+        except (OSError, ProbeError, ValueError) as e:
             logger.warning(f"Error checking video stream for {path.name}: {e}")
             return False
+
+    def detect_hdr_type(self, path: Path) -> str | None:
+        """Return the normalized source transfer from the shared probe."""
+        try:
+            return self.probe_cache.get(path).hdr_type
+        except (OSError, ProbeError, ValueError) as exc:
+            logger.debug("Failed to detect HDR type for %s: %s", path, exc)
+            return None
+
+    def detect_color_primaries(self, path: Path) -> str | None:
+        """Return source color primaries from the shared probe."""
+        try:
+            return self.probe_cache.get(path).color_primaries
+        except (OSError, ProbeError, ValueError) as exc:
+            logger.debug("Failed to detect color primaries for %s: %s", path, exc)
+            return None
+
+    def audio_bitrate(self, path: Path) -> int:
+        """Return the first audio stream bitrate, or zero when unavailable."""
+        try:
+            return self.probe_cache.get(path).audio_bitrate
+        except (OSError, ProbeError, ValueError) as exc:
+            logger.debug("Failed to detect audio bitrate for %s: %s", path, exc)
+            return 0
 
     def probe_batch_durations(
         self,
@@ -331,26 +247,9 @@ class FFmpegProber:
 
     def detect_framerate(self, video_path: Path) -> float | None:
         try:
-            cmd = [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "v",
-                "-show_entries",
-                "stream=r_frame_rate,width,height",
-                "-of",
-                "json",
-                str(video_path),
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-            if result.returncode == 0 and result.stdout.strip():
-                data = json.loads(result.stdout)
-                streams = data.get("streams", [])
-                if streams:
-                    best = max(streams, key=lambda s: s.get("width", 0) * s.get("height", 0))
-                    return self.parse_fps_str(best.get("r_frame_rate", ""))
-        except (OSError, subprocess.SubprocessError, ValueError) as e:
+            fps = self.probe_cache.get(video_path).fps
+            return fps or None
+        except (OSError, ProbeError, ValueError) as e:
             logger.debug(f"Failed to detect frame rate: {e}")
         return None
 

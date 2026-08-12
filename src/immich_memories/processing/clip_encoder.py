@@ -28,6 +28,7 @@ from immich_memories.processing.hdr_utilities import (
     _get_colorspace_filter,
     _get_hdr_conversion_filter,
 )
+from immich_memories.processing.probe_cache import ProbeCache
 from immich_memories.processing.scaling_utilities import _get_smart_crop_filter
 from immich_memories.security import validate_video_path
 
@@ -104,7 +105,12 @@ class ClipEncoder:
 
     def resolve_encode_hdr(self, clip: AssemblyClip) -> tuple[str, str]:
         plan = self.settings.encoding_plan
-        source_hdr = _detect_hdr_type(clip.path)
+        source_probe_cache = getattr(self.prober, "probe_cache", None)
+        source_hdr = (
+            _detect_hdr_type(clip.path, probe_cache=source_probe_cache)
+            if isinstance(source_probe_cache, ProbeCache)
+            else _detect_hdr_type(clip.path)
+        )
         if plan.hdr:
             target_hdr = plan.target_transfer.value
             conversion = _get_hdr_conversion_filter(source_hdr, target_hdr, required=True)

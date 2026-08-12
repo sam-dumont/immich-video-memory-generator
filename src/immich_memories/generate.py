@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     from immich_memories.config_loader import Config
     from immich_memories.processing.assembly_config import AssemblyClip
     from immich_memories.processing.encoding_plan import EncodingPlan
+    from immich_memories.processing.probe_cache import ProbeCache
     from immich_memories.tracking import RunTracker
 
 logger = logging.getLogger(__name__)
@@ -497,16 +498,19 @@ def _extract_clips_with_optional_prefetch(
     params: GenerationParams,
     cache_batch,
     output_dir: Path,
+    *,
+    probe_cache: ProbeCache,
 ) -> list:
     """Keep the legacy extraction call shape when prefetch is unavailable."""
     coordinator = _build_download_coordinator(params, cache_batch, output_dir)
     if coordinator is None:
-        return _extract_clips(params, cache_batch, output_dir)
+        return _extract_clips(params, cache_batch, output_dir, probe_cache=probe_cache)
     return _extract_clips(
         params,
         cache_batch,
         output_dir,
         download_coordinator=coordinator,
+        probe_cache=probe_cache,
     )
 
 
@@ -554,6 +558,9 @@ def _generate_memory_inner(
 
     assembly_clips: list = []  # WHY: populated in try, needed in finally for cleanup
     pending_error: GenerationError | None = None
+    from immich_memories.processing.probe_cache import ProbeCache
+
+    probe_cache = ProbeCache()
     try:
         import time as _time
 
@@ -575,12 +582,20 @@ def _generate_memory_inner(
             # generation. It scans once, then evicts from the manifest on exit.
             with video_cache.begin_batch() as cache_batch:
                 assembly_clips = _extract_clips_with_optional_prefetch(
-                    params, cache_batch, run_output_dir
+                    params,
+                    cache_batch,
+                    run_output_dir,
+                    probe_cache=probe_cache,
                 )
         else:
             # Disabled cache means no interaction with the configured persistent
             # video cache. Extraction uses disposable run-local downloads.
-            assembly_clips = _extract_clips_with_optional_prefetch(params, None, run_output_dir)
+            assembly_clips = _extract_clips_with_optional_prefetch(
+                params,
+                None,
+                run_output_dir,
+                probe_cache=probe_cache,
+            )
         run_tracker.complete_phase(items_processed=len(assembly_clips))
         _phase_times["download"] = _time.monotonic() - _phase_start
         pp.report("download", 1.0, "Clips downloaded")
@@ -615,12 +630,16 @@ def _generate_memory_inner(
         assembly_cb = pp.assembly_callback()
         run_tracker.start_phase("assembly", len(assembly_clips))
 
-        settings = _build_assembly_settings(params, assembly_clips)
+        settings = _build_assembly_settings(
+            params,
+            assembly_clips,
+            probe_cache=probe_cache,
+        )
         result_output_path = normalize_output_path(
             requested_output_path,
             cast(Literal["mp4", "mov"], settings.encoding_plan.container),
         )
-        assembler = _create_assembler(settings, params.config)
+        assembler = _create_assembler(settings, params.config, probe_cache=probe_cache)
         staged_output_path = result_output_path.with_name(
             f"{result_output_path.stem}.assembling{result_output_path.suffix}"
         )

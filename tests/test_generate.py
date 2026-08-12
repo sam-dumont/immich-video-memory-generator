@@ -224,13 +224,17 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
             "immich_memories.cache.video_cache.VideoDownloadCache",
             return_value=video_cache,
         ),
-        patch.object(generate_module, "_extract_clips", return_value=[assembly_clip]),
+        patch.object(
+            generate_module, "_extract_clips", return_value=[assembly_clip]
+        ) as extract_clips,
         patch.object(
             generate_module,
             "_build_assembly_settings",
             return_value=AssemblySettings(encoding_plan=encoding_plan),
-        ),
-        patch.object(generate_module, "_create_assembler", return_value=Assembler()),
+        ) as build_settings,
+        patch.object(
+            generate_module, "_create_assembler", return_value=Assembler()
+        ) as create_assembler,
         patch.object(generate_module, "_run_music_phase"),
         patch.object(generate_module, "_cleanup_temp_clips"),
     ):
@@ -240,6 +244,9 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
     assert result.name == "memory.mov"
     assert result.read_bytes() == b"assembled-video"
     assert not assembled_paths[0].exists()
+    run_probe_cache = extract_clips.call_args.kwargs["probe_cache"]
+    assert build_settings.call_args.kwargs["probe_cache"] is run_probe_cache
+    assert create_assembler.call_args.kwargs["probe_cache"] is run_probe_cache
 
 
 def test_generation_validation_failure_preserves_old_final_and_stops_downstream_work(

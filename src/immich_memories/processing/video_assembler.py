@@ -27,6 +27,7 @@ from immich_memories.processing.title_inserter import TitleInserter
 
 if TYPE_CHECKING:
     from immich_memories.config_loader import Config
+    from immich_memories.processing.probe_cache import ProbeCache
 
 __all__ = [
     "VideoAssembler",
@@ -55,6 +56,7 @@ class VideoAssembler:
         output_crf: int = 23,
         default_transition_duration: float = 0.5,
         default_resolution: tuple[int, int] = (1920, 1080),
+        probe_cache: ProbeCache | None = None,
     ):
         self.settings = settings or AssemblySettings(
             encoding_plan=standalone_assembly_encoding_plan(output_crf)
@@ -70,7 +72,7 @@ class VideoAssembler:
             self.settings.default_resolution = default_resolution
 
         # Wire composed services
-        self.prober = FFmpegProber(self.settings)
+        self.prober = FFmpegProber(self.settings, probe_cache=probe_cache)
         self.filter_builder = FilterBuilder(self.settings, self.prober, self._get_face_center)
         self.encoder = ClipEncoder(
             self.settings,
@@ -167,10 +169,12 @@ def assemble_montage(
     music_accompaniment_path: Path | None = None,
 ) -> Path:
     from immich_memories.processing.clip_probing import get_video_duration
+    from immich_memories.processing.probe_cache import ProbeCache
 
+    probe_cache = ProbeCache()
     assembly_clips = []
     for path in clips:
-        duration = get_video_duration(path)
+        duration = get_video_duration(path, probe_cache=probe_cache)
         assembly_clips.append(
             AssemblyClip(
                 path=path,
@@ -188,7 +192,7 @@ def assemble_montage(
         music_accompaniment_path=music_accompaniment_path,
     )
 
-    return VideoAssembler(settings).assemble(assembly_clips, output_path)
+    return VideoAssembler(settings, probe_cache=probe_cache).assemble(assembly_clips, output_path)
 
 
 def create_preview(

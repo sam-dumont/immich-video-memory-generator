@@ -26,6 +26,7 @@ from immich_memories.processing.hdr_utilities import (
     _get_clip_hdr_types,
     _get_colorspace_filter,
 )
+from immich_memories.processing.probe_cache import ProbeCache
 from immich_memories.processing.streaming_assembler import streaming_assemble_full
 
 logger = logging.getLogger(__name__)
@@ -91,11 +92,20 @@ def create_assembly_context(
 
     # WHY: direct/standalone plans have no source provenance. Always inspect the
     # actual clips so an HDR source cannot be relabeled SDR without conversion.
-    clip_hdr_types = _get_clip_hdr_types(clips)
+    source_probe_cache = getattr(prober, "probe_cache", None)
+    clip_hdr_types = (
+        _get_clip_hdr_types(clips, probe_cache=source_probe_cache)
+        if isinstance(source_probe_cache, ProbeCache)
+        else _get_clip_hdr_types(clips)
+    )
     clip_primaries: list[str | None] = []
     if plan.hdr:
         for clip in clips:
-            clip_primaries.append(_detect_color_primaries(clip.path))
+            clip_primaries.append(
+                _detect_color_primaries(clip.path, probe_cache=source_probe_cache)
+                if isinstance(source_probe_cache, ProbeCache)
+                else _detect_color_primaries(clip.path)
+            )
     else:
         clip_primaries = [None] * len(clips)
 
@@ -246,6 +256,7 @@ class AssemblyEngine:
             scale_mode=self.settings.scale_mode,
             progress_callback=progress_callback,
             frame_preview_callback=frame_preview_callback,
+            probe_cache=self.prober.probe_cache,
         )
         return output_path
 

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         DownloadResult,
         PrefetchAsset,
     )
+    from immich_memories.processing.probe_cache import ProbeCache
 
 logger = logging.getLogger(__name__)
 
@@ -26,30 +27,13 @@ logger = logging.getLogger(__name__)
 MIN_CLIP_DURATION = 1.5
 
 
-def _probe_file_duration(path: Path) -> float | None:
+def _probe_file_duration(path: Path, *, probe_cache: ProbeCache | None = None) -> float | None:
     """Probe actual file duration via ffprobe. Returns None on failure."""
-    import subprocess
+    from immich_memories.processing.probe_cache import ProbeCache, ProbeError
 
-    try:
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "quiet",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "csv=p=0",
-                str(path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return float(result.stdout.strip())
-    except (ValueError, subprocess.TimeoutExpired):
-        pass
+    with contextlib.suppress(OSError, ProbeError, ValueError):
+        duration = (probe_cache or ProbeCache()).get(path).duration_seconds
+        return duration or None
     return None
 
 
@@ -114,6 +98,7 @@ def _extract_clips(
     output_dir: Path,
     *,
     download_coordinator: DownloadCoordinator | None = None,
+    probe_cache: ProbeCache | None = None,
 ) -> list[AssemblyClip]:
     """Download videos and extract clip segments. Renders IMAGE clips as photo animations."""
     from immich_memories.api.models import AssetType
@@ -165,7 +150,11 @@ def _extract_clips(
             # frame underruns) but also never more than what was requested
             # (prevents audio starting early).
             nominal_duration = end_time - start_time
-            actual_duration = _probe_file_duration(segment_path)
+            actual_duration = (
+                _probe_file_duration(segment_path, probe_cache=probe_cache)
+                if probe_cache is not None
+                else _probe_file_duration(segment_path)
+            )
             duration = (
                 min(actual_duration, nominal_duration) if actual_duration else nominal_duration
             )
