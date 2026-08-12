@@ -117,6 +117,7 @@ async def test_ui_finalizer_validates_exact_plan_and_completes_no_upload_once(
         output_path=output_path,
         config=config,
         upload_enabled=False,
+        clip_segments={"clip-1": (1.0, 4.0)},
         upload_album="UI Album",
     )
     tracker = RunTracker("ui-finalize", db_path=db_path, capture_system=False)
@@ -257,7 +258,8 @@ async def test_ui_music_warning_is_durable_and_final_validation_runs_after_music
         _state,
         _config,
         result_path,
-        _assembly_clips,
+        selected_clips,
+        clip_segments,
         _run_output_dir,
         run_tracker,
         _progress_bar,
@@ -267,6 +269,9 @@ async def test_ui_music_warning_is_durable_and_final_validation_runs_after_music
     ) -> MusicPhaseResult:
         assert run_tracker is tracker
         assert encoding_plan is plan
+        assert selected_clips is not prepared.assembly_clips
+        assert selected_clips == params.clips
+        assert clip_segments == params.clip_segments
         assert result_path.read_bytes() == b"validated-base"
         events.append("music")
         run_tracker.start_phase("music", 1)

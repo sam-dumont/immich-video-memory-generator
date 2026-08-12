@@ -244,6 +244,52 @@ def test_ui_output_label_is_initialized_from_config() -> None:
     assert configured_output_format_label(config) == "MP4 (H.265)"
 
 
+def test_ui_output_label_includes_configured_h264_mov_container() -> None:
+    from immich_memories.ui.pages.step3_options import (
+        OUTPUT_FORMAT_OPTIONS,
+        configured_output_format_label,
+    )
+
+    config = Config()
+    config.output.codec = "h264"
+    config.output.format = "mov"
+
+    assert configured_output_format_label(config) == "MOV (H.264)"
+    assert "MOV (H.264)" in OUTPUT_FORMAT_OPTIONS
+
+
+def test_ui_explicit_h265_mov_choice_preserves_codec_and_container() -> None:
+    from immich_memories.processing.encoding_plan import OutputCodec
+    from immich_memories.ui.pages._step4_generate import resolve_ui_output_selection
+    from immich_memories.ui.pages.step3_options import OUTPUT_FORMAT_OPTIONS
+
+    state = AppState(
+        config=Config(),
+        generation_options={"format_override": "MOV (H.265)"},
+    )
+
+    selection = resolve_ui_output_selection(state)
+
+    assert selection.codec is OutputCodec.H265
+    assert selection.container == "mov"
+    assert "MOV (H.265)" in OUTPUT_FORMAT_OPTIONS
+
+
+def test_ui_explicit_h264_mov_choice_preserves_codec_and_container() -> None:
+    from immich_memories.processing.encoding_plan import OutputCodec
+    from immich_memories.ui.pages._step4_generate import resolve_ui_output_selection
+
+    state = AppState(
+        config=Config(),
+        generation_options={"format_override": "MOV (H.264)"},
+    )
+
+    selection = resolve_ui_output_selection(state)
+
+    assert selection.codec is OutputCodec.H264
+    assert selection.container == "mov"
+
+
 def test_generation_factory_passes_state_api_version_to_client(tmp_path) -> None:
     from immich_memories.ui.pages._step4_generate import _build_generation_params
 

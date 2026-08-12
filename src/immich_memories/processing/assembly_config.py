@@ -21,23 +21,29 @@ __all__ = [
     "TitleScreenSettings",
     "TransitionType",
     "_get_rotation_filter",
+    "standalone_assembly_encoding_plan",
 ]
 
 
 MAX_FACE_CACHE_SIZE = 50  # Max entries in face detection cache to prevent unbounded growth
 
 
-def _default_encoding_plan() -> EncodingPlan:
-    """Return the explicit SDR/H.264 plan used by standalone assembly callers."""
+def standalone_assembly_encoding_plan(crf: int = 23) -> EncodingPlan:
+    """Return the explicit software H.264/SDR contract for standalone assembly."""
     return EncodingPlan(
         codec=OutputCodec.H264,
         encoder="libx264",
-        encoder_args=("-preset", "medium", "-crf", "18"),
+        encoder_args=("-preset", "medium", "-crf", str(crf)),
         target_transfer=HdrTransfer.NONE,
         tone_map_to_sdr=False,
         pixel_format="yuv420p",
         container="mp4",
     )
+
+
+def _default_encoding_plan() -> EncodingPlan:
+    """Return the historical explicit plan for direct settings construction."""
+    return standalone_assembly_encoding_plan(18)
 
 
 class TransitionType(StrEnum):

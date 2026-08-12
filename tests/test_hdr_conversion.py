@@ -462,3 +462,37 @@ class TestHdrConversionFilter:
             FilterBuilder(settings, MagicMock(), lambda _path: None).get_clip_hdr_conversion(
                 0, context
             )
+
+    def test_filter_builder_uses_plan_transfer_when_context_metadata_is_stale(self):
+        """A stale context target cannot bypass the immutable output plan."""
+        from immich_memories.processing.filter_builder import FilterBuilder
+        from immich_memories.processing.hdr_utilities import (
+            RequiredColorConversionUnavailable,
+        )
+
+        plan = EncodingPlan(
+            codec=OutputCodec.H264,
+            encoder="libx264",
+            encoder_args=("-preset", "medium", "-crf", "18"),
+            target_transfer=HdrTransfer.NONE,
+            tone_map_to_sdr=False,
+            pixel_format="yuv420p",
+            container="mp4",
+        )
+        settings = AssemblySettings(encoding_plan=plan)
+        stale_context = MagicMock(
+            hdr_type="hlg",
+            clip_hdr_types=["hlg"],
+            clip_primaries=["bt2020"],
+        )
+
+        with (
+            patch(
+                "immich_memories.processing.hdr_utilities._check_zscale_available",
+                return_value=False,
+            ),
+            pytest.raises(RequiredColorConversionUnavailable),
+        ):
+            FilterBuilder(settings, MagicMock(), lambda _path: None).get_clip_hdr_conversion(
+                0, stale_context
+            )

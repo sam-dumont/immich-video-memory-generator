@@ -973,6 +973,7 @@ def _prepare_generation(
     client: object | None,
     upload_album: str | None = None,
     music_warning: str | None = None,
+    no_music: bool = True,
     upload_result: dict[str, str] | Exception | None = None,
     configured_secret: str | None = None,
 ) -> tuple[object, list[str]]:
@@ -996,7 +997,7 @@ def _prepare_generation(
         output_path=tmp_path / "memory.mp4",
         config=config,
         client=client,
-        no_music=True,
+        no_music=no_music,
         upload_enabled=upload_enabled,
         upload_album=upload_album,
         debug_preserve_intermediates=True,
@@ -1129,12 +1130,17 @@ def test_generation_without_upload_completes_artifact_as_not_requested(
         upload_enabled=False,
         client=None,
     )
+    params.progress_callback = (  # type: ignore[attr-defined]
+        lambda phase, _progress, _message: (
+            events.append(f"progress:{phase}") if phase == "music" else None
+        )
+    )
 
     result = generate_memory(params)  # type: ignore[arg-type]
     saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
 
     assert result.read_bytes() == b"validated-artifact"
-    assert events == ["music", "final-probe"]
+    assert events == ["final-probe"]
     assert saved is not None
     assert saved.status == "completed"
     assert saved.output_size_bytes == 4096
@@ -1204,6 +1210,7 @@ def test_successful_generation_delivery_records_asset_and_original_album(
         client=object(),
         upload_album="Original Family Album",
         music_warning="Optional music failed: backend unavailable",
+        no_music=False,
         upload_result={"asset_id": "asset-delivered"},
     )
 
@@ -1252,7 +1259,7 @@ def test_final_progress_callback_cannot_downgrade_or_leak_delivered_artifact(
     saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
 
     assert result.read_bytes() == b"validated-artifact"
-    assert events == ["music", "final-probe", "upload"]
+    assert events == ["final-probe", "upload"]
     assert saved is not None
     assert saved.status == "completed"
     assert saved.delivery_status is DeliveryStatus.DELIVERED
@@ -1290,7 +1297,7 @@ def test_post_completion_exception_guard_preserves_delivered_database_truth(
         generate_memory(params)  # type: ignore[arg-type]
     saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
 
-    assert events == ["music", "final-probe", "upload"]
+    assert events == ["final-probe", "upload"]
     assert saved is not None
     assert saved.status == "completed"
     assert saved.delivery_status is DeliveryStatus.DELIVERED
@@ -1325,7 +1332,7 @@ def test_failed_generation_delivery_is_pending_and_does_not_fail_artifact(
         generate_memory(params)  # type: ignore[arg-type]
     saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
 
-    assert events == ["music", "final-probe", "upload"]
+    assert events == ["final-probe", "upload"]
     assert saved is not None
     assert saved.status == "completed"
     assert saved.delivery_status is DeliveryStatus.PENDING
@@ -1359,7 +1366,7 @@ def test_requested_generation_delivery_without_client_is_pending_without_attempt
         generate_memory(params)  # type: ignore[arg-type]
     saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
 
-    assert events == ["music", "final-probe"]
+    assert events == ["final-probe"]
     assert saved is not None
     assert saved.status == "completed"
     assert saved.delivery_status is DeliveryStatus.PENDING
@@ -1470,7 +1477,7 @@ def test_generation_delivers_from_completed_database_state_when_sidecar_mirrorin
     saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
 
     assert result.read_bytes() == b"validated-artifact"
-    assert events == ["music", "final-probe", "upload"]
+    assert events == ["final-probe", "upload"]
     assert saved is not None
     assert saved.status == "completed"
     assert saved.output_path == str(result)
@@ -1508,7 +1515,7 @@ def test_generation_queues_failed_delivery_when_sidecar_mirroring_also_fails(
         generate_memory(params)  # type: ignore[arg-type]
     saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
 
-    assert events == ["music", "final-probe", "upload"]
+    assert events == ["final-probe", "upload"]
     assert saved is not None
     assert saved.status == "completed"
     assert saved.output_path is not None
@@ -1545,7 +1552,7 @@ def test_hard_stop_after_artifact_commit_leaves_requested_delivery_pending(
         generate_memory(params)  # type: ignore[arg-type]
     saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
 
-    assert events == ["music", "final-probe"]
+    assert events == ["final-probe"]
     assert saved is not None
     assert saved.status == "completed"
     assert saved.delivery_status is DeliveryStatus.PENDING
@@ -1581,7 +1588,7 @@ def test_hard_stop_during_upload_leaves_requested_delivery_pending(
         generate_memory(params)  # type: ignore[arg-type]
     saved = RunDatabase(tmp_path / "runs.db").get_run("delivery-run")
 
-    assert events == ["music", "final-probe", "upload-started"]
+    assert events == ["final-probe", "upload-started"]
     assert saved is not None
     assert saved.status == "completed"
     assert saved.delivery_status is DeliveryStatus.PENDING

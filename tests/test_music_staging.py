@@ -191,7 +191,8 @@ async def test_ai_music_stage_is_cleared_before_mix_and_after_failure(
 
     result = await apply_ai_music(
         video_path,
-        assembly_clips=[],
+        selected_clips=[],
+        clip_segments={},
         gen_options={"music_volume": 0.5},
         config=Config(),
         run_output_dir=tmp_path,
@@ -262,7 +263,8 @@ async def test_ai_success_survives_final_stage_cleanup_failure(
 
     result = await apply_ai_music(
         video_path,
-        assembly_clips=[],
+        selected_clips=[],
+        clip_segments={},
         gen_options={"music_volume": 0.5},
         config=Config(),
         run_output_dir=tmp_path,
@@ -329,7 +331,8 @@ async def test_mixer_failure_is_not_masked_by_final_stage_cleanup_failure(
 
     result = await apply_ai_music(
         video_path,
-        assembly_clips=[],
+        selected_clips=[],
+        clip_segments={},
         gen_options={"music_volume": 0.5},
         config=Config(),
         run_output_dir=tmp_path,

@@ -90,6 +90,8 @@ _SCALE_MODE_MAP = {
 _FORMAT_MAP = {
     "MP4 (H.264)": "mp4",
     "MP4 (H.265)": "h265",
+    "MOV (H.264)": "h264_mov",
+    "MOV (H.265)": "h265_mov",
     "MOV (ProRes)": "prores",
 }
 
@@ -344,7 +346,8 @@ async def finalize_ui_generation(
             state,
             params.config,
             prepared.path,
-            list(prepared.assembly_clips),
+            list(params.clips),
+            params.clip_segments,
             prepared.path.parent,
             run_tracker,
             progress_bar,
@@ -382,7 +385,8 @@ async def _apply_music(
     state,
     config,
     result_path,
-    assembly_clips,
+    selected_clips,
+    clip_segments,
     run_output_dir,
     run_tracker,
     progress_bar,
@@ -418,7 +422,8 @@ async def _apply_music(
 
         return await apply_ai_music(
             result_path,
-            assembly_clips,
+            selected_clips,
+            clip_segments,
             gen_options,
             config,
             run_output_dir,

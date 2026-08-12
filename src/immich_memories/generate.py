@@ -13,8 +13,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, NoReturn, overload
+from typing import TYPE_CHECKING, Literal, NoReturn, cast, overload
 
+from immich_memories.filename_builder import normalize_output_path
 from immich_memories.generate_clips import (
     MIN_CLIP_DURATION,
     _cleanup_temp_clips,
@@ -493,7 +494,7 @@ def _generate_memory_inner(
 
     # Preflight: abort early if disk is critically low
     check_disk_space(run_output_dir)
-    result_output_path = run_output_dir / sanitize_filename(params.output_path.name)
+    requested_output_path = run_output_dir / sanitize_filename(params.output_path.name)
 
     run_tracker.start_run(
         person_name=params.person_name,
@@ -563,6 +564,10 @@ def _generate_memory_inner(
         run_tracker.start_phase("assembly", len(assembly_clips))
 
         settings = _build_assembly_settings(params, assembly_clips)
+        result_output_path = normalize_output_path(
+            requested_output_path,
+            cast(Literal["mp4", "mov"], settings.encoding_plan.container),
+        )
         assembler = _create_assembler(settings, params.config)
         staged_output_path = result_output_path.with_name(
             f"{result_output_path.stem}.assembling{result_output_path.suffix}"
@@ -587,22 +592,25 @@ def _generate_memory_inner(
                 clips_selected=len(assembly_clips),
             )
 
-        # Phase 3: Music
-        _t = _time.monotonic()
-        pp.report("music", 0.0, "Generating music...")
-        music_result = _run_music_phase(
-            params,
-            assembly_clips,
-            result_path,
-            run_output_dir,
-            run_tracker,
-            encoding_plan=settings.encoding_plan,
-        )
-        _phase_times["music"] = _time.monotonic() - _t
-        pp.report("music", 1.0, music_result.warning or "Music ready")
+        music_warning = None
+        if not params.no_music:
+            # Phase 3: Music
+            _t = _time.monotonic()
+            pp.report("music", 0.0, "Generating music...")
+            music_result = _run_music_phase(
+                params,
+                assembly_clips,
+                result_path,
+                run_output_dir,
+                run_tracker,
+                encoding_plan=settings.encoding_plan,
+            )
+            _phase_times["music"] = _time.monotonic() - _t
+            music_warning = music_result.warning
+            pp.report("music", 1.0, music_warning or "Music ready")
 
         final_probe = validate_output(result_path, settings.encoding_plan)
-        artifact_warnings = [music_result.warning] if music_result.warning else []
+        artifact_warnings = [music_warning] if music_warning else []
         run_tracker.complete_artifact(
             result_path,
             final_probe,

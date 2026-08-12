@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 async def _select_ai_music(
-    assembly_clips: list,
+    selected_clips: list,
+    clip_segments: dict[str, tuple[float, float]],
     config: object,
     run_output_dir: Path,
     progress_bar: object,
@@ -41,16 +42,17 @@ async def _select_ai_music(
     from immich_memories.audio.music_generator_client import MusicGenClientConfig
     from immich_memories.audio.music_generator_models import VideoTimeline
 
-    clip_data: list[tuple[float, str, int | None]] = [
-        (
-            clip.duration,
-            clip.llm_emotion or "calm",
-            clip.date.month
-            if hasattr(clip.date, "month")
-            else (int(clip.date.split("-")[1]) if clip.date else None),
+    clip_data: list[tuple[float, str, int | None]] = []
+    for clip in selected_clips:
+        segment = clip_segments.get(clip.asset.id)
+        duration = segment[1] - segment[0] if segment else clip.duration_seconds or 5.0
+        clip_data.append(
+            (
+                duration,
+                clip.llm_emotion or "calm",
+                clip.asset.file_created_at.month,
+            )
         )
-        for clip in assembly_clips
-    ]
     timeline = VideoTimeline.from_clips(
         clips=clip_data,
         title_duration=(config.title_screens.title_duration if config.title_screens.enabled else 0),
@@ -96,7 +98,7 @@ async def _mix_selected_ai_music(
     )
     from immich_memories.generate_music import publish_music_mix, staged_music_output
 
-    with staged_music_output(result_path) as staged_path:
+    with staged_music_output(result_path, encoding_plan) as staged_path:
         stems = selected_music.stems
         if stems and stems.drums and stems.bass and stems.vocals and stems.other:
             from immich_memories.audio.mixer_helpers import mix_audio_with_4stem_ducking
@@ -128,7 +130,8 @@ async def _mix_selected_ai_music(
 
 async def apply_ai_music(
     result_path: Path,
-    assembly_clips: list,
+    selected_clips: list,
+    clip_segments: dict[str, tuple[float, float]],
     gen_options: dict,
     config: object,
     run_output_dir: Path,
@@ -145,7 +148,8 @@ async def apply_ai_music(
 
     Args:
         result_path: Path to the assembled video file.
-        assembly_clips: List of AssemblyClip objects.
+        selected_clips: Original selected clips with analysis metadata.
+        clip_segments: Selected start/end bounds keyed by asset ID.
         gen_options: Generation options dict from UI state.
         config: App config object.
         run_output_dir: Output directory for this run.
@@ -158,7 +162,8 @@ async def apply_ai_music(
 
     try:
         music_result, selected_music = await _select_ai_music(
-            assembly_clips,
+            selected_clips,
+            clip_segments,
             config,
             run_output_dir,
             progress_bar,
@@ -242,7 +247,7 @@ async def apply_uploaded_music(
 
         from immich_memories.generate_music import publish_music_mix, staged_music_output
 
-        with staged_music_output(result_path) as staged_path:
+        with staged_music_output(result_path, encoding_plan) as staged_path:
             await run.io_bound(
                 mix_audio_with_ducking,
                 video_path=result_path,

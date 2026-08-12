@@ -16,19 +16,25 @@ from immich_memories.ui.components import (
 )
 from immich_memories.ui.state import get_app_state
 
-OUTPUT_FORMAT_OPTIONS = ["MP4 (H.264)", "MP4 (H.265)", "MOV (ProRes)"]
+OUTPUT_FORMAT_OPTIONS = [
+    "MP4 (H.264)",
+    "MP4 (H.265)",
+    "MOV (H.264)",
+    "MOV (H.265)",
+    "MOV (ProRes)",
+]
 
 logger = logging.getLogger(__name__)
 
 
 def configured_output_format_label(config) -> str:
-    """Return the UI label for the configured codec without creating an override."""
+    """Return the UI label for the configured codec and container."""
     codec = config.output.codec if config is not None else "h264"
-    if codec == "h265":
-        return "MP4 (H.265)"
+    container = config.output.format.upper() if config is not None else "MP4"
     if codec == "prores":
         return "MOV (ProRes)"
-    return "MP4 (H.264)"
+    codec_label = "H.265" if codec == "h265" else "H.264"
+    return f"{container} ({codec_label})"
 
 
 def _render_volume_slider(options: dict, width: str = "w-64") -> None:

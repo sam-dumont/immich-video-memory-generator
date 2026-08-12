@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from immich_memories.filename_builder import build_music_output_path
 from immich_memories.processing.assembly_config import AssemblyClip
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 from immich_memories.processing.output_contract import (
@@ -225,19 +224,22 @@ def publish_music_mix(
     encoding_plan: EncodingPlan,
 ) -> OutputProbe:
     """Validate the staged music sibling before atomically replacing the base."""
-    staged_path = build_music_output_path(video_path)
+    staged_path = music_staging_path(video_path, encoding_plan)
     try:
         _require_audio_stream(staged_path)
         return publish_validated_output(staged_path, video_path, encoding_plan)
     except Exception:
-        staged_path.unlink(missing_ok=True)
+        try:
+            staged_path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Music stage cleanup failed; preserving the primary phase outcome")
         raise
 
 
 @contextmanager
-def staged_music_output(video_path: Path) -> Iterator[Path]:
+def staged_music_output(video_path: Path, encoding_plan: EncodingPlan) -> Iterator[Path]:
     """Yield a clean container-preserving sibling and remove every leftover."""
-    staged_path = build_music_output_path(video_path)
+    staged_path = music_staging_path(video_path, encoding_plan)
     staged_path.unlink(missing_ok=True)
     try:
         yield staged_path
@@ -290,6 +292,17 @@ def _require_audio_stream(path: Path) -> None:
         raise InvalidOutputArtifact("music mix must have positive decoded audio frames")
 
 
+def music_staging_path(video_path: Path, encoding_plan: EncodingPlan) -> Path:
+    """Return the plan-compatible staged music path or reject a stale base suffix."""
+    expected_suffix = f".{encoding_plan.container}"
+    if video_path.suffix.lower() != expected_suffix:
+        raise ValueError(
+            f"Music input suffix {video_path.suffix!r} does not match "
+            f"encoding plan container {encoding_plan.container!r}"
+        )
+    return video_path.with_suffix(f".with_music.{encoding_plan.container}")
+
+
 def apply_music_file(
     video_path: Path,
     music_path: Path,
@@ -304,7 +317,7 @@ def apply_music_file(
             music_volume_db=-20 + (volume * 20),
         ),
     )
-    with staged_music_output(video_path) as staged_path:
+    with staged_music_output(video_path, encoding_plan) as staged_path:
         mix_audio_with_ducking(
             video_path=video_path,
             music_path=music_path,
