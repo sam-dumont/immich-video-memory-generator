@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Literal, cast
 
@@ -105,11 +105,32 @@ class EncodingPlan:
     tone_map_to_sdr: bool
     pixel_format: str
     container: str
+    preset: Literal["fast", "balanced", "quality"] = "balanced"
+    crf: int = 18
 
     @property
     def hdr(self) -> bool:
         """Whether the exact target transfer is HDR."""
         return self.target_transfer is not HdrTransfer.NONE
+
+
+def uses_hardware_encoder(plan: EncodingPlan) -> bool:
+    """Return whether the resolved plan depends on a hardware encoder."""
+    return plan.encoder not in {"libx264", "libx265", "prores_ks"}
+
+
+def software_fallback_plan(plan: EncodingPlan) -> EncodingPlan:
+    """Swap a hardware encoder for its same-codec software implementation."""
+    if not uses_hardware_encoder(plan):
+        return plan
+    encoder, encoder_args = get_ffmpeg_encoder(
+        HWAccelCapabilities(),
+        codec=plan.codec.value,
+        preset=plan.preset,
+    )
+    if encoder in {"libx264", "libx265"}:
+        encoder_args.extend(["-crf", str(plan.crf)])
+    return replace(plan, encoder=encoder, encoder_args=tuple(encoder_args))
 
 
 @dataclass(frozen=True)
@@ -241,4 +262,6 @@ def resolve_encoding_plan(
         tone_map_to_sdr=tone_map_to_sdr,
         pixel_format=pixel_format,
         container=request.container,
+        preset=cast(Literal["fast", "balanced", "quality"], request.preset),
+        crf=request.crf,
     )

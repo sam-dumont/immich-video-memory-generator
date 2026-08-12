@@ -12,7 +12,13 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     _get_rotation_filter,
 )
-from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer
+from immich_memories.processing.encoding_errors import EncoderFallbackError
+from immich_memories.processing.encoding_plan import (
+    EncodingPlan,
+    HdrTransfer,
+    software_fallback_plan,
+    uses_hardware_encoder,
+)
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.ffmpeg_runner import (
     AssemblyContext,
@@ -27,6 +33,61 @@ from immich_memories.processing.scaling_utilities import _get_smart_crop_filter
 from immich_memories.security import validate_video_path
 
 logger = logging.getLogger(__name__)
+
+ClipCommandBuilder = Callable[[EncodingPlan], list[str]]
+
+
+def _run_clip_encode_with_fallback(
+    plan: EncodingPlan,
+    output_path: Path,
+    build_command: ClipCommandBuilder,
+) -> None:
+    """Run one clip encode and at most one same-codec software fallback."""
+    primary_failure: str | None = None
+    try:
+        result = subprocess.run(build_command(plan), capture_output=True, text=True, timeout=1800)
+    except (OSError, subprocess.TimeoutExpired) as primary_error:
+        if not uses_hardware_encoder(plan):
+            raise
+        primary_failure = type(primary_error).__name__
+    else:
+        if result.returncode == 0:
+            return
+        if not uses_hardware_encoder(plan):
+            raise RuntimeError(f"Failed to encode clip: {result.stderr[-500:]}")
+        primary_failure = f"exit {result.returncode}"
+    assert primary_failure is not None  # noqa: S101
+
+    fallback_plan = software_fallback_plan(plan)
+    logger.warning(
+        "Hardware encoder %s failed; retrying %s in software",
+        plan.encoder,
+        fallback_plan.codec.value,
+    )
+    output_path.unlink(missing_ok=True)
+    fallback_failure: str | None = None
+    fallback_result: subprocess.CompletedProcess[str] | None = None
+    try:
+        fallback_result = subprocess.run(
+            build_command(fallback_plan), capture_output=True, text=True, timeout=1800
+        )
+    except (OSError, subprocess.TimeoutExpired) as fallback_error:
+        fallback_failure = type(fallback_error).__name__
+    if fallback_failure is not None:
+        output_path.unlink(missing_ok=True)
+        raise EncoderFallbackError(
+            f"Hardware encoder {plan.encoder} failed ({primary_failure}); "
+            f"software encoder {fallback_plan.encoder} failed "
+            f"({fallback_failure})"
+        )
+    assert fallback_result is not None  # noqa: S101
+    if fallback_result.returncode != 0:
+        output_path.unlink(missing_ok=True)
+        raise EncoderFallbackError(
+            f"Hardware encoder {plan.encoder} failed ({primary_failure}); "
+            f"software encoder {fallback_plan.encoder} failed "
+            f"(exit {fallback_result.returncode})"
+        )
 
 
 def encoder_args_for_plan(plan: EncodingPlan) -> list[str]:
@@ -120,7 +181,6 @@ class ClipEncoder:
         validate_video_path(clip.path, must_exist=True)
         target_w, target_h = self.resolve_encode_resolution(target_resolution)
 
-        pix_fmt = self.settings.encoding_plan.pixel_format
         target_fps = 60
         hdr_type, colorspace_filter = self.resolve_encode_hdr(clip)
 
@@ -136,12 +196,6 @@ class ClipEncoder:
         else:
             fps_filter = f"fps={target_fps}"
 
-        common_suffix = (
-            f"{fps_filter},settb=1/{target_fps},"
-            f"format={pix_fmt}{colorspace_filter},setsar=1,"
-            f"trim=0:{clip.duration},setpts=PTS-STARTPTS"
-        )
-
         audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
         use_loudnorm = self.settings.normalize_clip_audio and not clip.is_title_screen
         loudnorm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if use_loudnorm else ""
@@ -156,38 +210,39 @@ class ClipEncoder:
                 f"{audio_format},asetpts=PTS-STARTPTS[aout]"
             )
 
-        filter_complex = self._build_single_clip_filter(
-            clip, target_w, target_h, rotation_filter, common_suffix, audio_filter
-        )
+        def build_command(plan: EncodingPlan) -> list[str]:
+            common_suffix = (
+                f"{fps_filter},settb=1/{target_fps},"
+                f"format={plan.pixel_format}{colorspace_filter},setsar=1,"
+                f"trim=0:{clip.duration},setpts=PTS-STARTPTS"
+            )
+            filter_complex = self._build_single_clip_filter(
+                clip, target_w, target_h, rotation_filter, common_suffix, audio_filter
+            )
+            return [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(clip.path),
+                "-filter_complex",
+                filter_complex,
+                "-map",
+                "[vout]",
+                "-map",
+                "[aout]",
+                *encoder_args_for_plan(plan),
+                "-r",
+                str(target_fps),
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-movflags",
+                "+faststart",
+                str(output_path),
+            ]
 
-        video_codec_args = encoder_args_for_plan(self.settings.encoding_plan)
-
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(clip.path),
-            "-filter_complex",
-            filter_complex,
-            "-map",
-            "[vout]",
-            "-map",
-            "[aout]",
-            *video_codec_args,
-            "-r",
-            str(target_fps),
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to encode clip: {result.stderr[-500:]}")
+        _run_clip_encode_with_fallback(self.settings.encoding_plan, output_path, build_command)
 
     def _build_single_clip_filter(
         self,

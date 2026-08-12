@@ -15,6 +15,7 @@ from immich_memories.processing.encoding_plan import (
     UnsupportedEncodingCombination,
     resolve_encoding_plan,
     resolve_output_selection,
+    software_fallback_plan,
 )
 from immich_memories.processing.hardware import HWAccelBackend, HWAccelCapabilities
 
@@ -105,6 +106,33 @@ def test_encoder_never_changes_requested_codec(
 
     assert plan.codec is codec
     assert plan.encoder == expected_encoder
+
+
+def test_software_fallback_preserves_resolved_output_and_requested_quality() -> None:
+    """A runtime fallback changes only the encoder implementation."""
+    request = EncodingRequest(
+        codec=OutputCodec.H265,
+        hdr_mode=HdrMode.HDR,
+        hardware_enabled=True,
+        preset="fast",
+        crf=31,
+        container="mov",
+    )
+    hardware_plan = resolve_encoding_plan(
+        request,
+        _apple_capabilities(),
+        input_transfer=HdrTransfer.PQ,
+    )
+
+    fallback = software_fallback_plan(hardware_plan)
+
+    assert fallback.codec is OutputCodec.H265
+    assert fallback.encoder == "libx265"
+    assert fallback.encoder_args == ("-preset", "veryfast", "-crf", "31")
+    assert fallback.target_transfer is HdrTransfer.PQ
+    assert fallback.tone_map_to_sdr is hardware_plan.tone_map_to_sdr
+    assert fallback.pixel_format == hardware_plan.pixel_format
+    assert fallback.container == "mov"
 
 
 def test_h264_auto_tone_maps_hdr_input_to_sdr() -> None:

@@ -14,7 +14,22 @@ from typing import Any
 import numpy as np
 
 from immich_memories.processing.clip_encoder import encoder_args_for_plan
-from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
+from immich_memories.processing.encoding_errors import (
+    EncoderFallbackError,
+    StreamingEncoderCleanupError,
+    StreamingEncoderError,
+    StreamingEncoderFinishError,
+    StreamingEncoderStartError,
+    StreamingEncoderWriteError,
+    streaming_failure_diagnostic,
+)
+from immich_memories.processing.encoding_plan import (
+    EncodingPlan,
+    HdrTransfer,
+    OutputCodec,
+    software_fallback_plan,
+    uses_hardware_encoder,
+)
 from immich_memories.processing.hdr_utilities import (
     _detect_color_primaries,
     _detect_hdr_type,
@@ -262,17 +277,12 @@ class StreamingEncoder:
         self._fps = fps
         self._encoding_plan = encoding_plan or _default_streaming_plan()
         self._encoder_args = encoder_args_for_plan(self._encoding_plan)
-        # WHY: Frames arrive as rgb24 (sRGB). For HDR output, zscale converts
-        # sRGB → HLG/PQ on the encoder side. Same pattern as photo pipeline.
         self._target_transfer = self._encoding_plan.target_transfer
         self._proc: subprocess.Popen[bytes] | None = None
 
     def start(self) -> None:
         """Start the FFmpeg encode process."""
-        # WHY: For HDR, data arrives as yuv420p10le (native format, zero conversion).
-        # The rawvideo pipe STRIPS color range metadata — without explicit flags,
-        # the encoder assumes full range (0-1023) when data is tv range (64-940)
-        # = washed out colors. Must tag input with color metadata.
+        # Rawvideo strips HDR range metadata, so tag the encoder input explicitly.
         target_type = (
             self._target_transfer.value if self._target_transfer is not HdrTransfer.NONE else "sdr"
         )
@@ -301,7 +311,6 @@ class StreamingEncoder:
                 "bt2020nc",
             ]
 
-        # WHY: yuv420p10le for HDR (native format, zero conversion), rgb24 for SDR
         input_pix_fmt = "yuv420p10le" if self._encoding_plan.hdr else "rgb24"
 
         cmd = [
@@ -334,28 +343,58 @@ class StreamingEncoder:
     def write_frame(self, frame: np.ndarray) -> None:
         """Write one frame to the encoder. Uses memoryview for zero-copy."""
         assert self._proc is not None and self._proc.stdin is not None  # noqa: S101
-        # WHY: ndarray.data is a memoryview — avoids copying ~25 MB per 4K frame
-        # that .tobytes() would allocate
-        self._proc.stdin.write(frame.data)
+        # ndarray.data avoids copying ~25 MB per 4K frame.
+        try:
+            self._proc.stdin.write(frame.data)
+        except OSError:
+            pass
+        else:
+            return
+        raise StreamingEncoderWriteError("Streaming encoder stopped accepting frames")
 
     def finish(self) -> None:
         """Close stdin pipe and wait for FFmpeg to finish."""
         if self._proc is None:
             return
-        assert self._proc.stdin is not None  # noqa: S101
-        with contextlib.suppress(BrokenPipeError):
-            self._proc.stdin.close()
-        # WHY: Popen.wait() with stderr=PIPE deadlocks when FFmpeg fills the
-        # 64KB OS pipe buffer with progress/warnings. Drain stderr first —
-        # read() blocks until FFmpeg exits and closes its end of the pipe,
-        # which is fine since stdin is already closed (FFmpeg will finish).
-        stderr_bytes = self._proc.stderr.read() if self._proc.stderr else b""
-        self._proc.wait(timeout=3600)
-        if self._proc.returncode != 0:
-            stderr = stderr_bytes.decode(errors="replace")
-            raise RuntimeError(
-                f"Streaming encode failed (exit {self._proc.returncode}): {stderr[-500:]}"
+        proc = self._proc
+        assert proc.stdin is not None  # noqa: S101
+        finish_failure: str | None = None
+        try:
+            proc.stdin.close()
+        except OSError as exc:
+            finish_failure = type(exc).__name__
+        # Drain stderr before wait() to avoid a full PIPE deadlock.
+        if finish_failure is None:
+            try:
+                if proc.stderr:
+                    proc.stderr.read()
+                proc.wait(timeout=3600)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                finish_failure = type(exc).__name__
+        if finish_failure is not None:
+            raise StreamingEncoderFinishError(
+                f"Streaming encoder failed while finishing ({finish_failure})"
             )
+        if proc.returncode != 0:
+            raise StreamingEncoderFinishError(
+                f"Streaming encoder failed while finishing (exit {proc.returncode})",
+                exit_code=proc.returncode,
+            )
+        self._proc = None
+
+    def abort(self) -> None:
+        """Stop a failed encoder without waiting for a normal flush."""
+        proc = self._proc
+        self._proc = None
+        if proc is None:
+            return
+        if proc.stdin is not None:
+            with contextlib.suppress(OSError):
+                proc.stdin.close()
+        with contextlib.suppress(OSError):
+            proc.terminate()
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+            proc.wait(timeout=5)
 
 
 def _emit_body_frames(
@@ -575,6 +614,116 @@ def _alloc_blend_bufs(
     )
 
 
+def _discard_failed_streaming_encoder(encoder: StreamingEncoder, output_path: Path) -> None:
+    """Stop one failed encoder attempt and remove its partial output."""
+    abort = getattr(encoder, "abort", None)
+    if callable(abort):
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired, RuntimeError):
+            abort()
+    else:
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired, RuntimeError):
+            encoder.finish()
+    try:
+        output_path.unlink(missing_ok=True)
+    except OSError:
+        logger.warning("Could not remove failed streaming video output")
+
+
+def _clear_attempt_audio_paths(audio_work_dir: Path | None, clip_count: int) -> None:
+    """Remove only deterministic audio artifacts owned by one streaming attempt."""
+    if audio_work_dir is None:
+        return
+    cleanup_failed = False
+    for clip_idx in range(clip_count):
+        try:
+            (audio_work_dir / f"clip_{clip_idx}_audio.wav").unlink(missing_ok=True)
+        except OSError:
+            cleanup_failed = True
+    if cleanup_failed:
+        logger.warning("Could not clean failed streaming audio artifacts")
+        raise StreamingEncoderCleanupError(
+            "Failed streaming audio artifacts could not be removed safely"
+        )
+
+
+def _start_streaming_encoder(encoder: StreamingEncoder) -> None:
+    """Normalize only encoder-process startup failures to a retryable type."""
+    start_error: StreamingEncoderStartError | None = None
+    try:
+        encoder.start()
+    except StreamingEncoderStartError as error:
+        start_error = error
+    except (OSError, subprocess.TimeoutExpired):
+        start_error = StreamingEncoderStartError("Streaming encoder failed to start")
+    if start_error is not None:
+        raise start_error
+
+
+def _collect_streaming_audio_paths(audio_work_dir: Path | None, clip_count: int) -> list[Path]:
+    """Return one audio-work entry per source clip."""
+    if audio_work_dir is None:
+        return []
+    return [
+        wav if wav.exists() else Path()
+        for clip_idx in range(clip_count)
+        if (wav := audio_work_dir / f"clip_{clip_idx}_audio.wav")
+    ]
+
+
+def _run_streaming_attempt(
+    clips: list,
+    transitions: list[str],
+    output_path: Path,
+    width: int,
+    height: int,
+    fps: int,
+    fade_duration: float,
+    plan: EncodingPlan,
+    ctx: Any | None,
+    privacy_mode: bool,
+    scale_mode: str,
+    progress_callback: Callable[[int, int], None] | None,
+    frame_preview_callback: Callable[[bytes], None] | None,
+    audio_work_dir: Path | None,
+) -> list[Path]:
+    """Run one streaming attempt, classifying failures only at encoder boundaries."""
+    total_frames = _estimate_total_frames(clips, transitions, fps, fade_duration)
+    hdr_type = plan.target_transfer.value if plan.hdr else None
+    encoder = StreamingEncoder(output_path, width, height, fps, encoding_plan=plan)
+    blend_buf, temp_buf = _alloc_blend_bufs(width, height, hdr_type)
+    report_interval = max(1, fps // 2)
+    try:
+        _start_streaming_encoder(encoder)
+        _encode_clip_sequence(
+            clips,
+            transitions,
+            encoder,
+            int(fade_duration * fps),
+            total_frames,
+            report_interval,
+            blend_buf,
+            temp_buf,
+            width,
+            height,
+            fps,
+            ctx,
+            privacy_mode,
+            scale_mode,
+            hdr_type,
+            progress_callback,
+            frame_preview_callback,
+            audio_work_dir=audio_work_dir,
+        )
+        encoder.finish()
+    except BaseException:
+        _discard_failed_streaming_encoder(encoder, output_path)
+        raise
+    if progress_callback:
+        progress_callback(total_frames, total_frames)
+    logger.info(f"Streaming assembly complete: {len(clips)} clips → {output_path.name}")
+    return _collect_streaming_audio_paths(audio_work_dir, len(clips))
+
+
 def assemble_streaming(
     clips: list,
     transitions: list[str],
@@ -598,57 +747,51 @@ def assemble_streaming(
     if len(transitions) != len(clips) - 1:
         raise ValueError(f"Expected {len(clips) - 1} transitions, got {len(transitions)}")
 
-    fade_frames = int(fade_duration * fps)
-    total_frames = _estimate_total_frames(clips, transitions, fps, fade_duration)
     plan = encoding_plan or _default_streaming_plan()
-    hdr_type = plan.target_transfer.value if plan.hdr else None
-    encoder = StreamingEncoder(output_path, width, height, fps, encoding_plan=plan)
-    encoder.start()
-    blend_buf, temp_buf = _alloc_blend_bufs(width, height, hdr_type)
-    # WHY: Throttle callbacks to every ~0.5s worth of frames to avoid UI overhead
-    report_interval = max(1, fps // 2)
-
-    try:
-        _encode_clip_sequence(
-            clips,
-            transitions,
-            encoder,
-            fade_frames,
-            total_frames,
-            report_interval,
-            blend_buf,
-            temp_buf,
-            width,
-            height,
-            fps,
-            ctx,
-            privacy_mode,
-            scale_mode,
-            hdr_type,
-            progress_callback,
-            frame_preview_callback,
-            audio_work_dir=audio_work_dir,
-        )
-        encoder.finish()
-        if progress_callback:
-            progress_callback(total_frames, total_frames)
-        logger.info(f"Streaming assembly complete: {len(clips)} clips → {output_path.name}")
-    except (
-        Exception
-    ):  # WHY: cleanup safety net — ensures encoder.finish() even on unexpected errors
-        encoder.finish()
-        raise
-
-    # Collect audio WAV files extracted by FrameDecoder during the encode pass
-    audio_paths: list[Path] = []
-    if audio_work_dir:
-        for clip_idx in range(len(clips)):
-            wav = audio_work_dir / f"clip_{clip_idx}_audio.wav"
-            if wav.exists():
-                audio_paths.append(wav)
-            else:
-                audio_paths.append(Path())
-    return audio_paths
+    attempts = [plan]
+    if uses_hardware_encoder(plan):
+        attempts.append(software_fallback_plan(plan))
+    primary_failure: str | None = None
+    for attempt_plan in attempts:
+        attempt_error: StreamingEncoderError | None = None
+        try:
+            return _run_streaming_attempt(
+                clips,
+                transitions,
+                output_path,
+                width,
+                height,
+                fps,
+                fade_duration,
+                attempt_plan,
+                ctx,
+                privacy_mode,
+                scale_mode,
+                progress_callback,
+                frame_preview_callback,
+                audio_work_dir,
+            )
+        except StreamingEncoderError as error:
+            attempt_error = error
+        if primary_failure is None and len(attempts) == 2:
+            assert attempt_error is not None  # noqa: S101
+            primary_failure = streaming_failure_diagnostic(attempt_error)
+            _clear_attempt_audio_paths(audio_work_dir, len(clips))
+            logger.warning(
+                "Hardware encoder %s failed; retrying %s streaming assembly in software",
+                plan.encoder,
+                attempts[1].codec.value,
+            )
+            continue
+        if primary_failure is not None:
+            raise EncoderFallbackError(
+                f"Hardware encoder {plan.encoder} failed ({primary_failure}); "
+                f"software encoder {attempt_plan.encoder} failed "
+                f"({streaming_failure_diagnostic(attempt_error)})"
+            )
+        assert attempt_error is not None  # noqa: S101
+        raise attempt_error
+    raise AssertionError("streaming attempt loop did not return or raise")
 
 
 def _encode_clip_sequence(
