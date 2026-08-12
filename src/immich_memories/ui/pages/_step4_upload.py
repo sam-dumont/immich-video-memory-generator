@@ -29,6 +29,15 @@ def _safe_delivery_message(message: str, params: GenerationParams) -> str:
     return safe_message
 
 
+def _authoritative_delivery_run(run_tracker: RunTracker) -> RunMetadata | None:
+    """Read delivery truth after an ambiguous transition without rewriting it."""
+    try:
+        return run_tracker.db.get_run(run_tracker.run_id)
+    except Exception:  # WHY: presentation must not replace the primary delivery outcome
+        logger.error("Could not inspect delivery lifecycle after upload")
+        return run_tracker.current_run
+
+
 def init_upload_state(state) -> None:
     """Initialize upload state from config defaults."""
     with contextlib.suppress(Exception):
@@ -91,24 +100,30 @@ async def upload_to_immich(
         from immich_memories.generate import deliver_completed_artifact
 
         result = await run.io_bound(deliver_completed_artifact, params, video_path, run_tracker)
-        completed = run_tracker.current_run
+        completed = _authoritative_delivery_run(run_tracker)
         if completed is None:  # pragma: no cover - delivery requires an owned completed run
             raise RuntimeError("Run disappeared after Immich delivery")
         state.upload_result = result
         state.delivery_status = completed.delivery_status
-        ui.notify(
-            f"Uploaded to Immich! Album: {params.upload_album}",
-            type="positive",
-        )
+        try:
+            ui.notify(
+                f"Uploaded to Immich! Album: {params.upload_album}",
+                type="positive",
+            )
+        except Exception:  # WHY: the success observer cannot redefine delivery truth
+            logger.warning("Delivery success notification failed")
         logger.info("Upload complete: asset=%s", completed.immich_asset_id)
         return completed
 
     except Exception as exc:  # WHY: a completed artifact must remain visible and retryable
-        current = run_tracker.current_run
+        current = _authoritative_delivery_run(run_tracker)
         if current is None:
             raise
         state.upload_result = None
         state.delivery_status = current.delivery_status
         logger.warning("Upload to Immich remains pending")
-        ui.notify(_safe_delivery_message(str(exc), params), type="warning")
+        try:
+            ui.notify(_safe_delivery_message(str(exc), params), type="warning")
+        except Exception:  # WHY: a warning observer cannot hide the retryable artifact
+            logger.warning("Delivery failure notification failed")
         return current

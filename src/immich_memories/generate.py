@@ -418,9 +418,21 @@ def deliver_completed_artifact(
         raise delivery_error from None
 
     assert asset_id is not None  # validated in the API-call boundary above
+    normalized_asset_id = asset_id.strip()
     try:
         run_tracker.mark_delivered(asset_id)
     except Exception as exc:
+        persisted = None
+        try:
+            persisted = run_tracker.db.get_run(run_tracker.run_id)
+        except Exception:  # WHY: an ambiguous transition must not trigger a second upload
+            logger.error("Could not inspect successful Immich delivery state")
+        if (
+            persisted is not None
+            and persisted.delivery_status.value == "delivered"
+            and persisted.immich_asset_id == normalized_asset_id
+        ):
+            return result
         safe_message = _safe_delivery_message(exc, params.config)
         logger.error("Could not persist successful Immich delivery: %s", safe_message)
         delivery_error = DeliveryError(f"Immich delivery state update failed: {safe_message}")

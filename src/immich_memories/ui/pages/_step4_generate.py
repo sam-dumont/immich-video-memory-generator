@@ -36,6 +36,26 @@ def _safe_ui_error_message(error: Exception, config: Config | None) -> str:
     return message
 
 
+def _restore_completed_ui_state(state, completed, fallback_output_path: Path | None = None) -> None:
+    """Restore durable artifact facts before or after UI-only observer failures."""
+    if completed is None or completed.status != "completed":
+        return
+    state.output_path = (
+        Path(completed.output_path) if completed.output_path else fallback_output_path
+    )
+    state.generation_warning = completed.warnings[-1] if completed.warnings else None
+    state.delivery_status = completed.delivery_status
+
+
+def _read_persisted_run(run_tracker):
+    """Read lifecycle truth without allowing a secondary diagnostic failure to escape."""
+    try:
+        return run_tracker.db.get_run(run_tracker.run_id)
+    except Exception:  # WHY: the primary UI error must remain user-visible and sanitized
+        logger.error("Could not inspect run lifecycle after UI failure")
+        return None
+
+
 def _request_cancel(state, cancel_btn: ui.button | None, status_label) -> None:
     """Request cancellation of the running generation."""
     state.cancel_requested = True
@@ -267,24 +287,30 @@ async def run_generation(
             status_label,
         )
         result_path = prepared.path
+        state.output_path = result_path
+        _restore_completed_ui_state(state, getattr(run_tracker, "current_run", None), result_path)
         run_id_label.set_text(f"Output: {result_path.parent.name}")
 
         progress_bar.value = 1.0
         status_label.set_text("Complete!")
         cancel_btn.set_visibility(False)
-        state.output_path = result_path
-
         _show_output(output_container, result_path, state)
 
     except Exception as e:  # WHY: UI graceful degradation
         safe_msg = _safe_ui_error_message(e, state.config)
         persisted = None
         if run_tracker is not None:
-            persisted = run_tracker.db.get_run(run_tracker.run_id)
+            persisted = _read_persisted_run(run_tracker)
             if persisted is not None and persisted.status == "running":
-                run_tracker.fail_run(safe_msg)
-        artifact_completed = persisted is not None and persisted.status == "completed"
+                try:
+                    run_tracker.fail_run(safe_msg)
+                except Exception:  # WHY: durable UI failures must not replace the primary message
+                    logger.error("Could not persist UI generation failure state")
+        artifact_completed = (
+            persisted is not None and persisted.status == "completed"
+        ) or state.output_path is not None
         if artifact_completed:
+            _restore_completed_ui_state(state, persisted)
             logger.error("Completion screen failed after artifact publication")
             notice = f"Video saved, but the completion screen failed: {safe_msg}"
             notice_type = "warning"
