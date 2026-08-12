@@ -377,6 +377,134 @@ async def test_ui_successful_upload_uses_completed_pending_row_and_same_tracker(
 
 
 @pytest.mark.asyncio
+async def test_ui_success_toast_failure_preserves_delivered_state_and_upload_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A delivery-success observer is outside the durable delivery transition."""
+    from immich_memories.ui.pages import _step4_generate as step4_generate
+
+    db_path = tmp_path / "runs.db"
+    config = Config(cache={"database": str(db_path)})
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"validated-base")
+    tracker = RunTracker("ui-success-toast", db_path=db_path, capture_system=False)
+    tracker.start_run(source="manual")
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=output_path,
+        config=config,
+        client=object(),  # type: ignore[arg-type]
+        upload_enabled=True,
+        upload_album="Delivered Album",
+    )
+    state = AppState(
+        config=config, generation_options={"music_source": "None"}, upload_enabled=True
+    )
+    upload_result = {"asset_id": "toast-asset", "album_id": "toast-album"}
+    notifications: list[str] = []
+
+    async def io_bound(callback, *args, **kwargs):
+        return callback(*args, **kwargs)
+
+    def fail_success_toast(message: str, **_kwargs) -> None:
+        notifications.append(message)
+        raise RuntimeError("success toast observer failed")
+
+    monkeypatch.setattr(step4_generate, "validate_output", lambda *_args: _probe())
+    monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
+    monkeypatch.setattr("immich_memories.generate._upload_to_immich", lambda *_args: upload_result)
+    monkeypatch.setattr("immich_memories.ui.pages._step4_upload.ui.notify", fail_success_toast)
+    caplog.set_level("WARNING", logger="immich_memories.ui.pages._step4_upload")
+
+    completed = await step4_generate.finalize_ui_generation(
+        state,
+        params,
+        PreparedGeneration(output_path, _h264_plan(), (), 1, 1),
+        tracker,
+        progress_bar=_Progress(),
+        status_label=_Status(),
+    )
+
+    saved = RunDatabase(db_path).get_run("ui-success-toast")
+    assert saved is not None
+    assert completed.delivery_status is DeliveryStatus.DELIVERED
+    assert saved.delivery_status is DeliveryStatus.DELIVERED
+    assert state.delivery_status is DeliveryStatus.DELIVERED
+    assert state.upload_result == upload_result
+    assert notifications == ["Uploaded to Immich! Album: Delivered Album"]
+    assert "remains pending" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_ui_reloads_delivered_truth_when_mark_delivered_commits_then_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An ambiguous delivery write is resolved from the authoritative delivered row."""
+    from immich_memories.ui.pages import _step4_generate as step4_generate
+
+    db_path = tmp_path / "runs.db"
+    config = Config(cache={"database": str(db_path)})
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"validated-base")
+    tracker = RunTracker("ui-committed-delivery", db_path=db_path, capture_system=False)
+    tracker.start_run(source="manual")
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=output_path,
+        config=config,
+        client=object(),  # type: ignore[arg-type]
+        upload_enabled=True,
+        upload_album="Committed Album",
+    )
+    state = AppState(
+        config=config, generation_options={"music_source": "None"}, upload_enabled=True
+    )
+    upload_result = {"asset_id": "committed-asset"}
+    original_mark_delivered = tracker.mark_delivered
+    notifications: list[str] = []
+
+    def commit_then_raise(asset_id: str):
+        original_mark_delivered(asset_id)
+        raise OSError("connection closed after durable delivery write")
+
+    async def io_bound(callback, *args, **kwargs):
+        return callback(*args, **kwargs)
+
+    monkeypatch.setattr(tracker, "mark_delivered", commit_then_raise)
+    monkeypatch.setattr(step4_generate, "validate_output", lambda *_args: _probe())
+    monkeypatch.setattr(step4_generate.run, "io_bound", io_bound)
+    monkeypatch.setattr("immich_memories.generate._upload_to_immich", lambda *_args: upload_result)
+    monkeypatch.setattr(
+        "immich_memories.ui.pages._step4_upload.ui.notify",
+        lambda message, **_kwargs: notifications.append(message),
+    )
+    caplog.set_level("WARNING", logger="immich_memories.ui.pages._step4_upload")
+
+    completed = await step4_generate.finalize_ui_generation(
+        state,
+        params,
+        PreparedGeneration(output_path, _h264_plan(), (), 1, 1),
+        tracker,
+        progress_bar=_Progress(),
+        status_label=_Status(),
+    )
+
+    saved = RunDatabase(db_path).get_run("ui-committed-delivery")
+    assert saved is not None
+    assert completed.delivery_status is DeliveryStatus.DELIVERED
+    assert saved.delivery_status is DeliveryStatus.DELIVERED
+    assert saved.immich_asset_id == "committed-asset"
+    assert state.delivery_status is DeliveryStatus.DELIVERED
+    assert state.upload_result == upload_result
+    assert notifications == ["Uploaded to Immich! Album: Committed Album"]
+    assert "remains pending" not in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_ui_unexpected_delivery_error_keeps_pending_video_and_redacts_config_secret(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -754,6 +882,198 @@ async def test_post_completion_ui_error_cannot_downgrade_artifact_or_leak_config
     assert saved.output_path == str(output_path)
     assert state.output_path == output_path
     assert configured_literal not in caplog.text
+    assert configured_literal not in " ".join(notifications + cards)
+
+
+@pytest.mark.asyncio
+async def test_ui_observer_after_completion_recovers_persisted_session_truth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A post-finalization observer failure restores the completed UI session from the DB."""
+    from immich_memories.ui.pages import _step4_generate as step4_generate
+
+    configured_literal = "post-finalization-observer-secret-919"
+    warning = "Optional music failed: backend unavailable"
+    db_path = tmp_path / "runs.db"
+    config = Config(
+        cache={"database": str(db_path)},
+        immich={"api_key": configured_literal},
+    )
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"validated-video")
+    state = AppState(config=config, generation_options={"music_source": "None"})
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=output_path,
+        config=config,
+    )
+    prepared = PreparedGeneration(output_path, _h264_plan(), (), 1, 1)
+    notifications: list[str] = []
+    cards: list[str] = []
+    rendered_paths: list[Path] = []
+    linked_paths: list[Path] = []
+    show_output = step4_generate._show_output
+
+    async def execute(_state, _params, tracker, _progress, _status):
+        tracker.start_run(source="manual")
+        tracker.complete_artifact(
+            output_path,
+            _probe(),
+            warnings=[warning],
+            clips_analyzed=1,
+            clips_selected=1,
+        )
+        return prepared
+
+    class FailingOutputLabel(_Element):
+        def set_text(self, _value: str) -> None:
+            raise RuntimeError(f"observer failed with {configured_literal}")
+
+    def label(value="", **_kwargs):
+        return FailingOutputLabel(value) if value == "" else _Element(value)
+
+    monkeypatch.setattr(step4_generate.ui, "linear_progress", lambda **_kwargs: _Element())
+    monkeypatch.setattr(step4_generate.ui, "label", label)
+    monkeypatch.setattr(step4_generate.ui, "image", lambda **_kwargs: _Element())
+    monkeypatch.setattr(
+        "immich_memories.ui.components.im_button",
+        lambda *_args, **_kwargs: _Element(),
+    )
+    monkeypatch.setattr(
+        step4_generate.ui, "notify", lambda message, **_kwargs: notifications.append(message)
+    )
+    monkeypatch.setattr(
+        step4_generate, "im_info_card", lambda message, **_kwargs: cards.append(message)
+    )
+    monkeypatch.setattr(step4_generate, "normalize_ui_output_path", lambda *_args: output_path)
+    monkeypatch.setattr(step4_generate, "_build_generation_params", lambda *_args: params)
+    monkeypatch.setattr(step4_generate, "execute_ui_generation", execute)
+    monkeypatch.setattr(
+        step4_generate, "_show_output", lambda _container, path, _state: rendered_paths.append(path)
+    )
+    monkeypatch.setattr("immich_memories.tracking.generate_run_id", lambda: "ui-observer-recovery")
+    caplog.set_level("ERROR", logger="immich_memories.ui.pages._step4_generate")
+
+    await step4_generate.run_generation(
+        state,
+        [make_clip("clip-1")],
+        total_duration=5.0,
+        output_dir=tmp_path,
+        output_path=output_path,
+        filename_input=_Element("memory.mp4"),
+        progress_container=_Container(),
+        output_container=_Container(),
+    )
+
+    saved = RunDatabase(db_path).get_run("ui-observer-recovery")
+    assert saved is not None
+    assert saved.status == "completed"
+    assert state.output_path == output_path
+    assert state.generation_warning == warning
+    assert state.delivery_status is DeliveryStatus.NOT_REQUESTED
+    assert rendered_paths == []
+    assert configured_literal not in caplog.text
+    assert configured_literal not in " ".join(notifications + cards)
+
+    monkeypatch.setattr(step4_generate.ui, "label", lambda value="", **_kwargs: _Element(value))
+    monkeypatch.setattr(step4_generate, "im_separator", lambda: None)
+    monkeypatch.setattr(step4_generate.ui, "element", lambda *_args, **_kwargs: _Element())
+    monkeypatch.setattr(step4_generate.ui, "row", lambda *_args, **_kwargs: _Element())
+    monkeypatch.setattr(step4_generate.ui, "column", lambda *_args, **_kwargs: _Element())
+    monkeypatch.setattr(step4_generate.ui, "icon", lambda *_args, **_kwargs: _Element())
+    monkeypatch.setattr(step4_generate.ui, "video", lambda *_args, **_kwargs: _Element())
+    monkeypatch.setattr(step4_generate.ui, "run_javascript", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        step4_generate.nicegui_app,
+        "add_media_file",
+        lambda *, local_file: (linked_paths.append(local_file), "/video")[1],
+    )
+    show_output(_Container(), state.output_path, state)
+
+    assert linked_paths == [output_path]
+
+
+@pytest.mark.asyncio
+async def test_ui_observer_failure_keeps_saved_classification_when_recovery_read_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A secondary lifecycle read cannot erase completion already copied into the session."""
+    from immich_memories.ui.pages import _step4_generate as step4_generate
+
+    configured_literal = "observer-primary-secret-778"
+    db_path = tmp_path / "runs.db"
+    config = Config(
+        cache={"database": str(db_path)},
+        immich={"api_key": configured_literal},
+    )
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"validated-video")
+    state = AppState(config=config, generation_options={"music_source": "None"})
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=output_path,
+        config=config,
+    )
+    prepared = PreparedGeneration(output_path, _h264_plan(), (), 1, 1)
+    tracker_ref: list[RunTracker] = []
+    notifications: list[str] = []
+    cards: list[str] = []
+
+    async def execute(_state, _params, tracker, _progress, _status):
+        tracker_ref.append(tracker)
+        tracker.start_run(source="manual")
+        tracker.complete_artifact(
+            output_path, _probe(), warnings=[], clips_analyzed=1, clips_selected=1
+        )
+        return prepared
+
+    class FailingOutputLabel(_Element):
+        def set_text(self, _value: str) -> None:
+            monkeypatch.setattr(
+                tracker_ref[0].db,
+                "get_run",
+                lambda *_args: (_ for _ in ()).throw(OSError("secondary DB read failed")),
+            )
+            raise RuntimeError(f"primary observer failed with {configured_literal}")
+
+    def label(value="", **_kwargs):
+        return FailingOutputLabel(value) if value == "" else _Element(value)
+
+    monkeypatch.setattr(step4_generate.ui, "linear_progress", lambda **_kwargs: _Element())
+    monkeypatch.setattr(step4_generate.ui, "label", label)
+    monkeypatch.setattr(step4_generate.ui, "image", lambda **_kwargs: _Element())
+    monkeypatch.setattr(
+        "immich_memories.ui.components.im_button", lambda *_args, **_kwargs: _Element()
+    )
+    monkeypatch.setattr(
+        step4_generate.ui, "notify", lambda message, **_kwargs: notifications.append(message)
+    )
+    monkeypatch.setattr(
+        step4_generate, "im_info_card", lambda message, **_kwargs: cards.append(message)
+    )
+    monkeypatch.setattr(step4_generate, "normalize_ui_output_path", lambda *_args: output_path)
+    monkeypatch.setattr(step4_generate, "_build_generation_params", lambda *_args: params)
+    monkeypatch.setattr(step4_generate, "execute_ui_generation", execute)
+    monkeypatch.setattr("immich_memories.tracking.generate_run_id", lambda: "ui-read-failure")
+
+    await step4_generate.run_generation(
+        state,
+        [make_clip("clip-1")],
+        total_duration=5.0,
+        output_dir=tmp_path,
+        output_path=output_path,
+        filename_input=_Element("memory.mp4"),
+        progress_container=_Container(),
+        output_container=_Container(),
+    )
+
+    assert state.output_path == output_path
+    assert state.delivery_status is DeliveryStatus.NOT_REQUESTED
+    assert notifications[0].startswith("Video saved, but the completion screen failed:")
+    assert cards[0].startswith("Video saved, but the completion screen failed:")
     assert configured_literal not in " ".join(notifications + cards)
 
 
