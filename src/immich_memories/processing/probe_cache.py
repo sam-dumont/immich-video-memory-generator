@@ -84,14 +84,19 @@ def _integer(value: object, default: int = 0) -> int:
 
 
 def _frame_rate(stream: dict[str, Any]) -> float:
-    value = str(stream.get("r_frame_rate") or stream.get("avg_frame_rate") or "")
-    try:
-        if "/" in value:
-            numerator, denominator = value.split("/", maxsplit=1)
-            return float(numerator) / float(denominator) if float(denominator) else 0.0
-        return float(value) if value else 0.0
-    except (TypeError, ValueError, ZeroDivisionError):
-        return 0.0
+    for raw_value in (stream.get("r_frame_rate"), stream.get("avg_frame_rate")):
+        value = str(raw_value or "")
+        try:
+            if "/" in value:
+                numerator, denominator = value.split("/", maxsplit=1)
+                rate = float(numerator) / float(denominator) if float(denominator) else 0.0
+            else:
+                rate = float(value) if value else 0.0
+        except (TypeError, ValueError, ZeroDivisionError):
+            continue
+        if rate > 0:
+            return rate
+    return 0.0
 
 
 def _rotation(stream: dict[str, Any]) -> int:

@@ -6,14 +6,15 @@ All UI interaction is replaced by a progress callback.
 
 from __future__ import annotations
 
+import inspect
 import io
 import logging
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, NoReturn, cast, overload
+from typing import TYPE_CHECKING, Literal, NoReturn, TypeVar, cast, overload
 
 from immich_memories.filename_builder import normalize_output_path
 from immich_memories.generate_clips import (
@@ -61,6 +62,8 @@ if TYPE_CHECKING:
     from immich_memories.tracking import RunTracker
 
 logger = logging.getLogger(__name__)
+
+_CallResult = TypeVar("_CallResult")
 
 # Re-export all extracted symbols so existing callers continue to work
 __all__ = [
@@ -494,6 +497,58 @@ def _build_download_coordinator(
     )
 
 
+def _call_with_optional_probe_cache(
+    callable_under_test: Callable[..., _CallResult],
+    *args: object,
+    probe_cache: ProbeCache,
+    **kwargs: object,
+) -> _CallResult:
+    """Pass run-scoped probing only through extension callables that accept it."""
+    signature_target = getattr(callable_under_test, "side_effect", None)
+    if not callable(signature_target):
+        signature_target = callable_under_test
+    parameters: Iterable[inspect.Parameter]
+    try:
+        parameters = inspect.signature(signature_target).parameters.values()
+    except (TypeError, ValueError):
+        parameters = ()
+    accepts_probe_cache = any(
+        parameter.name == "probe_cache" or parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
+    if accepts_probe_cache:
+        kwargs["probe_cache"] = probe_cache
+    return callable_under_test(*args, **kwargs)
+
+
+def _build_settings_with_optional_probe_cache(
+    params: GenerationParams,
+    assembly_clips: list,
+    *,
+    probe_cache: ProbeCache,
+):
+    return _call_with_optional_probe_cache(
+        _build_assembly_settings,
+        params,
+        assembly_clips,
+        probe_cache=probe_cache,
+    )
+
+
+def _create_assembler_with_optional_probe_cache(
+    settings,
+    config: Config,
+    *,
+    probe_cache: ProbeCache,
+):
+    return _call_with_optional_probe_cache(
+        _create_assembler,
+        settings,
+        config,
+        probe_cache=probe_cache,
+    )
+
+
 def _extract_clips_with_optional_prefetch(
     params: GenerationParams,
     cache_batch,
@@ -504,8 +559,15 @@ def _extract_clips_with_optional_prefetch(
     """Keep the legacy extraction call shape when prefetch is unavailable."""
     coordinator = _build_download_coordinator(params, cache_batch, output_dir)
     if coordinator is None:
-        return _extract_clips(params, cache_batch, output_dir, probe_cache=probe_cache)
-    return _extract_clips(
+        return _call_with_optional_probe_cache(
+            _extract_clips,
+            params,
+            cache_batch,
+            output_dir,
+            probe_cache=probe_cache,
+        )
+    return _call_with_optional_probe_cache(
+        _extract_clips,
         params,
         cache_batch,
         output_dir,
@@ -630,7 +692,7 @@ def _generate_memory_inner(
         assembly_cb = pp.assembly_callback()
         run_tracker.start_phase("assembly", len(assembly_clips))
 
-        settings = _build_assembly_settings(
+        settings = _build_settings_with_optional_probe_cache(
             params,
             assembly_clips,
             probe_cache=probe_cache,
@@ -639,7 +701,11 @@ def _generate_memory_inner(
             requested_output_path,
             cast(Literal["mp4", "mov"], settings.encoding_plan.container),
         )
-        assembler = _create_assembler(settings, params.config, probe_cache=probe_cache)
+        assembler = _create_assembler_with_optional_probe_cache(
+            settings,
+            params.config,
+            probe_cache=probe_cache,
+        )
         staged_output_path = result_output_path.with_name(
             f"{result_output_path.stem}.assembling{result_output_path.suffix}"
         )

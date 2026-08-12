@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -296,3 +297,143 @@ def test_hot_assembly_metadata_consumers_share_one_probe(tmp_path: Path, monkeyp
     assert assembler.encoder.resolve_encode_hdr(clip)[0] == "sdr"
     assert _probe_max_audio_bitrate([clip], probe_cache=assembler.prober.probe_cache) == "192k"
     assert calls == 1
+
+
+@pytest.mark.parametrize(
+    ("callable_factory", "expected_kwargs"),
+    [
+        (lambda seen: lambda *_args: seen.append({}), {}),
+        (
+            lambda seen: lambda *_args, probe_cache=None: seen.append({"probe_cache": probe_cache}),
+            {"probe_cache": "cache"},
+        ),
+        (
+            lambda seen: lambda *_args, **kwargs: seen.append(kwargs),
+            {"probe_cache": "cache"},
+        ),
+    ],
+    ids=["legacy", "explicit-keyword", "kwargs"],
+)
+def test_probe_cache_keyword_is_only_passed_to_compatible_callables(
+    callable_factory, expected_kwargs
+) -> None:
+    from immich_memories.generate import _call_with_optional_probe_cache
+
+    seen: list[dict[str, object]] = []
+    callable_under_test = callable_factory(seen)
+
+    _call_with_optional_probe_cache(callable_under_test, "arg", probe_cache="cache")
+
+    assert seen == [expected_kwargs]
+
+
+def test_optional_probe_cache_does_not_mask_internal_type_error() -> None:
+    from immich_memories.generate import _call_with_optional_probe_cache
+
+    def broken(*_args, probe_cache=None):
+        assert probe_cache == "cache"
+        raise TypeError("internal extension failure")
+
+    with pytest.raises(TypeError, match="internal extension failure"):
+        _call_with_optional_probe_cache(broken, "arg", probe_cache="cache")
+
+
+def test_generation_probe_cache_seams_share_the_exact_cache(monkeypatch) -> None:
+    from immich_memories import generate as generate_module
+    from immich_memories.generate import (
+        _build_settings_with_optional_probe_cache,
+        _create_assembler_with_optional_probe_cache,
+        _extract_clips_with_optional_prefetch,
+    )
+    from immich_memories.processing.probe_cache import ProbeCache
+
+    cache = ProbeCache()
+    extract = MagicMock(return_value=[])
+    build_settings = MagicMock(return_value="settings")
+    create_assembler = MagicMock(return_value="assembler")
+    monkeypatch.setattr(generate_module, "_extract_clips", extract)
+    monkeypatch.setattr(generate_module, "_build_assembly_settings", build_settings)
+    monkeypatch.setattr(generate_module, "_create_assembler", create_assembler)
+    monkeypatch.setattr(generate_module, "_build_download_coordinator", lambda *_args: None)
+
+    _extract_clips_with_optional_prefetch(
+        MagicMock(),
+        None,
+        Path("/tmp/run"),
+        probe_cache=cache,
+    )
+    _build_settings_with_optional_probe_cache(
+        MagicMock(),
+        [],
+        probe_cache=cache,
+    )
+    _create_assembler_with_optional_probe_cache(
+        "settings",
+        MagicMock(),
+        probe_cache=cache,
+    )
+
+    assert extract.call_args.kwargs["probe_cache"] is cache
+    assert build_settings.call_args.kwargs["probe_cache"] is cache
+    assert create_assembler.call_args.kwargs["probe_cache"] is cache
+
+
+def test_generation_probe_cache_seams_preserve_legacy_call_shapes(monkeypatch) -> None:
+    from immich_memories import generate as generate_module
+    from immich_memories.generate import (
+        _build_settings_with_optional_probe_cache,
+        _create_assembler_with_optional_probe_cache,
+        _extract_clips_with_optional_prefetch,
+    )
+    from immich_memories.processing.probe_cache import ProbeCache
+
+    calls: list[tuple[str, int]] = []
+
+    def legacy_extract(_params, _cache_batch, _output_dir):
+        calls.append(("extract", 3))
+        return []
+
+    def legacy_settings(_params, _clips):
+        calls.append(("settings", 2))
+        return "settings"
+
+    def legacy_assembler(_settings, _config):
+        calls.append(("assembler", 2))
+        return "assembler"
+
+    monkeypatch.setattr(
+        generate_module,
+        "_extract_clips",
+        MagicMock(side_effect=legacy_extract),
+    )
+    monkeypatch.setattr(generate_module, "_build_assembly_settings", legacy_settings)
+    monkeypatch.setattr(generate_module, "_create_assembler", legacy_assembler)
+    monkeypatch.setattr(generate_module, "_build_download_coordinator", lambda *_args: None)
+    cache = ProbeCache()
+
+    _extract_clips_with_optional_prefetch(MagicMock(), None, Path("/tmp/run"), probe_cache=cache)
+    _build_settings_with_optional_probe_cache(MagicMock(), [], probe_cache=cache)
+    _create_assembler_with_optional_probe_cache("settings", MagicMock(), probe_cache=cache)
+
+    assert calls == [("extract", 3), ("settings", 2), ("assembler", 2)]
+
+
+def test_unusable_primary_frame_rate_falls_back_to_average(tmp_path: Path, monkeypatch) -> None:
+    from immich_memories.processing.probe_cache import ProbeCache
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"media")
+    payload = _probe_payload()
+    streams = payload["streams"]
+    assert isinstance(streams, list)
+    video = streams[0]
+    assert isinstance(video, dict)
+    video["r_frame_rate"] = "0/0"
+    video["avg_frame_rate"] = "30000/1001"
+
+    def run_probe(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    monkeypatch.setattr("immich_memories.processing.probe_cache.subprocess.run", run_probe)
+
+    assert ProbeCache().get(source).fps == pytest.approx(29.97, abs=0.01)
