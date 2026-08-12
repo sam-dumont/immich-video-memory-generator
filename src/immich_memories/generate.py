@@ -471,7 +471,12 @@ def _build_download_coordinator(
     from immich_memories.processing.download_coordinator import (
         DownloadCoordinator,
         build_sync_client_factory,
+        has_sync_client_connection,
     )
+
+    if not has_sync_client_connection(params.client):
+        logger.debug("Download prefetch disabled: client cannot seed isolated workers")
+        return None
 
     download_operation = None
     if cache_batch is None:
@@ -485,6 +490,23 @@ def _build_download_coordinator(
         cache_batch,
         params.config.analysis.download_workers,
         download_operation=download_operation,
+    )
+
+
+def _extract_clips_with_optional_prefetch(
+    params: GenerationParams,
+    cache_batch,
+    output_dir: Path,
+) -> list:
+    """Keep the legacy extraction call shape when prefetch is unavailable."""
+    coordinator = _build_download_coordinator(params, cache_batch, output_dir)
+    if coordinator is None:
+        return _extract_clips(params, cache_batch, output_dir)
+    return _extract_clips(
+        params,
+        cache_batch,
+        output_dir,
+        download_coordinator=coordinator,
     )
 
 
@@ -552,23 +574,13 @@ def _generate_memory_inner(
             # One cache lifecycle owns all persistent-cache downloads for this
             # generation. It scans once, then evicts from the manifest on exit.
             with video_cache.begin_batch() as cache_batch:
-                assembly_clips = _extract_clips(
-                    params,
-                    cache_batch,
-                    run_output_dir,
-                    download_coordinator=_build_download_coordinator(
-                        params, cache_batch, run_output_dir
-                    ),
+                assembly_clips = _extract_clips_with_optional_prefetch(
+                    params, cache_batch, run_output_dir
                 )
         else:
             # Disabled cache means no interaction with the configured persistent
             # video cache. Extraction uses disposable run-local downloads.
-            assembly_clips = _extract_clips(
-                params,
-                None,
-                run_output_dir,
-                download_coordinator=_build_download_coordinator(params, None, run_output_dir),
-            )
+            assembly_clips = _extract_clips_with_optional_prefetch(params, None, run_output_dir)
         run_tracker.complete_phase(items_processed=len(assembly_clips))
         _phase_times["download"] = _time.monotonic() - _phase_start
         pp.report("download", 1.0, "Clips downloaded")

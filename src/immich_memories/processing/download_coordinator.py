@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 import httpx
 
@@ -34,6 +34,19 @@ class PrefetchAsset(Protocol):
 
     @property
     def type(self) -> object: ...
+
+
+class SyncClientConnection(Protocol):
+    """Connection metadata required to clone an isolated download client."""
+
+    @property
+    def base_url(self) -> str: ...
+
+    @property
+    def api_key(self) -> str: ...
+
+    @property
+    def timeout(self) -> float: ...
 
 
 @dataclass(frozen=True)
@@ -62,8 +75,13 @@ DownloadOperation = Callable[[SyncImmichClient, PrefetchAsset], Path | None]
 ProgressCallback = Callable[[int, int, DownloadResult], None]
 
 
+def has_sync_client_connection(client: object) -> TypeGuard[SyncClientConnection]:
+    """Return whether a caller-owned client can seed isolated workers."""
+    return all(hasattr(client, name) for name in ("base_url", "api_key", "timeout"))
+
+
 def build_sync_client_factory(
-    source_client: SyncImmichClient,
+    source_client: SyncClientConnection,
     api_policy: ApiVersionPolicy,
 ) -> DownloadClientFactory:
     """Capture connection settings for isolated worker clients.
