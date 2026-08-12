@@ -1,5 +1,6 @@
 """Contract checks for launch-critical Immich compatibility documentation."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -306,6 +307,14 @@ def test_auto_docs_state_the_daily_variety_contract() -> None:
         "one memory per invocation",
     ):
         assert phrase in text
+
+
+def test_auto_quiet_json_example_includes_the_stable_action_field() -> None:
+    text = _read("docs-site/docs/create/cli/auto.md")
+    example = text.split("Quiet output is a stable JSON object", 1)[1]
+    json_block = example.split("```json", 1)[1].split("```", 1)[0]
+
+    assert json.loads(json_block)["action"] == "generation"
 
 
 def test_daily_auto_run_is_the_recommended_entry_point() -> None:

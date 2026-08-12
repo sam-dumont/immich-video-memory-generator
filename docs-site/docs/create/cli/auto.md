@@ -142,6 +142,7 @@ bare path. Its `action` is `generation` or `delivery_retry` when work was select
 ```json
 {
   "outcome": "dry_run",
+  "action": "generation",
   "reason": "dry run",
   "candidate_key": "trip:2026-07-02:2026-07-09:",
   "category": "trip",
