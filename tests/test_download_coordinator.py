@@ -73,19 +73,17 @@ class _Batch:
         return client.download_asset(resolved_id, path)
 
 
-def test_prefetch_is_bounded_faster_than_serial_and_preserves_input_order(tmp_path: Path) -> None:
+def test_prefetch_is_bounded_parallel_and_preserves_input_order(tmp_path: Path) -> None:
     from immich_memories.processing.download_coordinator import DownloadCoordinator
 
     tracker = _DownloadTracker(tmp_path)
     assets = [_Asset(f"asset-{index}") for index in range(6)]
     coordinator = DownloadCoordinator(tracker.factory, _Batch(tmp_path), max_workers=3)
 
-    started = time.monotonic()
     results = coordinator.prefetch(assets)
-    elapsed = time.monotonic() - started
 
     assert tracker.max_active == 3
-    assert elapsed < 0.35
+    assert coordinator.max_observed_workers == 3
     assert list(results) == [asset.id for asset in assets]
     assert all(result.path is not None for result in results.values())
     assert all(client.closed for client in tracker.clients)

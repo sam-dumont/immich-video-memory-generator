@@ -503,6 +503,17 @@ The remaining failures on the older PR head were reproduced and closed on the fi
 - The duplication gate passed at 3.34%, below the 5% limit.
 - Commit `1dc0c3f` passed every configured pre-commit policy gate, including diff coverage.
 
+The next published matrix run exposed one cross-platform test-oracle bug rather than a product
+failure. Python 3.11 and 3.12 on loaded macOS ARM runners completed the six-download prefetch in
+0.393 and 0.462 seconds, missing a hard 0.350-second ceiling; both runs still observed all three
+workers active concurrently, preserved result order, closed every client, and passed the other
+4,238 tests. Python 3.13 on the same runner class and all Ubuntu versions passed.
+
+The repaired contract removes only the environment-dependent wall-clock ceiling. It now verifies
+parallelism through both the fake downloader's locked active-operation count and the coordinator's
+worker count, while retaining the order, result, and cleanup assertions. All 11 focused download
+coordinator tests pass.
+
 ### Dependency and benchmark evidence
 
 The first published CI run exposed a reproducibility bug in the local dependency audit. The old

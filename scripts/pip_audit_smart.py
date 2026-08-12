@@ -22,9 +22,7 @@ def main() -> None:
 
     # Parse vulnerability lines: "name version CVE-ID fix_versions?"
     # Skip header lines (----, Name, etc.)
-    vuln_pattern = re.compile(
-        r"^(\S+)\s+(\S+)\s+((?:CVE|GHSA|PYSEC)-\S+)\s*(.*?)$", re.MULTILINE
-    )
+    vuln_pattern = re.compile(r"^(\S+)\s+(\S+)\s+((?:CVE|GHSA|PYSEC)-\S+)\s*(.*?)$", re.MULTILINE)
     matches = vuln_pattern.findall(text)
 
     if not matches:
