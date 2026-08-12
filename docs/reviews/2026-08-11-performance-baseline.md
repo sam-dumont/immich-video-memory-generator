@@ -156,3 +156,78 @@ Decision: no Cython
 
 I/O and process waiting dominate the controlled profiles, and no pure-Python candidate crosses the
 first threshold. No dependency or build configuration is added.
+
+## Task 8 final P1 verification
+
+Re-measured on 2026-08-12 at git HEAD `0f3c5724b8c6`. The machine, Python, FFmpeg, codecs,
+fixture identities, and repetition method match the Task 1 baseline above. The runs used separate
+roots under `/private/tmp`; no tracked benchmark JSON was read or changed. Negative percentages
+below mean the final run was faster.
+
+### Assembly before and after
+
+| Scenario | Task 1 median (s) | Final warm-up (s) | Final measured repetitions (s) | Final median (s) | Median change | Final child peak RSS (MiB) |
+| --- | ---: | ---: | --- | ---: | ---: | ---: |
+| minimal | 0.834 | 0.763931 | 0.749263, 0.754121, 0.746069 | 0.749263 | −10.2% | 415.3 |
+| typical | 4.377 | 4.105397 | 4.085556, 4.146204, 4.120570 | 4.120570 | −5.9% | 962.5 |
+| heavy | 13.127 | 11.850263 | 12.051343, 12.239880, 12.201445 | 12.201445 | −7.1% | 964.6 |
+
+The Task 1 child-process high-water marks were roughly 415 MiB for minimal and 962–965 MiB for
+typical/heavy, so the final RSS ceilings did not materially move. Median Python heap peaks in the
+final warm repetitions were 26.4, 59.4, and 59.4 MiB respectively.
+
+### Configured Immich pipeline before and after
+
+The source identity still matches Task 1 exactly: two H.265 clips totaling 3.393333 seconds at
+18.182 and 25.882 fps, with 1280×720 H.264 output. The full case again applied the explicit music
+fixture in the warm-up and all three repetitions.
+
+| Scenario | Task 1 median (s) | Final warm-up (s) | Final measured repetitions (s) | Final median (s) | Median change | Final child peak RSS (MiB) |
+| --- | ---: | ---: | --- | ---: | ---: | ---: |
+| Immich assembly only | 1.343 | 6.761957 | 1.145041, 1.143512, 1.243138 | 1.145041 | −14.7% | 312.3 |
+| Immich with titles | 5.330 | 5.910481 | 4.929936, 4.919682, 4.928772 | 4.928772 | −7.5% | 312.4 |
+| Immich full pipeline, explicit music | 6.015 | 6.248759 | 5.543774, 5.569385, 5.536920 | 5.543774 | −7.8% | 312.4 |
+
+Task 1 did not retain a comparable pipeline RSS table. The final warm-repetition Python heap
+medians were 26.5 MiB for assembly only, 236.6 MiB with titles, and 234.0 MiB for the full case.
+The child RSS value is still a cumulative subprocess high-water mark, not isolated allocation per
+scenario.
+
+### Deterministic structural evidence
+
+- Twenty cache downloads perform one recursive cache scan at batch start and no end rescan when
+  the manifest is unchanged. A genuine external mutation is the only covered path that adds the
+  fallback scan, for two scans total.
+- Eight duration/resolution/frame-rate/codec/HDR/primaries/audio-bitrate consumers for one
+  unchanged file share one comprehensive JSON `ffprobe` subprocess.
+- Six simulated 100 ms downloads use exactly three active workers, finish under 350 ms, retain
+  input order, and close one client per worker.
+- Analyzer teardown performs at most one `gc.collect()` for a batch, including a loaded audio
+  model, and repeated close calls do not collect again.
+
+The required structural command passed 90 tests in 2.93 seconds. The final full suite after the
+read-only CLI fix passed 4,332 tests with 7 skipped and 661 deselected in 110.97 seconds.
+
+### Launch and operational gates
+
+`make launch-check` passed on the final diff: Ruff, formatting, mypy, Xenon, the 1,000-line hard
+limit, 4,332 unit
+tests, sdist/wheel build and Twine validation, docs build, and 24 hermetic E2E tests including the
+real Chromium render. The focused operational-phase and storage-report gate passed 26 tests.
+
+The first real `runs storage --json` audit found that generic CLI initialization unconditionally
+called `chmod(0700)` on directories already at mode 0700, changing their APFS ctime. The fix now
+checks the existing mode before normalizing it. Its RED test observed three unwanted chmod calls;
+the GREEN tests prove secure directories keep their ctime while insecure directories still become
+0700. The affected config/storage/CLI suite passed 200 tests.
+
+After that fix, exact before/after manifests matched for the config/cache/projects directory
+metadata, the database metadata and SHA-256, every entry below the cache root, and every entry
+below the output root. The read-only report found 6,700,755,517 bytes across 3,359 files:
+
+- 6,700,679,737 bytes across 3,358 cache files classified `unknown`;
+- 75,780 bytes in one output-root file classified `orphaned`;
+- zero completed, failed, running, or pending-delivery entries.
+
+The largest directory was `preview-cache` at 5,455,153,242 bytes. Nothing was deleted, no run row
+or database byte changed, and the LaunchAgent remained untouched and unloaded.
