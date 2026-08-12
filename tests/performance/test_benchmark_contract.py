@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +32,187 @@ REQUIRED_REPRODUCTION_KEYS = {
     "raw_repetition_seconds",
     "median_wall_seconds",
 }
+
+
+def test_profile_harness_requires_an_isolated_explicit_output_directory(tmp_path: Path) -> None:
+    """The local profiler must confine its artifacts to the caller's temp root."""
+    project_root = Path(__file__).resolve().parents[2]
+    script = project_root / "scripts" / "profile_pipeline.py"
+    user_state = tmp_path / "user-state"
+    environment = os.environ | {
+        "IMMICH_MEMORIES_PROFILE_TEST_ROOT": str(tmp_path),
+        "XDG_CACHE_HOME": str(user_state / "cache"),
+        "XDG_CONFIG_HOME": str(user_state / "config"),
+        "XDG_DATA_HOME": str(user_state / "data"),
+    }
+
+    help_result = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    missing_output = subprocess.run(
+        [sys.executable, str(script), "--scenario", "controlled-tiny"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    outside_root = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--scenario",
+            "controlled-tiny",
+            "--output-dir",
+            str(tmp_path.parent / "outside"),
+        ],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    output_dir = tmp_path / "profile-output"
+    isolated_run = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--scenario",
+            "controlled-tiny",
+            "--repetitions",
+            "1",
+            "--output-dir",
+            str(output_dir),
+        ],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=30,
+    )
+
+    assert help_result.returncode == 0
+    assert "--output-dir" in help_result.stdout
+    assert missing_output.returncode != 0
+    assert "--output-dir" in missing_output.stderr
+    assert outside_root.returncode != 0
+    assert "test root" in outside_root.stderr
+    assert isolated_run.returncode == 0, isolated_run.stderr
+    metadata = json.loads((output_dir / "controlled-tiny-metadata.json").read_text())
+    assert metadata["command"] == [
+        sys.executable,
+        str(script),
+        "--scenario",
+        "controlled-tiny",
+        "--repetitions",
+        "1",
+        "--output-dir",
+        str(output_dir),
+    ]
+    assert metadata["config"] == {
+        "cache_mode": "cold",
+        "clip_count": 2,
+        "duration_seconds": 1,
+        "assembly": {
+            "codec": "h264",
+            "crf": 28,
+            "transition": "crossfade",
+            "transition_duration_seconds": 0.3,
+        },
+        "analysis": {
+            "audio_boundaries": True,
+            "adaptive_scene_detector": True,
+            "extract_keyframes": False,
+            "llm_clients_constructed": False,
+            "scene_detector": "SceneDetector",
+            "silence_threshold_db": -40.0,
+            "min_silence_duration_seconds": 0.2,
+            "min_scene_duration_seconds": 1.0,
+            "scene_threshold": 27.0,
+        },
+        "frame_rate": 30,
+        "resolution": "1280x720",
+    }
+    assert metadata["git_revision"]
+    assert metadata["environment"].keys() >= {
+        "cpu",
+        "ffmpeg",
+        "ffprobe",
+        "platform",
+        "python_version",
+    }
+    assert metadata["environment"]["cpu"] == perf_utils._cpu_fingerprint()
+    assert metadata["stage_wall_seconds"].keys() == {"analysis", "assembly"}
+    assert metadata["warmup_stage_wall_seconds"].keys() == {"analysis", "assembly"}
+    assert all(metadata["stage_wall_seconds"][stage][0] > 0 for stage in ("analysis", "assembly"))
+    assert all(
+        metadata["warmup_stage_wall_seconds"][stage] > 0 for stage in ("analysis", "assembly")
+    )
+    assert "estimate" in metadata["subprocess_wait_note"]
+    assert all(
+        metadata["subprocess_wait_estimate_seconds"][stage][0]
+        <= metadata["stage_wall_seconds"][stage][0] + 0.01
+        for stage in ("analysis", "assembly")
+    )
+    assert (output_dir / "controlled-tiny-1-assembly.prof").is_file()
+    assert (output_dir / "controlled-tiny-1-assembly-cumulative.txt").is_file()
+    assert (output_dir / "controlled-tiny-1-assembly-self.txt").is_file()
+    assert (output_dir / "controlled-tiny-1-analysis.prof").is_file()
+    assert (output_dir / "controlled-tiny-1-analysis-self.txt").is_file()
+    assert not user_state.exists()
+
+
+def test_local_benchmark_submission_requires_full_assembly_metadata() -> None:
+    """Local dispatch must not submit stripped benchmark projections as reproducible results."""
+    makefile = (Path(__file__).resolve().parents[2] / "Makefile").read_text()
+
+    assert "inputs[results]=$$(cat tests/perf-results.json)" in makefile
+    assert "titles skipped: full reproduction metadata is not exported yet" in makefile
+
+
+@pytest.mark.parametrize(
+    ("history_count", "expected"),
+    [
+        pytest.param(0, 0, id="no-history"),
+        pytest.param(9, 9, id="nine-history-runs"),
+        pytest.param(10, 10, id="ten-history-runs"),
+    ],
+)
+def test_benchmark_baseline_threshold_uses_action_datajson_history(
+    history_count: int, expected: int
+) -> None:
+    """The advisory threshold counts official DataJson Benchmark histories."""
+    from scripts.profile_pipeline import count_comparable_baselines
+
+    data = {"lastUpdate": 0, "repoUrl": "example", "entries": {"Benchmark": [{}] * history_count}}
+
+    assert count_comparable_baselines(data) == expected
+    assert (count_comparable_baselines(data) >= 10) is (history_count >= 10)
+
+
+def test_benchmark_projection_rejects_incomplete_reproduction_metadata() -> None:
+    """CI dispatch cannot convert stripped or incomplete results into comparisons."""
+    from scripts.profile_pipeline import benchmark_comparison_projection
+
+    result = dict.fromkeys(REQUIRED_REPRODUCTION_KEYS, "value")
+    result.update(
+        {"scenario": "assembly", "median_wall_seconds": 1.0, "raw_repetition_seconds": [1, 1, 1]}
+    )
+
+    assert benchmark_comparison_projection({"results": [result]}) == [
+        {"name": "assembly", "unit": "seconds", "value": 1.0}
+    ]
+    with pytest.raises(ValueError, match="full benchmark results"):
+        benchmark_comparison_projection([])
+    incomplete = result.copy()
+    del incomplete["cpu"]
+    with pytest.raises(ValueError, match="missing"):
+        benchmark_comparison_projection({"results": [incomplete]})
+    two_repetitions = result | {"raw_repetition_seconds": [1, 1]}
+    with pytest.raises(ValueError, match="exactly three"):
+        benchmark_comparison_projection({"results": [two_repetitions]})
 
 
 def test_minimal_assembly_uses_identity_checked_three_second_fixtures() -> None:

@@ -153,19 +153,22 @@ benchmark-submit:  ## Submit local benchmark results to GitHub (for non-CI runne
 	BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
 	SHA=$$(git rev-parse --short HEAD); \
 	echo "Submitting benchmarks from $$RUNNER_NAME ($$BRANCH@$$SHA)..."; \
-	for f in tests/benchmark-*.json; do \
-		[ -f "$$f" ] || continue; \
-		SUITE=$$(basename "$$f" .json | sed 's/benchmark-//'); \
-		echo "  Uploading $$SUITE results..."; \
+	if [ -f tests/perf-results.json ]; then \
+		echo "  Uploading full assembly reproduction metadata..."; \
 		gh api repos/:owner/:repo/actions/workflows/benchmark.yml/dispatches \
 			-f ref=main \
 			-f "inputs[runner]=$$RUNNER_NAME" \
-			-f "inputs[suite]=$$SUITE" \
+			-f "inputs[suite]=assembly" \
 			-f "inputs[sha]=$$SHA" \
-			-f "inputs[results]=$$(cat $$f)" \
-		&& echo "    ✓ $$SUITE submitted" \
-		|| echo "    ✗ $$SUITE failed (is GH_TOKEN set?)"; \
-	done
+			-f "inputs[results]=$$(cat tests/perf-results.json)" \
+		&& echo "    ✓ assembly submitted" \
+		|| echo "    ✗ assembly failed (is GH_TOKEN set?)"; \
+	else \
+		echo "  ✗ assembly skipped: tests/perf-results.json is required"; \
+	fi; \
+	if [ -f tests/benchmark-titles.json ]; then \
+		echo "  ! titles skipped: full reproduction metadata is not exported yet"; \
+	fi
 
 test-integration-live-photos:  ## Run ONLY live photo merge tests (~30s, needs Immich)
 	uv run pytest tests/integration/live_photos/ -v -s -m integration --log-cli-level=INFO --tb=short \
