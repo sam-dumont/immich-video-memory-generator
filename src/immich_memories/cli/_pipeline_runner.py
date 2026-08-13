@@ -166,6 +166,7 @@ def run_pipeline_and_generate(
         config=config,
         client=client,
         work_dir=output_path.parent,
+        provider_circuit=pipeline.provider_circuit,
     )
 
     # Phase 4: Unified selection (videos + photos compete together)
@@ -294,6 +295,7 @@ def _merge_photos_into_pool(
     config: Config,
     client: SyncImmichClient,
     work_dir: Path,
+    provider_circuit=None,
 ) -> list:
     """Score photos and merge them as ClipWithSegment into the video pool.
 
@@ -327,6 +329,7 @@ def _merge_photos_into_pool(
         db_path=config.cache.database_path,
         app_config=config,
         thumbnail_fn=thumbnail_fn,
+        provider_circuit=provider_circuit,
     )
 
     photo_candidates = []

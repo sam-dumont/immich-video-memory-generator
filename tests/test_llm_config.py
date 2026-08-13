@@ -101,6 +101,55 @@ class TestOpenAICompatibleProvider:
         assert client.headers.get("authorization") == "Bearer sk-test"
         analyzer.close()
 
+    def test_health_distinguishes_auth_route_and_missing_model(self):
+        """Permanent failures must open a precise run-level circuit."""
+        from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
+        from immich_memories.analysis.provider_health import ProviderState
+
+        cases = [
+            (401, {}, ProviderState.AUTH_FAILED),
+            (404, {}, ProviderState.ROUTE_MISSING),
+            (
+                404,
+                {"error": {"message": "The model old-vlm was not found"}},
+                ProviderState.MODEL_MISSING,
+            ),
+        ]
+        for status_code, body, expected in cases:
+            analyzer = OpenAICompatibleContentAnalyzer(
+                model="old-vlm", base_url="http://localhost:9999/v1"
+            )
+            response = httpx.Response(
+                status_code,
+                json=body,
+                request=httpx.Request("POST", "http://localhost:9999/v1/chat/completions"),
+            )
+            analyzer._client = MagicMock()
+            analyzer._client.is_closed = False
+            analyzer._client.post.return_value = response
+
+            health = analyzer.check_health()
+
+            assert health.state is expected
+            assert not health.available
+            assert not analyzer.available
+
+    def test_disabled_provider_skips_future_requests(self, tmp_path):
+        """Once a permanent 4xx occurs, later segments do not hit the provider."""
+        from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
+
+        analyzer = OpenAICompatibleContentAnalyzer(
+            model="old-vlm", base_url="http://localhost:9999/v1"
+        )
+        analyzer.disable("configured model unavailable")
+        analyzer._client = MagicMock()
+        analyzer._client.is_closed = False
+
+        result = analyzer.analyze_segment(tmp_path / "does-not-need-to-exist.mp4")
+
+        assert result.confidence == 0.0
+        analyzer._client.post.assert_not_called()
+
 
 class TestGetContentAnalyzer:
     def test_ollama_provider_returns_ollama_analyzer(self):

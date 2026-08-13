@@ -41,12 +41,14 @@ class ClipAnalyzer:
         *,
         app_config: Config,
         video_cache: VideoDownloadCache | None = None,
+        provider_circuit=None,
     ):
         self.config = config
         self.client = client
         self.analysis_cache = analysis_cache
         self.preview_builder = preview_builder
         self._app_config = app_config
+        self._provider_circuit = provider_circuit
         self._video_cache = video_cache
         self._cache_batch: CacheBatch | None = None
         cache_config = app_config.cache
@@ -267,9 +269,15 @@ class ClipAnalyzer:
                 image_detail=config.content_analysis.openai_image_detail,
                 max_height=config.content_analysis.frame_max_height,
                 timeout=float(config.llm.timeout_seconds),
+                circuit=self._provider_circuit,
             )
             weight = config.content_analysis.weight
             if analyzer:
+                health = analyzer.check_health()
+                if not health.available:
+                    logger.warning("Content analysis disabled for this run: %s", health.message)
+                    analyzer.close()
+                    return None, 0.0
                 logger.info(
                     f"LLM content analysis enabled "
                     f"(provider={config.llm.provider}, weight={weight:.0%})"

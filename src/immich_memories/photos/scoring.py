@@ -57,6 +57,7 @@ def score_photo_with_llm(
     metadata_score: float,
     config: PhotoConfig,
     app_config: Config,
+    provider_circuit=None,
 ) -> float:
     """Enhance photo score with LLM visual analysis.
 
@@ -66,7 +67,7 @@ def score_photo_with_llm(
     if app_config is None or not app_config.content_analysis.enabled:
         return metadata_score
 
-    llm_score = _query_photo_llm(photo_path, app_config)
+    llm_score = _query_photo_llm(photo_path, app_config, provider_circuit=provider_circuit)
     if llm_score is None:
         return metadata_score
 
@@ -86,10 +87,15 @@ _PHOTO_ANALYSIS_PROMPT = """Analyze this photo for a memory video compilation. R
 Respond as JSON: {"interest": 0.X, "quality": 0.X, "emotion": "word"}"""
 
 
-def _query_photo_llm(photo_path: Path, config: object) -> float | None:
+def _query_photo_llm(photo_path: Path, config: object, provider_circuit=None) -> float | None:
     """Send photo to VLM and get a 0-1 score."""
+    if provider_circuit is not None and not provider_circuit.available:
+        return None
+
     try:
         import httpx
+
+        from immich_memories.analysis.provider_health import classify_openai_response
 
         llm_config = config.llm  # type: ignore[attr-defined]
         ca_config = config.content_analysis  # type: ignore[attr-defined]
@@ -124,6 +130,11 @@ def _query_photo_llm(photo_path: Path, config: object) -> float | None:
             headers=headers,
             timeout=llm_config.timeout_seconds,
         )
+        health = classify_openai_response(resp.status_code, resp.json(), llm_config.model)
+        if not health.available:
+            if provider_circuit is not None and provider_circuit.set_health(health):
+                logger.warning("Photo content analysis disabled for this run: %s", health.message)
+            return None
         resp.raise_for_status()
         text = resp.json()["choices"][0]["message"]["content"]
 
@@ -142,5 +153,7 @@ def _query_photo_llm(photo_path: Path, config: object) -> float | None:
         return None
 
     except (httpx.HTTPError, RuntimeError, ValueError, OSError) as e:
+        if provider_circuit is not None:
+            provider_circuit.disable("content-analysis provider is unreachable")
         logger.debug(f"LLM photo analysis failed: {e}")
         return None

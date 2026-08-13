@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from immich_memories.api.models import Person
 from immich_memories.config_models import PhotoConfig
-from immich_memories.photos.scoring import score_photo
+from immich_memories.photos.scoring import score_photo, score_photo_with_llm
 from tests.conftest import make_asset
 
 
@@ -81,6 +81,39 @@ class TestPhotoScoring:
         config = PhotoConfig(score_penalty=1.0)
         score = score_photo(_photo(), config)
         assert score == 0.0
+
+    def test_permanent_llm_failure_is_not_retried(self, tmp_path: Path) -> None:
+        """Photo scoring shares the run circuit after a permanent provider failure."""
+        import httpx
+
+        from immich_memories.analysis.provider_health import ProviderCircuit
+        from immich_memories.config_loader import Config
+
+        photo_a = tmp_path / "a.jpg"
+        photo_b = tmp_path / "b.jpg"
+        photo_a.write_bytes(b"a")
+        photo_b.write_bytes(b"b")
+        config = Config(
+            llm={"base_url": "http://localhost:9999/v1", "model": "removed-vlm"},
+            content_analysis={"enabled": True},
+        )
+        circuit = ProviderCircuit()
+        response = httpx.Response(
+            404,
+            json={"error": {"message": "model removed-vlm not found"}},
+            request=httpx.Request("POST", "http://localhost:9999/v1/chat/completions"),
+        )
+
+        with patch("httpx.post", return_value=response) as request:
+            first = score_photo_with_llm(
+                photo_a, 0.42, PhotoConfig(), config, provider_circuit=circuit
+            )
+            second = score_photo_with_llm(
+                photo_b, 0.42, PhotoConfig(), config, provider_circuit=circuit
+            )
+
+        assert first == second == 0.42
+        assert request.call_count == 1
 
 
 class TestCacheFirstScoring:

@@ -2063,6 +2063,30 @@ class TestClipAnalyzerInitContentAnalyzer:
         assert result is mock_new_analyzer
         assert weight == 0.35
 
+    def test_unhealthy_analyzer_is_disabled_before_clip_analysis(self):
+        """One failed capability probe removes LLM weight for the whole batch."""
+        from immich_memories.analysis.provider_health import ProviderHealth, ProviderState
+
+        analyzer = self._make_analyzer()
+        mock_new_analyzer = MagicMock()
+        mock_new_analyzer.check_health.return_value = ProviderHealth(
+            ProviderState.MODEL_MISSING,
+            "configured model unavailable: gone",
+        )
+        with patch.dict(
+            "sys.modules",
+            {
+                "immich_memories.analysis.content_analyzer": MagicMock(
+                    get_content_analyzer=MagicMock(return_value=mock_new_analyzer)
+                )
+            },
+        ):
+            result, weight = analyzer._init_content_analyzer()
+
+        assert result is None
+        assert weight == 0.0
+        mock_new_analyzer.check_health.assert_called_once_with()
+
     def test_init_failure_returns_none(self):
         analyzer = self._make_analyzer()
         # WHY: content_analyzer module may fail to import — mock to simulate

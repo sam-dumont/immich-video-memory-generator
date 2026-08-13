@@ -8,6 +8,11 @@ from enum import Enum
 
 import httpx
 
+from immich_memories.analysis.provider_health import (
+    ProviderHealth,
+    ProviderState,
+    classify_openai_response,
+)
 from immich_memories.api.compatibility import UnsupportedImmichVersion
 from immich_memories.config import Config
 from immich_memories.security import sanitize_error_message
@@ -143,7 +148,7 @@ def _check_ollama(base_url: str, model: str) -> CheckResult:
                 name="LLM",
                 status=CheckStatus.OK,
                 message=f"Connected (ollama, {len(models)} models)",
-                details=f"Server: {base_url}, Model: {model}",
+                details=f"Model: {model}",
             )
 
     except httpx.ConnectError:
@@ -151,15 +156,48 @@ def _check_ollama(base_url: str, model: str) -> CheckResult:
             name="LLM",
             status=CheckStatus.WARNING,
             message="Cannot connect",
-            details=f"Server not reachable at {base_url}",
+            details="Check the configured LLM base URL and that Ollama is running",
         )
     except (httpx.TimeoutException, httpx.HTTPStatusError, OSError) as e:
         return CheckResult(
             name="LLM",
             status=CheckStatus.WARNING,
             message="Connection error",
-            details=str(e),
+            details=type(e).__name__,
         )
+
+
+def _openai_health_failure(health: ProviderHealth, model: str) -> CheckResult | None:
+    """Translate provider health into a safe, actionable preflight failure."""
+    if health.state is ProviderState.AUTH_FAILED:
+        return CheckResult(
+            name="LLM",
+            status=CheckStatus.ERROR,
+            message="Authentication failed",
+            details="The configured API key was rejected",
+        )
+    if health.state is ProviderState.MODEL_MISSING:
+        return CheckResult(
+            name="LLM",
+            status=CheckStatus.WARNING,
+            message=f"Configured model unavailable: {model}",
+            details=f"Model: {model}",
+        )
+    if health.state is ProviderState.ROUTE_MISSING:
+        return CheckResult(
+            name="LLM",
+            status=CheckStatus.WARNING,
+            message="Chat-completions route unavailable",
+            details="Check that the configured base URL exposes /chat/completions",
+        )
+    if health.available:
+        return None
+    return CheckResult(
+        name="LLM",
+        status=CheckStatus.WARNING,
+        message=health.message,
+        details="Check the configured LLM provider",
+    )
 
 
 def _check_openai_compatible(base_url: str, model: str, api_key: str) -> CheckResult:
@@ -189,20 +227,19 @@ def _check_openai_compatible(base_url: str, model: str, api_key: str) -> CheckRe
                 json=payload,
             )
 
-            if response.status_code == 401:
-                return CheckResult(
-                    name="LLM",
-                    status=CheckStatus.ERROR,
-                    message="Authentication failed",
-                    details=f"API key rejected by {base_url}",
-                )
+            try:
+                response_body = response.json()
+            except ValueError:
+                response_body = {}
+            health = classify_openai_response(response.status_code, response_body, model)
+            if failure := _openai_health_failure(health, model):
+                return failure
 
-            response.raise_for_status()
             return CheckResult(
                 name="LLM",
                 status=CheckStatus.OK,
                 message="Connected (openai-compatible)",
-                details=f"Server: {base_url}, Model: {model}",
+                details=f"Model: {model}",
             )
 
     except httpx.ConnectError:
@@ -210,14 +247,14 @@ def _check_openai_compatible(base_url: str, model: str, api_key: str) -> CheckRe
             name="LLM",
             status=CheckStatus.WARNING,
             message="Cannot connect",
-            details=f"Server not reachable at {base_url}",
+            details="Check the configured LLM base URL and provider availability",
         )
     except (httpx.TimeoutException, httpx.HTTPStatusError, OSError) as e:
         return CheckResult(
             name="LLM",
             status=CheckStatus.WARNING,
             message="Connection error",
-            details=str(e),
+            details=type(e).__name__,
         )
 
 

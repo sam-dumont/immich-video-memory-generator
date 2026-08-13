@@ -36,6 +36,7 @@ class OllamaContentAnalyzer(ContentAnalyzer):
         max_height: int = 480,
         num_ctx: int = 4096,
         timeout: float = 300.0,
+        circuit=None,
     ):
         """Initialize Ollama analyzer.
 
@@ -46,6 +47,7 @@ class OllamaContentAnalyzer(ContentAnalyzer):
             num_ctx: Context window size for Ollama (default 4096)
             timeout: HTTP request timeout in seconds (default 300)
         """
+        super().__init__(circuit=circuit)
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.max_height = max_height
@@ -74,11 +76,48 @@ class OllamaContentAnalyzer(ContentAnalyzer):
 
     def is_available(self) -> bool:
         """Check if Ollama is available."""
+        return self.check_health().available
+
+    def check_health(self):
+        """Check Ollama and the configured model through its model registry."""
+        from immich_memories.analysis.provider_health import ProviderHealth, ProviderState
+
         try:
             response = self.client.get(f"{self.base_url}/api/tags")
-            return response.status_code == 200
+            if response.status_code in {401, 403}:
+                health = ProviderHealth(
+                    ProviderState.AUTH_FAILED,
+                    "provider authentication rejected",
+                )
+            elif response.status_code == 404:
+                health = ProviderHealth(
+                    ProviderState.ROUTE_MISSING, "Ollama tags route unavailable"
+                )
+            elif response.status_code >= 400:
+                health = ProviderHealth(
+                    ProviderState.UNREACHABLE,
+                    f"provider unavailable (HTTP {response.status_code})",
+                )
+            else:
+                models = response.json().get("models", [])
+                names = [item.get("name", "") for item in models]
+                base_name = self.model.split(":")[0]
+                found = self.model in names or any(name.startswith(base_name) for name in names)
+                health = ProviderHealth(
+                    ProviderState.READY if found else ProviderState.MODEL_MISSING,
+                    (
+                        f"configured model ready: {self.model}"
+                        if found
+                        else f"configured model unavailable: {self.model}"
+                    ),
+                )
         except httpx.HTTPError:
-            return False
+            health = ProviderHealth(
+                ProviderState.UNREACHABLE,
+                "content-analysis provider is unreachable",
+            )
+        self.circuit.set_health(health)
+        return health
 
     def _ollama_request_with_retry(
         self, payload: dict, images: list[str], max_retries: int = 2
@@ -139,6 +178,9 @@ class OllamaContentAnalyzer(ContentAnalyzer):
         Returns:
             ContentAnalysis with description and scores.
         """
+        if not self.available:
+            return ContentAnalysis(confidence=0.0)
+
         # For models with small context (Moondream: ~729 tokens/image),
         # use 2 images max: 2x729 + ~400 prompt = ~1858 tokens < 2048 limit
         actual_frames, max_images = (
@@ -190,6 +232,7 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
         image_detail: str = "low",
         max_height: int = 480,
         timeout: float = 300.0,
+        circuit=None,
     ):
         """Initialize OpenAI-compatible analyzer.
 
@@ -201,6 +244,7 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
             max_height: Maximum frame height in pixels (default 480 for speed/cost)
             timeout: HTTP request timeout in seconds (default 300)
         """
+        super().__init__(circuit=circuit)
         self.api_key = api_key
         self.model = model
         self.base_url = base_url.rstrip("/")
@@ -227,7 +271,38 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
 
     def is_available(self) -> bool:
         """Check if the API endpoint is available."""
-        return True
+        return self.check_health().available
+
+    def check_health(self):
+        """Probe the configured chat route and model once with a tiny request."""
+        from immich_memories.analysis.provider_health import (
+            ProviderHealth,
+            ProviderState,
+            classify_openai_response,
+        )
+
+        try:
+            response = self.client.post(
+                f"{self.base_url}/chat/completions",
+                json={
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "max_tokens": 1,
+                },
+                timeout=min(self.timeout, 10.0),
+            )
+            try:
+                body = response.json()
+            except ValueError:
+                body = {}
+            health = classify_openai_response(response.status_code, body, self.model)
+        except httpx.HTTPError:
+            health = ProviderHealth(
+                ProviderState.UNREACHABLE,
+                "content-analysis provider is unreachable",
+            )
+        self.circuit.set_health(health)
+        return health
 
     def analyze_segment(
         self,
@@ -237,6 +312,9 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
         num_frames: int = 3,
     ) -> ContentAnalysis:
         """Analyze a video segment using OpenAI vision model."""
+        if not self.available:
+            return ContentAnalysis(confidence=0.0)
+
         frames = self.extract_frames(
             video_path, start_time, end_time, num_frames, max_height=self.max_height
         )
@@ -294,8 +372,20 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
 
             return result
 
-        except httpx.HTTPError as e:
-            logger.warning(f"OpenAI API error: {e}")
+        except httpx.HTTPStatusError as e:
+            from immich_memories.analysis.provider_health import classify_openai_response
+
+            try:
+                body = e.response.json()
+            except ValueError:
+                body = {}
+            health = classify_openai_response(e.response.status_code, body, self.model)
+            if 400 <= e.response.status_code < 500 and self.circuit.set_health(health):
+                logger.warning("Content analysis disabled for this run: %s", health.message)
+            return ContentAnalysis(confidence=0.0)
+        except httpx.HTTPError:
+            if self.circuit.disable("content-analysis provider is unreachable"):
+                logger.warning("Content analysis disabled for this run: provider unreachable")
             return ContentAnalysis(confidence=0.0)
 
         finally:

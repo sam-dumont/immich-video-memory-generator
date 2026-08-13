@@ -158,6 +158,9 @@ class SmartPipeline:
         self.run_id = run_id
         self._analysis_config = analysis_config
         self._app_config = app_config
+        from immich_memories.analysis.provider_health import ProviderCircuit
+
+        self.provider_circuit = ProviderCircuit()
         self._video_cache: VideoDownloadCache | None = None
         cache_config = app_config.cache
         if cache_config.video_cache_enabled and isinstance(cache_config.video_cache_path, Path):
@@ -184,6 +187,7 @@ class SmartPipeline:
             self.previewer,
             app_config=app_config,
             video_cache=self._video_cache,
+            provider_circuit=self.provider_circuit,
         )
         self.scaler = ClipScaler()
         self.refiner = ClipRefiner(self.config, self.scaler)

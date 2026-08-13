@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.config_loader import Config
-from immich_memories.preflight import CheckResult, CheckStatus, check_immich
+from immich_memories.preflight import CheckResult, CheckStatus, check_immich, check_llm
 
 
 def test_immich_api_error_returns_sanitized_diagnostic_result() -> None:
@@ -51,3 +51,56 @@ def test_immich_connection_error_does_not_expose_configured_api_key() -> None:
     assert result.message == "Connection failed"
     assert result.details == "connection rejected ***"
     assert api_key not in (result.details or "")
+
+
+def test_llm_preflight_reports_missing_configured_model() -> None:
+    """A model-specific 404 is not mislabeled as a generic connection error."""
+    config = Config(
+        llm={
+            "provider": "openai-compatible",
+            "base_url": "http://localhost:9999/v1",
+            "model": "removed-vlm",
+        },
+        content_analysis={"enabled": True},
+    )
+    response = MagicMock()
+    response.status_code = 404
+    response.json.return_value = {"error": {"message": "model removed-vlm not found"}}
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.post.return_value = response
+
+    with patch("immich_memories.preflight.httpx.Client", return_value=client):
+        result = check_llm(config)
+
+    assert result.status is CheckStatus.WARNING
+    assert result.message == "Configured model unavailable: removed-vlm"
+    assert "model removed-vlm not found" not in (result.details or "")
+    assert "localhost:9999" not in (result.details or "")
+
+
+def test_llm_preflight_reports_missing_chat_route() -> None:
+    """A route-level 404 remains distinct from a removed model."""
+    config = Config(
+        llm={
+            "provider": "openai-compatible",
+            "base_url": "http://localhost:9999/v1",
+            "model": "vlm",
+        },
+        content_analysis={"enabled": True},
+    )
+    response = MagicMock()
+    response.status_code = 404
+    response.json.return_value = {}
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.post.return_value = response
+
+    with patch("immich_memories.preflight.httpx.Client", return_value=client):
+        result = check_llm(config)
+
+    assert result.status is CheckStatus.WARNING
+    assert result.message == "Chat-completions route unavailable"
+    assert "localhost:9999" not in (result.details or "")

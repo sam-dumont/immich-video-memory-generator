@@ -44,6 +44,7 @@ def get_content_analyzer(
     max_height: int = 480,
     num_ctx: int = 4096,
     timeout: float = 300.0,
+    circuit=None,
 ) -> ContentAnalyzer | None:
     """Get content analyzer for the configured provider.
 
@@ -67,6 +68,7 @@ def get_content_analyzer(
             max_height=max_height,
             num_ctx=num_ctx,
             timeout=timeout,
+            circuit=circuit,
         )
         logger.info(f"Using Ollama for content analysis (model: {model}, num_ctx: {num_ctx})")
         return ollama
@@ -79,6 +81,7 @@ def get_content_analyzer(
             image_detail=image_detail,
             max_height=max_height,
             timeout=timeout,
+            circuit=circuit,
         )
         logger.info(
             f"Using OpenAI-compatible for content analysis (model: {model}, url: {base_url})"

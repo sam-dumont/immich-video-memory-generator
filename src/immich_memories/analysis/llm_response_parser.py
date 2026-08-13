@@ -64,6 +64,24 @@ class ContentAnalyzer:
     total_completion_tokens: int = 0
     total_images_analyzed: int = 0
 
+    def __init__(self, circuit=None) -> None:
+        from immich_memories.analysis.provider_health import ProviderCircuit
+
+        self.circuit = circuit or ProviderCircuit()
+
+    @property
+    def available(self) -> bool:
+        """Whether this analyzer may issue requests during the current run."""
+        return self.circuit.available
+
+    def disable(self, reason: str) -> None:
+        """Open the run-level circuit with one sanitized reason."""
+        self.circuit.disable(reason)
+
+    def check_health(self):
+        """Return current health for analyzers without a remote probe."""
+        return self.circuit.health
+
     @classmethod
     def reset_session_stats(cls) -> None:
         """Reset session-level token counters."""

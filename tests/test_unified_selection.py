@@ -369,6 +369,44 @@ class TestMergePhotosIntoPool:
         assert photo_cws.score == 0.8
         assert photo_cws.end_time == Config().photos.duration
 
+    def test_open_provider_circuit_skips_photo_llm_requests(self, tmp_path):
+        """A video-side provider failure also suppresses photo-side requests."""
+        from immich_memories.analysis.provider_health import ProviderCircuit
+        from immich_memories.cli._pipeline_runner import _merge_photos_into_pool
+
+        circuit = ProviderCircuit()
+        circuit.disable("configured model unavailable")
+        config = Config(
+            cache={"database": str(tmp_path / "cache.db"), "directory": str(tmp_path)},
+            content_analysis={"enabled": True},
+        )
+        from immich_memories.cache.database import VideoAnalysisCache
+
+        VideoAnalysisCache(config.cache.database_path)
+        client = MagicMock()
+        photo = Asset(
+            id="photo-circuit-001",
+            type=AssetType.IMAGE,
+            fileCreatedAt=datetime(2024, 6, 15, tzinfo=UTC),
+            fileModifiedAt=datetime(2024, 6, 15, tzinfo=UTC),
+            updatedAt=datetime(2024, 6, 15, tzinfo=UTC),
+            width=4032,
+            height=3024,
+        )
+
+        result = _merge_photos_into_pool(
+            [],
+            photo_assets=[photo],
+            include_photos=True,
+            config=config,
+            client=client,
+            work_dir=tmp_path,
+            provider_circuit=circuit,
+        )
+
+        assert len(result) == 1
+        client.get_asset_thumbnail.assert_not_called()
+
 
 class TestRenderPhotoAsClip:
     """Tests for _render_photo_as_clip helper in generate.py."""

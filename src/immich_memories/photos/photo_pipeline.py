@@ -56,6 +56,7 @@ def score_photos(
     db_path: Path | None = None,
     app_config: Any = None,
     thumbnail_fn: Any = None,
+    provider_circuit: Any = None,
 ) -> list[tuple[Asset, float]]:
     """Score photos (metadata + LLM) without rendering.
 
@@ -83,6 +84,7 @@ def score_photos(
         db_path=db_path,
         app_config=app_config,
         thumbnail_fn=thumbnail_fn,
+        provider_circuit=provider_circuit,
     )
 
     return scored
@@ -100,6 +102,7 @@ def score_and_select_photos(
     clip_dates: list[str] | None = None,
     memory_type: str | None = None,
     transition_duration: float = 0.5,
+    provider_circuit: Any = None,
 ) -> PhotoSelectionResult:
     """Score photos and select within unified budget.
 
@@ -116,6 +119,7 @@ def score_and_select_photos(
         work_dir=work_dir,
         download_fn=download_fn,
         thumbnail_fn=thumbnail_fn,
+        provider_circuit=provider_circuit,
     )
 
     if not scored:
@@ -168,6 +172,7 @@ def render_photo_clips(
     db_path: Path | None = None,
     app_config: Any = None,
     thumbnail_fn: Any = None,
+    provider_circuit: Any = None,
 ) -> list[AssemblyClip]:
     """Convert photo assets to animated video clips for assembly.
 
@@ -187,6 +192,7 @@ def render_photo_clips(
         db_path=db_path,
         app_config=app_config,
         thumbnail_fn=thumbnail_fn,
+        provider_circuit=provider_circuit,
     )
     if not scored:
         return []
@@ -260,6 +266,7 @@ def _enhance_with_llm(
     db_path: Path | None = None,
     app_config: Any = None,
     thumbnail_fn: Any = None,
+    provider_circuit: Any = None,
 ) -> list[tuple[Asset, float]]:
     """Check cache first, then LLM-score uncached photos."""
 
@@ -285,6 +292,7 @@ def _enhance_with_llm(
             download_fn,
             app_config,
             thumbnail_fn=thumbnail_fn,
+            provider_circuit=provider_circuit,
         )
         enhanced.append((asset, llm_score))
 
@@ -311,6 +319,7 @@ def _llm_score_photo(
     download_fn: Any,
     app_config: Any,
     thumbnail_fn: Any = None,
+    provider_circuit: Any = None,
 ) -> float:
     """Score a photo with VLM using a lightweight thumbnail.
 
@@ -318,6 +327,9 @@ def _llm_score_photo(
     HEIC (5-15 MB). Falls back to full download if no thumbnail_fn.
     """
     from immich_memories.photos.scoring import score_photo_with_llm
+
+    if provider_circuit is not None and not provider_circuit.available:
+        return meta_score
 
     thumb_path = work_dir / f"{asset.id}_thumb.jpg"
 
@@ -332,7 +344,13 @@ def _llm_score_photo(
 
     if thumb_path.exists():
         try:
-            return score_photo_with_llm(thumb_path, meta_score, config, app_config)
+            return score_photo_with_llm(
+                thumb_path,
+                meta_score,
+                config,
+                app_config,
+                provider_circuit=provider_circuit,
+            )
         except (OSError, RuntimeError, ValueError):
             return meta_score
 
@@ -349,7 +367,13 @@ def _llm_score_photo(
         from immich_memories.photos.animator import prepare_photo_source
 
         prepared = prepare_photo_source(raw_path, work_dir)
-        return score_photo_with_llm(prepared.path, meta_score, config, app_config)
+        return score_photo_with_llm(
+            prepared.path,
+            meta_score,
+            config,
+            app_config,
+            provider_circuit=provider_circuit,
+        )
     except (OSError, RuntimeError, ValueError):
         return meta_score
 
