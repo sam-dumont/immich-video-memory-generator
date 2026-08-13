@@ -12,6 +12,7 @@ from immich_memories.preflight import (
     check_audio_content,
     check_immich,
     check_llm,
+    check_notifications,
 )
 
 
@@ -140,3 +141,33 @@ def test_audio_preflight_skips_when_disabled() -> None:
 
     assert result.status is CheckStatus.SKIPPED
     assert result.message == "Audio-content analysis disabled"
+
+
+def test_notification_preflight_warns_on_sanitized_failure_cooldown(tmp_path) -> None:
+    from immich_memories.automation.notification_state import (
+        NotificationFailureCategory,
+        NotificationStateStore,
+    )
+
+    credential_url = "https://notify.test/provider-secret"
+    config = Config(
+        cache={"database": str(tmp_path / "preflight.db")},
+        notifications={"enabled": True, "urls": [credential_url], "cooldown_hours": 24},
+    )
+    NotificationStateStore(config.cache.database_path).record_failure(
+        NotificationFailureCategory.QUOTA
+    )
+
+    result = check_notifications(config)
+
+    assert result.status is CheckStatus.WARNING
+    assert result.message == "Delivery paused after quota failure"
+    assert "24h" in (result.details or "")
+    assert credential_url not in f"{result.message} {result.details}"
+
+
+def test_notification_preflight_is_optional_when_disabled() -> None:
+    result = check_notifications(Config())
+
+    assert result.status is CheckStatus.SKIPPED
+    assert result.message == "Notifications disabled"

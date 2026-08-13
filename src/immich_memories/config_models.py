@@ -831,6 +831,16 @@ class NotificationConfig(BaseModel):
     urls: list[str] = Field(default_factory=list, description="Apprise notification URLs")
     on_success: bool = Field(default=True)
     on_failure: bool = Field(default=True)
+    attach_thumbnail: bool = Field(
+        default=False,
+        description="Attach a generated video thumbnail to successful notifications",
+    )
+    cooldown_hours: int = Field(
+        default=24,
+        ge=1,
+        le=168,
+        description="Suppress normal delivery attempts after a notification failure",
+    )
 
 
 class UploadConfig(BaseModel):

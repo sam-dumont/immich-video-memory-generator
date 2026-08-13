@@ -100,6 +100,20 @@ def _print_pending_delivery_status(payload: dict[str, Any]) -> None:
         print_info("Pending delivery queue: empty")
 
 
+def _print_notification_status(payload: dict[str, Any]) -> None:
+    """Render optional delivery health without exposing configured provider URLs."""
+    health = payload["notification_health"]
+    if health and health["cooldown_active"]:
+        print_info(
+            "Notification delivery: paused "
+            f"({health['failure_category']}, until {health['cooldown_until']})"
+        )
+    elif health and health["last_success_at"]:
+        print_info(f"Notification delivery: ready (last success {health['last_success_at']})")
+    else:
+        print_info("Notification delivery: no successful delivery recorded")
+
+
 def _print_history_table(runs: list) -> None:
     table = Table(title="Auto-Generated Memories")
     table.add_column("Date", style="green")
@@ -300,6 +314,7 @@ def status(ctx: click.Context, as_json: bool) -> None:
     suggestion = payload["suggestion"]
     if suggestion["outcome"] in {"preflight_failed", "discovery_failed"}:
         print_info(f"Suggestion snapshot unavailable: {suggestion['error']}")
+    _print_notification_status(payload)
     _print_pending_delivery_status(payload)
 
 
@@ -371,7 +386,12 @@ def test_notification(ctx: click.Context) -> None:
         print_info("No notification URLs configured — add URLs to notifications.urls in config")
         return
 
-    if send_test_notification(notif.urls):
+    if send_test_notification(
+        notif.urls,
+        db_path=config.cache.database_path,
+        attach_thumbnail=notif.attach_thumbnail,
+        cooldown_hours=notif.cooldown_hours,
+    ):
         print_success("Test notification sent successfully")
     else:
         print_info("Test notification failed — check URLs and apprise installation")

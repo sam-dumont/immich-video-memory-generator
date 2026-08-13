@@ -150,6 +150,7 @@ def test_status_json_reports_durable_attempt_rotation_and_scheduler(tmp_path: Pa
         "scheduler",
         "pending_delivery_count",
         "oldest_pending_delivery",
+        "notification_health",
     }
     assert payload["last_attempt"]["outcome"] == "failed"
     assert payload["last_attempt"]["error"] == "connection refused"
@@ -158,6 +159,7 @@ def test_status_json_reports_durable_attempt_rotation_and_scheduler(tmp_path: Pa
     assert payload["recent_categories"] == ["trip", "birthday"]
     assert payload["cooldown"]["hours"] == 24
     assert payload["cooldown"]["active"] is True
+    assert payload["notification_health"] is None
     assert payload["cooldown"]["until"] is not None
     assert payload["rejection_reasons"] == []
     assert payload["pending_delivery_count"] == 0
@@ -559,6 +561,26 @@ def test_status_preserves_explicit_zero_cooldown(tmp_path: Path) -> None:
 
     assert status.cooldown.hours == 0
     assert status.cooldown.active is False
+
+
+def test_status_exposes_notification_cooldown_without_changing_readiness(tmp_path: Path) -> None:
+    from immich_memories.automation.notification_state import (
+        NotificationFailureCategory,
+        NotificationStateStore,
+    )
+
+    config = _config(tmp_path)
+    config.notifications.enabled = True
+    config.notifications.urls = ["ntfy://topic"]
+    NotificationStateStore(config.cache.database_path).record_failure(
+        NotificationFailureCategory.QUOTA
+    )
+
+    payload = AutoRunner(config).status().to_dict()
+
+    assert payload["notification_health"]["cooldown_active"] is True
+    assert payload["notification_health"]["failure_category"] == "quota"
+    assert "ntfy" not in json.dumps(payload["notification_health"])
 
 
 def test_status_human_output_distinguishes_installed_from_unknown_active(tmp_path: Path) -> None:

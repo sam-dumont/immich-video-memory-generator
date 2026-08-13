@@ -445,6 +445,9 @@ def _send_notification(
             output_path=output_path,
             error=error,
             urls=notif.urls,
+            db_path=config.cache.database_path,
+            attach_thumbnail=notif.attach_thumbnail,
+            cooldown_hours=notif.cooldown_hours,
         )
     except (OSError, RuntimeError):
         logging.getLogger(__name__).debug("Notification failed", exc_info=True)

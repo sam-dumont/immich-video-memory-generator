@@ -250,6 +250,7 @@ class TestThumbnailExtraction:
                 status="completed",
                 output_path="/tmp/video.mp4",
                 urls=["ntfy://test"],
+                attach_thumbnail=True,
             )
 
         assert result is True
@@ -317,4 +318,8 @@ class TestSendTestNotification:
             memory_type="test",
             status="completed",
             urls=["slack://token"],
+            db_path=None,
+            attach_thumbnail=False,
+            cooldown_hours=24,
+            bypass_cooldown=True,
         )

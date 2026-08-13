@@ -389,5 +389,62 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
         check_immich(config),
         check_llm(config),
         check_audio_content(config),
+        check_notifications(config),
         check_hardware(),
     ]
+
+
+def check_notifications(config: Config) -> CheckResult:
+    """Report optional durable notification health without probing provider URLs."""
+    if not config.notifications.enabled:
+        return CheckResult(
+            name="Notifications",
+            status=CheckStatus.SKIPPED,
+            message="Notifications disabled",
+        )
+    if not config.notifications.urls:
+        return CheckResult(
+            name="Notifications",
+            status=CheckStatus.WARNING,
+            message="No notification URLs configured",
+        )
+
+    from immich_memories.automation.notification_state import NotificationStateStore
+
+    try:
+        health = NotificationStateStore(config.cache.database_path).get()
+    except Exception:  # WHY: optional health telemetry cannot fail provider preflight
+        return CheckResult(
+            name="Notifications",
+            status=CheckStatus.WARNING,
+            message="Notification health unavailable",
+        )
+    if health is None:
+        return CheckResult(
+            name="Notifications",
+            status=CheckStatus.OK,
+            message="Configured; no delivery attempted yet",
+        )
+    if health.is_cooling_down(config.notifications.cooldown_hours):
+        category = health.failure_category.value if health.failure_category else "delivery"
+        return CheckResult(
+            name="Notifications",
+            status=CheckStatus.WARNING,
+            message=f"Delivery paused after {category} failure",
+            details=f"Normal attempts resume after the {config.notifications.cooldown_hours}h cooldown",
+        )
+    if health.last_success_at is not None and (
+        health.last_failure_at is None or health.last_success_at >= health.last_failure_at
+    ):
+        return CheckResult(
+            name="Notifications",
+            status=CheckStatus.OK,
+            message="Last notification delivered successfully",
+            details=f"Last success: {health.last_success_at.isoformat()}",
+        )
+    return CheckResult(
+        name="Notifications",
+        status=CheckStatus.WARNING,
+        message="Previous notification delivery failed",
+        details="Cooldown expired; run auto test-notification to verify recovery",
+    )

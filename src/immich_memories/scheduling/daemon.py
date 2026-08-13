@@ -185,4 +185,7 @@ def _notify_if_configured(
         duration_seconds=duration_seconds,
         error=error,
         urls=notif.urls,
+        db_path=config.cache.database_path,
+        attach_thumbnail=notif.attach_thumbnail,
+        cooldown_hours=notif.cooldown_hours,
     )

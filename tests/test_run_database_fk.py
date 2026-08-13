@@ -270,7 +270,7 @@ def test_concurrent_processes_upgrade_v9_database_once(
     assert columns.count("memory_category") == 1
 
 
-def test_v14_fresh_database_has_exact_automation_run_identity_and_phase(tmp_path: Path) -> None:
+def test_fresh_database_has_exact_automation_run_identity_and_phase(tmp_path: Path) -> None:
     """A fresh database correlates one run/attempt and persists their outer phase."""
     db_path = tmp_path / "fresh.db"
     VideoAnalysisCache(db_path)
@@ -283,7 +283,7 @@ def test_v14_fresh_database_has_exact_automation_run_identity_and_phase(tmp_path
         run_columns = {row[1] for row in conn.execute("PRAGMA table_info(pipeline_runs)")}
         run_indexes = {row[1] for row in conn.execute("PRAGMA index_list(pipeline_runs)")}
 
-    assert version == 14
+    assert version == 15
     assert attempt_columns == {
         "id",
         "started_at",

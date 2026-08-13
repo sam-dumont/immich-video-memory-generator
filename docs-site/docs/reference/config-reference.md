@@ -386,6 +386,13 @@ notifications:
     - "tgram://bot_token/chat_id"
   on_success: true                # notify on successful generation
   on_failure: true                # notify on failed generation
+  attach_thumbnail: false         # opt in; attachments cost bandwidth/provider quota
+  cooldown_hours: 24              # pause normal attempts after a delivery failure
 ```
+
+Delivery failures are stored as sanitized health state. Normal success and failure
+notifications pause during the cooldown instead of hammering a quota-limited provider.
+`auto test-notification` always bypasses the cooldown and a successful test clears it.
+Provider URLs, credentials, and response bodies are never included in health output.
 
 Test your config: `immich-memories auto test-notification`

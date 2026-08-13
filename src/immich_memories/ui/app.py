@@ -388,6 +388,11 @@ def _get_automation_status(config) -> dict[str, Any]:
     return AutoRunner(config).status().to_dict()
 
 
+def _automation_field(automation: dict[str, Any] | None, name: str) -> Any:
+    """Project one optional automation field without branching in readiness logic."""
+    return automation.get(name) if automation is not None else None
+
+
 def _sanitize_health_text(value: object, secrets_to_redact: tuple[str, ...]) -> str:
     """Apply structural and config-aware sanitization before exposing health text."""
     safe = sanitize_error_message(str(value))
@@ -429,6 +434,7 @@ async def _build_health_snapshot() -> dict[str, Any]:
             "last_successful_auto_run": None,
             "pending_delivery_count": None,
             "oldest_pending_delivery": None,
+            "notification_health": None,
             "last_successful_run": None,
             "version": __version__,
         }
@@ -487,6 +493,7 @@ async def _build_health_snapshot() -> dict[str, Any]:
         "oldest_pending_delivery": (
             automation.get("oldest_pending_delivery") if automation else None
         ),
+        "notification_health": _automation_field(automation, "notification_health"),
         "last_successful_run": last_successful_run,
         "version": __version__,
     }

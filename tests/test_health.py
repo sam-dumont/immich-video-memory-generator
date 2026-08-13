@@ -171,6 +171,40 @@ class TestHealthEndpoint:
         assert data["oldest_pending_delivery"] is None
 
     @pytest.mark.asyncio
+    async def test_notification_cooldown_warns_without_failing_readiness(self, tmp_path: Path):
+        from immich_memories.automation.notification_state import (
+            NotificationFailureCategory,
+            NotificationStateStore,
+        )
+        from immich_memories.ui.app import _ImmichDependency, _readiness_handler
+
+        config = Config(
+            immich={"url": "http://immich.test", "api_key": "health-secret"},
+            cache={"database": str(tmp_path / "health.db"), "directory": str(tmp_path / "cache")},
+            notifications={"enabled": True, "urls": ["ntfy://topic"]},
+        )
+        NotificationStateStore(config.cache.database_path).record_failure(
+            NotificationFailureCategory.QUOTA
+        )
+        with (
+            patch("immich_memories.ui.app.get_config", return_value=config),
+            patch(
+                "immich_memories.ui.app._check_immich_dependency",
+                new_callable=AsyncMock,
+                return_value=_ImmichDependency(
+                    status="ready", reachable=True, resolved_api_version="v3"
+                ),
+            ),
+            patch("immich_memories.ui.app._get_last_successful_run", return_value=None),
+        ):
+            response = await _readiness_handler(MagicMock())
+
+        data = json.loads(response.body)
+        assert response.status_code == 200
+        assert data["status"] == "ready"
+        assert data["notification_health"]["cooldown_active"] is True
+
+    @pytest.mark.asyncio
     async def test_liveness_is_process_only(self):
         """Liveness must stay green without consulting config, Immich, or SQLite."""
         from immich_memories.ui.app import _liveness_handler

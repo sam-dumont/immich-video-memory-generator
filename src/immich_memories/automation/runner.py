@@ -22,6 +22,13 @@ from immich_memories.automation.models import (
     AutoRunResult,
     ProcessResult,
 )
+from immich_memories.automation.notification_state import (
+    NotificationHealth,
+    NotificationStateStore,
+)
+from immich_memories.automation.notifications import (
+    send_configured_notification as _send_notification,
+)
 from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.automation.trip_input_cache import load_or_fetch_trip_assets
 from immich_memories.automation.variety import VarietyDecision, apply_variety_rules
@@ -120,6 +127,8 @@ class AutomationStatus:
     suggestion: SuggestStatus
     pending_delivery_count: int
     oldest_pending_delivery: RunMetadata | None
+    notification_health: NotificationHealth | None
+    notification_cooldown_hours: int
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the stable machine-facing automation status contract."""
@@ -184,6 +193,11 @@ class AutomationStatus:
                     "delivery_album": pending.delivery_album,
                 }
                 if pending
+                else None
+            ),
+            "notification_health": (
+                self.notification_health.to_dict(cooldown_hours=self.notification_cooldown_hours)
+                if self.notification_health is not None
                 else None
             ),
         }
@@ -331,34 +345,6 @@ def _execute_generate(cmd: list[str]) -> ProcessResult:
     )
 
 
-def _send_notification(
-    config: Config,
-    memory_type: str,
-    success: bool,
-    duration_seconds: float = 0.0,
-    output_path: str | None = None,
-    error: str | None = None,
-) -> None:
-    """Fire an Apprise notification if configured."""
-    notif = config.notifications
-    if not notif.enabled or not notif.urls:
-        return
-    status = "completed" if success else "failed"
-    if (success and not notif.on_success) or (not success and not notif.on_failure):
-        return
-
-    from immich_memories.automation.notifications import notify_job_complete
-
-    notify_job_complete(
-        memory_type=memory_type,
-        status=status,
-        duration_seconds=duration_seconds,
-        output_path=output_path,
-        error=error,
-        urls=notif.urls,
-    )
-
-
 def _compute_upcoming_birthday_ids(people: list, today: date, lookahead_days: int = 7) -> set[str]:
     """Return person IDs whose birthday falls within the next N days."""
     ids: set[str] = set()
@@ -490,6 +476,7 @@ class AutoRunner:
         self.config = config
         self.db = RunDatabase(db_path=config.cache.database_path)
         self.state = AutomationStateStore(config.cache.database_path)
+        self.notification_state = NotificationStateStore(config.cache.database_path)
         self.execute = execute or _execute_generate
         self.config_path = config_path
         self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
@@ -548,6 +535,8 @@ class AutoRunner:
             suggestion=self.last_suggest_status,
             pending_delivery_count=self.db.count_pending_deliveries(source="auto"),
             oldest_pending_delivery=self.db.get_oldest_pending_delivery(source="auto"),
+            notification_health=self.notification_state.get(),
+            notification_cooldown_hours=self.config.notifications.cooldown_hours,
         )
 
     def _process_details(self, stdout: Any, stderr: Any) -> _BoundedProcessDetails:

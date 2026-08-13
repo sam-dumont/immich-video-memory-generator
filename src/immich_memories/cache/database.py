@@ -22,6 +22,7 @@ from immich_memories.cache.migration_v11 import migrate_automation_history
 from immich_memories.cache.migration_v12 import migrate_automation_attempt_identity
 from immich_memories.cache.migration_v13 import migrate_delivery_state
 from immich_memories.cache.migration_v14 import migrate_operational_phases
+from immich_memories.cache.migration_v15 import migrate_notification_health
 from immich_memories.cache.versions import ANALYSIS_VERSION, SCHEMA_VERSION, SCORING_VERSION
 
 if TYPE_CHECKING:
@@ -100,6 +101,7 @@ class VideoAnalysisCache:
             12: migrate_automation_attempt_identity,
             13: migrate_delivery_state,
             14: migrate_operational_phases,
+            15: migrate_notification_health,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):

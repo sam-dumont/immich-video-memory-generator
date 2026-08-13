@@ -254,4 +254,11 @@ advanced:
     urls: []                        # ntfy://ntfy.sh/my-topic, discord:///id/token, etc.
     on_success: true
     on_failure: true
+    attach_thumbnail: false         # opt in to FFmpeg extraction + attachment upload
+    cooldown_hours: 24              # pause after provider/auth/quota failures
 ```
+
+Notification health is durable and visible in `auto status`, `preflight`, and `/health`.
+A failed delivery pauses normal notification attempts for the configured cooldown; it
+does not stop memory generation or make `/health/ready` fail. The explicit
+`auto test-notification` command bypasses the cooldown so you can verify a fix.
