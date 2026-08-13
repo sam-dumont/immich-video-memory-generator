@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-13
 
-**Status:** Proposed for implementation
+**Status:** Approved for implementation
 
 **Scope:** Chronological month dividers and final-duration planning. Trip cards, year dividers,
 music configuration, and ACE-Step versions are out of scope.
