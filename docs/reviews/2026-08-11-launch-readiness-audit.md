@@ -1,8 +1,8 @@
 ---
-date: 2026-08-12
-branch: codex/encoding-delivery-final
+date: 2026-08-13
+branch: codex/p1-contributor-followups
 scope: launch readiness, automation, performance, Immich v2/v3 compatibility, and user flow
-verdict: all identified P0 and P1 launch work is closed; promote to public beta after intentional scheduler activation
+verdict: code gate passes; post-fix live render awaits Immich reachability and scheduler activation remains intentional
 ---
 
 # Launch Readiness Audit — 2026-08-11
@@ -621,6 +621,58 @@ configuration/provider behavior.
 6. **P2 — make notifications non-noisy under provider quotas.** The completed France run received
    an ntfy `429` daily-quota response after artifact finalization. Correct behavior was preserved,
    but notification health/configuration should be visible before an unattended rollout.
+
+### Launch-quality follow-up closure — 2026-08-13
+
+All six ranked findings above are closed on `codex/p1-contributor-followups`. The implementation
+also closes two inconsistencies found only while planning against the real library: a 720p command
+was still applying the 4K selection quality gate, and the density diagnostic could print a
+negative raw budget even though the calculator used a valid positive budget.
+
+| Finding | Closed result | Commit |
+|---|---|---|
+| One photo/video canvas; no stacked crop/scale treatment | One immutable canvas is shared by selection, photo animation, title rendering, dry-run preview, and final assembly. Aspect-fit photo treatment is applied once. | `11977b5`, `e6ded66` |
+| Unavailable content-analysis model | Provider capability is probed once; permanent failures open a run-scoped circuit and use local scoring without candidate-by-candidate retries. | `0bbd72f` |
+| Titles made a nominal 60-second memory substantially longer | One strict timeline plan reserves no more than 20% for titles and at least 80% for content before selection. | `bc420e6` |
+| `generate --dry-run` did not validate the proposed memory | Dry-run now performs real discovery, cached/metadata analysis, selection, and timeline/canvas planning, then stops before media writes and delivery. | `cf4af1a` |
+| Optional semantic audio status was opaque | Preflight and documentation explicitly report PANNs availability and the energy-based fallback. | `5a11fb7` |
+| Notification quota failures were noisy | Schema v15 stores sanitized notification health; transport failures open a 24-hour cooldown, success closes it, and health surfaces warn without failing readiness. | `731b91b` |
+
+The final local gate after the live-planning corrections passed:
+
+| Check | Result |
+|---|---|
+| Full default pytest suite | 4,311 passed, 7 skipped, 660 deliberately deselected, 7 warnings in 219.61s |
+| Focused canvas/timeline/dry-run/pipeline tests | 199 passed, 1 skipped |
+| Ruff | Clean; 525 files already formatted |
+| Mypy | Clean across 252 source files |
+| Commit hooks | Ruff, format, mypy, secrets, size, modernization, complexity, dead-code, security, dependency, architecture, and duplication gates passed |
+
+Read-only preflight initially connected to Immich 3.1.0 and resolved `api_version: auto` to v3.
+Authentication, Apple M5 Max hardware acceleration, and notification configuration passed.
+Preflight warned—without failing readiness—that the configured
+`Qwen3-VL-8B-Instruct-MLX-4bit` model was unavailable and PANNs was absent, so local scoring and
+energy-based audio analysis would be used. The preflight applied the expected schema-v15 database
+migration. Upload remained disabled.
+
+Three real-library dry-runs then exercised the launch flows without writing media, uploading, or
+sending notifications:
+
+| Flow | Discovery and selection | Planned output |
+|---|---|---|
+| Emile Dumont, 2026 person spotlight | 378 videos, 212 Live Photos, 2,096 photos; 12 photos selected; 47.0s content + 11.5s titles | 58.5s, 1280x720 |
+| Sam Dumont, 2026 person spotlight | 71 videos, 61 Live Photos, 444 photos; 11 photos selected; 44.0s content + 11.5s titles | 55.5s, 1280x720 |
+| Somme, France trip near 2026-07-28 | Four trips detected; the 2026-07-25 to 2026-08-05 Somme trip had 823 assets; 2 videos + 9 photos selected; 45.4s content + 11.5s titles | 56.9s, 1280x720 |
+
+The post-fix Emile render was attempted with a unique output name, upload disabled, notifications
+disabled by environment override, 60-second duration, and 720p landscape output. It stopped before
+media work because `10.2.254.56:2283` became unreachable: both the CLI and a direct bounded TCP
+probe failed, the latter with HTTP status `000`. No partial output was created. Sam and France were
+not started after that external failure. This is an operational acceptance item, not a hidden green
+render; repeat the three renders when the Immich host is reachable and ffprobe/inspect the results.
+
+The installed LaunchAgent is still unloaded (`launchctl print` exits 113: service not found). It
+was not modified or activated. The owner's untracked `MagicMock/` directory was not touched.
 
 ### Daily automation activation checkpoint
 
