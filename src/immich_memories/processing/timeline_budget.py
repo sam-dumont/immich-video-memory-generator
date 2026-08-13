@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 _TITLE_SHARE = 0.20
 _MIN_ENDING_SECONDS = 2.0
 _LOCATION_CHANGE_KM = 30.0
+
+DividerPolicy = Literal["pending", "all", "none", "capped"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +25,9 @@ class TimelinePlan:
     ending_duration: float
     divider_duration: float
     max_dividers: int
+    divider_policy: DividerPolicy = "capped"
+    eligible_dividers: int = 0
+    soft_max_duration: float | None = None
 
 
 def _asset_for(item: Any) -> Any:
@@ -117,6 +122,25 @@ def _eligible_dividers(clips: list[Any], title_settings: Any, memory_type: str |
     return 0
 
 
+def _is_chronological_month_mode(title_settings: Any, memory_type: str | None) -> bool:
+    return (
+        memory_type != "trip"
+        and getattr(title_settings, "divider_mode", "month") == "month"
+        and getattr(title_settings, "show_month_dividers", True)
+    )
+
+
+def _selected_month_divider_count(clips: list[Any]) -> int:
+    months = list(
+        dict.fromkeys(
+            (clip_date.year, clip_date.month)
+            for clip in clips
+            if (clip_date := _item_date(clip)) is not None
+        )
+    )
+    return max(0, len(months) - 1)
+
+
 def plan_timeline(
     clips: list[Any],
     title_settings: Any | None,
@@ -137,6 +161,20 @@ def plan_timeline(
     remaining -= ending_duration
 
     divider_duration = max(0.0, float(title_settings.month_divider_duration))
+    if _is_chronological_month_mode(title_settings, memory_type):
+        title_budget = title_duration + ending_duration
+        return TimelinePlan(
+            target_duration=target,
+            content_budget=target - title_budget,
+            title_budget=title_budget,
+            title_duration=title_duration,
+            ending_duration=ending_duration,
+            divider_duration=divider_duration,
+            max_dividers=0,
+            divider_policy="pending",
+            soft_max_duration=target + min(10.0, target * _TITLE_SHARE),
+        )
+
     eligible_dividers = _eligible_dividers(clips, title_settings, memory_type)
     max_dividers = (
         min(eligible_dividers, int(remaining // divider_duration)) if divider_duration > 0.0 else 0
@@ -150,4 +188,41 @@ def plan_timeline(
         ending_duration=ending_duration,
         divider_duration=divider_duration,
         max_dividers=max_dividers,
+        eligible_dividers=eligible_dividers,
+    )
+
+
+def finalize_selected_timeline(
+    preliminary: TimelinePlan,
+    selected_clips: list[Any],
+    *,
+    selected_duration: float,
+    title_settings: Any | None,
+    memory_type: str | None,
+) -> TimelinePlan:
+    """Choose all chronological month dividers or none after selection."""
+    if preliminary.divider_policy != "pending":
+        return preliminary
+    if title_settings is None or not _is_chronological_month_mode(title_settings, memory_type):
+        return preliminary
+
+    eligible = _selected_month_divider_count(selected_clips)
+    complete_title_budget = (
+        preliminary.title_duration
+        + preliminary.ending_duration
+        + eligible * preliminary.divider_duration
+    )
+    soft_max = preliminary.soft_max_duration or preliminary.target_duration
+    include_all = selected_duration + complete_title_budget <= soft_max
+    chosen = eligible if include_all else 0
+    return replace(
+        preliminary,
+        title_budget=(
+            preliminary.title_duration
+            + preliminary.ending_duration
+            + chosen * preliminary.divider_duration
+        ),
+        max_dividers=chosen,
+        divider_policy="all" if include_all else "none",
+        eligible_dividers=eligible,
     )
