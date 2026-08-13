@@ -1,0 +1,115 @@
+"""Literal tests for the final content/title timeline contract."""
+
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+
+from immich_memories.processing.assembly_config import AssemblyClip, TitleScreenSettings
+
+
+def _clip(asset_id: str, date: str) -> AssemblyClip:
+    return AssemblyClip(path=Path(f"/{asset_id}.mp4"), duration=5.0, asset_id=asset_id, date=date)
+
+
+def _titles(
+    title_duration: float = 3.5,
+    divider_duration: float = 2.0,
+    ending_duration: float = 7.0,
+) -> TitleScreenSettings:
+    return TitleScreenSettings(
+        title_duration=title_duration,
+        month_divider_duration=divider_duration,
+        ending_duration=ending_duration,
+        month_divider_threshold=1,
+        divider_mode="month",
+    )
+
+
+def test_sixty_second_memory_keeps_eighty_percent_content() -> None:
+    from immich_memories.processing.timeline_budget import plan_timeline
+
+    clips = [
+        _clip("jan", "2026-01-05"),
+        _clip("feb", "2026-02-05"),
+        _clip("mar", "2026-03-05"),
+    ]
+
+    plan = plan_timeline(clips, _titles(), 60.0, "monthly_highlights")
+
+    assert plan.content_budget >= 48.0
+    assert plan.title_budget <= 12.0
+    assert plan.title_duration == 3.5
+    assert plan.ending_duration == 7.0
+    assert plan.max_dividers == 0
+
+
+def test_first_month_is_not_counted_as_a_divider() -> None:
+    from immich_memories.processing.timeline_budget import plan_timeline
+
+    clips = [_clip("jan", "2026-01-05"), _clip("feb", "2026-02-05")]
+
+    plan = plan_timeline(clips, _titles(ending_duration=0.0), 60.0, "year_in_review")
+
+    assert plan.max_dividers == 1
+    assert plan.title_budget == pytest.approx(5.5)
+
+
+def test_short_memory_shortens_opening_instead_of_stealing_content() -> None:
+    from immich_memories.processing.timeline_budget import plan_timeline
+
+    plan = plan_timeline([_clip("one", "2026-01-05")], _titles(), 15.0, "custom")
+
+    assert plan.title_duration == 3.0
+    assert plan.ending_duration == 0.0
+    assert plan.content_budget == 12.0
+
+
+def test_disabled_titles_leave_the_full_budget_for_content() -> None:
+    from immich_memories.processing.timeline_budget import plan_timeline
+
+    settings = _titles()
+    settings.enabled = False
+
+    plan = plan_timeline([_clip("one", "2026-01-05")], settings, 60.0, "custom")
+
+    assert plan.content_budget == 60.0
+    assert plan.title_budget == 0.0
+    assert plan.max_dividers == 0
+
+
+def test_trip_location_changes_are_capped_by_the_same_title_budget() -> None:
+    from immich_memories.processing.timeline_budget import plan_timeline
+
+    clips = [
+        AssemblyClip(
+            path=Path("/brussels.mp4"),
+            duration=5,
+            date=datetime(2026, 7, 20, tzinfo=UTC).isoformat(),
+            latitude=50.8503,
+            longitude=4.3517,
+            location_name="Brussels",
+        ),
+        AssemblyClip(
+            path=Path("/paris.mp4"),
+            duration=5,
+            date=datetime(2026, 7, 21, tzinfo=UTC).isoformat(),
+            latitude=48.8566,
+            longitude=2.3522,
+            location_name="Paris",
+        ),
+        AssemblyClip(
+            path=Path("/lyon.mp4"),
+            duration=5,
+            date=datetime(2026, 7, 22, tzinfo=UTC).isoformat(),
+            latitude=45.764,
+            longitude=4.8357,
+            location_name="Lyon",
+        ),
+    ]
+    settings = _titles(title_duration=2.0, ending_duration=0.0)
+
+    plan = plan_timeline(clips, settings, 30.0, "trip")
+
+    assert plan.max_dividers == 2
+    assert plan.title_budget == 6.0

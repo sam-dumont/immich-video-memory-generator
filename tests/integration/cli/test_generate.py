@@ -987,6 +987,10 @@ class TestPipelineRunner:
         assert gen_params.automation_attempt_id == "attempt-pipeline-1"
         assert gen_params.memory_people == ("alice", "bob jones")
         assert gen_params.target_duration_seconds == 60.0
+        assert gen_params.timeline_plan.target_duration == 60.0
+        assert gen_params.timeline_plan.content_budget >= 48.0
+        pipeline_config = MockPipeline.call_args.kwargs["config"]
+        assert pipeline_config.target_duration_seconds == gen_params.timeline_plan.content_budget
 
 
 class TestTripGenerationFlow:

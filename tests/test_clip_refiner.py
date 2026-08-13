@@ -38,6 +38,44 @@ def _make_clip(
     )
 
 
+def test_strict_scaler_never_keeps_more_than_content_budget() -> None:
+    from immich_memories.analysis.clip_scaler import ClipScaler
+
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    clips = [
+        _make_clip(f"clip-{i}", base + timedelta(days=i), score=i / 10, duration=5.0)
+        for i in range(10)
+    ]
+
+    selected = ClipScaler().scale_to_target_duration(
+        clips,
+        48.0,
+        max_overrun_seconds=0.0,
+    )
+
+    assert sum(c.end_time - c.start_time for c in selected) <= 48.0
+
+
+def test_strict_budget_outweighs_protection_preference() -> None:
+    from immich_memories.analysis.clip_scaler import ClipScaler
+
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    clips = [
+        _make_clip(f"protected-{i}", base + timedelta(days=i), score=i / 10, duration=5.0)
+        for i in range(4)
+    ]
+
+    selected = ClipScaler().scale_to_target_duration(
+        clips,
+        10.0,
+        protected_ids={c.clip.asset.id for c in clips},
+        max_overrun_seconds=0.0,
+    )
+
+    assert len(selected) == 2
+    assert sum(c.end_time - c.start_time for c in selected) <= 10.0
+
+
 class TestPhotoCapScarcity:
     """Photo cap should respect video scarcity — let photos fill when needed."""
 

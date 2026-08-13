@@ -12,7 +12,7 @@ import logging
 import shutil
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NoReturn, TypeVar, cast, overload
@@ -49,6 +49,12 @@ from immich_memories.generate_settings import (
     _run_music_phase,
     _upload_to_immich,
 )
+from immich_memories.generate_timeline import (
+    apply_final_content_budget as _apply_final_content_budget,
+)
+from immich_memories.generate_timeline import (
+    validate_final_duration as _validate_final_duration,
+)
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.clip_validation import validate_clips
 from immich_memories.processing.output_canvas import OutputCanvas
@@ -62,6 +68,7 @@ if TYPE_CHECKING:
     from immich_memories.processing.assembly_config import AssemblyClip
     from immich_memories.processing.encoding_plan import EncodingPlan
     from immich_memories.processing.probe_cache import ProbeCache
+    from immich_memories.processing.timeline_budget import TimelinePlan
     from immich_memories.tracking import RunTracker
 
 logger = logging.getLogger(__name__)
@@ -162,6 +169,7 @@ class GenerationParams:
 
     # Duration budget for unified photo+video selection
     target_duration_seconds: float | None = None
+    timeline_plan: TimelinePlan | None = None
 
     # Pre-selected photo IDs from UI (skip re-scoring when set)
     selected_photo_ids: set[str] | None = None
@@ -756,7 +764,9 @@ def _generate_memory_inner(
     run_tracker.start_run(
         person_name=params.person_name,
         date_range=None,
-        target_duration_seconds=round(_total_clip_duration(params)),
+        target_duration_seconds=round(
+            params.target_duration_seconds or _total_clip_duration(params)
+        ),
         memory_type=params.memory_type,
         memory_key=_build_memory_key(params),
         memory_category=params.memory_category,
@@ -842,8 +852,6 @@ def _generate_memory_inner(
 
         # Privacy mode: anonymize GPS + names before title/assembly
         if params.privacy_mode:
-            from dataclasses import replace
-
             assembly_clips = anonymize_clips_for_privacy(assembly_clips)
             anon_preset = anonymize_preset_params(params.memory_preset_params)
             params = replace(
@@ -851,6 +859,8 @@ def _generate_memory_inner(
                 person_name=anonymize_name(params.person_name),
                 memory_preset_params=anon_preset,
             )
+
+        assembly_clips = _apply_final_content_budget(params, assembly_clips)
 
         # Phase 2: Assemble (includes title generation + streaming encode)
         _t = _time.monotonic()
@@ -915,6 +925,7 @@ def _generate_memory_inner(
         _phase_times["music"] = _time.monotonic() - _t
 
         final_probe = validate_output(result_path, settings.encoding_plan)
+        _validate_final_duration(params, final_probe.duration_seconds)
         artifact_warnings = [music_result.warning] if music_result.warning else []
         run_tracker.complete_artifact(
             result_path,

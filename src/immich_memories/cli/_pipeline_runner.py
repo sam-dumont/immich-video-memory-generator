@@ -7,6 +7,7 @@ Immich, runs analysis, and generates the final video.
 from __future__ import annotations
 
 import logging
+import math
 import sqlite3
 import sys
 import time
@@ -94,7 +95,9 @@ def run_pipeline_and_generate(
     from immich_memories.cache.database import VideoAnalysisCache
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.generate import GenerationParams, assets_to_clips, generate_memory
+    from immich_memories.generate_settings import _build_title_settings
     from immich_memories.operations.phases import OperationalPhase
+    from immich_memories.processing.timeline_budget import plan_timeline
     from immich_memories.tracking.models import normalize_memory_people
 
     clips = assets_to_clips(assets)
@@ -128,10 +131,30 @@ def run_pipeline_and_generate(
         prioritize_favorites=True,
         analysis_depth=analysis_depth,
     )
-    target_seconds = duration
+    planning_params = GenerationParams(
+        clips=clips,
+        output_path=output_path,
+        config=config,
+        memory_type=memory_type,
+        person_name=person_names[0] if person_names else None,
+        date_start=date_range.start,
+        date_end=date_range.end,
+        memory_preset_params=memory_preset_params or {},
+    )
+    planning_titles = _build_title_settings(planning_params, config, [])
+    planning_sources = [*clips, *(list(photo_assets) if photo_assets else [])]
+    timeline_plan = plan_timeline(planning_sources, planning_titles, duration, memory_type)
+    pipeline_config.target_duration_seconds = timeline_plan.content_budget
     pipeline_config.target_clips = max(
-        10,
-        int(target_seconds / pipeline_config.avg_clip_duration),
+        1,
+        math.ceil(timeline_plan.content_budget / pipeline_config.avg_clip_duration),
+    )
+    _runner_logger.info(
+        "Timeline budget: %.1fs content + %.1fs titles = %.1fs target (%d dividers max)",
+        timeline_plan.content_budget,
+        timeline_plan.title_budget,
+        timeline_plan.target_duration,
+        timeline_plan.max_dividers,
     )
 
     analysis_cache = VideoAnalysisCache(db_path=config.cache.database_path)
@@ -229,6 +252,7 @@ def run_pipeline_and_generate(
         include_photos=False,
         photo_assets=None,
         target_duration_seconds=duration,
+        timeline_plan=timeline_plan,
         progress_callback=gen_progress,
         phase_callback=generation_phase,
         completed_operational_phase=OperationalPhase.SELECTION,

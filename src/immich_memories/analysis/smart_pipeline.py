@@ -65,6 +65,7 @@ class PipelineConfig:
     # Selection settings
     target_clips: int = 120  # Target number of clips to select
     avg_clip_duration: float = 5.0  # Average clip duration in final video
+    target_duration_seconds: float | None = None  # Explicit strict content budget
     hdr_only: bool = False  # Only select HDR clips
     prioritize_favorites: bool = True  # Prioritize favorite clips
     max_non_favorite_ratio: float = 0.70  # Max ratio of non-favorites (0.70 = at most 70%)
@@ -101,6 +102,13 @@ class PipelineConfig:
 
     # Analysis depth: "fast" = metadata gap-fill, "thorough" = LLM gap-fill
     analysis_depth: str = "fast"
+
+    @property
+    def duration_target(self) -> float:
+        """Return explicit seconds when final planning supplied them."""
+        if self.target_duration_seconds is not None:
+            return self.target_duration_seconds
+        return self.target_clips * self.avg_clip_duration
 
 
 @dataclass
@@ -418,7 +426,7 @@ class SmartPipeline:
         """
         if self.config.analysis_depth != "fast":
             return
-        target_seconds = self.config.target_clips * self.config.avg_clip_duration
+        target_seconds = self.config.duration_target
         # WHY: 5 per 60s — below that, favorites alone can't anchor selection
         threshold = max(2, int(5 * target_seconds / 60))
         fav_count = sum(1 for c in clips if c.asset.is_favorite)
@@ -487,7 +495,7 @@ class SmartPipeline:
         entries = self._apply_budget_quality_gate(entries)
 
         # Compute density budget
-        target_seconds = self.config.target_clips * self.config.avg_clip_duration
+        target_seconds = self.config.duration_target
         buckets = compute_density_budget(
             assets=entries,
             target_duration_seconds=target_seconds,

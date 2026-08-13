@@ -367,6 +367,32 @@ class TestLocationDividerInsertion:
 
         assert len(result) == 2  # No dividers
 
+    def test_timeline_plan_caps_location_dividers(self):
+        """Eligible location changes cannot exceed the title planner's cap."""
+        from pathlib import Path
+
+        from immich_memories.processing.title_inserter import TitleInserter
+
+        clips = [
+            self._make_clip("brussels.mp4", lat=50.85, lon=4.35, name="Brussels"),
+            self._make_clip("paris.mp4", lat=48.86, lon=2.35, name="Paris"),
+            self._make_clip("lyon.mp4", lat=45.76, lon=4.84, name="Lyon"),
+        ]
+        generator = MagicMock()
+        generator.generate_location_card_screen.return_value = MagicMock(
+            path=Path("/tmp/location.mp4")
+        )
+        title_settings = MagicMock()
+        title_settings.month_divider_duration = 2.0
+        title_settings.max_dividers = 1
+
+        result = TitleInserter(MagicMock(), MagicMock()).build_clips_with_location_dividers(
+            clips, generator, title_settings, None
+        )
+
+        assert len([clip for clip in result if clip.is_title_screen]) == 1
+        generator.generate_location_card_screen.assert_called_once()
+
     def test_clips_without_gps_pass_through(self):
         """Clips without GPS should pass through without dividers."""
         from pathlib import Path

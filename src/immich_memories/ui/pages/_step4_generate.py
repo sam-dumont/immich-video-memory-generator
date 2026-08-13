@@ -453,6 +453,9 @@ async def finalize_ui_generation(
             message=music_result.warning or "Music ready",
         )
     final_probe = await io_bound_result(validate_output, prepared.path, prepared.encoding_plan)
+    from immich_memories.generate import _validate_final_duration
+
+    _validate_final_duration(params, final_probe.duration_seconds)
     warnings = [music_result.warning] if music_result.warning else []
     completed = run_tracker.complete_artifact(
         prepared.path,

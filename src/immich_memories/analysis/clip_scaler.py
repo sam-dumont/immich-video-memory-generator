@@ -13,6 +13,35 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _fit_temporally_distributed(
+    clips: list[ClipWithSegment], max_duration: float
+) -> list[ClipWithSegment]:
+    """Greedily retain high-quality clips while rewarding temporal distance."""
+    ordered = sorted(clips, key=lambda c: c.clip.asset.file_created_at or datetime.min)
+    selected: list[ClipWithSegment] = []
+    remaining = max_duration
+    while candidates := [
+        c for c in ordered if c not in selected and c.end_time - c.start_time <= remaining
+    ]:
+        if not selected:
+            chosen = max(candidates, key=lambda c: c.score)
+        else:
+            selected_dates = [c.clip.asset.file_created_at for c in selected]
+            chosen = max(
+                candidates,
+                key=lambda c: (
+                    min(
+                        abs((c.clip.asset.file_created_at - d).total_seconds())
+                        for d in selected_dates
+                    ),
+                    c.score,
+                ),
+            )
+        selected.append(chosen)
+        remaining -= chosen.end_time - chosen.start_time
+    return sorted(selected, key=lambda c: c.clip.asset.file_created_at or datetime.min)
+
+
 def _find_sole_month_representatives(
     clips: list[ClipWithSegment],
     extra_ids: set[str] | None = None,
@@ -45,24 +74,27 @@ class ClipScaler:
         clips: list[ClipWithSegment],
         target_duration: float,
         protected_ids: set[str] | None = None,
+        max_overrun_seconds: float = 0.0,
     ) -> list[ClipWithSegment]:
         """Scale down selection to fit target duration.
 
         Removes lowest-scored clips (non-favorites first) until total
-        duration is within target + 10%. Clips in protected_ids are
+        duration is within target plus the explicit overrun. Clips in protected_ids are
         treated as protected (same priority as high-density week clips).
         """
         if not clips:
             return clips
 
-        if not clips:
-            return clips
-
         total = sum(c.end_time - c.start_time for c in clips)
-        max_allowed = target_duration * 1.10
+        max_allowed = max(0.0, target_duration + max_overrun_seconds)
 
         if total <= max_allowed:
-            logger.info(f"Duration {total:.0f}s within target {target_duration:.0f}s (+10%)")
+            logger.info(
+                "Duration %.0fs within target %.0fs (+%.0fs)",
+                total,
+                target_duration,
+                max_overrun_seconds,
+            )
             return clips
 
         logger.info(
@@ -71,6 +103,12 @@ class ClipScaler:
 
         sole_reps, regular = _find_sole_month_representatives(clips, protected_ids)
         sole_duration = sum(c.end_time - c.start_time for c in sole_reps)
+
+        if sole_duration > max_allowed:
+            logger.info(
+                "Protected clips exceed the strict duration budget; retaining a distributed subset"
+            )
+            return _fit_temporally_distributed(sole_reps, max_allowed)
 
         if sole_reps:
             logger.info(

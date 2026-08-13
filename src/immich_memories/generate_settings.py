@@ -166,6 +166,14 @@ def _build_title_settings(
         home_lon=params.memory_preset_params.get("home_lon"),
     )
 
+    if params.timeline_plan is not None:
+        plan = params.timeline_plan
+        settings.title_duration = plan.title_duration
+        settings.month_divider_duration = plan.divider_duration
+        settings.ending_duration = plan.ending_duration
+        settings.max_dividers = plan.max_dividers
+        settings.show_ending_screen = plan.ending_duration > 0.0
+
     # Apply LLM-generated title overrides
     if params.title:
         settings.title_override = params.title

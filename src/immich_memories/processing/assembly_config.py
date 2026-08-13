@@ -79,6 +79,7 @@ class TitleScreenSettings:
     show_month_dividers: bool = True
     month_divider_threshold: int = 2  # Minimum clips in a month to show divider
     divider_mode: str = "month"  # "none", "month", or "year"
+    max_dividers: int | None = None  # Timeline-plan cap; None preserves standalone behavior
     show_ending_screen: bool = True
     use_first_name_only: bool = True  # Use only first name for titles
     # Title background style: "content_backed" (slow-mo blur from clip) or

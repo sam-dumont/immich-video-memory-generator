@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from collections import Counter
 from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
@@ -34,6 +35,12 @@ class TitleInserter:
     def __init__(self, settings: AssemblySettings, prober: FFmpegProber) -> None:
         self.settings = settings
         self.prober = prober
+
+    @staticmethod
+    def _divider_limit(title_settings: Any) -> int | None:
+        """Return only a real timeline cap; MagicMock/standalone callers remain uncapped."""
+        value = getattr(title_settings, "max_dividers", None)
+        return max(0, value) if isinstance(value, int) else None
 
     # ------------------------------------------------------------------
     # Pre-render first clip for title background
@@ -487,7 +494,9 @@ class TitleInserter:
         if progress_callback:
             progress_callback(0.05, "Generating year dividers...")
 
-        for _, year in year_changes:
+        limit = self._divider_limit(title_settings)
+        planned_changes = year_changes if limit is None else year_changes[1 : limit + 1]
+        for _, year in planned_changes:
             if year not in year_divider_paths:
                 divider = generator.generate_year_divider(year)
                 year_divider_paths[year] = divider.path
@@ -503,12 +512,19 @@ class TitleInserter:
         """Interleave clips with year divider screens."""
         result: list[AssemblyClip] = []
         current_year: int | None = None
+        inserted = 0
+        limit = self._divider_limit(title_settings)
         for clip in clips:
             clip_date = self.parse_clip_date(clip)
             if clip_date:
                 if (
-                    current_year is None or clip_date.year != current_year
+                    (limit is current_year is None)
+                    or (current_year is not None and clip_date.year != current_year)
                 ) and clip_date.year in year_divider_paths:
+                    if limit is not None and inserted >= limit:
+                        current_year = clip_date.year
+                        result.append(clip)
+                        continue
                     result.append(
                         AssemblyClip(
                             path=year_divider_paths[clip_date.year],
@@ -518,6 +534,7 @@ class TitleInserter:
                             is_title_screen=True,
                         )
                     )
+                    inserted += 1
                 current_year = clip_date.year
             result.append(clip)
         return result
@@ -539,7 +556,21 @@ class TitleInserter:
         if progress_callback:
             progress_callback(0.05, "Generating month dividers...")
 
-        for _, month, year in month_changes:
+        limit = self._divider_limit(title_settings)
+        planned_changes = month_changes
+        if limit is not None:
+            counts = Counter(
+                (clip_date.year, clip_date.month)
+                for clip in clips
+                if (clip_date := self.parse_clip_date(clip)) is not None
+            )
+            threshold = max(1, int(title_settings.month_divider_threshold))
+            eligible = [
+                change for change in month_changes if counts[(change[2], change[1])] >= threshold
+            ]
+            planned_changes = eligible[1 : limit + 1]
+
+        for _, month, year in planned_changes:
             key = (year, month)
             if key not in month_divider_paths:
                 is_birthday = (
@@ -565,6 +596,8 @@ class TitleInserter:
         """Interleave clips with month divider screens."""
         result: list[AssemblyClip] = []
         current_month: tuple[int, int] | None = None
+        inserted = 0
+        limit = self._divider_limit(title_settings)
 
         for clip in clips:
             clip_date = self.parse_clip_date(clip)
@@ -578,6 +611,7 @@ class TitleInserter:
                     and current_month is not None
                     and month_key != current_month
                     and month_key in month_divider_paths
+                    and (limit is None or inserted < limit)
                 ):
                     result.append(
                         AssemblyClip(
@@ -588,6 +622,7 @@ class TitleInserter:
                             is_title_screen=True,
                         )
                     )
+                    inserted += 1
                 current_month = month_key
             result.append(clip)
         return result
@@ -633,16 +668,23 @@ class TitleInserter:
         prev_lat: float | None = None
         prev_lon: float | None = None
         threshold_km = 30.0
+        inserted = 0
+        limit = self._divider_limit(title_settings)
 
         for clip in clips:
             if clip.latitude is not None and clip.longitude is not None:
                 if prev_lat is not None and prev_lon is not None:
                     dist = haversine_km(prev_lat, prev_lon, clip.latitude, clip.longitude)
-                    if dist > threshold_km and clip.location_name:
+                    if (
+                        dist > threshold_km
+                        and clip.location_name
+                        and (limit is None or inserted < limit)
+                    ):
                         card = self.make_location_card_clip(
                             clip.location_name, location_card_cache, generator, title_settings
                         )
                         result.append(card)
+                        inserted += 1
                         logger.info(f"Location card: {clip.location_name} (dist={dist:.0f}km)")
                 prev_lat = clip.latitude
                 prev_lon = clip.longitude

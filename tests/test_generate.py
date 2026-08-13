@@ -14,9 +14,11 @@ from immich_memories.config_loader import Config
 from immich_memories.generate import (
     GenerationError,
     GenerationParams,
+    _apply_final_content_budget,
     _build_assembly_settings,
     _report,
     _total_clip_duration,
+    _validate_final_duration,
     assets_to_clips,
 )
 from immich_memories.generate_music import music_config_available
@@ -141,6 +143,103 @@ class TestGenerationError:
     def test_is_exception(self):
         with pytest.raises(GenerationError, match="test error"):
             raise GenerationError("test error")
+
+
+def test_generation_rejects_artifact_more_than_one_second_over_target(tmp_path: Path) -> None:
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=tmp_path / "memory.mp4",
+        config=Config(),
+        target_duration_seconds=60.0,
+    )
+
+    with pytest.raises(GenerationError, match="duration budget"):
+        _validate_final_duration(params, 61.1)
+
+
+def test_generation_accepts_one_second_duration_tolerance(tmp_path: Path) -> None:
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=tmp_path / "memory.mp4",
+        config=Config(),
+        target_duration_seconds=60.0,
+    )
+
+    _validate_final_duration(params, 61.0)
+
+
+def test_title_settings_consume_the_resolved_timeline_plan(tmp_path: Path) -> None:
+    from immich_memories.generate import _build_title_settings
+    from immich_memories.processing.timeline_budget import TimelinePlan
+
+    params = GenerationParams(
+        clips=[],
+        output_path=tmp_path / "memory.mp4",
+        config=Config(),
+        timeline_plan=TimelinePlan(
+            target_duration=15.0,
+            content_budget=12.0,
+            title_budget=3.0,
+            title_duration=3.0,
+            ending_duration=0.0,
+            divider_duration=2.0,
+            max_dividers=0,
+        ),
+    )
+
+    settings = _build_title_settings(params, params.config, [])
+
+    assert settings is not None
+    assert settings.title_duration == 3.0
+    assert settings.show_ending_screen is False
+    assert settings.max_dividers == 0
+
+
+def test_final_content_budget_trims_all_clips_proportionally(tmp_path: Path) -> None:
+    from immich_memories.processing.assembly_config import AssemblyClip
+    from immich_memories.processing.timeline_budget import TimelinePlan
+
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=tmp_path / "memory.mp4",
+        config=Config(),
+        target_duration_seconds=15.0,
+        timeline_plan=TimelinePlan(15.0, 12.0, 3.0, 3.0, 0.0, 2.0, 0),
+    )
+    clips = [
+        AssemblyClip(path=tmp_path / f"{index}.mp4", duration=5.0, asset_id=str(index))
+        for index in range(3)
+    ]
+
+    trimmed = _apply_final_content_budget(params, clips)
+
+    assert [clip.duration for clip in trimmed] == [4.0, 4.0, 4.0]
+    assert [clip.asset_id for clip in trimmed] == ["0", "1", "2"]
+
+
+def test_short_budget_keeps_temporal_variety_without_micro_clips(tmp_path: Path) -> None:
+    from immich_memories.processing.assembly_config import AssemblyClip
+    from immich_memories.processing.timeline_budget import TimelinePlan
+
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=tmp_path / "memory.mp4",
+        config=Config(),
+        target_duration_seconds=15.0,
+        timeline_plan=TimelinePlan(15.0, 12.0, 3.0, 3.0, 0.0, 2.0, 0),
+    )
+    clips = [
+        AssemblyClip(path=tmp_path / f"{index}.mp4", duration=5.0, asset_id=str(index))
+        for index in range(20)
+    ]
+
+    trimmed = _apply_final_content_budget(params, clips)
+
+    assert len(trimmed) == 8
+    assert trimmed[0].asset_id == "0"
+    assert trimmed[-1].asset_id == "19"
+    assert all(clip.duration >= 1.5 for clip in trimmed)
+    assert sum(clip.duration for clip in trimmed) == pytest.approx(12.0)
 
 
 def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(

@@ -508,10 +508,16 @@ class ClipRefiner:
         else:
             selected = self.select_clips_distributed_by_date(analyzed, target_with_buffer)
 
-        target_duration = self.config.target_clips * self.config.avg_clip_duration
+        target_duration = self.config.duration_target
+        max_overrun = (
+            0.0 if self.config.target_duration_seconds is not None else target_duration * 0.10
+        )
         coverage_ids: set[str] = getattr(self, "_coverage_ids", set())
         selected = self.scaler.scale_to_target_duration(
-            selected, target_duration, protected_ids=coverage_ids
+            selected,
+            target_duration,
+            protected_ids=coverage_ids,
+            max_overrun_seconds=max_overrun,
         )
 
         if self.config.temporal_dedup_window_minutes > 0:
