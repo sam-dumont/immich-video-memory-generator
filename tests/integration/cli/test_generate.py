@@ -992,6 +992,8 @@ class TestPipelineRunner:
                 music=None,
                 no_music=True,
                 output_path=output,
+                output_resolution="720p",
+                output_orientation="landscape",
                 memory_type="year_in_review",
                 person_names=[" Alice ", "BOB\tJones"],
                 date_range=dr,
@@ -1018,8 +1020,11 @@ class TestPipelineRunner:
         assert gen_params.target_duration_seconds == 60.0
         assert gen_params.timeline_plan.target_duration == 60.0
         assert gen_params.timeline_plan.content_budget >= 48.0
+        assert gen_params.output_canvas.width == 1280
+        assert gen_params.output_canvas.height == 720
         pipeline_config = MockPipeline.call_args.kwargs["config"]
         assert pipeline_config.target_duration_seconds == gen_params.timeline_plan.content_budget
+        assert pipeline_config.output_resolution == 720
 
     def test_dry_run_selects_and_writes_no_artifact(self, tmp_path, fixture_mp4, capsys):
         """Planning uses cached/metadata analysis and stops before generation."""

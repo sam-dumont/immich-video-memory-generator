@@ -100,6 +100,32 @@ def _invoke(args: list[str], config: Config | None = None) -> object:
         return runner.invoke(main, args, catch_exceptions=False)
 
 
+def _invoke_planned_generation(args: list[str], config: Config) -> object:
+    """Exercise generate argument resolution without a live personal library."""
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.get_photos_for_date_range.return_value = []
+    client.get_person_by_name.return_value = MagicMock(
+        id="person-id",
+        name="Test Person",
+        birth_date=None,
+    )
+    asset = MagicMock(duration_seconds=10.0)
+    with (
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        patch(
+            "immich_memories.cli.generate.fetch_videos_and_live_photos",
+            return_value=([asset], []),
+        ),
+        patch(
+            "immich_memories.cli.generate.run_pipeline_and_generate",
+            return_value=(Path("dry-run-plan.mp4"), False, None),
+        ),
+    ):
+        return _invoke(args, config=config)
+
+
 # =========================================================================
 # Module 1: VideoAnalysisCache — uncovered behaviors
 # =========================================================================
@@ -1291,9 +1317,9 @@ class TestGenerateInfersMemoryType:
         config = Config()
         config.immich.url = "http://immich:2283"
         config.immich.api_key = "test-key"
-        result = _invoke(
+        result = _invoke_planned_generation(
             ["generate", "--year", "2024", "--person", "Alice", "--dry-run"],
-            config=config,
+            config,
         )
         assert result.exit_code == 0
 
@@ -1302,7 +1328,7 @@ class TestGenerateInfersMemoryType:
         config = Config()
         config.immich.url = "http://immich:2283"
         config.immich.api_key = "test-key"
-        result = _invoke(
+        result = _invoke_planned_generation(
             [
                 "generate",
                 "--year",
@@ -1313,7 +1339,7 @@ class TestGenerateInfersMemoryType:
                 "Bob",
                 "--dry-run",
             ],
-            config=config,
+            config,
         )
         assert result.exit_code == 0
 

@@ -131,6 +131,8 @@ def test_analysis_failure_retains_attempt_phase_without_creating_run(tmp_path: P
     attempt = state.start_attempt("daily wake")
     clip = MagicMock()
     clip.asset.id = "asset-1"
+    clip.width = 1920
+    clip.height = 1080
 
     with (
         patch("immich_memories.generate.assets_to_clips", return_value=[clip]),
@@ -194,6 +196,8 @@ def test_analysis_continues_when_attempt_phase_write_fails(tmp_path: Path) -> No
     attempt = state.start_attempt("daily wake")
     clip = MagicMock()
     clip.asset.id = "asset-1"
+    clip.width = 1920
+    clip.height = 1080
     result = MagicMock(selected_clips=[clip], clip_segments={})
     output = tmp_path / "memory.mp4"
 

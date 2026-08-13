@@ -523,8 +523,8 @@ class SmartPipeline:
             raw_multiplier=1.3,
         )
 
-        raw_budget = (target_seconds - 50) * 1.3
-        log_budget_summary(buckets, raw_budget)
+        effective_raw_budget = sum(bucket.quota_seconds for bucket in buckets)
+        log_budget_summary(buckets, effective_raw_budget)
 
         # Collect selected asset IDs from budget
         selected_ids: set[str] = set()

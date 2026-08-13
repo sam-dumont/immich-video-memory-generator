@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.cli._live_display import ProgressDisplay
     from immich_memories.config_loader import Config
+    from immich_memories.processing.output_canvas import OutputCanvas
     from immich_memories.processing.timeline_budget import TimelinePlan
 
 
@@ -81,6 +82,30 @@ def _planning_analysis(
     return pipeline.run_analysis(clips, progress_callback=progress_callback)
 
 
+def _configure_output_canvas(
+    pipeline_config: PipelineConfig,
+    *,
+    clips: list,
+    photo_assets: list | None,
+    config: Config,
+    output_resolution: str | None,
+    output_orientation: str | None,
+) -> OutputCanvas:
+    """Resolve one canvas and align selection quality gates with it."""
+    from immich_memories.processing.output_canvas import resolve_output_canvas
+
+    planning_sources = [*clips, *(photo_assets or [])]
+    canvas = resolve_output_canvas(
+        resolution=output_resolution,
+        orientation=output_orientation,
+        configured_resolution=config.output.resolution_tuple,
+        clips=planning_sources,
+    )
+    # PipelineConfig expresses output resolution as the short-edge tier.
+    pipeline_config.output_resolution = min(canvas.width, canvas.height)
+    return canvas
+
+
 def _finish_dry_run(
     *,
     pipeline_result: PipelineResult,
@@ -89,8 +114,7 @@ def _finish_dry_run(
     live_photo_clips: list | None,
     photo_assets: list | None,
     config: Config,
-    output_resolution: str | None,
-    output_orientation: str | None,
+    output_canvas: OutputCanvas,
     output_path: Path,
     memory_type: str | None,
     date_range: DateRange,
@@ -108,7 +132,6 @@ def _finish_dry_run(
         music_policy,
         print_generation_preview,
     )
-    from immich_memories.processing.output_canvas import resolve_output_canvas
 
     selected_clips = pipeline_result.selected_clips
     selected_photos = sum(clip.asset.type == AssetType.IMAGE for clip in selected_clips)
@@ -122,12 +145,7 @@ def _finish_dry_run(
         selected_photos=selected_photos,
         selected_duration=sum(end - start for start, end in pipeline_result.clip_segments.values()),
         timeline=timeline_plan,
-        canvas=resolve_output_canvas(
-            resolution=output_resolution,
-            orientation=output_orientation,
-            configured_resolution=config.output.resolution_tuple,
-            clips=selected_clips,
-        ),
+        canvas=output_canvas,
         output_path=output_path,
         upload_intent=should_upload,
         music_policy=music_policy(config=config, music=music, no_music=no_music),
@@ -249,6 +267,14 @@ def run_pipeline_and_generate(
         prioritize_favorites=True,
         analysis_depth=analysis_depth,
     )
+    output_canvas = _configure_output_canvas(
+        pipeline_config,
+        clips=clips,
+        photo_assets=photo_assets if include_photos else None,
+        config=config,
+        output_resolution=output_resolution,
+        output_orientation=output_orientation,
+    )
     timeline_plan = _configure_timeline(
         pipeline_config,
         clips=clips,
@@ -335,8 +361,7 @@ def run_pipeline_and_generate(
             live_photo_clips=live_photo_clips,
             photo_assets=photo_assets,
             config=config,
-            output_resolution=output_resolution,
-            output_orientation=output_orientation,
+            output_canvas=output_canvas,
             output_path=output_path,
             memory_type=memory_type,
             date_range=date_range,
@@ -366,6 +391,7 @@ def run_pipeline_and_generate(
         transition=transition,
         output_resolution=output_resolution,
         output_orientation=output_orientation,
+        output_canvas=output_canvas,
         scale_mode=scale_mode,
         output_format=output_format,
         add_date_overlay=add_date_overlay,

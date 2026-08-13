@@ -114,6 +114,28 @@ class TestDensityBudgetCap:
         # With 1.3x multiplier + 1.5x cap, should be well under 200
         assert len(result) < 100
 
+    def test_short_target_logs_the_effective_positive_raw_budget(self):
+        """The diagnostic must report the calculator's capped-overhead budget."""
+        from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
+
+        config = PipelineConfig(target_clips=10, target_duration_seconds=48.5)
+        pipeline = SmartPipeline(
+            client=MagicMock(),
+            analysis_cache=MagicMock(),
+            thumbnail_cache=MagicMock(),
+            config=config,
+            analysis_config=MagicMock(min_segment_duration=1.5),
+            app_config=MagicMock(),
+        )
+        clips = [self._make_clip(f"clip{i}") for i in range(20)]
+
+        with patch("immich_memories.analysis.density_budget.log_budget_summary") as summary:
+            pipeline._phase_filter(clips)
+
+        buckets, logged_budget = summary.call_args.args
+        assert logged_budget > 0
+        assert logged_budget == pytest.approx(sum(bucket.quota_seconds for bucket in buckets))
+
 
 class TestSharedVideoCacheBatch:
     def test_pipeline_owns_and_injects_one_cache_batch(self, tmp_path: Path):

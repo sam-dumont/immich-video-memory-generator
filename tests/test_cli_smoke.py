@@ -29,6 +29,32 @@ def _invoke(args: list[str], config: Config | None = None) -> Result:
         return runner.invoke(main, args, catch_exceptions=False)
 
 
+def _invoke_planned_generation(args: list[str], config: Config) -> Result:
+    """Exercise CLI resolution while replacing only live planning boundaries."""
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.get_photos_for_date_range.return_value = []
+    client.get_person_by_name.return_value = MagicMock(
+        id="person-id",
+        name="Test Person",
+        birth_date=None,
+    )
+    asset = MagicMock(duration_seconds=10.0)
+    with (
+        patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+        patch(
+            "immich_memories.cli.generate.fetch_videos_and_live_photos",
+            return_value=([asset], []),
+        ),
+        patch(
+            "immich_memories.cli.generate.run_pipeline_and_generate",
+            return_value=(Path("dry-run-plan.mp4"), False, None),
+        ),
+    ):
+        return _invoke(args, config=config)
+
+
 def _auto_candidate() -> MemoryCandidate:
     return MemoryCandidate(
         memory_type="monthly_highlights",
@@ -192,7 +218,7 @@ class TestCLIMemoryTypeResolve:
         config = Config()
         config.immich.url = "http://immich:2283"
         config.immich.api_key = "test-key"
-        result = _invoke(
+        result = _invoke_planned_generation(
             [
                 "generate",
                 "--memory-type",
@@ -203,17 +229,17 @@ class TestCLIMemoryTypeResolve:
                 "2024",
                 "--dry-run",
             ],
-            config=config,
+            config,
         )
         assert result.exit_code == 0
-        assert "Dry run" in result.output
+        assert "Dry-run planning complete" in result.output
 
     def test_monthly_dry_run(self):
         """--memory-type monthly_highlights --month 7 resolves correctly."""
         config = Config()
         config.immich.url = "http://immich:2283"
         config.immich.api_key = "test-key"
-        result = _invoke(
+        result = _invoke_planned_generation(
             [
                 "generate",
                 "--memory-type",
@@ -224,31 +250,31 @@ class TestCLIMemoryTypeResolve:
                 "2024",
                 "--dry-run",
             ],
-            config=config,
+            config,
         )
         assert result.exit_code == 0
-        assert "Dry run" in result.output
+        assert "Dry-run planning complete" in result.output
 
     def test_on_this_day_dry_run(self):
         """--memory-type on_this_day resolves with default target date."""
         config = Config()
         config.immich.url = "http://immich:2283"
         config.immich.api_key = "test-key"
-        result = _invoke(
+        result = _invoke_planned_generation(
             ["generate", "--memory-type", "on_this_day", "--dry-run"],
-            config=config,
+            config,
         )
         assert result.exit_code == 0
-        assert "Dry run" in result.output
+        assert "Dry-run planning complete" in result.output
 
     def test_year_in_review_default(self):
         """--memory-type year_in_review with --year works (backward compat)."""
         config = Config()
         config.immich.url = "http://immich:2283"
         config.immich.api_key = "test-key"
-        result = _invoke(
+        result = _invoke_planned_generation(
             ["generate", "--memory-type", "year_in_review", "--year", "2024", "--dry-run"],
-            config=config,
+            config,
         )
         assert result.exit_code == 0
 
@@ -277,9 +303,9 @@ class TestQuietFlag:
         config = Config()
         config.immich.url = "http://immich:2283"
         config.immich.api_key = "test-key"
-        result = _invoke(
+        result = _invoke_planned_generation(
             ["generate", "--year", "2024", "--dry-run", "--quiet"],
-            config=config,
+            config,
         )
         assert result.exit_code == 0
 
