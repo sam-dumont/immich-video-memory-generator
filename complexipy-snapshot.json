@@ -850,7 +850,7 @@
         "name": "register_config_commands",
         "complexity": 52,
         "line_start": 14,
-        "line_end": 226,
+        "line_end": 227,
         "line_complexities": [
           {
             "line": 31,
@@ -989,40 +989,36 @@
             "complexity": 3
           },
           {
-            "line": 171,
+            "line": 172,
             "complexity": 0
           },
           {
-            "line": 176,
+            "line": 177,
             "complexity": 0
           },
           {
-            "line": 179,
+            "line": 180,
             "complexity": 0
           },
           {
-            "line": 183,
+            "line": 184,
             "complexity": 2
           },
           {
-            "line": 186,
+            "line": 187,
             "complexity": 0
-          },
-          {
-            "line": 193,
-            "complexity": 2
           },
           {
             "line": 194,
+            "complexity": 2
+          },
+          {
+            "line": 195,
             "complexity": 0
           },
           {
-            "line": 199,
+            "line": 200,
             "complexity": 3
-          },
-          {
-            "line": 207,
-            "complexity": 0
           },
           {
             "line": 208,
@@ -1037,7 +1033,7 @@
             "complexity": 0
           },
           {
-            "line": 212,
+            "line": 211,
             "complexity": 0
           },
           {
@@ -1045,19 +1041,23 @@
             "complexity": 0
           },
           {
-            "line": 215,
-            "complexity": 2
+            "line": 214,
+            "complexity": 0
           },
           {
             "line": 216,
+            "complexity": 2
+          },
+          {
+            "line": 217,
             "complexity": 3
           },
           {
-            "line": 220,
+            "line": 221,
             "complexity": 1
           },
           {
-            "line": 222,
+            "line": 223,
             "complexity": 1
           }
         ]

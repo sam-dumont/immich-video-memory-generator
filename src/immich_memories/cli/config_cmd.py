@@ -164,6 +164,7 @@ def register_config_commands(main: click.Group) -> None:
         Checks:
         - Immich server connection and API key
         - LLM availability (Ollama or OpenAI-compatible)
+        - Semantic audio analysis (PANNs or energy fallback)
         - Hardware acceleration
         """
         from immich_memories.preflight import CheckStatus, run_preflight_checks

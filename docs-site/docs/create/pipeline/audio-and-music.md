@@ -79,6 +79,31 @@ audio:
 
 Or disable music entirely with `auto_music: false` or `--no-music`.
 
+## Semantic Audio Events (Optional PANNs)
+
+Audio-content analysis is separate from music generation and ducking. With PANNs installed, the
+selector can label laughter, babies, speech, music, cheering, engines, and other AudioSet events.
+Those labels help protect a laugh or spoken moment from a bad cut.
+
+Install the optional backend with either package workflow:
+
+```bash
+uv sync --extra audio-ml
+pip install 'immich-memories[audio-ml]'
+```
+
+Then enable it:
+
+```yaml
+audio_content:
+  enabled: true
+  use_panns: true
+```
+
+If Torch or PANNs is unavailable, generation does not fail. It uses the energy-only analyzer,
+which can find loud and quiet structure but cannot reliably distinguish laughter from speech,
+music, babies, or background noise. `immich-memories preflight` reports which backend is active.
+
 ## Audio Ducking
 
 When background music plays over your clips, it should get quieter when someone's talking or when there's an interesting sound in the original audio. The music automatically dips to let the original audio through, then comes back up.

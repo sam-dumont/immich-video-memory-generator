@@ -468,6 +468,25 @@ class TestPANNsAnalysis:
             assert not result
             assert not analyzer._panns_available
 
+    def test_backend_status_reports_energy_fallback_once(self, caplog):
+        """Requested semantic analysis degrades explicitly without repeated warnings."""
+        from immich_memories.audio.content_analyzer import AudioContentAnalyzer
+
+        analyzer = AudioContentAnalyzer(use_panns=True)
+        with patch.object(analyzer, "_check_panns_available", return_value=False):
+            assert analyzer.backend_status() == "energy"
+            assert analyzer.backend_status() == "energy"
+
+        messages = [record.message for record in caplog.records if "energy-only" in record.message]
+        assert len(messages) == 1
+
+    def test_backend_status_reports_panns(self):
+        from immich_memories.audio.content_analyzer import AudioContentAnalyzer
+
+        analyzer = AudioContentAnalyzer(use_panns=True)
+        with patch.object(analyzer, "_check_panns_available", return_value=True):
+            assert analyzer.backend_status() == "panns"
+
 
 class TestMusicTrackEdgeCases:
     """Edge cases for MusicTrack."""

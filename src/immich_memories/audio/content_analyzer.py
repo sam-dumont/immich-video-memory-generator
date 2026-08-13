@@ -13,6 +13,7 @@ import logging
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 
@@ -79,6 +80,7 @@ class AudioContentAnalyzer:
         self._panns_model = None
         self._panns_available = None
         self._class_names = None
+        self._backend_logged = False
 
     def _extract_audio(self, video_path: Path) -> tuple[np.ndarray, int] | None:
         """Extract audio from video file.
@@ -167,7 +169,7 @@ class AudioContentAnalyzer:
             )
 
         # Try PANNs first if enabled
-        if self.use_panns and self._check_panns_available():
+        if self.backend_status() == "panns":
             return self._analyze_with_panns(audio_array, sample_rate, max_duration)
 
         # Fall back to energy-based analysis
@@ -212,6 +214,20 @@ class AudioContentAnalyzer:
     # PANNs Analysis (from PANNsAnalysisMixin)
     # =========================================================================
 
+    def backend_status(self) -> Literal["panns", "energy"]:
+        """Resolve and report this instance's active semantic-audio backend once."""
+        panns_ready = self.use_panns and self._check_panns_available()
+        backend: Literal["panns", "energy"] = "panns" if panns_ready else "energy"
+        if not self._backend_logged:
+            if backend == "panns":
+                logger.info("Audio-content backend: semantic PANNs classification")
+            elif self.use_panns:
+                logger.warning("Audio-content backend: energy-only fallback (PANNs unavailable)")
+            else:
+                logger.info("Audio-content backend: energy-only analysis")
+            self._backend_logged = True
+        return backend
+
     def _check_panns_available(self) -> bool:
         """Check if PANNs is available and load the model."""
         if self._panns_available is not None:
@@ -223,14 +239,11 @@ class AudioContentAnalyzer:
             self._panns_model = SoundEventDetection(checkpoint_path=None, device="cpu")
             self._class_names = labels
             self._panns_available = True
-            logger.info("PANNs audio classification available (%d classes)", len(labels))
+            logger.debug("PANNs audio classification loaded (%d classes)", len(labels))
             return True
 
         except (ImportError, RuntimeError, OSError) as e:
-            logger.warning(f"PANNs audio classification not available: {e}")
-            logger.warning(
-                "Falling back to energy-based detection (less accurate for speech/laughter)"
-            )
+            logger.debug("PANNs audio classification unavailable: %s", type(e).__name__)
             self._panns_available = False
             return False
 
@@ -241,6 +254,7 @@ class AudioContentAnalyzer:
             self._panns_model = None
             self._panns_available = None
             self._class_names = None
+            self._backend_logged = False
             gc.collect()
             logger.debug("PANNs cleanup complete")
 

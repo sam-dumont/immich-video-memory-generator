@@ -41,7 +41,7 @@ uv sync --extra face
 # AI music generation features
 uv sync --extra audio
 
-# ML-based audio analysis (laughter/speech detection)
+# Semantic audio labels (PANNs + Torch: laughter, speech, babies, music)
 uv sync --extra audio-ml
 
 # GPU-accelerated title rendering (Metal, CUDA, Vulkan)
@@ -99,7 +99,7 @@ pip install immich-memories[mac]
 # Audio metadata support
 pip install immich-memories[audio]
 
-# ML audio analysis
+# Semantic audio labels (PANNs + Torch)
 pip install immich-memories[audio-ml]
 
 # GPU-accelerated rendering
@@ -111,6 +111,10 @@ pip install immich-memories[all]
 # Everything on macOS
 pip install immich-memories[all-mac]
 ```
+
+The `audio-ml` extra is optional because Torch and PANNs are large. Without it, audio-content
+analysis uses an energy-only fallback: it still finds loud/quiet structure, but it cannot reliably
+label laughter, babies, speech, or music.
 
 ## Optional System Dependencies
 

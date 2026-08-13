@@ -210,13 +210,19 @@ content_analysis:
 audio_content:
   enabled: false
   weight: 0.15
-  use_panns: true                # PANNs ML model (requires torch)
+  use_panns: true                # Semantic labels via optional audio-ml extra
   min_confidence: 0.3
   laughter_confidence: 0.2
   laughter_bonus: 0.1
   protect_laughter: true
   protect_speech: true
 ```
+
+`use_panns: true` uses PANNs to label laughter, babies, speech, music, cheering, engines, and
+other AudioSet events. Install it with `uv sync --extra audio-ml` or
+`pip install 'immich-memories[audio-ml]'`. If the extra is missing, generation continues with the
+energy-only analyzer. That fallback can find loud and quiet structure, but it cannot reliably tell
+laughter from speech, music, or background noise.
 
 ## Title screens
 

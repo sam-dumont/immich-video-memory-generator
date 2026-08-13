@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 from dataclasses import dataclass
 from enum import Enum
@@ -341,6 +342,40 @@ def check_hardware() -> CheckResult:
         )
 
 
+def check_audio_content(config: Config) -> CheckResult:
+    """Report semantic-audio capability without importing Torch or loading a model."""
+    audio = config.audio_content
+    if not audio.enabled:
+        return CheckResult(
+            name="Audio content",
+            status=CheckStatus.SKIPPED,
+            message="Audio-content analysis disabled",
+        )
+    if not audio.use_panns:
+        return CheckResult(
+            name="Audio content",
+            status=CheckStatus.OK,
+            message="Energy-only audio analysis enabled",
+            details="Semantic labels such as laughter and speech are unavailable",
+        )
+    if (
+        importlib.util.find_spec("torch") is not None
+        and importlib.util.find_spec("panns_inference") is not None
+    ):
+        return CheckResult(
+            name="Audio content",
+            status=CheckStatus.OK,
+            message="Semantic PANNs audio classification ready",
+            details="Laughter, baby, speech, music, and other AudioSet labels are available",
+        )
+    return CheckResult(
+        name="Audio content",
+        status=CheckStatus.WARNING,
+        message="PANNs unavailable; using energy-only fallback",
+        details="Install the audio-ml extra for semantic laughter, baby, speech, and music labels",
+    )
+
+
 def run_preflight_checks(config: Config) -> list[CheckResult]:
     """Run all preflight checks.
 
@@ -353,5 +388,6 @@ def run_preflight_checks(config: Config) -> list[CheckResult]:
     return [
         check_immich(config),
         check_llm(config),
+        check_audio_content(config),
         check_hardware(),
     ]

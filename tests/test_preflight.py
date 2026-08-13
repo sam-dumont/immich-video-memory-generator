@@ -6,7 +6,13 @@ from unittest.mock import MagicMock, patch
 
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.config_loader import Config
-from immich_memories.preflight import CheckResult, CheckStatus, check_immich, check_llm
+from immich_memories.preflight import (
+    CheckResult,
+    CheckStatus,
+    check_audio_content,
+    check_immich,
+    check_llm,
+)
 
 
 def test_immich_api_error_returns_sanitized_diagnostic_result() -> None:
@@ -104,3 +110,33 @@ def test_llm_preflight_reports_missing_chat_route() -> None:
     assert result.status is CheckStatus.WARNING
     assert result.message == "Chat-completions route unavailable"
     assert "localhost:9999" not in (result.details or "")
+
+
+def test_audio_preflight_warns_when_panns_requested_but_extra_absent() -> None:
+    config = Config(audio_content={"enabled": True, "use_panns": True})
+
+    with patch("importlib.util.find_spec", return_value=None):
+        result = check_audio_content(config)
+
+    assert result.status is CheckStatus.WARNING
+    assert "energy-only fallback" in result.message
+    assert "audio-ml" in (result.details or "")
+
+
+def test_audio_preflight_reports_semantic_panns_ready() -> None:
+    config = Config(audio_content={"enabled": True, "use_panns": True})
+
+    with patch("importlib.util.find_spec", return_value=MagicMock()):
+        result = check_audio_content(config)
+
+    assert result.status is CheckStatus.OK
+    assert result.message == "Semantic PANNs audio classification ready"
+
+
+def test_audio_preflight_skips_when_disabled() -> None:
+    config = Config(audio_content={"enabled": False})
+
+    result = check_audio_content(config)
+
+    assert result.status is CheckStatus.SKIPPED
+    assert result.message == "Audio-content analysis disabled"
