@@ -18,11 +18,24 @@ logger = logging.getLogger(__name__)
 def validate_final_duration(params: GenerationParams, actual_duration: float) -> None:
     """Reject a completed artifact that violates the requested final runtime."""
     target = params.target_duration_seconds
-    if target is not None and actual_duration > target + 1.0:
+    if target is None:
+        return
+
+    limit = target + 1.0
+    plan = params.timeline_plan
+    if (
+        plan is not None
+        and plan.divider_policy == "all"
+        and plan.eligible_dividers > 0
+        and plan.soft_max_duration is not None
+    ):
+        limit = plan.soft_max_duration + 1.0
+
+    if actual_duration > limit:
         from immich_memories.generate import GenerationError
 
         raise GenerationError(
-            f"Final artifact exceeds duration budget: {actual_duration:.1f}s > {target + 1.0:.1f}s"
+            f"Final artifact exceeds duration budget: {actual_duration:.1f}s > {limit:.1f}s"
         )
 
 

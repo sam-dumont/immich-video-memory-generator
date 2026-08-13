@@ -168,6 +168,83 @@ def test_generation_accepts_one_second_duration_tolerance(tmp_path: Path) -> Non
     _validate_final_duration(params, 61.0)
 
 
+def test_generation_accepts_finalized_month_plan_within_soft_maximum(tmp_path: Path) -> None:
+    from immich_memories.processing.timeline_budget import TimelinePlan
+
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=tmp_path / "memory.mp4",
+        config=Config(),
+        target_duration_seconds=60.0,
+        timeline_plan=TimelinePlan(
+            target_duration=60.0,
+            content_budget=52.5,
+            title_budget=17.5,
+            title_duration=3.5,
+            ending_duration=4.0,
+            divider_duration=2.0,
+            max_dividers=5,
+            divider_policy="all",
+            eligible_dividers=5,
+            soft_max_duration=70.0,
+        ),
+    )
+
+    _validate_final_duration(params, 65.0)
+
+
+def test_generation_rejects_finalized_month_plan_above_soft_tolerance(tmp_path: Path) -> None:
+    from immich_memories.processing.timeline_budget import TimelinePlan
+
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=tmp_path / "memory.mp4",
+        config=Config(),
+        target_duration_seconds=60.0,
+        timeline_plan=TimelinePlan(
+            60.0,
+            52.5,
+            17.5,
+            3.5,
+            4.0,
+            2.0,
+            5,
+            divider_policy="all",
+            eligible_dividers=5,
+            soft_max_duration=70.0,
+        ),
+    )
+
+    with pytest.raises(GenerationError, match=r"71\.1s > 71\.0s"):
+        _validate_final_duration(params, 71.1)
+
+
+def test_generation_without_dividers_keeps_normal_duration_limit(tmp_path: Path) -> None:
+    from immich_memories.processing.timeline_budget import TimelinePlan
+
+    params = GenerationParams(
+        clips=[make_clip("clip-1")],
+        output_path=tmp_path / "memory.mp4",
+        config=Config(),
+        target_duration_seconds=60.0,
+        timeline_plan=TimelinePlan(
+            60.0,
+            52.5,
+            7.5,
+            3.5,
+            4.0,
+            2.0,
+            0,
+            divider_policy="none",
+            eligible_dividers=5,
+            soft_max_duration=70.0,
+        ),
+    )
+
+    with pytest.raises(GenerationError, match=r"65\.0s > 61\.0s"):
+        _validate_final_duration(params, 65.0)
+
+
 def test_title_settings_consume_the_resolved_timeline_plan(tmp_path: Path) -> None:
     from immich_memories.generate import _build_title_settings
     from immich_memories.processing.timeline_budget import TimelinePlan

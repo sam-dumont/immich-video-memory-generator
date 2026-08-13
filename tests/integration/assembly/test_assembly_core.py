@@ -1572,6 +1572,42 @@ class TestTitleInserterExtra:
         assert (2024, 1) in result
         assert (2024, 3) in result
 
+    def test_planned_month_dividers_ignore_clip_threshold(
+        self, test_clip_720p, test_clip_720p_b
+    ) -> None:
+        """A finalized plan renders every selected month after the opening month."""
+        from dataclasses import dataclass
+
+        from immich_memories.processing.assembly_config import TitleScreenSettings
+        from immich_memories.processing.title_inserter import TitleInserter
+
+        inserter = TitleInserter(_make_settings(), _make_prober(_make_settings()))
+
+        @dataclass
+        class FakeDivider:
+            path: Path
+
+        class FakeGenerator:
+            def generate_month_divider(self, month, year, is_birthday_month=False):
+                return FakeDivider(path=test_clip_720p_b)
+
+        clips = [
+            _make_clip(test_clip_720p, date="2026-05-05"),
+            _make_clip(test_clip_720p_b, date="2026-06-05"),
+            _make_clip(test_clip_720p, date="2026-07-05"),
+        ]
+        title_settings = TitleScreenSettings(
+            show_month_dividers=True,
+            month_divider_threshold=99,
+            max_dividers=2,
+        )
+
+        paths = inserter.generate_month_dividers(
+            clips, FakeGenerator(), title_settings, progress_callback=None
+        )
+
+        assert set(paths) == {(2026, 6), (2026, 7)}
+
     def test_generate_month_dividers_disabled(self, test_clip_720p):
         """generate_month_dividers returns empty when dividers disabled."""
         from immich_memories.processing.assembly_config import TitleScreenSettings

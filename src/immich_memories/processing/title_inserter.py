@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from collections import Counter
 from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
@@ -559,16 +558,7 @@ class TitleInserter:
         limit = self._divider_limit(title_settings)
         planned_changes = month_changes
         if limit is not None:
-            counts = Counter(
-                (clip_date.year, clip_date.month)
-                for clip in clips
-                if (clip_date := self.parse_clip_date(clip)) is not None
-            )
-            threshold = max(1, int(title_settings.month_divider_threshold))
-            eligible = [
-                change for change in month_changes if counts[(change[2], change[1])] >= threshold
-            ]
-            planned_changes = eligible[1 : limit + 1]
+            planned_changes = month_changes[1 : limit + 1]
 
         for _, month, year in planned_changes:
             key = (year, month)
