@@ -571,3 +571,67 @@ After removing only the generated Bandit/JUnit reports, the index and tracked wo
 the owner's pre-existing untracked `MagicMock/` directory remained untouched. The installed
 LaunchAgent remained unloaded. Cross-platform Python and Docker-image variance is left for the
 required GitHub matrix in the next promotion step.
+
+## Real-library launch smoke test — 2026-08-12
+
+The verified P1 worktree was exercised against the owner's live Immich 3.1.0 library with
+`immich.api_version: auto`. Auto-detection resolved v3, both upload controls were disabled, and the
+installed LaunchAgent remained unloaded. Three local 1080p H.264/AAC videos completed in sequence:
+
+| Flow | Source/selection evidence | Wall time | Final artifact |
+|---|---|---:|---|
+| Emile Dumont, 2026 person spotlight | 378 videos, 212 Live Photos, 2,096 photos; 16 final clips | 2m45s | 73.27s, 21 MB |
+| Sam Dumont, 2026 person spotlight + automatic ACE-Step music | 71 videos, 61 Live Photos, 444 photos; 13 final clips | 2m12s | 69.83s, 11 MB |
+| Somme, France trip, 2026-07-25 to 2026-08-05 | 823 detected trip assets; 66 videos, 29 Live Photos, 728 geofiltered photos; 21 final clips | 6m31s | 91.65s, 35 MB |
+
+`ffprobe` confirmed all three artifacts are playable MP4 files with 1920x1080 `yuv420p` H.264 video
+and AAC audio. Eight-frame contact sheets were inspected for each output. The sampled frames had no
+obvious corruption or unintended black content; portrait sources were fitted with the expected
+blurred side fill, chronological interstitials were legible, and the France samples matched the
+detected beach/trip content. All three runs are recorded as completed in the run database. Nothing
+was uploaded to Immich.
+
+The trip timing split was 166.8s analysis and 224.6s generation. Within generation, downloads used
+107.4s and title/final assembly used 109.7s. This confirms that Cython is not the useful next
+optimization: current latency is dominated by remote media I/O, FFmpeg/Taichi work, and avoidable
+configuration/provider behavior.
+
+### Live findings and ranked quality follow-ups
+
+1. **P1 — propagate per-command resolution into photo animation.** The trip was requested at
+   1080p and correctly assembled at 1920x1080, but photo intermediates were rendered at the
+   configured 4K portrait size (2160x3840). This adds substantial HEIC/HDR animation and scaling
+   work before the final downscale.
+2. **P1 — fail fast or circuit-break unavailable content-analysis providers.** The configured
+   OpenAI-compatible endpoint at `localhost:9999` returned HTTP 404 for chat completions. Scoring
+   correctly fell back to non-LLM signals, but the pipeline retried the known-bad endpoint for many
+   segment and photo candidates. Preflight reported this only as a warning. Either correct/disable
+   that provider in deployment config or suppress it for the remainder of a run after a permanent
+   4xx response.
+3. **P1 — make target-duration semantics honest.** The two 60-second person requests produced
+   73.27s and 69.83s artifacts because title/interstitial/ending material is added outside the
+   requested content budget. Either budget title time inside the requested duration or label the
+   option as content duration and report the estimated final duration.
+4. **P2 — make `generate --dry-run` perform selection.** It currently returns immediately after
+   displaying parameters, before connecting to Immich, resolving people, or counting matching
+   assets. The command is safe but does not validate the proposed generation.
+5. **P2 — restore optional semantic audio analysis where desired.** `panns_inference` is absent,
+   so laughter/speech protection uses the less accurate energy-based fallback. This does not block
+   launch; document the quality/installation tradeoff before making the dependency heavier.
+6. **P2 — make notifications non-noisy under provider quotas.** The completed France run received
+   an ntfy `429` daily-quota response after artifact finalization. Correct behavior was preserved,
+   but notification health/configuration should be visible before an unattended rollout.
+
+### Daily automation activation checkpoint
+
+Smart discovery is healthy today and produced a varied candidate list: July monthly highlights,
+the Somme trip, yearly reviews, person spotlights, on-this-day, multi-person memories, and another
+trip. July monthly highlights scored first and Somme scored second. No successful automatic history
+exists yet, so cooldown and recent-category variety state are intentionally empty.
+
+The macOS LaunchAgent is installed but inactive. It points to the root checkout's virtualenv rather
+than the verified launch/P1 worktree. Archived scheduler logs also show Immich connection timeouts
+at 03:00, while interactive checks currently succeed. Do not load this preserved job as-is. After
+the two PRs are merged and the final package is installed, reinstall the single daily smart entry
+point from that stable executable, run one foreground `auto run --dry-run`, then load it only after
+the three local artifacts have been reviewed by the owner.
