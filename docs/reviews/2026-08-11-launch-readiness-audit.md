@@ -2,7 +2,7 @@
 date: 2026-08-13
 branch: codex/p1-contributor-followups
 scope: launch readiness, automation, performance, Immich v2/v3 compatibility, and user flow
-verdict: code gate passes; post-fix live render awaits Immich reachability and scheduler activation remains intentional
+verdict: code and real-library launch gates pass; scheduler activation remains an intentional deployment step
 ---
 
 # Launch Readiness Audit — 2026-08-11
@@ -664,12 +664,37 @@ sending notifications:
 | Sam Dumont, 2026 person spotlight | 71 videos, 61 Live Photos, 444 photos; 11 photos selected; 44.0s content + 11.5s titles | 55.5s, 1280x720 |
 | Somme, France trip near 2026-07-28 | Four trips detected; the 2026-07-25 to 2026-08-05 Somme trip had 823 assets; 2 videos + 9 photos selected; 45.4s content + 11.5s titles | 56.9s, 1280x720 |
 
-The post-fix Emile render was attempted with a unique output name, upload disabled, notifications
-disabled by environment override, 60-second duration, and 720p landscape output. It stopped before
-media work because `10.2.254.56:2283` became unreachable: both the CLI and a direct bounded TCP
-probe failed, the latter with HTTP status `000`. No partial output was created. Sam and France were
-not started after that external failure. This is an operational acceptance item, not a hidden green
-render; repeat the three renders when the Immich host is reachable and ffprobe/inspect the results.
+After the Immich host became reachable again, preflight authenticated against 3.1.0 and the three
+post-fix flows rendered successfully in sequence. Each command requested a 60-second, 720p
+landscape memory with photos and Live Photos enabled, medium quality, no music, no upload flag, and
+notifications disabled by environment override.
+
+| Flow | Selected clips | Wall time | Verified artifact |
+|---|---:|---:|---|
+| Emile Dumont person spotlight | 12 | 99.0s | 51.766667s, 6,746,310 bytes |
+| Sam Dumont person spotlight | 10 | 61.7s | 54.333333s, 6,089,594 bytes |
+| Somme, France trip | 11 | 76.9s | 49.333333s, 8,805,018 bytes |
+
+FFprobe confirmed that all three are playable MP4 artifacts with 1280x720 H.264 `yuv420p` video
+and AAC audio. The Emile and Sam flows exercised content-backed opening titles and bounded month
+dividers. The trip flow exercised GPS selection, the animated map intro, real video segments, and
+portrait photos. Contact sheets for all three were inspected. The frames were coherent and
+uncorrupted; portrait/4:3 photos stayed in one centered aspect-fit window with one blurred side
+fill. A two-frame comparison inside one Emile photo confirmed a single gentle motion treatment,
+not stacked Ken Burns/crop effects. The apparent black final cell in the trip contact-sheet grid
+was an unused tile: a direct extraction at 48 seconds showed the intentional blurred ending.
+
+The live logs also confirmed the acceptance-only fixes: 720p runs applied a 540px quality floor
+instead of the former 4K-derived threshold, density diagnostics reported positive effective raw
+budgets, and one unavailable-model probe opened the run-scoped photo-analysis circuit. Every run
+reported `Delivery not requested`; no artifact was uploaded to Immich and no notification was
+sent.
+
+Artifacts:
+
+- `/Users/sam/Videos/Memories/launch-smoke-emile-2026-20260813_20260813_130744_1277/launch-smoke-emile-2026-20260813.mp4`
+- `/Users/sam/Videos/Memories/launch-smoke-sam-2026-20260813_20260813_131040_5bd2/launch-smoke-sam-2026-20260813.mp4`
+- `/Users/sam/Videos/Memories/trip_somme,_france_2026-07-25_20260813_131227_9489/trip_somme,_france_2026-07-25.mp4`
 
 The installed LaunchAgent is still unloaded (`launchctl print` exits 113: service not found). It
 was not modified or activated. The owner's untracked `MagicMock/` directory was not touched.
