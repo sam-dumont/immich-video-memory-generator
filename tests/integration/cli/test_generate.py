@@ -1081,6 +1081,70 @@ class TestPipelineRunner:
         assert "Selected: 3" in capsys.readouterr().out
         assert not output.exists()
 
+    def test_dry_run_reports_all_selected_month_dividers(
+        self, tmp_path, fixture_mp4, capsys
+    ) -> None:
+        """Dry-run reports the complete post-selection month-divider decision."""
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
+        from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
+        from immich_memories.config_loader import Config
+        from immich_memories.timeperiod import DateRange
+
+        config = Config(
+            cache={"database": str(tmp_path / "analysis.db"), "directory": str(tmp_path / "cache")},
+            title_screens={"ending_duration": 4.0},
+        )
+        clips = [
+            _make_fake_clip(f"asset-{month}", tmp_path, fixture_mp4, duration=8.0)
+            for month in range(2, 8)
+        ]
+        for month, clip in zip(range(2, 8), clips, strict=True):
+            clip.asset.file_created_at = datetime(2026, month, 5, tzinfo=UTC)
+        analyzed = [
+            ClipWithSegment(clip=clip, start_time=0.0, end_time=8.0, score=0.5) for clip in clips
+        ]
+        result = PipelineResult(
+            selected_clips=clips,
+            clip_segments={clip.asset.id: (0.0, 8.0) for clip in clips},
+            errors=[],
+        )
+        output_path = tmp_path / "emile-preview.mp4"
+
+        with (
+            patch("immich_memories.generate.assets_to_clips", return_value=clips),
+            patch("immich_memories.analysis.smart_pipeline.SmartPipeline") as pipeline_type,
+            patch("immich_memories.generate.generate_memory") as generate,
+        ):
+            pipeline_type.return_value.run_planning_analysis.return_value = analyzed
+            pipeline_type.return_value.run_selection.return_value = result
+            run_pipeline_and_generate(
+                assets=[clip.asset for clip in clips],
+                client=MagicMock(),
+                config=config,
+                progress=MagicMock(),
+                duration=60.0,
+                transition="crossfade",
+                music=None,
+                no_music=True,
+                output_path=output_path,
+                memory_type="person_spotlight",
+                person_names=["Emile"],
+                date_range=DateRange(
+                    start=datetime(2026, 1, 1), end=datetime(2026, 12, 31, 23, 59, 59)
+                ),
+                upload_to_immich=False,
+                album=None,
+                dry_run=True,
+            )
+
+        output = capsys.readouterr().out
+        assert "Month dividers: all 5 selected month changes" in output
+        assert "Title cards: 7 (17.5s)" in output
+        assert "Estimated final duration: 65.5s" in output
+        assert "Music: disabled" in output
+        assert not output_path.exists()
+        generate.assert_not_called()
+
 
 class TestTripGenerationFlow:
     """Tests for _trip_generation with real Immich, mocked assembly."""

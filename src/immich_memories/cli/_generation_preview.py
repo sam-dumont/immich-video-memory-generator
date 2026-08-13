@@ -43,6 +43,19 @@ class GenerationPreview:
     def estimated_final_duration(self) -> float:
         return self.selected_duration + self.timeline.title_budget
 
+    @property
+    def month_divider_summary(self) -> str | None:
+        if self.timeline.divider_policy == "all":
+            if self.timeline.eligible_dividers == 0:
+                return "none needed (one selected month)"
+            return f"all {self.timeline.eligible_dividers} selected month changes"
+        if self.timeline.divider_policy == "none":
+            return (
+                "none (complete set would exceed "
+                f"{self.timeline.soft_max_duration:.1f}s soft maximum)"
+            )
+        return None
+
 
 def music_policy(*, config, music: str | None, no_music: bool) -> str:
     """Describe music intent without generating or inspecting media."""
@@ -71,10 +84,9 @@ def print_generation_preview(preview: GenerationPreview) -> None:
         f"({preview.selected_videos} video, {preview.selected_photos} photo)"
     )
     click.echo(f"Estimated content duration: {preview.selected_duration:.1f}s")
-    click.echo(
-        f"Title cards: {preview.title_card_count} "
-        f"({preview.timeline.title_budget:.1f}s, {preview.timeline.max_dividers} divider max)"
-    )
+    if preview.month_divider_summary is not None:
+        click.echo(f"Month dividers: {preview.month_divider_summary}")
+    click.echo(f"Title cards: {preview.title_card_count} ({preview.timeline.title_budget:.1f}s)")
     click.echo(f"Estimated final duration: {preview.estimated_final_duration:.1f}s")
     click.echo(
         f"Canvas: {preview.canvas.width}x{preview.canvas.height} ({preview.canvas.orientation})"

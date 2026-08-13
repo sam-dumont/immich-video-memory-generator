@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.cli._live_display import ProgressDisplay
     from immich_memories.config_loader import Config
+    from immich_memories.processing.assembly_config import TitleScreenSettings
     from immich_memories.processing.output_canvas import OutputCanvas
     from immich_memories.processing.timeline_budget import TimelinePlan
 
@@ -42,7 +43,7 @@ def _configure_timeline(
     date_range: DateRange,
     memory_preset_params: dict | None,
     duration: float,
-) -> TimelinePlan:
+) -> tuple[TimelinePlan, TitleScreenSettings | None]:
     """Resolve one plan and apply its strict content budget to selection."""
     from immich_memories.generate import GenerationParams
     from immich_memories.generate_settings import _build_title_settings
@@ -66,7 +67,7 @@ def _configure_timeline(
         1,
         math.ceil(timeline.content_budget / pipeline_config.avg_clip_duration),
     )
-    return timeline
+    return timeline, planning_titles
 
 
 def _planning_analysis(
@@ -275,7 +276,7 @@ def run_pipeline_and_generate(
         output_resolution=output_resolution,
         output_orientation=output_orientation,
     )
-    timeline_plan = _configure_timeline(
+    timeline_plan, planning_titles = _configure_timeline(
         pipeline_config,
         clips=clips,
         photo_assets=photo_assets,
@@ -288,11 +289,10 @@ def run_pipeline_and_generate(
         duration=duration,
     )
     _runner_logger.info(
-        "Timeline budget: %.1fs content + %.1fs titles = %.1fs target (%d dividers max)",
+        "Selection timeline: %.1fs content + %.1fs base titles = %.1fs target",
         timeline_plan.content_budget,
         timeline_plan.title_budget,
         timeline_plan.target_duration,
-        timeline_plan.max_dividers,
     )
 
     analysis_cache = VideoAnalysisCache(db_path=config.cache.database_path)
@@ -346,6 +346,33 @@ def run_pipeline_and_generate(
     if not selected_clips:
         print_error("Pipeline selected no clips")
         sys.exit(1)
+
+    from immich_memories.processing.timeline_budget import finalize_selected_timeline
+
+    selected_duration = sum(end - start for start, end in clip_segments.values())
+    timeline_plan = finalize_selected_timeline(
+        timeline_plan,
+        selected_clips,
+        selected_duration=selected_duration,
+        title_settings=planning_titles,
+        memory_type=memory_type,
+    )
+    if timeline_plan.divider_policy in {"all", "none"}:
+        _runner_logger.info(
+            "Final timeline: month dividers=%s (%d/%d), %.1fs estimated, %.1fs soft maximum",
+            timeline_plan.divider_policy,
+            timeline_plan.max_dividers,
+            timeline_plan.eligible_dividers,
+            selected_duration + timeline_plan.title_budget,
+            timeline_plan.soft_max_duration,
+        )
+    else:
+        _runner_logger.info(
+            "Final timeline: %.1fs content + %.1fs titles (%d dividers capped)",
+            selected_duration,
+            timeline_plan.title_budget,
+            timeline_plan.max_dividers,
+        )
 
     print_success(f"Selected {len(selected_clips)} clips for final video")
 
