@@ -712,3 +712,64 @@ at 03:00, while interactive checks currently succeed. Do not load this preserved
 the two PRs are merged and the final package is installed, reinstall the single daily smart entry
 point from that stable executable, run one foreground `auto run --dry-run`, then load it only after
 the three local artifacts have been reviewed by the owner.
+
+### All-or-none month-divider closure — 2026-08-13
+
+The follow-up Emile review found a real coherence defect in the strict title budget: the opening
+was followed by April and May cards, while later selected months such as June and July had no
+divider. The pre-selection planner had room for only two cards inside its 20% title allowance, and
+the renderer then reapplied a per-month clip-count threshold. Both layers were doing what they were
+written to do; together they produced a partial chronology.
+
+Chronological month flows now have two explicit planning stages:
+
+- Before selection, the plan reserves only the opening and ending and gives the remaining base
+  target to content.
+- After selection, the finalized immutable plan counts every selected month after the first,
+  including one-clip months, and chooses the complete set or zero cards.
+- A 60-second request has a conservative 70-second soft maximum. Selected content is not trimmed a
+  second time to pay for cards, and transition overlap is not guessed during planning.
+- Dry-run, rendering, logging, and final-duration validation consume the same finalized decision.
+- Trip location cards and year dividers retain their prior capped behavior; the successful Somme
+  flow was not changed.
+
+Implementation commits are `06d7aca`, `832b33d`, and `52d8fc1`. The focused gates passed 182
+unit/CLI tests and 133 CLI/assembly integration tests, plus Ruff and format checks. The normal full
+repository gate passed 4,318 tests with 7 skips, 662 deliberate deselections, and 7 warnings in
+109.85 seconds.
+
+A broader `pytest -m "not e2e"` diagnostic was stopped at 4% after two unrelated live-library
+failures in `TestPipelineOutput.test_has_video_stream` and `test_has_audio_stream`. Both use the
+older direct `SmartPipeline.run()` test helper for a 15-second June 2025 request and fail before
+timeline/title code: `ClipScaler` reduces seven protected candidates to zero selected clips. The
+changed-area suites and the normal full gate remain green; this direct-pipeline edge case is a
+separate follow-up rather than hidden evidence.
+
+The live Emile dry-run used 720p landscape, medium quality, photos and Live Photos, fast analysis,
+`--no-music`, notifications disabled, no upload flag, and a 60-second target. It selected 13 photos
+for 51.0 seconds of content and reported:
+
+```text
+Month dividers: all 3 selected month changes
+Title cards: 5 (13.5s)
+Estimated final duration: 64.5s
+Music: disabled
+Upload: disabled
+```
+
+The corresponding real render selected 13 clips (11 photos and 2 video/Live Photo clips) for about
+52.2 seconds of content. Its final plan reported all five selected month changes, a 69.7-second raw
+estimate, and a 70.0-second soft maximum. Retained title files and a 1fps final-output contact sheet
+confirmed the opening followed by every selected change: April, May, June, July, and August. No
+partial prefix remained.
+
+Final artifact:
+
+`/Users/sam/Videos/Memories/launch-smoke-emile-month-dividers-20260813_20260813_162637_7ce7/launch-smoke-emile-month-dividers-20260813.mp4`
+
+FFprobe and a full decode pass confirmed a 60.966667-second, 8,590,766-byte MP4 with 1280x720 H.264
+`yuv420p` video and 48 kHz stereo AAC audio. A retained 4:3 photo inspected at 0.5 and 3.5 seconds
+kept one centered aspect-fit window, one blurred side fill, and one gentle motion treatment; there
+was no stacked Ken Burns/crop effect. The run completed with delivery status `not_requested`.
+Music generation, notifications, and Immich upload were all disabled for the smoke. Production
+automatic-music configuration was not changed.
