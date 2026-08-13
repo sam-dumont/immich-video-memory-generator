@@ -164,6 +164,7 @@ def handle_trip_generation(
     memory_key: str | None = None,
     memory_category: str | None = None,
     automation_attempt_id: str | None = None,
+    orientation: str = "landscape",
 ) -> None:
     """Detect trips, select, and generate video for each."""
     from datetime import datetime as dt_cls
@@ -274,6 +275,7 @@ def handle_trip_generation(
             no_music=no_music,
             output_path=trip_output,
             output_resolution=resolution,
+            output_orientation=orientation,
             scale_mode=scale_mode or config.defaults.scale_mode,
             output_format=output_format,
             add_date_overlay=add_date,

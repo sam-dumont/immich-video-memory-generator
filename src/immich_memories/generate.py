@@ -51,6 +51,7 @@ from immich_memories.generate_settings import (
 )
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.clip_validation import validate_clips
+from immich_memories.processing.output_canvas import OutputCanvas
 from immich_memories.processing.output_contract import publish_validated_output, validate_output
 from immich_memories.security import configured_secret_values, sanitize_error_message
 
@@ -115,6 +116,8 @@ class GenerationParams:
     transition: str = "crossfade"
     transition_duration: float = 0.5
     output_resolution: str | None = None
+    output_orientation: str | None = None
+    output_canvas: OutputCanvas | None = None
     output_crf: int | None = None
 
     # Title settings

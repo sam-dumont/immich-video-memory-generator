@@ -56,20 +56,14 @@ def _build_assembly_settings(
         "none": TransitionType.NONE,
     }.get(params.transition.lower(), TransitionType.CROSSFADE)
 
-    resolution_map = {"4k": (3840, 2160), "1080p": (1920, 1080), "720p": (1280, 720)}
-    res = params.output_resolution
-    if res is not None and res.lower() == "auto":
-        # Explicit "auto": detect from source clips
-        auto_resolution = True
-        target_resolution = None
-    elif res is not None:
-        # Explicit resolution (4k/1080p/720p)
-        auto_resolution = False
-        target_resolution = resolution_map.get(res.lower())
-    else:
-        # No resolution specified: use config default
-        auto_resolution = False
-        target_resolution = config.output.resolution_tuple
+    from immich_memories.processing.output_canvas import resolve_generation_canvas
+
+    canvas = resolve_generation_canvas(params)
+    # WHY: photos and titles are rendered before final assembly. Leaving
+    # assembly resolution on auto would let it make a second, conflicting
+    # canvas decision after those intermediates already exist.
+    auto_resolution = False
+    target_resolution = (canvas.width, canvas.height)
 
     title_screen_settings = _build_title_settings(params, config, assembly_clips)
 

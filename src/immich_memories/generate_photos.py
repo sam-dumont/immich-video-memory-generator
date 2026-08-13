@@ -71,19 +71,11 @@ def _add_photos_if_enabled(
 
 
 def _detect_photo_resolution(params: GenerationParams) -> tuple[int, int]:
-    """Detect the correct resolution for photo rendering.
+    """Return the same memoized canvas used by final assembly."""
+    from immich_memories.processing.output_canvas import resolve_generation_canvas
 
-    WHY: config.output.resolution_tuple always returns landscape (1920x1080).
-    But if the majority of video clips are portrait, the assembly pipeline
-    will swap to portrait (1080x1920). Photos must match or they get
-    double-blur-backgrounded — once by the renderer, once by the assembler.
-    """
-    target_w, target_h = params.config.output.resolution_tuple
-    portrait_count = sum(1 for c in params.clips if c.height > c.width)
-    if portrait_count > len(params.clips) // 2 and target_w > target_h:
-        target_w, target_h = target_h, target_w
-        logger.info(f"Photos: detected portrait orientation, rendering to {target_w}x{target_h}")
-    return target_w, target_h
+    canvas = resolve_generation_canvas(params)
+    return canvas.width, canvas.height
 
 
 def _render_photos(

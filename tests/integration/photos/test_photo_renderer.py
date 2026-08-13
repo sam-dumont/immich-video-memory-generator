@@ -105,6 +105,24 @@ class TestRenderKenBurns:
         assert has_stream(probe, "audio")
         assert 1.5 < get_duration(probe) < 2.5
 
+    def test_four_by_three_photo_keeps_one_fixed_aspect_fit_window(self):
+        """A 4:3 source stays sharp in one fixed window with blurred 16:9 fill."""
+        src = np.indices((300, 400)).sum(axis=0) % 2
+        src = np.repeat(src[:, :, np.newaxis], 3, axis=2).astype(np.float32)
+        frames = render_ken_burns(
+            src,
+            192,
+            108,
+            KenBurnsParams(zoom_start=1.0, zoom_end=1.08, fps=1, duration=2.0),
+        )
+
+        # 4:3 fitted into 16:9 is a stable 144x108 window at x=24..167.
+        # High-frequency detail stays in that window; the side fill is blurred.
+        for frame in frames:
+            sharp_variance = float(frame[:, 30:162].var())
+            blurred_variance = float(np.concatenate((frame[:, :20], frame[:, 172:]), axis=1).var())
+            assert sharp_variance > blurred_variance * 2
+
     def test_portrait_in_landscape_has_blur_bg(self, tmp_path):
         """Portrait photo in landscape viewport → blur background visible."""
         src = _make_test_image(800, 1200)  # Portrait

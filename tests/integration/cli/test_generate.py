@@ -308,6 +308,7 @@ class TestCLIGenerate:
 
         assert result.exit_code == 0, result.output
         assert run_pipeline.call_args.kwargs["output_format"] is None
+        assert run_pipeline.call_args.kwargs["output_orientation"] == "landscape"
 
     def test_explicit_prores_normalizes_conflicting_output_suffix(self, tmp_path) -> None:
         """The resolved MOV container is authoritative over a typed .mp4 suffix."""

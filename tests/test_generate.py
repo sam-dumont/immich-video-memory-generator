@@ -403,8 +403,8 @@ class TestBuildAssemblySettings:
         assert settings.auto_resolution is False
         assert settings.target_resolution == (1920, 1080)
 
-    def test_explicit_auto_enables_auto_detection(self):
-        """When output_resolution is 'auto', enable source-based auto-detection."""
+    def test_explicit_auto_resolves_before_assembly(self):
+        """Auto resolution is frozen before photo/title intermediates are rendered."""
         params = GenerationParams(
             clips=[],
             output_path=Path("/tmp/out.mp4"),
@@ -412,8 +412,8 @@ class TestBuildAssemblySettings:
             output_resolution="auto",
         )
         settings = _build_assembly_settings(params, [])
-        assert settings.auto_resolution is True
-        assert settings.target_resolution is None
+        assert settings.auto_resolution is False
+        assert settings.target_resolution == (1920, 1080)
 
     def test_no_resolution_uses_config_720p(self):
         """Config default of 720p is respected when no CLI flag given."""
