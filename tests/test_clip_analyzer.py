@@ -95,6 +95,21 @@ def _make_tracker() -> MagicMock:
     return tracker
 
 
+def test_planning_analysis_uses_metadata_without_downloading() -> None:
+    analyzer, mock_client, mock_cache, _ = _make_analyzer(avg_clip_duration=5.0)
+    mock_cache.get_analysis.return_value = None
+    clip = make_clip("asset-plan", duration=12.0)
+    tracker = _make_tracker()
+
+    with patch.object(analyzer, "_init_content_analyzer", return_value=(None, 0.0)):
+        result = analyzer.phase_plan_cached([clip], tracker)
+
+    assert len(result) == 1
+    assert result[0].start_time == 0.0
+    assert result[0].end_time == 5.0
+    mock_client.download_asset.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # _check_analysis_cache
 # ---------------------------------------------------------------------------

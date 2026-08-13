@@ -101,6 +101,22 @@ def _has_music_backends(config: Config) -> bool:
     return music_config_available(config)
 
 
+def _print_generation_result(
+    *,
+    dry_run: bool,
+    result_path: Path,
+    should_upload: bool,
+    album_name: str | None,
+) -> None:
+    """Report a plan without claiming an artifact or upload exists."""
+    if dry_run:
+        print_success("Dry-run planning complete; no video was created")
+        return
+    print_success(f"Video saved to: {result_path}")
+    if should_upload:
+        print_success(f"Uploaded to Immich (album: {album_name or 'none'})")
+
+
 def register_generate_commands(main: click.Group) -> None:
     """Register the generate command on the main CLI group."""
 
@@ -478,7 +494,6 @@ def register_generate_commands(main: click.Group) -> None:
             output_path = normalize_output_path(Path(output), output_selection.container)
         else:
             output_dir = config.output.output_path
-            output_dir.mkdir(parents=True, exist_ok=True)
             person_slug = (
                 "_".join(n.lower().replace(" ", "_") for n in person_names)
                 if person_names
@@ -552,10 +567,6 @@ def register_generate_commands(main: click.Group) -> None:
             console.print(table)
             console.print()
 
-        if dry_run:
-            print_info("Dry run - no video will be generated")
-            return
-
         from immich_memories.api.immich import ImmichAPIError, SyncImmichClient
         from immich_memories.generate import GenerationError
 
@@ -615,6 +626,7 @@ def register_generate_commands(main: click.Group) -> None:
                             memory_key=memory_key,
                             memory_category=memory_category,
                             automation_attempt_id=automation_attempt_id,
+                            dry_run=dry_run,
                         )
                         return
 
@@ -739,11 +751,15 @@ def register_generate_commands(main: click.Group) -> None:
                         memory_key=memory_key,
                         memory_category=memory_category,
                         automation_attempt_id=automation_attempt_id,
+                        dry_run=dry_run,
                     )
 
-                print_success(f"Video saved to: {result_path}")
-                if should_upload:
-                    print_success(f"Uploaded to Immich (album: {album_name or 'none'})")
+                _print_generation_result(
+                    dry_run=dry_run,
+                    result_path=result_path,
+                    should_upload=should_upload,
+                    album_name=album_name,
+                )
 
         except ImmichAPIError as e:
             print_error(f"Immich API error: {e}")

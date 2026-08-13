@@ -43,6 +43,14 @@ def fixture_mp4(tmp_path_factory: pytest.TempPathFactory) -> Path:
             "-shortest",
             "-c:v",
             "libx264",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-colorspace",
+            "bt709",
+            "-x264-params",
+            "colorprim=bt709:transfer=bt709:colormatrix=bt709",
             "-crf",
             "28",
             "-c:a",
@@ -700,28 +708,49 @@ class TestCLIGenerate:
         assert result.exit_code in (0, 1), f"Unexpected: {result.output}"
 
     def test_cli_dry_run(self, tmp_path):
-        """--dry-run shows parameters without generating."""
+        """--dry-run connects, discovers assets, and delegates read-only planning."""
         from click.testing import CliRunner
 
         from immich_memories.cli import main
+        from immich_memories.config_loader import Config
 
-        runner = CliRunner()
-        result = runner.invoke(
-            main,
-            [
-                "generate",
-                "--start",
-                "2025-01-01",
-                "--end",
-                "2025-01-31",
-                "--dry-run",
-                "-O",
-                str(tmp_path / "out.mp4"),
-            ],
-        )
-        # Dry run should exit 0 without connecting to Immich
-        assert result.exit_code == 0
-        assert "dry run" in result.output.lower() or "Dry" in result.output
+        config = Config(immich={"url": "http://immich.test", "api_key": "test-key"})
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        asset = MagicMock(duration_seconds=10.0)
+        output = tmp_path / "out.mp4"
+
+        with (
+            patch("immich_memories.cli.get_config", return_value=config),
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+            patch(
+                "immich_memories.cli.generate.fetch_videos_and_live_photos",
+                return_value=([asset], []),
+            ),
+            patch(
+                "immich_memories.cli.generate.run_pipeline_and_generate",
+                return_value=(output, False, None),
+            ) as run_pipeline,
+        ):
+            result = CliRunner().invoke(
+                main,
+                [
+                    "generate",
+                    "--start",
+                    "2025-01-01",
+                    "--end",
+                    "2025-01-31",
+                    "--dry-run",
+                    "--quiet",
+                    "-O",
+                    str(output),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert run_pipeline.call_args.kwargs["dry_run"] is True
+        assert not output.exists()
 
     def test_cli_include_photos_flag(self, tmp_path):
         """--include-photos is accepted without error."""
@@ -991,6 +1020,61 @@ class TestPipelineRunner:
         assert gen_params.timeline_plan.content_budget >= 48.0
         pipeline_config = MockPipeline.call_args.kwargs["config"]
         assert pipeline_config.target_duration_seconds == gen_params.timeline_plan.content_budget
+
+    def test_dry_run_selects_and_writes_no_artifact(self, tmp_path, fixture_mp4, capsys):
+        """Planning uses cached/metadata analysis and stops before generation."""
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineResult
+        from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
+        from immich_memories.config_loader import Config
+        from immich_memories.timeperiod import DateRange
+
+        config = Config(
+            cache={"database": str(tmp_path / "analysis.db"), "directory": str(tmp_path / "cache")}
+        )
+        clips = [_make_fake_clip(f"asset{i}", tmp_path, fixture_mp4) for i in range(3)]
+        analyzed = [
+            ClipWithSegment(clip=clip, start_time=0.0, end_time=3.0, score=0.5) for clip in clips
+        ]
+        result = PipelineResult(
+            selected_clips=clips,
+            clip_segments={clip.asset.id: (0.0, 3.0) for clip in clips},
+            errors=[],
+        )
+        output = tmp_path / "preview.mp4"
+
+        with (
+            patch("immich_memories.generate.assets_to_clips", return_value=clips),
+            patch("immich_memories.analysis.smart_pipeline.SmartPipeline") as pipeline_type,
+            patch("immich_memories.generate.generate_memory") as generate,
+        ):
+            pipeline_type.return_value.run_planning_analysis.return_value = analyzed
+            pipeline_type.return_value.run_selection.return_value = result
+            actual, should_upload, _ = run_pipeline_and_generate(
+                assets=[clip.asset for clip in clips],
+                client=MagicMock(),
+                config=config,
+                progress=MagicMock(),
+                duration=60.0,
+                transition="cut",
+                music=None,
+                no_music=True,
+                output_path=output,
+                memory_type="year_in_review",
+                person_names=[],
+                date_range=DateRange(
+                    start=datetime(2025, 1, 1), end=datetime(2025, 12, 31, 23, 59, 59)
+                ),
+                upload_to_immich=True,
+                album="Memories",
+                dry_run=True,
+            )
+
+        assert actual == output
+        assert should_upload is True
+        pipeline_type.return_value.run_planning_analysis.assert_called_once()
+        generate.assert_not_called()
+        assert "Selected: 3" in capsys.readouterr().out
+        assert not output.exists()
 
 
 class TestTripGenerationFlow:

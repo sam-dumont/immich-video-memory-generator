@@ -18,9 +18,123 @@ from immich_memories.cli._helpers import print_error, print_success
 from immich_memories.timeperiod import DateRange
 
 if TYPE_CHECKING:
+    from immich_memories.analysis.smart_pipeline import (
+        PipelineConfig,
+        PipelineResult,
+        SmartPipeline,
+    )
     from immich_memories.api.immich import SyncImmichClient
     from immich_memories.cli._live_display import ProgressDisplay
     from immich_memories.config_loader import Config
+    from immich_memories.processing.timeline_budget import TimelinePlan
+
+
+def _configure_timeline(
+    pipeline_config: PipelineConfig,
+    *,
+    clips: list,
+    photo_assets: list | None,
+    output_path: Path,
+    config: Config,
+    memory_type: str | None,
+    person_names: list[str],
+    date_range: DateRange,
+    memory_preset_params: dict | None,
+    duration: float,
+) -> TimelinePlan:
+    """Resolve one plan and apply its strict content budget to selection."""
+    from immich_memories.generate import GenerationParams
+    from immich_memories.generate_settings import _build_title_settings
+    from immich_memories.processing.timeline_budget import plan_timeline
+
+    planning_params = GenerationParams(
+        clips=clips,
+        output_path=output_path,
+        config=config,
+        memory_type=memory_type,
+        person_name=person_names[0] if person_names else None,
+        date_start=date_range.start,
+        date_end=date_range.end,
+        memory_preset_params=memory_preset_params or {},
+    )
+    planning_titles = _build_title_settings(planning_params, config, [])
+    planning_sources = [*clips, *(list(photo_assets) if photo_assets else [])]
+    timeline = plan_timeline(planning_sources, planning_titles, duration, memory_type)
+    pipeline_config.target_duration_seconds = timeline.content_budget
+    pipeline_config.target_clips = max(
+        1,
+        math.ceil(timeline.content_budget / pipeline_config.avg_clip_duration),
+    )
+    return timeline
+
+
+def _planning_analysis(
+    pipeline: SmartPipeline,
+    clips: list,
+    progress_callback,
+    *,
+    dry_run: bool,
+) -> list:
+    """Choose the cached-only planning path or normal source analysis."""
+    if dry_run:
+        return pipeline.run_planning_analysis(clips, progress_callback=progress_callback)
+    return pipeline.run_analysis(clips, progress_callback=progress_callback)
+
+
+def _finish_dry_run(
+    *,
+    pipeline_result: PipelineResult,
+    timeline_plan: TimelinePlan,
+    assets: list,
+    live_photo_clips: list | None,
+    photo_assets: list | None,
+    config: Config,
+    output_resolution: str | None,
+    output_orientation: str | None,
+    output_path: Path,
+    memory_type: str | None,
+    date_range: DateRange,
+    should_upload: bool,
+    album_name: str | None,
+    music: str | None,
+    no_music: bool,
+    progress,
+    task,
+) -> tuple[Path, bool, str | None]:
+    """Print the resolved plan and return without crossing the render boundary."""
+    from immich_memories.api.models import AssetType
+    from immich_memories.cli._generation_preview import (
+        GenerationPreview,
+        music_policy,
+        print_generation_preview,
+    )
+    from immich_memories.processing.output_canvas import resolve_output_canvas
+
+    selected_clips = pipeline_result.selected_clips
+    selected_photos = sum(clip.asset.type == AssetType.IMAGE for clip in selected_clips)
+    preview = GenerationPreview(
+        memory_type=memory_type or "custom",
+        date_range=date_range.description,
+        video_candidates=len(assets),
+        live_photo_candidates=len(live_photo_clips or []),
+        photo_candidates=len(photo_assets or []),
+        selected_videos=len(selected_clips) - selected_photos,
+        selected_photos=selected_photos,
+        selected_duration=sum(end - start for start, end in pipeline_result.clip_segments.values()),
+        timeline=timeline_plan,
+        canvas=resolve_output_canvas(
+            resolution=output_resolution,
+            orientation=output_orientation,
+            configured_resolution=config.output.resolution_tuple,
+            clips=selected_clips,
+        ),
+        output_path=output_path,
+        upload_intent=should_upload,
+        music_policy=music_policy(config=config, music=music, no_music=no_music),
+    )
+    print_generation_preview(preview)
+    progress.update(task, completed=100)
+    return output_path, should_upload, album_name
 
 
 class _AttemptPhaseReporter:
@@ -86,6 +200,7 @@ def run_pipeline_and_generate(
     memory_key: str | None = None,
     memory_category: str | None = None,
     automation_attempt_id: str | None = None,
+    dry_run: bool = False,
 ) -> tuple[Path, bool, str | None]:
     """Run smart pipeline analysis + video generation.
 
@@ -95,9 +210,7 @@ def run_pipeline_and_generate(
     from immich_memories.cache.database import VideoAnalysisCache
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.generate import GenerationParams, assets_to_clips, generate_memory
-    from immich_memories.generate_settings import _build_title_settings
     from immich_memories.operations.phases import OperationalPhase
-    from immich_memories.processing.timeline_budget import plan_timeline
     from immich_memories.tracking.models import normalize_memory_people
 
     clips = assets_to_clips(assets)
@@ -122,7 +235,12 @@ def run_pipeline_and_generate(
     # (Real timing data: analysis ~83s/22%, generation ~295s/78%)
     task = progress.add_task("Analyzing clips...", total=100)
     _pipeline_start = _time.monotonic()
-    phases = _AttemptPhaseReporter(config, automation_attempt_id, progress, task)
+    phases = _AttemptPhaseReporter(
+        config,
+        None if dry_run else automation_attempt_id,
+        progress,
+        task,
+    )
     phases.emit(OperationalPhase.DISCOVERY, len(clips), len(clips), "Discovery complete")
     phases.emit(OperationalPhase.DOWNLOAD, 0, len(clips), "Preparing source downloads")
 
@@ -131,23 +249,17 @@ def run_pipeline_and_generate(
         prioritize_favorites=True,
         analysis_depth=analysis_depth,
     )
-    planning_params = GenerationParams(
+    timeline_plan = _configure_timeline(
+        pipeline_config,
         clips=clips,
+        photo_assets=photo_assets,
         output_path=output_path,
         config=config,
         memory_type=memory_type,
-        person_name=person_names[0] if person_names else None,
-        date_start=date_range.start,
-        date_end=date_range.end,
-        memory_preset_params=memory_preset_params or {},
-    )
-    planning_titles = _build_title_settings(planning_params, config, [])
-    planning_sources = [*clips, *(list(photo_assets) if photo_assets else [])]
-    timeline_plan = plan_timeline(planning_sources, planning_titles, duration, memory_type)
-    pipeline_config.target_duration_seconds = timeline_plan.content_budget
-    pipeline_config.target_clips = max(
-        1,
-        math.ceil(timeline_plan.content_budget / pipeline_config.avg_clip_duration),
+        person_names=person_names,
+        date_range=date_range,
+        memory_preset_params=memory_preset_params,
+        duration=duration,
     )
     _runner_logger.info(
         "Timeline budget: %.1fs content + %.1fs titles = %.1fs target (%d dividers max)",
@@ -179,7 +291,12 @@ def run_pipeline_and_generate(
 
     # Phase 1-3: Analyze video clips
     phases.emit(OperationalPhase.ANALYSIS, 0, len(clips), "Analyzing clips")
-    analyzed_videos = pipeline.run_analysis(clips, progress_callback=pipeline_progress)
+    analyzed_videos = _planning_analysis(
+        pipeline,
+        clips,
+        pipeline_progress,
+        dry_run=dry_run,
+    )
 
     # Merge photos into the unified selection pool (if enabled)
     all_candidates = _merge_photos_into_pool(
@@ -190,6 +307,7 @@ def run_pipeline_and_generate(
         client=client,
         work_dir=output_path.parent,
         provider_circuit=pipeline.provider_circuit,
+        dry_run=dry_run,
     )
 
     # Phase 4: Unified selection (videos + photos compete together)
@@ -208,6 +326,27 @@ def run_pipeline_and_generate(
     should_upload = upload_to_immich or config.upload.enabled
     album_name = album or config.upload.album_name
     person_name = person_names[0] if person_names else None
+
+    if dry_run:
+        return _finish_dry_run(
+            pipeline_result=pipeline_result,
+            timeline_plan=timeline_plan,
+            assets=assets,
+            live_photo_clips=live_photo_clips,
+            photo_assets=photo_assets,
+            config=config,
+            output_resolution=output_resolution,
+            output_orientation=output_orientation,
+            output_path=output_path,
+            memory_type=memory_type,
+            date_range=date_range,
+            should_upload=should_upload,
+            album_name=album_name,
+            music=music,
+            no_music=no_music,
+            progress=progress,
+            task=task,
+        )
 
     def gen_progress(phase: str, frac: float, msg: str) -> None:
         scaled = 20 + int(frac * 80)
@@ -320,6 +459,7 @@ def _merge_photos_into_pool(
     client: SyncImmichClient,
     work_dir: Path,
     provider_circuit=None,
+    dry_run: bool = False,
 ) -> list:
     """Score photos and merge them as ClipWithSegment into the video pool.
 
@@ -334,27 +474,27 @@ def _merge_photos_into_pool(
     from immich_memories.analysis.smart_pipeline import ClipWithSegment
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.photos.photo_pipeline import score_photos
+    from immich_memories.photos.scoring import score_photo
 
     _logger = logging.getLogger(__name__)
 
-    photo_dir = work_dir / "photos"
-    photo_dir.mkdir(parents=True, exist_ok=True)
-
-    download_fn = client.download_asset
-    thumbnail_fn = client.get_asset_thumbnail
     photo_duration = config.photos.duration
-
-    scored = score_photos(
-        assets=photo_assets,
-        config=config.photos,
-        video_clip_count=len(analyzed_videos),
-        work_dir=photo_dir,
-        download_fn=download_fn,
-        db_path=config.cache.database_path,
-        app_config=config,
-        thumbnail_fn=thumbnail_fn,
-        provider_circuit=provider_circuit,
-    )
+    if dry_run:
+        scored = [(asset, score_photo(asset, config.photos)) for asset in photo_assets]
+    else:
+        photo_dir = work_dir / "photos"
+        photo_dir.mkdir(parents=True, exist_ok=True)
+        scored = score_photos(
+            assets=photo_assets,
+            config=config.photos,
+            video_clip_count=len(analyzed_videos),
+            work_dir=photo_dir,
+            download_fn=client.download_asset,
+            db_path=config.cache.database_path,
+            app_config=config,
+            thumbnail_fn=client.get_asset_thumbnail,
+            provider_circuit=provider_circuit,
+        )
 
     photo_candidates = []
     for asset, photo_score in scored:

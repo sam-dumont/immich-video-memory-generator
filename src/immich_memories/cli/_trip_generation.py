@@ -70,6 +70,23 @@ def resolve_music_arg(music: str | None) -> str | None:
     return music
 
 
+def _print_trip_result(
+    *,
+    dry_run: bool,
+    location_name: str,
+    result_path: Path,
+    should_upload: bool,
+    album_name: str | None,
+) -> None:
+    """Report trip planning without claiming an artifact or upload exists."""
+    if dry_run:
+        print_success(f"Trip plan complete: {location_name}")
+        return
+    print_success(f"Trip video: {result_path}")
+    if should_upload:
+        print_success(f"Uploaded to Immich (album: {album_name or 'none'})")
+
+
 def _has_trusted_automation_identity(
     source: str,
     memory_key: str | None,
@@ -165,6 +182,7 @@ def handle_trip_generation(
     memory_category: str | None = None,
     automation_attempt_id: str | None = None,
     orientation: str = "landscape",
+    dry_run: bool = False,
 ) -> None:
     """Detect trips, select, and generate video for each."""
     from datetime import datetime as dt_cls
@@ -293,9 +311,14 @@ def handle_trip_generation(
             memory_key=memory_key,
             memory_category=memory_category,
             automation_attempt_id=automation_attempt_id,
+            dry_run=dry_run,
         )
 
         console.print()
-        print_success(f"Trip video: {result_path}")
-        if should_upload:
-            print_success(f"Uploaded to Immich (album: {album_name or 'none'})")
+        _print_trip_result(
+            dry_run=dry_run,
+            location_name=trip.location_name,
+            result_path=result_path,
+            should_upload=should_upload,
+            album_name=album_name,
+        )

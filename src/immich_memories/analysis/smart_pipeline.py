@@ -251,6 +251,27 @@ class SmartPipeline:
             with contextlib.suppress(Exception):
                 self.previewer.close()
 
+    def run_planning_analysis(
+        self,
+        clips: list[VideoClipInfo],
+        progress_callback: Callable[[dict], None] | None = None,
+    ) -> list[ClipWithSegment]:
+        """Run normal metadata filters with cached-only segment analysis."""
+        if progress_callback:
+            self.tracker.add_callback(
+                lambda _: progress_callback(self.tracker.get_status_summary())
+            )
+        self.tracker.start()
+        try:
+            deduplicated = self._phase_cluster(clips)
+            candidates = self._phase_filter(deduplicated)
+            return self.analyzer.phase_plan_cached(candidates, self.tracker)
+        finally:
+            with contextlib.suppress(Exception):
+                self.analyzer.close()
+            with contextlib.suppress(Exception):
+                self.previewer.close()
+
     def _analyze_with_cache_batch(self, candidates: list[VideoClipInfo]) -> list[ClipWithSegment]:
         """Run analysis with one shared cache manifest when file caching is enabled."""
         if self._video_cache is None:

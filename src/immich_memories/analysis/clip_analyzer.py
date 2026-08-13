@@ -169,6 +169,44 @@ class ClipAnalyzer:
 
         return results
 
+    def phase_plan_cached(
+        self,
+        clips: list[VideoClipInfo],
+        tracker: ProgressTracker,
+    ) -> list[ClipWithSegment]:
+        """Use cached analysis and metadata fallbacks without downloading source videos."""
+        from immich_memories.analysis.progress import PipelinePhase
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment
+
+        valid_clips = [c for c in clips if (c.duration_seconds or 0) >= 1.5]
+        tracker.start_phase(PipelinePhase.ANALYZING, len(valid_clips))
+        results: list[ClipWithSegment] = []
+
+        # Probe once so a dry-run still validates the configured optional model/route.
+        self._init_content_analyzer()
+        for clip in valid_clips:
+            tracker.start_item(
+                clip.asset.original_file_name or clip.asset.id[:8], asset_id=clip.asset.id
+            )
+            cached = self._check_analysis_cache(clip)
+            if cached is None:
+                start = 0.0
+                end = min(clip.duration_seconds, self.config.avg_clip_duration)
+                score = clip.quality_score
+            else:
+                start, end, score, _preview_path, _llm = cached
+            results.append(ClipWithSegment(clip=clip, start_time=start, end_time=end, score=score))
+            tracker.complete_item(
+                clip.asset.id,
+                video_duration=clip.duration_seconds,
+                segment=(start, end),
+                score=score,
+            )
+
+        tracker.complete_phase()
+        logger.info("Planning analysis: %d cached/metadata clips", len(results))
+        return results
+
     def _check_analysis_cache(
         self,
         clip: VideoClipInfo,
