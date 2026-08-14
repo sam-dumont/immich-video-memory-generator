@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 import soundfile as sf
-import torch
 
 from immich_memories.audio.generators.demucs_local import (
     DemucsLocalBackend,
@@ -72,6 +71,7 @@ class TestSoundFileCodec:
     """Local Demucs WAV I/O must not depend on TorchCodec."""
 
     def test_load_audio_returns_channel_first_float_tensor(self, tmp_path: Path):
+        torch = pytest.importorskip("torch")
         audio_path = tmp_path / "input.wav"
         samples = np.column_stack(
             (
@@ -89,6 +89,7 @@ class TestSoundFileCodec:
         np.testing.assert_allclose(waveform.numpy().T, samples, atol=1e-6)
 
     def test_save_audio_writes_readable_stereo_wav(self, tmp_path: Path):
+        torch = pytest.importorskip("torch")
         audio_path = tmp_path / "stem.wav"
         waveform = torch.stack(
             (
