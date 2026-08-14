@@ -197,16 +197,21 @@ def _isolated_output_dir(output_dir: Path) -> Path:
     return resolved
 
 
-def _git_revision() -> str:
+def _git_revision(*, temp_root: Path) -> str:
     try:
-        return subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=PROJECT_ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        ).stdout.strip()
+        # WHY: Apple's git launcher may create xcrun_db under TMPDIR. Keep
+        # external-tool cache writes inside the caller-approved profile root.
+        with tempfile.TemporaryDirectory(prefix=".git-tool-", dir=temp_root) as tool_temp:
+            environment = os.environ | {"TMPDIR": tool_temp}
+            return subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=PROJECT_ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env=environment,
+            ).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return "unknown"
 
@@ -534,7 +539,7 @@ def main() -> int:
             "cProfile includes Python call and wait time; it cannot inspect child-process internals."
         ),
         "environment": _environment(),
-        "git_revision": _git_revision(),
+        "git_revision": _git_revision(temp_root=output_dir),
         "scenario": arguments.scenario,
         "stage_wall_seconds": {
             stage: [wall for wall, _ in timings] for stage, timings in stage_timings.items()

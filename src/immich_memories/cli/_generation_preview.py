@@ -41,7 +41,11 @@ class GenerationPreview:
 
     @property
     def estimated_final_duration(self) -> float:
-        return self.selected_duration + self.timeline.title_budget
+        return (
+            min(self.selected_duration, self.timeline.content_budget)
+            + self.timeline.title_budget
+            - self.timeline.transition_budget
+        )
 
     @property
     def month_divider_summary(self) -> str | None:

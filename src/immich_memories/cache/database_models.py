@@ -82,6 +82,7 @@ class CachedVideoAnalysis:
 
     # Versioning
     scoring_version: int = 1
+    model_version: str | None = None
 
     # Hashes
     perceptual_hash: str | None = None

@@ -13,6 +13,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def temporal_cluster_key(clip: ClipWithSegment, time_window_minutes: float) -> str:
+    """Return the bucket key used by temporal deduplication."""
+    timestamp = clip.clip.asset.file_created_at
+    bucket_minutes = int(timestamp.timestamp() / 60 / time_window_minutes)
+    return f"{timestamp.date()}_{bucket_minutes}"
+
+
 def _fit_temporally_distributed(
     clips: list[ClipWithSegment], max_duration: float
 ) -> list[ClipWithSegment]:
@@ -220,9 +227,7 @@ class ClipScaler:
 
         time_clusters: dict[str, list[ClipWithSegment]] = defaultdict(list)
         for clip in clips:
-            timestamp = clip.clip.asset.file_created_at
-            bucket_minutes = int(timestamp.timestamp() / 60 / time_window_minutes)
-            time_clusters[f"{timestamp.date()}_{bucket_minutes}"].append(clip)
+            time_clusters[temporal_cluster_key(clip, time_window_minutes)].append(clip)
 
         result = []
         removed_count = 0

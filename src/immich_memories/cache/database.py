@@ -17,12 +17,14 @@ from immich_memories.cache.database_models import (  # noqa: F401
     SimilarVideo,
     _hamming_distance,
 )
+from immich_memories.cache.database_rows import row_to_analysis, row_to_segment
 from immich_memories.cache.migration_sql import execute_migration_script
 from immich_memories.cache.migration_v11 import migrate_automation_history
 from immich_memories.cache.migration_v12 import migrate_automation_attempt_identity
 from immich_memories.cache.migration_v13 import migrate_delivery_state
 from immich_memories.cache.migration_v14 import migrate_operational_phases
 from immich_memories.cache.migration_v15 import migrate_notification_health
+from immich_memories.cache.migration_v16 import migrate_video_analysis_model_version
 from immich_memories.cache.versions import ANALYSIS_VERSION, SCHEMA_VERSION, SCORING_VERSION
 
 if TYPE_CHECKING:
@@ -102,6 +104,7 @@ class VideoAnalysisCache:
             13: migrate_delivery_state,
             14: migrate_operational_phases,
             15: migrate_notification_health,
+            16: migrate_video_analysis_model_version,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):
@@ -520,6 +523,7 @@ class VideoAnalysisCache:
         scenes: list[Scene] | None = None,
         motion_summary: dict | None = None,
         audio_levels: dict | None = None,
+        model_version: str | None = None,
     ) -> None:
         now = datetime.now().isoformat()
 
@@ -570,6 +574,12 @@ class VideoAnalysisCache:
                     (asset.file_created_at.isoformat() if asset.file_created_at else None),
                 ),
             )
+
+            if model_version is not None:
+                conn.execute(
+                    "UPDATE video_analysis SET model_version = ? WHERE asset_id = ?",
+                    (model_version, asset.id),
+                )
 
             # Delete existing segments
             conn.execute("DELETE FROM video_segments WHERE asset_id = ?", (asset.id,))
@@ -726,53 +736,12 @@ class VideoAnalysisCache:
             if not row:
                 return None
 
-            analysis = self._row_to_analysis(row)
+            analysis = row_to_analysis(row)
 
             if include_segments:
                 analysis.segments = self._load_segments(conn, asset_id)
 
             return analysis
-
-    @staticmethod
-    def _get_row_value(row: sqlite3.Row, key: str, default: int) -> int:
-        """Safely get a value from a sqlite3.Row, with fallback for missing columns."""
-        try:
-            return row[key]
-        except (IndexError, KeyError):
-            return default
-
-    def _row_to_analysis(self, row: sqlite3.Row) -> CachedVideoAnalysis:
-        return CachedVideoAnalysis(
-            asset_id=row["asset_id"],
-            checksum=row["checksum"],
-            file_modified_at=(
-                datetime.fromisoformat(row["file_modified_at"]) if row["file_modified_at"] else None
-            ),
-            analysis_timestamp=datetime.fromisoformat(row["analysis_timestamp"]),
-            scoring_version=self._get_row_value(row, "scoring_version", 1),
-            perceptual_hash=row["perceptual_hash"],
-            thumbnail_hash=row["thumbnail_hash"],
-            duration_seconds=row["duration_seconds"],
-            width=row["width"],
-            height=row["height"],
-            bitrate=row["bitrate"],
-            fps=row["fps"],
-            codec=row["codec"],
-            color_space=row["color_space"],
-            color_transfer=row["color_transfer"],
-            color_primaries=row["color_primaries"],
-            bit_depth=row["bit_depth"],
-            best_face_score=row["best_face_score"],
-            best_motion_score=row["best_motion_score"],
-            best_stability_score=row["best_stability_score"],
-            best_audio_score=row["best_audio_score"],
-            best_total_score=row["best_total_score"],
-            motion_summary=(json.loads(row["motion_summary"]) if row["motion_summary"] else None),
-            audio_levels=(json.loads(row["audio_levels"]) if row["audio_levels"] else None),
-            file_created_at=(
-                datetime.fromisoformat(row["file_created_at"]) if row["file_created_at"] else None
-            ),
-        )
 
     def _load_segments(self, conn: sqlite3.Connection, asset_id: str) -> list[CachedSegment]:
         rows = conn.execute(
@@ -784,52 +753,7 @@ class VideoAnalysisCache:
             (asset_id,),
         ).fetchall()
 
-        return [self._row_to_segment(row) for row in rows]
-
-    def _row_to_segment(self, row: sqlite3.Row) -> CachedSegment:
-        """Convert database row to CachedSegment (including LLM + audio data)."""
-        face_positions = None
-        if row["face_positions"]:
-            positions = json.loads(row["face_positions"])
-            face_positions = [tuple(p) for p in positions]
-
-        # Safely access v6+ columns (absent in pre-migration databases)
-        keys = row.keys()
-
-        def _str(name: str) -> str | None:
-            return str(row[name]) if name in keys and row[name] is not None else None
-
-        def _float(name: str) -> float | None:
-            val = row[name] if name in keys else None
-            return float(val) if val is not None else None
-
-        activities_raw = _str("llm_activities")
-        subjects_raw = _str("llm_subjects")
-        audio_cats_raw = _str("audio_categories")
-
-        return CachedSegment(
-            segment_index=row["segment_index"],
-            start_time=row["start_time"],
-            end_time=row["end_time"],
-            start_frame=row["start_frame"],
-            end_frame=row["end_frame"],
-            face_score=row["face_score"],
-            motion_score=row["motion_score"],
-            stability_score=row["stability_score"],
-            audio_score=row["audio_score"],
-            total_score=row["total_score"],
-            face_positions=face_positions,
-            motion_vectors=(json.loads(row["motion_vectors"]) if row["motion_vectors"] else None),
-            keyframe_path=row["keyframe_path"],
-            llm_description=_str("llm_description"),
-            llm_emotion=_str("llm_emotion"),
-            llm_setting=_str("llm_setting"),
-            llm_activities=(json.loads(activities_raw) if activities_raw else None),
-            llm_subjects=(json.loads(subjects_raw) if subjects_raw else None),
-            llm_interestingness=_float("llm_interestingness"),
-            llm_quality=_float("llm_quality"),
-            audio_categories=(json.loads(audio_cats_raw) if audio_cats_raw else None),
-        )
+        return [row_to_segment(row) for row in rows]
 
     @staticmethod
     def _row_is_stale(row: sqlite3.Row, asset: Asset) -> bool:

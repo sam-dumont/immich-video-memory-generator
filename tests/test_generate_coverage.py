@@ -1497,6 +1497,54 @@ class TestCreateAssembler:
 
 
 class TestRunMusicPhase:
+    def test_music_phase_requested_for_explicit_music_path(self, tmp_path):
+        from immich_memories.generate_settings import _music_phase_requested
+
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/o.mp4"),
+            config=Config(),
+            music_path=tmp_path / "music.wav",
+        )
+
+        assert _music_phase_requested(params)
+
+    def test_music_phase_not_requested_when_music_is_disabled(self, tmp_path):
+        from immich_memories.generate_settings import _music_phase_requested
+
+        config = Config()
+        config.ace_step.enabled = True
+        params = GenerationParams(
+            clips=[],
+            output_path=Path("/tmp/o.mp4"),
+            config=config,
+            music_path=tmp_path / "music.wav",
+            no_music=True,
+        )
+
+        assert not _music_phase_requested(params)
+
+    def test_complete_music_failure_tracks_sanitized_optional_warning(self):
+        from immich_memories.generate_settings import _complete_music_failure
+
+        config = Config()
+        tracker = MagicMock()
+
+        result = _complete_music_failure(
+            RuntimeError("backend unavailable"),
+            config=config,
+            run_tracker=tracker,
+            phase_started=False,
+        )
+
+        assert result.applied is False
+        assert result.warning == "Optional music failed: backend unavailable"
+        tracker.start_phase.assert_called_once_with("music", 1)
+        tracker.complete_phase.assert_called_once_with(
+            items_processed=0,
+            errors=[{"error": "Optional music failed: backend unavailable"}],
+        )
+
     def test_skips_when_no_music_resolved(self, tmp_path):
         from immich_memories.generate import _run_music_phase
 
@@ -1552,6 +1600,42 @@ class TestRunMusicPhase:
         mock_apply.assert_called_once_with(result_path, music_file, 0.7, encoding_plan)
         mock_tracker.start_phase.assert_called_once_with("music", 1)
         mock_tracker.complete_phase.assert_called_once_with(items_processed=1)
+
+    def test_starts_music_phase_before_resolving_generated_music(self, tmp_path):
+        from immich_memories.generate import _run_music_phase
+
+        music_file = tmp_path / "music.wav"
+        music_file.write_bytes(b"music")
+        result_path = tmp_path / "result.mp4"
+        result_path.write_bytes(b"video")
+        config = Config()
+        config.ace_step.enabled = True
+        params = GenerationParams(clips=[], output_path=Path("/tmp/o.mp4"), config=config)
+        events: list[str] = []
+        mock_tracker = MagicMock()
+        mock_tracker.start_phase.side_effect = lambda *_args: events.append("phase-start")
+
+        def resolve_music(**_kwargs):
+            events.append("resolve")
+            return music_file
+
+        with (
+            patch(
+                "immich_memories.generate_music.resolve_music_file",
+                side_effect=resolve_music,
+            ),
+            patch("immich_memories.generate_music.apply_music_file"),
+        ):
+            _run_music_phase(
+                params,
+                [],
+                result_path,
+                tmp_path,
+                mock_tracker,
+                encoding_plan=_h264_output_plan(),
+            )
+
+        assert events[:2] == ["phase-start", "resolve"]
 
     def test_report_fn_delegates_to_progress_callback(self, tmp_path):
         from immich_memories.generate import _run_music_phase

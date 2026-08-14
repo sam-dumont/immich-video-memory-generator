@@ -609,6 +609,11 @@ class SceneScorer:
         self._current_cap: cv2.VideoCapture | None = None
         self._current_path: str | None = None
 
+    @property
+    def content_min_confidence(self) -> float:
+        """Minimum confidence required to accept a semantic score."""
+        return self._content_analysis_config.min_confidence
+
     @classmethod
     def from_profile(cls, profile: ScoringProfile, **kwargs) -> SceneScorer:
         """Create a SceneScorer from a ScoringProfile dataclass."""

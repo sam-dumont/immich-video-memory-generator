@@ -1,6 +1,6 @@
 ---
 date: 2026-08-13
-branch: codex/p1-contributor-followups
+branch: codex/launch-hardening
 scope: launch readiness, automation, performance, Immich v2/v3 compatibility, and user flow
 verdict: code and real-library launch gates pass; scheduler activation remains an intentional deployment step
 ---
@@ -97,6 +97,44 @@ it; loading the job is a separate action that was not requested.
 | Docusaurus production build | Passed |
 | Package build | `0.37.2.dev138` wheel and sdist built; Twine accepted both |
 | Installed LaunchAgent | Not loaded; `launchctl print` exited 113 with “Could not find service” |
+
+## Real-library launch validation — 2026-08-13
+
+Four requested memories were generated against the owner's real Immich library with notifications
+disabled and delivery not requested. All music was generated locally through ACE-Step 1.5 using
+`acestep-v15-xl-turbo` on MPS/MLX with the 4B planner. Local Demucs produced four stems for ducking.
+Hosted ACE-Step support remains available but was not used by these runs.
+
+This validation found and closed two additional launch blockers:
+
+1. The selector scaled to the duration target and then applied temporal deduplication, the
+   non-favorite cap, and the photo cap. Those filters could remove most of the chosen timeline,
+   but the optimizer never reconsidered unused candidates. A final backfill pass now consumes
+   valid leftovers while preserving temporal uniqueness, same-day limits, non-favorite limits,
+   and the remaining duration. It uses unused motion clips first. If strict photo balance still
+   leaves a large hole, it may relax the photo cap from 50% to at most 70% rather than publishing
+   a badly underfilled memory.
+2. FFmpeg 8.1 single-pass `loudnorm` can emit NaN samples for short silent clips, which makes the
+   AAC encoder abort with `-22 Invalid argument`. The audio graph now replaces only non-finite
+   normalized samples with digital silence and restores a stable 48 kHz transition format.
+
+Real selection evidence demonstrates the intended fallback behavior:
+
+- Emile yearly fell from 185 seconds to 83.4 seconds after temporal and photo filters, then added
+  16 unused clips and recovered to 185.3 seconds of a 187.5-second content budget.
+- Somme fell to 93.1 seconds after filters. Strict 50% photos could not fill the remaining gap, so
+  the selector used all valid motion, relaxed photos to the 70% ceiling, added 11 leftovers, and
+  recovered to 156.1 seconds of a 157.5-second content budget.
+
+| Memory | Final artifact | Duration | Probe/decode result |
+|---|---|---:|---|
+| Emile — June 2026 | `emile-june-2026-xl-music.mp4` | 59.917s | 1280×720 H.264 + stereo AAC; full decode passed |
+| Emile — July 2026 | `emile-july-2026-xl-music.mp4` | 62.633s | 1280×720 H.264 + stereo AAC; full decode passed |
+| Emile — 2026 yearly | `emile-yearly-2026-180s-xl-music.mp4` | 181.333s | 1280×720 H.264 + stereo AAC; full decode passed |
+| Somme — July 25 to August 5 | `trip_somme,_france_2026-07-25.mp4` | 155.533s | 1280×720 H.264 + stereo AAC; full decode passed |
+
+The final post-fix repository gate passed 4,334 tests with 7 skipped and 662 deselected. Ruff and
+`git diff --check` were clean. The LaunchAgent remained unloaded throughout this validation.
 
 The plist is still present at
 `/Users/sam/Library/LaunchAgents/com.immich-memories.auto.plist`. No scheduler was loaded and no
@@ -773,3 +811,258 @@ kept one centered aspect-fit window, one blurred side fill, and one gentle motio
 was no stacked Ken Burns/crop effect. The run completed with delivery status `not_requested`.
 Music generation, notifications, and Immich upload were all disabled for the smoke. Production
 automatic-music configuration was not changed.
+
+## ACE-Step 1.5 direct-library benchmark — 2026-08-13
+
+ACE-Step v0.1.8 (`dce6214`) was installed locally in the launch worktree as an inference-only
+package and exercised directly through the Python library. This is not a subprocess or a local
+HTTP server. The runtime used native MLX for the DiT/VAE and the 4B language model on an Apple M5
+Max with 128 GB unified memory. The existing hosted REST implementation, including health checks,
+authentication, polling, and downloads, remains available under `mode: "api"`. In `mode: "lib"`,
+the configured ACE API remains the automatic fallback when the local package is absent.
+
+The upstream full dependency set cannot be installed beside this app today: ACE-Step's Gradio UI
+requires Starlette `<1`, while immich-memories requires Starlette `>=1.3.1`. The reproducible local
+setup therefore pins v0.1.8 with `--no-deps` and installs its inference-only dependencies. This is
+documented in the Audio & Music manual; an exact `uv sync` will remove the manual package, while
+`uv sync --inexact` preserves it.
+
+### Measurements
+
+All media renders used the owner's live Immich 3.1.0 library with API auto-detection. Uploads and
+notifications were disabled, and the macOS scheduler stayed unloaded.
+
+| Workload | Result | Wall time | Relevant music time |
+|---|---:|---:|---:|
+| ACE base, cached cold process, 10-second WAV | 48 kHz stereo PCM | 27.887s | includes ~22s model initialization |
+| ACE base, second 10-second WAV in same process | 48 kHz stereo PCM | 5.420s | warm model |
+| ACE v0.1.8 XL-turbo + 4B LM, cached cold process, 10-second WAV | 48 kHz stereo PCM | 26.783s | native MLX; includes initialization |
+| ACE v0.1.8 XL-turbo + 4B LM, second WAV in same process | 48 kHz stereo PCM | 2.707s | production-model warm result |
+| Emile 2026, local ACE base + local Demucs | 64.967s, 14 clips, 10,204,559 bytes | 140.3s | 72.9s generation/stems/mix |
+| Sam 2026, local ACE base + local Demucs | 61.333s, 11 clips, 7,560,058 bytes | 133.6s | 66.0s generation/stems/mix |
+| Somme trip, no-music control | 56.333s, 13 clips, 9,495,535 bytes | 72.0s | disabled |
+
+The very first ACE run took about 6m41s because it downloaded model weights. That one-time network
+cost is deliberately excluded from cached performance. The warm result is the important automation
+number: keeping one ACE backend alive across a daily batch saves roughly 22 seconds of model setup
+per additional soundtrack on this machine.
+
+The first benchmark used the 2B `base` DiT and was not the historical production-model comparison.
+ACE-Step v0.1.6 introduced XL and changed its Gradio default to the 4B `xl-turbo`; the app's local
+config and manual had since drifted back to the ambiguous name `base`. A corrected v0.1.8 run used
+the full `acestep-v15-xl-turbo` checkpoint plus the separate 4B LM planner. Both WAVs decoded fully
+at exactly 10 seconds, 48 kHz stereo. Cold time was essentially unchanged from 2B base, while the
+warm 8-step XL run was 2.707 seconds instead of 5.420 seconds. The downloaded XL checkpoint occupies
+about 19GB in the local Hugging Face layout, despite upstream's roughly 9GB bf16 weight estimate.
+
+The corrected Emile render spent about 9.1s in analysis, 25.3s downloading selected media, 30.4s
+assembling video, and 72.9s generating/separating/mixing music. Its ACE portion generated an
+80-second base-model track at 50 steps: roughly 22s initialization and 40s generation, followed by
+about 4.2s of local Demucs separation. Sam showed the same shape: 11.5s analysis, 35.8s downloads,
+18.3s assembly, and 66.0s music. This again rules out Cython as a useful first optimization; the
+time is in network I/O, FFmpeg, and model lifecycle.
+
+### Root-cause fix found by the benchmark
+
+The first new Emile run generated a valid ACE WAV, then discarded it. TorchAudio 2.10 now routes
+audio loading through TorchCodec, which was not installed. The optional Demucs stage raised
+`ImportError`, while the pipeline's optional-stem boundary caught only `RuntimeError` and
+`OSError`. The final video therefore kept only source audio despite successful music generation.
+
+Local Demucs now reads and writes audio through the already-installed SoundFile backend, avoiding
+TorchCodec entirely. Its optional boundary also catches `ImportError`, so a missing stem decoder
+keeps the valid full mix instead of throwing it away. The retained corrected runs contain the ACE
+WAV plus vocals, drums, bass, and other stems; their final AAC tracks are non-silent and peak near
+-7.5 dB.
+
+The benchmark also found that saved per-phase timing started only after ACE generation and Demucs,
+immediately before the final mix. The tracker now starts the music phase before resolution so future
+run metadata covers the real model work. The coarse pipeline logs above were used for these numbers
+because the completed artifacts predate that correction.
+
+Final verification exposed and closed two more process-boundary defects. System-info capture called
+`ti.init()` independently from the title subsystem; that reset Taichi's process-wide runtime while
+the title module retained compiled Metal kernel references. A later globe dispatch then failed with
+stale GPU objects. System capture now uses the title subsystem's idempotent Taichi lifecycle. The
+minimal benchmark → tracked generation → globe/GPU reproduction changed from 14 failures to 35
+passes. The profiling harness also inherited its deliberately forbidden `TMPDIR` into Apple's Git
+launcher, which created `xcrun_db`; Git's temporary cache is now confined to an auto-cleaned folder
+inside the caller-approved profile output.
+
+The combined audio, delivery, profiler, Taichi, globe, and GPU regression set passed 368 tests. The
+fresh normal repository gate then passed 4,326 tests with 7 skips, 662 deliberate deselections, and
+7 warnings in 58.51 seconds. Ruff, formatting, and whitespace checks were clean.
+Mypy reported no issues across 252 source files.
+
+### Visual and flow review
+
+FFprobe and full decode checks passed for all three videos. Emile and Sam are 1280x720 H.264 with
+stereo AAC and completed without warnings. Their opening title covers the first selected month, and
+every later selected month has a divider. Contact-sheet inspection found one centered aspect-fit
+photo window with one blurred fill for portrait/4:3 media; no stacked or multi-Ken-Burns treatment
+was visible.
+
+Artifacts:
+
+- `/Users/sam/Videos/Memories/demo-emile-ace-v15-base-fixed-20260813_20260813_182825_d9cc/demo-emile-ace-v15-base-fixed-20260813.mp4`
+- `/Users/sam/Videos/Memories/demo-sam-ace-v15-base-20260813_20260813_183124_95cd/demo-sam-ace-v15-base-20260813.mp4`
+- `/Users/sam/Videos/Memories/trip_somme,_france_2026-07-25_20260813_183406_47f2/trip_somme,_france_2026-07-25.mp4`
+
+### ACE-Step release assessment
+
+The correct baseline is [v0.1.6](https://github.com/ace-step/ACE-Step-1.5/releases/tag/v0.1.6)
+with an XL model, normally `acestep-v15-xl-turbo`, not the 2B base model used in the first local
+benchmark. Against that baseline:
+
+- [v0.1.7](https://github.com/ace-step/ACE-Step-1.5/releases/tag/v0.1.7) adds DCW to every sampler,
+  including XL and native MLX; shared `ACESTEP_CHECKPOINTS_DIR`; lower-memory, auto-tuned MLX VAE
+  chunks; community VAE selection; correct `infer_steps` handling and forwarded handler kwargs for
+  `xl_turbo`; and LM CFG prompt fixes. DCW is the meaningful XL-turbo quality change and costs
+  negligible compute.
+- [v0.1.8](https://github.com/ace-step/ACE-Step-1.5/releases/tag/v0.1.8) adds Retake controlled
+  variations, Flow-Edit, better repainting on MLX, a fix for MLX DiT static buffers across threads,
+  and official Docker images for hosted servers. Retake and the MLX thread fix are immediately
+  relevant to smart automation; Flow-Edit/repaint belong to a later editing workflow.
+- v0.1.7 also created a trap: `GenerationParams.dcw_enabled` defaults to true. v0.1.8 corrected the
+  Gradio default for non-turbo models, but not direct-library, CLI, or REST callers. On Apple Silicon
+  this can garble `xl-sft`/`xl-base`; the upstream fix is still open as
+  [PR #1282](https://github.com/ace-step/ACE-Step-1.5/pull/1282). Production should remain
+  `xl-turbo` with DCW enabled. Non-turbo XL must explicitly disable DCW until that fix ships.
+
+Recommended order:
+
+1. Restore `acestep-v15-xl-turbo` + 4B LM as the documented production profile.
+2. Keep one loaded backend across automatic batch jobs. The corrected XL benchmark saves 24.076
+   seconds between the first and second 10-second soundtrack.
+3. Expose v0.1.8 Retake for cheap, controlled alternatives from one soundtrack.
+4. A/B the community VAE before changing the default. Do not silently change production sound.
+5. Test `xl-sft` only after adding an explicit DCW-off parameter; `xl-base` adds no value to the
+   current text-to-music-only flow.
+
+The active local configuration was migrated on 2026-08-13 from the ambiguous 2B
+`model_variant: base` + 4B LM combination to `model_variant: "acestep-v15-xl-turbo"` + 4B LM.
+Library mode, API fallback URL, one-version generation, Demucs, and all unrelated settings were
+preserved. The executable `scripts/validate_local_audio.py --quality high` profile now exercises
+the same production combination.
+
+### Other local music models
+
+The best next provider is
+[Stable Audio 3](https://github.com/Stability-AI/stable-audio-3), not the old community MusicGen
+MLX ports. Its official [pure-MLX runtime](https://github.com/Stability-AI/stable-audio-3/blob/main/optimized/mlx/README.md)
+runs without PyTorch at inference time. `small-music` is a 433M model supporting up to 120 seconds;
+`medium` is 1.4B and supports longer, higher-quality generation. Both support text-to-audio,
+audio-to-audio, negative prompting, and inpainting. Add it as an opt-in provider after accepting and
+documenting the Stability Community and T5Gemma model terms. `small-music` is the sensible fast
+preview/fallback candidate; `medium` is the quality A/B candidate.
+
+[HeartMuLa](https://github.com/HeartMuLa/heartlib) is Apache-2.0 and attractive for full songs with
+lyrics and multilingual tags, but the official 3B runtime is CUDA-oriented and around real-time
+speed. Its MLX implementation is community-maintained, so it is lower priority for short
+instrumental photo memories. Community MLX ports of Meta MusicGen are also a poor launch default:
+they are less mature and inherit non-commercial model terms.
+
+### Remaining benchmark findings
+
+1. **P1 — reuse the ACE runtime across a smart-automation batch.** The production XL benchmark
+   measured a 24.076-second first-to-warm saving on this Mac.
+2. **P1 — make trip duration planning match the rendered card set.** The Somme dry-run estimated
+   64.9 seconds, but the actual artifact is 56.3 seconds because only the map intro and ending were
+   rendered and transition overlap was not represented accurately. This misses the owner's
+   preferred roughly 65-second result.
+3. **P2 — correct saved target-duration metadata.** These 65-second CLI requests are recorded as
+   target 60 even though the actual generation parameters received 65.
+4. **P2 — avoid unnecessary 96 kHz AAC for ACE-mixed output.** The generated WAV is 48 kHz, but
+   Emile and Sam were published with 96 kHz audio. It works, but doubles audio sample work for no
+   obvious benefit.
+5. **P2 — make `--quiet` quiet.** Candidate analysis and HTTP pagination still flood the console;
+   this is an observability problem, not a measured performance bottleneck.
+
+## HDR publication and duration-budget correction — 2026-08-13
+
+The reported HDR failure was reproduced. The media pipeline detected HLG correctly, but the live
+configuration selected `output.codec: h264`. Codec selection is authoritative and H.264 is an SDR
+publication path, so `hdr_mode: auto` correctly tone-mapped the final result even though several
+intermediate clips retained HDR metadata. The live configuration now uses `codec: h265` with
+`hdr_mode: auto`. H.264 remains available as the explicit compatibility/SDR choice. A new warning
+states exactly why detected HDR is being tone-mapped when H.264 is selected, and both the manual
+and configuration reference document the contract. Mixed SDR intermediates are expected: final
+assembly normalizes clips, photos, and titles into one 10-bit HLG timeline before blending.
+
+The same real renders closed the earlier target-duration findings. Three separate accounting bugs
+were involved:
+
+1. Selection budgeted `content + titles = target`, but each fade removes transition overlap.
+2. Trip planning reserved location-card time from the candidate pool instead of the final selected
+   locations, so rejected locations consumed phantom title seconds.
+3. Backfill required an exact fit and stopped when the remaining hole was smaller than every
+   leftover clip, even when a safe clip could be trimmed.
+
+Timeline planning now uses `content + titles - expected transition overlap = target`, finalizes
+trip dividers from selected clips, and permits one constraint-safe backfill clip up to two seconds
+over the remaining content gap for the normal final trim. Yearly month dividers remain all-or-none;
+the opening covers the first selected month and all later selected months receive dividers when the
+complete set fits. Dry-run, preview, generation parameters, and final rendering consume the same
+finalized timeline decision.
+
+Real-library evidence, with upload and notifications disabled:
+
+- Emile June monthly: 60.917s, HEVC Main 10, `yuv420p10le`, BT.2020/HLG, AAC; full decode passed.
+- Emile July monthly: 63.633s, same HDR contract, AAC; full decode passed.
+- Emile yearly with all seven subsequent month dividers and ACE music: 179.300s, same HDR
+  contract, AAC; full decode passed. The 0.700s delta is below one configured transition.
+- Somme trip with 26 content clips, one selected location card, and ACE music: 150.683s, same HDR
+  contract, AAC; full decode passed. The selector backfilled ten eligible leftovers, changing the
+  previously short 130.533s result into a duration-correct publication.
+
+Validated artifacts:
+
+- `/Users/sam/Videos/Memories/emile-june-2026-hdr-xl-music_20260813_214159_9195/emile-june-2026-hdr-xl-music.mp4`
+- `/Users/sam/Videos/Memories/emile-july-2026-hdr-xl-music_20260813_214357_32c8/emile-july-2026-hdr-xl-music.mp4`
+- `/Users/sam/Videos/Memories/emile-yearly-2026-180s-hdr-xl-music-final_20260813_221122_8893/emile-yearly-2026-180s-hdr-xl-music-final.mp4`
+- `/Users/sam/Videos/Memories/trip_somme,_france_2026-07-25_20260813_221557_c814/trip_somme,_france_2026-07-25.mp4`
+
+The local Qwen warning was resolved on 2026-08-14. The authenticated `/v1/models` endpoint showed
+that the old `Qwen3-VL-8B-Instruct-MLX-4bit` identifier had been removed. Qwen 3.5 VL 9B restored
+scoring first, then the local A/B probe confirmed that native vision in
+`Huihui-Qwen3.6-35B-A3B-abliterated-oQ4e-mtp` accepts the application's real `image_url` payload.
+On the same photo and prompt, Qwen 3.5 VL 9B returned in 2.441s and Qwen 3.6 35B-A3B returned in
+2.142s; both responses were parseable. The active local configuration now selects the 35B-A3B
+model. The full provider preflight reports 5 OK and 0 skipped.
+
+That live probe exposed a separate cache bug: 1,632 existing photo scores had no model identity,
+and video semantic analysis had no model field at all. Changing models therefore reused old scores
+and made a working VLM look as if it had no effect. Photo cache reads now require the exact model
+already supported by `asset_scores.model_version`. Video analysis schema v16 adds the same identity
+to each analysis run. Null or different model IDs are misses; successful semantic results replace
+the row naturally; provider/download/parse failures still fall back to metadata but are never
+stamped as model-authored scores. Existing rows and generated media were not deleted.
+
+The first normal-cache Qwen 3.6 generation rejected six unversioned video analyses and refreshed
+all 18 shortlisted photos. The database now contains six video analyses and 18 photo scores stamped
+with the exact 35B-A3B model ID. Photo scores span 0.546–0.772. The resulting 11-clip Emile July
+selection covers fountains, a ride, drawing, family contact, a close-up, and the beach rather than
+collapsing into one repeated activity. It is 59.967s HEVC Main 10 HLG HDR with stereo AAC and passes
+a full decode:
+
+- `/Users/sam/Videos/Memories/emile-july-2026-qwen36-model-aware_20260814_082903_bb73/emile-july-2026-qwen36-model-aware.mp4`
+
+The final cache review also closed two failure-mode holes. Video analysis now carries an explicit
+confidence signal through the unified analyzer and stamps the configured model only when at least
+one result meets `content_analysis.min_confidence`; neutral defaults from a failed provider call no
+longer count as semantic success. Photo responses must contain finite numeric `interest` and
+`quality` values in the 0–1 range. HTTP 200 responses with missing or malformed scores fall back to
+metadata without creating a semantic cache row. Metadata-only runs also bypass thumbnail and
+download I/O entirely. An independent follow-up review found no remaining critical or important
+issues in this model-cache scope.
+
+Final verification for this correction:
+
+- Full repository suite after model-aware caching: 4,355 passed, 7 skipped, 662 deliberate
+  deselections, 7 warnings.
+- Focused HDR/timeline/backfill/docs suite: 311 passed.
+- Real FFmpeg and CLI integration group: 60 passed, 1 skipped.
+- Post-format affected regression set: 222 passed, 54 deselected.
+- Mypy: no issues in 252 source files.
+- Ruff lint: passed; Ruff format: all 526 Python files clean.
+- Docusaurus production build and `git diff --check`: passed.

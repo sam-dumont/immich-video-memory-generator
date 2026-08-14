@@ -100,6 +100,159 @@ def test_selected_month_dividers_are_all_or_none_above_soft_maximum() -> None:
     assert final.title_budget == pytest.approx(7.5)
 
 
+def test_yearly_timeline_allows_the_complete_month_divider_set() -> None:
+    """The generic 10s cushion must not impose a five-divider ceiling on years."""
+    from immich_memories.processing.timeline_budget import (
+        finalize_selected_timeline,
+        plan_timeline,
+    )
+
+    clips = [_clip(str(month), f"2026-{month:02d}-05") for month in range(1, 9)]
+    titles = _titles(ending_duration=4.0)
+
+    final = finalize_selected_timeline(
+        plan_timeline(clips, titles, 180.0, "person_spotlight"),
+        clips,
+        selected_duration=168.8,
+        title_settings=titles,
+        memory_type="person_spotlight",
+    )
+
+    assert final.divider_policy == "all"
+    assert final.eligible_dividers == 7
+    assert final.max_dividers == 7
+    assert final.title_budget == pytest.approx(21.5)
+    assert final.soft_max_duration == pytest.approx(194.0)
+
+
+def test_smart_transition_overlap_is_added_to_the_selection_budget() -> None:
+    """Selection must replace time that smart crossfades remove at assembly."""
+    from immich_memories.processing.timeline_budget import plan_timeline
+
+    clips = [_clip(str(index), "2026-07-05") for index in range(40)]
+
+    plan = plan_timeline(
+        clips,
+        _titles(ending_duration=4.0),
+        150.0,
+        "custom",
+        expected_clip_duration=5.0,
+        transition_mode="smart",
+        transition_duration=0.5,
+    )
+
+    assert plan.transition_budget > 0.0
+    assert plan.content_budget + plan.title_budget - plan.transition_budget == pytest.approx(150.0)
+
+
+def test_yearly_divider_gate_accounts_for_transition_overlap() -> None:
+    """Raw title time may cross the ceiling even though the assembled cut fits."""
+    from immich_memories.processing.timeline_budget import (
+        finalize_selected_timeline,
+        plan_timeline,
+    )
+
+    clips = [_clip(str(month), f"2026-{month:02d}-05") for month in range(1, 9)]
+    clips.extend(_clip(f"extra-{index}", "2026-08-06") for index in range(19))
+    titles = _titles(ending_duration=4.0)
+
+    final = finalize_selected_timeline(
+        plan_timeline(
+            clips,
+            titles,
+            180.0,
+            "person_spotlight",
+            transition_mode="smart",
+            transition_duration=0.5,
+        ),
+        clips,
+        selected_duration=173.5,
+        title_settings=titles,
+        memory_type="person_spotlight",
+        transition_mode="smart",
+        transition_duration=0.5,
+    )
+
+    assert final.divider_policy == "all"
+    assert final.max_dividers == 7
+    assert final.transition_budget == pytest.approx(12.25)
+    assert 173.5 + final.title_budget - final.transition_budget <= final.soft_max_duration
+
+
+def test_trip_location_budget_is_resolved_from_selected_clips() -> None:
+    """Candidate-pool travel must not reserve cards absent from the final cut."""
+    from immich_memories.processing.timeline_budget import (
+        finalize_selected_timeline,
+        plan_timeline,
+    )
+
+    candidates = [
+        AssemblyClip(
+            path=Path(f"/{city}.mp4"),
+            duration=5.0,
+            date=f"2026-07-{day:02d}",
+            latitude=latitude,
+            longitude=longitude,
+            location_name=city,
+        )
+        for day, city, latitude, longitude in [
+            (1, "Brussels", 50.8503, 4.3517),
+            (2, "Paris", 48.8566, 2.3522),
+            (3, "Lyon", 45.7640, 4.8357),
+        ]
+    ]
+    titles = _titles(ending_duration=4.0)
+    preliminary = plan_timeline(candidates, titles, 150.0, "trip")
+
+    final = finalize_selected_timeline(
+        preliminary,
+        candidates[:2],
+        selected_duration=10.0,
+        title_settings=titles,
+        memory_type="trip",
+    )
+
+    assert preliminary.divider_policy == "pending"
+    assert preliminary.max_dividers == 0
+    assert final.divider_policy == "capped"
+    assert final.eligible_dividers == 1
+    assert final.max_dividers == 1
+    assert final.title_budget == pytest.approx(9.5)
+
+
+def test_preview_estimate_applies_the_final_content_trim() -> None:
+    from immich_memories.cli._generation_preview import GenerationPreview
+    from immich_memories.processing.output_canvas import OutputCanvas
+    from immich_memories.processing.timeline_budget import TimelinePlan
+
+    preview = GenerationPreview(
+        memory_type="trip",
+        date_range="Jul 25 - Aug 05",
+        video_candidates=1,
+        live_photo_candidates=0,
+        photo_candidates=0,
+        selected_videos=1,
+        selected_photos=0,
+        selected_duration=152.1,
+        timeline=TimelinePlan(
+            target_duration=150.0,
+            content_budget=150.3,
+            title_budget=9.5,
+            title_duration=3.5,
+            ending_duration=4.0,
+            divider_duration=2.0,
+            max_dividers=1,
+            transition_budget=9.8,
+        ),
+        canvas=OutputCanvas(width=1280, height=720, orientation="landscape"),
+        output_path=Path("/trip.mp4"),
+        upload_intent=False,
+        music_policy="none",
+    )
+
+    assert preview.estimated_final_duration == pytest.approx(150.0)
+
+
 def test_single_clip_month_is_included_after_selection() -> None:
     from immich_memories.processing.timeline_budget import (
         finalize_selected_timeline,
@@ -174,7 +327,10 @@ def test_disabled_titles_leave_the_full_budget_for_content() -> None:
 
 
 def test_trip_location_changes_are_capped_by_the_same_title_budget() -> None:
-    from immich_memories.processing.timeline_budget import plan_timeline
+    from immich_memories.processing.timeline_budget import (
+        finalize_selected_timeline,
+        plan_timeline,
+    )
 
     clips = [
         AssemblyClip(
@@ -204,8 +360,16 @@ def test_trip_location_changes_are_capped_by_the_same_title_budget() -> None:
     ]
     settings = _titles(title_duration=2.0, ending_duration=0.0)
 
-    plan = plan_timeline(clips, settings, 30.0, "trip")
+    preliminary = plan_timeline(clips, settings, 30.0, "trip")
+    plan = finalize_selected_timeline(
+        preliminary,
+        clips,
+        selected_duration=15.0,
+        title_settings=settings,
+        memory_type="trip",
+    )
 
+    assert preliminary.divider_policy == "pending"
     assert plan.max_dividers == 2
     assert plan.title_budget == 6.0
     assert plan.divider_policy == "capped"

@@ -22,6 +22,17 @@ from immich_memories.tracking.system_info import (
 class TestCheckTaichi:
     """Optional Taichi detection must distinguish absence from a broken install."""
 
+    def test_reuses_initialized_title_runtime_without_reinitializing_taichi(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """System capture must not invalidate kernels owned by the title runtime."""
+        from immich_memories.titles import taichi_kernels
+
+        monkeypatch.setattr(taichi_kernels, "_taichi_initialized", True)
+        monkeypatch.setattr(taichi_kernels, "_taichi_backend", "Metal")
+        with patch("taichi.init", side_effect=AssertionError("Taichi was reinitialized")):
+            assert _check_taichi() is True
+
     def test_missing_optional_package_is_unavailable(self, monkeypatch: pytest.MonkeyPatch):
         """A base/dev install without Taichi can still record a pipeline run."""
         real_import = builtins.__import__

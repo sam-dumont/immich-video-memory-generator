@@ -216,6 +216,18 @@ class ClipAnalyzer:
         if not (cached and cached.segments and len(cached.segments) > 0):
             return None
 
+        if (
+            self._app_config.content_analysis.enabled
+            and cached.model_version != self._app_config.llm.model
+        ):
+            logger.info(
+                "Ignoring semantic cache for %s: cached model=%s, configured model=%s",
+                clip.asset.id,
+                cached.model_version or "none",
+                self._app_config.llm.model,
+            )
+            return None
+
         best = max(cached.segments, key=lambda s: s.total_score or 0.0)
         start, end, score = best.start_time, best.end_time, best.total_score or 0.0
 
@@ -432,11 +444,20 @@ class ClipAnalyzer:
                     "quality": best_segment.llm_quality,
                 }
 
+            has_semantic_analysis = any(
+                isinstance(confidence := getattr(segment, "llm_confidence", None), (int, float))
+                and float(confidence) >= self._app_config.content_analysis.min_confidence
+                for segment in segments
+            )
+
             self.analysis_cache.save_analysis(
                 asset=clip.asset,
                 video_info=clip,
                 perceptual_hash=None,
                 segments=segments,
+                model_version=(
+                    self._app_config.llm.model or None if has_semantic_analysis else None
+                ),
             )
 
             logger.info(

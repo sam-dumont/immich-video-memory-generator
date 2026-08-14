@@ -28,7 +28,15 @@ def _build_audio_filter_graph(
     matches the video frame count exactly — prevents cumulative drift.
     """
     audio_format = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
-    loudnorm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if normalize_audio else ""
+    # WHY: Single-pass loudnorm can emit NaN samples for short silent inputs
+    # (common for generated photo clips). AAC rejects those samples with EINVAL.
+    # Replace only non-finite output with digital silence, then undo loudnorm's
+    # internal high-rate resampling so every transition receives stable 48 kHz.
+    loudnorm = (
+        f",loudnorm=I=-16:TP=-1.5:LRA=11,aeval='if(isnan(val(ch)),0,val(ch))':c=same,{audio_format}"
+        if normalize_audio
+        else ""
+    )
     # WHY: lowpass=300 on top of segment-wise reversal creates a warm "mumble" —
     # you hear people talking but can't understand words. The reversal destroys
     # phoneme order; the lowpass removes remaining high-freq consonant artifacts.

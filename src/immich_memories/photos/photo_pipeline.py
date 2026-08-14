@@ -270,9 +270,17 @@ def _enhance_with_llm(
 ) -> list[tuple[Asset, float]]:
     """Check cache first, then LLM-score uncached photos."""
 
+    if app_config is None or not app_config.content_analysis.enabled or not app_config.llm.model:
+        return scored
+
     cache = _get_score_cache(db_path) if db_path else None
     asset_ids = [a.id for a, _ in scored]
-    cached = cache.get_asset_scores_batch(asset_ids) if cache else {}
+    model_version = app_config.llm.model
+    cached = (
+        cache.get_asset_scores_batch(asset_ids, model_version=model_version)
+        if cache and model_version
+        else {}
+    )
 
     cache_hits = 0
     enhanced: list[tuple[Asset, float]] = []
@@ -294,15 +302,17 @@ def _enhance_with_llm(
             thumbnail_fn=thumbnail_fn,
             provider_circuit=provider_circuit,
         )
-        enhanced.append((asset, llm_score))
+        effective_score = llm_score if llm_score is not None else meta_score
+        enhanced.append((asset, effective_score))
 
-        # Store in cache
-        if cache:
+        # Only successful semantic results belong to the configured model.
+        if cache and llm_score is not None and model_version:
             cache.save_asset_score(
                 asset_id=asset.id,
                 asset_type="photo",
                 metadata_score=meta_score,
-                combined_score=llm_score,
+                combined_score=effective_score,
+                model_version=model_version,
             )
 
     if cache_hits:
@@ -320,7 +330,7 @@ def _llm_score_photo(
     app_config: Any,
     thumbnail_fn: Any = None,
     provider_circuit: Any = None,
-) -> float:
+) -> float | None:
     """Score a photo with VLM using a lightweight thumbnail.
 
     Uses Immich thumbnail API (~100 KB) instead of downloading the full
@@ -329,7 +339,7 @@ def _llm_score_photo(
     from immich_memories.photos.scoring import score_photo_with_llm
 
     if provider_circuit is not None and not provider_circuit.available:
-        return meta_score
+        return None
 
     thumb_path = work_dir / f"{asset.id}_thumb.jpg"
 
@@ -352,7 +362,7 @@ def _llm_score_photo(
                 provider_circuit=provider_circuit,
             )
         except (OSError, RuntimeError, ValueError):
-            return meta_score
+            return None
 
     # Fallback: download full file (old behavior)
     ext = Path(asset.original_file_name).suffix if asset.original_file_name else ".jpg"
@@ -361,7 +371,7 @@ def _llm_score_photo(
         try:
             download_fn(asset.id, raw_path)
         except (OSError, RuntimeError, ValueError):
-            return meta_score
+            return None
 
     try:
         from immich_memories.photos.animator import prepare_photo_source
@@ -375,7 +385,7 @@ def _llm_score_photo(
             provider_circuit=provider_circuit,
         )
     except (OSError, RuntimeError, ValueError):
-        return meta_score
+        return None
 
 
 def _get_score_cache(db_path: Path):

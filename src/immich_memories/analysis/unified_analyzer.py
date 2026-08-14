@@ -666,6 +666,18 @@ class UnifiedSegmentAnalyzer:
         try:
             analysis = self.content_analyzer.analyze_segment(video_path, start_time, end_time)
 
+            raw_confidence = getattr(analysis, "confidence", 0.0)
+            confidence = float(raw_confidence) if isinstance(raw_confidence, (int, float)) else 0.0
+            if segment is not None:
+                segment.llm_confidence = confidence
+
+            raw_min_confidence = getattr(self.scorer, "content_min_confidence", 0.5)
+            min_confidence = (
+                float(raw_min_confidence) if isinstance(raw_min_confidence, (int, float)) else 0.5
+            )
+            if confidence < min_confidence:
+                return 0.5
+
             # If segment provided, store full LLM analysis results
             if segment is not None:
                 segment.llm_description = analysis.description

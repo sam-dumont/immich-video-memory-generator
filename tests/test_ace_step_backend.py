@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import sys
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -144,6 +147,239 @@ class TestACEStepBackend:
         backend = ACEStepBackend()
         backend._effective_mode = "api"
         assert backend._get_effective_mode() == "api"
+
+
+class TestACEStepBackendV15Library:
+    @staticmethod
+    def _fake_v15_modules(tmp_path: Path, captured: dict):
+        package_root = tmp_path / "ace-step-1.5"
+        package_dir = package_root / "acestep"
+        package_dir.mkdir(parents=True)
+        package_init = package_dir / "__init__.py"
+        package_init.write_text("")
+
+        package = ModuleType("acestep")
+        package.__file__ = str(package_init)
+        package.__path__ = [str(package_dir)]
+
+        handler_module = ModuleType("acestep.handler")
+
+        class FakeHandler:
+            def initialize_service(self, **kwargs):
+                captured["dit_init"] = kwargs
+                return "DiT ready", True
+
+        handler_module.AceStepHandler = FakeHandler
+
+        llm_module = ModuleType("acestep.llm_inference")
+
+        class FakeLLMHandler:
+            llm_initialized = False
+
+            def initialize(self, **kwargs):
+                captured["lm_init"] = kwargs
+                self.llm_initialized = True
+                return "LM ready", True
+
+        llm_module.LLMHandler = FakeLLMHandler
+
+        downloader_module = ModuleType("acestep.model_downloader")
+
+        def ensure_lm_model(**kwargs):
+            captured["lm_download"] = kwargs
+            return True, "LM available"
+
+        downloader_module.ensure_lm_model = ensure_lm_model
+
+        inference_module = ModuleType("acestep.inference")
+
+        class FakeGenerationParams:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        class FakeGenerationConfig:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        def generate_music(dit_handler, llm_handler, params, config, save_dir):
+            captured["generation"] = {
+                "dit_handler": dit_handler,
+                "llm_handler": llm_handler,
+                "params": params,
+                "config": config,
+                "save_dir": save_dir,
+            }
+            generated = Path(save_dir) / "upstream-output.wav"
+            generated.write_bytes(b"RIFF" + b"audio" * 300)
+            return SimpleNamespace(
+                success=True,
+                error=None,
+                audios=[{"path": str(generated), "sample_rate": 48_000}],
+            )
+
+        inference_module.GenerationParams = FakeGenerationParams
+        inference_module.GenerationConfig = FakeGenerationConfig
+        inference_module.generate_music = generate_music
+
+        return {
+            "acestep": package,
+            "acestep.handler": handler_module,
+            "acestep.llm_inference": llm_module,
+            "acestep.model_downloader": downloader_module,
+            "acestep.inference": inference_module,
+        }, package_root
+
+    def test_v15_helper_raises_when_dit_initialization_fails(self, tmp_path):
+        from immich_memories.audio.generators.ace_step_backend import (
+            _initialize_dit_handler,
+        )
+
+        handler = MagicMock()
+        handler.initialize_service.return_value = ("weights rejected", False)
+
+        with pytest.raises(RuntimeError, match="DiT initialization failed: weights rejected"):
+            _initialize_dit_handler(
+                lambda: handler,
+                project_root=tmp_path,
+                dit_model="acestep-v15-xl-turbo",
+                device="mps",
+                offload=False,
+                use_mlx_dit=True,
+            )
+
+    def test_v15_helper_raises_when_lm_download_fails(self, tmp_path):
+        from immich_memories.audio.generators.ace_step_backend import (
+            _initialize_lm_handler,
+        )
+
+        downloader = MagicMock(return_value=(False, "checkpoint unavailable"))
+
+        with pytest.raises(RuntimeError, match="LM download failed: checkpoint unavailable"):
+            _initialize_lm_handler(
+                MagicMock,
+                downloader,
+                checkpoint_dir=tmp_path,
+                lm_model="acestep-5Hz-lm-4B",
+                lm_backend="mlx",
+                device="mps",
+                offload=False,
+            )
+
+    def test_v15_helper_skips_lm_handler_when_planner_is_disabled(self, tmp_path):
+        from immich_memories.audio.generators.ace_step_backend import (
+            _initialize_lm_handler,
+        )
+
+        handler_type = MagicMock()
+        downloader = MagicMock()
+
+        result = _initialize_lm_handler(
+            handler_type,
+            downloader,
+            checkpoint_dir=tmp_path,
+            lm_model=None,
+            lm_backend="mlx",
+            device="mps",
+            offload=False,
+        )
+
+        assert result is None
+        handler_type.assert_not_called()
+        downloader.assert_not_called()
+
+    def test_v15_library_initializes_mps_and_mlx_handlers(self, tmp_path):
+        captured = {}
+        modules, package_root = self._fake_v15_modules(tmp_path, captured)
+        checkpoint_root = tmp_path / "checkpoints"
+        backend = ACEStepBackend(
+            ACEStepConfig(
+                mode="lib",
+                model_variant="base",
+                lm_model_size="1.7B",
+                use_lm=True,
+            )
+        )
+
+        with (
+            patch.dict(sys.modules, modules),
+            patch.dict(os.environ, {"ACESTEP_CHECKPOINTS_DIR": str(checkpoint_root)}),
+            patch("platform.system", return_value="Darwin"),
+        ):
+            backend._init_pipeline()
+
+        assert captured["dit_init"] == {
+            "project_root": str(package_root),
+            "config_path": "acestep-v15-base",
+            "device": "mps",
+            "use_flash_attention": False,
+            "compile_model": False,
+            "offload_to_cpu": False,
+            "offload_dit_to_cpu": False,
+            "quantization": None,
+            "use_mlx_dit": True,
+        }
+        assert captured["lm_download"] == {
+            "model_name": "acestep-5Hz-lm-1.7B",
+            "checkpoints_dir": checkpoint_root,
+        }
+        assert captured["lm_init"] == {
+            "checkpoint_dir": str(checkpoint_root),
+            "lm_model_path": "acestep-5Hz-lm-1.7B",
+            "backend": "mlx",
+            "device": "mps",
+            "offload_to_cpu": False,
+            "dtype": None,
+        }
+
+    @pytest.mark.parametrize(
+        ("variant", "expected_model", "expected_steps", "expected_shift"),
+        [
+            ("turbo", "acestep-v15-turbo", 8, 3.0),
+            ("base", "acestep-v15-base", 50, 1.0),
+        ],
+    )
+    def test_v15_library_generates_stable_wav_result(
+        self,
+        tmp_path,
+        variant,
+        expected_model,
+        expected_steps,
+        expected_shift,
+    ):
+        captured = {}
+        modules, _ = self._fake_v15_modules(tmp_path, captured)
+        checkpoint_root = tmp_path / "checkpoints"
+        backend = ACEStepBackend(ACEStepConfig(mode="lib", model_variant=variant, use_lm=False))
+        backend._effective_mode = "lib"
+        request = GenerationRequest(
+            prompt="warm family memories",
+            duration_seconds=30,
+            output_dir=tmp_path / "music",
+            variation_index=2,
+            memory_type="person_spotlight",
+        )
+
+        with (
+            patch.dict(sys.modules, modules),
+            patch.dict(os.environ, {"ACESTEP_CHECKPOINTS_DIR": str(checkpoint_root)}),
+            patch("platform.system", return_value="Darwin"),
+        ):
+            result = asyncio.run(backend.generate(request))
+
+        params = captured["generation"]["params"]
+        generation_config = captured["generation"]["config"]
+        assert captured["dit_init"]["config_path"] == expected_model
+        assert params.duration == 30.0
+        assert params.instrumental is True
+        assert params.lyrics == "[Instrumental]"
+        assert params.inference_steps == expected_steps
+        assert params.shift == expected_shift
+        assert params.thinking is False
+        assert generation_config.batch_size == 1
+        assert generation_config.audio_format == "wav"
+        assert result.audio_path == request.output_dir / "ace_step_v2.wav"
+        assert result.audio_path.exists()
+        assert result.metadata["infer_step"] == expected_steps
 
 
 class TestACEStepBackendAPIAvailability:

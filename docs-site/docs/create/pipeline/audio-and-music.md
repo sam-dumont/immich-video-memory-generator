@@ -8,7 +8,7 @@ title: Audio & Music
 The music pipeline has three stages:
 
 1. **Mood detection**: A vision LLM looks at keyframes from your video and outputs a structured mood analysis (happy, calm, energetic, etc. plus genre and tempo suggestions).
-2. **Music generation**: The multi-provider pipeline takes that mood and sends it to a music generation backend. It tries backends in priority order, ACE-Step first, falls back to MusicGen if unavailable or fails.
+2. **Music generation**: The pipeline takes that mood and sends it to the configured music backend. ACE-Step can run directly in the app or through its REST API. MusicGen is the alternative generator when ACE-Step is disabled.
 3. **Audio ducking**: When background music plays over your clips, it automatically gets quieter when someone's talking or when there's an interesting sound in the original audio.
 
 ## Music Providers
@@ -21,28 +21,46 @@ Two modes:
 
 | Mode | How it works | When to use |
 |------|-------------|-------------|
-| `lib` | Direct Python import, in-process | Apple Silicon / CUDA desktop, no Docker needed |
+| `lib` | Direct Python import, in-process | Apple Silicon (MLX/MPS) or CUDA desktop, no server needed |
 | `api` | Remote REST API server | Headless servers, Docker deployments, Python 3.13 |
 
-Two model variants:
+Production model variants:
 
-| Variant | Steps | Speed (60s track, M5 Max) | Quality |
-|---------|-------|--------------------------|---------|
-| `turbo` | 8 | ~8s | Fast preview, synthetic timbres |
-| `base` | 60 | ~40s | Production quality, natural instruments |
+| Variant | DiT | Steps | Use |
+|---------|-----|-------|-----|
+| `turbo` | 2B | 8 | Fast preview on smaller machines |
+| `base` | 2B | 50 | Special tasks and fine-tuning, not the normal soundtrack default |
+| `acestep-v15-xl-turbo` | 4B | 8 | Recommended production soundtrack model on 20GB+ Apple Silicon/CUDA |
+| `acestep-v15-xl-sft` | 4B | 50 | Maximum detail and tunable CFG; see the v0.1.8 warning below |
+| `acestep-v15-xl-base` | 4B | 50 | Extract/lego/complete workflows, not needed for normal text-to-music |
+
+The DiT model and LM planner are separate choices. `acestep-v15-xl-turbo` selects the 4B audio
+executor; `lm_model_size: "4B"` selects the 4B planner. For local `lib` mode, use both for the
+full XL setup. In `api` mode the remote ACE-Step server owns the loaded DiT/LM models, so
+`model_variant` and `lm_model_size` in this app do not switch the server's models.
 
 ```yaml
 ace_step:
   enabled: true
   mode: "lib"              # or "api"
   api_url: "http://localhost:8000"
-  model_variant: "base"    # or "turbo" for fast previews
+  model_variant: "acestep-v15-xl-turbo"
+  lm_model_size: "4B"
   bf16: true
   num_versions: 3
 ```
 
 :::warning Python 3.12 or earlier required for local mode
 ACE-Step local (`mode: "lib"`) requires Python 3.12 or earlier. API mode works on any Python version.
+:::
+
+:::warning ACE-Step v0.1.8 non-turbo XL models
+v0.1.7 added DCW and enabled it by default. On v0.1.8, direct-library and REST callers still inherit
+DCW-on for `xl-sft` and `xl-base`, which can produce garbled audio on Apple Silicon. The Gradio UI
+has a model-aware default, but the equivalent CLI/API fix is still an
+[open upstream change](https://github.com/ace-step/ACE-Step-1.5/pull/1282). Use `xl-turbo` for
+production automation; test non-turbo XL only with DCW explicitly disabled in a patched server or
+adapter.
 :::
 
 ### MusicGen
@@ -57,15 +75,14 @@ musicgen:
   num_versions: 3
 ```
 
-### Multi-Provider Setup
+### Local/API Fallback and Stem Separation
 
-The ideal setup runs both backends. ACE-Step handles music generation (better quality), MusicGen handles Demucs stem separation.
+ACE-Step `lib` mode automatically falls back to the configured ACE-Step REST API when the local
+package is not installed. It does not switch to MusicGen after an ACE generation failure.
 
-The pipeline tries backends in order:
-1. Check if ACE-Step is available (health check)
-2. If yes, generate with ACE-Step
-3. If ACE-Step fails or is unreachable, fall back to MusicGen
-4. Regardless of which backend generated, use Demucs for stem separation
+When both providers are enabled, ACE-Step generates the track and MusicGen supplies remote Demucs
+stem separation. With MusicGen disabled, an installed local Demucs handles stems instead. When
+ACE-Step is disabled, MusicGen handles both generation and stems.
 
 ### Custom Music
 
@@ -122,7 +139,8 @@ Install locally: `pip install 'immich-memories[demucs]'` and the pipeline auto-d
 
 ## Fully Local Setup (No Servers)
 
-On Apple Silicon with enough memory (16GB+), you can run the entire pipeline in-process:
+On Apple Silicon with at least 20GB of unified memory, you can run the shown XL production profile
+in-process. Lower-memory machines should use the 2B `turbo` profile instead:
 
 ```yaml
 audio:
@@ -132,22 +150,38 @@ audio:
 ace_step:
   enabled: true
   mode: "lib"
-  model_variant: "base"
+  model_variant: "acestep-v15-xl-turbo"
   lm_model_size: "4B"
 
 musicgen:
   enabled: false           # Not needed: local Demucs handles stems
 ```
 
-Install the packages:
+Install the tested ACE-Step 1.5 release into the same Python 3.12 environment as
+`immich-memories`. ACE-Step's full UI dependency set currently conflicts with the app's Starlette
+version, so install the pinned package without its UI/training dependencies, then add the direct
+inference dependencies:
 
 ```bash
-pip install 'immich-memories[demucs]'
-pip install 'ace-step @ git+https://github.com/ace-step/ACE-Step.git'
-# torchcodec minor version MUST match torch (e.g. torch 2.10 → torchcodec 0.10)
-TORCH_MINOR=$(python -c "import torch; print(torch.__version__.split('.')[1])")
-pip install "torchcodec==0.${TORCH_MINOR}.*"
+uv sync --extra demucs
+uv pip install --python .venv/bin/python --no-deps \
+  'ace-step @ git+https://github.com/ace-step/ACE-Step-1.5.git@v0.1.8'
+uv pip install --python .venv/bin/python \
+  'accelerate>=1.12.0' 'diffusers>=0.37.0' diskcache 'loguru>=0.7.3' \
+  'mlx>=0.25.2' 'mlx-lm>=0.20.0' 'pytorch-wavelets>=1.3.0' \
+  'pywavelets>=1.9.0' toml 'torchvision==0.25.0' \
+  'transformers>=4.51.0,<4.58.0' 'typer-slim>=0.21.1' \
+  'vector-quantize-pytorch>=1.27.15'
 ```
+
+The command above is the tested Apple Silicon inference installation; it deliberately does not
+install ACE-Step's Gradio UI. CUDA hosts should use the pinned v0.1.8 release with the appropriate
+PyTorch wheels. `uv sync --inexact` preserves this manual installation. An exact `uv sync` removes
+packages not declared by this project, so rerun the ACE-Step commands afterward.
+
+For a hosted generator, leave ACE-Step out of the app environment and use `mode: "api"` with the
+server URL. For a desktop that normally runs locally but has a server available as backup, keep
+`mode: "lib"` and set `api_url`; the app uses the API only when the local package is unavailable.
 
 ## Configuration
 
@@ -177,11 +211,13 @@ audio:
 
 | Model | Cache Location | Size | When Downloaded |
 |-------|---------------|------|----------------|
-| ACE-Step turbo | `~/.cache/huggingface/hub/` | ~2 GB | First generation |
-| ACE-Step base | `~/.cache/huggingface/hub/` | ~2 GB | First generation |
-| ACE-Step LM 0.6B | `~/.cache/huggingface/hub/` | ~1.2 GB | First generation (if `use_lm: true`) |
-| ACE-Step LM 1.7B | `~/.cache/huggingface/hub/` | ~3.4 GB | First generation (if `use_lm: true`) |
-| ACE-Step LM 4B | `~/.cache/huggingface/hub/` | ~8 GB | First generation (if `use_lm: true`) |
+| ACE-Step turbo/base (2B) | `~/.cache/ace-step/checkpoints/` | ~4.5 GB each | First generation |
+| ACE-Step XL-turbo (4B) | `~/.cache/ace-step/checkpoints/` | ~19 GB observed | First generation |
+| ACE-Step LM 0.6B | `~/.cache/ace-step/checkpoints/` | ~1.2 GB | First generation (if `use_lm: true`) |
+| ACE-Step LM 1.7B | `~/.cache/ace-step/checkpoints/` | ~3.4 GB | First generation (if `use_lm: true`) |
+| ACE-Step LM 4B | `~/.cache/ace-step/checkpoints/` | ~7.8 GB observed | First generation (if `use_lm: true`) |
+| Shared ACE VAE + embedding | `~/.cache/ace-step/checkpoints/` | ~1.4 GB observed | First generation |
 | Demucs htdemucs | `~/.cache/torch/hub/` | ~80 MB | First stem separation |
 
-**Total disk for a full local setup** (base + 4B LM + Demucs): ~10 GB of cached models.
+**Total disk for the XL production profile** (XL-turbo + 4B LM + shared assets + Demucs): about
+28 GB on the tested v0.1.8 installation. Old 2B checkpoints are not removed automatically.

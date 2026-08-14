@@ -283,7 +283,7 @@ def test_fresh_database_has_exact_automation_run_identity_and_phase(tmp_path: Pa
         run_columns = {row[1] for row in conn.execute("PRAGMA table_info(pipeline_runs)")}
         run_indexes = {row[1] for row in conn.execute("PRAGMA index_list(pipeline_runs)")}
 
-    assert version == 15
+    assert version == 16
     assert attempt_columns == {
         "id",
         "started_at",

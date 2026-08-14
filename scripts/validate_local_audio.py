@@ -5,15 +5,15 @@ Runs ACE-Step (lib mode) + Demucs (local) end-to-end with no API servers.
 Use this to prove the "fully local" claim actually works.
 
 Usage:
-    uv run python scripts/validate_local_audio.py
-    uv run python scripts/validate_local_audio.py --quality high  # base + 4B
+    .venv/bin/python scripts/validate_local_audio.py
+    .venv/bin/python scripts/validate_local_audio.py --quality high  # XL-turbo + 4B LM
 
 Requirements:
-    pip install 'immich-memories[demucs]'
-    pip install acestep  # or: pip install git+https://github.com/sam-dumont/ace-step-1.5-turbo
+    uv sync --extra demucs
+    Install ACE-Step v0.1.8 with the inference-only commands in the Audio & Music manual.
 
 Model cache locations:
-    ACE-Step: ~/.cache/huggingface/hub/  (~2-8GB depending on lm_model_size)
+    ACE-Step: ~/.cache/ace-step/checkpoints/  (~28GB for XL-turbo + 4B LM + shared assets)
     Demucs:   ~/.cache/torch/hub/        (~80MB for htdemucs)
 """
 
@@ -27,9 +27,34 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from immich_memories.audio.generators.ace_step_backend import ACEStepConfig
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("validate_local_audio")
+
+
+def build_acestep_config(quality: str) -> ACEStepConfig:
+    """Build the fast smoke or production XL validation profile."""
+    from immich_memories.audio.generators.ace_step_backend import ACEStepConfig
+
+    if quality == "high":
+        return ACEStepConfig(
+            mode="lib",
+            model_variant="acestep-v15-xl-turbo",
+            lm_model_size="4B",
+            use_lm=True,
+            bf16=True,
+        )
+    return ACEStepConfig(
+        mode="lib",
+        model_variant="turbo",
+        lm_model_size="0.6B",
+        use_lm=True,
+        bf16=True,
+    )
 
 
 def check_dependencies() -> dict[str, bool]:
@@ -54,31 +79,13 @@ def get_peak_memory_mb() -> float:
 async def run_acestep(output_dir: Path, quality: str) -> Path | None:
     """Generate music with ACE-Step lib mode."""
     try:
-        from immich_memories.audio.generators.ace_step_backend import (
-            ACEStepBackend,
-            ACEStepConfig,
-        )
+        from immich_memories.audio.generators.ace_step_backend import ACEStepBackend
         from immich_memories.audio.generators.base import GenerationRequest
     except ImportError:
         logger.error("immich-memories not installed")
         return None
 
-    if quality == "high":
-        config = ACEStepConfig(
-            mode="lib",
-            model_variant="base",
-            lm_model_size="4B",
-            use_lm=True,
-            bf16=True,
-        )
-    else:
-        config = ACEStepConfig(
-            mode="lib",
-            model_variant="turbo",
-            lm_model_size="0.6B",
-            use_lm=True,
-            bf16=True,
-        )
+    config = build_acestep_config(quality)
 
     logger.info(f"ACE-Step config: variant={config.model_variant}, lm={config.lm_model_size}")
 
@@ -142,7 +149,7 @@ async def main():
         "--quality",
         choices=["low", "high"],
         default="low",
-        help="low=turbo+0.6B (fast, CI-safe), high=base+4B (production quality)",
+        help="low=2B turbo+0.6B LM (fast), high=XL-turbo+4B LM (production)",
     )
     parser.add_argument(
         "--output-dir",

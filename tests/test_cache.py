@@ -140,6 +140,64 @@ class TestVideoAnalysisCache:
         assert analysis.height == 1080
         assert analysis.best_total_score == 0.7
 
+    def test_semantic_model_round_trips_with_analysis(
+        self, cache, mock_asset, mock_video_info, mock_moment_scores
+    ) -> None:
+        cache.save_analysis(
+            asset=mock_asset,
+            video_info=mock_video_info,
+            segments=mock_moment_scores,
+            model_version="qwen-3.6",
+        )
+
+        analysis = cache.get_analysis(mock_asset.id)
+
+        assert analysis is not None
+        assert analysis.model_version == "qwen-3.6"
+
+    def test_analysis_row_mapper_preserves_model_identity(
+        self, cache, mock_asset, mock_video_info, mock_moment_scores
+    ) -> None:
+        from immich_memories.cache.database_rows import row_to_analysis
+
+        cache.save_analysis(
+            asset=mock_asset,
+            video_info=mock_video_info,
+            segments=mock_moment_scores,
+            model_version="qwen-3.6",
+        )
+        with cache._get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM video_analysis WHERE asset_id = ?",
+                (mock_asset.id,),
+            ).fetchone()
+
+        mapped = row_to_analysis(row)
+
+        assert mapped.asset_id == mock_asset.id
+        assert mapped.model_version == "qwen-3.6"
+
+    def test_segment_row_mapper_decodes_structured_fields(
+        self, cache, mock_asset, mock_video_info, mock_moment_scores
+    ) -> None:
+        from immich_memories.cache.database_rows import row_to_segment
+
+        cache.save_analysis(
+            asset=mock_asset,
+            video_info=mock_video_info,
+            segments=mock_moment_scores,
+        )
+        with cache._get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM video_segments WHERE asset_id = ? ORDER BY segment_index",
+                (mock_asset.id,),
+            ).fetchone()
+
+        mapped = row_to_segment(row)
+
+        assert mapped.segment_index == 0
+        assert mapped.face_positions == [(0.5, 0.5), (0.3, 0.4)]
+
     def test_segments_saved(self, cache, mock_asset, mock_video_info, mock_moment_scores):
         """Segments should be saved and loaded."""
         cache.save_analysis(

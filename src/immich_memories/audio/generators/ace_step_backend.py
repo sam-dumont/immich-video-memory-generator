@@ -11,13 +11,15 @@ Hardware requirements (library mode):
 - NVIDIA GPU: 8GB+ VRAM (RTX 20-series+ recommended, Pascal with workarounds)
 - CPU-only: Functional but very slow (8+ hours per song)
 
-See: https://github.com/ace-step/ACE-Step
+See: https://github.com/ace-step/ACE-Step-1.5
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import shutil
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -39,11 +41,11 @@ logger = logging.getLogger(__name__)
 
 
 def _is_ace_step_importable() -> bool:
-    """Check if ace-step package is importable."""
+    """Check if the ACE-Step 1.5 library API is importable."""
     try:
         import importlib.util
 
-        return importlib.util.find_spec("acestep.pipeline_ace_step") is not None
+        return importlib.util.find_spec("acestep.handler") is not None
     except (ImportError, ModuleNotFoundError):
         return False
 
@@ -126,6 +128,112 @@ class ACEStepConfig:
     extra_args: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class _ACEStepV15Runtime:
+    """Loaded ACE-Step 1.5 handlers and generation API."""
+
+    dit_handler: Any
+    llm_handler: Any | None
+    generation_params_type: Any
+    generation_config_type: Any
+    generate_music: Any
+    device: str
+    lm_backend: str
+    dit_model: str
+    lm_model: str | None
+
+
+def _initialize_dit_handler(
+    handler_type: Any,
+    *,
+    project_root: Path,
+    dit_model: str,
+    device: str,
+    offload: bool,
+    use_mlx_dit: bool,
+) -> Any:
+    """Initialize and validate the ACE-Step 1.5 DiT handler."""
+    handler = handler_type()
+    status, initialized = handler.initialize_service(
+        project_root=str(project_root),
+        config_path=dit_model,
+        device=device,
+        use_flash_attention=False,
+        compile_model=False,
+        offload_to_cpu=offload,
+        offload_dit_to_cpu=offload,
+        quantization=None,
+        use_mlx_dit=use_mlx_dit,
+    )
+    if not initialized:
+        raise RuntimeError(f"ACE-Step DiT initialization failed: {status}")
+    return handler
+
+
+def _initialize_lm_handler(
+    handler_type: Any,
+    ensure_model: Any,
+    *,
+    checkpoint_dir: Path,
+    lm_model: str | None,
+    lm_backend: str,
+    device: str,
+    offload: bool,
+) -> Any | None:
+    """Download, initialize, and validate the optional ACE-Step planner."""
+    if not lm_model:
+        return None
+
+    downloaded, download_status = ensure_model(
+        model_name=lm_model,
+        checkpoints_dir=checkpoint_dir,
+    )
+    if not downloaded:
+        raise RuntimeError(f"ACE-Step LM download failed: {download_status}")
+
+    handler = handler_type()
+    status, initialized = handler.initialize(
+        checkpoint_dir=str(checkpoint_dir),
+        lm_model_path=lm_model,
+        backend=lm_backend,
+        device=device,
+        offload_to_cpu=offload,
+        dtype=None,
+    )
+    if not initialized:
+        raise RuntimeError(f"ACE-Step LM initialization failed: {status}")
+    return handler
+
+
+def _dit_model_name(variant: str) -> str:
+    """Translate stable app variant names to ACE-Step 1.5 checkpoints."""
+    if variant.startswith("acestep-v15-"):
+        return variant
+    return f"acestep-v15-{variant.replace('_', '-')}"
+
+
+def _lm_model_name(size: str) -> str:
+    """Translate stable app LM sizes to ACE-Step 1.5 checkpoints."""
+    if size.startswith("acestep-5Hz-lm-"):
+        return size
+    return f"acestep-5Hz-lm-{size}"
+
+
+def _local_runtime_target() -> tuple[str, str, bool]:
+    """Return DiT device, LM backend, and MLX-DiT flag for this host."""
+    import platform
+
+    if platform.system() == "Darwin":
+        return "mps", "mlx", True
+
+    with suppress(ImportError, RuntimeError):
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda", "vllm", False
+    return "cpu", "pt", False
+
+
 def _detect_season(mood: str) -> str | None:
     """Detect season from mood keywords."""
     mood_lower = mood.lower()
@@ -173,7 +281,7 @@ class ACEStepBackend(MusicGenerator):
 
     def __init__(self, config: ACEStepConfig | None = None):
         self.config = config or ACEStepConfig()
-        self._pipeline = None  # Lazy-loaded ACE-Step pipeline
+        self._pipeline: _ACEStepV15Runtime | None = None
         self._effective_mode: str | None = None
 
     @property
@@ -188,7 +296,7 @@ class ACEStepBackend(MusicGenerator):
                 return True
             logger.warning(
                 "ACE-Step library not installed (pip install 'ace-step @ "
-                "git+https://github.com/ace-step/ACE-Step.git'). "
+                "git+https://github.com/ace-step/ACE-Step-1.5.git@v0.1.8'). "
                 "Falling back to API at %s",
                 self.config.api_url,
             )
@@ -244,37 +352,81 @@ class ACEStepBackend(MusicGenerator):
         return self._effective_mode
 
     def _init_pipeline(self):
-        """Initialize the ACE-Step pipeline for library mode.
-
-        This lazy-loads the model to avoid memory usage until generation
-        is actually requested. The model (~3.5GB) is downloaded from
-        HuggingFace on first use and cached at ~/.cache/ace-step/checkpoints.
-        """
+        """Initialize the pinned ACE-Step 1.5 direct-library runtime."""
         if self._pipeline is not None:
             return
 
         try:
-            _validate_torchcodec()
+            import acestep  # type: ignore[import-not-found]
+            from acestep.handler import AceStepHandler  # type: ignore[import-not-found]
+            from acestep.inference import (  # type: ignore[import-not-found]
+                GenerationConfig as V15GenerationConfig,
+            )
+            from acestep.inference import (  # type: ignore[import-not-found]
+                GenerationParams as V15GenerationParams,
+            )
+            from acestep.inference import generate_music as generate_v15_music
+            from acestep.llm_inference import LLMHandler  # type: ignore[import-not-found]
+            from acestep.model_downloader import ensure_lm_model  # type: ignore[import-not-found]
 
-            # Official ACE-Step package uses pipeline_ace_step module
-            from acestep.pipeline_ace_step import ACEStepPipeline  # type: ignore[import-not-found]
-
-            logger.info("Initializing ACE-Step pipeline...")
-
-            import platform
-
-            if platform.system() == "Darwin":
-                os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
-
-            dtype = "bfloat16" if self.config.bf16 else "float32"
-
-            self._pipeline = ACEStepPipeline(
-                dtype=dtype,
-                cpu_offload=not self.config.disable_offload
-                and self.config.extra_args.get("cpu_offload", False),
+            os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+            os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
+            os.environ.setdefault(
+                "ACESTEP_CHECKPOINTS_DIR",
+                str(Path.home() / ".cache" / "ace-step" / "checkpoints"),
             )
 
-            logger.info(f"ACE-Step pipeline initialized: dtype={dtype}")
+            package_file = getattr(acestep, "__file__", None)
+            if not package_file:
+                raise RuntimeError("Cannot locate the installed ACE-Step 1.5 package")
+            project_root = Path(package_file).resolve().parent.parent
+            checkpoint_dir = Path(os.environ["ACESTEP_CHECKPOINTS_DIR"]).expanduser()
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+            device, lm_backend, use_mlx_dit = _local_runtime_target()
+            dit_model = _dit_model_name(self.config.model_variant)
+            lm_model = _lm_model_name(self.config.lm_model_size) if self.config.use_lm else None
+            offload = bool(self.config.extra_args.get("cpu_offload", False)) and not (
+                device == "mps" or self.config.disable_offload
+            )
+
+            logger.info(
+                "Initializing ACE-Step 1.5 locally: model=%s device=%s lm_backend=%s",
+                dit_model,
+                device,
+                lm_backend if lm_model else "disabled",
+            )
+
+            dit_handler = _initialize_dit_handler(
+                AceStepHandler,
+                project_root=project_root,
+                dit_model=dit_model,
+                device=device,
+                offload=offload,
+                use_mlx_dit=use_mlx_dit,
+            )
+            llm_handler = _initialize_lm_handler(
+                LLMHandler,
+                ensure_lm_model,
+                checkpoint_dir=checkpoint_dir,
+                lm_model=lm_model,
+                lm_backend=lm_backend,
+                device=device,
+                offload=offload,
+            )
+
+            self._pipeline = _ACEStepV15Runtime(
+                dit_handler=dit_handler,
+                llm_handler=llm_handler,
+                generation_params_type=V15GenerationParams,
+                generation_config_type=V15GenerationConfig,
+                generate_music=generate_v15_music,
+                device=device,
+                lm_backend=lm_backend,
+                dit_model=dit_model,
+                lm_model=lm_model,
+            )
+            logger.info("ACE-Step 1.5 local runtime initialized")
         except Exception as e:  # WHY: plugin boundary — ACE-Step init can fail in many ways
             logger.error(f"Failed to initialize ACE-Step pipeline: {e}")
             raise
@@ -302,9 +454,7 @@ class ACEStepBackend(MusicGenerator):
     ) -> GenerationResult:
         """Generate music using local ACE-Step library.
 
-        Uses the official ACE-Step __call__ API which handles model loading,
-        diffusion, decoding, and saving in one call. Uses structured captions
-        with dense instrument descriptions for best quality.
+        Uses the official ACE-Step 1.5 handler API with structured captions.
         """
         import asyncio
 
@@ -334,31 +484,59 @@ class ACEStepBackend(MusicGenerator):
                 "generating", 0, {"caption": caption_result.caption, "duration": duration}
             )
 
-        # base = 60 steps (high quality), turbo = 8 steps (fast preview)
-        infer_step = 60 if self.config.model_variant == "base" else 8
+        # ACE-Step 1.5 base = 50 steps; turbo = 8 distilled steps.
+        is_turbo = self.config.model_variant.endswith("turbo")
+        infer_step = 8 if is_turbo else 50
+        timestep_shift = 3.0 if is_turbo else 1.0
 
         def _run_pipeline():
-            assert self._pipeline is not None
-            return _run_with_suppressed_output(
-                self._pipeline,
-                audio_duration=float(duration),
-                prompt=caption_result.caption,
-                lyrics=caption_result.lyrics,
-                infer_step=infer_step,
-                guidance_scale=15.0,
-                scheduler_type="euler",
-                cfg_type="apg",
-                omega_scale=10.0,
-                use_erg_tag=True,
-                use_erg_lyric=True,
-                use_erg_diffusion=True,
+            runtime = self._pipeline
+            assert isinstance(runtime, _ACEStepV15Runtime)
+            params = runtime.generation_params_type(
+                caption=caption_result.caption,
+                lyrics="[Instrumental]",
+                instrumental=True,
+                bpm=caption_result.bpm,
+                keyscale=caption_result.key_scale,
+                timesignature=caption_result.time_signature,
+                duration=float(duration),
+                inference_steps=infer_step,
+                guidance_scale=1.0 if is_turbo else 7.0,
+                shift=timestep_shift,
+                thinking=self.config.use_lm,
+                use_cot_metas=self.config.use_lm,
+                use_cot_caption=self.config.use_lm,
+                use_cot_language=False,
+            )
+            generation_config = runtime.generation_config_type(
                 batch_size=1,
-                save_path=str(output_path),
-                format="wav",
+                use_random_seed=True,
+                audio_format="wav",
+            )
+            return _run_with_suppressed_output(
+                runtime.generate_music,
+                dit_handler=runtime.dit_handler,
+                llm_handler=runtime.llm_handler,
+                params=params,
+                config=generation_config,
+                save_dir=str(request.output_dir),
             )
 
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _run_pipeline)
+        loop = asyncio.get_running_loop()
+        upstream_result = await loop.run_in_executor(None, _run_pipeline)
+
+        if not getattr(upstream_result, "success", False):
+            error = getattr(upstream_result, "error", "unknown ACE-Step error")
+            raise RuntimeError(f"ACE-Step generation failed: {error}")
+        audios = getattr(upstream_result, "audios", None) or []
+        if not audios or not audios[0].get("path"):
+            raise RuntimeError("ACE-Step generation returned no audio file")
+
+        upstream_path = Path(audios[0]["path"])
+        if not upstream_path.exists():
+            raise RuntimeError(f"ACE-Step output does not exist: {upstream_path}")
+        if upstream_path.resolve() != output_path.resolve():
+            shutil.copy2(upstream_path, output_path)
 
         if not output_path.exists():
             raise RuntimeError(f"ACE-Step did not produce output at {output_path}")
@@ -379,7 +557,9 @@ class ACEStepBackend(MusicGenerator):
                 "bpm": caption_result.bpm,
                 "key_scale": caption_result.key_scale,
                 "infer_step": infer_step,
+                "timestep_shift": timestep_shift,
                 "model_variant": self.config.model_variant,
+                "mode": "lib",
             },
         )
 

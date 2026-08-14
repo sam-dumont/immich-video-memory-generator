@@ -71,6 +71,9 @@ def apply_final_content_budget(
             title_settings,
             params.target_duration_seconds,
             params.memory_type,
+            expected_content_clips=len(assembly_clips),
+            transition_mode=params.transition,
+            transition_duration=params.transition_duration,
         )
 
     budget = params.timeline_plan.content_budget

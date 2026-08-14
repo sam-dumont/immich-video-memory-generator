@@ -1140,7 +1140,7 @@ class TestPipelineRunner:
         output = capsys.readouterr().out
         assert "Month dividers: all 5 selected month changes" in output
         assert "Title cards: 7 (17.5s)" in output
-        assert "Estimated final duration: 65.5s" in output
+        assert "Estimated final duration: 59.5s" in output
         assert "Music: disabled" in output
         assert not output_path.exists()
         generate.assert_not_called()

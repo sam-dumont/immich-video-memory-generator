@@ -134,6 +134,43 @@ class TestCheckAnalysisCache:
 
         assert result is None
 
+    def test_semantic_cache_from_different_model_is_a_miss(self) -> None:
+        app_config = Config(
+            llm={"model": "qwen-3.6"},
+            content_analysis={"enabled": True},
+        )
+        analyzer, _, mock_cache, _ = _make_analyzer(app_config=app_config)
+        cached = _make_cached_analysis(_make_cached_segment(score=0.95))
+        cached.model_version = "qwen-3.5"
+        mock_cache.get_analysis.return_value = cached
+
+        result = analyzer._check_analysis_cache(make_clip("asset-stale", duration=10.0))
+
+        assert result is None
+
+    def test_semantic_cache_from_configured_model_is_reused(self) -> None:
+        app_config = Config(
+            llm={"model": "qwen-3.6"},
+            content_analysis={"enabled": True},
+        )
+        analyzer, _, mock_cache, _ = _make_analyzer(app_config=app_config)
+        cached = _make_cached_analysis(
+            _make_cached_segment(
+                score=0.91,
+                llm_description="A family playing outdoors",
+                llm_emotion="joy",
+            )
+        )
+        cached.model_version = "qwen-3.6"
+        mock_cache.get_analysis.return_value = cached
+
+        result = analyzer._check_analysis_cache(make_clip("asset-current", duration=10.0))
+
+        assert result is not None
+        assert result[2] == 0.91
+        assert result[4] is not None
+        assert result[4]["emotion"] == "joy"
+
     def test_cached_analysis_returns_segment_data(self):
         analyzer, _, mock_cache, mock_preview = _make_analyzer()
         seg = _make_cached_segment(start=2.0, end=5.0, score=0.8)
@@ -634,6 +671,127 @@ class TestRunAnalysisWithFallback:
 
 
 class TestReusableAnalysisServices:
+    def test_successful_semantic_analysis_records_the_exact_model(self, tmp_path) -> None:
+        from immich_memories.analysis.analyzer_models import ScoredSegment
+        from immich_memories.cache.database import VideoAnalysisCache
+
+        app_config = Config(
+            llm={"model": "qwen-3.6"},
+            content_analysis={"enabled": True},
+        )
+        cache = VideoAnalysisCache(tmp_path / "cache.db")
+        analyzer = ClipAnalyzer(
+            PipelineConfig(),
+            MagicMock(),
+            cache,
+            MagicMock(),
+            app_config=app_config,
+        )
+        segment = ScoredSegment(
+            start_time=1.0,
+            end_time=5.0,
+            total_score=0.8,
+            face_score=0.4,
+            motion_score=0.5,
+            stability_score=0.7,
+            audio_score=0.6,
+            llm_description="A child laughing outdoors",
+            llm_emotion="joy",
+            llm_confidence=0.8,
+        )
+        unified = MagicMock()
+        unified.analyze.return_value = [segment]
+        analyzer._cached_unified_analyzer = unified
+        clip = make_clip("semantic-video", duration=10.0)
+
+        analyzer._run_unified_analysis(clip, MagicMock(), MagicMock(), 10.0)
+
+        cached = cache.get_analysis("semantic-video")
+        assert cached is not None
+        assert cached.model_version == "qwen-3.6"
+
+    def test_failed_semantic_analysis_does_not_claim_the_configured_model(self, tmp_path) -> None:
+        from immich_memories.analysis.analyzer_models import ScoredSegment
+        from immich_memories.cache.database import VideoAnalysisCache
+
+        app_config = Config(
+            llm={"model": "qwen-3.6"},
+            content_analysis={"enabled": True},
+        )
+        cache = VideoAnalysisCache(tmp_path / "cache.db")
+        analyzer = ClipAnalyzer(
+            PipelineConfig(),
+            MagicMock(),
+            cache,
+            MagicMock(),
+            app_config=app_config,
+        )
+        segment = ScoredSegment(
+            start_time=1.0,
+            end_time=5.0,
+            total_score=0.7,
+            face_score=0.4,
+            motion_score=0.5,
+            stability_score=0.7,
+            audio_score=0.6,
+            llm_description="(analysis unavailable)",
+            llm_interestingness=0.5,
+            llm_quality=0.5,
+            llm_confidence=0.0,
+        )
+        unified = MagicMock()
+        unified.analyze.return_value = [segment]
+        analyzer._cached_unified_analyzer = unified
+
+        analyzer._run_unified_analysis(
+            make_clip("failed-semantic-video", duration=10.0),
+            MagicMock(),
+            MagicMock(),
+            10.0,
+        )
+
+        cached = cache.get_analysis("failed-semantic-video")
+        assert cached is not None
+        assert cached.model_version is None
+
+    def test_metadata_only_analysis_does_not_claim_the_configured_model(self, tmp_path) -> None:
+        from immich_memories.analysis.analyzer_models import ScoredSegment
+        from immich_memories.cache.database import VideoAnalysisCache
+
+        app_config = Config(
+            llm={"model": "qwen-3.6"},
+            content_analysis={"enabled": True},
+        )
+        cache = VideoAnalysisCache(tmp_path / "cache.db")
+        analyzer = ClipAnalyzer(
+            PipelineConfig(),
+            MagicMock(),
+            cache,
+            MagicMock(),
+            app_config=app_config,
+        )
+        unified = MagicMock()
+        unified.analyze.return_value = [
+            ScoredSegment(
+                start_time=1.0,
+                end_time=5.0,
+                total_score=0.7,
+                face_score=0.4,
+                motion_score=0.5,
+                stability_score=0.7,
+                audio_score=0.6,
+            )
+        ]
+        analyzer._cached_unified_analyzer = unified
+
+        analyzer._run_unified_analysis(
+            make_clip("metadata-video", duration=10.0), MagicMock(), MagicMock(), 10.0
+        )
+
+        cached = cache.get_analysis("metadata-video")
+        assert cached is not None
+        assert cached.model_version is None
+
     def test_mixed_legacy_first_batch_uses_one_shared_service_stack(self):
         from immich_memories.analysis.preview_builder import PreviewBuilder
 

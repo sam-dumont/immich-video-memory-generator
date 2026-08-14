@@ -84,8 +84,9 @@ demucs = [
 ]
 # Local ACE-Step music generation (in-process, no API server needed)
 # ⚠️  NOT a pip extra — ACE-Step is not published on PyPI.
-#     Install manually: pip install 'ace-step @ git+https://github.com/ace-step/ACE-Step.git'
-#     See docs-site/docs/music/ace-step.md for setup instructions.
+#     Install the tested v0.1.8 tag with --no-deps, then its inference-only
+#     dependencies. The upstream UI set conflicts with this app's Starlette.
+#     See docs-site/docs/create/pipeline/audio-and-music.md for setup instructions.
 # GPU-accelerated title rendering with Taichi
 # Supports: Metal (macOS), CUDA (NVIDIA), Vulkan, OpenGL, CPU fallback
 gpu = [

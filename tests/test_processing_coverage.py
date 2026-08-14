@@ -674,12 +674,14 @@ class TestEnhanceWithLlm:
     """Lines 255-303: LLM scoring with cache."""
 
     def test_cache_hit_skips_llm(self, tmp_path):
+        from immich_memories.config_loader import Config
         from immich_memories.config_models import PhotoConfig
         from immich_memories.photos.photo_pipeline import _enhance_with_llm
 
         asset = _make_asset(id="cached-001")
         scored = [(asset, 0.5)]
         config = PhotoConfig()
+        app_config = Config(llm={"model": "qwen-test"}, content_analysis={"enabled": True})
 
         mock_cache = MagicMock()
         mock_cache.get_asset_scores_batch.return_value = {"cached-001": {"combined_score": 0.95}}
@@ -690,18 +692,25 @@ class TestEnhanceWithLlm:
             return_value=mock_cache,
         ):
             result = _enhance_with_llm(
-                scored, config, tmp_path, MagicMock(), db_path=tmp_path / "db.sqlite"
+                scored,
+                config,
+                tmp_path,
+                MagicMock(),
+                db_path=tmp_path / "db.sqlite",
+                app_config=app_config,
             )
 
         assert result[0][1] == 0.95
 
     def test_cache_miss_calls_llm(self, tmp_path):
+        from immich_memories.config_loader import Config
         from immich_memories.config_models import PhotoConfig
         from immich_memories.photos.photo_pipeline import _enhance_with_llm
 
         asset = _make_asset(id="uncached-001")
         scored = [(asset, 0.5)]
         config = PhotoConfig()
+        app_config = Config(llm={"model": "qwen-test"}, content_analysis={"enabled": True})
 
         mock_cache = MagicMock()
         mock_cache.get_asset_scores_batch.return_value = {}
@@ -717,7 +726,12 @@ class TestEnhanceWithLlm:
             ),
         ):
             result = _enhance_with_llm(
-                scored, config, tmp_path, MagicMock(), db_path=tmp_path / "db.sqlite"
+                scored,
+                config,
+                tmp_path,
+                MagicMock(),
+                db_path=tmp_path / "db.sqlite",
+                app_config=app_config,
             )
 
         assert result[0][1] == 0.85
@@ -749,7 +763,7 @@ class TestLlmScorePhoto:
 
         assert result == 0.92
 
-    def test_falls_back_to_meta_score_on_llm_error(self, tmp_path):
+    def test_llm_error_is_not_reported_as_a_semantic_score(self, tmp_path):
         from immich_memories.config_models import PhotoConfig
         from immich_memories.photos.photo_pipeline import _llm_score_photo
 
@@ -772,7 +786,7 @@ class TestLlmScorePhoto:
                 thumbnail_fn=MagicMock(return_value=b"\xff"),
             )
 
-        assert result == 0.6
+        assert result is None
 
     def test_falls_back_to_full_download(self, tmp_path):
         from immich_memories.config_models import PhotoConfig
@@ -806,7 +820,7 @@ class TestLlmScorePhoto:
 
         assert result == 0.88
 
-    def test_download_failure_returns_meta_score(self, tmp_path):
+    def test_download_failure_is_not_reported_as_a_semantic_score(self, tmp_path):
         from immich_memories.config_models import PhotoConfig
         from immich_memories.photos.photo_pipeline import _llm_score_photo
 
@@ -819,7 +833,7 @@ class TestLlmScorePhoto:
         result = _llm_score_photo(
             asset, 0.3, config, tmp_path, fail_download, None, thumbnail_fn=None
         )
-        assert result == 0.3
+        assert result is None
 
 
 class TestRenderSinglePhoto:

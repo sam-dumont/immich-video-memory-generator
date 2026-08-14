@@ -529,7 +529,10 @@ class ACEStepConfig(BaseModel):
     )
     model_variant: str = Field(
         default="turbo",
-        description="Model variant: 'turbo' (8 steps, fast) or 'base' (50 steps, quality)",
+        description=(
+            "ACE-Step DiT model: 'turbo'/'base' use the 2B family; "
+            "'acestep-v15-xl-turbo' is the recommended 4B XL production model"
+        ),
     )
     lm_model_size: str = Field(
         default="1.7B",

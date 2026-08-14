@@ -20,6 +20,27 @@ from immich_memories.audio.music_generator_models import MusicStems
 logger = logging.getLogger(__name__)
 
 
+def _load_audio(audio_path: Path):
+    """Load audio as a channel-first float tensor without TorchCodec."""
+    import soundfile as sf
+    import torch
+
+    samples, sample_rate = sf.read(
+        audio_path,
+        dtype="float32",
+        always_2d=True,
+    )
+    return torch.from_numpy(samples.T.copy()), sample_rate
+
+
+def _save_audio(output_path: Path, waveform, sample_rate: int) -> None:
+    """Write a channel-first tensor as a broadly compatible PCM WAV."""
+    import soundfile as sf
+
+    samples = waveform.detach().cpu().float().numpy().T
+    sf.write(output_path, samples, sample_rate, subtype="PCM_16")
+
+
 def _is_demucs_importable() -> bool:
     """Check if the demucs package is installed."""
     try:
@@ -108,10 +129,9 @@ class DemucsLocalBackend:
         device = self._device or _detect_device()
 
         def _run_separation() -> dict[str, Path]:
-            import torchaudio  # type: ignore[import-untyped,import-not-found]
             from demucs.apply import apply_model  # type: ignore[import-untyped,import-not-found]
 
-            wav, sr = torchaudio.load(str(audio_path))
+            wav, sr = _load_audio(audio_path)
 
             # Normalize to avoid clipping artifacts
             ref = wav.mean(0)
@@ -131,7 +151,7 @@ class DemucsLocalBackend:
             paths: dict[str, Path] = {}
             for i, stem_name in enumerate(stem_names):
                 out_path = output_dir / f"{stem_name}.wav"
-                torchaudio.save(str(out_path), sources[i].cpu(), sr)
+                _save_audio(out_path, sources[i], sr)
                 paths[stem_name] = out_path
 
             return paths

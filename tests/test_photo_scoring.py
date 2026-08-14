@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from immich_memories.api.models import Person
 from immich_memories.config_models import PhotoConfig
 from immich_memories.photos.scoring import score_photo, score_photo_with_llm
@@ -82,8 +84,31 @@ class TestPhotoScoring:
         score = score_photo(_photo(), config)
         assert score == 0.0
 
-    def test_permanent_llm_failure_is_not_retried(self, tmp_path: Path) -> None:
-        """Photo scoring shares the run circuit after a permanent provider failure."""
+    def test_parse_photo_score_averages_complete_numeric_fields(self) -> None:
+        from immich_memories.photos.scoring import _parse_photo_score
+
+        result = _parse_photo_score('{"interest": 0.8, "quality": 0.6, "emotion": "joy"}')
+
+        assert result == pytest.approx(0.7)
+
+    def test_parse_photo_score_rejects_missing_required_field(self) -> None:
+        from immich_memories.photos.scoring import _parse_photo_score
+
+        assert _parse_photo_score('{"message": "analysis unavailable"}') is None
+
+    @pytest.mark.parametrize(
+        "value",
+        [True, "0.5", None, float("nan"), float("inf"), -0.1, 1.1],
+    )
+    def test_photo_score_value_rejects_nonfinite_nonnumeric_or_out_of_range_values(
+        self, value
+    ) -> None:
+        from immich_memories.photos.scoring import _photo_score_value
+
+        assert _photo_score_value(value) is None
+
+    def test_permanent_llm_failure_is_not_cached_or_retried(self, tmp_path: Path) -> None:
+        """A provider failure stays distinguishable while opening the run circuit."""
         import httpx
 
         from immich_memories.analysis.provider_health import ProviderCircuit
@@ -112,12 +137,22 @@ class TestPhotoScoring:
                 photo_b, 0.42, PhotoConfig(), config, provider_circuit=circuit
             )
 
-        assert first == second == 0.42
+        assert first is None
+        assert second is None
         assert request.call_count == 1
 
 
 class TestCacheFirstScoring:
     """Tests for _enhance_with_llm cache-first scoring (lines 126-198)."""
+
+    @staticmethod
+    def _app_config():
+        from immich_memories.config_loader import Config
+
+        return Config(
+            llm={"model": "qwen-test"},
+            content_analysis={"enabled": True},
+        )
 
     def _make_scored(self, count: int = 3) -> list[tuple]:
         """Build a list of (Asset, metadata_score) tuples."""
@@ -150,11 +185,133 @@ class TestCacheFirstScoring:
                 Path("/tmp"),
                 lambda *_args: None,
                 db_path=Path("/tmp/scores.db"),
+                app_config=self._app_config(),
             )
 
         assert len(result) == 1
         assert result[0][1] == 0.88
         mock_llm.assert_not_called()
+
+    def test_different_model_refreshes_and_replaces_cached_score(self, tmp_path: Path) -> None:
+        from immich_memories.cache.asset_score_cache import AssetScoreCache
+        from immich_memories.cache.database import VideoAnalysisCache
+        from immich_memories.config_loader import Config
+        from immich_memories.photos.photo_pipeline import _enhance_with_llm
+
+        db_path = tmp_path / "scores.db"
+        VideoAnalysisCache(db_path)
+        score_cache = AssetScoreCache(db_path)
+        score_cache.save_asset_score("photo-1", "photo", 0.5, 0.91, model_version="qwen-3.5")
+        app_config = Config(
+            llm={"model": "qwen-3.6"},
+            content_analysis={"enabled": True},
+        )
+
+        with patch(
+            "immich_memories.photos.photo_pipeline._llm_score_photo",
+            return_value=0.77,
+        ):
+            result = _enhance_with_llm(
+                [(_photo("photo-1"), 0.5)],
+                PhotoConfig(),
+                tmp_path,
+                lambda *_args: None,
+                db_path=db_path,
+                app_config=app_config,
+            )
+
+        refreshed = score_cache.get_asset_score("photo-1")
+        assert result[0][1] == 0.77
+        assert refreshed is not None
+        assert refreshed["combined_score"] == 0.77
+        assert refreshed["model_version"] == "qwen-3.6"
+
+    def test_failed_semantic_score_falls_back_without_claiming_model(self, tmp_path: Path) -> None:
+        from immich_memories.cache.asset_score_cache import AssetScoreCache
+        from immich_memories.cache.database import VideoAnalysisCache
+        from immich_memories.config_loader import Config
+        from immich_memories.photos.photo_pipeline import _enhance_with_llm
+
+        db_path = tmp_path / "scores.db"
+        VideoAnalysisCache(db_path)
+        app_config = Config(
+            llm={"model": "qwen-3.6"},
+            content_analysis={"enabled": True},
+        )
+
+        with patch(
+            "immich_memories.photos.photo_pipeline._llm_score_photo",
+            return_value=None,
+        ):
+            result = _enhance_with_llm(
+                [(_photo("photo-1"), 0.5)],
+                PhotoConfig(),
+                tmp_path,
+                lambda *_args: None,
+                db_path=db_path,
+                app_config=app_config,
+            )
+
+        assert result[0][1] == 0.5
+        assert AssetScoreCache(db_path).get_asset_score("photo-1") is None
+
+    def test_incomplete_success_response_is_not_cached_as_a_semantic_score(
+        self, tmp_path: Path
+    ) -> None:
+        import httpx
+
+        from immich_memories.cache.asset_score_cache import AssetScoreCache
+        from immich_memories.cache.database import VideoAnalysisCache
+        from immich_memories.config_loader import Config
+        from immich_memories.photos.photo_pipeline import _enhance_with_llm
+
+        db_path = tmp_path / "scores.db"
+        VideoAnalysisCache(db_path)
+        app_config = Config(
+            llm={"base_url": "http://localhost:9999/v1", "model": "qwen-3.6"},
+            content_analysis={"enabled": True},
+        )
+        response = httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"message":"analysis unavailable"}'}}]},
+            request=httpx.Request("POST", "http://localhost:9999/v1/chat/completions"),
+        )
+
+        with patch("httpx.post", return_value=response):
+            result = _enhance_with_llm(
+                [(_photo("photo-1"), 0.5)],
+                PhotoConfig(),
+                tmp_path,
+                MagicMock(),
+                db_path=db_path,
+                app_config=app_config,
+                thumbnail_fn=MagicMock(return_value=b"jpeg"),
+            )
+
+        assert result[0][1] == 0.5
+        assert AssetScoreCache(db_path).get_asset_score("photo-1") is None
+
+    def test_disabled_content_analysis_skips_thumbnail_and_download_io(
+        self, tmp_path: Path
+    ) -> None:
+        from immich_memories.config_loader import Config
+        from immich_memories.photos.photo_pipeline import _enhance_with_llm
+
+        thumbnail_fn = MagicMock(return_value=b"jpeg")
+        download_fn = MagicMock()
+
+        result = _enhance_with_llm(
+            [(_photo("photo-1"), 0.5)],
+            PhotoConfig(),
+            tmp_path,
+            download_fn,
+            app_config=Config(content_analysis={"enabled": False}),
+            thumbnail_fn=thumbnail_fn,
+        )
+
+        assert [(asset.id, score) for asset, score in result] == [("photo-1", 0.5)]
+        thumbnail_fn.assert_not_called()
+        download_fn.assert_not_called()
 
     def test_cache_miss_calls_llm_and_saves(self):
         """When score is NOT cached, run LLM and save result to cache."""
@@ -183,6 +340,7 @@ class TestCacheFirstScoring:
                 Path("/tmp"),
                 lambda *_args: None,
                 db_path=Path("/tmp/scores.db"),
+                app_config=self._app_config(),
             )
 
         assert result[0][1] == 0.75
@@ -192,6 +350,7 @@ class TestCacheFirstScoring:
             asset_type="photo",
             metadata_score=0.5,
             combined_score=0.75,
+            model_version="qwen-test",
         )
 
     def test_mix_of_cached_and_uncached(self):
@@ -228,6 +387,7 @@ class TestCacheFirstScoring:
                 Path("/tmp"),
                 lambda *_args: None,
                 db_path=Path("/tmp/scores.db"),
+                app_config=self._app_config(),
             )
 
         assert len(result) == 3
@@ -263,13 +423,16 @@ class TestCacheFirstScoring:
                 Path("/tmp"),
                 lambda *_args: None,
                 db_path=Path("/tmp/scores.db"),
+                app_config=self._app_config(),
             )
 
         assert result[0][1] == 0.7
         mock_llm.assert_called_once()
 
-    def test_llm_failure_falls_back_to_metadata_score(self, tmp_path: Path):
-        """When LLM/download fails, _llm_score_photo returns the metadata score."""
+    def test_llm_failure_is_distinguishable_from_a_real_semantic_score(
+        self, tmp_path: Path
+    ) -> None:
+        """A failed request must not look like a model-authored score to the cache."""
         from immich_memories.photos.photo_pipeline import _llm_score_photo
 
         asset = _photo("fail-1", exif_make="Apple")
@@ -282,10 +445,10 @@ class TestCacheFirstScoring:
         result = _llm_score_photo(
             asset, meta_score, PhotoConfig(), tmp_path, download_explodes, None
         )
-        assert result == meta_score
+        assert result is None
 
-    def test_llm_prepare_failure_falls_back(self, tmp_path: Path):
-        """When prepare_photo_source fails, falls back to metadata score."""
+    def test_llm_prepare_failure_is_not_a_semantic_score(self, tmp_path: Path):
+        """A decode failure remains distinguishable so callers avoid caching it."""
         from immich_memories.photos.photo_pipeline import _llm_score_photo
 
         asset = _photo("fail-2")
@@ -308,7 +471,7 @@ class TestCacheFirstScoring:
                 None,
             )
 
-        assert result == meta_score
+        assert result is None
 
     def test_get_score_cache_returns_none_on_import_error(self):
         """_get_score_cache returns None when dependencies are unavailable."""

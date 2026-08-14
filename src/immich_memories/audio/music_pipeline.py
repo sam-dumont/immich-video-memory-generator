@@ -1,8 +1,8 @@
 """Multi-provider music generation pipeline.
 
-Orchestrates music generation across multiple backends with fallback:
-1. ACE-Step — preferred for generation (lib mode or API)
-2. MusicGen — fallback for generation + Demucs stems via API
+Orchestrates music generation and optional stem separation:
+1. ACE-Step — generation in direct-library or API mode
+2. MusicGen — generation when ACE-Step is disabled, or remote Demucs stems
 
 Stem separation is decoupled from generation via the StemSeparator protocol:
 - DemucsLocalBackend: in-process, no server needed (Apple Silicon / CUDA / CPU)
@@ -33,10 +33,11 @@ logger = logging.getLogger(__name__)
 
 
 class MusicPipeline:
-    """Multi-backend music generation pipeline with fallback.
+    """Music generation pipeline with ordered-backend fallback support.
 
-    Tries backends in priority order for generation. Stem separation uses
-    any StemSeparator (local Demucs or MusicGen API), decoupled from generation.
+    Tries every configured generator in order. The application factory currently
+    configures ACE-Step alone when enabled, or MusicGen alone otherwise. Stem
+    separation remains decoupled via local Demucs or the MusicGen API.
     """
 
     def __init__(
@@ -187,7 +188,7 @@ class MusicPipeline:
                 progress_callback=_progress,
             )
 
-        except (RuntimeError, OSError):
+        except (ImportError, RuntimeError, OSError):
             logger.warning("Stem separation failed; continuing without stems")
             return None
 

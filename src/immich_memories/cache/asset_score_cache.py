@@ -45,16 +45,23 @@ class AssetScoreCache:
                 return dict(row)
         return None
 
-    def get_asset_scores_batch(self, asset_ids: list[str]) -> dict[str, dict]:
-        """Look up cached scores for multiple assets at once."""
+    def get_asset_scores_batch(
+        self,
+        asset_ids: list[str],
+        *,
+        model_version: str | None = None,
+    ) -> dict[str, dict]:
+        """Look up cached scores, optionally restricted to an exact model."""
         if not asset_ids:
             return {}
         with self._get_connection() as conn:
             placeholders = ",".join("?" * len(asset_ids))
-            rows = conn.execute(
-                f"SELECT * FROM asset_scores WHERE asset_id IN ({placeholders})",  # noqa: S608
-                asset_ids,
-            ).fetchall()
+            query = f"SELECT * FROM asset_scores WHERE asset_id IN ({placeholders})"  # noqa: S608
+            params: list[str] = asset_ids.copy()
+            if model_version is not None:
+                query += " AND model_version = ?"
+                params.append(model_version)
+            rows = conn.execute(query, params).fetchall()
             return {row["asset_id"]: dict(row) for row in rows}
 
     def save_asset_score(

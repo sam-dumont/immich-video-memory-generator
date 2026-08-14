@@ -97,6 +97,13 @@ def _build_assembly_settings(
             probe_cache=probe_cache,
         ),
     )
+    if encoding_plan.tone_map_to_sdr and config.output.hdr_mode.value == "auto":
+        logger.warning(
+            "HDR input was detected, but %s output cannot preserve HDR; "
+            "tone-mapping the final video to SDR. Set output.codec: h265 with "
+            "output.hdr_mode: auto to preserve HDR.",
+            encoding_plan.codec.value,
+        )
 
     return AssemblySettings(
         encoding_plan=encoding_plan,
@@ -199,6 +206,36 @@ def _create_assembler(
     )
 
 
+def _music_phase_requested(params: GenerationParams) -> bool:
+    """Return whether music resolution represents tracked phase work."""
+    from immich_memories.generate_music import music_config_available
+
+    return not params.no_music and (
+        params.music_path is not None or music_config_available(params.config)
+    )
+
+
+def _complete_music_failure(
+    exc: Exception,
+    *,
+    config: Config,
+    run_tracker: RunTracker,
+    phase_started: bool,
+) -> MusicPhaseResult:
+    """Finish optional music work without invalidating the base video."""
+    from immich_memories.generate_music import MusicPhaseResult, optional_music_warning
+
+    if not phase_started:
+        run_tracker.start_phase("music", 1)
+    warning = optional_music_warning(exc, config)
+    logger.warning(warning)
+    run_tracker.complete_phase(
+        items_processed=0,
+        errors=[{"error": warning}],
+    )
+    return MusicPhaseResult(applied=False, warning=warning)
+
+
 def _run_music_phase(
     params: GenerationParams,
     assembly_clips: list[AssemblyClip],
@@ -212,7 +249,6 @@ def _run_music_phase(
     from immich_memories.generate_music import (
         MusicPhaseResult,
         apply_music_file,
-        optional_music_warning,
         resolve_music_file,
     )
 
@@ -220,7 +256,11 @@ def _run_music_phase(
         if params.progress_callback:
             params.progress_callback(phase, progress, msg)
 
-    phase_started = False
+    phase_started = _music_phase_requested(params)
+    if phase_started:
+        # WHY: resolve_music_file performs the expensive model generation and
+        # optional stem separation, so the phase must include that work.
+        run_tracker.start_phase("music", 1)
     try:
         music_file = resolve_music_file(
             config=params.config,
@@ -232,21 +272,23 @@ def _run_music_phase(
             report_fn=_report_fn,
         )
         if not music_file:
+            if phase_started:
+                run_tracker.complete_phase(items_processed=0)
             return MusicPhaseResult(applied=False)
         _report_fn("music", 0.9, "Mixing music...")
-        run_tracker.start_phase("music", 1)
-        phase_started = True
+        if not phase_started:
+            # Defensive fallback for custom resolvers that produce a track
+            # without an explicit path or configured generation backend.
+            run_tracker.start_phase("music", 1)
+            phase_started = True
         apply_music_file(result_path, music_file, params.music_volume, encoding_plan)
     except Exception as exc:  # WHY: optional music must not invalidate the base artifact
-        if not phase_started:
-            run_tracker.start_phase("music", 1)
-        warning = optional_music_warning(exc, params.config)
-        logger.warning(warning)
-        run_tracker.complete_phase(
-            items_processed=0,
-            errors=[{"error": warning}],
+        return _complete_music_failure(
+            exc,
+            config=params.config,
+            run_tracker=run_tracker,
+            phase_started=phase_started,
         )
-        return MusicPhaseResult(applied=False, warning=warning)
     run_tracker.complete_phase(items_processed=1)
     return MusicPhaseResult(applied=True)
 

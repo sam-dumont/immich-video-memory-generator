@@ -85,7 +85,7 @@ def test_fresh_database_has_delivery_state_defaults(tmp_path: Path) -> None:
         schema_version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
 
     assert row == ("not_requested", 0, None, None, None, "[]")
-    assert schema_version == 15
+    assert schema_version == 16
 
 
 def test_database_round_trip_preserves_delivery_and_automation_identity(tmp_path: Path) -> None:

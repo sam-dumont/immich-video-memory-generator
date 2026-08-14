@@ -722,3 +722,34 @@ def test_generation_settings_preserve_exact_pq_transfer(tmp_path: Path) -> None:
     assert settings.encoding_plan.target_transfer is HdrTransfer.PQ
     assert settings.encoding_plan.container == "mp4"
     assert settings.encoding_plan.codec is OutputCodec.H265
+
+
+def test_generation_settings_warn_when_auto_hdr_is_tone_mapped_by_h264(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Auto must explain why detected HDR cannot survive an H.264 request."""
+    from immich_memories.config_loader import Config
+    from immich_memories.generate import GenerationParams
+    from immich_memories.generate_settings import _build_assembly_settings
+    from immich_memories.processing.encoding_plan import HdrMode
+
+    config = Config()
+    config.hardware.enabled = False
+    config.output.codec = "h264"
+    config.output.hdr_mode = HdrMode.AUTO
+    clip = _make_assembly_clip(tmp_path)
+    params = GenerationParams(clips=[], output_path=tmp_path / "memory.mp4", config=config)
+
+    with (
+        patch(
+            "immich_memories.processing.hdr_utilities._detect_hdr_type",
+            return_value="hlg",
+        ),
+        caplog.at_level("WARNING"),
+    ):
+        settings = _build_assembly_settings(params, [clip])
+
+    assert settings.encoding_plan.tone_map_to_sdr is True
+    assert "output.codec: h265" in caplog.text
+    assert "tone-mapping the final video to SDR" in caplog.text

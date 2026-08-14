@@ -304,6 +304,36 @@ class TestStemSeparatorProtocol:
         assert result.versions[0].stems is None
 
     @pytest.mark.asyncio
+    async def test_missing_optional_stem_decoder_preserves_generated_music(self, tmp_path):
+        """A missing local decoder must not discard a valid generated full mix."""
+
+        class MissingDecoderSeparator(FakeStemSeparator):
+            async def separate_stems(
+                self,
+                audio_path: Path,
+                output_dir: Path,
+                progress_callback: Any | None = None,
+            ) -> MusicStems:
+                del audio_path, output_dir, progress_callback
+                raise ImportError("TorchCodec is not installed")
+
+        pipeline = MusicPipeline(
+            generators=[FakeGenerator("Gen")],
+            stem_separator=MissingDecoderSeparator(),
+        )
+
+        async with pipeline:
+            result = await pipeline.generate_music_for_video(
+                timeline=VideoTimeline(),
+                output_dir=tmp_path,
+                num_versions=1,
+            )
+
+        assert len(result.versions) == 1
+        assert result.versions[0].full_mix.exists()
+        assert result.versions[0].stems is None
+
+    @pytest.mark.asyncio
     async def test_stem_fallback_log_never_contains_exception_secret(
         self,
         tmp_path: Path,

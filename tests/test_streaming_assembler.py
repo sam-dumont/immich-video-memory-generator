@@ -690,6 +690,76 @@ class TestAudioHandling:
         audio_streams = [s for s in probe["streams"] if s["codec_type"] == "audio"]
         assert len(audio_streams) >= 1
 
+    def test_short_silent_clip_survives_loudness_normalization(self, tmp_path: object) -> None:
+        """Short silence must not let loudnorm feed NaNs to the AAC encoder."""
+        from pathlib import Path
+
+        from immich_memories.processing.assembly_config import AssemblyClip
+        from immich_memories.processing.streaming_audio import extract_and_mix_audio
+
+        tmp = Path(str(tmp_path))
+        silent = tmp / "silent.wav"
+        tone = tmp / "tone.wav"
+        for output, source in (
+            (silent, "anullsrc=r=48000:cl=stereo:d=2"),
+            (tone, "sine=frequency=440:sample_rate=48000:duration=2"),
+        ):
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    source,
+                    "-ar",
+                    "48000",
+                    "-ac",
+                    "2",
+                    str(output),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=10,
+            )
+
+        clips = [
+            AssemblyClip(path=silent, duration=2.0, asset_id="silent"),
+            AssemblyClip(path=tone, duration=2.0, asset_id="tone"),
+        ]
+        output = tmp / "normalized.m4a"
+
+        extract_and_mix_audio(
+            clips=clips,
+            transitions=["cut"],
+            output_path=output,
+            fps=30,
+            normalize_audio=True,
+            pre_extracted_audio=[silent, tone],
+            video_duration=4.0,
+        )
+
+        probe = subprocess.run(  # noqa: S603, S607
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "stream=codec_name,sample_rate",
+                "-of",
+                "default=noprint_wrappers=1",
+                str(output),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert "codec_name=aac" in probe.stdout
+        assert "sample_rate=48000" in probe.stdout
+
 
 @requires_ffmpeg
 class TestFullStreamingPipeline:

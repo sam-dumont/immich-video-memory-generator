@@ -399,6 +399,16 @@ def test_output_docs_distinguish_cli_format_choices_from_config_pairs() -> None:
     assert "`h264_mov` and `h265_mov` are not CLI choices" in text
 
 
+def test_output_docs_explain_the_hdr_codec_contract() -> None:
+    reference = " ".join(_read("docs-site/docs/reference/config-reference.md").split())
+    manual = " ".join(_read("docs-site/docs/deploy/configuration/config-file.md").split())
+
+    for text in (reference, manual):
+        assert "hdr_mode: auto" in text
+        assert "codec: h265" in text
+        assert "H.264 is always SDR" in text
+
+
 def test_docs_check_preserves_the_underlying_build_exit_status(tmp_path: Path) -> None:
     fake_npm = tmp_path / "npm"
     fake_npm.write_text("#!/bin/sh\nprintf '%s\\n' 'synthetic nonzero build'\nexit 23\n")

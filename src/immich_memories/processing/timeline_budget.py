@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from dataclasses import dataclass, replace
 from datetime import date, datetime
@@ -28,6 +29,7 @@ class TimelinePlan:
     divider_policy: DividerPolicy = "capped"
     eligible_dividers: int = 0
     soft_max_duration: float | None = None
+    transition_budget: float = 0.0
 
 
 def _asset_for(item: Any) -> Any:
@@ -130,6 +132,76 @@ def _is_chronological_month_mode(title_settings: Any, memory_type: str | None) -
     )
 
 
+def _transition_ratio(transition_mode: Any) -> float:
+    mode = str(getattr(transition_mode, "value", transition_mode)).lower()
+    if mode == "crossfade":
+        return 1.0
+    if mode == "smart":
+        return 0.70
+    return 0.0
+
+
+def _transition_overlap_budget(
+    base_content_budget: float,
+    *,
+    title_card_count: int,
+    expected_clip_duration: float,
+    expected_content_clips: int | None,
+    transition_mode: Any,
+    transition_duration: float,
+) -> float:
+    """Estimate time removed by overlapping transitions.
+
+    SMART uses the same 70% fade probability as ``_pick_transition``.  When the
+    selected clip count is not known yet, iterate because adding overlap time
+    can itself require another content clip (and therefore another boundary).
+    """
+    ratio = _transition_ratio(transition_mode)
+    duration = max(0.0, transition_duration)
+    if 0.0 in (ratio, duration):
+        return 0.0
+
+    if expected_content_clips is not None:
+        boundaries = max(0, int(expected_content_clips) + title_card_count - 1)
+        return boundaries * duration * ratio
+
+    average = max(0.1, expected_clip_duration)
+    overlap = 0.0
+    for _ in range(8):
+        content_clips = max(1, math.ceil((base_content_budget + overlap) / average))
+        boundaries = max(0, content_clips + title_card_count - 1)
+        updated = boundaries * duration * ratio
+        if math.isclose(updated, overlap, abs_tol=1e-9):
+            return updated
+        overlap = updated
+    return overlap
+
+
+def _with_transition_budget(
+    plan: TimelinePlan,
+    *,
+    title_card_count: int,
+    expected_clip_duration: float,
+    expected_content_clips: int | None,
+    transition_mode: Any,
+    transition_duration: float,
+) -> TimelinePlan:
+    base_content_budget = max(0.0, plan.target_duration - plan.title_budget)
+    transition_budget = _transition_overlap_budget(
+        base_content_budget,
+        title_card_count=title_card_count,
+        expected_clip_duration=expected_clip_duration,
+        expected_content_clips=expected_content_clips,
+        transition_mode=transition_mode,
+        transition_duration=transition_duration,
+    )
+    return replace(
+        plan,
+        content_budget=base_content_budget + transition_budget,
+        transition_budget=transition_budget,
+    )
+
+
 def _selected_month_divider_count(clips: list[Any]) -> int:
     months = list(
         dict.fromkeys(
@@ -146,11 +218,23 @@ def plan_timeline(
     title_settings: Any | None,
     target_duration: float,
     memory_type: str | None,
+    *,
+    expected_clip_duration: float = 5.0,
+    expected_content_clips: int | None = None,
+    transition_mode: Any = "none",
+    transition_duration: float = 0.5,
 ) -> TimelinePlan:
     """Fit title screens inside 20% of the requested final duration."""
     target = max(0.0, target_duration)
     if title_settings is None or not getattr(title_settings, "enabled", True):
-        return TimelinePlan(target, target, 0.0, 0.0, 0.0, 0.0, 0)
+        return _with_transition_budget(
+            TimelinePlan(target, target, 0.0, 0.0, 0.0, 0.0, 0),
+            title_card_count=0,
+            expected_clip_duration=expected_clip_duration,
+            expected_content_clips=expected_content_clips,
+            transition_mode=transition_mode,
+            transition_duration=transition_duration,
+        )
 
     remaining = target * _TITLE_SHARE
     title_duration = min(max(0.0, float(title_settings.title_duration)), remaining)
@@ -162,8 +246,42 @@ def plan_timeline(
 
     divider_duration = max(0.0, float(title_settings.month_divider_duration))
     if _is_chronological_month_mode(title_settings, memory_type):
+        eligible_dividers = _eligible_dividers(clips, title_settings, memory_type)
+        reserved_dividers = (
+            min(eligible_dividers, int(remaining // divider_duration))
+            if divider_duration > 0.0
+            else 0
+        )
+        title_budget = title_duration + ending_duration + reserved_dividers * divider_duration
+        plan = TimelinePlan(
+            target_duration=target,
+            content_budget=target - title_budget,
+            title_budget=title_budget,
+            title_duration=title_duration,
+            ending_duration=ending_duration,
+            divider_duration=divider_duration,
+            max_dividers=0,
+            divider_policy="pending",
+            eligible_dividers=eligible_dividers,
+            soft_max_duration=target + min(10.0, target * _TITLE_SHARE),
+        )
+        return _with_transition_budget(
+            plan,
+            title_card_count=int(title_duration > 0.0)
+            + reserved_dividers
+            + int(ending_duration > 0.0),
+            expected_clip_duration=expected_clip_duration,
+            expected_content_clips=expected_content_clips,
+            transition_mode=transition_mode,
+            transition_duration=transition_duration,
+        )
+
+    if memory_type == "trip":
+        # Location changes in the full candidate pool are a poor predictor of
+        # the final cut. Resolve them after selection so phantom cards cannot
+        # consume content time (Somme had five reserved but only one rendered).
         title_budget = title_duration + ending_duration
-        return TimelinePlan(
+        plan = TimelinePlan(
             target_duration=target,
             content_budget=target - title_budget,
             title_budget=title_budget,
@@ -174,13 +292,21 @@ def plan_timeline(
             divider_policy="pending",
             soft_max_duration=target + min(10.0, target * _TITLE_SHARE),
         )
+        return _with_transition_budget(
+            plan,
+            title_card_count=int(title_duration > 0.0) + int(ending_duration > 0.0),
+            expected_clip_duration=expected_clip_duration,
+            expected_content_clips=expected_content_clips,
+            transition_mode=transition_mode,
+            transition_duration=transition_duration,
+        )
 
     eligible_dividers = _eligible_dividers(clips, title_settings, memory_type)
     max_dividers = (
         min(eligible_dividers, int(remaining // divider_duration)) if divider_duration > 0.0 else 0
     )
     title_budget = title_duration + ending_duration + max_dividers * divider_duration
-    return TimelinePlan(
+    plan = TimelinePlan(
         target_duration=target,
         content_budget=target - title_budget,
         title_budget=title_budget,
@@ -189,6 +315,14 @@ def plan_timeline(
         divider_duration=divider_duration,
         max_dividers=max_dividers,
         eligible_dividers=eligible_dividers,
+    )
+    return _with_transition_budget(
+        plan,
+        title_card_count=int(title_duration > 0.0) + max_dividers + int(ending_duration > 0.0),
+        expected_clip_duration=expected_clip_duration,
+        expected_content_clips=expected_content_clips,
+        transition_mode=transition_mode,
+        transition_duration=transition_duration,
     )
 
 
@@ -199,11 +333,53 @@ def finalize_selected_timeline(
     selected_duration: float,
     title_settings: Any | None,
     memory_type: str | None,
+    transition_mode: Any = "none",
+    transition_duration: float = 0.5,
 ) -> TimelinePlan:
     """Choose all chronological month dividers or none after selection."""
     if preliminary.divider_policy != "pending":
         return preliminary
-    if title_settings is None or not _is_chronological_month_mode(title_settings, memory_type):
+    if title_settings is None:
+        return preliminary
+
+    if memory_type == "trip":
+        eligible = _eligible_dividers(selected_clips, title_settings, memory_type)
+        remaining = max(
+            0.0,
+            preliminary.target_duration * _TITLE_SHARE
+            - preliminary.title_duration
+            - preliminary.ending_duration,
+        )
+        chosen = (
+            min(eligible, int(remaining // preliminary.divider_duration))
+            if preliminary.divider_duration > 0.0
+            else 0
+        )
+        title_budget = (
+            preliminary.title_duration
+            + preliminary.ending_duration
+            + chosen * preliminary.divider_duration
+        )
+        plan = replace(
+            preliminary,
+            title_budget=title_budget,
+            max_dividers=chosen,
+            divider_policy="capped",
+            eligible_dividers=eligible,
+            soft_max_duration=preliminary.target_duration + chosen * preliminary.divider_duration,
+        )
+        return _with_transition_budget(
+            plan,
+            title_card_count=int(plan.title_duration > 0.0)
+            + chosen
+            + int(plan.ending_duration > 0.0),
+            expected_clip_duration=5.0,
+            expected_content_clips=len(selected_clips),
+            transition_mode=transition_mode,
+            transition_duration=transition_duration,
+        )
+
+    if not _is_chronological_month_mode(title_settings, memory_type):
         return preliminary
 
     eligible = _selected_month_divider_count(selected_clips)
@@ -212,10 +388,34 @@ def finalize_selected_timeline(
         + preliminary.ending_duration
         + eligible * preliminary.divider_duration
     )
-    soft_max = preliminary.soft_max_duration or preliminary.target_duration
-    include_all = selected_duration + complete_title_budget <= soft_max
+    # WHY: Opening/ending time is already removed from the content budget. The
+    # overflow allowance must cover the *complete* selected divider set too;
+    # otherwise the generic 10-second cap makes six or more 2-second dividers
+    # impossible for a well-filled yearly memory.
+    soft_max = max(
+        preliminary.soft_max_duration or preliminary.target_duration,
+        preliminary.target_duration + eligible * preliminary.divider_duration,
+    )
+    complete_plan = _with_transition_budget(
+        replace(
+            preliminary,
+            title_budget=complete_title_budget,
+            max_dividers=eligible,
+            eligible_dividers=eligible,
+        ),
+        title_card_count=int(preliminary.title_duration > 0.0)
+        + eligible
+        + int(preliminary.ending_duration > 0.0),
+        expected_clip_duration=5.0,
+        expected_content_clips=len(selected_clips),
+        transition_mode=transition_mode,
+        transition_duration=transition_duration,
+    )
+    include_all = (
+        selected_duration + complete_title_budget - complete_plan.transition_budget <= soft_max
+    )
     chosen = eligible if include_all else 0
-    return replace(
+    plan = replace(
         preliminary,
         title_budget=(
             preliminary.title_duration
@@ -225,4 +425,13 @@ def finalize_selected_timeline(
         max_dividers=chosen,
         divider_policy="all" if include_all else "none",
         eligible_dividers=eligible,
+        soft_max_duration=soft_max,
+    )
+    return _with_transition_budget(
+        plan,
+        title_card_count=int(plan.title_duration > 0.0) + chosen + int(plan.ending_duration > 0.0),
+        expected_clip_duration=5.0,
+        expected_content_clips=len(selected_clips),
+        transition_mode=transition_mode,
+        transition_duration=transition_duration,
     )

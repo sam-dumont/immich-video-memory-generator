@@ -43,6 +43,7 @@ def _configure_timeline(
     date_range: DateRange,
     memory_preset_params: dict | None,
     duration: float,
+    transition: str,
 ) -> tuple[TimelinePlan, TitleScreenSettings | None]:
     """Resolve one plan and apply its strict content budget to selection."""
     from immich_memories.generate import GenerationParams
@@ -61,7 +62,15 @@ def _configure_timeline(
     )
     planning_titles = _build_title_settings(planning_params, config, [])
     planning_sources = [*clips, *(list(photo_assets) if photo_assets else [])]
-    timeline = plan_timeline(planning_sources, planning_titles, duration, memory_type)
+    timeline = plan_timeline(
+        planning_sources,
+        planning_titles,
+        duration,
+        memory_type,
+        expected_clip_duration=pipeline_config.avg_clip_duration,
+        transition_mode=transition,
+        transition_duration=config.defaults.transition_duration,
+    )
     pipeline_config.target_duration_seconds = timeline.content_budget
     pipeline_config.target_clips = max(
         1,
@@ -287,11 +296,13 @@ def run_pipeline_and_generate(
         date_range=date_range,
         memory_preset_params=memory_preset_params,
         duration=duration,
+        transition=transition,
     )
     _runner_logger.info(
-        "Selection timeline: %.1fs content + %.1fs base titles = %.1fs target",
+        "Selection timeline: %.1fs content + %.1fs titles - %.1fs transition overlap = %.1fs target",
         timeline_plan.content_budget,
         timeline_plan.title_budget,
+        timeline_plan.transition_budget,
         timeline_plan.target_duration,
     )
 
@@ -356,6 +367,8 @@ def run_pipeline_and_generate(
         selected_duration=selected_duration,
         title_settings=planning_titles,
         memory_type=memory_type,
+        transition_mode=transition,
+        transition_duration=config.defaults.transition_duration,
     )
     if timeline_plan.divider_policy in {"all", "none"}:
         _runner_logger.info(
@@ -363,7 +376,9 @@ def run_pipeline_and_generate(
             timeline_plan.divider_policy,
             timeline_plan.max_dividers,
             timeline_plan.eligible_dividers,
-            selected_duration + timeline_plan.title_budget,
+            min(selected_duration, timeline_plan.content_budget)
+            + timeline_plan.title_budget
+            - timeline_plan.transition_budget,
             timeline_plan.soft_max_duration,
         )
     else:
@@ -416,6 +431,7 @@ def run_pipeline_and_generate(
         config=config,
         client=client,
         transition=transition,
+        transition_duration=config.defaults.transition_duration,
         output_resolution=output_resolution,
         output_orientation=output_orientation,
         output_canvas=output_canvas,

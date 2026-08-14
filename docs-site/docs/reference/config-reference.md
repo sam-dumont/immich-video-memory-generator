@@ -93,6 +93,14 @@ defaults:
   transition_buffer: 0.5         # Extra footage around clips for smooth fades
 ```
 
+`target_duration_seconds` describes the finished video, not just the selected source clips. The
+planner budgets opening/title/ending cards and subtracts the expected overlap from fades before it
+sets the content budget. Month dividers use an all-or-none policy, and trip location cards are
+counted only after the final media selection. If filtering leaves usable time on the table, the
+optimizer backfills eligible leftovers and can relax the preferred photo ratio; hard eligibility
+and deduplication rules remain enforced. Frame and transition boundaries can leave the encoded
+result less than one transition away from the requested duration.
+
 ## Output
 
 ```yaml
@@ -100,7 +108,8 @@ output:
   directory: "~/Videos/Memories"
   format: "mp4"                  # mp4 or mov
   resolution: "1080p"            # 720p, 1080p, 4k
-  codec: "h264"                  # h264, h265, prores
+  codec: h265                     # h264, h265, prores
+  hdr_mode: auto                  # auto, sdr, hdr
   crf: 18                        # Quality (0-51, lower = better)
   quality: "high"                # high, medium, low (shorthand for CRF presets)
 ```
@@ -110,6 +119,12 @@ codecs. `generate --format` accepts only `mp4`, `h265`, and `prores`: they selec
 H.265/MP4, and ProRes/MOV respectively. Config can select compatible codec/container pairs;
 internal and UI overrides also represent `h264_mov` and `h265_mov`, but `h264_mov` and `h265_mov`
 are not CLI choices. ProRes requires MOV; H.264 and ProRes do not support HDR output.
+
+`hdr_mode: auto` preserves detected HLG or PQ sources when `codec: h265` is selected. It converts
+SDR clips, photos, and title screens into the chosen HDR transfer before blending, so intermediate
+files do not all need to carry HDR metadata. H.264 is always SDR: with `codec: h264`, `auto`
+tone-maps detected HDR sources and logs the reason. Use `hdr_mode: sdr` when SDR is intentional, or
+`hdr_mode: hdr` with H.265 to force an HDR output even when every source is SDR.
 
 ## Photos
 
@@ -164,8 +179,8 @@ ace_step:
   enabled: false
   mode: "api"                    # api (remote REST server) or lib (local, requires Python 3.12)
   api_url: "http://localhost:8000"
-  model_variant: "turbo"         # turbo (fast) or base (quality)
-  lm_model_size: "1.7B"
+  model_variant: "turbo"         # Default 2B; use acestep-v15-xl-turbo for the 4B production profile
+  lm_model_size: "1.7B"          # Default planner; use 4B with the XL production profile
   use_lm: true
   bf16: true
   num_versions: 3

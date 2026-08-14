@@ -60,6 +60,20 @@ class TestAssetScoreCache:
         assert "a2" in result
         assert "a3" not in result
 
+    def test_batch_lookup_for_model_excludes_stale_and_unversioned_scores(
+        self, cache: AssetScoreCache
+    ) -> None:
+        cache.save_asset_score("current", "IMAGE", 0.5, 0.8, model_version="qwen-3.6")
+        cache.save_asset_score("stale", "IMAGE", 0.5, 0.9, model_version="qwen-3.5")
+        cache.save_asset_score("unknown", "IMAGE", 0.5, 0.95)
+
+        result = cache.get_asset_scores_batch(
+            ["current", "stale", "unknown"], model_version="qwen-3.6"
+        )
+
+        assert set(result) == {"current"}
+        assert result["current"]["combined_score"] == 0.8
+
     def test_batch_empty_ids(self, cache: AssetScoreCache):
         assert cache.get_asset_scores_batch([]) == {}
 

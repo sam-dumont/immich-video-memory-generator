@@ -634,16 +634,15 @@ class TestEnforcePhotoCap:
             _make_clip_with_segment(f"p{i}", asset_type="IMAGE", score=float(i)) for i in range(6)
         ]
         all_clips = videos + photos
-        # max_ratio=0.25 -> max 2 photos out of 10 total
+        # With 4 fixed videos, a true 25% final ratio permits 1 photo.
         result = enforce_photo_cap(all_clips, max_ratio=0.25)
         from immich_memories.api.models import AssetType
 
         photo_count = sum(1 for c in result if c.clip.asset.type == AssetType.IMAGE)
-        assert photo_count <= 2
+        assert photo_count == 1
         # Highest-scored photos should be kept
         photo_ids = {c.clip.asset.id for c in result if c.clip.asset.type == AssetType.IMAGE}
-        assert "p5" in photo_ids  # score=5.0
-        assert "p4" in photo_ids  # score=4.0
+        assert photo_ids == {"p5"}  # score=5.0
 
     def test_photos_within_cap_unchanged(self):
         from immich_memories.analysis.clip_refiner import enforce_photo_cap
@@ -876,7 +875,7 @@ class TestPhaseRefine:
                 score=0.8,
                 file_created_at=datetime(2025, 6, 1 + i, tzinfo=UTC),
             )
-            for i in range(4)
+            for i in range(8)
         ]
         photos = [
             _make_clip_with_segment(
@@ -898,6 +897,245 @@ class TestPhaseRefine:
         if video_count > 0:
             max_allowed = int(total * 0.25)
             assert photo_count <= max_allowed + 1  # allow rounding
+
+    def test_temporal_dedup_backfills_duration_from_valid_leftovers(self):
+        """A deduplicated slot must be refilled without restoring its duplicate."""
+        refiner = self._make_refiner(
+            target_clips=4,
+            avg_clip_duration=5.0,
+            target_duration_seconds=20.0,
+            prioritize_favorites=False,
+            max_non_favorite_ratio=1.0,
+            photo_max_ratio=1.0,
+            temporal_dedup_window_minutes=10.0,
+        )
+        tracker = self._make_tracker()
+        base = datetime(2025, 6, 15, 12, 1, tzinfo=UTC)
+        analyzed = [
+            _make_clip_with_segment("dup-best", score=0.99, file_created_at=base),
+            _make_clip_with_segment(
+                "dup-weaker",
+                score=0.98,
+                file_created_at=base + timedelta(minutes=2),
+            ),
+            _make_clip_with_segment(
+                "selected-1",
+                score=0.80,
+                file_created_at=base + timedelta(hours=1),
+            ),
+            _make_clip_with_segment(
+                "selected-2",
+                score=0.70,
+                file_created_at=base + timedelta(hours=2),
+            ),
+            _make_clip_with_segment(
+                "leftover",
+                score=0.60,
+                file_created_at=base + timedelta(hours=3),
+            ),
+        ]
+
+        result = refiner.phase_refine(analyzed, tracker)
+
+        selected_ids = {clip.asset.id for clip in result.selected_clips}
+        selected_duration = sum(end - start for start, end in result.clip_segments.values())
+        assert selected_duration == pytest.approx(20.0)
+        assert "leftover" in selected_ids
+        assert len(selected_ids & {"dup-best", "dup-weaker"}) == 1
+
+    def test_photo_cap_backfills_duration_with_leftover_video(self):
+        """Photo-cap pruning should pull in an unused video instead of staying short."""
+        refiner = self._make_refiner(
+            target_clips=8,
+            avg_clip_duration=5.0,
+            target_duration_seconds=45.0,
+            prioritize_favorites=False,
+            max_non_favorite_ratio=1.0,
+            photo_max_ratio=0.40,
+            temporal_dedup_window_minutes=0.0,
+        )
+        tracker = self._make_tracker()
+        base = datetime(2025, 7, 1, 12, 0, tzinfo=UTC)
+        photos = [
+            _make_clip_with_segment(
+                f"photo-{i}",
+                asset_type="IMAGE",
+                score=0.95 - i * 0.01,
+                file_created_at=base + timedelta(days=i // 2, minutes=i),
+            )
+            for i in range(4)
+        ]
+        videos = [
+            _make_clip_with_segment(
+                f"video-{i}",
+                score=0.80 - i * 0.01,
+                file_created_at=base + timedelta(hours=i + 1),
+            )
+            for i in range(5)
+        ]
+        leftover = _make_clip_with_segment(
+            "leftover-video",
+            score=0.10,
+            file_created_at=base + timedelta(days=1, hours=8),
+        )
+
+        result = refiner.phase_refine(photos + videos + [leftover], tracker)
+
+        selected_duration = sum(end - start for start, end in result.clip_segments.values())
+        photo_count = sum(1 for clip in result.selected_clips if clip.asset.type.value == "IMAGE")
+        assert selected_duration == pytest.approx(45.0)
+        assert "leftover-video" in {clip.asset.id for clip in result.selected_clips}
+        assert photo_count / len(result.selected_clips) <= 0.40
+
+    def test_photo_scarcity_uses_available_video_duration_not_biased_selection(self):
+        """Low-scoring available videos still prove that video content is plentiful."""
+        refiner = self._make_refiner(
+            target_clips=8,
+            avg_clip_duration=5.0,
+            target_duration_seconds=45.0,
+            prioritize_favorites=False,
+            max_non_favorite_ratio=1.0,
+            photo_max_ratio=0.50,
+            temporal_dedup_window_minutes=0.0,
+        )
+        tracker = self._make_tracker()
+        base = datetime(2025, 8, 1, 12, 0, tzinfo=UTC)
+        photos = [
+            _make_clip_with_segment(
+                f"photo-{i}",
+                asset_type="IMAGE",
+                score=0.95 - i * 0.01,
+                file_created_at=base + timedelta(days=i // 2, minutes=i),
+            )
+            for i in range(8)
+        ]
+        videos = [
+            _make_clip_with_segment(
+                f"video-{i}",
+                score=0.30 - i * 0.01,
+                file_created_at=base + timedelta(days=i // 2, hours=i + 1),
+            )
+            for i in range(6)
+        ]
+
+        result = refiner.phase_refine(photos + videos, tracker)
+
+        photo_count = sum(1 for clip in result.selected_clips if clip.asset.type.value == "IMAGE")
+        video_count = len(result.selected_clips) - photo_count
+        selected_duration = sum(end - start for start, end in result.clip_segments.values())
+        assert selected_duration == pytest.approx(45.0)
+        assert video_count >= 5
+        assert photo_count / len(result.selected_clips) <= 0.50
+
+    def test_video_scarcity_uses_all_valid_videos_before_photos_fill_freely(self):
+        """Scarcity relaxes the photo cap only after unused videos get priority."""
+        refiner = self._make_refiner(
+            target_clips=8,
+            avg_clip_duration=5.0,
+            target_duration_seconds=45.0,
+            prioritize_favorites=False,
+            max_non_favorite_ratio=1.0,
+            photo_max_ratio=0.50,
+            temporal_dedup_window_minutes=0.0,
+        )
+        tracker = self._make_tracker()
+        base = datetime(2025, 9, 1, 12, 0, tzinfo=UTC)
+        photos = [
+            _make_clip_with_segment(
+                f"photo-{i}",
+                asset_type="IMAGE",
+                score=0.95 - i * 0.01,
+                file_created_at=base + timedelta(days=i // 2, minutes=i),
+            )
+            for i in range(10)
+        ]
+        videos = [
+            _make_clip_with_segment(
+                "video-selected",
+                score=0.99,
+                file_created_at=base + timedelta(hours=1),
+            ),
+            _make_clip_with_segment(
+                "video-leftover",
+                score=0.10,
+                file_created_at=base + timedelta(days=1, hours=1),
+            ),
+        ]
+
+        result = refiner.phase_refine(photos + videos, tracker)
+
+        selected_ids = {clip.asset.id for clip in result.selected_clips}
+        selected_duration = sum(end - start for start, end in result.clip_segments.values())
+        assert selected_duration == pytest.approx(45.0)
+        assert {"video-selected", "video-leftover"} <= selected_ids
+
+    def test_backfill_relaxes_photo_cap_when_strict_ratio_leaves_large_hole(self):
+        """Duration wins over 50/50 after strict leftovers are exhausted."""
+        refiner = self._make_refiner(
+            target_clips=10,
+            avg_clip_duration=5.0,
+            target_duration_seconds=60.0,
+            prioritize_favorites=False,
+            max_non_favorite_ratio=1.0,
+            photo_max_ratio=0.50,
+            temporal_dedup_window_minutes=0.0,
+        )
+        tracker = self._make_tracker()
+        base = datetime(2025, 10, 1, 12, 0, tzinfo=UTC)
+        videos = [
+            _make_clip_with_segment(
+                f"video-{i}",
+                score=0.90 - i * 0.01,
+                end=7.0,
+                file_created_at=base + timedelta(hours=i),
+            )
+            for i in range(5)
+        ]
+        photos = [
+            _make_clip_with_segment(
+                f"photo-{i}",
+                asset_type="IMAGE",
+                score=0.70 - i * 0.01,
+                end=4.0,
+                file_created_at=base + timedelta(days=i // 2, minutes=i),
+            )
+            for i in range(10)
+        ]
+
+        result = refiner.phase_refine(videos + photos, tracker)
+
+        photo_count = sum(1 for clip in result.selected_clips if clip.asset.type.value == "IMAGE")
+        selected_duration = sum(end - start for start, end in result.clip_segments.values())
+        assert selected_duration == pytest.approx(59.0)
+        assert photo_count / len(result.selected_clips) <= 0.70
+
+    def test_backfill_accepts_one_small_overrun_instead_of_leaving_a_hole(self):
+        """A five-second leftover should fill a three-second hole in an explicit budget."""
+        refiner = self._make_refiner(
+            target_clips=4,
+            avg_clip_duration=5.0,
+            target_duration_seconds=18.0,
+            prioritize_favorites=False,
+            max_non_favorite_ratio=1.0,
+            photo_max_ratio=1.0,
+            temporal_dedup_window_minutes=0.0,
+        )
+        tracker = self._make_tracker()
+        base = datetime(2025, 11, 1, 12, 0, tzinfo=UTC)
+        analyzed = [
+            _make_clip_with_segment(
+                f"clip-{index}",
+                score=0.90 - index * 0.01,
+                end=5.0,
+                file_created_at=base + timedelta(hours=index),
+            )
+            for index in range(4)
+        ]
+
+        result = refiner.phase_refine(analyzed, tracker)
+
+        selected_duration = sum(end - start for start, end in result.clip_segments.values())
+        assert selected_duration == pytest.approx(20.0)
 
     def test_trip_segments_used_when_overnight_bases_set(self):
         """When overnight_bases is set, select_clips_by_trip_segments is called."""

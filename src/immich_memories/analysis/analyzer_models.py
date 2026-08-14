@@ -73,6 +73,7 @@ class ScoredSegment:
     llm_subjects: list[str] | None = None
     llm_interestingness: float | None = None
     llm_quality: float | None = None
+    llm_confidence: float | None = None
 
     @property
     def duration(self) -> float:

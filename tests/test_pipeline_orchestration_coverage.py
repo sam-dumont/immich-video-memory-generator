@@ -563,6 +563,27 @@ class TestScoreContentBranches:
         result = analyzer._score_content(Path("/fake.mp4"), 0.0, 5.0)
         assert result == 0.5
 
+    def test_failed_content_analysis_records_failure_not_default_scores(self):
+        from immich_memories.analysis.llm_response_parser import ContentAnalysis
+
+        mock_ca = MagicMock()
+        mock_ca.analyze_segment.return_value = ContentAnalysis(
+            description="(analysis unavailable)",
+            interestingness=0.5,
+            quality=0.5,
+            confidence=0.0,
+        )
+        scorer = MagicMock()
+        scorer.content_min_confidence = 0.5
+        analyzer = _make_analyzer(content_analyzer=mock_ca, scorer=scorer)
+        segment = ScoredSegment(start_time=0.0, end_time=5.0)
+
+        result = analyzer._score_content(Path("/fake.mp4"), 0.0, 5.0, segment=segment)
+
+        assert result == 0.5
+        assert segment.llm_confidence == 0.0
+        assert segment.llm_description is None
+
 
 class TestComputeTotalScoreNegativeVisualWeight:
     """Lines 669-674: visual_w < 0 triggers re-normalization."""

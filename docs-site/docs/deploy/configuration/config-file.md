@@ -24,6 +24,8 @@ immich:
 output:
   directory: "~/Videos/Memories"
   resolution: "1080p"            # 720p, 1080p, 4k
+  codec: h265                     # Preserve HDR; use h264 for maximum compatibility
+  hdr_mode: auto                  # Preserve HLG/PQ when present; otherwise output SDR
 
 defaults:
   target_duration_seconds: 600   # 10-3600 seconds
@@ -52,6 +54,16 @@ scoring_priority:
 ```
 
 That's it. Everything else has sane defaults.
+
+With `codec: h265` and `hdr_mode: auto`, detected HLG or PQ material produces a 10-bit HDR video;
+SDR clips, photos, and titles are converted to the same HDR transfer during assembly. H.264 is
+always SDR. If you select `codec: h264`, detected HDR is tone-mapped to SDR even when
+`hdr_mode: auto` is set. Use H.264 when broad playback compatibility matters more than HDR.
+
+`target_duration_seconds` applies to the complete result, including titles and the time removed by
+overlapping fades. When eligible material exists, the optimizer backfills unused clips before
+accepting a short result. The encoded duration may differ by less than one transition because cuts
+land on video frame boundaries.
 
 ## Immich API compatibility
 

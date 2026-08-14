@@ -105,6 +105,13 @@ The suggested duration scales with your time period:
 - Month: 2 minutes
 - Less than a month: 1 minute
 
+The target is the finished video's duration, including the opening, dividers, ending, and
+transition overlap. The selector reserves those seconds before choosing media. If normal quality
+and photo-balance filters leave the timeline short, it backfills from unused eligible clips and
+may relax the photo ratio before giving up. It does not relax hard safety, date, person, or
+duplicate constraints. Final duration can vary by less than one transition because video is cut on
+frame boundaries.
+
 ---
 
 ## Clip Review (Step 2)
@@ -189,7 +196,14 @@ Three options for background music:
 
 - **None**: No background music.
 - **Upload file**: Upload your own MP3, M4A, or WAV file. Volume slider controls how loud the music plays relative to original clip audio.
-- **AI Generated**: Generates a soundtrack based on the mood of your clips. The pipeline supports ACE-Step (recommended, higher quality) and MusicGen as backends, with automatic fallback. Both require a GPU server configured in your settings. You can generate 1-3 versions and pick the best one.
+- **AI Generated**: Generates a soundtrack based on the mood of your clips. ACE-Step supports direct local generation on Apple Silicon/CUDA and a hosted REST server. In local mode it automatically uses the configured ACE-Step server if the local package is unavailable. MusicGen is an alternative generator when ACE-Step is disabled, and can also provide remote Demucs stem separation. You can generate 1-3 versions and pick the best one.
+
+For ACE-Step v0.1.8 on a machine with at least 20GB of GPU/unified memory, use
+`model_variant: "acestep-v15-xl-turbo"` with `lm_model_size: "4B"`. These select two different
+components: the XL 4B audio model and the 4B planning model. In hosted `api` mode, select both on
+the ACE-Step server; the app cannot replace an already-loaded server model. Avoid unattended
+`xl-sft`/`xl-base` use on v0.1.8 until DCW is explicitly disabled for those non-turbo models or the
+upstream model-aware API fix is released.
 
 Both upload and AI options include a volume slider (0-100%).
 
