@@ -145,7 +145,7 @@ class _BackfillCandidates:
 
     items: list[ClipWithSegment]
     photo_limit: float | None
-    photo_limit_relaxed: bool = False
+    tier: str = "strict"
     used_overrun: bool = False
 
 
@@ -155,6 +155,8 @@ def _is_backfill_candidate_admissible(
     context: _BackfillContext,
     photo_limit: float | None,
     remaining_budget: float,
+    enforce_favorite_ratio: bool = True,
+    enforce_temporal_spacing: bool = True,
 ) -> bool:
     """Return whether a leftover preserves active selection constraints."""
     from immich_memories.analysis.clip_scaler import temporal_cluster_key
@@ -164,7 +166,7 @@ def _is_backfill_candidate_admissible(
     if candidate_duration <= 0 or candidate_duration > remaining_budget + 1e-6:
         return False
 
-    if context.temporal_window > 0:
+    if enforce_temporal_spacing and context.temporal_window > 0:
         bucket = temporal_cluster_key(candidate, context.temporal_window)
         if bucket in context.occupied_temporal_buckets:
             return False
@@ -178,7 +180,8 @@ def _is_backfill_candidate_admissible(
         return False
 
     if (
-        not candidate.clip.asset.is_favorite
+        enforce_favorite_ratio
+        and not candidate.clip.asset.is_favorite
         and context.config.prioritize_favorites
         and context.config.max_non_favorite_ratio < 1.0
     ):
@@ -199,6 +202,8 @@ def _admissible_backfill_candidates(
     context: _BackfillContext,
     photo_limit: float | None,
     remaining_budget: float,
+    enforce_favorite_ratio: bool = True,
+    enforce_temporal_spacing: bool = True,
 ) -> list[ClipWithSegment]:
     """Filter leftovers through the active backfill constraints."""
     return [
@@ -209,6 +214,8 @@ def _admissible_backfill_candidates(
             context=context,
             photo_limit=photo_limit,
             remaining_budget=remaining_budget,
+            enforce_favorite_ratio=enforce_favorite_ratio,
+            enforce_temporal_spacing=enforce_temporal_spacing,
         )
     ]
 
@@ -220,7 +227,7 @@ def _resolve_backfill_candidates(
     active_photo_limit: float | None,
     remaining_budget: float,
 ) -> _BackfillCandidates:
-    """Find exact, relaxed-photo, or bounded-overrun candidates in that order."""
+    """Find candidates by progressively relaxing editorial constraints."""
     exact = _admissible_backfill_candidates(
         available,
         context=context,
@@ -230,25 +237,63 @@ def _resolve_backfill_candidates(
     if exact:
         return _BackfillCandidates(exact, active_photo_limit)
 
+    relaxed_photo_limit = active_photo_limit
     if active_photo_limit is not None and active_photo_limit < 0.70:
-        relaxed = _admissible_backfill_candidates(
+        relaxed_photo_limit = 0.70
+        relaxed_photos = _admissible_backfill_candidates(
             available,
             context=context,
-            photo_limit=0.70,
+            photo_limit=relaxed_photo_limit,
             remaining_budget=remaining_budget,
         )
-        if relaxed:
-            return _BackfillCandidates(relaxed, 0.70, photo_limit_relaxed=True)
+        if relaxed_photos:
+            return _BackfillCandidates(relaxed_photos, relaxed_photo_limit, "photo_ratio_70")
+
+    relaxed_favorites = _admissible_backfill_candidates(
+        available,
+        context=context,
+        photo_limit=relaxed_photo_limit,
+        remaining_budget=remaining_budget,
+        enforce_favorite_ratio=False,
+    )
+    if relaxed_favorites:
+        return _BackfillCandidates(relaxed_favorites, relaxed_photo_limit, "favorite_ratio")
+
+    relaxed_temporal = _admissible_backfill_candidates(
+        available,
+        context=context,
+        photo_limit=relaxed_photo_limit,
+        remaining_budget=remaining_budget,
+        enforce_favorite_ratio=False,
+        enforce_temporal_spacing=False,
+    )
+    if relaxed_temporal:
+        return _BackfillCandidates(relaxed_temporal, relaxed_photo_limit, "temporal_spacing")
+
+    if relaxed_photo_limit is not None:
+        unlimited_photos = _admissible_backfill_candidates(
+            available,
+            context=context,
+            photo_limit=None,
+            remaining_budget=remaining_budget,
+            enforce_favorite_ratio=False,
+            enforce_temporal_spacing=False,
+        )
+        if unlimited_photos:
+            return _BackfillCandidates(unlimited_photos, None, "photo_ratio_unlimited")
 
     overrun = _admissible_backfill_candidates(
         available,
         context=context,
-        photo_limit=active_photo_limit,
+        photo_limit=None,
         remaining_budget=remaining_budget + 2.0,
+        enforce_favorite_ratio=False,
+        enforce_temporal_spacing=False,
     )
     return _BackfillCandidates(
         overrun,
-        active_photo_limit,
+        None,
+        "bounded_overrun",
         used_overrun=bool(overrun),
     )
 
@@ -328,23 +373,26 @@ def _log_backfill_resolution(
     *,
     original_photo_limit: float,
     remaining: float,
-    photo_limit_already_relaxed: bool,
-) -> bool:
-    """Log one-time constraint relaxation and return its updated state."""
-    if resolved.photo_limit_relaxed and not photo_limit_already_relaxed:
-        logger.info(
-            "Post-filter backfill: relaxing photo cap from %.0f%% to 70%% "
-            "because strict leftovers cannot fill %.1fs",
-            original_photo_limit * 100,
-            remaining,
-        )
-        photo_limit_already_relaxed = True
-    if resolved.used_overrun:
-        logger.info(
-            "Post-filter backfill: accepting up to 2.0s overrun to fill %.1fs gap",
-            remaining,
-        )
-    return photo_limit_already_relaxed
+    logged_tiers: set[str],
+) -> set[str]:
+    """Log each progressive relaxation at most once per selection."""
+    if not resolved.items or resolved.tier == "strict" or resolved.tier in logged_tiers:
+        return logged_tiers
+
+    messages = {
+        "photo_ratio_70": (
+            "relaxing photo ratio from %.0f%% to 70%%",
+            (original_photo_limit * 100,),
+        ),
+        "favorite_ratio": ("allowing additional non-favorites", ()),
+        "temporal_spacing": ("allowing a nearby moment", ()),
+        "photo_ratio_unlimited": ("allowing photos beyond the ratio cap", ()),
+        "bounded_overrun": ("accepting up to 2.0s runtime overrun", ()),
+    }
+    message, args = messages[resolved.tier]
+    logger.info("Post-filter backfill: %s to fill %.1fs gap", message % args, remaining)
+    logged_tiers.add(resolved.tier)
+    return logged_tiers
 
 
 def _log_backfill_summary(
@@ -764,7 +812,7 @@ class ClipRefiner:
             self.config,
             photo_cap_bypassed=photo_cap_bypassed,
         )
-        photo_limit_relaxed = False
+        logged_relaxation_tiers: set[str] = set()
 
         temporal_window = self.config.temporal_dedup_window_minutes
         occupied_temporal_buckets = _initial_temporal_buckets(
@@ -790,11 +838,11 @@ class ClipRefiner:
                 remaining_budget=remaining,
             )
             active_photo_limit = resolved.photo_limit
-            photo_limit_relaxed = _log_backfill_resolution(
+            logged_relaxation_tiers = _log_backfill_resolution(
                 resolved,
                 original_photo_limit=self.config.photo_max_ratio,
                 remaining=remaining,
-                photo_limit_already_relaxed=photo_limit_relaxed,
+                logged_tiers=logged_relaxation_tiers,
             )
 
             if not resolved.items:

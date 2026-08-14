@@ -151,6 +151,134 @@ class TestBackfillPolicyHelpers:
 
         assert chosen is favorite
 
+    def test_backfill_relaxes_favorite_ratio_before_leaving_a_duration_hole(self) -> None:
+        from immich_memories.analysis.clip_refiner import (
+            _BackfillContext,
+            _resolve_backfill_candidates,
+        )
+        from immich_memories.analysis.smart_pipeline import PipelineConfig
+
+        candidate = _make_clip(
+            "non-favorite-leftover",
+            datetime(2026, 7, 2, tzinfo=UTC),
+        )
+        context = _BackfillContext(
+            config=PipelineConfig(
+                target_clips=2,
+                prioritize_favorites=True,
+                max_non_favorite_ratio=0.0,
+            ),
+            selected_count=2,
+            photo_count=0,
+            non_favorite_count=0,
+            temporal_window=0.0,
+            occupied_temporal_buckets=set(),
+        )
+
+        resolved = _resolve_backfill_candidates(
+            [candidate],
+            context=context,
+            active_photo_limit=0.5,
+            remaining_budget=5.0,
+        )
+
+        assert resolved.items == [candidate]
+        assert resolved.tier == "favorite_ratio"
+
+    def test_backfill_relaxes_temporal_spacing_after_favorite_ratio(self) -> None:
+        from immich_memories.analysis.clip_refiner import (
+            _BackfillContext,
+            _resolve_backfill_candidates,
+        )
+        from immich_memories.analysis.clip_scaler import temporal_cluster_key
+        from immich_memories.analysis.smart_pipeline import PipelineConfig
+
+        candidate = _make_clip("nearby-leftover", datetime(2026, 7, 2, 12, 2, tzinfo=UTC))
+        context = _BackfillContext(
+            config=PipelineConfig(temporal_dedup_window_minutes=10.0),
+            selected_count=1,
+            photo_count=0,
+            non_favorite_count=0,
+            temporal_window=10.0,
+            occupied_temporal_buckets={temporal_cluster_key(candidate, 10.0)},
+        )
+
+        resolved = _resolve_backfill_candidates(
+            [candidate],
+            context=context,
+            active_photo_limit=0.5,
+            remaining_budget=5.0,
+        )
+
+        assert resolved.items == [candidate]
+        assert resolved.tier == "temporal_spacing"
+
+    def test_backfill_can_remove_photo_ratio_as_last_content_constraint(self) -> None:
+        from immich_memories.analysis.clip_refiner import (
+            _BackfillContext,
+            _resolve_backfill_candidates,
+        )
+        from immich_memories.analysis.smart_pipeline import PipelineConfig
+
+        candidate = _make_clip(
+            "only-photo-leftover",
+            datetime(2026, 7, 2, tzinfo=UTC),
+            is_favorite=True,
+            asset_type=AssetType.IMAGE,
+        )
+        context = _BackfillContext(
+            config=PipelineConfig(photo_max_ratio=0.4),
+            selected_count=1,
+            photo_count=1,
+            non_favorite_count=0,
+            temporal_window=0.0,
+            occupied_temporal_buckets=set(),
+        )
+
+        resolved = _resolve_backfill_candidates(
+            [candidate],
+            context=context,
+            active_photo_limit=0.4,
+            remaining_budget=5.0,
+        )
+
+        assert resolved.items == [candidate]
+        assert resolved.photo_limit is None
+        assert resolved.tier == "photo_ratio_unlimited"
+
+    def test_backfill_uses_two_second_overrun_only_after_content_relaxations(self) -> None:
+        from immich_memories.analysis.clip_refiner import (
+            _BackfillContext,
+            _resolve_backfill_candidates,
+        )
+        from immich_memories.analysis.smart_pipeline import PipelineConfig
+
+        candidate = _make_clip(
+            "slightly-long",
+            datetime(2026, 7, 2, tzinfo=UTC),
+            duration=6.0,
+            is_favorite=True,
+        )
+        context = _BackfillContext(
+            config=PipelineConfig(),
+            selected_count=1,
+            photo_count=0,
+            non_favorite_count=0,
+            temporal_window=0.0,
+            occupied_temporal_buckets=set(),
+        )
+
+        resolved = _resolve_backfill_candidates(
+            [candidate],
+            context=context,
+            active_photo_limit=0.5,
+            remaining_budget=5.0,
+        )
+
+        assert resolved.items == [candidate]
+        assert resolved.tier == "bounded_overrun"
+        assert resolved.used_overrun
+
 
 class TestPhotoCapScarcity:
     """Photo cap should respect video scarcity — let photos fill when needed."""
