@@ -68,6 +68,16 @@ class TestAppStateDefaults:
         assert state.generation_warning is None
         assert state.delivery_status is DeliveryStatus.NOT_REQUESTED
 
+    def test_duration_defaults_to_auto(self):
+        state = AppState()
+
+        assert state.duration_mode == "auto"
+
+    def test_fractional_minutes_preserve_exact_target_seconds(self):
+        state = AppState(target_duration=2.5)
+
+        assert state.target_duration_seconds == 150.0
+
     def test_ensure_config_loads_explicit_immich_api_version(self):
         """UI clients retain an explicit compatibility policy from configuration."""
         state = AppState()

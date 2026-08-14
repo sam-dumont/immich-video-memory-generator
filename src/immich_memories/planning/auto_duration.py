@@ -29,6 +29,19 @@ class AutoDurationResult:
     diverse_capacity_seconds: float
 
 
+def trip_editorial_duration_seconds(active_days: int) -> float:
+    """Return the bounded editorial target before media-capacity adjustment."""
+    if active_days <= 0:
+        return 0.0
+    return min(
+        _TRIP_MAX_EDITORIAL_SECONDS,
+        max(
+            _TRIP_MIN_EDITORIAL_SECONDS,
+            _TRIP_BASE_SECONDS + active_days * _TRIP_SECONDS_PER_ACTIVE_DAY,
+        ),
+    )
+
+
 def _asset_day(asset: Asset) -> date:
     return asset.file_created_at.date()
 
@@ -65,13 +78,7 @@ def resolve_trip_auto_duration(
     if active_days == 0:
         return AutoDurationResult(0.0, 0, 0.0, 0.0)
 
-    editorial_seconds = min(
-        _TRIP_MAX_EDITORIAL_SECONDS,
-        max(
-            _TRIP_MIN_EDITORIAL_SECONDS,
-            _TRIP_BASE_SECONDS + active_days * _TRIP_SECONDS_PER_ACTIVE_DAY,
-        ),
-    )
+    editorial_seconds = trip_editorial_duration_seconds(active_days)
 
     content_capacity = 0.0
     for active_date in active_dates:

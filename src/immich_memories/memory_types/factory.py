@@ -281,10 +281,12 @@ def _trip(
 
     location = location_name or "Unknown Location"
     date_range = build_trip(trip_start, trip_end)
-    # Trips: 35s per day (midpoint of 30-45s density range), min 60s, max 600s
-    # Pipeline can adjust later based on viable clip density per day
+    # Start with a modest editorial curve. Auto mode adjusts this downward
+    # after discovery when the selected media cannot support the full story.
     trip_days = (trip_end - trip_start).days + 1
-    duration = max(60, min(600, trip_days * 35))
+    from immich_memories.planning.auto_duration import trip_editorial_duration_seconds
+
+    duration = trip_editorial_duration_seconds(trip_days)
     person_filter = PersonFilter()
     if person_names:
         person_filter = PersonFilter(mode="single", person_names=person_names[:1])

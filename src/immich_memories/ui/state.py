@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
 from immich_memories.api.compatibility import ApiVersionPolicy
@@ -81,7 +81,8 @@ class AppState:
     pipeline_config: dict[str, Any] = field(default_factory=dict)
 
     # Generation settings
-    target_duration: int = 10  # minutes
+    duration_mode: Literal["auto", "manual"] = "auto"
+    target_duration: float = 10.0  # minutes; fractional values preserve exact seconds
     avg_clip_duration: int = 5  # seconds per clip
     hdr_only: bool = False
     prioritize_favorites: bool = True
@@ -155,6 +156,11 @@ class AppState:
     def get_selected_clips(self) -> list[VideoClipInfo]:
         """Get the list of currently selected clips."""
         return [c for c in self.clips if c.asset.id in self.selected_clip_ids]
+
+    @property
+    def target_duration_seconds(self) -> float:
+        """Return the exact total runtime requested by Auto or Manual mode."""
+        return self.target_duration * 60.0
 
 
 # Session store: maps session_id → AppState

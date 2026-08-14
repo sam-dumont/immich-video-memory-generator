@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from typing import Any
 
 from nicegui import ui
 
@@ -31,13 +32,38 @@ from immich_memories.ui.pages.clip_pipeline import (
 )
 from immich_memories.ui.pages.clip_review import _render_review_selected_clips
 from immich_memories.ui.pages.step2_loading import _load_clips
-from immich_memories.ui.state import get_app_state
+from immich_memories.ui.state import AppState, get_app_state
 
 logger = logging.getLogger(__name__)
 
 # ============================================================================
 # Main Step 2 Render Function
 # ============================================================================
+
+
+def _duration_mode_label(state) -> str:
+    """Return compact copy for the currently resolved duration mode."""
+    total_seconds = round(state.target_duration_seconds)
+    minutes, seconds = divmod(total_seconds, 60)
+    return f"Auto · {minutes}m {seconds:02d}s"
+
+
+def _set_manual_target_minutes(state, value: float) -> None:
+    """Apply an exact manual duration from the Step 2 number input."""
+    state.target_duration = value
+    state.duration_mode = "manual"
+
+
+def _set_auto_duration_mode(state, enabled: bool) -> None:
+    """Toggle Auto mode without changing its last resolved value."""
+    state.duration_mode = "auto" if enabled else "manual"
+
+
+def _handle_duration_mode_change(state: AppState, event: Any) -> None:
+    """Apply the Auto switch and refresh the controls for the new mode."""
+    value = event.value if hasattr(event, "value") else event
+    _set_auto_duration_mode(state, bool(value))
+    ui.navigate.to("/step2")
 
 
 def _render_step2_header(state) -> bool:
@@ -169,13 +195,29 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
     with ui.expansion("Generate Memories", icon="auto_awesome", value=True).classes("w-full"):
         # All controls in one flowing row
         with ui.row().classes("w-full gap-4 items-end flex-wrap"):
-            ui.number("Target duration (min)", value=state.target_duration, min=1, max=60).classes(
-                "w-32"
-            ).on_value_change(
-                lambda e: setattr(
-                    state, "target_duration", int(e.value if hasattr(e, "value") else e)
-                )
+            ui.switch(
+                "Auto duration",
+                value=state.duration_mode == "auto",
+                on_change=lambda event: _handle_duration_mode_change(state, event),
+            ).tooltip(
+                "Uses about two good moments per active day, plus titles, "
+                "and shortens sparse memories automatically"
             )
+            if state.duration_mode == "auto":
+                ui.label(_duration_mode_label(state)).classes("text-base font-semibold mb-2")
+            else:
+                ui.number(
+                    "Target duration (min)",
+                    value=state.target_duration,
+                    min=0.25,
+                    max=60,
+                    step=0.25,
+                ).classes("w-40").on_value_change(
+                    lambda e: _set_manual_target_minutes(
+                        state,
+                        e.value if hasattr(e, "value") else e,
+                    )
+                )
             ui.number("Avg seconds per clip", value=state.avg_clip_duration, min=2, max=30).classes(
                 "w-32"
             ).on_value_change(

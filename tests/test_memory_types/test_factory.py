@@ -239,6 +239,17 @@ class TestCreatePresetTrip:
         assert preset.scoring.content_weight == 0.3
         assert preset.scoring.face_weight == 0.2
 
+    def test_twelve_day_trip_starts_with_a_realistic_auto_duration(self) -> None:
+        """Regression: the old 35-seconds/day placeholder produced seven minutes."""
+        preset = create_preset(
+            MemoryType.TRIP,
+            year=2026,
+            trip_start=date(2026, 7, 25),
+            trip_end=date(2026, 8, 5),
+            location_name="Somme, France",
+        )
+        assert preset.default_duration_seconds == 150.0
+
     def test_requires_trip_dates(self) -> None:
         with pytest.raises(ValueError, match="trip_start.*required"):
             create_preset(MemoryType.TRIP, year=2024)
