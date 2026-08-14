@@ -15,6 +15,7 @@ from immich_memories.processing.encoding_plan import (
     UnsupportedEncodingCombination,
     resolve_encoding_plan,
     resolve_output_selection,
+    software_fallback_plan,
 )
 from immich_memories.processing.hardware import HWAccelBackend, HWAccelCapabilities
 
@@ -417,6 +418,52 @@ def test_software_encoder_args_include_requested_crf() -> None:
     )
 
     assert plan.encoder_args == ("-preset", "medium", "-crf", "21")
+
+
+def test_standalone_assembly_plan_records_its_effective_crf() -> None:
+    from immich_memories.processing.assembly_config import standalone_assembly_encoding_plan
+
+    plan = standalone_assembly_encoding_plan(28)
+
+    assert plan.crf == 28
+    assert plan.encoder_args[-2:] == ("-crf", "28")
+
+
+@pytest.mark.parametrize(
+    ("crf", "expected_quality"),
+    [
+        pytest.param(0, "100", id="lossless-boundary"),
+        pytest.param(12, "87", id="high"),
+        pytest.param(18, "75", id="medium"),
+        pytest.param(23, "65", id="common-default"),
+        pytest.param(51, "9", id="lowest-boundary"),
+    ],
+)
+def test_videotoolbox_quality_is_derived_from_requested_crf(
+    crf: int,
+    expected_quality: str,
+) -> None:
+    plan = resolve_encoding_plan(
+        _request(OutputCodec.H265, hardware_enabled=True, crf=crf),
+        _apple_capabilities(),
+        input_has_hdr=True,
+    )
+
+    quality_index = plan.encoder_args.index("-q:v")
+    assert plan.encoder_args[quality_index + 1] == expected_quality
+
+
+def test_software_fallback_preserves_requested_crf() -> None:
+    hardware_plan = resolve_encoding_plan(
+        _request(OutputCodec.H265, hardware_enabled=True, crf=18),
+        _apple_capabilities(),
+        input_has_hdr=True,
+    )
+
+    fallback = software_fallback_plan(hardware_plan)
+
+    assert fallback.encoder == "libx265"
+    assert fallback.encoder_args[-2:] == ("-crf", "18")
 
 
 @pytest.mark.parametrize("crf", [0, 51])

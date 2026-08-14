@@ -588,6 +588,39 @@ def test_streaming_assembly_uses_the_same_software_h264_plan(tmp_path: Path) -> 
     assert assemble.call_args.kwargs["encoding_plan"] is plan
 
 
+def test_streaming_assembly_records_the_plan_that_actually_encoded(tmp_path: Path) -> None:
+    """A successful software retry must replace the requested hardware plan."""
+    from immich_memories.processing.assembly_engine import AssemblyEngine
+    from immich_memories.processing.encoding_plan import software_fallback_plan
+
+    plan = _hardware_h264_plan()
+    fallback = software_fallback_plan(plan)
+    settings = AssemblySettings(
+        encoding_plan=plan,
+        auto_resolution=False,
+        target_resolution=(1920, 1080),
+    )
+    prober = MagicMock()
+    prober.detect_max_framerate.return_value = 30
+    clips = [
+        _make_assembly_clip(tmp_path, "one.mp4"),
+        _make_assembly_clip(tmp_path, "two.mp4"),
+    ]
+    engine = AssemblyEngine(settings, prober, MagicMock(), MagicMock())
+
+    def assemble_with_fallback(**kwargs: object) -> None:
+        callback = kwargs["effective_plan_callback"]
+        callback(fallback)  # type: ignore[operator]
+
+    with patch(
+        "immich_memories.processing.assembly_engine.streaming_assemble_full",
+        side_effect=assemble_with_fallback,
+    ):
+        engine.assemble_scalable(clips, tmp_path / "memory.mp4")
+
+    assert settings.encoding_plan is fallback
+
+
 def test_explicit_hdr_plan_converts_all_sdr_streaming_input(tmp_path: Path) -> None:
     """Source detection cannot override an explicitly requested HDR output."""
     from immich_memories.processing.assembly_engine import AssemblyEngine

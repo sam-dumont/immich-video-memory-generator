@@ -455,6 +455,20 @@ def test_direct_generation_normalizes_staged_and_final_paths_to_plan_container(
     )
     render_messages = [event.message for event in phase_events if event.phase.value == "render"]
     assert render_messages == ["Rendering memory", "Render complete"]
+    tracker.complete_phase.assert_any_call(
+        items_processed=1,
+        extra_metrics={
+            "output_width": 1920,
+            "output_height": 1080,
+            "codec": "prores",
+            "encoder": "prores_ks",
+            "crf": 18,
+            "encoder_args": ["-profile:v", "3"],
+            "planned_pixel_format": "yuv422p10le",
+            "output_pixel_format": "yuv422p10le",
+            "target_transfer": "none",
+        },
+    )
 
 
 def test_generation_validation_failure_preserves_old_final_and_stops_downstream_work(

@@ -241,6 +241,9 @@ class AssemblyEngine:
 
         logger.info(f"Streaming assembly: {len(clips)} clips at {target_w}x{target_h}")
 
+        def record_effective_plan(effective_plan) -> None:
+            self.settings.encoding_plan = effective_plan
+
         streaming_assemble_full(
             clips=clips,
             transitions=transitions,
@@ -257,13 +260,20 @@ class AssemblyEngine:
             progress_callback=progress_callback,
             frame_preview_callback=frame_preview_callback,
             probe_cache=self.prober.probe_cache,
+            effective_plan_callback=record_effective_plan,
         )
         return output_path
 
     def _assemble_single_clip(self, clip: AssemblyClip, output_path: Path) -> Path:
         """Encode a single clip under the resolved final-output plan."""
         target_resolution = resolve_target_resolution(self.settings, self.prober, [clip])
-        self.encoder.encode_single_clip(clip, output_path, target_resolution=target_resolution)
+        effective_plan = self.encoder.encode_single_clip(
+            clip,
+            output_path,
+            target_resolution=target_resolution,
+        )
+        if effective_plan is not None:  # compatibility with injected encoders
+            self.settings.encoding_plan = effective_plan
         return output_path
 
     def assemble_with_cuts(

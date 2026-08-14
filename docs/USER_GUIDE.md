@@ -190,6 +190,12 @@ After reviewing your clips, this step configures how the final video gets assemb
 | **Date overlay** | Checkbox to burn date text into the video | Off |
 | **Keep intermediate files** | Saves temporary files for debugging | Off |
 
+The table above describes the UI. For CLI and scheduled runs, omitting `--resolution` uses
+`output.resolution` from your config; pass `--resolution auto` explicitly to match the source
+clips. Output quality comes from the configured CRF (or the `quality` shorthand when CRF is not
+set) for software H.264/H.265 and Apple VideoToolbox. Other hardware backends retain their
+existing quality policies. On Apple, `encoder_preset` controls speed/effort, not image quality.
+
 ### Music
 
 Three options for background music:

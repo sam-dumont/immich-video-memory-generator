@@ -58,7 +58,7 @@ from immich_memories.generate_timeline import (
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.clip_validation import validate_clips
 from immich_memories.processing.output_canvas import OutputCanvas
-from immich_memories.processing.output_contract import publish_validated_output, validate_output
+from immich_memories.processing.output_contract import publish_output_metrics, validate_output
 from immich_memories.security import configured_secret_values, sanitize_error_message
 
 if TYPE_CHECKING:
@@ -890,9 +890,10 @@ def _generate_memory_inner(
             assembly_cb,
             frame_preview_callback=params.frame_preview_callback,
         )
-        publish_validated_output(staged_result_path, result_output_path, settings.encoding_plan)
+        plan = settings.encoding_plan
+        metrics = publish_output_metrics(staged_result_path, result_output_path, plan)
         result_path = result_output_path
-        run_tracker.complete_phase(items_processed=len(assembly_clips))
+        run_tracker.complete_phase(items_processed=len(assembly_clips), extra_metrics=metrics)
         operational.emit(
             OperationalPhase.RENDER,
             len(assembly_clips),

@@ -114,6 +114,13 @@ output:
   quality: "high"                # high, medium, low (shorthand for CRF presets)
 ```
 
+CRF is the image-quality authority. `quality` is only a shorthand used when `crf` is omitted;
+an explicit `crf` wins. Software H.264/H.265 encoders receive CRF directly. FFmpeg's
+VideoToolbox encoders do not implement CRF, so the app translates the same 0-51 setting to
+VideoToolbox's 1-100 quality scale (for example, CRF 18 becomes `-q:v 75`). Lower CRF still means
+higher quality for software H.264/H.265 and Apple VideoToolbox. NVENC, VAAPI, QSV, and ProRes use
+their existing backend policies; `output.crf` is not currently translated for those encoders.
+
 The final encoding plan permits only `mp4` and `mov` containers with `h264`, `h265`, or `prores`
 codecs. `generate --format` accepts only `mp4`, `h265`, and `prores`: they select H.264/MP4,
 H.265/MP4, and ProRes/MOV respectively. Config can select compatible codec/container pairs;
@@ -153,6 +160,10 @@ hardware:
   gpu_decode: true               # Hardware video decoding
   gpu_memory_limit: 0            # GPU memory limit in MB (0 = unlimited)
 ```
+
+`encoder_preset` controls encoder speed/effort; it does not replace `output.crf`. On Apple,
+`fast` enables VideoToolbox's speed-priority mode while `balanced` and `quality` leave it disabled.
+Image quality still comes from the CRF translation described above.
 
 ## Audio and music
 

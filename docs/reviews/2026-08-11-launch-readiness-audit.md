@@ -1066,3 +1066,44 @@ Final verification for this correction:
 - Mypy: no issues in 252 source files.
 - Ruff lint: passed; Ruff format: all 526 Python files clean.
 - Docusaurus production build and `git diff --check`: passed.
+
+## HDR title continuity and publication quality — 2026-08-14
+
+The visible exposure jump between a content-backed opening title and its first clip was a real
+regression. The title pipeline treated every Taichi frame as SDR. For an HLG content background it
+therefore decoded HLG to SDR, composited the title, then expanded the result back to HLG, while the
+following content clip remained HLG throughout. The double transfer changed contrast, highlights,
+and saturation at the cut.
+
+The content-backed path now restores the previously working transfer-preserving design. HLG/PQ
+background frames remain 16-bit in their existing transfer; the raw title input is tagged with the
+matching BT.2020 transfer metadata; and the title encoder skips transfer conversion when the frame
+transfer already matches the output plan. Synthetic gradients, maps, PIL fallbacks, and other SDR
+title sources still use the high-precision SDR-to-HDR conversion. Regression tests assert both
+branches explicitly.
+
+The separate report that iPhone video looked like an SDR-to-HDR conversion was checked against the
+exact selected marker-scene source (`e0cb27a5-6e4b-4ad0-8fc9-0a3db858c108`). The original is HEVC
+Main 10, `yuv420p10le`, TV range, BT.2020/HLG, and also carries Dolby Vision RPU metadata. It was
+correctly classified as HLG and never entered the SDR-to-HDR conversion branch. The historic
+raw-pipe range fix remains active: decoded 10-bit YUV stays TV range, and the encoder input is
+explicitly tagged before metadata is lost at the rawvideo boundary. No arbitrary exposure or
+saturation correction was added.
+
+The Apple VideoToolbox quality mapping is also explicit now. The configured CRF is translated into
+VideoToolbox's quality scale and `quality` preset disables speed priority; CRF 18 resolves to
+`-q:v 75 -prio_speed 0`. Effective hardware-to-software fallback is reported through final run
+metadata rather than leaving the requested encoder recorded after a runtime fallback.
+
+Real local-library validation with Qwen selection and local ACE-Step music completed successfully:
+
+- `/Users/sam/Videos/Memories/emile-july-2026-4k-hdr-title-fixed_20260814_132025_566b/emile-july-2026-4k-hdr-title-fixed.mp4`
+- 60.467s, 3840×2160 at 60 fps, HEVC Main 10, `yuv420p10le`, TV range, BT.2020/HLG.
+- 1,169,050,248 bytes; video bitrate 154,460,436 bit/s; stereo AAC soundtrack generated locally
+  through the ACE-Step MLX backend.
+- The opening title and first content frame were extracted through the same deterministic HLG-to-SDR
+  inspection transform; the prior title/content exposure jump is absent.
+- Full repository suite: 4,395 passed, 7 skipped, 662 deliberate deselections.
+- Frozen-tree title/HDR regression set: 201 passed.
+- Mypy: no issues in 254 source files; Ruff lint and format: all 529 Python files clean.
+- Docusaurus production build and `git diff --check`: passed.

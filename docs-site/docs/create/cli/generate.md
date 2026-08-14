@@ -42,15 +42,21 @@ immich-memories generate [OPTIONS]
 |------|-------|------|---------|-------------|
 | `--duration` | `-d` | int | — | Target duration in seconds |
 | `--orientation` | `-o` | choice | `landscape` | `landscape`, `portrait`, or `square` |
-| `--resolution` | `-r` | choice | `auto` | `auto`, `4k`, `1080p`, or `720p` |
+| `--resolution` | `-r` | choice | config value; `auto` matches source clips | `auto`, `4k`, `1080p`, or `720p` |
 | `--scale-mode` | `-s` | choice | config/`blur` | `fit`, `fill`, `smart_crop`, or `blur` |
 | `--transition` | `-t` | choice | `smart` | `smart`, `cut`, `crossfade`, or `none` |
-| `--quality` | — | choice | `high` | `high`, `medium`, or `low` |
-| `--format` | — | choice | `mp4` | `mp4` or `prores` |
+| `--quality` | — | choice | config value | `high`, `medium`, or `low` |
+| `--format` | — | choice | config value | `mp4`, `h265`, or `prores` |
 | `--output` | `-O` | path | auto | Output file path |
 | `--title` | — | string | — | Override title screen text |
 | `--subtitle` | — | string | — | Override subtitle text |
 | `--add-date` | — | flag | — | Add date overlay to clips |
+
+When `--resolution` is omitted, the command uses `output.resolution` from the config (1080p by
+default). Pass `--resolution auto` explicitly when you want the source clips to choose the output
+tier. `--quality` changes the effective CRF preset; an explicit `output.crf` in config remains the
+more precise control. The app passes it directly to software H.264/H.265 and translates it for
+Apple VideoToolbox; other hardware backends retain their existing quality policies.
 
 ### Analysis
 

@@ -409,6 +409,19 @@ def test_output_docs_explain_the_hdr_codec_contract() -> None:
         assert "H.264 is always SDR" in text
 
 
+def test_output_docs_explain_effective_resolution_and_hardware_quality() -> None:
+    reference = " ".join(_read("docs-site/docs/reference/config-reference.md").split())
+    cli = " ".join(_read("docs-site/docs/create/cli/generate.md").split())
+    guide = " ".join(_read("docs/USER_GUIDE.md").split())
+
+    assert "CRF is the image-quality authority" in reference
+    assert "VideoToolbox" in reference
+    assert "NVENC, VAAPI, QSV, and ProRes use their existing backend policies" in reference
+    assert "encoder_preset" in reference
+    assert "config value; `auto` matches source clips" in cli
+    assert "omitting `--resolution` uses `output.resolution`" in guide
+
+
 def test_docs_check_preserves_the_underlying_build_exit_status(tmp_path: Path) -> None:
     fake_npm = tmp_path / "npm"
     fake_npm.write_text("#!/bin/sh\nprintf '%s\\n' 'synthetic nonzero build'\nexit 23\n")

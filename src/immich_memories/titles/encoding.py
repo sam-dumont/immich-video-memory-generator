@@ -26,6 +26,7 @@ def standalone_title_encoding_plan() -> EncodingPlan:
         tone_map_to_sdr=False,
         pixel_format="yuv420p",
         container="mp4",
+        crf=17,
     )
 
 
@@ -39,7 +40,10 @@ def title_color_filter(plan: EncodingPlan, *, rgb_input: bool = True) -> str:
     target = plan.target_transfer.value if plan.hdr else "sdr"
     parts: list[str] = []
     if rgb_input:
-        parts.append("format=yuv420p")
+        # WHY: HDR Taichi frames arrive as rgb48le. Preserve their bit depth
+        # and chroma until zscale applies the SDR-to-HLG/PQ transfer; an 8-bit
+        # yuv420p intermediate would create banding in a nominal Main10 title.
+        parts.append("format=yuv444p16le" if plan.hdr else "format=yuv420p")
     conversion = _get_hdr_conversion_filter(
         "sdr",
         target,

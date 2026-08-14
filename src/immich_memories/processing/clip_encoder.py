@@ -126,7 +126,7 @@ class ClipEncoder:
         clip: AssemblyClip,
         output_path: Path,
         target_resolution: tuple[int, int] | None = None,
-    ) -> None:
+    ) -> EncodingPlan:
         """Encode with normalized resolution, frame rate, and A/V sync guarantee."""
         validate_video_path(clip.path, must_exist=True)
         target_w, target_h = self.resolve_encode_resolution(target_resolution)
@@ -194,33 +194,38 @@ class ClipEncoder:
 
         plan = self.settings.encoding_plan
 
-        def retry_in_software() -> subprocess.CompletedProcess:
+        def retry_in_software() -> tuple[subprocess.CompletedProcess, EncodingPlan]:
             fallback_plan = software_fallback_plan(plan)
             logger.warning(
                 "Hardware encoder %s failed; retrying %s in software",
                 plan.encoder,
                 fallback_plan.codec.value,
             )
-            return subprocess.run(
-                build_command(fallback_plan), capture_output=True, text=True, timeout=1800
+            return (
+                subprocess.run(
+                    build_command(fallback_plan), capture_output=True, text=True, timeout=1800
+                ),
+                fallback_plan,
             )
 
         try:
             result = subprocess.run(
                 build_command(plan), capture_output=True, text=True, timeout=1800
             )
+            effective_plan = plan
         except (OSError, subprocess.TimeoutExpired):
             if not uses_hardware_encoder(plan):
                 raise
-            result = retry_in_software()
+            result, effective_plan = retry_in_software()
         else:
             if result.returncode == 0 or not uses_hardware_encoder(plan):
                 if result.returncode != 0:
                     raise RuntimeError(f"Failed to encode clip: {result.stderr[-500:]}")
-                return
-            result = retry_in_software()
+                return effective_plan
+            result, effective_plan = retry_in_software()
         if result.returncode != 0:
             raise RuntimeError(f"Failed to encode clip: {result.stderr[-500:]}")
+        return effective_plan
 
     def _build_single_clip_filter(
         self,

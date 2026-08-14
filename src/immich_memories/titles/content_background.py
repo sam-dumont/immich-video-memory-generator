@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from immich_memories.processing.encoding_plan import HdrTransfer
+
 if TYPE_CHECKING:
     pass
 
@@ -150,12 +152,16 @@ def extract_content_background(
 
 
 class SlowmoBackgroundReader:
-    """Generates smooth slow-motion frames via linear interpolation.
+    """Generates smooth slow-motion frames without changing their transfer.
 
     Pre-reads all source frames (typically 15 at 0.5s/30fps), then
     generates interpolated intermediate frames on demand. Linear blending
     creates motion-blur-like ghosting that merges with the Taichi
     renderer's heavy Gaussian blur — no optical flow needed.
+
+    HDR content remains in its source transfer. The title encoder receives
+    that transfer explicitly so content-backed title frames can be tagged and
+    encoded without a destructive HDR-to-SDR-to-HDR round trip.
     """
 
     def __init__(
@@ -166,7 +172,7 @@ class SlowmoBackgroundReader:
         fps: float,
         title_duration: float = 3.5,
         source_seconds: float = 0.5,
-        hdr: bool = False,
+        source_transfer: HdrTransfer = HdrTransfer.NONE,
     ):
         self._source_frames: list[np.ndarray] = []
         self._output_index = 0
@@ -180,8 +186,9 @@ class SlowmoBackgroundReader:
         if actual_source < 0.1:
             return
 
-        pix_fmt = "rgb48le" if hdr else "rgb24"
-        bpp = 6 if hdr else 3
+        source_is_hdr = source_transfer is not HdrTransfer.NONE
+        pix_fmt = "rgb48le" if source_is_hdr else "rgb24"
+        bpp = 6 if source_is_hdr else 3
         frame_size = width * height * bpp
 
         # WHY: extract source frames at native fps — no slowdown in FFmpeg.
@@ -211,7 +218,7 @@ class SlowmoBackgroundReader:
         offset = 0
         while offset + frame_size <= len(data):
             chunk = data[offset : offset + frame_size]
-            if hdr:
+            if source_is_hdr:
                 raw = np.frombuffer(chunk, dtype=np.uint16)
                 frame = raw.reshape((height, width, 3)).astype(np.float32) / 65535.0
             else:

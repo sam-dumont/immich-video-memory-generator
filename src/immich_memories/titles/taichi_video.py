@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-from immich_memories.processing.encoding_plan import EncodingPlan
+from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer
 
 from .encoding import standalone_title_encoding_plan, title_color_filter, title_encoder_args
 from .renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
@@ -192,6 +192,7 @@ def create_title_video_taichi(
     fade_to_white: bool = False,
     encoding_plan: EncodingPlan | None = None,
     frame_progress: Callable[[int, int], None] | None = None,
+    frame_transfer: HdrTransfer = HdrTransfer.NONE,
 ) -> Path:
     """Create title video using Taichi GPU rendering."""
     cfg = config or TaichiTitleConfig()
@@ -208,6 +209,24 @@ def create_title_video_taichi(
     # already in the correct color space from the source clip.
     pix_fmt = "rgb48le" if plan.hdr else "rgb24"
 
+    # A content-backed HDR title is already rendered in the final transfer.
+    # Preserve the historical working path: describe that raw input precisely
+    # and let the encoder quantize it, without converting HLG/PQ to SDR and back.
+    transfer_matches_output = plan.hdr and frame_transfer is plan.target_transfer
+    input_color_args: list[str] = []
+    if transfer_matches_output:
+        input_color_args = [
+            "-color_primaries",
+            "bt2020",
+            "-color_trc",
+            "smpte2084" if frame_transfer is HdrTransfer.PQ else "arib-std-b67",
+            "-colorspace",
+            "bt2020nc",
+        ]
+        video_filter_args = []
+    else:
+        video_filter_args = ["-vf", title_color_filter(plan)]
+
     cmd = [
         "ffmpeg",
         "-y",
@@ -219,6 +238,7 @@ def create_title_video_taichi(
         f"{cfg.width}x{cfg.height}",
         "-pix_fmt",
         pix_fmt,
+        *input_color_args,
         "-r",
         str(cfg.fps),
         "-i",
@@ -227,8 +247,7 @@ def create_title_video_taichi(
         "lavfi",
         "-i",
         "anullsrc=r=48000:cl=stereo",
-        "-vf",
-        title_color_filter(plan),
+        *video_filter_args,
         *encoder_args,
         "-c:a",
         "aac",

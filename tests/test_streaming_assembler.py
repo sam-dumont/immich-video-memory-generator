@@ -55,6 +55,7 @@ def test_streaming_hardware_encoder_failure_retries_same_codec_in_software(tmp_p
     from immich_memories.processing.streaming_assembler import assemble_streaming
 
     plans: list[EncodingPlan] = []
+    effective_plans: list[EncodingPlan] = []
 
     class FailingHardwareEncoder:
         def __init__(self, *_args: object, encoding_plan: EncodingPlan, **_kwargs: object) -> None:
@@ -84,11 +85,13 @@ def test_streaming_hardware_encoder_failure_retries_same_codec_in_software(tmp_p
             height=16,
             fps=1,
             encoding_plan=_hardware_h265_plan(),
+            effective_plan_callback=effective_plans.append,
         )
 
     assert [plan.encoder for plan in plans] == ["hevc_videotoolbox", "libx265"]
     assert len(plans) == 2
     assert all(plan.codec is OutputCodec.H265 for plan in plans)
+    assert [plan.encoder for plan in effective_plans] == ["libx265"]
 
 
 def test_streaming_broken_pipe_retries_same_codec_in_software(tmp_path: Path) -> None:

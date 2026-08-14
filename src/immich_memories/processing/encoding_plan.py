@@ -105,6 +105,7 @@ class EncodingPlan:
     tone_map_to_sdr: bool
     pixel_format: str
     container: str
+    crf: int = 18
 
     @property
     def hdr(self) -> bool:
@@ -122,6 +123,8 @@ def software_fallback_plan(plan: EncodingPlan) -> EncodingPlan:
     if not uses_hardware_encoder(plan):
         return plan
     encoder, encoder_args = get_ffmpeg_encoder(HWAccelCapabilities(), codec=plan.codec.value)
+    if encoder in {"libx264", "libx265"}:
+        encoder_args.extend(["-crf", str(plan.crf)])
     pixel_format = "yuv420p10le" if plan.hdr else "yuv420p"
     if plan.codec is OutputCodec.PRORES:
         pixel_format = "yuv422p10le"
@@ -198,6 +201,26 @@ def _validate_encoder_family(codec: OutputCodec, encoder: str) -> None:
         )
 
 
+def _videotoolbox_quality_from_crf(crf: int) -> int:
+    """Translate the portable CRF contract to VideoToolbox's 1-100 scale.
+
+    FFmpeg's VideoToolbox encoders do not implement CRF directly. This linear
+    mapping is anchored by local 4K60 HLG measurements: CRF 18 maps to q=75,
+    while CRF 23 maps to q=65. Boundary values are clamped to the encoder's
+    useful range.
+    """
+    return max(1, min(100, 111 - (2 * crf)))
+
+
+def _quality_args(encoder: str, crf: int) -> list[str]:
+    """Return encoder-family-specific quality arguments."""
+    if encoder in {"libx264", "libx265"}:
+        return ["-crf", str(crf)]
+    if encoder in {"h264_videotoolbox", "hevc_videotoolbox"}:
+        return ["-q:v", str(_videotoolbox_quality_from_crf(crf))]
+    return []
+
+
 def resolve_encoding_plan(
     request: EncodingRequest,
     capabilities: HWAccelCapabilities,
@@ -237,8 +260,7 @@ def resolve_encoding_plan(
         preset=request.preset,
     )
     _validate_encoder_family(codec, encoder)
-    if encoder in {"libx264", "libx265"}:
-        encoder_args.extend(["-crf", str(request.crf)])
+    encoder_args.extend(_quality_args(encoder, request.crf))
     hdr = codec is OutputCodec.H265 and (
         hdr_mode is HdrMode.HDR or (hdr_mode is HdrMode.AUTO and has_hdr_input)
     )
@@ -262,4 +284,5 @@ def resolve_encoding_plan(
         tone_map_to_sdr=tone_map_to_sdr,
         pixel_format=pixel_format,
         container=request.container,
+        crf=request.crf,
     )

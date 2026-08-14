@@ -11,7 +11,9 @@ from __future__ import annotations
 import shutil
 import subprocess
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 from immich_memories.processing.assembly_config import (
@@ -20,6 +22,7 @@ from immich_memories.processing.assembly_config import (
     standalone_assembly_encoding_plan,
 )
 from immich_memories.processing.assembly_engine import _pick_transition
+from immich_memories.processing.encoding_plan import HdrTransfer
 
 
 def _has_ffmpeg() -> bool:
@@ -170,3 +173,85 @@ class TestSlowmoInterpolation:
         assert frame.min() >= 0.0
         assert frame.max() <= 1.0
         assert frame.dtype.name == "float32"
+
+
+class TestSlowmoColorDomain:
+    """Content-backed titles must preserve the source transfer exactly."""
+
+    @staticmethod
+    def _reader_command(source_transfer: HdrTransfer) -> list[str]:
+        from immich_memories.titles.content_background import SlowmoBackgroundReader
+
+        duration_probe = MagicMock(stdout="2.0", returncode=0)
+        frame = np.full((2, 2, 3), 32768, dtype=np.uint16).tobytes()
+        frame_probe = MagicMock(stdout=frame * 2, returncode=0)
+        with (
+            patch("immich_memories.titles.content_background.shutil.which", return_value="ffmpeg"),
+            patch(
+                "immich_memories.titles.content_background.subprocess.run",
+                side_effect=[duration_probe, frame_probe],
+            ) as run,
+        ):
+            reader = SlowmoBackgroundReader(
+                Path("/tmp/content.mp4"),
+                2,
+                2,
+                2,
+                title_duration=1.0,
+                source_transfer=source_transfer,
+            )
+        assert reader.is_active
+        return run.call_args_list[1].args[0]
+
+    def test_hlg_background_is_not_tone_mapped_before_title_composition(self) -> None:
+        command = self._reader_command(HdrTransfer.HLG)
+
+        assert "-vf" not in command
+        assert command[command.index("-pix_fmt") + 1] == "rgb48le"
+
+    def test_pq_background_is_not_tone_mapped_before_title_composition(self) -> None:
+        command = self._reader_command(HdrTransfer.PQ)
+
+        assert "-vf" not in command
+        assert command[command.index("-pix_fmt") + 1] == "rgb48le"
+
+    def test_sdr_background_does_not_receive_hdr_tone_mapping(self) -> None:
+        command = self._reader_command(HdrTransfer.NONE)
+
+        assert "-vf" not in command
+        assert command[command.index("-pix_fmt") + 1] == "rgb24"
+
+
+@pytest.mark.parametrize("fps", [30, 60])
+def test_pil_content_background_extracts_from_short_prerender(
+    tmp_path: Path,
+    fps: int,
+) -> None:
+    """The 0.5-second title pre-render always has frame zero, never frame 30."""
+    from immich_memories.titles.rendering_service import RenderingService
+
+    clip = tmp_path / f"short-{fps}.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=red:s=32x18:r={fps}:d=0.5",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-y",
+            str(clip),
+        ],
+        check=True,
+        timeout=15,
+    )
+
+    frame = RenderingService._extract_blurred_frame(clip, 32, 18)
+
+    assert frame is not None
+    assert frame.shape == (18, 32, 3)

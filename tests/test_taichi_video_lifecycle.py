@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer, OutputCodec
 from immich_memories.titles import taichi_video
 from immich_memories.titles.renderer_taichi import TaichiTitleConfig
 
@@ -106,6 +107,47 @@ def _render_with_process(
         tmp_path / "title.mp4",
         config=config,
     )
+
+
+def _hlg_plan() -> EncodingPlan:
+    return EncodingPlan(
+        codec=OutputCodec.H265,
+        encoder="libx265",
+        encoder_args=("-crf", "18"),
+        target_transfer=HdrTransfer.HLG,
+        tone_map_to_sdr=False,
+        pixel_format="yuv420p10le",
+        container="mp4",
+    )
+
+
+def test_content_backed_hlg_title_preserves_transfer_without_reencoding_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    process = _FakeProcess()
+    commands: list[list[str]] = []
+    monkeypatch.setattr(taichi_video, "TaichiTitleRenderer", _OneFrameRenderer)
+
+    def popen(command: list[str], **_kwargs) -> _FakeProcess:
+        commands.append(command)
+        return process
+
+    monkeypatch.setattr(taichi_video.subprocess, "Popen", popen)
+
+    taichi_video.create_title_video_taichi(
+        "Title",
+        None,
+        tmp_path / "title.mp4",
+        config=TaichiTitleConfig(width=1, height=1, fps=1.0, duration=1.0),
+        encoding_plan=_hlg_plan(),
+        frame_transfer=HdrTransfer.HLG,
+    )
+
+    command = commands[0]
+    assert "-vf" not in command
+    assert command[command.index("-color_primaries") + 1] == "bt2020"
+    assert command[command.index("-color_trc") + 1] == "arib-std-b67"
+    assert command[command.index("-colorspace") + 1] == "bt2020nc"
 
 
 def test_stderr_is_drained_while_frame_writer_is_active(

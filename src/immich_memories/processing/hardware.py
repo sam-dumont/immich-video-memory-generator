@@ -157,7 +157,8 @@ def get_ffmpeg_encoder(
     Args:
         capabilities: Detected hardware capabilities.
         codec: Video codec to use.
-        preset: Encoding speed/quality tradeoff.
+        preset: Encoding speed/effort policy. Image quality is configured by
+            the encoding plan rather than hidden inside this backend mapping.
 
     Returns:
         Tuple of (encoder_name, encoder_args).
@@ -173,7 +174,10 @@ def get_ffmpeg_encoder(
     # Preset mappings for each backend
     _PRESET_VALUES: dict[str, dict[str, str]] = {
         "nvidia": {"fast": "p1", "balanced": "p4", "quality": "p7"},
-        "apple": {"fast": "0", "balanced": "50", "quality": "100"},
+        # VideoToolbox only exposes a boolean speed-priority control. Balanced
+        # and quality therefore both keep speed priority disabled; output
+        # quality is supplied separately from the requested CRF.
+        "apple": {"fast": "1", "balanced": "0", "quality": "0"},
         "vaapi": {"fast": "1", "balanced": "4", "quality": "7"},
         "qsv": {"fast": "veryfast", "balanced": "medium", "quality": "veryslow"},
         "software": {"fast": "veryfast", "balanced": "medium", "quality": "slow"},
@@ -186,8 +190,18 @@ def get_ffmpeg_encoder(
     ] = {
         (HWAccelBackend.NVIDIA, "h264"): ("h264_nvenc", "nvidia", "-preset", True),
         (HWAccelBackend.NVIDIA, "h265"): ("hevc_nvenc", "nvidia", "-preset", False),
-        (HWAccelBackend.APPLE, "h264"): ("h264_videotoolbox", "apple", "-q:v", True),
-        (HWAccelBackend.APPLE, "h265"): ("hevc_videotoolbox", "apple", "-q:v", False),
+        (HWAccelBackend.APPLE, "h264"): (
+            "h264_videotoolbox",
+            "apple",
+            "-prio_speed",
+            True,
+        ),
+        (HWAccelBackend.APPLE, "h265"): (
+            "hevc_videotoolbox",
+            "apple",
+            "-prio_speed",
+            False,
+        ),
         (HWAccelBackend.VAAPI, "h264"): ("h264_vaapi", "vaapi", "-compression_level", True),
         (HWAccelBackend.VAAPI, "h265"): ("hevc_vaapi", "vaapi", "-compression_level", False),
         (HWAccelBackend.QSV, "h264"): ("h264_qsv", "qsv", "-preset", True),

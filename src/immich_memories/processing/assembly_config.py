@@ -38,6 +38,7 @@ def standalone_assembly_encoding_plan(crf: int = 23) -> EncodingPlan:
         tone_map_to_sdr=False,
         pixel_format="yuv420p",
         container="mp4",
+        crf=crf,
     )
 
 

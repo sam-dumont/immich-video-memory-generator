@@ -183,6 +183,19 @@ class TestVideoEncodingPlan:
         assert isinstance(video_filter, str)
         assert "zscale=" in video_filter
         assert "t=arib-std-b67" in video_filter
+
+    def test_hdr_title_conversion_keeps_a_high_precision_intermediate(self) -> None:
+        """16-bit RGB must not collapse to 8-bit before SDR-to-HLG conversion."""
+        from immich_memories.titles.encoding import title_color_filter
+
+        with patch(
+            "immich_memories.processing.hdr_utilities._check_zscale_available",
+            return_value=True,
+        ):
+            video_filter = title_color_filter(_hardware_h265_hdr_plan())
+
+        assert video_filter.startswith("format=yuv444p16le,")
+        assert "format=yuv420p," not in video_filter
         assert "color_trc=arib-std-b67" in video_filter
 
     def test_hdr_title_fails_instead_of_relabeling_when_zscale_is_missing(self):

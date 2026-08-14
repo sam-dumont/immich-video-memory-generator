@@ -49,6 +49,7 @@ def _default_streaming_plan() -> EncodingPlan:
         tone_map_to_sdr=False,
         pixel_format="yuv420p",
         container="mp4",
+        crf=18,
     )
 
 
@@ -256,6 +257,15 @@ class FrameDecoder:
 
 class StreamingEncoderWriteError(RuntimeError):
     """FFmpeg stopped accepting raw frames from the streaming encoder."""
+
+
+def _notify_effective_plan(
+    callback: Callable[[EncodingPlan], None] | None,
+    plan: EncodingPlan,
+) -> None:
+    """Report the plan that actually encoded the artifact when requested."""
+    if callback is not None:
+        callback(plan)
 
 
 class StreamingEncoder:
@@ -606,6 +616,7 @@ def assemble_streaming(
     progress_callback: Callable[[int, int], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
     audio_work_dir: Path | None = None,
+    effective_plan_callback: Callable[[EncodingPlan], None] | None = None,
     _allow_runtime_fallback: bool = True,
 ) -> list[Path]:
     """Assemble clips via streaming frame blending (constant memory).
@@ -648,6 +659,7 @@ def assemble_streaming(
             progress_callback,
             frame_preview_callback,
             audio_work_dir,
+            effective_plan_callback,
             _allow_runtime_fallback=False,
         )
 
@@ -702,6 +714,7 @@ def assemble_streaming(
 
     if progress_callback:
         progress_callback(total_frames, total_frames)
+    _notify_effective_plan(effective_plan_callback, plan)
     logger.info(f"Streaming assembly complete: {len(clips)} clips → {output_path.name}")
 
     # Collect audio WAV files extracted by FrameDecoder during the encode pass
@@ -840,6 +853,7 @@ def streaming_assemble_full(
     progress_callback: Callable[[float, str], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
     probe_cache: ProbeCache | None = None,
+    effective_plan_callback: Callable[[EncodingPlan], None] | None = None,
 ) -> Path:
     """Full streaming assembly: plan-bound video encode + audio mix + mux."""
     plan = encoding_plan or _default_streaming_plan()
@@ -888,6 +902,7 @@ def streaming_assemble_full(
             progress_callback=_frame_progress,
             frame_preview_callback=frame_preview_callback,
             audio_work_dir=audio_work_dir,
+            effective_plan_callback=effective_plan_callback,
         )
 
         if progress_callback:
