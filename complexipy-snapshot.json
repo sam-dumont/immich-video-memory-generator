@@ -5622,15 +5622,23 @@
       {
         "name": "_load_clips",
         "complexity": 24,
-        "line_start": 155,
-        "line_end": 242,
+        "line_start": 139,
+        "line_end": 226,
         "line_complexities": [
           {
-            "line": 157,
+            "line": 141,
             "complexity": 0
           },
           {
-            "line": 159,
+            "line": 143,
+            "complexity": 0
+          },
+          {
+            "line": 147,
+            "complexity": 0
+          },
+          {
+            "line": 149,
             "complexity": 0
           },
           {
@@ -5642,7 +5650,19 @@
             "complexity": 0
           },
           {
-            "line": 179,
+            "line": 166,
+            "complexity": 3
+          },
+          {
+            "line": 167,
+            "complexity": 0
+          },
+          {
+            "line": 169,
+            "complexity": 0
+          },
+          {
+            "line": 170,
             "complexity": 0
           },
           {
@@ -5650,51 +5670,59 @@
             "complexity": 0
           },
           {
-            "line": 182,
-            "complexity": 3
-          },
-          {
             "line": 183,
             "complexity": 0
           },
           {
             "line": 185,
+            "complexity": 3
+          },
+          {
+            "line": 187,
             "complexity": 0
           },
           {
-            "line": 186,
+            "line": 190,
+            "complexity": 0
+          },
+          {
+            "line": 192,
+            "complexity": 3
+          },
+          {
+            "line": 194,
+            "complexity": 0
+          },
+          {
+            "line": 195,
+            "complexity": 0
+          },
+          {
+            "line": 196,
             "complexity": 0
           },
           {
             "line": 197,
-            "complexity": 0
-          },
-          {
-            "line": 199,
-            "complexity": 0
+            "complexity": 4
           },
           {
             "line": 201,
+            "complexity": 0
+          },
+          {
+            "line": 204,
             "complexity": 3
           },
           {
-            "line": 203,
+            "line": 205,
             "complexity": 0
           },
           {
             "line": 206,
-            "complexity": 0
-          },
-          {
-            "line": 208,
             "complexity": 3
           },
           {
-            "line": 210,
-            "complexity": 0
-          },
-          {
-            "line": 211,
+            "line": 207,
             "complexity": 0
           },
           {
@@ -5702,45 +5730,17 @@
             "complexity": 0
           },
           {
-            "line": 213,
+            "line": 215,
             "complexity": 4
-          },
-          {
-            "line": 217,
-            "complexity": 0
-          },
-          {
-            "line": 220,
-            "complexity": 3
           },
           {
             "line": 221,
-            "complexity": 0
-          },
-          {
-            "line": 222,
-            "complexity": 3
-          },
-          {
-            "line": 223,
-            "complexity": 0
-          },
-          {
-            "line": 228,
-            "complexity": 0
-          },
-          {
-            "line": 231,
-            "complexity": 4
-          },
-          {
-            "line": 237,
             "complexity": 1
           }
         ]
       }
     ],
-    "complexity": 103
+    "complexity": 99
   },
   {
     "path": "src/immich_memories/ui/pages/step2_review.py",

@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from typing import Any
 
 from nicegui import run, ui
 
 from immich_memories.api.immich import SyncImmichClient
-from immich_memories.api.models import VideoClipInfo
+from immich_memories.api.models import Asset, VideoClipInfo
+from immich_memories.planning.auto_duration import (
+    AutoDurationResult,
+    resolve_trip_auto_duration,
+)
 from immich_memories.ui.pages.clip_pipeline_helpers import (
     _poll_detail_cards,
     _poll_phase,
@@ -158,8 +163,60 @@ def _make_progress_callback(progress_state: dict[str, Any]) -> Any:
     return on_progress
 
 
+def _eligible_pipeline_media(
+    state: Any,
+    clips: list[VideoClipInfo],
+) -> tuple[list[VideoClipInfo], list[Asset]]:
+    """Return only media explicitly kept in the Step 2 review."""
+    eligible_clips = [clip for clip in clips if clip.asset.id in state.selected_clip_ids]
+    eligible_photos = []
+    if state.include_photos:
+        eligible_photos = [
+            photo for photo in state.photo_assets if photo.id in state.selected_photo_ids
+        ]
+    return eligible_clips, eligible_photos
+
+
+def _resolve_auto_duration_for_selection(
+    state: Any,
+    clips: list[VideoClipInfo],
+    photos: list[Asset],
+) -> AutoDurationResult | None:
+    """Resolve trip Auto duration from the reviewed eligible media."""
+    if state.memory_type != "trip" or state.duration_mode != "auto":
+        return None
+
+    config = state.config
+    if config is None:
+        from immich_memories.config import get_config
+
+        config = get_config()
+    title_config = config.title_screens
+    title_duration = title_config.title_duration if title_config.enabled else 0.0
+    ending_duration = title_config.ending_duration if title_config.enabled else 0.0
+    result = resolve_trip_auto_duration(
+        clips,
+        photos,
+        avg_clip_duration=float(state.avg_clip_duration),
+        photo_duration=state.photo_duration,
+        title_duration=title_duration,
+        ending_duration=ending_duration,
+    )
+    state.target_duration = result.total_seconds / 60.0
+    if result.total_seconds > 0:
+        state.pipeline_config["target_clips"] = max(
+            1,
+            math.ceil(result.total_seconds / state.avg_clip_duration),
+        )
+    return result
+
+
 def _run_pipeline_blocking(
-    state: Any, config: Any, clips: list[VideoClipInfo], progress_state: dict[str, Any]
+    state: Any,
+    config: Any,
+    clips: list[VideoClipInfo],
+    photos: list[Asset],
+    progress_state: dict[str, Any],
 ) -> None:
     """Run the SmartPipeline in a background thread — no UI calls here."""
     from immich_memories.analysis.smart_pipeline import SmartPipeline
@@ -193,14 +250,14 @@ def _run_pipeline_blocking(
 
             # Merge photos into the unified pool (same as CLI path)
             all_candidates = analyzed
-            if state.include_photos and state.photo_assets:
+            if state.include_photos and photos:
                 from pathlib import Path
 
                 from immich_memories.cli._pipeline_runner import _merge_photos_into_pool
 
                 all_candidates = _merge_photos_into_pool(
                     analyzed,
-                    photo_assets=state.photo_assets,
+                    photo_assets=photos,
                     include_photos=True,
                     config=app_config,
                     client=client,
@@ -242,26 +299,33 @@ def _run_pipeline_blocking(
         progress_state["done"] = True
 
 
-def _detect_overnight_bases(state: Any) -> list | None:
+def _detect_overnight_bases(
+    state: Any,
+    clips: list[VideoClipInfo] | None = None,
+) -> list | None:
     """Detect overnight stop bases for trip memories."""
-    if not (state.memory_type == "trip" and state.clips):
+    source_clips = state.clips if clips is None else clips
+    if not (state.memory_type == "trip" and source_clips):
         return None
     try:
         from immich_memories.analysis.trip_detection import detect_overnight_stops
 
-        trip_assets = [c.asset for c in state.clips]
+        trip_assets = [c.asset for c in source_clips]
         return detect_overnight_stops(trip_assets) or None
     except Exception:  # WHY: UI graceful degradation
         logger.debug("Trip segment detection failed", exc_info=True)
         return None
 
 
-def _build_pipeline_config(state: Any) -> Any:
+def _build_pipeline_config(
+    state: Any,
+    clips: list[VideoClipInfo] | None = None,
+) -> Any:
     """Build PipelineConfig from app state."""
     from immich_memories.analysis.smart_pipeline import PipelineConfig
 
     config_dict = state.pipeline_config
-    overnight_bases = _detect_overnight_bases(state)
+    overnight_bases = _detect_overnight_bases(state, clips)
     return PipelineConfig(
         target_clips=config_dict.get("target_clips", 120),
         avg_clip_duration=config_dict.get("avg_clip_duration", 5.0),
@@ -289,6 +353,7 @@ def _wire_progress_timer(
     stats_eta_label: Any,
     stats_errors_label: Any,
     clips: list[VideoClipInfo],
+    photos: list[Asset],
     config: Any,
 ) -> None:
     """Wire up the poll timer and background pipeline runner."""
@@ -316,7 +381,7 @@ def _wire_progress_timer(
     progress_timer = ui.timer(1.0, poll_progress)
 
     async def start_pipeline() -> None:
-        await run.io_bound(_run_pipeline_blocking, state, config, clips, progress_state)
+        await run.io_bound(_run_pipeline_blocking, state, config, clips, photos, progress_state)
 
     ui.timer(0.1, start_pipeline, once=True)
 
@@ -324,7 +389,9 @@ def _wire_progress_timer(
 def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
     """Render pipeline progress UI."""
     state = get_app_state()
-    config = _build_pipeline_config(state)
+    eligible_clips, eligible_photos = _eligible_pipeline_media(state, clips)
+    _resolve_auto_duration_for_selection(state, eligible_clips, eligible_photos)
+    config = _build_pipeline_config(state, eligible_clips)
 
     ui.label("Generating Memories...").classes("text-2xl font-bold mb-4")
 
@@ -416,6 +483,7 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
         stats_avg_label,
         stats_eta_label,
         stats_errors_label,
-        clips,
+        eligible_clips,
+        eligible_photos,
         config,
     )

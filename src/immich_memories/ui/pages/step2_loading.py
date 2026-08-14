@@ -132,24 +132,8 @@ def _merge_live_photos(
 
 
 def _set_initial_selection(clips: list[VideoClipInfo], state) -> None:
-    """Set initial selected_clip_ids, prioritizing real videos over live photos."""
-    has_live = state.include_live_photos and any(c.asset.is_live_photo for c in clips)
-    if not has_live:
-        state.selected_clip_ids = {c.asset.id for c in clips}
-        return
-
-    video_clips = [c for c in clips if not c.asset.is_live_photo]
-    video_duration = sum(c.duration_seconds or 0 for c in video_clips)
-    target_seconds = state.target_duration * 60
-
-    if video_duration >= target_seconds:
-        state.selected_clip_ids = {c.asset.id for c in video_clips}
-        logger.info(
-            f"Enough video ({video_duration:.0f}s >= {target_seconds}s target), "
-            f"live photos available but not pre-selected"
-        )
-    else:
-        state.selected_clip_ids = {c.asset.id for c in clips}
+    """Make every discovered clip eligible for the user's review."""
+    state.selected_clip_ids = {c.asset.id for c in clips}
 
 
 def _load_clips() -> None:
