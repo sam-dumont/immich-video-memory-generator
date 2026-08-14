@@ -7,7 +7,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
+from immich_memories.cli._date_resolution import default_duration_for_type
+from immich_memories.cli._pipeline_runner import _resolve_requested_duration
+from immich_memories.config_loader import Config
 from immich_memories.planning.auto_duration import resolve_trip_auto_duration
+from immich_memories.timeperiod import DateRange
 
 
 def _asset(asset_id: str, when: datetime, asset_type: AssetType) -> Asset:
@@ -108,3 +112,38 @@ def test_empty_trip_has_zero_auto_duration() -> None:
 
     assert result.total_seconds == 0.0
     assert result.active_days == 0
+
+
+def test_cli_auto_trip_resolves_after_media_discovery() -> None:
+    clips, photos = _dense_trip(12)
+
+    resolved = _resolve_requested_duration(
+        None,
+        memory_type="trip",
+        clips=clips,
+        photos=photos,
+        config=Config(),
+    )
+
+    assert resolved == 150.0
+
+
+def test_cli_manual_trip_duration_remains_exact() -> None:
+    clips, photos = _dense_trip(12)
+
+    resolved = _resolve_requested_duration(
+        420.0,
+        memory_type="trip",
+        clips=clips,
+        photos=photos,
+        config=Config(),
+    )
+
+    assert resolved == 420.0
+
+
+def test_trip_date_default_is_an_editorial_estimate_not_35_seconds_per_day() -> None:
+    start = datetime(2026, 7, 25, tzinfo=UTC)
+    date_range = DateRange(start=start, end=start + timedelta(days=11))
+
+    assert default_duration_for_type("trip", date_range) == 150.0

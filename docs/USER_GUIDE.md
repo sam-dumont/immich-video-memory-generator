@@ -98,7 +98,12 @@ An expandable "Cache Management" panel at the bottom of Step 1 shows disk usage 
 
 ### Target Duration
 
-The suggested duration scales with your time period:
+For trip memories, **Auto** is the default after discovery. It starts at 30 seconds plus 10 seconds
+per active day, bounded to 60–300 seconds when there is enough media. It then checks usable
+excerpts—not raw source lengths—and shortens sparse trips rather than producing filler. A dense
+seven-day trip is about 1:40; a dense 12-day trip is 2:30. Switch to **Manual** for an exact target.
+
+Other memory types use preset durations that scale with their time period:
 - Full year: 10 minutes
 - Half year: 6 minutes
 - Quarter: 4 minutes
@@ -120,7 +125,7 @@ After clicking "Next: Review Clips", you'll see all available videos.
 
 ### Summary Metrics
 
-- **Selected Clips**: How many videos are selected
+- **Selected Clips**: How many reviewed media items are checked
 - **Total Duration**: Combined length of all video content
 - **Target Duration**: Your goal for the final compilation
 
@@ -132,26 +137,31 @@ After clicking "Next: Review Clips", you'll see all available videos.
 | **Clips needed** | Auto-calculated based on target duration |
 | **HDR clips only** | Only use HDR videos (if available) |
 | **Prioritize favorites** | Include favorite videos first |
-| **Max non-favorites** | Limit non-favorite videos to this percentage (default: 25%) |
+| **Preferred max non-favorites** | Favor this percentage; Auto may exceed it to fill the video |
 | **Analyze all videos** | Slower but more thorough analysis |
 
 #### Understanding "Max Non-Favorites"
 
-When you have a short time period with many videos, you don't want the compilation filled with random clips. The "Max non-favorites" slider limits how many non-favorite videos can be included.
+When you have a short time period with many videos, you don't want the compilation filled with random clips. The non-favorite slider sets a preference, not a destructive cap.
 
 For example, with 25% max:
 - If you select 20 clips total
-- At most 5 will be non-favorites
-- At least 15 will be favorites (if available)
+- The selector tries to keep non-favorites near 5
+- If the favorites cannot fill the timeline, eligible non-favorites are added instead of leaving it short
 
 ### The Analysis Pipeline
 
 When you click "Analyze", the system runs 4 phases:
 
 1. **Clustering**: Groups similar videos together (avoids duplicates)
-2. **Filtering**: Applies your preferences (HDR, favorites, etc.)
-3. **Analyzing**: Downloads and scores each video
+2. **Filtering**: Applies hard eligibility and builds a cost-bounded deep-analysis shortlist
+3. **Analyzing**: Deeply scores the shortlist; checked leftovers retain cached/metadata fallback segments
 4. **Refining**: Picks final clips and optimal segments
+
+Photos follow the same rule: every checked photo gets a metadata score, a distributed shortlist
+gets VLM scoring, and the enhanced results are merged back into the full pool. The final selector
+prefers two photos per day, balanced photo and non-favorite ratios, and temporal spacing. If those
+preferences leave a duration hole, it relaxes them in stages while keeping hard exclusions intact.
 
 ### During Analysis
 

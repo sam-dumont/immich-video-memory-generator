@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING
 from immich_memories.cli._helpers import print_error, print_success
 from immich_memories.timeperiod import DateRange
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from immich_memories.analysis.smart_pipeline import (
         PipelineConfig,
@@ -77,6 +79,43 @@ def _configure_timeline(
         math.ceil(timeline.content_budget / pipeline_config.avg_clip_duration),
     )
     return timeline, planning_titles
+
+
+def _resolve_requested_duration(
+    requested_duration: float | None,
+    *,
+    memory_type: str | None,
+    clips: list,
+    photos: list | None,
+    config: Config,
+) -> float:
+    """Resolve Auto only after the CLI has discovered usable media."""
+    if requested_duration is not None:
+        return float(requested_duration)
+    if memory_type != "trip":
+        raise ValueError("Automatic media-aware duration is currently available for trips only")
+
+    from immich_memories.planning.auto_duration import resolve_trip_auto_duration
+
+    title_config = config.title_screens
+    title_duration = title_config.title_duration if title_config.enabled else 0.0
+    ending_duration = title_config.ending_duration if title_config.enabled else 0.0
+    result = resolve_trip_auto_duration(
+        clips,
+        photos or [],
+        avg_clip_duration=config.analysis.optimal_clip_duration,
+        photo_duration=config.photos.duration,
+        title_duration=title_duration,
+        ending_duration=ending_duration,
+    )
+    logger.info(
+        "Trip Auto duration: %.0fs from %d active days (editorial %.0fs, capacity %.0fs)",
+        result.total_seconds,
+        result.active_days,
+        result.editorial_seconds,
+        result.diverse_capacity_seconds,
+    )
+    return result.total_seconds
 
 
 def _planning_analysis(
@@ -203,7 +242,7 @@ def run_pipeline_and_generate(
     client: SyncImmichClient,
     config: Config,
     progress: ProgressDisplay,
-    duration: float,
+    duration: float | None,
     transition: str,
     music: str | None,
     music_volume: float = 0.5,
@@ -248,6 +287,14 @@ def run_pipeline_and_generate(
     if not clips and not has_photos:
         print_error("No usable content (no video clips or photos)")
         sys.exit(1)
+
+    duration = _resolve_requested_duration(
+        duration,
+        memory_type=memory_type,
+        clips=clips,
+        photos=photo_assets if include_photos else None,
+        config=config,
+    )
 
     import logging
     import time as _time

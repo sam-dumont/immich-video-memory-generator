@@ -234,7 +234,7 @@ def handle_trip_generation(
             end=dt_cls.combine(trip.end_date, dt_cls.max.time()),
         )
         trip_days = (trip.end_date - trip.start_date).days + 1
-        trip_duration = float(duration or max(60, min(600, trip_days * 35)))
+        trip_duration = float(duration) if duration is not None else None
 
         trip_slug = trip.location_name.lower().replace(" ", "_")[:30]
         trip_output = output_path.parent / (

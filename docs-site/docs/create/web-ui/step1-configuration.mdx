@@ -49,17 +49,17 @@ Three options when using Custom:
 
 Optional toggle to include iPhone Live Photo clips. When enabled, the tool pulls the ~3s video hidden in each photo and can merge rapid-fire bursts into longer clips. See [Live Photos](../pipeline/live-photos.md) for details.
 
-If your library has enough regular video to fill the target duration, live photos show up in Step 2 but aren't pre-selected. They fill gaps rather than crowding out real video.
+Live Photos show up checked in Step 2 with the other discovered media. Deselect any you do not want. Fast analysis can rank a smaller shortlist, but every checked Live Photo remains available to fill the final timeline.
 
 ## Target Duration
 
-The target duration for the final video (in minutes). Presets set this automatically based on the date range. The default heuristic: roughly 1 minute per 3 days of coverage. A 15-day trip gives ~5 minutes, a full year caps at 10 minutes. You can always override it manually.
+The target is the complete video, including titles and transition overlap. Trip memories default to **Auto** after media discovery: 30 seconds plus 10 seconds per active day, bounded to 60–300 seconds when the selected media is dense enough. Auto then caps that estimate using usable excerpts, so a sparse trip can be shorter than one minute. Switch to **Manual** for an exact runtime.
 
 | Range | Auto-target | Notes |
 |-------|------------|-------|
-| 3 days (trip) | 1 min | Trips use 1 min per 3 days |
-| 1 week (trip) | 2-3 min | |
-| 2 weeks (trip) | 5 min | Capped at 10 min |
+| 3 active days (trip) | 1 min | Dense-media Auto floor |
+| 1 week (trip) | 1 min 40 sec | Before the media-capacity check |
+| 12 active days (trip) | 2 min 30 sec | Before the media-capacity check |
 | 1 month | 1 min | Non-trip: ~1 min per month |
 | 3 months (season) | 3 min | Preset default |
 | 1 year | 8 min | |

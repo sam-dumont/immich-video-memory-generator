@@ -1107,3 +1107,44 @@ Real local-library validation with Qwen selection and local ACE-Step music compl
 - Frozen-tree title/HDR regression set: 201 passed.
 - Mypy: no issues in 254 source files; Ruff lint and format: all 529 Python files clean.
 - Docusaurus production build and `git diff --check`: passed.
+
+## Realistic trip Auto duration and lossless selection — 2026-08-14
+
+The Step 2 Somme flow exposed two separate bugs that amplified each other. A 12-day trip requested
+seven minutes because the CLI and documentation still used 35 seconds per calendar day. The UI then
+showed 61 clips but preselected 32 using raw source duration, and downstream selection filtered that
+already-reduced set again. Density shortlists, photo VLM shortlists, the two-photos/day limit, photo
+ratio, non-favorite ratio, and temporal spacing could all permanently discard otherwise valid media
+before the optimizer knew it was short.
+
+The new contract is explicit:
+
+- Step 2 checked media is authoritative. All discovered videos and Live Photos start checked; checked
+  photos join the same pool.
+- Trip Auto uses `30 + 10 × active days`, bounded to 60–300 seconds for dense media. A seven-day trip
+  starts at 100 seconds and a 12-day trip at 150 seconds.
+- Media capacity is computed from usable excerpts, not raw source length. At most four photos and 30
+  seconds of diverse capacity count per active day. Sparse trips may resolve below 60 seconds.
+- UI, CLI, and scheduled trip automation resolve the same media-aware duration. A manual duration is
+  still exact.
+- Fast analysis bounds expensive work only. Every hard-eligible leftover video keeps a cached or
+  metadata segment; every checked photo keeps a metadata score after the distributed VLM shortlist is
+  merged back.
+- Final selection relaxes preferences in order: strict, 70% photo ratio, additional non-favorites,
+  temporal spacing, unrestricted photo ratio, then a bounded two-second fit overrun. It never relaxes
+  explicit deselection, duplicate removal, minimum usable duration, or HDR-only mode.
+- The completion card now separates eligible media, videos deeply analyzed, and clips planned.
+
+Hermetic regression evidence uses the reported 12-day shape: 61 video/Live Photo clips, 48 photos,
+19 favorites, and one lower-quality true duplicate. Auto resolves to 150 seconds; deduplication keeps
+60 video candidates; the expensive shortlist is smaller than 60; every remaining video receives a
+fallback; all 48 photos join the unified pool; and the planned content lands within one configured
+average clip of the shared timeline budget.
+
+Final verification for this correction:
+
+- Focused Auto/selection/timeline suite: 203 passed, 6 deliberate integration deselections.
+- Full repository suite: 4,429 passed, 7 skipped, 662 deliberate integration deselections.
+- Mypy: no issues in 256 source files.
+- Ruff lint and format: all 535 Python files clean.
+- Docusaurus production build and `git diff --check`: passed.

@@ -169,6 +169,7 @@ class SmartPipeline:
         from immich_memories.analysis.provider_health import ProviderCircuit
 
         self.provider_circuit = ProviderCircuit()
+        self.last_deep_analysis_count = 0
         self._video_cache: VideoDownloadCache | None = None
         cache_config = app_config.cache
         if cache_config.video_cache_enabled and isinstance(cache_config.video_cache_path, Path):
@@ -234,6 +235,7 @@ class SmartPipeline:
             # Phase 2: hard eligibility + a cost-bounded analysis shortlist.
             eligible = self._hard_eligible_clips(deduplicated)
             candidates = self._phase_filter(eligible, hard_filtered=True)
+            self.last_deep_analysis_count = len(candidates)
 
             # Phase 3: one cache batch covers every candidate download.
             analyzed = self._analyze_with_cache_batch(candidates)
@@ -270,6 +272,7 @@ class SmartPipeline:
             deduplicated = self._phase_cluster(clips)
             eligible = self._hard_eligible_clips(deduplicated)
             candidates = self._phase_filter(eligible, hard_filtered=True)
+            self.last_deep_analysis_count = len(candidates)
             planned = self.analyzer.phase_plan_cached(candidates, self.tracker)
             candidate_ids = {clip.asset.id for clip in candidates}
             leftovers = [clip for clip in eligible if clip.asset.id not in candidate_ids]

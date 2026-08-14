@@ -176,7 +176,9 @@ def default_duration_for_type(
     """Get default duration in seconds for a memory type.
 
     Date-range based types scale with span (1 month = 60s, 1 year = 600s).
-    Fixed types: on_this_day (45s), trip (35s/day), person without range (120s).
+    Trip dates provide an editorial estimate; discovered media later applies
+    the capacity cap. Other fixed types: on_this_day (45s), person without
+    range (120s).
     """
     if not memory_type:
         return None
@@ -184,8 +186,10 @@ def default_duration_for_type(
     if memory_type == "on_this_day":
         return 45.0
     if memory_type == "trip" and date_range is not None:
+        from immich_memories.planning.auto_duration import trip_editorial_duration_seconds
+
         days = max(1, (date_range.end - date_range.start).days + 1)
-        return float(max(60, min(600, days * 35)))
+        return trip_editorial_duration_seconds(days)
     if memory_type in ("person_spotlight", "multi_person"):
         if date_range is None:
             return 120.0

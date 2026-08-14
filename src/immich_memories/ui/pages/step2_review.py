@@ -254,7 +254,10 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
 
         if state.prioritize_favorites:
             with ui.row().classes("w-full items-center gap-4 mt-1"):
-                ui.label("Max non-favorites:").classes("text-sm")
+                ui.label("Preferred max non-favorites:").classes("text-sm").tooltip(
+                    "Auto can exceed this preference when the selected media would otherwise "
+                    "leave the requested duration unfilled."
+                )
                 max_nonfav_slider = ui.slider(
                     min=0, max=100, step=5, value=state.max_non_favorite_pct
                 ).classes("flex-1")

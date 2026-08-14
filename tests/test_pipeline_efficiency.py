@@ -199,6 +199,7 @@ class TestAnalysisEligibility:
             "leftover-1",
             "leftover-2",
         ]
+        assert pipeline.last_deep_analysis_count == 1
         pipeline.analyzer.plan_cached_or_metadata.assert_called_once_with(clips[1:])
 
     def test_hdr_only_is_a_hard_eligibility_rule_even_for_favorites(self, tmp_path: Path):

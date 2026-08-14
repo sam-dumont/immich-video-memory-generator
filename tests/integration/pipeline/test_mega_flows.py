@@ -12,8 +12,9 @@ from __future__ import annotations
 import logging
 import subprocess
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -21,9 +22,6 @@ from tests.integration.conftest import ffprobe_json, get_duration, has_stream, r
 from tests.integration.immich_fixtures import requires_immich
 
 logger = logging.getLogger(__name__)
-
-pytestmark = [pytest.mark.integration, requires_ffmpeg, requires_immich]
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -71,11 +69,182 @@ class _FakeStreamingClip:
     input_seek: float = 0.0
 
 
+def test_twelve_day_auto_trip_preserves_the_full_fallback_pool(tmp_path: Path) -> None:
+    """Somme-shaped regression: shortlist work, never the reviewed source pool."""
+    import cv2
+    import numpy as np
+
+    from immich_memories.analysis.smart_pipeline import ClipWithSegment, SmartPipeline
+    from immich_memories.api.models import Asset, AssetType, VideoClipInfo
+    from immich_memories.cache.thumbnail_cache import ThumbnailCache
+    from immich_memories.cli._pipeline_runner import _merge_photos_into_pool
+    from immich_memories.config_loader import Config
+    from immich_memories.ui.pages.clip_pipeline import (
+        _build_pipeline_config,
+        _configure_timeline_for_selection,
+        _eligible_pipeline_media,
+        _resolve_auto_duration_for_selection,
+    )
+    from immich_memories.ui.pages.step2_loading import _set_initial_selection
+    from immich_memories.ui.state import AppState
+
+    start = datetime(2026, 7, 25, 9, 0, tzinfo=UTC)
+
+    def make_asset(
+        asset_id: str,
+        asset_type: AssetType,
+        index: int,
+        *,
+        favorite: bool = False,
+        live_video_id: str | None = None,
+    ) -> Asset:
+        when = start + timedelta(days=index % 12, hours=index % 8)
+        return Asset(
+            id=asset_id,
+            type=asset_type,
+            originalFileName=f"{asset_id}.mov",
+            fileCreatedAt=when,
+            fileModifiedAt=when,
+            updatedAt=when,
+            isFavorite=favorite,
+            livePhotoVideoId=live_video_id,
+            width=4032,
+            height=3024,
+            exifInfo={"make": "Apple", "model": "iPhone"},
+        )
+
+    clips: list[VideoClipInfo] = []
+    for index in range(31):
+        clips.append(
+            VideoClipInfo(
+                asset=make_asset(
+                    f"video-{index}",
+                    AssetType.VIDEO,
+                    index,
+                    favorite=index < 19,
+                ),
+                duration_seconds=8.0,
+                width=1920,
+                height=1080,
+                bitrate=10_000_000,
+            )
+        )
+    for index in range(29):
+        clips.append(
+            VideoClipInfo(
+                asset=make_asset(
+                    f"live-{index}",
+                    AssetType.IMAGE,
+                    index + 31,
+                    live_video_id=f"live-video-{index}",
+                ),
+                duration_seconds=3.0,
+                width=1920,
+                height=1440,
+                bitrate=8_000_000,
+            )
+        )
+    duplicate = VideoClipInfo(
+        asset=make_asset("video-duplicate", AssetType.VIDEO, 0),
+        duration_seconds=8.0,
+        width=1280,
+        height=720,
+        bitrate=4_000_000,
+    )
+    clips.append(duplicate)
+
+    photos = [make_asset(f"photo-{index}", AssetType.IMAGE, index) for index in range(48)]
+    config = Config(
+        cache={
+            "directory": str(tmp_path / "cache"),
+            "database": str(tmp_path / "cache.db"),
+            "video_cache_enabled": False,
+        }
+    )
+    state = AppState(
+        config=config,
+        memory_type="trip",
+        duration_mode="auto",
+        include_photos=True,
+        photo_assets=photos,
+        selected_photo_ids={photo.id for photo in photos},
+        avg_clip_duration=5,
+        pipeline_config={"avg_clip_duration": 5.0},
+    )
+    _set_initial_selection(clips, state)
+
+    eligible_clips, eligible_photos = _eligible_pipeline_media(state, clips)
+    duration = _resolve_auto_duration_for_selection(state, eligible_clips, eligible_photos)
+    timeline = _configure_timeline_for_selection(state, eligible_clips, eligible_photos)
+    pipeline_config = _build_pipeline_config(state, eligible_clips)
+
+    assert len(eligible_clips) == 61
+    assert len(eligible_photos) == 48
+    assert duration is not None
+    assert duration.total_seconds == 150.0
+
+    thumbnail_cache = ThumbnailCache(tmp_path / "thumbnails")
+    ok, encoded = cv2.imencode(".jpg", np.full((64, 64, 3), 96, dtype=np.uint8))
+    assert ok
+    thumbnail_cache.put("video-0", "preview", encoded.tobytes())
+    thumbnail_cache.put("video-duplicate", "preview", encoded.tobytes())
+
+    analysis_cache = MagicMock()
+    analysis_cache.get_analysis.return_value = None
+    pipeline = SmartPipeline(
+        client=MagicMock(),
+        analysis_cache=analysis_cache,
+        thumbnail_cache=thumbnail_cache,
+        config=pipeline_config,
+        analysis_config=config.analysis,
+        app_config=config,
+    )
+
+    deep_ids: set[str] = set()
+
+    def analyze(candidates: list[VideoClipInfo]) -> list[ClipWithSegment]:
+        deep_ids.update(clip.asset.id for clip in candidates)
+        return [
+            ClipWithSegment(
+                clip=clip,
+                start_time=0.0,
+                end_time=min(5.0, clip.duration_seconds),
+                score=clip.quality_score,
+            )
+            for clip in candidates
+        ]
+
+    pipeline._analyze_with_cache_batch = analyze  # type: ignore[method-assign]
+    analyzed = pipeline.run_analysis(eligible_clips)
+
+    assert len(analyzed) == 60
+    assert len(deep_ids) < len(analyzed)
+    assert "video-duplicate" not in {item.clip.asset.id for item in analyzed}
+
+    combined = _merge_photos_into_pool(
+        analyzed,
+        photo_assets=eligible_photos,
+        include_photos=True,
+        config=config,
+        client=MagicMock(),
+        work_dir=tmp_path / "photo-scoring",
+        dry_run=True,
+    )
+    result = pipeline.run_selection(combined)
+    planned_duration = sum(end - begin for begin, end in result.clip_segments.values())
+
+    assert result.selected_clips
+    assert abs(timeline.content_budget - planned_duration) <= pipeline_config.avg_clip_duration
+
+
 # ---------------------------------------------------------------------------
 # Test A: Trip Memory End-to-End
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
+@requires_ffmpeg
+@requires_immich
 class TestMegaFlowTripMemory:
     """Full trip pipeline: GPS clips → trip detection → map fly-over → privacy → assembly.
 
@@ -180,6 +349,9 @@ class TestMegaFlowTripMemory:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
+@requires_ffmpeg
+@requires_immich
 class TestMegaFlowMonthlyWithPhotos:
     """Monthly memory with photo support: score → budget → render → interleave → assemble.
 
@@ -248,6 +420,9 @@ class TestMegaFlowMonthlyWithPhotos:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
+@requires_ffmpeg
+@requires_immich
 class TestMegaFlowSmartPipeline:
     """SmartPipeline 4-phase analysis with real diverse clips.
 
@@ -325,6 +500,8 @@ class TestMegaFlowSmartPipeline:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
+@requires_ffmpeg
 class TestMegaFlowStreamingAssembly:
     """Streaming assembly with portrait+landscape clips, crossfade, privacy mode.
 
@@ -454,6 +631,9 @@ class TestMegaFlowStreamingAssembly:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
+@requires_ffmpeg
+@requires_immich
 class TestMegaFlowClipExtraction:
     """Batch clip extraction: copy mode, reencode mode, all buffer combos, progress.
 
@@ -552,6 +732,9 @@ class TestMegaFlowClipExtraction:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
+@requires_ffmpeg
+@requires_immich
 class TestMegaFlowLivePhotoBurst:
     """Live photo burst: detect → cluster → trim → align → merge → validate.
 

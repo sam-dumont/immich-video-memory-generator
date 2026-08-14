@@ -13,6 +13,7 @@ from immich_memories.ui.pages.clip_pipeline import (
     _build_pipeline_config,
     _configure_timeline_for_selection,
     _eligible_pipeline_media,
+    _pipeline_summary_counts,
     _resolve_auto_duration_for_selection,
     _run_pipeline_blocking,
 )
@@ -97,6 +98,20 @@ def test_selection_uses_the_persisted_timeline_content_budget() -> None:
     assert pipeline_config.target_clips == math.ceil(plan.content_budget / 5.0)
 
 
+def test_pipeline_summary_distinguishes_eligible_deep_and_planned_counts() -> None:
+    result = {
+        "stats": {
+            "eligible_count": 61,
+            "deeply_analyzed_count": 24,
+            "planned_count": 30,
+            "total_analyzed": 60,
+            "selected_count": 30,
+        }
+    }
+
+    assert _pipeline_summary_counts(result) == (61, 24, 30)
+
+
 def test_blocking_pipeline_cannot_reintroduce_unchecked_photos() -> None:
     selected_photo = _photo("keep-photo")
     unchecked_photo = _photo("drop-photo")
@@ -116,6 +131,7 @@ def test_blocking_pipeline_cannot_reintroduce_unchecked_photos() -> None:
         stats={},
     )
     pipeline = MagicMock()
+    pipeline.last_deep_analysis_count = 0
     pipeline.run_analysis.return_value = []
     pipeline.run_selection.return_value = selection_result
     progress_state = {"cancelled": False, "done": False, "error": None}
@@ -140,3 +156,7 @@ def test_blocking_pipeline_cannot_reintroduce_unchecked_photos() -> None:
 
     assert progress_state["error"] is None
     assert merge_photos.call_args.kwargs["photo_assets"] == [selected_photo]
+    assert state.pipeline_result is not None
+    assert state.pipeline_result["stats"]["eligible_count"] == 1
+    assert state.pipeline_result["stats"]["deeply_analyzed_count"] == 0
+    assert state.pipeline_result["stats"]["planned_count"] == 0

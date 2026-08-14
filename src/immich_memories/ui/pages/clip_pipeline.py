@@ -32,6 +32,15 @@ class PipelineCancelled(Exception):
     """Raised when the user cancels the pipeline from the UI."""
 
 
+def _pipeline_summary_counts(result: dict) -> tuple[int, int, int]:
+    """Return reviewed, expensive-analysis, and final-plan counts."""
+    stats = result.get("stats", {})
+    eligible = int(stats.get("eligible_count", stats.get("total_analyzed", 0)))
+    deep = int(stats.get("deeply_analyzed_count", stats.get("total_analyzed", 0)))
+    planned = int(stats.get("planned_count", stats.get("selected_count", 0)))
+    return eligible, deep, planned
+
+
 def render_phase_indicator(current_phase: int, total_phases: int = 4) -> None:
     """Render pipeline phase indicator."""
     phase_labels = ["Clustering", "Filtering", "Analyzing", "Refining"]
@@ -56,27 +65,32 @@ def render_pipeline_summary(result: dict) -> None:
     stats = result.get("stats", {})
     errors = result.get("errors", [])
 
-    selected_count = stats.get("selected_count", 0)
-    total_analyzed = stats.get("total_analyzed", 0)
+    eligible_count, deeply_analyzed_count, planned_count = _pipeline_summary_counts(result)
     error_count = stats.get("error_count", 0)
     elapsed = stats.get("elapsed_seconds", 0)
 
     with ui.card().classes("w-full p-4").style("background: var(--im-success-bg)"):
         ui.label(
-            f"Pipeline complete! Selected {selected_count} clips from {total_analyzed} analyzed."
+            f"Pipeline complete! Planned {planned_count} clips from "
+            f"{eligible_count} eligible media items."
         ).classes("font-semibold").style("color: var(--im-success-text)")
 
         with ui.row().classes("w-full gap-8 mt-4"):
             with ui.column().classes("items-center"):
-                ui.label("Clips Selected").classes("text-sm").style(
+                ui.label("Media Eligible").classes("text-sm").style(
                     "color: var(--im-text-secondary)"
                 )
-                ui.label(str(selected_count)).classes("text-2xl font-bold")
+                ui.label(str(eligible_count)).classes("text-2xl font-bold")
             with ui.column().classes("items-center"):
-                ui.label("Clips Analyzed").classes("text-sm").style(
+                ui.label("Videos Deeply Analyzed").classes("text-sm").style(
                     "color: var(--im-text-secondary)"
                 )
-                ui.label(str(total_analyzed)).classes("text-2xl font-bold")
+                ui.label(str(deeply_analyzed_count)).classes("text-2xl font-bold")
+            with ui.column().classes("items-center"):
+                ui.label("Clips Planned").classes("text-sm").style(
+                    "color: var(--im-text-secondary)"
+                )
+                ui.label(str(planned_count)).classes("text-2xl font-bold")
             with ui.column().classes("items-center"):
                 ui.label("Time Elapsed").classes("text-sm").style("color: var(--im-text-secondary)")
                 time_str = f"{elapsed / 60:.1f}m" if elapsed > 60 else f"{elapsed:.0f}s"
@@ -314,6 +328,13 @@ def _run_pipeline_blocking(
                 )
 
             result = pipeline.run_selection(all_candidates)
+            result.stats.update(
+                {
+                    "eligible_count": len(clips) + len(photos),
+                    "deeply_analyzed_count": pipeline.last_deep_analysis_count,
+                    "planned_count": len(result.selected_clips),
+                }
+            )
 
             state.pipeline_result = {
                 "selected_clips": result.selected_clips,
