@@ -164,19 +164,95 @@ class TestAnalysisEligibility:
     def _pipeline(self, tmp_path: Path, **config_kwargs):
         from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
 
+        analysis_cache = MagicMock()
+        analysis_cache.get_analysis.return_value = None
         return SmartPipeline(
             client=MagicMock(),
-            analysis_cache=MagicMock(),
+            analysis_cache=analysis_cache,
             thumbnail_cache=MagicMock(),
             config=PipelineConfig(**config_kwargs),
             analysis_config=MagicMock(min_segment_duration=1.5),
-            app_config=Config(cache={"directory": str(tmp_path / "cache")}),
+            app_config=Config(
+                cache={"directory": str(tmp_path / "cache")},
+                llm={"model": "qwen-3.6"},
+                content_analysis={"enabled": True},
+            ),
         )
+
+    def test_auto_analyzes_every_cache_miss_in_a_manageable_pool(self, tmp_path: Path) -> None:
+        pipeline = self._pipeline(tmp_path, analysis_depth="auto")
+        clips = [TestDensityBudgetCap()._make_clip(f"clip-{index}") for index in range(41)]
+        pipeline._phase_cluster = MagicMock(return_value=clips)
+        pipeline._phase_filter = MagicMock(side_effect=AssertionError("must not shortlist"))
+        pipeline._analyze_with_cache_batch = MagicMock(return_value=[])
+        pipeline.analyzer.plan_cached_or_metadata = MagicMock(return_value=[])
+
+        pipeline.run_analysis(clips)
+
+        pipeline._analyze_with_cache_batch.assert_called_once_with(clips)
+        assert pipeline.last_deep_analysis_count == 41
+        assert pipeline.config.analysis_depth == "thorough"
+
+    def test_auto_shortlists_large_cache_miss_pools_but_uses_llm_for_shortlist(
+        self, tmp_path: Path
+    ) -> None:
+        pipeline = self._pipeline(tmp_path, analysis_depth="auto")
+        clips = [TestDensityBudgetCap()._make_clip(f"clip-{index}") for index in range(100)]
+        shortlisted = clips[:30]
+        pipeline._phase_cluster = MagicMock(return_value=clips)
+        pipeline._phase_filter = MagicMock(return_value=shortlisted)
+        pipeline._analyze_with_cache_batch = MagicMock(return_value=[])
+        pipeline.analyzer.plan_cached_or_metadata = MagicMock(return_value=[])
+
+        pipeline.run_analysis(clips)
+
+        pipeline._phase_filter.assert_called_once_with(clips, hard_filtered=True)
+        pipeline._analyze_with_cache_batch.assert_called_once_with(shortlisted)
+        assert pipeline.last_deep_analysis_count == 30
+        assert pipeline.config.analysis_depth == "thorough"
+
+    def test_auto_budgets_current_model_cache_misses_not_total_assets(self, tmp_path: Path) -> None:
+        pipeline = self._pipeline(tmp_path, analysis_depth="auto")
+        clips = [TestDensityBudgetCap()._make_clip(f"clip-{index}") for index in range(100)]
+
+        def cached_or_missing(asset_id: str):
+            if int(asset_id.removeprefix("clip-")) < 50:
+                return MagicMock(model_version="qwen-3.6", segments=[MagicMock()])
+            return None
+
+        pipeline.analysis_cache.get_analysis.side_effect = cached_or_missing
+        pipeline._phase_cluster = MagicMock(return_value=clips)
+        pipeline._phase_filter = MagicMock(side_effect=AssertionError("must not shortlist"))
+        pipeline._analyze_with_cache_batch = MagicMock(return_value=[])
+        pipeline.analyzer.plan_cached_or_metadata = MagicMock(return_value=[])
+
+        pipeline.run_analysis(clips)
+
+        pipeline._analyze_with_cache_batch.assert_called_once_with(clips)
+        assert pipeline.last_deep_analysis_count == 100
+
+    def test_thorough_analyzes_every_eligible_clip_unconditionally(self, tmp_path: Path) -> None:
+        pipeline = self._pipeline(tmp_path, analysis_depth="thorough")
+        clips = [TestDensityBudgetCap()._make_clip(f"clip-{index}") for index in range(20)]
+        pipeline._phase_cluster = MagicMock(return_value=clips)
+        pipeline._phase_filter = MagicMock(side_effect=AssertionError("must not shortlist"))
+        pipeline._analyze_with_cache_batch = MagicMock(return_value=[])
+        pipeline.analyzer.plan_cached_or_metadata = MagicMock(return_value=[])
+
+        pipeline.run_analysis(clips)
+
+        pipeline._analyze_with_cache_batch.assert_called_once_with(clips)
+        assert pipeline.last_deep_analysis_count == 20
 
     def test_fast_analysis_shortlist_does_not_delete_eligible_leftovers(self, tmp_path: Path):
         from immich_memories.analysis.smart_pipeline import ClipWithSegment
 
-        pipeline = self._pipeline(tmp_path, target_clips=1, avg_clip_duration=5.0)
+        pipeline = self._pipeline(
+            tmp_path,
+            target_clips=1,
+            avg_clip_duration=5.0,
+            analysis_depth="fast",
+        )
         clips = [
             TestDensityBudgetCap()._make_clip("analyzed"),
             TestDensityBudgetCap()._make_clip("leftover-1"),

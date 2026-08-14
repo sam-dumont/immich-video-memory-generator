@@ -461,9 +461,9 @@ class TestAppStatePhotoDuration:
 class TestAppStateAnalysisDepth:
     """Test analysis_depth state field."""
 
-    def test_default_analysis_depth_is_fast(self):
+    def test_default_analysis_depth_is_auto(self):
         state = AppState()
-        assert state.analysis_depth == "fast"
+        assert state.analysis_depth == "auto"
 
     def test_analysis_depth_can_be_set(self):
         state = AppState()

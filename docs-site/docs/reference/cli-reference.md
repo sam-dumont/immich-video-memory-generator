@@ -244,7 +244,7 @@ immich-memories generate [OPTIONS]
 | `--include-live-photos` | boolean | false | Include Live Photo video clips (3s iPhone clips, merged when burst-captured) |
 | `--include-photos` | boolean | false | Include photos as animated Ken Burns clips (blur background, face-aware pan) |
 | `--photo-duration` | float | - | Duration per photo clip in seconds (default: 4.0) |
-| `--analysis-depth` | choice | - | Analysis depth: fast (metadata gap-fill) or thorough (LLM gap-fill) |
+| `--analysis-depth` | choice | auto | Analysis depth: auto (adaptive current-model cache-miss budget), fast (favorites first), or thorough (every eligible clip) |
 | `--trip-index` | integer | - | Select a specific trip by index (use with --memory-type trip) |
 | `--all-trips` | boolean | false | Generate a video for every detected trip (use with --memory-type trip) |
 | `--years-back` | integer | - | Years to look back for on_this_day (default: all) |

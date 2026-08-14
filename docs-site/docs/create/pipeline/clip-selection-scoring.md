@@ -106,7 +106,7 @@ clips finally planned as separate numbers.
 When content is limited, the pipeline adapts automatically:
 
 - **Media-aware trip Auto duration**: The editorial curve is 30 seconds plus 10 seconds per active day, bounded to 60–300 seconds for dense trips. Usable video excerpts, at most four photos per day for capacity estimation, and a 30-second/day diversity ceiling can lower it. Sparse trips may resolve below 60 seconds.
-- **Auto-thorough LLM**: When favorites are too few to anchor selection (fewer than 5 per 60 seconds of target duration), the pipeline switches from fast to thorough mode — running LLM analysis on all clips, not just favorites.
+- **Auto LLM budget**: Auto runs LLM analysis for every eligible clip when at most 60 clips need fresh analysis. For larger libraries it uses a time-balanced shortlist. Compatible current-model cache hits do not consume this budget.
 - **Temporal coverage**: Every time period gets at least one clip. Sole monthly representatives are protected from removal during duration scaling, even if they score lower than favorites in other months.
 - **Progressive backfill**: The selector first uses strict preferences, then allows up to 70% photos, additional non-favorites, closer moments, and finally any eligible photo ratio. If the only remaining clip is slightly too long, it may accept up to two seconds of overrun for the renderer to trim.
 - **Soft diversity limits**: Two photos per day, photo ratio, non-favorite ratio, and temporal spacing are preferred-first rules. They can be exceeded to fill the requested duration. Hard exclusions are never relaxed.
@@ -121,13 +121,15 @@ How much analysis effort to spend:
 
 | Mode | Favorites | Gap-fillers | Speed |
 |------|-----------|-------------|-------|
-| **Fast** (default) | Full analysis + LLM | Metadata score only | Quick |
-| **Thorough** | Full analysis + LLM | Full analysis + LLM | Slower, better |
-| **Auto** | Switches to thorough when < 5 favorites per 60s of target | | Adaptive |
+| **Auto** (default) | Every eligible clip for manageable cache-miss pools | Time-balanced LLM shortlist for large pools | Adaptive |
+| **Fast** | Full analysis + LLM | Local scoring/cached metadata | Quick |
+| **Thorough** | Full analysis + LLM | Full analysis + LLM | Slowest, exhaustive |
 
-CLI: `--analysis-depth fast|thorough`
+CLI: `--analysis-depth auto|fast|thorough`
 
-The auto-switch happens transparently — you don't need to set it. If you have enough favorites (> 5 per minute of target video), fast mode is sufficient because favorites drive the selection. Below that threshold, all clips need LLM scoring to distinguish quality.
+Cache reuse is model-aware. Results from the exact configured model are loaded automatically and
+shown in review; they skip another LLM request. Results with no model identity or from a different
+model are stale and are analyzed again.
 
 ## Performance: 480p Downscaling
 

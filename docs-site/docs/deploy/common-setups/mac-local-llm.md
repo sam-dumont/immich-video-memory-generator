@@ -107,4 +107,4 @@ Memory usage: ~2 GB for Immich Memories, ~5 GB for mlx-vlm with the 8-bit model.
 - **Start mlx-vlm before Immich Memories.** If the LLM server isn't running, content analysis silently falls back to metadata-only scoring. You'll still get results, just without the LLM content understanding.
 - **The 8-bit quant is the sweet spot.** The 4-bit version is faster but less accurate. The full 16-bit version needs 16 GB+ of unified memory just for the model.
 - **Ollama works too.** If you prefer Ollama: `ollama run qwen2.5-vl`, then set `provider: ollama` and `base_url: http://localhost:11434` in config.
-- **Use `--analysis-depth thorough`** on the CLI to force LLM analysis even for clips that already have metadata scores. The default `fast` mode only uses the LLM to fill gaps.
+- **The default `--analysis-depth auto` is usually right.** It analyzes every eligible clip when at most 60 need fresh work, then shortlists larger libraries. Use `thorough` to force every eligible clip through LLM analysis, or `fast` to reserve LLM calls for favorites. Exact current-model cache hits are reused; stale model results restart.

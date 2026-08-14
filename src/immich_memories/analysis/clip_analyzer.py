@@ -9,6 +9,11 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from immich_memories.analysis.cache_projection import (
+    apply_cached_segment,
+    apply_semantic_payload,
+    is_compatible_analysis_cache,
+)
 from immich_memories.processing.downscaler import cleanup_downscaled
 from immich_memories.security import sanitize_filename
 
@@ -104,16 +109,7 @@ class ClipAnalyzer:
                     clip
                 )
 
-                if llm_analysis:
-                    clip.llm_description = cast(str | None, llm_analysis.get("description"))
-                    clip.llm_emotion = cast(str | None, llm_analysis.get("emotion"))
-                    clip.llm_setting = cast(str | None, llm_analysis.get("setting"))
-                    clip.llm_activities = cast(list[str] | None, llm_analysis.get("activities"))
-                    clip.llm_subjects = cast(list[str] | None, llm_analysis.get("subjects"))
-                    clip.llm_interestingness = cast(
-                        float | None, llm_analysis.get("interestingness")
-                    )
-                    clip.llm_quality = cast(float | None, llm_analysis.get("quality"))
+                apply_semantic_payload(clip, llm_analysis)
 
                 results.append(
                     ClipWithSegment(
@@ -220,7 +216,8 @@ class ClipAnalyzer:
             end = min(clip.duration_seconds, self.config.avg_clip_duration)
             score = clip.quality_score
         else:
-            start, end, score, _preview_path, _llm = cached
+            start, end, score, _preview_path, llm_analysis = cached
+            apply_semantic_payload(clip, llm_analysis)
         return ClipWithSegment(clip=clip, start_time=start, end_time=end, score=score)
 
     def _check_analysis_cache(
@@ -232,10 +229,7 @@ class ClipAnalyzer:
         if not (cached and cached.segments and len(cached.segments) > 0):
             return None
 
-        if (
-            self._app_config.content_analysis.enabled
-            and cached.model_version != self._app_config.llm.model
-        ):
+        if not is_compatible_analysis_cache(cached, self._app_config):
             logger.info(
                 "Ignoring semantic cache for %s: cached model=%s, configured model=%s",
                 clip.asset.id,
@@ -247,20 +241,7 @@ class ClipAnalyzer:
         best = max(cached.segments, key=lambda s: s.total_score or 0.0)
         start, end, score = best.start_time, best.end_time, best.total_score or 0.0
 
-        cached_llm_analysis = None
-        if best.llm_description or best.llm_emotion:
-            cached_llm_analysis = {
-                "description": best.llm_description,
-                "emotion": best.llm_emotion,
-                "setting": best.llm_setting,
-                "activities": best.llm_activities,
-                "subjects": best.llm_subjects,
-                "interestingness": best.llm_interestingness,
-                "quality": best.llm_quality,
-            }
-
-        if best.audio_categories:
-            clip.audio_categories = list(best.audio_categories)
+        cached_llm_analysis = apply_cached_segment(clip, best)
 
         preview_path = self.preview_builder.find_cached_preview(clip.asset.id, start, end)
 

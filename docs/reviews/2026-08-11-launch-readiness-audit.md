@@ -1148,3 +1148,45 @@ Final verification for this correction:
 - Mypy: no issues in 256 source files.
 - Ruff lint and format: all 535 Python files clean.
 - Docusaurus production build and `git diff --check`: passed.
+
+## Model-aware analysis modes and visible cache reuse — 2026-08-14
+
+The Somme review run showed 35 clips in the analysis phase even though 41 clips survived hard
+eligibility. This was not an LLM outage. The density budget shortlisted 35 clips, Fast mode sent
+only favorites through unified/LLM analysis, and the remaining clips received local scoring or
+metadata fallbacks. The UI exposed two overlapping controls—Analysis Depth and “Analyze all
+videos”—whose combinations did not match their labels. Compatible cached semantic results were
+also reused internally without being projected back onto every review clip, so valid results could
+look like missing analysis.
+
+The analysis contract is now explicit:
+
+- **Auto** is the default. It counts fresh semantic work, not total media. When at most 60 eligible
+  clips lack analysis from the exact configured model, every eligible clip goes through the deep
+  analysis path. Larger miss pools use the time-balanced density shortlist, but every shortlisted
+  clip gets LLM analysis.
+- **Fast** always uses the shortlist and reserves LLM analysis for favorites. It no longer silently
+  changes itself to Thorough.
+- **Thorough** bypasses the shortlist and sends every eligible clip through deep analysis.
+- The separate “Analyze all videos” checkbox was removed from the UI. The legacy configuration
+  field remains accepted for compatibility with older callers.
+- Cache results are reusable only when they have segments and, with content analysis enabled, their
+  model identity exactly matches the configured model. Null, unknown, or different model identities
+  are stale misses and restart analysis.
+- Compatible cached segments now populate the in-memory clip's description, emotion, setting,
+  activities, subjects, interest, quality, and audio tags in every path—including shortlist
+  leftovers. Step 2 automatically shows them as “Current analysis” before a new run, and the cached
+  segment remains available to title, music, and final selection logic.
+
+Regression coverage records the reported 41-clip trip, a 100-clip large library, a 100-clip library
+with only 50 current-model misses, unconditional Thorough behavior, stale-model rejection, and
+pre-run UI cache hydration. The User Guide, CLI reference, pipeline manual, local-LLM setup, and
+documentation animation now use the same three definitions.
+
+Final verification for this correction:
+
+- Focused cache/mode/UI/CLI regression set: 143 passed, 67 deliberate deselections.
+- Somme-shaped 60-clip integration and affected regression set: 130 passed.
+- Full repository suite: 4,430 passed, 7 skipped, 662 deliberate integration deselections.
+- Mypy: no issues in 257 source files.
+- Ruff lint, `git diff --check`, and the Docusaurus production build: passed.

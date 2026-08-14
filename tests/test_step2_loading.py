@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
+import immich_memories.ui.pages.step2_loading as step2_loading
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
+from immich_memories.config_loader import Config
 from immich_memories.ui.pages.step2_loading import _set_initial_selection
 from immich_memories.ui.state import AppState
 
@@ -45,3 +48,51 @@ def test_initial_selection_keeps_live_photos_eligible_when_video_sources_look_lo
 
     assert len(state.selected_clip_ids) == 61
     assert {clip.asset.id for clip in live} <= state.selected_clip_ids
+
+
+def test_load_surfaces_only_current_model_cached_analysis() -> None:
+    current = _regular_clip("current")
+    stale = _regular_clip("stale")
+    current_segment = MagicMock(
+        start_time=1.0,
+        end_time=6.0,
+        total_score=0.92,
+        llm_description="A child running into the sea",
+        llm_emotion="excited",
+        llm_setting="beach",
+        llm_activities=["running"],
+        llm_subjects=["child"],
+        llm_interestingness=0.9,
+        llm_quality=0.86,
+        audio_categories=["waves"],
+    )
+    current_analysis = MagicMock(model_version="qwen-3.6", segments=[current_segment])
+    current_analysis.get_best_segment.return_value = current_segment
+    stale_analysis = MagicMock(model_version="qwen-3.5", segments=[MagicMock()])
+    cache = MagicMock()
+    cache.get_analysis.side_effect = {
+        "current": current_analysis,
+        "stale": stale_analysis,
+    }.get
+    state = AppState(
+        config=Config(
+            llm={"model": "qwen-3.6"},
+            content_analysis={"enabled": True},
+        ),
+        analysis_cache=cache,
+    )
+
+    hydrated = step2_loading._hydrate_compatible_cached_analysis(state, [current, stale])
+
+    assert hydrated == 1
+    assert state.cached_analysis_ids == {"current"}
+    assert state.clip_segments == {"current": (1.0, 6.0)}
+    assert current.llm_description == "A child running into the sea"
+    assert current.llm_emotion == "excited"
+    assert current.llm_setting == "beach"
+    assert current.llm_activities == ["running"]
+    assert current.llm_subjects == ["child"]
+    assert current.llm_interestingness == 0.9
+    assert current.llm_quality == 0.86
+    assert current.audio_categories == ["waves"]
+    assert stale.llm_description is None

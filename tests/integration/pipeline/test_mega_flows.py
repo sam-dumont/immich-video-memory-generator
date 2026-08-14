@@ -69,8 +69,8 @@ class _FakeStreamingClip:
     input_seek: float = 0.0
 
 
-def test_twelve_day_auto_trip_preserves_the_full_fallback_pool(tmp_path: Path) -> None:
-    """Somme-shaped regression: shortlist work, never the reviewed source pool."""
+def test_twelve_day_auto_trip_deeply_analyzes_the_manageable_pool(tmp_path: Path) -> None:
+    """Somme-shaped regression: 60 fresh clips fit Auto's full-analysis budget."""
     import cv2
     import numpy as np
 
@@ -218,7 +218,7 @@ def test_twelve_day_auto_trip_preserves_the_full_fallback_pool(tmp_path: Path) -
     analyzed = pipeline.run_analysis(eligible_clips)
 
     assert len(analyzed) == 60
-    assert len(deep_ids) < len(analyzed)
+    assert deep_ids == {item.clip.asset.id for item in analyzed}
     assert "video-duplicate" not in {item.clip.asset.id for item in analyzed}
 
     combined = _merge_photos_into_pool(

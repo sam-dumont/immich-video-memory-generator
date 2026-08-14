@@ -290,9 +290,12 @@ def register_generate_commands(main: click.Group) -> None:
     )
     @click.option(
         "--analysis-depth",
-        type=click.Choice(["fast", "thorough"]),
+        type=click.Choice(["auto", "fast", "thorough"]),
         default=None,
-        help="Analysis depth: fast (metadata gap-fill) or thorough (LLM gap-fill)",
+        help=(
+            "Analysis depth: auto (full analysis for manageable pools), "
+            "fast (favorites first), or thorough (every eligible clip)"
+        ),
     )
     @click.option(
         "--trip-index",
@@ -524,7 +527,7 @@ def register_generate_commands(main: click.Group) -> None:
             config.photos.duration = photo_duration
 
         # Analysis depth: CLI override → stored for PipelineConfig
-        effective_analysis_depth = analysis_depth or "fast"
+        effective_analysis_depth = analysis_depth or "auto"
 
         # Infer memory type from context when not explicitly set
         if memory_type is None and person_names:

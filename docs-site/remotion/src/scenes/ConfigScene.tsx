@@ -333,7 +333,7 @@ export const ConfigScene: React.FC<Props> = ({ bassIntensity }) => {
                 />
                 <ImSelect
                   label="Analysis Depth"
-                  value='Fast (LLM top clips only)'
+                  value='Auto (recommended)'
                   style={{ marginTop: 4 }}
                 />
                 <div

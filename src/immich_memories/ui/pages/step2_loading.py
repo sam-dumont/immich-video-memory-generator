@@ -7,6 +7,10 @@ import logging
 
 from nicegui import run, ui
 
+from immich_memories.analysis.cache_projection import (
+    apply_cached_segment,
+    is_compatible_analysis_cache,
+)
 from immich_memories.analysis.live_photo_pipeline import fetch_live_photo_clips
 from immich_memories.api.immich import SyncImmichClient
 from immich_memories.api.models import VideoClipInfo
@@ -211,6 +215,7 @@ def _load_clips() -> None:
             )
             progress_bar.value = 0.1
             await _load_thumbnails_and_metadata_async(clips, status_label, progress_bar)
+            _hydrate_and_report_cached_analysis(state, clips, status_label)
 
             if state.include_photos and state.photo_assets:
                 await _load_photo_thumbnails_async(state.photo_assets, status_label)
@@ -360,6 +365,35 @@ def _apply_metadata(clip: VideoClipInfo, meta: dict) -> None:
     clip.color_transfer = meta.get("color_transfer")
     clip.color_primaries = meta.get("color_primaries")
     clip.bit_depth = meta.get("bit_depth")
+
+
+def _hydrate_compatible_cached_analysis(state, clips: list[VideoClipInfo]) -> int:
+    """Surface current-model cache entries; stale entries deliberately remain misses."""
+    config = state.config
+    analysis_cache = state.analysis_cache
+    state.cached_analysis_ids = set()
+    if config is None or analysis_cache is None:
+        return 0
+
+    for clip in clips:
+        cached = analysis_cache.get_analysis(clip.asset.id)
+        if not is_compatible_analysis_cache(cached, config):
+            continue
+        best_segment = cached.get_best_segment()
+        if best_segment is None:
+            continue
+        apply_cached_segment(clip, best_segment)
+        state.clip_segments[clip.asset.id] = (best_segment.start_time, best_segment.end_time)
+        state.cached_analysis_ids.add(clip.asset.id)
+
+    return len(state.cached_analysis_ids)
+
+
+def _hydrate_and_report_cached_analysis(state, clips, status_label) -> None:
+    """Hydrate compatible analysis without adding branches to the loading workflow."""
+    hydrated = _hydrate_compatible_cached_analysis(state, clips)
+    if hydrated:
+        status_label.set_text(f"Loaded {hydrated} current cached analyses")
 
 
 def _probe_and_cache_metadata(clip, client, state, analysis_cache) -> None:

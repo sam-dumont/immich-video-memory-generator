@@ -238,7 +238,7 @@ def run_pipeline_and_generate(
     live_photo_clips: list | None = None,
     photo_assets: list | None = None,
     include_photos: bool = False,
-    analysis_depth: str = "fast",
+    analysis_depth: str = "auto",
     client: SyncImmichClient,
     config: Config,
     progress: ProgressDisplay,

@@ -33,6 +33,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+AUTO_FULL_ANALYSIS_MAX_CACHE_MISSES = 60
+
 
 def _cap_analysis_candidates(
     selected: list[VideoClipInfo], target_clips: int
@@ -100,8 +102,8 @@ class PipelineConfig:
     # Photo ratio cap — max fraction of selected clips that can be photos
     photo_max_ratio: float = 0.50  # 0.50 = at most 50% photos
 
-    # Analysis depth: "fast" = metadata gap-fill, "thorough" = LLM gap-fill
-    analysis_depth: str = "fast"
+    # Analysis depth: auto budgets misses, fast favors speed, thorough analyzes all.
+    analysis_depth: str = "auto"
 
     @property
     def duration_target(self) -> float:
@@ -234,7 +236,7 @@ class SmartPipeline:
 
             # Phase 2: hard eligibility + a cost-bounded analysis shortlist.
             eligible = self._hard_eligible_clips(deduplicated)
-            candidates = self._phase_filter(eligible, hard_filtered=True)
+            candidates = self._analysis_candidates(eligible)
             self.last_deep_analysis_count = len(candidates)
 
             # Phase 3: one cache batch covers every candidate download.
@@ -256,6 +258,53 @@ class SmartPipeline:
                 self.analyzer.close()
             with contextlib.suppress(Exception):
                 self.previewer.close()
+
+    def _analysis_candidates(self, eligible: list[VideoClipInfo]) -> list[VideoClipInfo]:
+        """Resolve user-facing analysis depth into the concrete candidate set."""
+        requested_depth = self.config.analysis_depth
+        if requested_depth == "thorough":
+            logger.info("Thorough mode: analyzing all %d eligible clips", len(eligible))
+            self._complete_passthrough_filter("Thorough", len(eligible))
+            return eligible
+
+        if requested_depth == "auto":
+            cache_misses = self._semantic_cache_miss_count(eligible)
+            self.config.analysis_depth = "thorough"
+            if cache_misses <= AUTO_FULL_ANALYSIS_MAX_CACHE_MISSES:
+                logger.info(
+                    "Auto mode: %d eligible clips, %d current-model cache misses; "
+                    "analyzing every eligible clip",
+                    len(eligible),
+                    cache_misses,
+                )
+                self._complete_passthrough_filter("Auto", len(eligible))
+                return eligible
+            logger.info(
+                "Auto mode: %d current-model cache misses exceeds %d; "
+                "using density shortlist with LLM analysis",
+                cache_misses,
+                AUTO_FULL_ANALYSIS_MAX_CACHE_MISSES,
+            )
+
+        return self._phase_filter(eligible, hard_filtered=True)
+
+    def _complete_passthrough_filter(self, mode: str, candidate_count: int) -> None:
+        """Keep four-phase progress truthful when a mode deliberately skips shortlisting."""
+        self.tracker.start_phase(PipelinePhase.FILTERING, 1)
+        self.tracker.start_item(f"{mode} mode: keeping all {candidate_count} eligible clips")
+        self.tracker.complete_item("filters")
+        self.tracker.complete_phase()
+
+    def _semantic_cache_miss_count(self, clips: list[VideoClipInfo]) -> int:
+        """Count clips that need work under the exact active semantic model."""
+        from immich_memories.analysis.cache_projection import is_compatible_analysis_cache
+
+        return sum(
+            not is_compatible_analysis_cache(
+                self.analysis_cache.get_analysis(clip.asset.id), self._app_config
+            )
+            for clip in clips
+        )
 
     def run_planning_analysis(
         self,
@@ -449,26 +498,6 @@ class SmartPipeline:
                 f"({unique_count} clips available)"
             )
 
-    def _maybe_switch_to_thorough(self, clips: list[VideoClipInfo]) -> None:
-        """Switch to thorough LLM analysis when favorites can't drive selection.
-
-        Threshold scales with target duration: 5 favorites per 60s.
-        A 5-minute video needs ~25 favorites to stay in fast mode.
-        A 30-second video only needs ~3.
-        """
-        if self.config.analysis_depth != "fast":
-            return
-        target_seconds = self.config.duration_target
-        # WHY: 5 per 60s — below that, favorites alone can't anchor selection
-        threshold = max(2, int(5 * target_seconds / 60))
-        fav_count = sum(1 for c in clips if c.asset.is_favorite)
-        if fav_count < threshold:
-            self.config.analysis_depth = "thorough"
-            logger.info(
-                f"Only {fav_count} favorites (need {threshold} for {target_seconds:.0f}s) "
-                f"— switching to thorough LLM analysis"
-            )
-
     def _hard_eligible_clips(self, clips: list[VideoClipInfo]) -> list[VideoClipInfo]:
         """Apply only rules that must permanently exclude a source clip."""
         min_duration = self._analysis_config.min_segment_duration
@@ -564,8 +593,6 @@ class SmartPipeline:
 
         fav_count = sum(1 for c in selected if c.asset.is_favorite)
         gap_count = len(selected) - fav_count
-
-        self._maybe_switch_to_thorough(selected)
 
         self.tracker.complete_item("filters")
         self.tracker.complete_phase()

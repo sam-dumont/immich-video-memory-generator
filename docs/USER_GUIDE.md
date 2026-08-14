@@ -138,7 +138,17 @@ After clicking "Next: Review Clips", you'll see all available videos.
 | **HDR clips only** | Only use HDR videos (if available) |
 | **Prioritize favorites** | Include favorite videos first |
 | **Preferred max non-favorites** | Favor this percentage; Auto may exceed it to fill the video |
-| **Analyze all videos** | Slower but more thorough analysis |
+
+Analysis depth is chosen once in Step 1:
+
+- **Auto (recommended):** LLM-analyzes every eligible clip when at most 60 clips need fresh
+  analysis. Larger libraries use a time-balanced shortlist. Current-model cache hits do not count
+  toward that limit.
+- **Fast:** Uses the time-balanced shortlist and reserves LLM analysis for favorites.
+- **Thorough:** LLM-analyzes every eligible clip, unconditionally.
+
+Current cache results appear directly on clip cards. Cache entries from an unknown or different
+model are stale: the app ignores them and starts fresh analysis.
 
 #### Understanding "Max Non-Favorites"
 
@@ -302,7 +312,7 @@ From here you can:
 ### Slow Analysis
 
 **Analysis taking too long**
-- Disable "Analyze all videos" for faster processing
+- Choose **Fast** analysis depth for the smallest LLM workload
 - Video analysis is cached - subsequent runs are faster
 - Check if hardware acceleration is enabled (`immich-memories hardware`)
 

@@ -203,6 +203,26 @@ def _render_audio_categories(clip: VideoClipInfo) -> None:
             )
 
 
+def _render_cached_analysis(clip: VideoClipInfo, state) -> None:
+    """Render compatible cached semantics directly in the pre-run review."""
+    if clip.asset.id not in state.cached_analysis_ids:
+        return
+    with ui.row().classes("items-center gap-1 mt-1"):
+        ui.icon("cached").classes("text-xs").style("color: var(--im-success)")
+        ui.label("Current analysis").classes("text-xs font-semibold").style(
+            "color: var(--im-success)"
+        )
+    if clip.llm_description:
+        ui.label(clip.llm_description).classes("text-xs italic line-clamp-3").style(
+            "color: var(--im-text-secondary)"
+        )
+    semantic_tags = [value for value in (clip.llm_emotion, clip.llm_setting) if value]
+    if semantic_tags:
+        with ui.row().classes("gap-1 flex-wrap"):
+            for tag in semantic_tags:
+                im_badge(tag, variant="analysis")
+
+
 def _render_clip_badges(badges: list[str]) -> None:
     """Render badge icons/labels for a clip card."""
     if badges:
@@ -280,6 +300,7 @@ def _render_clip_card(
     ):
         _render_clip_thumbnail(clip.asset.id)
         _render_clip_badges(_get_clip_badges(clip))
+        _render_cached_analysis(clip, state)
         _render_audio_categories(clip)
         _render_clip_metadata(clip)
         _render_duplicate_indicator(is_duplicate, is_best)

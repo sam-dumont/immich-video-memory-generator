@@ -348,7 +348,6 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
             >
               <Checkbox checked={false} label="HDR clips only" />
               <Checkbox checked={true} label="Prioritize favorites" />
-              <Checkbox checked={false} label="Analyze all videos" />
             </div>
 
             {/* Slider: Max non-favorites */}

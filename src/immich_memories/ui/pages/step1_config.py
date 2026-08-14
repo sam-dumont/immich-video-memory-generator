@@ -316,13 +316,15 @@ def _render_options_section(state) -> None:
             c4.classes("p-3")
             ui.select(
                 options={
-                    "fast": "Fast (LLM top clips only)",
-                    "thorough": "Thorough (LLM all clips)",
+                    "auto": "Auto (recommended)",
+                    "fast": "Fast (favorites first)",
+                    "thorough": "Thorough (every eligible clip)",
                 },
                 label="Analysis Depth",
                 value=state.analysis_depth,
             ).classes("w-full").bind_value(state, "analysis_depth").tooltip(
-                "Fast analyzes only top-ranked clips; Thorough scores all clips with LLM"
+                "Auto fully analyzes manageable pools and shortlists large libraries; "
+                "Fast reserves LLM analysis for favorites; Thorough analyzes every eligible clip"
             )
 
 

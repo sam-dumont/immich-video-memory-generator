@@ -189,6 +189,44 @@ class TestCheckAnalysisCache:
         assert result[4] is not None
         assert result[4]["emotion"] == "joy"
 
+    def test_metadata_fallback_surfaces_compatible_cached_semantics(self) -> None:
+        app_config = Config(
+            llm={"model": "qwen-3.6"},
+            content_analysis={"enabled": True},
+        )
+        analyzer, _, mock_cache, _ = _make_analyzer(app_config=app_config)
+        cached = _make_cached_analysis(
+            _make_cached_segment(
+                start=2.0,
+                end=7.0,
+                score=0.94,
+                llm_description="Emile building a sandcastle",
+                llm_emotion="delighted",
+                llm_setting="beach",
+                llm_activities=["playing"],
+                llm_subjects=["Emile"],
+                llm_interestingness=0.91,
+                llm_quality=0.88,
+                audio_categories=["laughter", "waves"],
+            )
+        )
+        cached.model_version = "qwen-3.6"
+        mock_cache.get_analysis.return_value = cached
+        clip = make_clip("asset-cached-leftover", duration=10.0)
+
+        result = analyzer.plan_cached_or_metadata([clip])
+
+        assert len(result) == 1
+        assert (result[0].start_time, result[0].end_time, result[0].score) == (2.0, 7.0, 0.94)
+        assert clip.llm_description == "Emile building a sandcastle"
+        assert clip.llm_emotion == "delighted"
+        assert clip.llm_setting == "beach"
+        assert clip.llm_activities == ["playing"]
+        assert clip.llm_subjects == ["Emile"]
+        assert clip.llm_interestingness == 0.91
+        assert clip.llm_quality == 0.88
+        assert clip.audio_categories == ["laughter", "waves"]
+
     def test_cached_analysis_returns_segment_data(self):
         analyzer, _, mock_cache, mock_preview = _make_analyzer()
         seg = _make_cached_segment(start=2.0, end=5.0, score=0.8)

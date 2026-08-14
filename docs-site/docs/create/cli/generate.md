@@ -62,7 +62,7 @@ Apple VideoToolbox; other hardware backends retain their existing quality polici
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--analysis-depth` | — | choice | `fast` | `fast` (LLM for favorites only) or `thorough` (LLM for top candidates) |
+| `--analysis-depth` | — | choice | `auto` | `auto` (all manageable cache misses, shortlist large pools), `fast` (favorites first), or `thorough` (every eligible clip) |
 | `--include-photos` | — | flag | — | Include photos alongside videos |
 | `--photo-duration` | — | float | `4.0` | Seconds per photo clip (use with `--include-photos`) |
 

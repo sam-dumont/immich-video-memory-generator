@@ -58,6 +58,7 @@ class AppState:
     clips: list[VideoClipInfo] = field(default_factory=list)
     selected_clip_ids: set[str] = field(default_factory=set)
     clip_segments: dict[str, tuple[float, float]] = field(default_factory=dict)
+    cached_analysis_ids: set[str] = field(default_factory=set)
     clip_rotations: dict[str, int | None] = field(default_factory=dict)
 
     # Generation options
@@ -99,8 +100,8 @@ class AppState:
     scored_photos: list[Any] = field(default_factory=list)
     photo_budget_result: Any | None = None
 
-    # Analysis depth (fast or thorough)
-    analysis_depth: str = "fast"
+    # Analysis depth (auto, fast, or thorough)
+    analysis_depth: str = "auto"
 
     # Connection
     connected_user: str | None = None
@@ -145,6 +146,7 @@ class AppState:
         self.selected_clip_ids = set()
         self.selected_photo_ids = set()
         self.clip_segments = {}
+        self.cached_analysis_ids = set()
         self.clip_rotations = {}
         self.pipeline_result = None
         self.timeline_plan = None

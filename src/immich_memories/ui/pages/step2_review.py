@@ -243,9 +243,6 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
                     state, "prioritize_favorites", e.value if hasattr(e, "value") else e
                 )
             )
-            ui.checkbox("Analyze all videos", value=state.analyze_all).on_value_change(
-                lambda e: setattr(state, "analyze_all", e.value if hasattr(e, "value") else e)
-            )
 
         if state.hdr_only and hdr_count == 0:
             im_info_card(
@@ -290,7 +287,6 @@ def _render_step2_controls(state, clips: list[VideoClipInfo]) -> None:
                 "hdr_only": state.hdr_only,
                 "prioritize_favorites": state.prioritize_favorites,
                 "max_non_favorite_ratio": state.max_non_favorite_ratio,
-                "analyze_all": state.analyze_all,
             }
             ui.navigate.to("/step2")
 
