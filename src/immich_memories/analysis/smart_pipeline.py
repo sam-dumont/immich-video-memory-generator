@@ -190,6 +190,7 @@ class SmartPipeline:
             analysis_config=analysis_config,
             content_analysis_config=app_config.content_analysis,
             video_cache=self._video_cache,
+            hardware_enabled=app_config.hardware.enabled,
         )
         self.analyzer = ClipAnalyzer(
             self.config,

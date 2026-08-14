@@ -12,12 +12,17 @@ from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.config_models import AnalysisConfig, CacheConfig, ContentAnalysisConfig
 
 
-def _make_builder(cache_config: CacheConfig | None = None) -> PreviewBuilder:
+def _make_builder(
+    cache_config: CacheConfig | None = None,
+    *,
+    hardware_enabled: bool = True,
+) -> PreviewBuilder:
     return PreviewBuilder(
         client=MagicMock(),
         cache_config=cache_config or CacheConfig(),
         analysis_config=AnalysisConfig(),
         content_analysis_config=ContentAnalysisConfig(),
+        hardware_enabled=hardware_enabled,
     )
 
 
@@ -52,7 +57,7 @@ class TestPreviewCacheLocation:
         monkeypatch.setattr("subprocess.run", fake_run)
         monkeypatch.setattr(
             "immich_memories.analysis.preview_builder._get_fast_encoder_args",
-            lambda: [],
+            lambda **_kwargs: [],
         )
 
         result = Path(
@@ -66,6 +71,34 @@ class TestPreviewCacheLocation:
 
         assert result.parent == cache_config.cache_path / "previews"
         assert not forbidden_home.exists()
+
+    def test_hardware_disabled_uses_software_encoder(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        cache_config = CacheConfig(directory=str(tmp_path / "cache"))
+        encode_commands: list[list[str]] = []
+
+        def fake_run(command, **_kwargs):
+            if command[0] == "ffprobe":
+                return MagicMock(returncode=0, stdout="2.0")
+            encode_commands.append(command)
+            Path(command[-1]).write_bytes(b"preview")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        _make_builder(cache_config, hardware_enabled=False).extract_preview_segment(
+            tmp_path / "source.mp4",
+            0.0,
+            2.0,
+            asset_id="video-1",
+        )
+
+        assert len(encode_commands) == 1
+        assert "libx264" in encode_commands[0]
+        assert "h264_nvenc" not in encode_commands[0]
 
 
 def _make_segment(start: float, end: float, score: float) -> ScoredSegment:

@@ -29,13 +29,23 @@ __all__ = [
 ]
 
 
-def _get_fast_encoder_args() -> list[str]:
+def _get_fast_encoder_args(*, hardware_enabled: bool = True) -> list[str]:
     """Get fast encoder arguments with GPU acceleration when available.
 
     Returns encoder optimized for speed (preview temp files).
     """
     import subprocess
     import sys
+
+    if not hardware_enabled:
+        return [
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "23",
+        ]
 
     # macOS: Use VideoToolbox hardware encoder
     if sys.platform == "darwin":

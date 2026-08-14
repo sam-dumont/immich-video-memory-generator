@@ -36,12 +36,14 @@ class PreviewBuilder:
         analysis_config: AnalysisConfig,
         content_analysis_config: ContentAnalysisConfig,
         video_cache: VideoDownloadCache | None = None,
+        hardware_enabled: bool = True,
     ):
         self.client = client
         self._cache_config = cache_config
         self._analysis_config = analysis_config
         self._content_analysis_config = content_analysis_config
         self._video_cache = video_cache
+        self._hardware_enabled = hardware_enabled
         self._cache_batch: CacheBatch | None = None
         self._legacy_analyzer: UnifiedSegmentAnalyzer | None = None
         self._owns_legacy_analyzer = False
@@ -319,7 +321,7 @@ class PreviewBuilder:
             f"(duration: {duration:.1f}s, video: {video_duration:.1f}s)"
         )
 
-        encoder_args = _get_fast_encoder_args()
+        encoder_args = _get_fast_encoder_args(hardware_enabled=self._hardware_enabled)
 
         cmd = [
             "ffmpeg",

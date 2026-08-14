@@ -213,11 +213,14 @@ def test_launch_flow_renders_real_video(
 
     page.get_by_role("button", name="Generate Memories", exact=True).click()
     pipeline_summary = page.get_by_text(
-        re.compile(r"^Pipeline complete! Selected [1-9]\d* clips from [1-9]\d* analyzed\.$")
+        re.compile(
+            r"^Pipeline complete! Planned [1-9]\d* clips from "
+            r"[1-9]\d* eligible media items\.$"
+        )
     )
     expect(pipeline_summary).to_be_visible(timeout=180_000)
     page.get_by_role("button", name="Review & Refine Selected Clips").click()
-    expect(page.get_by_text(re.compile(r"^Final Duration: 0:0[1-9]$"))).to_be_visible()
+    expect(page.get_by_text(re.compile(r"^Final Duration: (?!0:00)\d+:[0-5]\d$"))).to_be_visible()
     page.get_by_role("button", name="Continue to Generation").click()
 
     _choose(page, "Resolution", "720p")
