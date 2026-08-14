@@ -38,9 +38,19 @@ def limit_photos_per_day(
     clips: list[ClipWithSegment],
     max_per_day: int = _MAX_PHOTOS_PER_DAY,
 ) -> list[ClipWithSegment]:
-    """Keep at most max_per_day photos from the same calendar day.
+    """Return the preferred pool with at most max_per_day photos per day."""
+    preferred, _overflow = _partition_photos_per_day(clips, max_per_day)
+    return preferred
 
-    Videos are never dropped. Within each day, highest-scored photos are kept.
+
+def _partition_photos_per_day(
+    clips: list[ClipWithSegment],
+    max_per_day: int = _MAX_PHOTOS_PER_DAY,
+) -> tuple[list[ClipWithSegment], list[ClipWithSegment]]:
+    """Partition same-day photos into preferred and duration-fallback pools.
+
+    Videos are always preferred. Within each day, the highest-scored photos
+    enter initial selection and the remainder stay available for backfill.
     """
     from immich_memories.api.models import AssetType
 
@@ -48,7 +58,7 @@ def limit_photos_per_day(
     photos = [c for c in clips if c.clip.asset.type == AssetType.IMAGE]
 
     if not photos:
-        return clips
+        return clips, []
 
     # Group photos by day, keep best N per day
     by_day: dict[str, list[ClipWithSegment]] = defaultdict(list)
@@ -57,19 +67,19 @@ def limit_photos_per_day(
         by_day[day_key].append(p)
 
     kept_photos: list[ClipWithSegment] = []
-    dropped = 0
+    overflow_photos: list[ClipWithSegment] = []
     for day_key in sorted(by_day):
         day_photos = sorted(by_day[day_key], key=lambda c: c.score, reverse=True)
         kept_photos.extend(day_photos[:max_per_day])
-        dropped += max(0, len(day_photos) - max_per_day)
+        overflow_photos.extend(day_photos[max_per_day:])
 
-    if dropped > 0:
+    if overflow_photos:
         logger.info(
-            f"Same-day photo limit: dropped {dropped} photos "
-            f"(max {max_per_day}/day across {len(by_day)} days)"
+            f"Same-day photo preference: reserved {len(overflow_photos)} overflow photos "
+            f"for duration backfill (preferred max {max_per_day}/day)"
         )
 
-    return videos + kept_photos
+    return videos + kept_photos, overflow_photos
 
 
 def enforce_photo_cap(
@@ -825,9 +835,10 @@ class ClipRefiner:
         tracker.start_phase(PipelinePhase.REFINING, 1)
         tracker.start_item("Refining selection")
 
-        # Pre-filter: cap same-day photos in the candidate pool so the
-        # selection picks other content instead of stacking one event.
-        analyzed = limit_photos_per_day(analyzed)
+        # Prefer two photos/day during initial selection, while retaining the
+        # overflow as a fallback if the diverse pool cannot fill the target.
+        all_analyzed = analyzed
+        analyzed, _photo_overflow = _partition_photos_per_day(all_analyzed)
 
         target_with_buffer = int(self.config.target_clips * 1.2)
 
@@ -892,7 +903,7 @@ class ClipRefiner:
 
         selected = self._backfill_to_duration(
             selected,
-            analyzed,
+            all_analyzed,
             target_duration + max_overrun,
             photo_cap_bypassed=photo_cap_bypassed,
         )
@@ -918,7 +929,7 @@ class ClipRefiner:
             clip_segments=clip_segments,
             errors=errors,
             stats={
-                "total_analyzed": len(analyzed),
+                "total_analyzed": len(all_analyzed),
                 "selected_count": len(selected_clips),
                 "error_count": len(errors),
                 "elapsed_seconds": tracker.progress.elapsed_seconds,

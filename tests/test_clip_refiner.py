@@ -225,8 +225,8 @@ class TestPhotoCapScarcity:
 class TestSameDayPhotoLimit:
     """Photos from the same day should be limited to avoid one event dominating."""
 
-    def test_six_race_photos_capped_to_two(self):
-        """Brussels 20K: 6 photos from race day → at most 2 survive phase_refine."""
+    def test_six_race_photos_use_one_overflow_when_needed_to_fill_duration(self):
+        """Brussels 20K: prefer two race photos, then use one leftover to avoid a hole."""
         from unittest.mock import MagicMock
 
         from immich_memories.analysis.clip_refiner import ClipRefiner
@@ -253,7 +253,11 @@ class TestSameDayPhotoLimit:
             _make_clip("swim", datetime(2023, 8, 5, tzinfo=UTC), score=0.60, duration=5.0),
         ]
 
-        config = PipelineConfig(target_clips=8, avg_clip_duration=4.0)
+        config = PipelineConfig(
+            target_clips=8,
+            avg_clip_duration=4.0,
+            target_duration_seconds=32.0,
+        )
         refiner = ClipRefiner(config, ClipScaler())
 
         tracker = MagicMock()
@@ -263,10 +267,45 @@ class TestSameDayPhotoLimit:
         result = refiner.phase_refine(clips, tracker)
 
         race_photos = [c for c in result.selected_clips if c.asset.id.startswith("race")]
-        assert len(race_photos) <= 2, (
-            f"Too many race photos ({len(race_photos)}): "
-            f"{[c.asset.id for c in race_photos]}. Expected ≤2."
+        assert len(race_photos) == 3
+
+    def test_same_day_photo_overflow_stays_unused_when_preferred_pool_fills_target(self):
+        """The soft cap should remain visibly diverse when no duration hole exists."""
+        from unittest.mock import MagicMock
+
+        from immich_memories.analysis.clip_refiner import ClipRefiner
+        from immich_memories.analysis.clip_scaler import ClipScaler
+        from immich_memories.analysis.smart_pipeline import PipelineConfig
+
+        race_day = datetime(2023, 5, 28, tzinfo=UTC)
+        photos = [
+            _make_clip(
+                f"race{i}",
+                race_day + timedelta(minutes=i * 15),
+                score=0.90 - i * 0.02,
+                duration=4.0,
+                is_favorite=True,
+                asset_type=AssetType.IMAGE,
+            )
+            for i in range(6)
+        ]
+        videos = [
+            _make_clip(f"video{i}", race_day + timedelta(days=i + 1), duration=5.0)
+            for i in range(4)
+        ]
+        config = PipelineConfig(
+            target_clips=7,
+            avg_clip_duration=4.0,
+            target_duration_seconds=28.0,
         )
+        refiner = ClipRefiner(config, ClipScaler())
+        tracker = MagicMock()
+        tracker.progress.errors = []
+
+        result = refiner.phase_refine([*photos, *videos], tracker)
+
+        race_photos = [clip for clip in result.selected_clips if clip.asset.id.startswith("race")]
+        assert len(race_photos) == 2
 
     def test_photos_from_different_days_not_limited(self):
         """Photos spread across days should all survive (no false positives)."""

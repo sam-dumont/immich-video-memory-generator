@@ -66,18 +66,20 @@ def score_photos(
     if not assets:
         return []
 
-    # Phase 1: Fast metadata scoring (no I/O)
-    scored = [(a, score_photo(a, config)) for a in assets]
+    # Phase 1: Fast metadata scoring (no I/O). Keep this complete pool so the
+    # final optimizer can use unshortlisted photos when preferred media is sparse.
+    metadata_scored = [(a, score_photo(a, config)) for a in assets]
 
-    # Pre-cap with temporal distribution
+    # Cap only the expensive semantic-scoring shortlist.
     max_photos = _compute_max_photos(video_clip_count, config.max_ratio)
-    shortlist_size = min(len(scored), max_photos * 3)
-    if len(scored) > shortlist_size:
-        scored = _select_distributed(scored, shortlist_size)
+    shortlist_size = min(len(metadata_scored), max_photos * 3)
+    shortlist = metadata_scored
+    if len(shortlist) > shortlist_size:
+        shortlist = _select_distributed(shortlist, shortlist_size)
 
     # Phase 2: LLM scoring on shortlist (uses thumbnails, not full downloads)
-    scored = _enhance_with_llm(
-        scored,
+    enhanced = _enhance_with_llm(
+        shortlist,
         config,
         work_dir,
         download_fn,
@@ -86,8 +88,12 @@ def score_photos(
         thumbnail_fn=thumbnail_fn,
         provider_circuit=provider_circuit,
     )
+    enhanced_scores = {asset.id: score for asset, score in enhanced}
 
-    return scored
+    return [
+        (asset, enhanced_scores.get(asset.id, metadata_score))
+        for asset, metadata_score in metadata_scored
+    ]
 
 
 def score_and_select_photos(

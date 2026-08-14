@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from immich_memories.analysis.unified_budget import (
     BudgetCandidate,
@@ -608,3 +608,32 @@ class TestScorePhotos:
         # Favorite should score higher than non-favorite
         scores_by_id = {a.id: s for a, s in result}
         assert scores_by_id["photo1"] > scores_by_id["photo2"]
+
+    def test_vlm_shortlist_does_not_delete_metadata_scored_photo_fallbacks(self, tmp_path):
+        """Only semantic scoring is capped; every eligible photo remains selectable."""
+        now = datetime.now(tz=UTC)
+        assets = [
+            Asset(
+                id=f"photo-{index}",
+                type="IMAGE",
+                fileCreatedAt=now + timedelta(hours=index),
+                fileModifiedAt=now + timedelta(hours=index),
+                updatedAt=now + timedelta(hours=index),
+            )
+            for index in range(20)
+        ]
+
+        with patch(
+            "immich_memories.photos.photo_pipeline._enhance_with_llm",
+            side_effect=lambda shortlist, *_args, **_kwargs: shortlist,
+        ) as enhance:
+            result = score_photos(
+                assets=assets,
+                config=PhotoConfig(max_ratio=0.5),
+                video_clip_count=2,
+                work_dir=tmp_path,
+                download_fn=MagicMock(),
+            )
+
+        assert len(enhance.call_args.args[0]) == 6
+        assert {asset.id for asset, _score in result} == {asset.id for asset in assets}
