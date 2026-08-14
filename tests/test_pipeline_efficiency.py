@@ -136,6 +136,81 @@ class TestDensityBudgetCap:
         assert logged_budget > 0
         assert logged_budget == pytest.approx(sum(bucket.quota_seconds for bucket in buckets))
 
+    def test_density_budget_counts_usable_excerpt_not_full_source_duration(self):
+        """A five-minute source consumes one planned excerpt in the analysis budget."""
+        from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
+
+        pipeline = SmartPipeline(
+            client=MagicMock(),
+            analysis_cache=MagicMock(),
+            thumbnail_cache=MagicMock(),
+            config=PipelineConfig(target_clips=10, avg_clip_duration=5.0),
+            analysis_config=MagicMock(min_segment_duration=1.5),
+            app_config=MagicMock(),
+        )
+        clip = self._make_clip("five-minute-source")
+        clip.duration_seconds = 300.0
+
+        with patch(
+            "immich_memories.analysis.density_budget.compute_density_budget",
+            return_value=[],
+        ) as compute:
+            pipeline._phase_filter([clip])
+
+        assert compute.call_args.kwargs["assets"][0].duration == 5.0
+
+
+class TestAnalysisEligibility:
+    def _pipeline(self, tmp_path: Path, **config_kwargs):
+        from immich_memories.analysis.smart_pipeline import PipelineConfig, SmartPipeline
+
+        return SmartPipeline(
+            client=MagicMock(),
+            analysis_cache=MagicMock(),
+            thumbnail_cache=MagicMock(),
+            config=PipelineConfig(**config_kwargs),
+            analysis_config=MagicMock(min_segment_duration=1.5),
+            app_config=Config(cache={"directory": str(tmp_path / "cache")}),
+        )
+
+    def test_fast_analysis_shortlist_does_not_delete_eligible_leftovers(self, tmp_path: Path):
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment
+
+        pipeline = self._pipeline(tmp_path, target_clips=1, avg_clip_duration=5.0)
+        clips = [
+            TestDensityBudgetCap()._make_clip("analyzed"),
+            TestDensityBudgetCap()._make_clip("leftover-1"),
+            TestDensityBudgetCap()._make_clip("leftover-2"),
+        ]
+        analyzed = ClipWithSegment(clips[0], 1.0, 5.0, 0.9)
+        fallbacks = [
+            ClipWithSegment(clips[1], 0.0, 5.0, 0.2),
+            ClipWithSegment(clips[2], 0.0, 5.0, 0.1),
+        ]
+        pipeline._phase_cluster = MagicMock(return_value=clips)
+        pipeline._phase_filter = MagicMock(return_value=[clips[0]])
+        pipeline._analyze_with_cache_batch = MagicMock(return_value=[analyzed])
+        pipeline.analyzer.plan_cached_or_metadata = MagicMock(return_value=fallbacks)
+
+        result = pipeline.run_analysis(clips)
+
+        assert [item.clip.asset.id for item in result] == [
+            "analyzed",
+            "leftover-1",
+            "leftover-2",
+        ]
+        pipeline.analyzer.plan_cached_or_metadata.assert_called_once_with(clips[1:])
+
+    def test_hdr_only_is_a_hard_eligibility_rule_even_for_favorites(self, tmp_path: Path):
+        pipeline = self._pipeline(tmp_path, hdr_only=True)
+        hdr = TestDensityBudgetCap()._make_clip("hdr")
+        hdr.color_transfer = "smpte2084"
+        favorite_sdr = TestDensityBudgetCap()._make_clip("favorite-sdr", is_favorite=True)
+
+        result = pipeline._hard_eligible_clips([hdr, favorite_sdr])
+
+        assert [clip.asset.id for clip in result] == ["hdr"]
+
 
 class TestSharedVideoCacheBatch:
     def test_pipeline_owns_and_injects_one_cache_batch(self, tmp_path: Path):

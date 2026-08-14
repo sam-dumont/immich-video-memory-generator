@@ -176,7 +176,6 @@ class ClipAnalyzer:
     ) -> list[ClipWithSegment]:
         """Use cached analysis and metadata fallbacks without downloading source videos."""
         from immich_memories.analysis.progress import PipelinePhase
-        from immich_memories.analysis.smart_pipeline import ClipWithSegment
 
         valid_clips = [c for c in clips if (c.duration_seconds or 0) >= 1.5]
         tracker.start_phase(PipelinePhase.ANALYZING, len(valid_clips))
@@ -188,24 +187,41 @@ class ClipAnalyzer:
             tracker.start_item(
                 clip.asset.original_file_name or clip.asset.id[:8], asset_id=clip.asset.id
             )
-            cached = self._check_analysis_cache(clip)
-            if cached is None:
-                start = 0.0
-                end = min(clip.duration_seconds, self.config.avg_clip_duration)
-                score = clip.quality_score
-            else:
-                start, end, score, _preview_path, _llm = cached
-            results.append(ClipWithSegment(clip=clip, start_time=start, end_time=end, score=score))
+            planned = self._plan_cached_or_metadata_clip(clip)
+            results.append(planned)
             tracker.complete_item(
                 clip.asset.id,
                 video_duration=clip.duration_seconds,
-                segment=(start, end),
-                score=score,
+                segment=(planned.start_time, planned.end_time),
+                score=planned.score,
             )
 
         tracker.complete_phase()
         logger.info("Planning analysis: %d cached/metadata clips", len(results))
         return results
+
+    def plan_cached_or_metadata(
+        self,
+        clips: list[VideoClipInfo],
+    ) -> list[ClipWithSegment]:
+        """Plan local fallback segments without downloads or provider health probes."""
+        valid_clips = [c for c in clips if (c.duration_seconds or 0) >= 1.5]
+        results = [self._plan_cached_or_metadata_clip(clip) for clip in valid_clips]
+        logger.info("Preserved %d cached/metadata fallback clips", len(results))
+        return results
+
+    def _plan_cached_or_metadata_clip(self, clip: VideoClipInfo) -> ClipWithSegment:
+        """Build one segment from cache, falling back to local metadata."""
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment
+
+        cached = self._check_analysis_cache(clip)
+        if cached is None:
+            start = 0.0
+            end = min(clip.duration_seconds, self.config.avg_clip_duration)
+            score = clip.quality_score
+        else:
+            start, end, score, _preview_path, _llm = cached
+        return ClipWithSegment(clip=clip, start_time=start, end_time=end, score=score)
 
     def _check_analysis_cache(
         self,

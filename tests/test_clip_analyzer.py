@@ -110,6 +110,24 @@ def test_planning_analysis_uses_metadata_without_downloading() -> None:
     mock_client.download_asset.assert_not_called()
 
 
+def test_metadata_fallback_planning_does_not_probe_optional_model_provider() -> None:
+    analyzer, mock_client, mock_cache, _ = _make_analyzer(avg_clip_duration=5.0)
+    mock_cache.get_analysis.return_value = None
+    clip = make_clip("asset-leftover", duration=12.0)
+
+    with patch.object(
+        analyzer,
+        "_init_content_analyzer",
+        side_effect=AssertionError("fallback planning must stay local"),
+    ):
+        result = analyzer.plan_cached_or_metadata([clip])
+
+    assert len(result) == 1
+    assert result[0].start_time == 0.0
+    assert result[0].end_time == 5.0
+    mock_client.download_asset.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # _check_analysis_cache
 # ---------------------------------------------------------------------------

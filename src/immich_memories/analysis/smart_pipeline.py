@@ -231,13 +231,17 @@ class SmartPipeline:
             # Phase 1: Cluster by thumbnail
             deduplicated = self._phase_cluster(clips)
 
-            # Phase 2: Filter and pre-select
-            candidates = self._phase_filter(deduplicated)
+            # Phase 2: hard eligibility + a cost-bounded analysis shortlist.
+            eligible = self._hard_eligible_clips(deduplicated)
+            candidates = self._phase_filter(eligible, hard_filtered=True)
 
             # Phase 3: one cache batch covers every candidate download.
             analyzed = self._analyze_with_cache_batch(candidates)
+            candidate_ids = {clip.asset.id for clip in candidates}
+            leftovers = [clip for clip in eligible if clip.asset.id not in candidate_ids]
+            fallbacks = self.analyzer.plan_cached_or_metadata(leftovers)
 
-            return analyzed
+            return [*analyzed, *fallbacks]
 
         except (
             Exception
@@ -264,8 +268,12 @@ class SmartPipeline:
         self.tracker.start()
         try:
             deduplicated = self._phase_cluster(clips)
-            candidates = self._phase_filter(deduplicated)
-            return self.analyzer.phase_plan_cached(candidates, self.tracker)
+            eligible = self._hard_eligible_clips(deduplicated)
+            candidates = self._phase_filter(eligible, hard_filtered=True)
+            planned = self.analyzer.phase_plan_cached(candidates, self.tracker)
+            candidate_ids = {clip.asset.id for clip in candidates}
+            leftovers = [clip for clip in eligible if clip.asset.id not in candidate_ids]
+            return [*planned, *self.analyzer.plan_cached_or_metadata(leftovers)]
         finally:
             with contextlib.suppress(Exception):
                 self.analyzer.close()
@@ -458,7 +466,29 @@ class SmartPipeline:
                 f"— switching to thorough LLM analysis"
             )
 
-    def _phase_filter(self, clips: list[VideoClipInfo]) -> list[VideoClipInfo]:
+    def _hard_eligible_clips(self, clips: list[VideoClipInfo]) -> list[VideoClipInfo]:
+        """Apply only rules that must permanently exclude a source clip."""
+        min_duration = self._analysis_config.min_segment_duration
+        eligible = [c for c in clips if (c.duration_seconds or 0) >= min_duration]
+        too_short_count = len(clips) - len(eligible)
+        if too_short_count > 0:
+            logger.info(
+                f"Duration filter: removed {too_short_count} clips shorter than "
+                f"{min_duration:.1f}s minimum"
+            )
+
+        if self.config.hdr_only:
+            before = len(eligible)
+            eligible = [clip for clip in eligible if clip.is_hdr]
+            logger.info("HDR eligibility filter: %d -> %d clips", before, len(eligible))
+        return eligible
+
+    def _phase_filter(
+        self,
+        clips: list[VideoClipInfo],
+        *,
+        hard_filtered: bool = False,
+    ) -> list[VideoClipInfo]:
         """Phase 2: Select clips for analysis using density-proportional budget.
 
         Uses density budget to distribute raw footage quotas across time
@@ -474,24 +504,13 @@ class SmartPipeline:
         self.tracker.start_phase(PipelinePhase.FILTERING, 1)
         self.tracker.start_item("Computing density budget")
 
-        a_config = self._analysis_config
-        min_duration = a_config.min_segment_duration
-
-        # Filter too-short clips (applies to ALL clips)
-        before_count = len(clips)
-        clips = [c for c in clips if (c.duration_seconds or 0) >= min_duration]
-        too_short_count = before_count - len(clips)
-        if too_short_count > 0:
-            logger.info(
-                f"Duration filter: removed {too_short_count} clips shorter than "
-                f"{min_duration:.1f}s minimum"
-            )
+        if not hard_filtered:
+            clips = self._hard_eligible_clips(clips)
 
         self._adapt_target_for_content(clips)
 
         # Analyze-all mode: skip budget, send everything
         if self.config.analyze_all:
-            self._available_non_favorites = []
             self.tracker.complete_item("filters")
             self.tracker.complete_phase()
             logger.info(f"Phase 2: Analyze-all mode — sending all {len(clips)} clips to analysis")
@@ -503,7 +522,10 @@ class SmartPipeline:
                 asset_id=c.asset.id,
                 asset_type="video",
                 date=c.asset.file_created_at,
-                duration=c.duration_seconds or 5.0,
+                duration=min(
+                    c.duration_seconds or self.config.avg_clip_duration,
+                    self.config.avg_clip_duration,
+                ),
                 is_favorite=c.asset.is_favorite,
                 score=c.quality_score,
                 width=c.width,
@@ -536,10 +558,6 @@ class SmartPipeline:
         clip_map = {c.asset.id: c for c in clips}
         selected = [clip_map[aid] for aid in selected_ids if aid in clip_map]
         selected = _cap_analysis_candidates(selected, self.config.target_clips)
-
-        self._available_non_favorites = [
-            c for c in clips if c.asset.id not in {c.asset.id for c in selected}
-        ]
 
         fav_count = sum(1 for c in selected if c.asset.is_favorite)
         gap_count = len(selected) - fav_count
