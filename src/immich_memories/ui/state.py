@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from immich_memories.api.models import Person, VideoClipInfo
     from immich_memories.cache.thumbnail_cache import ThumbnailCache
     from immich_memories.config_loader import Config
+    from immich_memories.processing.timeline_budget import TimelinePlan
     from immich_memories.timeperiod import DateRange
 
 
@@ -79,6 +80,7 @@ class AppState:
     pipeline_running: bool = False
     pipeline_result: dict[str, Any] | None = None
     pipeline_config: dict[str, Any] = field(default_factory=dict)
+    timeline_plan: TimelinePlan | None = None
 
     # Generation settings
     duration_mode: Literal["auto", "manual"] = "auto"
@@ -145,6 +147,7 @@ class AppState:
         self.clip_segments = {}
         self.clip_rotations = {}
         self.pipeline_result = None
+        self.timeline_plan = None
         self.review_selected_mode = False
         self._duplicates_processed = False
         self.title_suggestion_title = None

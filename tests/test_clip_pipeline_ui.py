@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
@@ -9,6 +10,8 @@ from immich_memories.analysis.smart_pipeline import PipelineConfig
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
 from immich_memories.config_loader import Config
 from immich_memories.ui.pages.clip_pipeline import (
+    _build_pipeline_config,
+    _configure_timeline_for_selection,
     _eligible_pipeline_media,
     _resolve_auto_duration_for_selection,
     _run_pipeline_blocking,
@@ -71,6 +74,27 @@ def test_trip_auto_duration_is_resolved_from_reviewed_media_only() -> None:
     assert result is not None
     assert result.total_seconds == 15.0
     assert state.target_duration_seconds == 15.0
+
+
+def test_selection_uses_the_persisted_timeline_content_budget() -> None:
+    clips = [_clip(f"video-{day}") for day in range(1, 13)]
+    photos = [_photo(f"photo-{day}", day=day) for day in range(1, 13)]
+    state = AppState(
+        config=Config(),
+        memory_type="trip",
+        duration_mode="manual",
+        target_duration=2.5,
+        avg_clip_duration=5,
+        pipeline_config={"avg_clip_duration": 5.0},
+    )
+
+    plan = _configure_timeline_for_selection(state, clips, photos)
+    pipeline_config = _build_pipeline_config(state, clips)
+
+    assert plan.target_duration == 150.0
+    assert state.timeline_plan is plan
+    assert pipeline_config.target_duration_seconds == plan.content_budget
+    assert pipeline_config.target_clips == math.ceil(plan.content_budget / 5.0)
 
 
 def test_blocking_pipeline_cannot_reintroduce_unchecked_photos() -> None:

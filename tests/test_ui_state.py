@@ -164,6 +164,14 @@ class TestAppStateIncludePhotos:
         state.reset_clips()
         assert state.selected_photo_ids == set()
 
+    def test_reset_clips_clears_the_preliminary_timeline_plan(self):
+        state = AppState()
+        state.timeline_plan = MagicMock()
+
+        state.reset_clips()
+
+        assert state.timeline_plan is None
+
 
 class TestAppStateGetSelectedClips:
     """Test get_selected_clips() method."""

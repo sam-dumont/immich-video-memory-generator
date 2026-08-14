@@ -404,11 +404,22 @@ class TestUnifiedPhotoBudget:
         mock_unified.assert_called_once()
 
     def test_ui_sets_target_duration_seconds(self):
-        """UI _build_generation_params should set target_duration_seconds."""
+        """UI generation receives total runtime and the exact Step 2 plan."""
+        from immich_memories.processing.timeline_budget import TimelinePlan
         from immich_memories.ui.pages._step4_generate import _build_generation_params
 
         state = MagicMock()
         state.target_duration = 5  # 5 minutes
+        state.target_duration_seconds = 300.0
+        state.timeline_plan = TimelinePlan(
+            target_duration=300.0,
+            content_budget=285.0,
+            title_budget=15.0,
+            title_duration=3.5,
+            ending_duration=7.0,
+            divider_duration=2.0,
+            max_dividers=2,
+        )
         state.generation_options = {}
         state.selected_person = None
         state.date_range = None
@@ -430,3 +441,4 @@ class TestUnifiedPhotoBudget:
             params = _build_generation_params(state, [], MagicMock())
 
         assert params.target_duration_seconds == 300  # 5 min * 60
+        assert params.timeline_plan is state.timeline_plan

@@ -247,7 +247,8 @@ def _build_generation_params(state, selected_clips, output_path):
         # prevents _add_photos_if_enabled from re-adding them.
         include_photos=False,
         photo_assets=None,
-        target_duration_seconds=state.target_duration * 60,
+        target_duration_seconds=state.target_duration_seconds,
+        timeline_plan=state.timeline_plan,
         selected_photo_ids=None,
         # Music and upload are finalized separately by the UI on the same run lifecycle.
         music_path=None,

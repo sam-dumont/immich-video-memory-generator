@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from nicegui import run, ui
 
@@ -23,6 +23,9 @@ from immich_memories.ui.pages.clip_pipeline_helpers import (
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from immich_memories.processing.timeline_budget import TimelinePlan
 
 
 class PipelineCancelled(Exception):
@@ -211,6 +214,52 @@ def _resolve_auto_duration_for_selection(
     return result
 
 
+def _configure_timeline_for_selection(
+    state: Any,
+    clips: list[VideoClipInfo],
+    photos: list[Asset],
+) -> TimelinePlan:
+    """Persist one preliminary timeline and apply its content budget."""
+    from pathlib import Path
+
+    from immich_memories.generate import GenerationParams
+    from immich_memories.generate_settings import _build_title_settings
+    from immich_memories.processing.timeline_budget import plan_timeline
+
+    config = state.config
+    if config is None:
+        from immich_memories.config import get_config
+
+        config = get_config()
+    person = state.selected_person
+    date_range = state.date_range
+    planning_params = GenerationParams(
+        clips=clips,
+        output_path=Path("ui-timeline-plan.mp4"),
+        config=config,
+        memory_type=state.memory_type,
+        person_name=person.name if person else None,
+        date_start=date_range.start if date_range else None,
+        date_end=date_range.end if date_range else None,
+        memory_preset_params=state.memory_preset_params,
+    )
+    title_settings = _build_title_settings(planning_params, config, [])
+    average = float(state.pipeline_config.get("avg_clip_duration", state.avg_clip_duration))
+    plan = plan_timeline(
+        [*clips, *photos],
+        title_settings,
+        state.target_duration_seconds,
+        state.memory_type,
+        expected_clip_duration=average,
+        transition_mode="smart",
+        transition_duration=config.defaults.transition_duration,
+    )
+    state.timeline_plan = plan
+    state.pipeline_config["target_duration_seconds"] = plan.content_budget
+    state.pipeline_config["target_clips"] = max(1, math.ceil(plan.content_budget / average))
+    return plan
+
+
 def _run_pipeline_blocking(
     state: Any,
     config: Any,
@@ -329,6 +378,7 @@ def _build_pipeline_config(
     return PipelineConfig(
         target_clips=config_dict.get("target_clips", 120),
         avg_clip_duration=config_dict.get("avg_clip_duration", 5.0),
+        target_duration_seconds=config_dict.get("target_duration_seconds"),
         hdr_only=config_dict.get("hdr_only", False),
         prioritize_favorites=config_dict.get("prioritize_favorites", True),
         max_non_favorite_ratio=config_dict.get("max_non_favorite_ratio", 0.25),
@@ -391,6 +441,7 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
     state = get_app_state()
     eligible_clips, eligible_photos = _eligible_pipeline_media(state, clips)
     _resolve_auto_duration_for_selection(state, eligible_clips, eligible_photos)
+    _configure_timeline_for_selection(state, eligible_clips, eligible_photos)
     config = _build_pipeline_config(state, eligible_clips)
 
     ui.label("Generating Memories...").classes("text-2xl font-bold mb-4")
