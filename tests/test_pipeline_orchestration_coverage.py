@@ -346,39 +346,6 @@ class TestUnifiedAnalyzerProportionalMaxSegment:
         assert result == min(15.0 * 1.15, 40.0)
 
 
-class TestAudioContentAnalysisBranches:
-    """Lines 200, 510-512: _run_audio_content_analysis returns None on disable/fail."""
-
-    def test_returns_none_when_disabled(self):
-        analyzer = _make_analyzer(audio_content_enabled=False)
-        result = analyzer._run_audio_content_analysis(Path("/fake.mp4"), 10.0)
-        assert result is None
-
-    def test_returns_none_when_analysis_returns_none(self):
-        analyzer = _make_analyzer(audio_content_enabled=True)
-        analyzer._analyze_audio_content = MagicMock(return_value=None)
-        result = analyzer._run_audio_content_analysis(Path("/fake.mp4"), 10.0)
-        assert result is None
-
-    def test_analyze_audio_content_catches_import_error(self):
-        """Lines 510-512: exception in _analyze_audio_content returns None."""
-        analyzer = _make_analyzer(audio_content_enabled=True)
-        # WHY: AudioContentAnalyzer import/init is an external ML dependency
-        mock_audio_analyzer = MagicMock()
-        mock_audio_analyzer.analyze.side_effect = RuntimeError("no panns")
-        analyzer._audio_analyzer = mock_audio_analyzer
-        result = analyzer._analyze_audio_content(Path("/fake.mp4"), 10.0)
-        assert result is None
-
-    def test_analyze_audio_content_caches_result(self):
-        """Lines 493, 507: cache hit returns previously stored result."""
-        analyzer = _make_analyzer(audio_content_enabled=True)
-        cached = AudioAnalysisResult(audio_score=0.9)
-        analyzer._audio_analysis_cache["/fake.mp4"] = cached
-        result = analyzer._analyze_audio_content(Path("/fake.mp4"), 10.0)
-        assert result is cached
-
-
 class TestFixBoundaryInRange:
     """Lines 258, 260-264: _fix_boundary_in_range nudges or reports unfixable."""
 

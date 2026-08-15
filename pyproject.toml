@@ -472,9 +472,9 @@ disable_error_code = ["union-attr", "arg-type"]
 module = ["immich_memories.titles.rendering_service"]
 disable_error_code = ["assignment", "misc", "attr-defined", "arg-type"]
 
-# Unified analyzer with complex audio analysis
+# Speech/audio-content analysis service (dynamic AudioContentAnalyzer typing)
 [[tool.mypy.overrides]]
-module = ["immich_memories.analysis.unified_analyzer"]
+module = ["immich_memories.analysis.speech_analysis"]
 disable_error_code = ["var-annotated", "assignment", "attr-defined"]
 
 # Title generator with optional Taichi imports

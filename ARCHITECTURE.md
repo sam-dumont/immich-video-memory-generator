@@ -102,7 +102,8 @@ src/immich_memories/
 │   ├── preview_builder.py      # PreviewBuilder: preview segment extraction
 │   ├── progress.py             # Progress tracking helpers
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
-│   ├── unified_analyzer.py     # UnifiedSegmentAnalyzer (all methods merged, no mixins)
+│   ├── unified_analyzer.py     # UnifiedSegmentAnalyzer (composes SpeechAnalysisService)
+│   ├── speech_analysis.py      # SpeechAnalysisService: PANNs audio-content + VAD speech boundaries
 │   ├── unified_budget.py       # Unified photo+video budget selection (merge-then-fit)
 │   ├── segment_generation.py   # Boundary detection, candidate segment generation
 │   ├── content_analyzer.py     # LLM-based content analysis

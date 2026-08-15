@@ -148,6 +148,13 @@ Combines visual and audio analysis for intelligent segment selection:
 5. Score candidates (visual + optional LLM content)
 6. Return best segment
 
+Audio-content and VAD speech-boundary analysis (PANNs laughter/speech/music
+detection plus FireRedVAD-derived protected ranges) is owned by
+`SpeechAnalysisService` (`analysis/speech_analysis.py`), injected into
+`UnifiedSegmentAnalyzer` via constructor composition. `UnifiedSegmentAnalyzer`
+delegates through `self._speech_analysis` rather than owning the audio
+analyzer, speech detector, and their per-video caches directly.
+
 **Scoring formula:**
 ```
 total_score = visual_score * (1 - content_weight)
@@ -172,7 +179,7 @@ Pure FFmpeg pipeline for combining clips with transitions. Supports cuts, crossf
 ```
 src/immich_memories/
 ├── api/                    # Immich server communication (4 files)
-├── analysis/               # Video analysis & clip selection (23 files)
+├── analysis/               # Video analysis & clip selection (32 files)
 ├── processing/             # Video processing & assembly (22 files)
 ├── audio/                  # Audio processing & music (14 files)
 ├── titles/                 # Title screen generation (18 files)

@@ -127,7 +127,7 @@ class TestCreateAnalyzerFromConfigEndToEnd:
         _, config, _ = immich_short_clips
         analyzer = create_analyzer_from_config(config)
         # Config should be propagated from user's config.yaml
-        assert analyzer._audio_content_config is not None
+        assert analyzer._speech_analysis._audio_content_config is not None
 
 
 @requires_immich

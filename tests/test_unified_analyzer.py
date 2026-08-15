@@ -6,7 +6,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 try:
@@ -27,10 +26,8 @@ from immich_memories.analysis.unified_analyzer import (
     ScoredSegment,
     UnifiedSegmentAnalyzer,
 )
-from immich_memories.audio.audio_models import AudioAnalysisResult, AudioEvent
 from immich_memories.config_loader import Config
-from immich_memories.config_models import AnalysisConfig, AudioContentConfig, SpeechConfig
-from immich_memories.speech.models import SpeechRegion
+from immich_memories.config_models import AnalysisConfig, AudioContentConfig
 
 
 class TestCutPoint:
@@ -81,13 +78,13 @@ class TestResetForVideo:
             audio_content_config=AudioContentConfig(),
             analysis_config=AnalysisConfig(),
         )
-        analyzer._audio_analysis_cache["first-video"] = MagicMock()
+        analyzer._speech_analysis._audio_analysis_cache["first-video"] = MagicMock()
 
         analyzer.reset_for_video()
 
-        assert analyzer._audio_analysis_cache == {}
+        assert analyzer._speech_analysis._audio_analysis_cache == {}
         assert analyzer.content_analyzer is content_analyzer
-        assert analyzer._audio_analyzer is audio_analyzer
+        assert analyzer._speech_analysis._audio_analyzer is audio_analyzer
         scorer.release_capture.assert_called_once()
 
 
@@ -628,7 +625,7 @@ class TestCreateUnifiedAnalyzerFromConfig:
         assert analyzer.min_segment_duration == config.analysis.min_segment_duration
         assert analyzer.max_segment_duration == config.analysis.max_segment_duration
         # config.speech must reach the analyzer the same way config.audio_content does.
-        assert analyzer._speech_config is config.speech
+        assert analyzer._speech_analysis.speech_config is config.speech
 
     def test_creates_analyzer_with_content_analysis(self):
         """Should create analyzer with content analysis when enabled."""
@@ -684,262 +681,3 @@ class TestScoreVisualExcludesAudio:
         # Visual score = weighted average of face, motion, stability ONLY
         expected = (0.9 * 0.35 + 0.6 * 0.20 + 0.3 * 0.15) / (0.35 + 0.20 + 0.15)
         assert abs(result["total"] - expected) < 0.001
-
-
-class TestVadDerivedProtectedRanges:
-    """Noisy audio must not collapse into a single protected range."""
-
-    def test_two_utterances_yield_two_protected_ranges(self):
-        from immich_memories.analysis.unified_analyzer import protected_ranges_from_speech
-        from immich_memories.speech.models import SpeechRegion
-
-        regions = [SpeechRegion(0.5, 2.0), SpeechRegion(4.0, 6.0)]
-
-        ranges = protected_ranges_from_speech(regions, max_duration=8.0)
-
-        assert len(ranges) == 2
-        assert ranges[0] == (0.5, 2.0)
-        assert ranges[1] == (4.0, 6.0)
-
-    def test_ranges_are_clamped_to_max_duration(self):
-        from immich_memories.analysis.unified_analyzer import protected_ranges_from_speech
-        from immich_memories.speech.models import SpeechRegion
-
-        regions = [SpeechRegion(1.0, 99.0)]
-
-        ranges = protected_ranges_from_speech(regions, max_duration=10.0)
-
-        assert ranges == [(1.0, 10.0)]
-
-
-class TestSpeechDetectorConstruction:
-    """UnifiedSegmentAnalyzer builds a detector via `select_detector(speech_config)`."""
-
-    def test_enabled_fireredvad_config_constructs_detector(self):
-        from immich_memories.speech.fireredvad import FireRedSpeechDetector
-
-        analyzer = UnifiedSegmentAnalyzer(
-            scorer=MagicMock(),
-            audio_content_config=AudioContentConfig(),
-            analysis_config=AnalysisConfig(),
-            speech_config=SpeechConfig(enabled=True, vad_threshold=0.6, min_silence_ms=300),
-        )
-
-        assert isinstance(analyzer._speech_detector, FireRedSpeechDetector)
-        assert analyzer._speech_detector.threshold == 0.6
-        assert analyzer._speech_detector.min_silence_ms == 300
-
-    def test_disabled_config_skips_detector(self):
-        analyzer = UnifiedSegmentAnalyzer(
-            scorer=MagicMock(),
-            audio_content_config=AudioContentConfig(),
-            analysis_config=AnalysisConfig(),
-            speech_config=SpeechConfig(enabled=False),
-        )
-
-        assert analyzer._speech_detector is None
-
-    def test_missing_speech_config_defaults_to_fireredvad(self):
-        # No speech_config passed -- SpeechConfig() defaults apply.
-        from immich_memories.speech.fireredvad import FireRedSpeechDetector
-
-        analyzer = UnifiedSegmentAnalyzer(
-            scorer=MagicMock(),
-            audio_content_config=AudioContentConfig(),
-            analysis_config=AnalysisConfig(),
-        )
-
-        assert isinstance(analyzer._speech_detector, FireRedSpeechDetector)
-
-
-class TestApplyVadRanges:
-    """`_apply_vad_ranges` replaces PANNs-derived protected ranges with VAD ones."""
-
-    def _analyzer(self, **kwargs) -> UnifiedSegmentAnalyzer:
-        return UnifiedSegmentAnalyzer(
-            scorer=MagicMock(),
-            audio_content_config=AudioContentConfig(),
-            analysis_config=AnalysisConfig(),
-            **kwargs,
-        )
-
-    def test_disabled_speech_config_leaves_result_untouched(self):
-        analyzer = self._analyzer(speech_config=SpeechConfig(enabled=False))
-        result = AudioAnalysisResult(protected_ranges=[(0.0, 8.0)])
-
-        updated = analyzer._apply_vad_ranges(Path("/fake.mov"), result, video_duration=8.0)
-
-        assert updated.protected_ranges == [(0.0, 8.0)]
-
-    def test_extraction_failure_leaves_result_untouched(self):
-        analyzer = self._analyzer()
-        analyzer._speech_detector = MagicMock()  # should never be reached
-        result = AudioAnalysisResult(protected_ranges=[(0.0, 8.0)])
-
-        # WHY: replaces extract_audio_16k (the FFmpeg boundary) so the "no
-        # audio extracted" branch is exercised without a real video file.
-        with patch(
-            "immich_memories.analysis.unified_analyzer.extract_audio_16k", return_value=None
-        ):
-            updated = analyzer._apply_vad_ranges(Path("/fake.mov"), result, video_duration=8.0)
-
-        assert updated.protected_ranges == [(0.0, 8.0)]
-        analyzer._speech_detector.detect.assert_not_called()
-
-    def test_no_speech_regions_leaves_result_untouched(self):
-        analyzer = self._analyzer()
-
-        class _EmptyDetector:
-            def detect(self, audio, sample_rate):
-                return []
-
-        analyzer._speech_detector = _EmptyDetector()
-        result = AudioAnalysisResult(protected_ranges=[(0.0, 8.0)])
-        audio = np.zeros(16000 * 8, dtype=np.float32)
-
-        with patch(
-            "immich_memories.analysis.unified_analyzer.extract_audio_16k", return_value=audio
-        ):
-            updated = analyzer._apply_vad_ranges(Path("/fake.mov"), result, video_duration=8.0)
-
-        assert updated.protected_ranges == [(0.0, 8.0)]
-
-    def test_vad_regions_break_up_the_panns_blob(self):
-        analyzer = self._analyzer()
-
-        class _TwoUtteranceDetector:
-            def detect(self, audio, sample_rate):
-                return [SpeechRegion(0.5, 2.0), SpeechRegion(4.0, 6.0)]
-
-        analyzer._speech_detector = _TwoUtteranceDetector()
-        # PANNs collapsed the whole clip into one protected range -- this is
-        # exactly the blob VAD is meant to break up.
-        result = AudioAnalysisResult(protected_ranges=[(0.0, 8.0)])
-        audio = np.zeros(16000 * 8, dtype=np.float32)
-
-        with patch(
-            "immich_memories.analysis.unified_analyzer.extract_audio_16k", return_value=audio
-        ):
-            updated = analyzer._apply_vad_ranges(Path("/fake.mov"), result, video_duration=8.0)
-
-        assert updated.protected_ranges == [(0.5, 2.0), (4.0, 6.0)]
-
-    def test_laughter_keeps_its_protection_when_vad_finds_speech(self):
-        # VAD's speech column never fires on laughter, so replacing every
-        # protected range with VAD output used to leave a laugh unprotected
-        # and a cut landing in the middle of it.
-        analyzer = self._analyzer()
-
-        class _OneUtteranceDetector:
-            def detect(self, audio, sample_rate):
-                return [SpeechRegion(4.2, 5.8)]
-
-        analyzer._speech_detector = _OneUtteranceDetector()
-        result = AudioAnalysisResult(
-            events=[
-                AudioEvent("Laughter", 1.0, 2.5, 0.8),
-                AudioEvent("Speech", 3.0, 7.0, 0.9),
-                AudioEvent("Motor vehicle (road)", 0.0, 8.0, 0.7),
-            ],
-            protected_ranges=[(1.0, 2.5), (3.0, 7.0)],
-        )
-        audio = np.zeros(16000 * 8, dtype=np.float32)
-
-        with patch(
-            "immich_memories.analysis.unified_analyzer.extract_audio_16k", return_value=audio
-        ):
-            updated = analyzer._apply_vad_ranges(Path("/fake.mov"), result, video_duration=8.0)
-
-        assert updated.protected_ranges == [(1.0, 2.5), (4.2, 5.8)]
-
-    def test_laughter_only_clip_keeps_every_protected_range(self):
-        analyzer = self._analyzer()
-
-        class _LaughterOnlyDetector:
-            def detect(self, audio, sample_rate):
-                return [SpeechRegion(0.2, 0.4)]
-
-        analyzer._speech_detector = _LaughterOnlyDetector()
-        result = AudioAnalysisResult(
-            events=[
-                AudioEvent("Baby laughter", 1.0, 2.5, 0.8),
-                AudioEvent("Giggle", 5.0, 6.0, 0.7),
-            ],
-            protected_ranges=[(1.0, 2.5), (5.0, 6.0)],
-        )
-        audio = np.zeros(16000 * 8, dtype=np.float32)
-
-        with patch(
-            "immich_memories.analysis.unified_analyzer.extract_audio_16k", return_value=audio
-        ):
-            updated = analyzer._apply_vad_ranges(Path("/fake.mov"), result, video_duration=8.0)
-
-        assert (1.0, 2.5) in updated.protected_ranges
-        assert (5.0, 6.0) in updated.protected_ranges
-
-    def test_extraction_runs_once_per_video_path(self):
-        analyzer = self._analyzer()
-
-        class _TwoUtteranceDetector:
-            def detect(self, audio, sample_rate):
-                return [SpeechRegion(0.5, 2.0), SpeechRegion(4.0, 6.0)]
-
-        analyzer._speech_detector = _TwoUtteranceDetector()
-        audio = np.zeros(16000 * 8, dtype=np.float32)
-        video_path = Path("/fake.mov")
-
-        # WHY: replaces extract_audio_16k (the FFmpeg boundary) to prove the
-        # analyzer's own cache -- not FFmpeg's absence -- explains the count.
-        with patch(
-            "immich_memories.analysis.unified_analyzer.extract_audio_16k", return_value=audio
-        ) as extract:
-            first = analyzer._apply_vad_ranges(
-                video_path, AudioAnalysisResult(protected_ranges=[(0.0, 8.0)]), 8.0
-            )
-            second = analyzer._apply_vad_ranges(
-                video_path, AudioAnalysisResult(protected_ranges=[(0.0, 8.0)]), 8.0
-            )
-
-        extract.assert_called_once()
-        assert first.protected_ranges == [(0.5, 2.0), (4.0, 6.0)]
-        assert second.protected_ranges == [(0.5, 2.0), (4.0, 6.0)]
-        assert list(analyzer._vad_audio_cache) == [str(video_path)]
-
-
-class TestAnalyzeAudioContentAppliesVad:
-    """`_analyze_audio_content` wires PANNs analysis through `_apply_vad_ranges`."""
-
-    def test_vad_override_is_cached_on_the_final_result(self, tmp_path: Path):
-        video_path = tmp_path / "video.mp4"
-        video_path.write_bytes(b"fake")
-
-        # WHY: mock audio_analyzer -- PANNs classification needs the real
-        # torch model; the panns_blob shape (one range spanning the clip)
-        # is all this test needs.
-        audio_analyzer = MagicMock()
-        audio_analyzer.analyze.return_value = AudioAnalysisResult(protected_ranges=[(0.0, 8.0)])
-
-        analyzer = UnifiedSegmentAnalyzer(
-            scorer=MagicMock(),
-            audio_analyzer=audio_analyzer,
-            audio_content_config=AudioContentConfig(),
-            analysis_config=AnalysisConfig(),
-        )
-
-        class _TwoUtteranceDetector:
-            def detect(self, audio, sample_rate):
-                return [SpeechRegion(0.5, 2.0), SpeechRegion(4.0, 6.0)]
-
-        analyzer._speech_detector = _TwoUtteranceDetector()
-        audio = np.zeros(16000 * 8, dtype=np.float32)
-
-        with patch(
-            "immich_memories.analysis.unified_analyzer.extract_audio_16k", return_value=audio
-        ):
-            result = analyzer._analyze_audio_content(video_path, video_duration=8.0)
-
-        assert result.protected_ranges == [(0.5, 2.0), (4.0, 6.0)]
-        assert analyzer._audio_analysis_cache[str(video_path)].protected_ranges == [
-            (0.5, 2.0),
-            (4.0, 6.0),
-        ]
