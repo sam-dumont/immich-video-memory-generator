@@ -75,10 +75,16 @@ audio-ml = [
 ]
 # Speech boundary detection (VAD + utterance completion)
 # FireRedVAD's ONNX weights are vendored in speech/bundled_models/ -- no
-# runtime download and no torch dependency.
+# runtime download. smart-turn-v3 follows the PANNs convention instead,
+# fetching its ONNX checkpoint from the Hub on first use; both stay torch-free.
+# transformers is needed only for WhisperFeatureExtractor's pure-numpy log-mel
+# spectrogram (the ONNX graph's actual input) -- its core package has no torch
+# dependency.
 speech = [
     "onnxruntime>=1.17",
     "kaldi-native-fbank>=1.20",
+    "huggingface-hub>=0.23",
+    "transformers>=4.40",
 ]
 # OIDC authentication (only needed for SSO login)
 auth = [
