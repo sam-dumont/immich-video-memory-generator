@@ -20,6 +20,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Fraction of the VAD's min-silence window a protected-range buffer may use.
+# Must stay below 0.5 -- see speech_buffer_seconds.
+_BUFFER_SHARE_OF_MIN_SILENCE = 0.4
+_MAX_PROTECTED_BUFFER_S = 0.3
+
 
 def detect_visual_boundaries(
     video_path: Path,
@@ -350,17 +355,34 @@ def generate_fallback_segments(
     return candidates
 
 
+def speech_buffer_seconds(min_silence_ms: int) -> float:
+    """Padding to widen each protected range by, derived from the VAD's min silence.
+
+    Buffering widens a range on both sides, so two ranges closer together than
+    twice the buffer merge into one. The VAD closes a speech region only after
+    `min_silence_ms` of silence, so any buffer at or above half that pause
+    re-merges exactly the utterance splits it was configured to make -- and a
+    candidate whose two ends both land inside the resulting blob can no longer
+    be nudged anywhere. Staying under half leaves those pauses intact.
+
+    Capped at the historical 0.3 s so a long `min_silence_ms` does not turn a
+    safety margin into a boundary-swallowing one.
+    """
+    return min(_MAX_PROTECTED_BUFFER_S, min_silence_ms / 1000.0 * _BUFFER_SHARE_OF_MIN_SILENCE)
+
+
 def merge_buffered_ranges(
     protected_ranges: list[tuple[float, float]],
     video_duration: float,
-    buffer: float = 0.3,
+    buffer: float,
 ) -> list[tuple[float, float]]:
     """Buffer and merge overlapping protected audio ranges.
 
     Args:
         protected_ranges: Raw protected ranges from audio analysis.
         video_duration: Total video duration.
-        buffer: Buffer to add around each range (seconds).
+        buffer: Buffer to add around each range (seconds), from
+            `speech_buffer_seconds`.
 
     Returns:
         Merged list of buffered ranges.
@@ -426,6 +448,8 @@ def adjust_candidates_for_audio(
     min_segment_duration: float,
     proportional_max: float,
     max_adjustment: float = 5.0,
+    *,
+    min_silence_ms: int,
 ) -> list[tuple[CutPoint, CutPoint]]:
     """Adjust candidate segment boundaries to avoid cutting during protected audio events.
 
@@ -436,6 +460,8 @@ def adjust_candidates_for_audio(
         min_segment_duration: Minimum segment duration.
         proportional_max: Max segment duration for this source.
         max_adjustment: Maximum adjustment per boundary in seconds.
+        min_silence_ms: `SpeechConfig.min_silence_ms`, the pause width the VAD
+            split on -- sets how far each protected range may be widened.
 
     Returns:
         Adjusted list of candidate segments.
@@ -446,6 +472,7 @@ def adjust_candidates_for_audio(
     merged_ranges = merge_buffered_ranges(
         audio_result.protected_ranges,
         video_duration,
+        speech_buffer_seconds(min_silence_ms),
     )
     logger.info(f"     Buffered+merged ranges: {[(f'{s:.2f}-{e:.2f}') for s, e in merged_ranges]}")
 

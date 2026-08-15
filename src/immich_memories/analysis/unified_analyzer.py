@@ -537,6 +537,7 @@ class UnifiedSegmentAnalyzer:
                 video_duration,
                 self.min_segment_duration,
                 proportional_max,
+                min_silence_ms=self._speech_config.min_silence_ms,
             )
             logger.info(
                 f"  -> Adjusted {original_count} candidates to {len(candidates)} candidates"

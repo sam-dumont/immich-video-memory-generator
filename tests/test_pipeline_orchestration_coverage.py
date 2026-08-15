@@ -23,6 +23,7 @@ from immich_memories.analysis.segment_generation import (
     merge_buffered_ranges,
     nudge_segment_for_speech,
     score_segment_audio,
+    speech_buffer_seconds,
 )
 from immich_memories.analysis.smart_pipeline import (
     PipelineConfig,
@@ -747,7 +748,9 @@ class TestAdjustCandidatesForAudio:
 
         audio_result = AudioAnalysisResult(protected_ranges=[])
         candidates = [(CutPoint(0.0, True, True), CutPoint(5.0, True, True))]
-        result = adjust_candidates_for_audio(candidates, audio_result, 10.0, 2.0, 8.0)
+        result = adjust_candidates_for_audio(
+            candidates, audio_result, 10.0, 2.0, 8.0, min_silence_ms=200
+        )
         assert result == candidates
 
     def test_oversized_segment_trimmed_to_proportional_max(self):
@@ -759,7 +762,9 @@ class TestAdjustCandidatesForAudio:
         candidates = [
             (CutPoint(3.5, True, True), CutPoint(15.0, True, True)),
         ]
-        result = adjust_candidates_for_audio(candidates, audio_result, 20.0, 2.0, 6.0)
+        result = adjust_candidates_for_audio(
+            candidates, audio_result, 20.0, 2.0, 6.0, min_silence_ms=200
+        )
         assert len(result) >= 1
         for start_cp, end_cp in result:
             assert end_cp.time - start_cp.time <= 6.0 + 0.01
@@ -778,8 +783,45 @@ class TestAdjustCandidatesForAudio:
         candidates = [
             (CutPoint(3.0, True, True), CutPoint(5.0, True, True)),
         ]
-        result = adjust_candidates_for_audio(candidates, audio_result, 10.0, 3.0, 15.0)
+        result = adjust_candidates_for_audio(
+            candidates, audio_result, 10.0, 3.0, 15.0, min_silence_ms=200
+        )
         assert len(result) >= 1
+
+
+class TestBufferPreservesVadPauses:
+    """The buffer must not undo the splits FireRedVAD deliberately made.
+
+    FireRedVAD closes a region after `min_silence_ms` of silence. A buffer of
+    half that pause or more re-merges the regions, and a candidate landing
+    inside the resulting blob can no longer be nudged anywhere -- the original
+    full-duration-clip bug.
+    """
+
+    def test_pause_wider_than_min_silence_survives_the_merge(self):
+        ranges = [(1.0, 2.0), (2.3, 3.3)]
+
+        merged = merge_buffered_ranges(ranges, 10.0, speech_buffer_seconds(200))
+
+        assert len(merged) == 2
+
+    def test_candidate_spanning_the_pause_is_nudged_out_of_both_ranges(self):
+        from immich_memories.analysis.segment_generation import adjust_candidates_for_audio
+
+        audio_result = AudioAnalysisResult(protected_ranges=[(1.0, 2.0), (2.3, 3.3)])
+        candidates = [(CutPoint(1.5, True, True), CutPoint(2.8, True, True))]
+
+        result = adjust_candidates_for_audio(
+            candidates, audio_result, 10.0, 0.5, 8.0, min_silence_ms=200
+        )
+
+        start_cp, end_cp = result[0]
+        assert start_cp.time < 1.0
+        assert end_cp.time > 3.3
+
+    def test_buffer_stays_under_half_the_configured_pause(self):
+        for min_silence_ms in (50, 200, 500, 2000):
+            assert speech_buffer_seconds(min_silence_ms) * 2 < min_silence_ms / 1000.0
 
 
 class TestClassifySegmentEvents:
