@@ -722,24 +722,12 @@ class TestSpeechDetectorConstruction:
             scorer=MagicMock(),
             audio_content_config=AudioContentConfig(),
             analysis_config=AnalysisConfig(),
-            speech_config=SpeechConfig(
-                enabled=True, engine="fireredvad", vad_threshold=0.6, min_silence_ms=300
-            ),
+            speech_config=SpeechConfig(enabled=True, vad_threshold=0.6, min_silence_ms=300),
         )
 
         assert isinstance(analyzer._speech_detector, FireRedSpeechDetector)
         assert analyzer._speech_detector.threshold == 0.6
         assert analyzer._speech_detector.min_silence_ms == 300
-
-    def test_energy_engine_has_no_detector(self):
-        analyzer = UnifiedSegmentAnalyzer(
-            scorer=MagicMock(),
-            audio_content_config=AudioContentConfig(),
-            analysis_config=AnalysisConfig(),
-            speech_config=SpeechConfig(enabled=True, engine="energy"),
-        )
-
-        assert analyzer._speech_detector is None
 
     def test_disabled_config_skips_detector(self):
         analyzer = UnifiedSegmentAnalyzer(
@@ -752,8 +740,7 @@ class TestSpeechDetectorConstruction:
         assert analyzer._speech_detector is None
 
     def test_missing_speech_config_defaults_to_fireredvad(self):
-        # No speech_config passed -- SpeechConfig() defaults apply: enabled,
-        # engine="fireredvad".
+        # No speech_config passed -- SpeechConfig() defaults apply.
         from immich_memories.speech.fireredvad import FireRedSpeechDetector
 
         analyzer = UnifiedSegmentAnalyzer(

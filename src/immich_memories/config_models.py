@@ -756,23 +756,24 @@ class AudioContentConfig(BaseModel):
 
 
 class SpeechConfig(BaseModel):
-    """Settings for speech-derived segment boundaries."""
+    """Settings for speech-derived segment boundaries.
+
+    FireRedVAD is the only detector, so there is no engine selector: `enabled:
+    false` is how you turn voice activity off and fall back to PANNs-derived
+    protected ranges.
+    """
 
     enabled: bool = Field(
         default=True,
         description="Derive segment boundaries from voice activity instead of PANNs speech tags",
-    )
-    engine: Literal["fireredvad", "energy"] = Field(
-        default="fireredvad",
-        description="Voice-activity engine: 'fireredvad' (default) or 'energy' (no extra dependency)",
     )
     vad_threshold: float = Field(
         default=0.25,
         ge=0.1,
         le=0.9,
         description=(
-            "Speech probability above which a frame counts as voice activity, "
-            "for whichever engine is configured. Below FireRedVAD upstream's default "
+            "Speech probability above which a frame counts as voice activity. "
+            "Below FireRedVAD upstream's default "
             "of 0.4: measured across 143 library clips, 0.25 detects speech in every "
             "clip the removed Silero engine did plus 49 more, with zero false "
             "positives on clips below -40 dBFS"
@@ -782,16 +783,10 @@ class SpeechConfig(BaseModel):
         default=200,
         ge=50,
         le=2000,
-        description="Silence needed before a speech region is closed (milliseconds)",
-    )
-    completion_threshold: float = Field(
-        default=0.85,
-        ge=0.5,
-        le=0.99,
         description=(
-            "Utterance-completion probability required to prefer a cut point. "
-            "Deliberately high: a false 'complete' cuts someone off permanently, "
-            "a false 'incomplete' only picks a different point."
+            "Silence needed before a speech region is closed (milliseconds). Also "
+            "caps how far protected ranges are widened before boundary adjustment, "
+            "so the pauses split here survive"
         ),
     )
 

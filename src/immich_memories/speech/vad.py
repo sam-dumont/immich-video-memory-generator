@@ -87,21 +87,16 @@ class SpeechDetector(Protocol):
 
 
 def select_detector(config: SpeechConfig) -> SpeechDetector | None:
-    """Build the detector for `config.engine`, or `None` for no VAD.
+    """FireRedVAD, or `None` when speech-derived boundaries are disabled.
 
-    `"energy"` has no detector implementation yet -- it falls through to
-    `None`, leaving PANNs-derived protected ranges untouched (see
-    `_apply_vad_ranges`). `config.engine` is a `Literal`, so an unrecognized
-    value fails Pydantic validation before it ever reaches this function.
+    `None` leaves PANNs-derived protected ranges untouched (see
+    `_apply_vad_ranges`).
     """
     if not config.enabled:
         return None
 
-    if config.engine == "fireredvad":
-        from immich_memories.speech.fireredvad import FireRedSpeechDetector
+    from immich_memories.speech.fireredvad import FireRedSpeechDetector
 
-        return FireRedSpeechDetector(
-            threshold=config.vad_threshold, min_silence_ms=config.min_silence_ms
-        )
-
-    return None
+    return FireRedSpeechDetector(
+        threshold=config.vad_threshold, min_silence_ms=config.min_silence_ms
+    )

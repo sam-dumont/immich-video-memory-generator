@@ -66,26 +66,20 @@ class TestSelectDetector:
     def test_disabled_config_returns_none(self):
         assert select_detector(SpeechConfig(enabled=False)) is None
 
-    def test_fireredvad_engine_returns_fireredvad_detector(self):
+    def test_enabled_config_returns_a_configured_fireredvad_detector(self):
         from immich_memories.speech.fireredvad import FireRedSpeechDetector
 
         detector = select_detector(
-            SpeechConfig(enabled=True, engine="fireredvad", vad_threshold=0.3, min_silence_ms=150)
+            SpeechConfig(enabled=True, vad_threshold=0.3, min_silence_ms=150)
         )
 
         assert isinstance(detector, FireRedSpeechDetector)
         assert detector.threshold == 0.3
         assert detector.min_silence_ms == 150
 
-    def test_energy_engine_returns_none(self):
-        assert select_detector(SpeechConfig(enabled=True, engine="energy")) is None
-
-    def test_unrecognized_engine_fails_validation(self):
-        # `engine` is a Literal, so an engine name that resolved to nothing
-        # (like the removed "silero") must fail construction, not silently
-        # fall through to no VAD.
+    def test_out_of_range_threshold_fails_validation(self):
         with pytest.raises(ValidationError):
-            SpeechConfig(enabled=True, engine="bogus")
+            SpeechConfig(enabled=True, vad_threshold=1.5)
 
     def test_default_config_selects_fireredvad(self):
         from immich_memories.speech.fireredvad import FireRedSpeechDetector

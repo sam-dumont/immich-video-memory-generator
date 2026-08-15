@@ -250,6 +250,36 @@ other AudioSet events. Install it with `uv sync --extra audio-ml` or
 energy-only analyzer. That fallback can find loud and quiet structure, but it cannot reliably tell
 laughter from speech, music, or background noise.
 
+## Speech boundaries
+
+```yaml
+speech:
+  enabled: true
+  vad_threshold: 0.25            # Frame speech probability that counts as voice (0.1-0.9)
+  min_silence_ms: 200            # Silence needed to close a speech region (50-2000)
+```
+
+Requires the `speech` extra (`uv sync --extra speech`, included in `all` and `all-mac`). The
+FireRedVAD weights ship inside the package — nothing is downloaded at runtime.
+
+Without voice activity, protected ranges come from PANNs, which merges contiguous same-class
+frames into one span: a noisy clip becomes a single protected range covering everything and
+boundary adjustment has nowhere to move, so the clip stays at full duration. Voice activity
+keeps the pauses between utterances, giving cuts somewhere to land.
+
+Laughter, singing, cheering and applause protection still comes from PANNs (`audio_content`
+above) — the voice detector does not fire on them.
+
+`vad_threshold` is below FireRedVAD upstream's 0.4 on purpose: measured across 143 clips, 0.25
+detected speech in 49 more of them with no false positives on clips below -40 dBFS. Raise it if
+background chatter is being protected; lower it if quiet speech is being cut through.
+
+`min_silence_ms` does double duty: it is the pause width that closes a speech region, and it
+caps how far each protected range is widened before boundary adjustment. Widening by half that
+pause or more would merge the regions back together and undo the split.
+
+Set `enabled: false` to turn voice activity off entirely — there is no alternative engine.
+
 ## Title screens
 
 ```yaml
