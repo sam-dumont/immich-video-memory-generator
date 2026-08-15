@@ -1,37 +1,87 @@
 """Tests for the FireRedVAD-backed `SpeechDetector`.
 
-`TestFireRedSpeechDetector` uses synthetic silence only, no mocks -- it skips
-when onnxruntime/kaldi-native-fbank aren't installed. `TestFireRedSpeechDetectorMocked`
-mocks the onnxruntime/kaldi_native_fbank import boundary (same idiom as the
-`panns_inference` unavailable test in tests/test_audio.py) to exercise the
-load/detect paths without the real packages.
+`TestFireRedSpeechDetector` runs the real vendored ONNX model over
+`tests/fixtures/speech/synthetic_speech_16k.npy` -- no mocks, skipped when
+onnxruntime/kaldi-native-fbank aren't installed. The fixture is synthesised by
+`tests/fixtures/speech/generate_synthetic_speech.py`; it contains no recording
+of anyone. `TestFireRedSpeechDetectorMocked` mocks the onnxruntime/
+kaldi_native_fbank import boundary (same idiom as the `panns_inference`
+unavailable test in tests/test_audio.py) to exercise the load/detect paths
+without the real packages.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
 import pytest
 
-from immich_memories.speech.fireredvad import FireRedSpeechDetector, regions_from_probs
+from immich_memories.speech.fireredvad import (
+    FireRedSpeechDetector,
+    _extract_features,
+    regions_from_probs,
+)
 from immich_memories.speech.models import SpeechRegion
+
+FIXTURE = Path(__file__).parent / "fixtures" / "speech" / "synthetic_speech_16k.npy"
+
+# The fixture is two ~1.2 s runs of syllables around a 0.5 s pause; see the
+# generator for the exact layout.
+PAUSE_START = 1.30
+PAUSE_END = 1.70
+
+
+def _fixture_audio() -> np.ndarray:
+    """The fixture as the [-1, 1] float32 the detector's callers pass in."""
+    return np.load(FIXTURE).astype(np.float32) / 32768.0
 
 
 class TestFireRedSpeechDetector:
-    def test_detects_speech_in_synthetic_formant_tone(self):
-        detector = FireRedSpeechDetector()
-        if not detector.available:
+    """Real model, real feature pipeline -- the only tests that catch scale/CMVN drift."""
+
+    @pytest.fixture(autouse=True)
+    def _require_model(self):
+        if not FireRedSpeechDetector().available:
             pytest.skip("onnxruntime or kaldi-native-fbank not installed")
 
-        assert detector.detect(np.zeros(16000 * 3, dtype=np.float32), 16000) == []
+    def test_detects_speech_and_keeps_the_pause(self):
+        regions = FireRedSpeechDetector().detect(_fixture_audio(), 16000)
+
+        covered = sum(region.duration for region in regions)
+        assert covered > 2.0  # of a 3.0 s fixture
+        assert not any(region.start < PAUSE_END and region.end > PAUSE_START for region in regions)
+
+    def test_feature_pipeline_matches_the_vendored_models_normalisation(self):
+        # These two numbers are the whole point of the fixture. `_INT16_SCALE`
+        # and the inlined CMVN tables define an affine map from raw fbank to
+        # model input; dropping the int16 scale or regenerating the tables from
+        # a different cmvn.ark moves the mean by whole units. Silence alone
+        # cannot catch that -- it comes back empty either way.
+        features = _extract_features(_fixture_audio(), 16000)
+
+        assert features.shape == (298, 80)
+        assert float(features.mean()) == pytest.approx(-2.258, abs=0.02)
+        assert float(features.std()) == pytest.approx(3.128, abs=0.02)
+
+    def test_silence_yields_no_regions(self):
+        assert FireRedSpeechDetector().detect(np.zeros(16000 * 3, dtype=np.float32), 16000) == []
+
+
+class TestFireRedSpeechDetectorContract:
+    """Guards that hold with or without the optional packages installed."""
 
     def test_unavailable_detector_returns_empty(self):
         detector = FireRedSpeechDetector()
         detector._available = False
 
         assert detector.detect(np.zeros(16000, dtype=np.float32), 16000) == []
+
+    def test_wrong_sample_rate_is_rejected(self):
+        with pytest.raises(ValueError, match="16000 Hz"):
+            FireRedSpeechDetector().detect(np.zeros(48000, dtype=np.float32), 48000)
 
 
 class TestRegionsFromProbs:

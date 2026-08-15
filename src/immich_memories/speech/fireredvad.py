@@ -242,6 +242,12 @@ class FireRedSpeechDetector:
             return False
 
     def detect(self, audio: np.ndarray, sample_rate: int) -> list[SpeechRegion]:
+        # The fbank frame options below are pinned to VAD_SAMPLE_RATE, so audio
+        # at any other rate would be framed against the wrong clock and produce
+        # confident nonsense instead of an error.
+        if sample_rate != VAD_SAMPLE_RATE:
+            raise ValueError(f"FireRedVAD needs {VAD_SAMPLE_RATE} Hz audio, got {sample_rate}")
+
         if not self.available:
             return []
 
