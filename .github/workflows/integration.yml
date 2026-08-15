@@ -105,7 +105,7 @@ jobs:
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - name: Pin Python version for uv
         run: echo "${{ env.PYTHON_VERSION }}" > .python-version
-      - run: make dev
+      - run: make dev-test
 
       - name: Restore config
         env:

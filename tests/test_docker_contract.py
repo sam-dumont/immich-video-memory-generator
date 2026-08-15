@@ -245,6 +245,28 @@ def test_release_images_receive_one_explicit_build_identity() -> None:
     assert "SOURCE_URL=https://github.com/${{ github.repository }}" in build_args
 
 
+def test_release_publisher_supports_core_metadata_2_5() -> None:
+    """The PyPI publisher must understand metadata emitted by current build tooling."""
+    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "release.yml").read_text())
+    steps = workflow["jobs"]["pypi-publish"]["steps"]
+    publish_step = next(step for step in steps if step.get("name") == "Publish to PyPI")
+
+    assert publish_step["uses"] == (
+        "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33"
+    )
+
+
+def test_gpu_integration_uses_ci_dependency_set() -> None:
+    """GPU integration needs Taichi, not the full Torch and audio-ML stack."""
+    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "integration.yml").read_text())
+    run_commands = [
+        step.get("run") for step in workflow["jobs"]["integration"]["steps"] if "run" in step
+    ]
+
+    assert "make dev-test" in run_commands
+    assert "make dev" not in run_commands
+
+
 def test_pull_request_images_receive_required_build_arguments() -> None:
     """Every PR image build must satisfy the Dockerfile's fail-closed arguments."""
     workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
