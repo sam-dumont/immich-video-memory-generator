@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
 from immich_memories.speech.models import BoundaryCandidate
+from immich_memories.speech.turn_detection import TurnDetector, window_ending_at
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,27 @@ def score_candidate(
     normalised_gap = candidate.gap_width / max_gap if max_gap > 0 else 0.0
 
     return w.gap * normalised_gap + w.completion * candidate.completion_score
+
+
+def score_completions(
+    candidates: list[BoundaryCandidate],
+    audio: np.ndarray,
+    sample_rate: int,
+    detector: TurnDetector,
+    threshold: float = 0.85,
+) -> None:
+    """Attach utterance-completion probabilities to candidates, in place.
+
+    Probabilities below the threshold are zeroed rather than kept as a weak
+    signal. The asymmetry is deliberate: a false 'complete' cuts someone off
+    permanently in the rendered video, a false 'incomplete' only picks a
+    different candidate.
+    """
+    for candidate in candidates:
+        probability = detector.completion_probability(
+            window_ending_at(audio, sample_rate, candidate.snapped_time), sample_rate
+        )
+        candidate.completion_score = probability if probability >= threshold else 0.0
 
 
 def best_boundary(

@@ -21,7 +21,6 @@ from immich_memories.analysis.segment_generation import (
     generate_candidate_segments,
     generate_fallback_segments,
     merge_buffered_ranges,
-    nudge_segment_for_speech,
     score_segment_audio,
     speech_buffer_seconds,
 )
@@ -346,66 +345,6 @@ class TestUnifiedAnalyzerProportionalMaxSegment:
         assert result == min(15.0 * 1.15, 40.0)
 
 
-class TestFixBoundaryInRange:
-    """Lines 258, 260-264: _fix_boundary_in_range nudges or reports unfixable."""
-
-    def test_start_boundary_nudged_before_range(self):
-        analyzer = _make_analyzer()
-        new_val, was_adj, was_unfix = analyzer._fix_boundary_in_range(
-            value=5.0,
-            label="START",
-            range_start=4.0,
-            range_end=6.0,
-            clamp_low=0.0,
-            clamp_high=10.0,
-        )
-        assert was_adj
-        assert not was_unfix
-        assert new_val < 4.0
-
-    def test_end_boundary_nudged_after_range(self):
-        analyzer = _make_analyzer()
-        new_val, was_adj, was_unfix = analyzer._fix_boundary_in_range(
-            value=5.5,
-            label="END",
-            range_start=5.0,
-            range_end=6.0,
-            clamp_low=0.0,
-            clamp_high=10.0,
-        )
-        assert was_adj
-        assert not was_unfix
-        assert new_val > 6.0
-
-    def test_boundary_at_edge_is_unfixable(self):
-        """When nudge distance is ~0, it's unfixable."""
-        analyzer = _make_analyzer()
-        new_val, was_adj, was_unfix = analyzer._fix_boundary_in_range(
-            value=0.005,
-            label="START",
-            range_start=0.0,
-            range_end=1.0,
-            clamp_low=0.0,
-            clamp_high=10.0,
-        )
-        assert was_unfix
-        assert not was_adj
-
-    def test_boundary_outside_range_unchanged(self):
-        analyzer = _make_analyzer()
-        new_val, was_adj, was_unfix = analyzer._fix_boundary_in_range(
-            value=10.0,
-            label="START",
-            range_start=2.0,
-            range_end=5.0,
-            clamp_low=0.0,
-            clamp_high=20.0,
-        )
-        assert not was_adj
-        assert not was_unfix
-        assert new_val == 10.0
-
-
 class TestFixBestSegmentBoundaries:
     """Lines 294, 302, 307, 316-317: boundary adjustment + re-trim."""
 
@@ -672,39 +611,6 @@ class TestMergeBufferedRanges:
         result = merge_buffered_ranges(ranges, 20.0, buffer=0.5)
         assert result[0][0] == 0.0
         assert result[-1][1] == 20.0
-
-
-class TestNudgeSegmentForSpeech:
-    """Lines 408-416: nudge start/end out of protected ranges."""
-
-    def test_start_inside_range_nudged_earlier(self):
-        new_s, new_e, adj = nudge_segment_for_speech(
-            start=2.5,
-            end=6.0,
-            merged_ranges=[(2.0, 3.0)],
-            video_duration=10.0,
-        )
-        assert adj
-        assert new_s < 2.5
-
-    def test_end_inside_range_nudged_later(self):
-        new_s, new_e, adj = nudge_segment_for_speech(
-            start=0.0,
-            end=2.5,
-            merged_ranges=[(2.0, 3.0)],
-            video_duration=10.0,
-        )
-        assert adj
-        assert new_e > 2.5
-
-    def test_entirely_inside_no_adjustment(self):
-        new_s, new_e, adj = nudge_segment_for_speech(
-            start=2.2,
-            end=2.8,
-            merged_ranges=[(2.0, 3.0)],
-            video_duration=10.0,
-        )
-        assert not adj
 
 
 class TestAdjustCandidatesForAudio:

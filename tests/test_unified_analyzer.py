@@ -681,3 +681,21 @@ class TestScoreVisualExcludesAudio:
         # Visual score = weighted average of face, motion, stability ONLY
         expected = (0.9 * 0.35 + 0.6 * 0.20 + 0.3 * 0.15) / (0.35 + 0.20 + 0.15)
         assert abs(result["total"] - expected) < 0.001
+
+
+class TestBestSegmentOverlapHandling:
+    def test_boundary_does_not_land_in_a_second_overlapping_range(self):
+        from immich_memories.analysis.segment_generation import (
+            _gaps_between,
+            select_segment_boundaries,
+        )
+
+        ranges = [(1.0, 10.0), (8.0, 15.0)]
+        gaps = _gaps_between(ranges, video_duration=20.0)
+
+        start, end, _ = select_segment_boundaries(
+            start=5.0, end=12.0, gaps=gaps, video_duration=20.0, min_segment_duration=1.0
+        )
+
+        assert not any(lo < start < hi for lo, hi in ranges)
+        assert not any(lo < end < hi for lo, hi in ranges)

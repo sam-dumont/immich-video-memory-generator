@@ -22,6 +22,9 @@ class CutPoint:
     time: float
     is_visual: bool = False  # From PySceneDetect
     is_audio: bool = False  # From silence detection
+    gap_width: float | None = None  # Width of the enclosing silence gap
+    completion_score: float | None = None  # smart-turn utterance-completion probability
+    is_sentence_end: bool = False  # Only set when a transcript exists
 
     @property
     def priority(self) -> int:

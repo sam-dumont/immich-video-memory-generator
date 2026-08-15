@@ -21,6 +21,7 @@ from immich_memories.analysis.analyzer_models import CutPoint, ScoredSegment  # 
 from immich_memories.analysis.scenes import Scene, SceneDetector, get_video_info
 from immich_memories.analysis.scoring import SceneScorer
 from immich_memories.analysis.segment_generation import (
+    _gaps_between,
     adjust_candidates_for_audio,
     detect_audio_boundaries,
     detect_visual_boundaries,
@@ -28,6 +29,7 @@ from immich_memories.analysis.segment_generation import (
     generate_fallback_segments,
     merge_boundaries,
     score_segment_audio,
+    select_segment_boundaries,
 )
 from immich_memories.analysis.speech_analysis import SpeechAnalysisService
 
@@ -186,38 +188,6 @@ class UnifiedSegmentAnalyzer:
         proportional = source_duration * 0.20
         return max(self.max_segment_duration, min(proportional, max_with_grace))
 
-    def _fix_boundary_in_range(
-        self,
-        value: float,
-        label: str,
-        range_start: float,
-        range_end: float,
-        clamp_low: float,
-        clamp_high: float,
-        nudge: float = 0.05,
-    ) -> tuple[float, bool, bool]:
-        """Nudge a boundary value out of a protected range.
-
-        Returns (new_value, was_adjusted, was_unfixable).
-        """
-        if not (range_start <= value < range_end):
-            return value, False, False
-        if label == "START":
-            candidate = max(clamp_low, range_start - nudge)
-        else:
-            candidate = min(clamp_high, range_end + nudge)
-        if abs(candidate - value) > 0.01:
-            logger.warning(
-                f"  Fixed: Segment {label} {value:.2f}s was cutting through "
-                f"protected range {range_start:.2f}s-{range_end:.2f}s, moved to {candidate:.2f}s"
-            )
-            return candidate, True, False
-        logger.warning(
-            f"  Cannot fix: Segment {label} {value:.2f}s cuts through "
-            f"protected range {range_start:.2f}s-{range_end:.2f}s (at video boundary)"
-        )
-        return value, False, True
-
     def _fix_best_segment_boundaries(
         self,
         best: ScoredSegment,
@@ -226,39 +196,25 @@ class UnifiedSegmentAnalyzer:
     ) -> None:
         """Fix best segment boundaries that cut through protected audio ranges.
 
-        Modifies the segment in place.
+        Modifies the segment in place. Shares `_gaps_between` with the candidate
+        path: walking the raw ranges one at a time let a boundary pushed out of
+        one range land inside the next when two overlap, and overlapping ranges
+        became routine once VAD speech regions were unioned with PANNs events.
 
         Args:
             best: Best segment to fix.
             audio_content_result: Audio analysis results.
             video_duration: Total video duration.
         """
-        adjusted = False
-        unfixable = False
-
-        for range_start, range_end in audio_content_result.protected_ranges:
-            new_start, adj, unfix = self._fix_boundary_in_range(
-                best.start_time, "START", range_start, range_end, 0, video_duration
-            )
-            if adj:
-                best.start_time = new_start
-            adjusted = adjusted or adj
-            unfixable = unfixable or unfix
-
-            new_end, adj, unfix = self._fix_boundary_in_range(
-                best.end_time, "END", range_start, range_end, 0, video_duration
-            )
-            if adj:
-                best.end_time = new_end
-            adjusted = adjusted or adj
-            unfixable = unfixable or unfix
+        gaps = _gaps_between(audio_content_result.protected_ranges, video_duration)
+        new_start, new_end, adjusted = select_segment_boundaries(
+            best.start_time, best.end_time, gaps, video_duration, self.min_segment_duration
+        )
 
         if adjusted:
+            best.start_time = new_start
+            best.end_time = new_end
             logger.info(f"  -> Adjusted best segment: {best.start_time:.1f}s-{best.end_time:.1f}s")
-        if unfixable:
-            logger.warning(
-                "  -> Some cuts through speech could not be fixed (segment at video boundary)"
-            )
 
         proportional_max = self._get_max_segment_for_source(video_duration)
         final_duration = best.end_time - best.start_time

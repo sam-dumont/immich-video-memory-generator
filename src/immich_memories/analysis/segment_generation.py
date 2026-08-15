@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 from immich_memories.analysis.analyzer_models import CutPoint
 from immich_memories.analysis.scenes import SceneDetector
 from immich_memories.analysis.silence_detection import detect_silence_gaps
+from immich_memories.speech.boundary_scoring import best_boundary, candidates_from_gaps
+from immich_memories.speech.models import BoundaryCandidate
 
 if TYPE_CHECKING:
     from immich_memories.audio.audio_models import AudioAnalysisResult
@@ -401,44 +403,156 @@ def merge_buffered_ranges(
     return merged
 
 
-def nudge_segment_for_speech(
+def _gaps_between(
+    ranges: list[tuple[float, float]],
+    video_duration: float,
+) -> list[tuple[float, float]]:
+    """Spans between protected ranges — the places a cut may land."""
+    gaps: list[tuple[float, float]] = []
+    cursor = 0.0
+    for range_start, range_end in sorted(ranges):
+        if range_start > cursor:
+            gaps.append((cursor, range_start))
+        cursor = max(cursor, range_end)
+    if cursor < video_duration:
+        gaps.append((cursor, video_duration))
+    return gaps
+
+
+def _candidates_within(
+    gaps: list[tuple[float, float]],
+    window_start: float,
+    window_end: float,
+) -> list[BoundaryCandidate]:
+    """Candidates built from the parts of `gaps` lying inside the window.
+
+    Ranking on whole gaps would reach a gap only when its *midpoint* falls
+    within max_shift, which rejects exactly the silences worth cutting in: a
+    long lead-in or tail whose near edge is adjacent to the target but whose
+    centre is seconds away. Clipping first makes the reachable part of every
+    gap a candidate in its own right, and its midpoint is still real silence.
+    """
+    clipped = [
+        (max(gap_start, window_start), min(gap_end, window_end)) for gap_start, gap_end in gaps
+    ]
+    return candidates_from_gaps([(lo, hi) for lo, hi in clipped if hi > lo])
+
+
+def _escape_time(
+    gaps: list[tuple[float, float]],
+    target: float,
+) -> float | None:
+    """Nearest silence for a boundary with none in reach, or None if it is already safe.
+
+    Distance is unbounded and `min_gap` is ignored here, both on purpose. This
+    fires only for a boundary sitting inside protected audio, where the real
+    comparison is against cutting mid-word: a pause too narrow to be a
+    first-choice cut still beats slicing through a syllable, and so does a
+    wider pause further away. The `min_segment_duration` and proportional-max
+    guards bound the damage.
+    """
+    if any(gap_start <= target <= gap_end for gap_start, gap_end in gaps):
+        return None
+
+    candidates = candidates_from_gaps(gaps, min_gap=0.0)
+    if not candidates:
+        return None
+    return min(candidates, key=lambda c: abs(c.snapped_time - target)).snapped_time
+
+
+def _edge_options(
+    gaps: list[tuple[float, float]],
+    target: float,
+    max_shift: float,
+    *,
+    trims_later: bool,
+) -> list[float]:
+    """Safe placements for one edge, most-preferred first.
+
+    Both directions are safe -- every candidate midpoint is silence -- so the
+    order is decided by duration: inward first because it shortens the clip,
+    then outward, then the nearest silence at any distance for an edge still
+    inside protected audio. `trims_later` is True for a start edge, where
+    moving later trims, and False for an end edge. Growing is the fallback,
+    not the default; the old nudger only ever grew, which is why noisy clips
+    kept their full duration.
+    """
+    ahead = (target, target + max_shift)
+    behind = (target - max_shift, target)
+    inward, outward = (ahead, behind) if trims_later else (behind, ahead)
+
+    options: list[float] = []
+    for window_start, window_end in (inward, outward):
+        chosen = best_boundary(
+            _candidates_within(gaps, window_start, window_end), target, max_shift
+        )
+        if chosen is not None and chosen.snapped_time not in options:
+            options.append(chosen.snapped_time)
+
+    escape = _escape_time(gaps, target)
+    if escape is not None and escape not in options:
+        options.append(escape)
+    return options
+
+
+def _best_placement(
+    start_options: list[float],
+    end_options: list[float],
+    video_duration: float,
+    min_segment_duration: float,
+) -> tuple[float, float] | None:
+    """Most-preferred pair of edges that still clears the minimum duration.
+
+    Ranking on the summed preference index keeps the inward-trimming pick
+    unless it collapses the segment, in which case the next-best placement is
+    used. Reverting both edges to the original instead -- what a single
+    all-or-nothing guard did -- put the cut back inside speech, which is the
+    one outcome worth avoiding.
+    """
+    placements = []
+    for start_rank, raw_start in enumerate(start_options):
+        for end_rank, raw_end in enumerate(end_options):
+            new_start = max(0.0, raw_start)
+            new_end = min(video_duration, raw_end)
+            if new_end - new_start >= min_segment_duration:
+                placements.append((start_rank + end_rank, new_end - new_start, new_start, new_end))
+
+    if not placements:
+        return None
+    _, _, best_start, best_end = min(placements)
+    return best_start, best_end
+
+
+def select_segment_boundaries(
     start: float,
     end: float,
-    merged_ranges: list[tuple[float, float]],
+    gaps: list[tuple[float, float]],
     video_duration: float,
+    min_segment_duration: float,
+    max_shift: float = 2.0,
 ) -> tuple[float, float, bool]:
-    """Nudge a single segment's boundaries away from speech ranges.
+    """Move a segment's edges to the best nearby silence gap.
 
-    Args:
-        start: Segment start time.
-        end: Segment end time.
-        merged_ranges: Merged protected audio ranges.
-        video_duration: Total video duration.
-
-    Returns:
-        Tuple of (new_start, new_end, was_adjusted).
+    Replaces the previous outward nudging, which pushed boundaries away from
+    speech and gave up entirely when a segment sat inside one long protected
+    range -- the case that left noisy clips untrimmed.
     """
-    new_start, new_end = start, end
-    was_adjusted = False
+    if not gaps:
+        return start, end, False
 
-    for range_start, range_end in merged_ranges:
-        start_inside = range_start <= new_start < range_end
-        end_inside = range_start < new_end <= range_end
+    start_options = _edge_options(gaps, start, max_shift, trims_later=True)
+    end_options = _edge_options(gaps, end, max_shift, trims_later=False)
+    if not start_options and not end_options:
+        return start, end, False
 
-        if start_inside and end_inside:
-            continue  # Entirely inside -- can't avoid
+    placement = _best_placement(
+        start_options or [start], end_options or [end], video_duration, min_segment_duration
+    )
+    if placement is None:
+        return start, end, False
 
-        if start_inside and not end_inside:
-            nudge = min(2.0, new_start - range_start + 0.1)
-            new_start = max(0, new_start - nudge)
-            was_adjusted = True
-
-        if end_inside and not start_inside:
-            nudge = min(2.0, range_end - new_end + 0.1)
-            new_end = min(video_duration, new_end + nudge)
-            was_adjusted = True
-
-    return new_start, new_end, was_adjusted
+    new_start, new_end = placement
+    return new_start, new_end, (new_start, new_end) != (start, end)
 
 
 def adjust_candidates_for_audio(
@@ -476,12 +590,18 @@ def adjust_candidates_for_audio(
     )
     logger.info(f"     Buffered+merged ranges: {[(f'{s:.2f}-{e:.2f}') for s, e in merged_ranges]}")
 
+    gaps = _gaps_between(merged_ranges, video_duration)
+
     adjusted: list[tuple[CutPoint, CutPoint]] = []
     adjustments_made = 0
 
     for start_cp, end_cp in candidates:
-        new_start, new_end, was_adjusted = nudge_segment_for_speech(
-            start_cp.time, end_cp.time, merged_ranges, video_duration
+        new_start, new_end, was_adjusted = select_segment_boundaries(
+            start_cp.time,
+            end_cp.time,
+            gaps,
+            video_duration,
+            min_segment_duration,
         )
 
         if was_adjusted:
