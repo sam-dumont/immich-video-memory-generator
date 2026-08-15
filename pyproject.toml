@@ -73,6 +73,12 @@ audio-ml = [
     "torch>=2.0",
     "panns-inference>=0.1",
 ]
+# Speech boundary detection (VAD + utterance completion)
+# Silero VAD bundles its own ONNX weights -- no runtime download.
+speech = [
+    "silero-vad>=6.0",
+    "onnxruntime>=1.17",
+]
 # OIDC authentication (only needed for SSO login)
 auth = [
     "authlib>=1.6.12",
@@ -315,6 +321,9 @@ module = [
     # PANNs / PyTorch (optional for audio content analysis)
     "torch.*",
     "panns_inference.*",
+    # Silero VAD (optional for speech boundary detection)
+    "silero_vad",
+    "silero_vad.*",
     # Taichi (GPU rendering)
     "taichi.*",
     # Not-yet-implemented modules
@@ -524,6 +533,7 @@ DEP002 = [
     "authlib",                                          # auth: used in upcoming OIDC client task
     "oidc-provider-mock",                               # auth: used in upcoming OIDC tests task
     "demucs",                                           # optional: local stem separation
+    "onnxruntime",                                       # silero-vad ONNX backend
 ]
 DEP001 = [
     "cv2", "Quartz", "Vision", "Metal", "CoreImage",   # Platform/alt-name imports
