@@ -10,13 +10,15 @@ it isn't installed in the coverage-producing CI job.
 
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
 
 from immich_memories.speech.models import SpeechRegion
-from immich_memories.speech.vad import silence_gaps
+from immich_memories.speech.vad import extract_audio_16k, silence_gaps
 
 
 class TestSilenceGaps:
@@ -137,3 +139,39 @@ class TestSileroSpeechDetectorMocked:
             regions = detector.detect(np.zeros(16000, dtype=np.float32), 16000)
 
         assert regions == [SpeechRegion(0.5, 1.5), SpeechRegion(2.0, 3.0)]
+
+
+class TestExtractAudio16k:
+    def test_missing_file_returns_none(self, tmp_path: Path):
+        # Real ffmpeg invocation (no mock) -- it fails fast on a nonexistent
+        # input and the function must degrade to None rather than raising.
+        missing = tmp_path / "does-not-exist.mov"
+
+        assert extract_audio_16k(missing) is None
+
+    def test_parses_ffmpeg_stdout_as_mono_float32(self, tmp_path: Path):
+        expected = np.array([0.0, 0.25, -0.5, 1.0], dtype=np.float32)
+        fake_completed = subprocess.CompletedProcess(
+            args=["ffmpeg"], returncode=0, stdout=expected.tobytes(), stderr=b""
+        )
+
+        # WHY: replaces the real ffmpeg subprocess so the test doesn't need a
+        # real audio file -- only the stdout-parsing contract is under test.
+        with patch("immich_memories.speech.vad.subprocess.run", return_value=fake_completed) as run:
+            result = extract_audio_16k(tmp_path / "clip.mov")
+
+        assert np.array_equal(result, expected)
+        args = run.call_args.args[0]
+        assert args[0] == "ffmpeg"
+        assert "-map" in args and args[args.index("-map") + 1] == "0:a:0"
+
+    def test_ffmpeg_failure_returns_none(self, tmp_path: Path):
+        # WHY: replaces the real ffmpeg subprocess to force the
+        # CalledProcessError branch without needing a corrupt real file.
+        with patch(
+            "immich_memories.speech.vad.subprocess.run",
+            side_effect=subprocess.CalledProcessError(1, ["ffmpeg"]),
+        ):
+            result = extract_audio_16k(tmp_path / "clip.mov")
+
+        assert result is None

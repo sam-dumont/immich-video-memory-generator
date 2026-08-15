@@ -30,6 +30,9 @@ from immich_memories.analysis.segment_generation import (
     merge_boundaries,
     score_segment_audio,
 )
+from immich_memories.config_models import SpeechConfig
+from immich_memories.speech.models import SpeechRegion
+from immich_memories.speech.vad import VAD_SAMPLE_RATE, SileroSpeechDetector, extract_audio_16k
 
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
@@ -37,6 +40,19 @@ if TYPE_CHECKING:
     from immich_memories.config_models import AnalysisConfig, AudioContentConfig
 
 logger = logging.getLogger(__name__)
+
+
+def protected_ranges_from_speech(
+    regions: list[SpeechRegion],
+    max_duration: float,
+) -> list[tuple[float, float]]:
+    """Convert VAD regions into protected ranges, clamped to the analysed window."""
+    ranges: list[tuple[float, float]] = []
+    for region in regions:
+        if region.start >= max_duration:
+            continue
+        ranges.append((region.start, min(region.end, max_duration)))
+    return ranges
 
 
 def log_top_segments(segments: list[ScoredSegment], top_n: int = 5) -> None:
@@ -89,6 +105,7 @@ class UnifiedSegmentAnalyzer:
         *,
         audio_content_config: AudioContentConfig,
         analysis_config: AnalysisConfig,
+        speech_config: SpeechConfig | None = None,
     ):
         """Initialize the unified analyzer.
 
@@ -108,6 +125,7 @@ class UnifiedSegmentAnalyzer:
             target_extraction_ratio: Target ratio of clip to source (default 0.15).
             duration_weight: Weight for duration preference score (default 0.15).
             audio_content_config: AudioContentConfig for lazy audio analyzer init.
+            speech_config: SpeechConfig controlling VAD-derived protected ranges.
         """
         self.scorer = scorer
         self.content_analyzer = content_analyzer
@@ -125,10 +143,20 @@ class UnifiedSegmentAnalyzer:
         self.duration_weight = duration_weight
         self._audio_content_config = audio_content_config
         self._analysis_config = analysis_config
+        self._speech_config = speech_config or SpeechConfig()
+        self._speech_detector = (
+            SileroSpeechDetector(
+                threshold=self._speech_config.vad_threshold,
+                min_silence_ms=self._speech_config.min_silence_ms,
+            )
+            if self._speech_config.enabled and self._speech_config.engine == "silero"
+            else None
+        )
 
         self._scene_detector = SceneDetector(analysis_config=analysis_config)
         self._audio_analyzer = audio_analyzer  # Injected or lazy-created
         self._audio_analysis_cache: dict[str, AudioAnalysisResult] = {}
+        self._vad_audio_cache: dict[str, np.ndarray | None] = {}
 
     def clear_cache(self, release_audio_analyzer: bool = False):
         """Clear internal caches to free memory.
@@ -138,6 +166,7 @@ class UnifiedSegmentAnalyzer:
                 Usually False because the analyzer is shared across clips.
         """
         self._audio_analysis_cache.clear()
+        self._vad_audio_cache.clear()
         if release_audio_analyzer and self._audio_analyzer is not None:
             if hasattr(self._audio_analyzer, "cleanup"):
                 self._audio_analyzer.cleanup()
@@ -146,6 +175,7 @@ class UnifiedSegmentAnalyzer:
     def reset_for_video(self) -> None:
         """Release current-video state while retaining reusable configuration and models."""
         self._audio_analysis_cache.clear()
+        self._vad_audio_cache.clear()
         self.scorer.release_capture()
 
     def _get_max_segment_for_source(
@@ -539,12 +569,57 @@ class UnifiedSegmentAnalyzer:
                 )
 
             result = self._audio_analyzer.analyze(video_path, video_duration)
+            result = self._apply_vad_ranges(video_path, result, video_duration)
             self._audio_analysis_cache[cache_key] = result
             return result
 
         except (ImportError, RuntimeError, OSError, subprocess.SubprocessError) as e:
             logger.warning(f"Audio content analysis failed: {e}")
             return None
+
+    def _apply_vad_ranges(
+        self,
+        video_path: Path,
+        result: AudioAnalysisResult,
+        video_duration: float | None,
+    ) -> AudioAnalysisResult:
+        """Replace PANNs-derived protected ranges with VAD regions.
+
+        PANNs merges contiguous same-class frames into one span, so a noisy clip
+        becomes a single protected range covering everything and boundary
+        adjustment has nowhere to move. VAD keeps the pauses between utterances.
+        """
+        if not self._speech_config.enabled or self._speech_detector is None:
+            return result
+
+        audio = self._extract_audio_cached(video_path)
+        if audio is None:
+            return result
+
+        regions = self._speech_detector.detect(audio, VAD_SAMPLE_RATE)
+        if not regions:
+            return result
+
+        duration = video_duration or (len(audio) / VAD_SAMPLE_RATE)
+        result.protected_ranges = protected_ranges_from_speech(regions, duration)
+        logger.info(
+            "VAD: %d speech regions -> %d protected ranges (was %d from PANNs)",
+            len(regions),
+            len(result.protected_ranges),
+            len(result.events),
+        )
+        return result
+
+    def _extract_audio_cached(self, video_path: Path) -> np.ndarray | None:
+        """Extract 16kHz mono audio once per video, cached by path.
+
+        VAD extraction shells out to FFmpeg; candidates within the same video
+        must reuse the array rather than each triggering their own extraction.
+        """
+        cache_key = str(video_path)
+        if cache_key not in self._vad_audio_cache:
+            self._vad_audio_cache[cache_key] = extract_audio_16k(video_path)
+        return self._vad_audio_cache[cache_key]
 
     def _get_dynamic_optimal_duration(self, source_duration: float) -> float:
         """Calculate the optimal clip duration based on source video length.

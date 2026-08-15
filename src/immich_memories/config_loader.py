@@ -35,6 +35,7 @@ from immich_memories.config_models import (
     PhotoConfig,
     ScoringPriorityConfig,
     ServerConfig,
+    SpeechConfig,
     TitleScreenConfig,
     TripsConfig,
     UploadConfig,
@@ -52,6 +53,7 @@ _TIER2_SECTIONS = frozenset(
         "ace_step",
         "content_analysis",
         "audio_content",
+        "speech",
         "server",
         "auth",
         "automation",
@@ -99,7 +101,7 @@ class Config(BaseSettings):
       Tier 1 (top level): immich, defaults, output, audio, title_screens,
                            cache, upload, trips, photos
       Tier 2 (advanced:):  analysis, hardware, llm, musicgen, ace_step,
-                           content_analysis, audio_content, server
+                           content_analysis, audio_content, speech, server
       Tier 3 (internal):   scheduler, title_llm
 
     At runtime, ALL sections are flat fields on Config (config.analysis, etc.).
@@ -128,6 +130,7 @@ class Config(BaseSettings):
     ace_step: ACEStepConfig = Field(default_factory=ACEStepConfig)
     content_analysis: ContentAnalysisConfig = Field(default_factory=ContentAnalysisConfig)
     audio_content: AudioContentConfig = Field(default_factory=AudioContentConfig)
+    speech: SpeechConfig = Field(default_factory=SpeechConfig)
     title_screens: TitleScreenConfig = Field(default_factory=TitleScreenConfig)
     upload: UploadConfig = Field(default_factory=UploadConfig)
     photos: PhotoConfig = Field(default_factory=PhotoConfig)

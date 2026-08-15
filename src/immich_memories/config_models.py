@@ -755,6 +755,41 @@ class AudioContentConfig(BaseModel):
     )
 
 
+class SpeechConfig(BaseModel):
+    """Settings for speech-derived segment boundaries."""
+
+    enabled: bool = Field(
+        default=True,
+        description="Derive segment boundaries from voice activity instead of PANNs speech tags",
+    )
+    engine: str = Field(
+        default="silero",
+        description="Voice-activity engine: 'silero' (default) or 'energy' (no extra dependency)",
+    )
+    vad_threshold: float = Field(
+        default=0.5,
+        ge=0.1,
+        le=0.9,
+        description="Speech probability above which a frame counts as voice activity",
+    )
+    min_silence_ms: int = Field(
+        default=200,
+        ge=50,
+        le=2000,
+        description="Silence needed before a speech region is closed (milliseconds)",
+    )
+    completion_threshold: float = Field(
+        default=0.85,
+        ge=0.5,
+        le=0.99,
+        description=(
+            "Utterance-completion probability required to prefer a cut point. "
+            "Deliberately high: a false 'complete' cuts someone off permanently, "
+            "a false 'incomplete' only picks a different point."
+        ),
+    )
+
+
 class ScoringPriorityConfig(BaseModel):
     """User-facing scoring knobs (Tier 1)."""
 

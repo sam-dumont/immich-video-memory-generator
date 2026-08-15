@@ -83,4 +83,5 @@ def create_unified_analyzer_from_config(config: Config):
         target_extraction_ratio=config.analysis.target_extraction_ratio,
         audio_content_config=config.audio_content,
         analysis_config=config.analysis,
+        speech_config=config.speech,
     )
