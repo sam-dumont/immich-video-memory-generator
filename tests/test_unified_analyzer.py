@@ -27,7 +27,7 @@ from immich_memories.analysis.unified_analyzer import (
     ScoredSegment,
     UnifiedSegmentAnalyzer,
 )
-from immich_memories.audio.audio_models import AudioAnalysisResult
+from immich_memories.audio.audio_models import AudioAnalysisResult, AudioEvent
 from immich_memories.config_loader import Config
 from immich_memories.config_models import AnalysisConfig, AudioContentConfig, SpeechConfig
 from immich_memories.speech.models import SpeechRegion
@@ -836,6 +836,59 @@ class TestApplyVadRanges:
             updated = analyzer._apply_vad_ranges(Path("/fake.mov"), result, video_duration=8.0)
 
         assert updated.protected_ranges == [(0.5, 2.0), (4.0, 6.0)]
+
+    def test_laughter_keeps_its_protection_when_vad_finds_speech(self):
+        # VAD's speech column never fires on laughter, so replacing every
+        # protected range with VAD output used to leave a laugh unprotected
+        # and a cut landing in the middle of it.
+        analyzer = self._analyzer()
+
+        class _OneUtteranceDetector:
+            def detect(self, audio, sample_rate):
+                return [SpeechRegion(4.2, 5.8)]
+
+        analyzer._speech_detector = _OneUtteranceDetector()
+        result = AudioAnalysisResult(
+            events=[
+                AudioEvent("Laughter", 1.0, 2.5, 0.8),
+                AudioEvent("Speech", 3.0, 7.0, 0.9),
+                AudioEvent("Motor vehicle (road)", 0.0, 8.0, 0.7),
+            ],
+            protected_ranges=[(1.0, 2.5), (3.0, 7.0)],
+        )
+        audio = np.zeros(16000 * 8, dtype=np.float32)
+
+        with patch(
+            "immich_memories.analysis.unified_analyzer.extract_audio_16k", return_value=audio
+        ):
+            updated = analyzer._apply_vad_ranges(Path("/fake.mov"), result, video_duration=8.0)
+
+        assert updated.protected_ranges == [(1.0, 2.5), (4.2, 5.8)]
+
+    def test_laughter_only_clip_keeps_every_protected_range(self):
+        analyzer = self._analyzer()
+
+        class _LaughterOnlyDetector:
+            def detect(self, audio, sample_rate):
+                return [SpeechRegion(0.2, 0.4)]
+
+        analyzer._speech_detector = _LaughterOnlyDetector()
+        result = AudioAnalysisResult(
+            events=[
+                AudioEvent("Baby laughter", 1.0, 2.5, 0.8),
+                AudioEvent("Giggle", 5.0, 6.0, 0.7),
+            ],
+            protected_ranges=[(1.0, 2.5), (5.0, 6.0)],
+        )
+        audio = np.zeros(16000 * 8, dtype=np.float32)
+
+        with patch(
+            "immich_memories.analysis.unified_analyzer.extract_audio_16k", return_value=audio
+        ):
+            updated = analyzer._apply_vad_ranges(Path("/fake.mov"), result, video_duration=8.0)
+
+        assert (1.0, 2.5) in updated.protected_ranges
+        assert (5.0, 6.0) in updated.protected_ranges
 
     def test_extraction_runs_once_per_video_path(self):
         analyzer = self._analyzer()

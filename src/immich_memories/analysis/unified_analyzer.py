@@ -30,13 +30,14 @@ from immich_memories.analysis.segment_generation import (
     merge_boundaries,
     score_segment_audio,
 )
+from immich_memories.audio.audio_models import SPEECH_EVENT_CLASS
 from immich_memories.config_models import SpeechConfig
 from immich_memories.speech.models import SpeechRegion
 from immich_memories.speech.vad import VAD_SAMPLE_RATE, extract_audio_16k, select_detector
 
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
-    from immich_memories.audio.audio_models import AudioAnalysisResult
+    from immich_memories.audio.audio_models import AudioAnalysisResult, AudioEvent
     from immich_memories.config_models import AnalysisConfig, AudioContentConfig
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,26 @@ def protected_ranges_from_speech(
             continue
         ranges.append((region.start, min(region.end, max_duration)))
     return ranges
+
+
+def non_speech_protected_ranges(
+    events: list[AudioEvent],
+    max_duration: float,
+) -> list[tuple[float, float]]:
+    """Protected ranges for the events VAD cannot see.
+
+    FireRedVAD supersedes PANNs only for speech. Its speech column does not
+    fire on laughter, applause or cheering, so those events must keep their
+    PANNs-derived ranges or a clip of someone laughing loses all protection
+    and a cut lands mid-laugh.
+    """
+    return [
+        (event.start_time, min(event.end_time, max_duration))
+        for event in events
+        if event.is_protected
+        and event.event_class != SPEECH_EVENT_CLASS
+        and event.start_time < max_duration
+    ]
 
 
 def log_top_segments(segments: list[ScoredSegment], top_n: int = 5) -> None:
@@ -576,11 +597,15 @@ class UnifiedSegmentAnalyzer:
         result: AudioAnalysisResult,
         video_duration: float | None,
     ) -> AudioAnalysisResult:
-        """Replace PANNs-derived protected ranges with VAD regions.
+        """Replace the PANNs *speech* protected ranges with VAD regions.
 
         PANNs merges contiguous same-class frames into one span, so a noisy clip
         becomes a single protected range covering everything and boundary
         adjustment has nowhere to move. VAD keeps the pauses between utterances.
+
+        Only the speech ranges are replaced: laughter, singing, cheering and
+        applause are also protected and VAD is blind to all of them, so their
+        PANNs ranges are unioned back in.
         """
         if not self._speech_config.enabled or self._speech_detector is None:
             return result
@@ -594,12 +619,18 @@ class UnifiedSegmentAnalyzer:
             return result
 
         duration = video_duration or (len(audio) / VAD_SAMPLE_RATE)
-        result.protected_ranges = protected_ranges_from_speech(regions, duration)
+        previous_count = len(result.protected_ranges)
+        non_speech = non_speech_protected_ranges(result.events, duration)
+        result.protected_ranges = sorted(
+            protected_ranges_from_speech(regions, duration) + non_speech
+        )
         logger.info(
-            "VAD: %d speech regions -> %d protected ranges (was %d from PANNs)",
+            "VAD: %d speech regions + %d non-speech PANNs ranges -> "
+            "%d protected ranges (was %d from PANNs)",
             len(regions),
+            len(non_speech),
             len(result.protected_ranges),
-            len(result.events),
+            previous_count,
         )
         return result
 

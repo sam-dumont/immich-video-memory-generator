@@ -101,13 +101,17 @@ def classify_audio_event(class_name: str) -> str | None:
     return None
 
 
+# The one protected class a voice-activity detector can resolve better than
+# PANNs; everything else in PROTECTED_EVENTS has no VAD equivalent.
+SPEECH_EVENT_CLASS = "Speech"
+
 # Events that shouldn't be cut during (provide smooth boundaries)
 PROTECTED_EVENTS = {
     "Laughter",
     "Giggle",
     "Chuckle, chortle",
     "Baby laughter",
-    "Speech",
+    SPEECH_EVENT_CLASS,
     "Singing",
     "Cheering",
     "Applause",
