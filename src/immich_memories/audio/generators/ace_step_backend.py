@@ -39,6 +39,44 @@ from immich_memories.audio.generators.base import (
 
 logger = logging.getLogger(__name__)
 
+# WHY: ACE-Step's MLX VAE decode grows the MLX buffer cache by ~0.8 GiB per
+# second of audio inside one decode chunk, and on >64 GB Macs upstream picks an
+# 82 s chunk (2048 latent frames). MLX only trims that cache near its default
+# limit (~recommendedMaxWorkingSetSize, ~120 GiB on a 128 GB machine), so a
+# 216 s track pushed the host process past 100 GiB and macOS killed it. A small
+# chunk plus a hard cache limit keeps the same request around 50 GiB (measured:
+# 108 GB -> 53 GB peak footprint). Peak *active* memory stays a few GiB either
+# way, so the limit costs ~20% on VAE decode and nothing elsewhere.
+_MLX_VAE_CHUNK_FRAMES = 256  # 25 latent frames/s -> ~10 s of audio per decode
+_MLX_CACHE_LIMIT_BYTES = 4 * 1024**3
+
+
+def _bound_mlx_memory() -> int:
+    """Cap MLX allocator growth before ACE-Step constructs its handlers.
+
+    Must run before ``AceStepHandler()``: ACE-Step reads the chunk override
+    into a process-wide cached GPU config on first handler construction.
+    Returns the VAE chunk size in latent frames that ACE-Step should use.
+    """
+    os.environ.setdefault("ACESTEP_MLX_VAE_CHUNK", str(_MLX_VAE_CHUNK_FRAMES))
+    with suppress(ImportError):
+        import mlx.core as mx  # type: ignore[import-not-found]
+
+        mx.set_cache_limit(_MLX_CACHE_LIMIT_BYTES)
+    try:
+        return max(192, int(os.environ["ACESTEP_MLX_VAE_CHUNK"]))
+    except ValueError:
+        return _MLX_VAE_CHUNK_FRAMES
+
+
+def _release_mlx_cache() -> None:
+    """Hand cached Metal buffers back to macOS once a generation finishes."""
+    with suppress(ImportError):
+        import mlx.core as mx  # type: ignore[import-not-found]
+
+        mx.clear_cache()
+        mx.synchronize()
+
 
 def _is_ace_step_importable() -> bool:
     """Check if the ACE-Step 1.5 library API is importable."""
@@ -79,17 +117,18 @@ def _validate_torchcodec() -> None:
 
 
 def _run_with_suppressed_output(pipeline_fn, **kwargs):
-    """Run ACE-Step pipeline with loguru, tqdm, and FutureWarnings suppressed.
+    """Run the ACE-Step pipeline with loguru and FutureWarnings suppressed.
 
-    ACE-Step uses loguru (not stdlib logging) and tqdm progress bars that
-    bypass our logging config. Suppress them at the FD level during generation.
+    ACE-Step logs through loguru, which ignores stdlib logging config. Its tqdm
+    bars are disabled via ``ACESTEP_DISABLE_TQDM`` (set in ``_init_pipeline``).
+    The process's stderr is deliberately left alone: a native MLX/Metal failure
+    prints its only diagnostic there.
     """
     import warnings
 
     # WHY: torch.nn.utils.weight_norm emits a FutureWarning on every model load
     warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
-    # WHY: ACE-Step uses loguru, which ignores stdlib logging config
     try:
         from loguru import logger as loguru_logger  # type: ignore[import-not-found]
 
@@ -97,16 +136,9 @@ def _run_with_suppressed_output(pipeline_fn, **kwargs):
     except ImportError:
         loguru_logger = None  # type: ignore[assignment]
 
-    # WHY: tqdm writes progress bars to stderr, bypassing Python logging
-    devnull_fd = os.open(os.devnull, os.O_WRONLY)
-    saved_err = os.dup(2)
     try:
-        os.dup2(devnull_fd, 2)
         return pipeline_fn(**kwargs)
     finally:
-        os.dup2(saved_err, 2)
-        os.close(saved_err)
-        os.close(devnull_fd)
         if loguru_logger is not None:
             loguru_logger.enable("acestep")
 
@@ -151,9 +183,14 @@ def _initialize_dit_handler(
     device: str,
     offload: bool,
     use_mlx_dit: bool,
+    mlx_vae_chunk: int | None = None,
 ) -> Any:
     """Initialize and validate the ACE-Step 1.5 DiT handler."""
     handler = handler_type()
+    if mlx_vae_chunk is not None and hasattr(handler, "mlx_vae_chunk_size"):
+        # WHY: belt and braces — the env override is ignored if ACE-Step's
+        # global GPU config was already cached earlier in this process.
+        handler.mlx_vae_chunk_size = mlx_vae_chunk
     status, initialized = handler.initialize_service(
         project_root=str(project_root),
         config_path=dit_model,
@@ -272,6 +309,27 @@ def _mood_to_structured_prompt(
     )
 
 
+def _run_v15_generation(
+    runtime: _ACEStepV15Runtime,
+    params: Any,
+    generation_config: Any,
+    output_dir: Path,
+) -> Any:
+    """Run one ACE-Step 1.5 generation on the worker thread and release MLX buffers after."""
+    try:
+        return _run_with_suppressed_output(
+            runtime.generate_music,
+            dit_handler=runtime.dit_handler,
+            llm_handler=runtime.llm_handler,
+            params=params,
+            config=generation_config,
+            save_dir=str(output_dir),
+        )
+    finally:
+        if runtime.device == "mps":
+            _release_mlx_cache()
+
+
 class ACEStepBackend(MusicGenerator):
     """ACE-Step 1.5 music generation backend.
 
@@ -370,6 +428,9 @@ class ACEStepBackend(MusicGenerator):
             from acestep.model_downloader import ensure_lm_model  # type: ignore[import-not-found]
 
             os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+            # WHY: tqdm bars were the reason stderr used to be redirected to
+            # /dev/null; upstream honours this switch, so stderr stays visible.
+            os.environ.setdefault("ACESTEP_DISABLE_TQDM", "1")
             os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
             os.environ.setdefault(
                 "ACESTEP_CHECKPOINTS_DIR",
@@ -384,6 +445,7 @@ class ACEStepBackend(MusicGenerator):
             checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
             device, lm_backend, use_mlx_dit = _local_runtime_target()
+            mlx_vae_chunk = _bound_mlx_memory() if use_mlx_dit else None
             dit_model = _dit_model_name(self.config.model_variant)
             lm_model = _lm_model_name(self.config.lm_model_size) if self.config.use_lm else None
             offload = bool(self.config.extra_args.get("cpu_offload", False)) and not (
@@ -404,6 +466,7 @@ class ACEStepBackend(MusicGenerator):
                 device=device,
                 offload=offload,
                 use_mlx_dit=use_mlx_dit,
+                mlx_vae_chunk=mlx_vae_chunk,
             )
             llm_handler = _initialize_lm_handler(
                 LLMHandler,
@@ -489,41 +552,39 @@ class ACEStepBackend(MusicGenerator):
         infer_step = 8 if is_turbo else 50
         timestep_shift = 3.0 if is_turbo else 1.0
 
-        def _run_pipeline():
-            runtime = self._pipeline
-            assert isinstance(runtime, _ACEStepV15Runtime)
-            params = runtime.generation_params_type(
-                caption=caption_result.caption,
-                lyrics="[Instrumental]",
-                instrumental=True,
-                bpm=caption_result.bpm,
-                keyscale=caption_result.key_scale,
-                timesignature=caption_result.time_signature,
-                duration=float(duration),
-                inference_steps=infer_step,
-                guidance_scale=1.0 if is_turbo else 7.0,
-                shift=timestep_shift,
-                thinking=self.config.use_lm,
-                use_cot_metas=self.config.use_lm,
-                use_cot_caption=self.config.use_lm,
-                use_cot_language=False,
-            )
-            generation_config = runtime.generation_config_type(
-                batch_size=1,
-                use_random_seed=True,
-                audio_format="wav",
-            )
-            return _run_with_suppressed_output(
-                runtime.generate_music,
-                dit_handler=runtime.dit_handler,
-                llm_handler=runtime.llm_handler,
-                params=params,
-                config=generation_config,
-                save_dir=str(request.output_dir),
-            )
+        runtime = self._pipeline
+        assert isinstance(runtime, _ACEStepV15Runtime)
+        params = runtime.generation_params_type(
+            caption=caption_result.caption,
+            lyrics="[Instrumental]",
+            instrumental=True,
+            bpm=caption_result.bpm,
+            keyscale=caption_result.key_scale,
+            timesignature=caption_result.time_signature,
+            duration=float(duration),
+            inference_steps=infer_step,
+            guidance_scale=1.0 if is_turbo else 7.0,
+            shift=timestep_shift,
+            thinking=self.config.use_lm,
+            use_cot_metas=self.config.use_lm,
+            use_cot_caption=self.config.use_lm,
+            use_cot_language=False,
+        )
+        generation_config = runtime.generation_config_type(
+            batch_size=1,
+            use_random_seed=True,
+            audio_format="wav",
+        )
 
         loop = asyncio.get_running_loop()
-        upstream_result = await loop.run_in_executor(None, _run_pipeline)
+        upstream_result = await loop.run_in_executor(
+            None,
+            _run_v15_generation,
+            runtime,
+            params,
+            generation_config,
+            request.output_dir,
+        )
 
         if not getattr(upstream_result, "success", False):
             error = getattr(upstream_result, "error", "unknown ACE-Step error")

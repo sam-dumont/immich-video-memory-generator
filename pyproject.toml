@@ -529,6 +529,7 @@ DEP001 = [
     "cv2", "Quartz", "Vision", "Metal", "CoreImage",   # Platform/alt-name imports
     "yaml", "acestep", "soundfile", "scipy",            # Optional deps imported conditionally
     "torchaudio", "demucs", "torchcodec", "loguru",      # Optional: local audio pipeline
+    "mlx",                                              # Optional: Apple Silicon ACE-Step path
     "PIL", "av", "freetype", "streamlit",               # Alt package names (Pillow→PIL, pyav→av)
     "starlette",                                        # Transitive via nicegui→fastapi→starlette
 ]

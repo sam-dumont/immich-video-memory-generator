@@ -56,18 +56,20 @@ class TestValidateTorchcodec:
 
 
 class TestRunWithSuppressedOutput:
-    """Output suppression actually suppresses stderr."""
+    """Upstream chatter is silenced without hiding the process's own stderr."""
 
-    def test_suppresses_stderr(self):
+    def test_keeps_process_stderr_visible(self, capfd):
+        # WHY: the previous fd-2 redirect swallowed the only diagnostic when
+        # a native MLX failure killed the UI process; stderr must stay visible.
         from immich_memories.audio.generators.ace_step_backend import _run_with_suppressed_output
 
         def _noisy_fn(**kwargs):
-            # This writes to stderr — should be suppressed
-            os.write(2, b"SHOULD NOT APPEAR")
+            os.write(2, b"NATIVE DIAGNOSTIC")
             return kwargs.get("value", 42)
 
         result = _run_with_suppressed_output(_noisy_fn, value=99)
         assert result == 99
+        assert "NATIVE DIAGNOSTIC" in capfd.readouterr().err
 
     def test_returns_function_result(self):
         from immich_memories.audio.generators.ace_step_backend import _run_with_suppressed_output

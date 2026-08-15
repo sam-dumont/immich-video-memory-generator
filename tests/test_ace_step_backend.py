@@ -331,6 +331,97 @@ class TestACEStepBackendV15Library:
             "dtype": None,
         }
 
+    @staticmethod
+    def _fake_mlx_modules(captured: dict) -> dict:
+        # WHY: replaces the real MLX runtime — the test asserts allocator policy
+        # calls, not GPU work.
+        mlx_package = ModuleType("mlx")
+        mlx_core = ModuleType("mlx.core")
+
+        def set_cache_limit(limit: int) -> int:
+            captured.setdefault("cache_limits", []).append(limit)
+            return 0
+
+        mlx_core.set_cache_limit = set_cache_limit
+        mlx_core.clear_cache = lambda: captured.setdefault("clear_cache_calls", []).append(True)
+        mlx_core.synchronize = lambda: captured.setdefault("synchronize_calls", []).append(True)
+        mlx_package.core = mlx_core
+        return {"mlx": mlx_package, "mlx.core": mlx_core}
+
+    def test_v15_library_bounds_mlx_memory_before_handler_init(self, tmp_path):
+        """VAE chunk + MLX cache limit must be in place before ACE-Step builds handlers.
+
+        ACE-Step caches its GPU config on first handler construction, so a
+        chunk override applied afterwards is ignored.
+        """
+        captured = {}
+        modules, _ = self._fake_v15_modules(tmp_path, captured)
+        modules.update(self._fake_mlx_modules(captured))
+        base_handler = modules["acestep.handler"].AceStepHandler
+
+        class ObservingHandler(base_handler):
+            def __init__(self):
+                self.mlx_vae_chunk_size = 2048  # upstream default on >64 GB Macs
+                captured["env_at_handler_init"] = {
+                    "chunk": os.environ.get("ACESTEP_MLX_VAE_CHUNK"),
+                    "tqdm": os.environ.get("ACESTEP_DISABLE_TQDM"),
+                    "cache_limits": list(captured.get("cache_limits", [])),
+                }
+
+        modules["acestep.handler"].AceStepHandler = ObservingHandler
+        backend = ACEStepBackend(
+            ACEStepConfig(mode="lib", model_variant="acestep-v15-xl-turbo", use_lm=False)
+        )
+        env = {"ACESTEP_CHECKPOINTS_DIR": str(tmp_path / "checkpoints")}
+
+        with (
+            patch.dict(sys.modules, modules),
+            patch.dict(os.environ, env, clear=False),
+            patch("platform.system", return_value="Darwin"),
+        ):
+            for key in ("ACESTEP_MLX_VAE_CHUNK", "ACESTEP_DISABLE_TQDM"):
+                os.environ.pop(key, None)
+            backend._init_pipeline()
+            handler = backend._pipeline.dit_handler
+
+        seen = captured["env_at_handler_init"]
+        assert seen["chunk"] == "256"
+        assert seen["tqdm"] == "1"
+        assert seen["cache_limits"] == [4 * 1024**3]
+        assert handler.mlx_vae_chunk_size == 256
+
+    @pytest.mark.parametrize("upstream_fails", [False, True])
+    def test_v15_library_releases_mlx_cache_after_generation(self, tmp_path, upstream_fails):
+        """Cached Metal buffers go back to the OS after every generation, even a failed one."""
+        captured = {}
+        modules, _ = self._fake_v15_modules(tmp_path, captured)
+        modules.update(self._fake_mlx_modules(captured))
+        if upstream_fails:
+
+            def failing_generate(**_kwargs):
+                raise RuntimeError("metal blew up")
+
+            modules["acestep.inference"].generate_music = failing_generate
+        backend = ACEStepBackend(ACEStepConfig(mode="lib", model_variant="turbo", use_lm=False))
+        backend._effective_mode = "lib"
+        request = GenerationRequest(
+            prompt="calm", duration_seconds=10, output_dir=tmp_path / "music"
+        )
+
+        with (
+            patch.dict(sys.modules, modules),
+            patch.dict(os.environ, {"ACESTEP_CHECKPOINTS_DIR": str(tmp_path / "ckpt")}),
+            patch("platform.system", return_value="Darwin"),
+        ):
+            if upstream_fails:
+                with pytest.raises(RuntimeError, match="metal blew up"):
+                    asyncio.run(backend.generate(request))
+            else:
+                asyncio.run(backend.generate(request))
+
+        assert captured.get("clear_cache_calls") == [True]
+        assert captured.get("synchronize_calls") == [True]
+
     @pytest.mark.parametrize(
         ("variant", "expected_model", "expected_steps", "expected_shift"),
         [

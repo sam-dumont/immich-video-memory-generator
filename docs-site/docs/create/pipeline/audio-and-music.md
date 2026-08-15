@@ -179,6 +179,17 @@ install ACE-Step's Gradio UI. CUDA hosts should use the pinned v0.1.8 release wi
 PyTorch wheels. `uv sync --inexact` preserves this manual installation. An exact `uv sync` removes
 packages not declared by this project, so rerun the ACE-Step commands afterward.
 
+### Memory on Apple Silicon
+
+In `lib` mode the app caps ACE-Step's MLX memory before loading models: the VAE decodes audio in
+~10 s chunks (`ACESTEP_MLX_VAE_CHUNK=256`) and the MLX buffer cache is limited to 4 GiB. Without
+this, ACE-Step's own heuristic picks an 82 s decode chunk on Macs with more than 64 GB and the
+process footprint grows by roughly 0.8 GiB per second of audio in that chunk — a 216 s track hit
+108 GB and macOS killed the UI. With the cap the same track peaks around 53 GB for the XL/4B profile
+(most of that is model weights) at a ~20% slower VAE decode. Set `ACESTEP_MLX_VAE_CHUNK` yourself
+to override the chunk size; ACE-Step's `ACESTEP_SAVE_MEMORY` and `MAX_MPS_VRAM` do not bound this
+allocation.
+
 For a hosted generator, leave ACE-Step out of the app environment and use `mode: "api"` with the
 server URL. For a desktop that normally runs locally but has a server available as backup, keep
 `mode: "lib"` and set `api_url`; the app uses the API only when the local package is unavailable.
