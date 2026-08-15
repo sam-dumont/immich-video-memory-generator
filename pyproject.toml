@@ -75,15 +75,10 @@ audio-ml = [
 ]
 # Speech boundary detection (VAD + utterance completion)
 # FireRedVAD's ONNX weights are vendored in speech/bundled_models/ -- no
-# runtime download, and unlike silero-vad, no torch dependency.
+# runtime download and no torch dependency.
 speech = [
     "onnxruntime>=1.17",
     "kaldi-native-fbank>=1.20",
-]
-# Silero VAD as an alternate engine (config: speech.engine = "silero").
-# Bundles its own ONNX weights but hard-depends on torch+torchaudio.
-speech-silero = [
-    "silero-vad>=6.0",
 ]
 # OIDC authentication (only needed for SSO login)
 auth = [
@@ -329,9 +324,6 @@ module = [
     # PANNs / PyTorch (optional for audio content analysis)
     "torch.*",
     "panns_inference.*",
-    # Silero VAD (optional for speech boundary detection)
-    "silero_vad",
-    "silero_vad.*",
     # FireRedVAD's ONNX runtime + feature extractor (optional, speech extra)
     "onnxruntime",
     "onnxruntime.*",

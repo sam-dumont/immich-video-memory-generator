@@ -34,8 +34,7 @@ _FRAME_SHIFT_S = 0.01
 _NUM_MEL_BINS = 80
 
 # Kaldi fbank features are extracted from int16-range PCM, not the [-1, 1]
-# floats extract_audio_16k() and SileroSpeechDetector share -- the model was
-# trained on that scale.
+# floats extract_audio_16k() returns -- the model was trained on that scale.
 _INT16_SCALE = 32768.0
 
 # Derived once from upstream's cmvn.ark: means[d] = stats[0,d]/count,
@@ -213,11 +212,11 @@ class FireRedSpeechDetector:
     music. Column 0 (speech) is the only one used; `fireredvad_vad.onnx`
     (the alternative binary VAD model, not vendored) defines voice as
     speech-union-singing and fires on sustained tones, which would trade
-    Silero's false negatives on shouted/screamed speech for false positives
-    on singing and held notes -- not an improvement.
+    the AED head's clean separation of speech from music for false
+    positives on singing and held notes -- not an improvement.
     """
 
-    def __init__(self, threshold: float = 0.4, min_silence_ms: int = 200) -> None:
+    def __init__(self, threshold: float = 0.25, min_silence_ms: int = 200) -> None:
         self.threshold = threshold
         self.min_silence_ms = min_silence_ms
         self._session: Any = None
@@ -282,7 +281,7 @@ def _extract_features(audio: np.ndarray, sample_rate: int) -> np.ndarray:
 def regions_from_probs(
     speech_probs: np.ndarray, threshold: float, min_silence_ms: int
 ) -> list[SpeechRegion]:
-    """Threshold + hysteresis, matching Silero's `min_silence_duration_ms` contract.
+    """Threshold + hysteresis.
 
     A region only closes after `min_silence_ms` of consecutive sub-threshold
     frames -- short dips (a breath, a plosive) don't fragment one utterance

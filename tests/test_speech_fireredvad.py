@@ -2,8 +2,8 @@
 
 `TestFireRedSpeechDetector` uses synthetic silence only, no mocks -- it skips
 when onnxruntime/kaldi-native-fbank aren't installed. `TestFireRedSpeechDetectorMocked`
-mocks the onnxruntime/kaldi_native_fbank import boundary (same idiom as
-`TestSileroSpeechDetectorMocked` in tests/test_speech_vad.py) to exercise the
+mocks the onnxruntime/kaldi_native_fbank import boundary (same idiom as the
+`panns_inference` unavailable test in tests/test_audio.py) to exercise the
 load/detect paths without the real packages.
 """
 
@@ -78,7 +78,7 @@ class TestFireRedSpeechDetectorMocked:
 
         # WHY: forces `import onnxruntime` to raise ImportError so _load()'s
         # except branch is exercised even when onnxruntime happens to be
-        # installed (same idiom as TestSileroSpeechDetectorMocked).
+        # installed.
         with patch.dict("sys.modules", {"onnxruntime": None}):
             assert detector.available is False
 

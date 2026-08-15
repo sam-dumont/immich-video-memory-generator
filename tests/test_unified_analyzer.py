@@ -715,22 +715,6 @@ class TestVadDerivedProtectedRanges:
 class TestSpeechDetectorConstruction:
     """UnifiedSegmentAnalyzer builds a detector via `select_detector(speech_config)`."""
 
-    def test_enabled_silero_config_constructs_detector(self):
-        from immich_memories.speech.vad import SileroSpeechDetector
-
-        analyzer = UnifiedSegmentAnalyzer(
-            scorer=MagicMock(),
-            audio_content_config=AudioContentConfig(),
-            analysis_config=AnalysisConfig(),
-            speech_config=SpeechConfig(
-                enabled=True, engine="silero", vad_threshold=0.6, min_silence_ms=300
-            ),
-        )
-
-        assert isinstance(analyzer._speech_detector, SileroSpeechDetector)
-        assert analyzer._speech_detector.threshold == 0.6
-        assert analyzer._speech_detector.min_silence_ms == 300
-
     def test_enabled_fireredvad_config_constructs_detector(self):
         from immich_memories.speech.fireredvad import FireRedSpeechDetector
 

@@ -86,60 +86,13 @@ class SpeechDetector(Protocol):
     def detect(self, audio: np.ndarray, sample_rate: int) -> list[SpeechRegion]: ...
 
 
-class SileroSpeechDetector:
-    """Silero VAD v6 via its bundled ONNX weights.
-
-    Silero anchors a region's end on the frame where speech probability first
-    dips below its negative threshold, so word-final fricatives get clipped.
-    Downstream code compensates by snapping cuts to gap midpoints rather than
-    to region edges.
-    """
-
-    def __init__(self, threshold: float = 0.5, min_silence_ms: int = 200) -> None:
-        self.threshold = threshold
-        self.min_silence_ms = min_silence_ms
-        self._model = None
-        self._available: bool | None = None
-
-    @property
-    def available(self) -> bool:
-        if self._available is None:
-            self._available = self._load()
-        return self._available
-
-    def _load(self) -> bool:
-        try:
-            from silero_vad import load_silero_vad
-
-            self._model = load_silero_vad(onnx=True)
-            return True
-        except (ImportError, RuntimeError, OSError) as exc:
-            logger.debug("Silero VAD unavailable: %s", type(exc).__name__)
-            return False
-
-    def detect(self, audio: np.ndarray, sample_rate: int) -> list[SpeechRegion]:
-        if not self.available:
-            return []
-
-        from silero_vad import get_speech_timestamps
-
-        stamps = get_speech_timestamps(
-            audio,
-            self._model,
-            sampling_rate=sample_rate,
-            threshold=self.threshold,
-            min_silence_duration_ms=self.min_silence_ms,
-            return_seconds=True,
-        )
-        return [SpeechRegion(start=s["start"], end=s["end"]) for s in stamps]
-
-
 def select_detector(config: SpeechConfig) -> SpeechDetector | None:
     """Build the detector for `config.engine`, or `None` for no VAD.
 
     `"energy"` has no detector implementation yet -- it falls through to
-    `None`, same as an unrecognized engine name, leaving PANNs-derived
-    protected ranges untouched (see `_apply_vad_ranges`).
+    `None`, leaving PANNs-derived protected ranges untouched (see
+    `_apply_vad_ranges`). `config.engine` is a `Literal`, so an unrecognized
+    value fails Pydantic validation before it ever reaches this function.
     """
     if not config.enabled:
         return None
@@ -148,11 +101,6 @@ def select_detector(config: SpeechConfig) -> SpeechDetector | None:
         from immich_memories.speech.fireredvad import FireRedSpeechDetector
 
         return FireRedSpeechDetector(
-            threshold=config.vad_threshold, min_silence_ms=config.min_silence_ms
-        )
-
-    if config.engine == "silero":
-        return SileroSpeechDetector(
             threshold=config.vad_threshold, min_silence_ms=config.min_silence_ms
         )
 

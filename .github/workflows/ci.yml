@@ -373,13 +373,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # speech (onnxruntime/kaldi-native-fbank, the default engine) now
-          # runs in the main `test` job -- it doesn't need torch. Only the
-          # torch-heavy speech-silero engine still needs this job.
+          # speech (onnxruntime/kaldi-native-fbank, the default and only
+          # engine) runs in the main `test` job -- it doesn't need torch.
+          # This job now only covers the torch-heavy face/audio-ml extras.
           - os: ubuntu-latest
-            extras: "dev,face,audio,audio-ml,gpu,speech-silero"
+            extras: "dev,face,audio,audio-ml,gpu"
           - os: macos-latest
-            extras: "dev,mac,audio,audio-ml,face,gpu,speech-silero"
+            extras: "dev,mac,audio,audio-ml,face,gpu"
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Create LFS cache key

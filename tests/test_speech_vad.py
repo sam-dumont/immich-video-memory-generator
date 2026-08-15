@@ -1,21 +1,17 @@
 """Tests for VAD-derived speech regions.
 
-`TestSilenceGaps` and `TestSileroSpeechDetector` use synthetic audio only, no
-mocks. `TestSileroSpeechDetectorMocked` mocks the `silero_vad` module boundary
-(via `sys.modules`, same idiom as the existing `panns_inference` unavailable
-test in tests/test_audio.py) to exercise the load/detect success paths without
-requiring the real package -- silero-vad hard-depends on torch+torchaudio, so
-it isn't installed in the coverage-producing CI job.
+`TestSilenceGaps` uses synthetic audio only, no mocks.
 """
 
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
+import pytest
+from pydantic import ValidationError
 
 from immich_memories.config_models import SpeechConfig
 from immich_memories.speech.models import SpeechRegion
@@ -66,82 +62,6 @@ class TestSilenceGaps:
             assert 0.0 <= end <= 10.0
 
 
-class TestSileroSpeechDetector:
-    def test_pure_silence_yields_no_regions(self):
-        from immich_memories.speech.vad import SileroSpeechDetector
-
-        detector = SileroSpeechDetector()
-        if not detector.available:
-            import pytest
-
-            pytest.skip("silero-vad not installed")
-
-        silence = np.zeros(16000 * 3, dtype=np.float32)
-
-        assert detector.detect(silence, 16000) == []
-
-    def test_unavailable_detector_returns_empty(self):
-        from immich_memories.speech.vad import SileroSpeechDetector
-
-        detector = SileroSpeechDetector()
-        detector._available = False
-
-        assert detector.detect(np.zeros(16000, dtype=np.float32), 16000) == []
-
-
-class TestSileroSpeechDetectorMocked:
-    """Boundary-mocked load/detect success paths (no real silero-vad/torch needed)."""
-
-    def test_load_import_error_reports_unavailable(self):
-        from immich_memories.speech.vad import SileroSpeechDetector
-
-        # WHY: forces `from silero_vad import ...` to raise ImportError so
-        # _load()'s except branch is exercised even in environments where
-        # silero-vad happens to be installed (same idiom as the existing
-        # `patch.dict("sys.modules", {"panns_inference": None})` test in
-        # tests/test_audio.py).
-        detector = SileroSpeechDetector()
-
-        with patch.dict("sys.modules", {"silero_vad": None}):
-            assert detector.available is False
-
-    def test_load_success_caches_model_and_reports_available(self):
-        from immich_memories.speech.vad import SileroSpeechDetector
-
-        # WHY: mocks the `silero_vad` import boundary so the success path in
-        # _load() is exercised without the real package (which hard-depends
-        # on torch+torchaudio and isn't installed in the coverage CI job).
-        fake_module = SimpleNamespace(load_silero_vad=lambda **_kwargs: "fake-model")
-        detector = SileroSpeechDetector()
-
-        with patch.dict("sys.modules", {"silero_vad": fake_module}):
-            assert detector.available is True
-
-        assert detector._model == "fake-model"
-
-    def test_detect_success_builds_regions_from_timestamps(self):
-        from immich_memories.speech.vad import SileroSpeechDetector
-
-        detector = SileroSpeechDetector()
-        detector._available = True
-        detector._model = "fake-model"
-
-        # WHY: mocks the `silero_vad` import boundary so detect()'s
-        # timestamp-to-SpeechRegion conversion is exercised without the real
-        # package/model.
-        fake_module = SimpleNamespace(
-            get_speech_timestamps=lambda *_args, **_kwargs: [
-                {"start": 0.5, "end": 1.5},
-                {"start": 2.0, "end": 3.0},
-            ]
-        )
-
-        with patch.dict("sys.modules", {"silero_vad": fake_module}):
-            regions = detector.detect(np.zeros(16000, dtype=np.float32), 16000)
-
-        assert regions == [SpeechRegion(0.5, 1.5), SpeechRegion(2.0, 3.0)]
-
-
 class TestSelectDetector:
     def test_disabled_config_returns_none(self):
         assert select_detector(SpeechConfig(enabled=False)) is None
@@ -157,22 +77,15 @@ class TestSelectDetector:
         assert detector.threshold == 0.3
         assert detector.min_silence_ms == 150
 
-    def test_silero_engine_returns_silero_detector(self):
-        from immich_memories.speech.vad import SileroSpeechDetector
-
-        detector = select_detector(
-            SpeechConfig(enabled=True, engine="silero", vad_threshold=0.7, min_silence_ms=100)
-        )
-
-        assert isinstance(detector, SileroSpeechDetector)
-        assert detector.threshold == 0.7
-        assert detector.min_silence_ms == 100
-
     def test_energy_engine_returns_none(self):
         assert select_detector(SpeechConfig(enabled=True, engine="energy")) is None
 
-    def test_unrecognized_engine_returns_none(self):
-        assert select_detector(SpeechConfig(enabled=True, engine="bogus")) is None
+    def test_unrecognized_engine_fails_validation(self):
+        # `engine` is a Literal, so an engine name that resolved to nothing
+        # (like the removed "silero") must fail construction, not silently
+        # fall through to no VAD.
+        with pytest.raises(ValidationError):
+            SpeechConfig(enabled=True, engine="bogus")
 
     def test_default_config_selects_fireredvad(self):
         from immich_memories.speech.fireredvad import FireRedSpeechDetector
