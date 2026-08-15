@@ -18,8 +18,30 @@ from immich_memories.analysis.llm_response_parser import (
     ContentAnalysis,
     ContentAnalyzer,
 )
+from immich_memories.analysis.request_heartbeat import RequestHeartbeat
 
 logger = logging.getLogger(__name__)
+
+# A local vision model doing real inference can take minutes, so `read` keeps
+# the full user-configured budget (llm.timeout_seconds, can be an hour). The
+# other phases are short on purpose: connecting or acquiring a pooled
+# connection should never take long, and a request body of a handful of
+# base64 JPEG frames uploads in well under these windows even on a slow
+# network. A server that is down or unreachable now fails in seconds instead
+# of silently borrowing the read budget.
+_CONNECT_TIMEOUT_SECONDS = 10.0
+_WRITE_TIMEOUT_SECONDS = 30.0
+_POOL_TIMEOUT_SECONDS = 10.0
+
+
+def _build_timeout(read_timeout: float) -> httpx.Timeout:
+    """Per-phase timeout: long read budget, short connect/write/pool."""
+    return httpx.Timeout(
+        connect=_CONNECT_TIMEOUT_SECONDS,
+        read=read_timeout,
+        write=_WRITE_TIMEOUT_SECONDS,
+        pool=_POOL_TIMEOUT_SECONDS,
+    )
 
 
 class OllamaContentAnalyzer(ContentAnalyzer):
@@ -65,7 +87,7 @@ class OllamaContentAnalyzer(ContentAnalyzer):
     def client(self) -> httpx.Client:
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
-            self._client = httpx.Client(timeout=self.timeout)
+            self._client = httpx.Client(timeout=_build_timeout(self.timeout))
         return self._client
 
     def close(self):
@@ -124,7 +146,8 @@ class OllamaContentAnalyzer(ContentAnalyzer):
     ) -> ContentAnalysis:
         """POST to Ollama /api/generate, retrying on near-empty responses."""
         for attempt in range(max_retries + 1):
-            response = self.client.post(f"{self.base_url}/api/generate", json=payload)
+            with RequestHeartbeat(f"LLM request (model={self.model}, url={self.base_url})"):
+                response = self.client.post(f"{self.base_url}/api/generate", json=payload)
             response.raise_for_status()
             data = response.json()
 
@@ -260,7 +283,7 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
             headers: dict[str, str] = {"Content-Type": "application/json"}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
-            self._client = httpx.Client(timeout=self.timeout, headers=headers)
+            self._client = httpx.Client(timeout=_build_timeout(self.timeout), headers=headers)
         return self._client
 
     def close(self):
@@ -346,10 +369,11 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
                 "max_tokens": 1024,  # Extra room for thinking models (Qwen3.5, etc.)
             }
 
-            response = self.client.post(
-                f"{self.base_url}/chat/completions",
-                json=payload,
-            )
+            with RequestHeartbeat(f"LLM request (model={self.model}, url={self.base_url})"):
+                response = self.client.post(
+                    f"{self.base_url}/chat/completions",
+                    json=payload,
+                )
             response.raise_for_status()
             data = response.json()
 

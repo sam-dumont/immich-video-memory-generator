@@ -79,6 +79,25 @@ class TestOpenAICompatibleProvider:
         assert client.timeout.read == 600.0
         analyzer.close()
 
+    def test_connect_timeout_stays_short_even_with_hour_long_read_budget(self):
+        """An unreachable server must fail in seconds, not borrow the read budget.
+
+        Regression test: a real run sat at 0% CPU for ~80 minutes with an
+        established socket and zero log output because `httpx.Client(timeout=...)`
+        applied the same one-hour scalar to every phase (connect/write/pool/read).
+        """
+        from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
+
+        analyzer = OpenAICompatibleContentAnalyzer(
+            model="test", base_url="http://localhost:8080/v1", api_key="", timeout=3600.0
+        )
+        client = analyzer.client
+        assert client.timeout.read == 3600.0
+        assert client.timeout.connect <= 30.0
+        assert client.timeout.write <= 30.0
+        assert client.timeout.pool <= 30.0
+        analyzer.close()
+
     def test_no_auth_header_when_no_key(self):
         """Should NOT set Authorization header when api_key is empty."""
         from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
@@ -134,6 +153,36 @@ class TestOpenAICompatibleProvider:
             assert not health.available
             assert not analyzer.available
 
+    def test_analyze_segment_still_posts_through_heartbeat_wrapper(self, tmp_path):
+        """The heartbeat context manager wrapping the POST must not change the result."""
+        from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
+
+        analyzer = OpenAICompatibleContentAnalyzer(
+            model="test-model", base_url="http://localhost:8080/v1", api_key=""
+        )
+        fake_frame = tmp_path / "frame.jpg"
+        fake_frame.write_bytes(
+            b"\xff\xd8\xff"
+        )  # WHY: JPEG magic bytes only; content is never decoded
+        # WHY: frame extraction needs a real video + ffmpeg; the fix under test is HTTP-layer only
+        analyzer.extract_frames = MagicMock(return_value=[fake_frame])
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": '{"description": "a scene"}'}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }
+        analyzer._client = MagicMock()
+        analyzer._client.is_closed = False
+        # WHY: httpx.Client.post makes a real network call — mock it to avoid hitting a server
+        analyzer._client.post.return_value = mock_response
+
+        result = analyzer.analyze_segment(tmp_path / "does-not-need-to-exist.mp4")
+
+        assert result.description == "a scene"
+        analyzer._client.post.assert_called_once()
+
     def test_disabled_provider_skips_future_requests(self, tmp_path):
         """Once a permanent 4xx occurs, later segments do not hit the provider."""
         from immich_memories.analysis._content_providers import OpenAICompatibleContentAnalyzer
@@ -149,6 +198,22 @@ class TestOpenAICompatibleProvider:
 
         assert result.confidence == 0.0
         analyzer._client.post.assert_not_called()
+
+
+class TestOllamaContentAnalyzerTimeout:
+    def test_connect_timeout_stays_short_even_with_hour_long_read_budget(self):
+        """Same regression as the OpenAI-compatible client: connect must stay short."""
+        from immich_memories.analysis._content_providers import OllamaContentAnalyzer
+
+        analyzer = OllamaContentAnalyzer(
+            model="llava", base_url="http://localhost:11434", timeout=3600.0
+        )
+        client = analyzer.client
+        assert client.timeout.read == 3600.0
+        assert client.timeout.connect <= 30.0
+        assert client.timeout.write <= 30.0
+        assert client.timeout.pool <= 30.0
+        analyzer.close()
 
 
 class TestGetContentAnalyzer:
