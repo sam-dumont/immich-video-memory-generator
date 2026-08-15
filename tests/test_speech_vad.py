@@ -17,8 +17,9 @@ from unittest.mock import patch
 
 import numpy as np
 
+from immich_memories.config_models import SpeechConfig
 from immich_memories.speech.models import SpeechRegion
-from immich_memories.speech.vad import extract_audio_16k, silence_gaps
+from immich_memories.speech.vad import extract_audio_16k, select_detector, silence_gaps
 
 
 class TestSilenceGaps:
@@ -139,6 +140,44 @@ class TestSileroSpeechDetectorMocked:
             regions = detector.detect(np.zeros(16000, dtype=np.float32), 16000)
 
         assert regions == [SpeechRegion(0.5, 1.5), SpeechRegion(2.0, 3.0)]
+
+
+class TestSelectDetector:
+    def test_disabled_config_returns_none(self):
+        assert select_detector(SpeechConfig(enabled=False)) is None
+
+    def test_fireredvad_engine_returns_fireredvad_detector(self):
+        from immich_memories.speech.fireredvad import FireRedSpeechDetector
+
+        detector = select_detector(
+            SpeechConfig(enabled=True, engine="fireredvad", vad_threshold=0.3, min_silence_ms=150)
+        )
+
+        assert isinstance(detector, FireRedSpeechDetector)
+        assert detector.threshold == 0.3
+        assert detector.min_silence_ms == 150
+
+    def test_silero_engine_returns_silero_detector(self):
+        from immich_memories.speech.vad import SileroSpeechDetector
+
+        detector = select_detector(
+            SpeechConfig(enabled=True, engine="silero", vad_threshold=0.7, min_silence_ms=100)
+        )
+
+        assert isinstance(detector, SileroSpeechDetector)
+        assert detector.threshold == 0.7
+        assert detector.min_silence_ms == 100
+
+    def test_energy_engine_returns_none(self):
+        assert select_detector(SpeechConfig(enabled=True, engine="energy")) is None
+
+    def test_unrecognized_engine_returns_none(self):
+        assert select_detector(SpeechConfig(enabled=True, engine="bogus")) is None
+
+    def test_default_config_selects_fireredvad(self):
+        from immich_memories.speech.fireredvad import FireRedSpeechDetector
+
+        assert isinstance(select_detector(SpeechConfig()), FireRedSpeechDetector)
 
 
 class TestExtractAudio16k:

@@ -87,9 +87,10 @@ dev:
 dev-ci:
 	uv sync --extra dev
 
-# Install dev + GPU extras for CI test jobs (taichi/freetype, no torch/nvidia)
+# Install dev + GPU + speech extras for CI test jobs (taichi/freetype/onnxruntime,
+# no torch/nvidia -- FireRedVAD is the default speech engine and needs neither)
 dev-test:
-	uv sync --extra dev --extra gpu
+	uv sync --extra dev --extra gpu --extra speech
 
 # Install with macOS-specific extras (Apple Vision, Metal GPU, etc.)
 dev-mac:

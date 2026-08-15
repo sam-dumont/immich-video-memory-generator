@@ -74,10 +74,16 @@ audio-ml = [
     "panns-inference>=0.1",
 ]
 # Speech boundary detection (VAD + utterance completion)
-# Silero VAD bundles its own ONNX weights -- no runtime download.
+# FireRedVAD's ONNX weights are vendored in speech/bundled_models/ -- no
+# runtime download, and unlike silero-vad, no torch dependency.
 speech = [
-    "silero-vad>=6.0",
     "onnxruntime>=1.17",
+    "kaldi-native-fbank>=1.20",
+]
+# Silero VAD as an alternate engine (config: speech.engine = "silero").
+# Bundles its own ONNX weights but hard-depends on torch+torchaudio.
+speech-silero = [
+    "silero-vad>=6.0",
 ]
 # OIDC authentication (only needed for SSO login)
 auth = [
@@ -107,6 +113,7 @@ all = [
     "immich-memories[auth]",
     "immich-memories[demucs]",
     "immich-memories[gpu]",
+    "immich-memories[speech]",
 ]
 # All features for macOS (includes Apple Vision framework)
 all-mac = [
@@ -116,6 +123,7 @@ all-mac = [
     "immich-memories[demucs]",
     "immich-memories[mac]",
     "immich-memories[gpu]",
+    "immich-memories[speech]",
 ]
 dev = [
     "pytest>=9.0.3",
@@ -324,6 +332,11 @@ module = [
     # Silero VAD (optional for speech boundary detection)
     "silero_vad",
     "silero_vad.*",
+    # FireRedVAD's ONNX runtime + feature extractor (optional, speech extra)
+    "onnxruntime",
+    "onnxruntime.*",
+    "kaldi_native_fbank",
+    "kaldi_native_fbank.*",
     # Taichi (GPU rendering)
     "taichi.*",
     # Not-yet-implemented modules
@@ -533,7 +546,6 @@ DEP002 = [
     "authlib",                                          # auth: used in upcoming OIDC client task
     "oidc-provider-mock",                               # auth: used in upcoming OIDC tests task
     "demucs",                                           # optional: local stem separation
-    "onnxruntime",                                       # silero-vad ONNX backend
 ]
 DEP001 = [
     "cv2", "Quartz", "Vision", "Metal", "CoreImage",   # Platform/alt-name imports

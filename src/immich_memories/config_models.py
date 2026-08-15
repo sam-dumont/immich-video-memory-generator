@@ -763,14 +763,20 @@ class SpeechConfig(BaseModel):
         description="Derive segment boundaries from voice activity instead of PANNs speech tags",
     )
     engine: str = Field(
-        default="silero",
-        description="Voice-activity engine: 'silero' (default) or 'energy' (no extra dependency)",
+        default="fireredvad",
+        description=(
+            "Voice-activity engine: 'fireredvad' (default), 'silero', or "
+            "'energy' (no extra dependency)"
+        ),
     )
     vad_threshold: float = Field(
-        default=0.5,
+        default=0.4,
         ge=0.1,
         le=0.9,
-        description="Speech probability above which a frame counts as voice activity",
+        description=(
+            "Speech probability above which a frame counts as voice activity, "
+            "for whichever engine is configured"
+        ),
     )
     min_silence_ms: int = Field(
         default=200,

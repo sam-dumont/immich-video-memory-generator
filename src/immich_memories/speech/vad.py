@@ -7,6 +7,7 @@ from typing import Protocol
 
 import numpy as np
 
+from immich_memories.config_models import SpeechConfig
 from immich_memories.speech.models import SpeechRegion
 
 logger = logging.getLogger(__name__)
@@ -131,3 +132,28 @@ class SileroSpeechDetector:
             return_seconds=True,
         )
         return [SpeechRegion(start=s["start"], end=s["end"]) for s in stamps]
+
+
+def select_detector(config: SpeechConfig) -> SpeechDetector | None:
+    """Build the detector for `config.engine`, or `None` for no VAD.
+
+    `"energy"` has no detector implementation yet -- it falls through to
+    `None`, same as an unrecognized engine name, leaving PANNs-derived
+    protected ranges untouched (see `_apply_vad_ranges`).
+    """
+    if not config.enabled:
+        return None
+
+    if config.engine == "fireredvad":
+        from immich_memories.speech.fireredvad import FireRedSpeechDetector
+
+        return FireRedSpeechDetector(
+            threshold=config.vad_threshold, min_silence_ms=config.min_silence_ms
+        )
+
+    if config.engine == "silero":
+        return SileroSpeechDetector(
+            threshold=config.vad_threshold, min_silence_ms=config.min_silence_ms
+        )
+
+    return None

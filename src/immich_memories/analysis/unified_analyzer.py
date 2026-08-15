@@ -32,7 +32,7 @@ from immich_memories.analysis.segment_generation import (
 )
 from immich_memories.config_models import SpeechConfig
 from immich_memories.speech.models import SpeechRegion
-from immich_memories.speech.vad import VAD_SAMPLE_RATE, SileroSpeechDetector, extract_audio_16k
+from immich_memories.speech.vad import VAD_SAMPLE_RATE, extract_audio_16k, select_detector
 
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
@@ -144,14 +144,7 @@ class UnifiedSegmentAnalyzer:
         self._audio_content_config = audio_content_config
         self._analysis_config = analysis_config
         self._speech_config = speech_config or SpeechConfig()
-        self._speech_detector = (
-            SileroSpeechDetector(
-                threshold=self._speech_config.vad_threshold,
-                min_silence_ms=self._speech_config.min_silence_ms,
-            )
-            if self._speech_config.enabled and self._speech_config.engine == "silero"
-            else None
-        )
+        self._speech_detector = select_detector(self._speech_config)
 
         self._scene_detector = SceneDetector(analysis_config=analysis_config)
         self._audio_analyzer = audio_analyzer  # Injected or lazy-created
