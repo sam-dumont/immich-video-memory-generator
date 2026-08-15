@@ -135,6 +135,36 @@ class TestSelectSegmentBoundaries:
         assert end == 27.0
 
 
+class TestAdjustCandidatesForAudioProportionalMax:
+    def test_oversized_segment_snaps_cap_to_a_real_gap(self):
+        """The proportional-max cap used to be pure arithmetic: new_start + proportional_max,
+        with no regard for what sits at that time. Here the raw cap (13.0s) lands inside the
+        12-25s protected range. The cap must instead land on the best real gap at or before it
+        -- the 9-12s gap, whose midpoint (10.5s) beats the narrower 4-5s gap also in reach.
+        """
+        from immich_memories.analysis.analyzer_models import CutPoint
+        from immich_memories.analysis.segment_generation import adjust_candidates_for_audio
+        from immich_memories.audio.audio_models import AudioAnalysisResult
+
+        audio_result = AudioAnalysisResult(events=[], protected_ranges=[(5.0, 9.0), (12.0, 25.0)])
+        start_cp = CutPoint(time=2.0, is_visual=True)
+        end_cp = CutPoint(time=20.0, is_visual=True)
+
+        adjusted = adjust_candidates_for_audio(
+            [(start_cp, end_cp)],
+            audio_result,
+            video_duration=30.0,
+            min_segment_duration=1.0,
+            proportional_max=10.0,
+            min_silence_ms=0,
+        )
+
+        assert len(adjusted) == 1
+        new_start, new_end = adjusted[0]
+        assert (new_start.time, new_end.time) == (3.0, 10.5)
+        assert new_end.time <= new_start.time + 10.0
+
+
 class TestScoreCompletions:
     def test_scores_below_threshold_are_zeroed(self):
         import numpy as np

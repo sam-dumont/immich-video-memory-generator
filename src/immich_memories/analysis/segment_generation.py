@@ -555,6 +555,31 @@ def select_segment_boundaries(
     return new_start, new_end, (new_start, new_end) != (start, end)
 
 
+def _cap_end_to_gap(
+    new_start: float,
+    cap_time: float,
+    gaps: list[tuple[float, float]],
+    min_segment_duration: float,
+) -> float:
+    """Best gap-snapped end at or before `cap_time`, falling back to `cap_time` itself.
+
+    The straight `new_start + proportional_max` cap is speech-blind -- it lands
+    wherever the arithmetic lands, discarding the gap snap `select_segment_boundaries`
+    just computed. Clipping each gap to the reachable window (rather than ranking
+    whole gaps, which only reaches a gap when its full-width midpoint happens to
+    fall within range) surfaces the same near-edge silences `_edge_options` already
+    relies on. No candidate clearing the minimum duration means no safe cut exists
+    before the cap, and the cap -- a real constraint -- wins.
+    """
+    window_start = new_start + min_segment_duration
+    if window_start >= cap_time:
+        return cap_time
+
+    candidates = _candidates_within(gaps, window_start, cap_time)
+    chosen = best_boundary(candidates, cap_time, max_shift=cap_time - window_start)
+    return chosen.snapped_time if chosen is not None else cap_time
+
+
 def adjust_candidates_for_audio(
     candidates: list[tuple[CutPoint, CutPoint]],
     audio_result: AudioAnalysisResult,
@@ -610,14 +635,17 @@ def adjust_candidates_for_audio(
                 f"     Adjusted: {start_cp.time:.2f}s-{end_cp.time:.2f}s -> {new_start:.2f}s-{new_end:.2f}s"
             )
 
-        # Enforce proportional max
+        # Enforce proportional max -- prefer a real gap at or before the cap over
+        # the raw arithmetic cutoff, which can itself land inside speech.
         if new_end - new_start > proportional_max:
+            cap_time = new_start + proportional_max
+            capped_end = _cap_end_to_gap(new_start, cap_time, gaps, min_segment_duration)
             logger.info(
                 f"     Trimming oversized segment {new_start:.2f}s-{new_end:.2f}s "
                 f"({new_end - new_start:.1f}s) to proportional max {proportional_max:.1f}s "
-                f"(source={video_duration:.1f}s)"
+                f"(source={video_duration:.1f}s), snapped end to {capped_end:.2f}s"
             )
-            new_end = new_start + proportional_max
+            new_end = capped_end
 
         if new_end - new_start >= min_segment_duration:
             adj_start = CutPoint(time=new_start, is_visual=start_cp.is_visual, is_audio=True)
