@@ -44,6 +44,9 @@ uv sync --extra audio
 # Semantic audio labels (PANNs + Torch: laughter, speech, babies, music)
 uv sync --extra audio-ml
 
+# Speech boundaries (FireRedVAD, ~15 MB, no Torch)
+uv sync --extra speech
+
 # GPU-accelerated title rendering (Metal, CUDA, Vulkan)
 uv sync --extra gpu
 
@@ -102,6 +105,9 @@ pip install immich-memories[audio]
 # Semantic audio labels (PANNs + Torch)
 pip install immich-memories[audio-ml]
 
+# Speech boundaries (FireRedVAD, no Torch)
+pip install immich-memories[speech]
+
 # GPU-accelerated rendering
 pip install immich-memories[gpu]
 
@@ -115,6 +121,11 @@ pip install immich-memories[all-mac]
 The `audio-ml` extra is optional because Torch and PANNs are large. Without it, audio-content
 analysis uses an energy-only fallback: it still finds loud/quiet structure, but it cannot reliably
 label laughter, babies, speech, or music.
+
+The `speech` extra adds onnxruntime and kaldi-native-fbank (~15 MB, no Torch). The FireRedVAD
+weights ship inside the package, so nothing is downloaded at runtime. Without the extra, clip
+boundaries fall back to PANNs speech tags, which merge a whole noisy clip into one protected
+range and leave boundary adjustment nowhere to move. Both `all` and `all-mac` include it.
 
 ## Optional System Dependencies
 

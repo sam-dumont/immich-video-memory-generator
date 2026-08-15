@@ -73,18 +73,18 @@ audio-ml = [
     "torch>=2.0",
     "panns-inference>=0.1",
 ]
-# Speech boundary detection (VAD + utterance completion)
+# Speech boundary detection (VAD)
 # FireRedVAD's ONNX weights are vendored in speech/bundled_models/ -- no
-# runtime download. smart-turn-v3 follows the PANNs convention instead,
-# fetching its ONNX checkpoint from the Hub on first use; both stay torch-free.
-# transformers is needed only for WhisperFeatureExtractor's pure-numpy log-mel
-# spectrogram (the ONNX graph's actual input) -- its core package has no torch
-# dependency.
+# runtime download, no torch.
+# smart-turn-v3 (speech/turn_detection.py) additionally needs huggingface-hub
+# and transformers, which are deliberately NOT listed: its contribution is
+# weighted zero (see speech/boundary_scoring.py) and nothing in src/ imports
+# it, so shipping ~500 MB of transformers in the Docker image would buy
+# nothing. `pip install transformers huggingface-hub` re-enables it; without
+# them SmartTurnDetector returns a neutral 0.5.
 speech = [
     "onnxruntime>=1.17",
     "kaldi-native-fbank>=1.20",
-    "huggingface-hub>=0.23",
-    "transformers>=4.40",
 ]
 # OIDC authentication (only needed for SSO login)
 auth = [
@@ -335,6 +335,11 @@ module = [
     "onnxruntime.*",
     "kaldi_native_fbank",
     "kaldi_native_fbank.*",
+    # smart-turn's Hub download + log-mel extractor (not in any extra)
+    "transformers",
+    "transformers.*",
+    "huggingface_hub",
+    "huggingface_hub.*",
     # Taichi (GPU rendering)
     "taichi.*",
     # Not-yet-implemented modules
@@ -550,6 +555,7 @@ DEP001 = [
     "yaml", "acestep", "soundfile", "scipy",            # Optional deps imported conditionally
     "torchaudio", "demucs", "torchcodec", "loguru",      # Optional: local audio pipeline
     "mlx",                                              # Optional: Apple Silicon ACE-Step path
+    "transformers", "huggingface_hub",                  # Optional: smart-turn, off by default
     "PIL", "av", "freetype", "streamlit",               # Alt package names (Pillow→PIL, pyav→av)
     "starlette",                                        # Transitive via nicegui→fastapi→starlette
 ]

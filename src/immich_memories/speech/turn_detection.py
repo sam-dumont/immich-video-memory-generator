@@ -52,7 +52,11 @@ class SmartTurnDetector:
     is worth several accuracy points on Mandarin, Hindi and Spanish.
 
     Returns 0.5 -- neutral, neither evidence for nor against -- whenever the model
-    is unavailable, so callers never special-case a missing dependency.
+    is unavailable, so callers never special-case a missing dependency. That is
+    the normal case: `huggingface-hub` and `transformers` are in no extra, since
+    this signal is weighted zero (see `boundary_scoring.BoundaryWeights`) and
+    shipping transformers in the Docker image for it would buy nothing.
+    `pip install transformers huggingface-hub` turns it on.
 
     The ONNX graph takes `input_features` -- an 80-bin log-mel spectrogram over
     the 8 s window, shape `(1, 80, 800)` -- not raw waveform. `WhisperFeatureExtractor`

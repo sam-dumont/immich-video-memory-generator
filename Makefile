@@ -88,7 +88,7 @@ dev-ci:
 	uv sync --extra dev
 
 # Install dev + GPU + speech extras for CI test jobs (taichi/freetype/onnxruntime,
-# no torch/nvidia -- FireRedVAD is the default speech engine and needs neither)
+# no torch/nvidia -- FireRedVAD is the only speech engine and needs neither)
 dev-test:
 	uv sync --extra dev --extra gpu --extra speech
 
