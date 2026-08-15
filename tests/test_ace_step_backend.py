@@ -345,8 +345,27 @@ class TestACEStepBackendV15Library:
         mlx_core.set_cache_limit = set_cache_limit
         mlx_core.clear_cache = lambda: captured.setdefault("clear_cache_calls", []).append(True)
         mlx_core.synchronize = lambda: captured.setdefault("synchronize_calls", []).append(True)
+        mlx_core.eval = lambda *_args: None
+        mlx_core.float32, mlx_core.bfloat16, mlx_core.floating = "float32", "bfloat16", "floating"
+        mlx_core.issubdtype = lambda dtype, _category: dtype in ("float32", "bfloat16")
+
+        class FakeArray:
+            def __init__(self, dtype):
+                self.dtype = dtype
+
+            def astype(self, dtype):
+                return FakeArray(dtype)
+
+        mlx_core.array = FakeArray
+        mlx_utils = ModuleType("mlx.utils")
+
+        def tree_map(fn, tree):
+            return {k: fn(v) for k, v in tree.items()}
+
+        mlx_utils.tree_map = tree_map
         mlx_package.core = mlx_core
-        return {"mlx": mlx_package, "mlx.core": mlx_core}
+        mlx_package.utils = mlx_utils
+        return {"mlx": mlx_package, "mlx.core": mlx_core, "mlx.utils": mlx_utils}
 
     def test_v15_library_bounds_mlx_memory_before_handler_init(self, tmp_path):
         """VAE chunk + MLX cache limit must be in place before ACE-Step builds handlers.
@@ -422,6 +441,90 @@ class TestACEStepBackendV15Library:
         assert captured.get("clear_cache_calls") == [True]
         assert captured.get("synchronize_calls") == [True]
 
+    def test_v15_library_exit_returns_gpu_memory_to_the_os(self, tmp_path):
+        """Leaving the context drops the runtime AND empties torch/MLX caches.
+
+        Dropping the models alone leaves ~26 GB parked in torch's MPS caching
+        allocator, so the UI would sit at 27 GB between generations.
+        """
+        captured = {}
+        modules, _ = self._fake_v15_modules(tmp_path, captured)
+        modules.update(self._fake_mlx_modules(captured))
+        backend = ACEStepBackend(ACEStepConfig(mode="lib", model_variant="turbo", use_lm=False))
+        backend._effective_mode = "lib"
+
+        async def _use_backend():
+            async with backend:
+                backend._init_pipeline()
+                assert backend._pipeline is not None
+
+        # WHY: replaces the torch MPS allocator boundary (torch is an optional
+        # GPU extra, absent in CI) — we assert the release call, not real GPU work.
+        fake_torch = ModuleType("torch")
+        fake_torch.backends = SimpleNamespace(mps=SimpleNamespace(is_available=lambda: True))
+        fake_torch.mps = SimpleNamespace(
+            empty_cache=lambda: captured.setdefault("torch_empty_cache", []).append(True)
+        )
+        modules["torch"] = fake_torch
+
+        with (
+            patch.dict(sys.modules, modules),
+            patch.dict(os.environ, {"ACESTEP_CHECKPOINTS_DIR": str(tmp_path / "ckpt")}),
+            patch("platform.system", return_value="Darwin"),
+        ):
+            asyncio.run(_use_backend())
+
+        assert backend._pipeline is None
+        assert captured.get("torch_empty_cache") == [True]
+        assert captured.get("clear_cache_calls") == [True]
+        assert captured.get("synchronize_calls") == [True]
+
+    def test_v15_library_casts_mlx_decoder_to_bf16_after_dit_init(self, tmp_path):
+        """ACE-Step converts the MLX DiT from its fp32 torch copy; we cast it to bf16."""
+        captured = {}
+        modules, _ = self._fake_v15_modules(tmp_path, captured)
+        modules.update(self._fake_mlx_modules(captured))
+        fake_array = modules["mlx.core"].array
+        base_handler = modules["acestep.handler"].AceStepHandler
+
+        class FakeDecoder:
+            def __init__(self):
+                self._params = {"weight": fake_array("float32"), "step": 3}
+
+            def parameters(self):
+                return dict(self._params)
+
+            def update(self, params):
+                self._params.update(params)
+
+        class HandlerWithMlxDecoder(base_handler):
+            def __init__(self):
+                self.mlx_decoder = FakeDecoder()
+
+        modules["acestep.handler"].AceStepHandler = HandlerWithMlxDecoder
+        backend = ACEStepBackend(ACEStepConfig(mode="lib", model_variant="turbo", use_lm=False))
+
+        with (
+            patch.dict(sys.modules, modules),
+            patch.dict(os.environ, {"ACESTEP_CHECKPOINTS_DIR": str(tmp_path / "ckpt")}),
+            patch("platform.system", return_value="Darwin"),
+        ):
+            os.environ.pop("IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32", None)
+            backend._init_pipeline()
+            params = backend._pipeline.dit_handler.mlx_decoder.parameters()
+
+        assert params["weight"].dtype == "bfloat16"
+        assert params["step"] == 3  # non-array leaves untouched
+
+    def test_invalid_vae_chunk_override_falls_back_to_default(self, tmp_path):
+        from immich_memories.audio.generators.ace_step_backend import _bound_mlx_memory
+
+        with (
+            patch.dict(sys.modules, self._fake_mlx_modules({})),
+            patch.dict(os.environ, {"ACESTEP_MLX_VAE_CHUNK": "not-a-number"}),
+        ):
+            assert _bound_mlx_memory() == 256
+
     @pytest.mark.parametrize(
         ("variant", "expected_model", "expected_steps", "expected_shift"),
         [
@@ -471,6 +574,43 @@ class TestACEStepBackendV15Library:
         assert result.audio_path == request.output_dir / "ace_step_v2.wav"
         assert result.audio_path.exists()
         assert result.metadata["infer_step"] == expected_steps
+
+
+class TestMlxDecoderPrecision:
+    """The MLX DiT copy runs at ACE-Step's reference GPU precision (bf16), not fp32."""
+
+    @staticmethod
+    def _handler_with_fp32_decoder():
+        mx = pytest.importorskip("mlx.core")
+        nn = pytest.importorskip("mlx.nn")
+        decoder = nn.Linear(4, 4)
+        mx.eval(decoder.parameters())
+        assert decoder.weight.dtype == mx.float32
+        return SimpleNamespace(mlx_decoder=decoder), mx
+
+    def test_mlx_decoder_is_cast_to_bf16(self):
+        from immich_memories.audio.generators.ace_step_backend import _cast_mlx_decoder_to_bf16
+
+        handler, mx = self._handler_with_fp32_decoder()
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32", None)
+            _cast_mlx_decoder_to_bf16(handler)
+        assert handler.mlx_decoder.weight.dtype == mx.bfloat16
+        assert handler.mlx_decoder.bias.dtype == mx.bfloat16
+
+    def test_fp32_escape_hatch_keeps_decoder_untouched(self):
+        from immich_memories.audio.generators.ace_step_backend import _cast_mlx_decoder_to_bf16
+
+        handler, mx = self._handler_with_fp32_decoder()
+        with patch.dict(os.environ, {"IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32": "1"}):
+            _cast_mlx_decoder_to_bf16(handler)
+        assert handler.mlx_decoder.weight.dtype == mx.float32
+
+    def test_handler_without_mlx_decoder_is_a_no_op(self):
+        from immich_memories.audio.generators.ace_step_backend import _cast_mlx_decoder_to_bf16
+
+        _cast_mlx_decoder_to_bf16(SimpleNamespace(mlx_decoder=None))
+        _cast_mlx_decoder_to_bf16(SimpleNamespace())
 
 
 class TestACEStepBackendAPIAvailability:

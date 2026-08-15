@@ -190,6 +190,13 @@ process footprint grows by roughly 0.8 GiB per second of audio in that chunk —
 to override the chunk size; ACE-Step's `ACESTEP_SAVE_MEMORY` and `MAX_MPS_VRAM` do not bound this
 allocation.
 
+The MLX DiT copy runs in bf16 — the same precision ACE-Step uses on CUDA — instead of the fp32
+ACE-Step converts it from on macOS (7.8 GB instead of 15.5 GB for the XL model). Set
+`IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32=1` to keep fp32. Once a music batch finishes, the models are
+dropped and both torch's and MLX's caches are released, so the process falls back to ~1 GB between
+generations instead of holding ~27 GB of parked GPU memory; the next batch reloads the models
+(~25 s).
+
 For a hosted generator, leave ACE-Step out of the app environment and use `mode: "api"` with the
 server URL. For a desktop that normally runs locally but has a server available as backup, keep
 `mode: "lib"` and set `api_url`; the app uses the API only when the local package is unavailable.

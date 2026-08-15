@@ -69,6 +69,31 @@ def _bound_mlx_memory() -> int:
         return _MLX_VAE_CHUNK_FRAMES
 
 
+def _cast_mlx_decoder_to_bf16(handler: Any) -> None:
+    """Run the MLX DiT at ACE-Step's reference GPU precision.
+
+    ACE-Step keeps the torch model in fp32 on MPS (a torch-MPS workaround) and
+    converts the MLX decoder from that copy, so the 4B XL decoder costs 15.5 GB
+    instead of the 7.8 GB the CUDA path uses in bf16. Set
+    ``IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32=1`` to keep fp32.
+    """
+    decoder = getattr(handler, "mlx_decoder", None)
+    if decoder is None or os.environ.get("IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32") == "1":
+        return
+    with suppress(ImportError):
+        import mlx.core as mx  # type: ignore[import-not-found]
+        from mlx.utils import tree_map  # type: ignore[import-not-found]
+
+        def _to_bf16(value: Any) -> Any:
+            if isinstance(value, mx.array) and mx.issubdtype(value.dtype, mx.floating):
+                return value.astype(mx.bfloat16)
+            return value
+
+        decoder.update(tree_map(_to_bf16, decoder.parameters()))
+        mx.eval(decoder.parameters())
+        mx.clear_cache()
+
+
 def _release_mlx_cache() -> None:
     """Hand cached Metal buffers back to macOS once a generation finishes."""
     with suppress(ImportError):
@@ -76,6 +101,24 @@ def _release_mlx_cache() -> None:
 
         mx.clear_cache()
         mx.synchronize()
+
+
+def _release_runtime_memory() -> None:
+    """Return the dropped runtime's GPU memory to the OS.
+
+    WHY: dropping the handlers frees the tensors, but torch's MPS caching
+    allocator keeps the freed heaps (~26 GB for XL/4B) until empty_cache(),
+    so a UI process would sit at ~27 GB between generations instead of ~1 GB.
+    """
+    import gc
+
+    gc.collect()
+    with suppress(ImportError):
+        import torch
+
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+    _release_mlx_cache()
 
 
 def _is_ace_step_importable() -> bool:
@@ -204,6 +247,8 @@ def _initialize_dit_handler(
     )
     if not initialized:
         raise RuntimeError(f"ACE-Step DiT initialization failed: {status}")
+    if use_mlx_dit:
+        _cast_mlx_decoder_to_bf16(handler)
     return handler
 
 
@@ -822,5 +867,7 @@ class ACEStepBackend(MusicGenerator):
         return info
 
     async def __aexit__(self, *args):
-        # Release pipeline memory if loaded
+        had_runtime = self._pipeline is not None
         self._pipeline = None
+        if had_runtime:
+            _release_runtime_memory()
