@@ -442,7 +442,7 @@ class TestPANNsAnalysis:
         scores[8, 1] = 0.4
 
         events, energy, categories = analyzer._collect_events(
-            scores, class_names, frame_duration=1.0, audio_length_samples=320000
+            scores, class_names, frame_duration=1.0
         )
 
         assert len(events) >= 2

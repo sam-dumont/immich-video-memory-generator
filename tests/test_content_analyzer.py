@@ -263,3 +263,48 @@ class TestCleanup:
         assert analyzer._panns_model is None
         assert analyzer._panns_available is None
         assert analyzer._class_names is None
+
+
+# ---------------------------------------------------------------------------
+# AudioContentAnalyzer._collect_events (multi-label thresholding)
+# ---------------------------------------------------------------------------
+
+
+class TestMultiLabelEventCollection:
+    """PANNs emits independent sigmoids per class; a frame can be both speech and laughter."""
+
+    def _analyze_with_scores(self, scores: np.ndarray, class_names: list[str]):
+        analyzer = AudioContentAnalyzer(use_panns=True, min_confidence=0.3, laughter_confidence=0.2)
+
+        class _FakeSED:
+            def inference(self, _audio):
+                return scores[np.newaxis, :, :]
+
+        # WHY: replaces the PANNs model download + torch inference (external ML boundary)
+        analyzer._panns_model = _FakeSED()
+        analyzer._panns_available = True
+        analyzer._class_names = class_names
+
+        # WHY: replaces FFmpeg audio extraction from a real video file
+        with patch.object(
+            analyzer, "_extract_audio", return_value=(np.zeros(32000 * 3, dtype=np.float32), 32000)
+        ):
+            return analyzer.analyze(Path("fake.mp4"))
+
+    def test_laughter_under_speech_is_detected(self):
+        class_names = ["Speech", "Laughter"]
+        scores = np.array(
+            [
+                [0.71, 0.44],
+                [0.70, 0.45],
+                [0.05, 0.02],
+            ],
+            dtype=np.float32,
+        )
+
+        result = self._analyze_with_scores(scores, class_names)
+
+        assert "laughter" in result.detected_categories
+        assert result.has_laughter is True
+        assert any(e.event_class == "Laughter" for e in result.events)
+        assert any(e.event_class == "Speech" for e in result.events)

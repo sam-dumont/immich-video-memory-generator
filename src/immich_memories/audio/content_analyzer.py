@@ -18,6 +18,7 @@ from typing import Literal
 import numpy as np
 
 from immich_memories.audio.audio_models import (
+    AUDIO_EVENT_WEIGHTS,
     AudioAnalysisResult,
     AudioEvent,
     classify_audio_event,
@@ -286,80 +287,68 @@ class AudioContentAnalyzer:
 
         return True, category
 
+    def _tracked_class_indices(self, class_names: list[str]) -> dict[int, str]:
+        tracked: dict[int, str] = {}
+        for idx, name in enumerate(class_names):
+            if classify_audio_event(name) is not None or name in AUDIO_EVENT_WEIGHTS:
+                tracked[idx] = name
+        return tracked
+
     def _collect_events(
         self,
         scores: np.ndarray,
         class_names: list[str],
         frame_duration: float,
-        audio_length_samples: int,
     ) -> tuple[list[AudioEvent], list[float], set[str]]:
-        """Process score frames into events, energy profile, and category flags.
+        """Turn per-frame class scores into events, an energy profile, and category flags.
 
-        Args:
-            scores: Score array of shape (frames, classes).
-            class_names: List of AudioSet class labels.
-            frame_duration: Duration of each frame in seconds.
-            audio_length_samples: Audio length in samples (for final event end time).
-
-        Returns:
-            Tuple of (events, energy_profile, detected_categories).
+        AudioSet is multi-label: a single frame can be speech and laughter at once.
+        Each tracked class is thresholded independently and keeps its own open event,
+        so overlapping events are expected in the output.
         """
         events: list[AudioEvent] = []
         energy_profile: list[float] = []
         detected_categories: set[str] = set()
 
-        current_event: str | None = None
-        current_start = 0.0
+        tracked = self._tracked_class_indices(class_names)
+        open_events: dict[int, tuple[float, float]] = {}
 
         for i, frame_scores in enumerate(scores):
             time_pos = i * frame_duration
-
-            top_idx = int(np.argmax(frame_scores))
-            top_score = float(frame_scores[top_idx])
-            class_name = class_names[top_idx] if top_idx < len(class_names) else "Unknown"
-
             energy_profile.append(float(np.sum(frame_scores)))
 
-            meets_threshold, category = self._classify_frame(class_name, top_score)
+            for idx, name in tracked.items():
+                score = float(frame_scores[idx])
+                meets_threshold, category = self._classify_frame(name, score)
 
-            if category:
-                detected_categories.add(category)
-
-            if meets_threshold and current_event != class_name:
-                if current_event is not None:
+                if meets_threshold:
+                    if category:
+                        detected_categories.add(category)
+                    start, peak = open_events.get(idx, (time_pos, score))
+                    open_events[idx] = (start, max(peak, score))
+                elif idx in open_events:
+                    start, peak = open_events.pop(idx)
                     events.append(
                         AudioEvent(
-                            event_class=current_event,
-                            start_time=current_start,
+                            event_class=name,
+                            start_time=start,
                             end_time=time_pos,
-                            confidence=top_score,
+                            confidence=peak,
                         )
                     )
-                current_event = class_name
-                current_start = time_pos
-            elif not meets_threshold and current_event is not None:
-                events.append(
-                    AudioEvent(
-                        event_class=current_event,
-                        start_time=current_start,
-                        end_time=time_pos,
-                        confidence=top_score,
-                    )
-                )
-                current_event = None
 
-        # End final event
-        if current_event is not None:
-            last_scores = scores[-1]
+        final_time = len(scores) * frame_duration
+        for idx, (start, peak) in open_events.items():
             events.append(
                 AudioEvent(
-                    event_class=current_event,
-                    start_time=current_start,
-                    end_time=audio_length_samples / 32000,
-                    confidence=float(last_scores[int(np.argmax(last_scores))]),
+                    event_class=tracked[idx],
+                    start_time=start,
+                    end_time=final_time,
+                    confidence=peak,
                 )
             )
 
+        events.sort(key=lambda e: e.start_time)
         return events, energy_profile, detected_categories
 
     def _analyze_with_panns(
@@ -399,7 +388,7 @@ class AudioContentAnalyzer:
             frame_duration = audio_duration / num_frames if num_frames > 0 else 1.0
 
             events, energy_profile, detected_categories = self._collect_events(
-                scores, self._class_names or [], frame_duration, len(audio_array)
+                scores, self._class_names or [], frame_duration
             )
 
             audio_score = self._calculate_audio_score(events)
