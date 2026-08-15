@@ -108,6 +108,7 @@ src/immich_memories/
 │   ├── content_analyzer.py     # LLM-based content analysis
 │   ├── llm_response_parser.py  # Content analysis response parsing
 │   ├── _content_providers.py   # Content analysis provider helpers
+│   ├── request_heartbeat.py    # RequestHeartbeat: periodic log line for long-outstanding HTTP calls
 │   ├── analyzer_factory.py     # Analyzer factory
 │   ├── analyzer_models.py      # Analyzer data models
 │   ├── duplicates.py           # Duplicate/near-duplicate detection
