@@ -374,9 +374,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            extras: "dev,face,audio,audio-ml,gpu"
+            extras: "dev,face,audio,audio-ml,gpu,speech"
           - os: macos-latest
-            extras: "dev,mac,audio,audio-ml,face,gpu"
+            extras: "dev,mac,audio,audio-ml,face,gpu,speech"
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Create LFS cache key
