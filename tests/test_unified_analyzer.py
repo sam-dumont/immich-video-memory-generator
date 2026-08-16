@@ -699,3 +699,43 @@ class TestBestSegmentOverlapHandling:
 
         assert not any(lo < start < hi for lo, hi in ranges)
         assert not any(lo < end < hi for lo, hi in ranges)
+
+
+def _boundary_fixing_analyzer(**kwargs) -> UnifiedSegmentAnalyzer:
+    """Analyzer wired for `_fix_best_segment_boundaries` and nothing else."""
+    from immich_memories.config_models import SpeechConfig
+
+    # WHY: SceneScorer opens the video with OpenCV; the boundary-fixing pass
+    # never touches it, so a stand-in keeps the test off the filesystem.
+    return UnifiedSegmentAnalyzer(
+        scorer=MagicMock(),
+        audio_content_config=AudioContentConfig(),
+        analysis_config=AnalysisConfig(),
+        speech_config=SpeechConfig(min_silence_ms=200),
+        **kwargs,
+    )
+
+
+class TestBestSegmentUsesTheSameSafetyBufferAsCandidates:
+    def test_best_segment_pass_honours_the_protected_range_buffer(self):
+        """Step 3b inverts the *buffered* protected ranges; step 5 used to invert
+        the raw ones. Its gaps were therefore strictly wider, and it could park a
+        cut in the 100 ms pause between 6.0s and 6.1s -- a pause the buffer
+        deliberately closes because the VAD only splits on 200 ms of silence.
+        """
+        from immich_memories.analysis.boundary_placement import speech_buffer_seconds
+        from immich_memories.audio.audio_models import AudioAnalysisResult
+
+        ranges = [(2.0, 6.0), (6.1, 30.0)]
+        # max_segment_duration=40 keeps the proportional-max cap out of the way.
+        analyzer = _boundary_fixing_analyzer(min_segment_duration=2.0, max_segment_duration=40.0)
+        best = ScoredSegment(start_time=7.0, end_time=32.0)
+
+        analyzer._fix_best_segment_boundaries(
+            best, AudioAnalysisResult(events=[], protected_ranges=ranges), 40.0
+        )
+
+        buffer = speech_buffer_seconds(200)
+        for lo, hi in ranges:
+            assert not lo - buffer < best.start_time < hi + buffer
+            assert not lo - buffer < best.end_time < hi + buffer

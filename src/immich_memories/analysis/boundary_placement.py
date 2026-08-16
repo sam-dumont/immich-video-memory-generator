@@ -9,12 +9,16 @@ here, and if not, where instead".
 
 from __future__ import annotations
 
+import logging
+
 from immich_memories.speech.boundary_scoring import (
     MIN_CUTTABLE_GAP_S,
     best_boundary,
     candidates_from_gaps,
 )
 from immich_memories.speech.models import BoundaryCandidate
+
+logger = logging.getLogger(__name__)
 
 # Fraction of the VAD's min-silence window a protected-range buffer may use.
 # Must stay below 0.5 -- see speech_buffer_seconds.
@@ -88,6 +92,26 @@ def gaps_between(
     if cursor < video_duration:
         gaps.append((cursor, video_duration))
     return gaps
+
+
+def protected_gaps(
+    protected_ranges: list[tuple[float, float]],
+    video_duration: float,
+    min_silence_ms: int,
+) -> list[tuple[float, float]]:
+    """Where a cut may land in this clip, buffer included.
+
+    Every pass that moves a boundary must derive its gaps here. Candidate
+    adjustment buffered the ranges while the best-segment pass inverted the raw
+    ones, so the second pass saw strictly wider gaps: it could walk a cut back
+    inside the margin the first pass had just established, or park it in a
+    pause too short for the VAD to have treated as an utterance break at all.
+    """
+    merged = merge_buffered_ranges(
+        protected_ranges, video_duration, speech_buffer_seconds(min_silence_ms)
+    )
+    logger.info(f"     Buffered+merged ranges: {[(f'{s:.2f}-{e:.2f}') for s, e in merged]}")
+    return gaps_between(merged, video_duration)
 
 
 def _candidates_within(

@@ -14,10 +14,8 @@ from typing import TYPE_CHECKING
 from immich_memories.analysis.analyzer_models import CutPoint
 from immich_memories.analysis.boundary_placement import (
     cap_end_to_gap,
-    gaps_between,
-    merge_buffered_ranges,
+    protected_gaps,
     select_segment_boundaries,
-    speech_buffer_seconds,
 )
 from immich_memories.analysis.scenes import SceneDetector
 from immich_memories.analysis.silence_detection import detect_silence_gaps
@@ -383,14 +381,7 @@ def adjust_candidates_for_audio(
     if not audio_result.protected_ranges:
         return candidates
 
-    merged_ranges = merge_buffered_ranges(
-        audio_result.protected_ranges,
-        video_duration,
-        speech_buffer_seconds(min_silence_ms),
-    )
-    logger.info(f"     Buffered+merged ranges: {[(f'{s:.2f}-{e:.2f}') for s, e in merged_ranges]}")
-
-    gaps = gaps_between(merged_ranges, video_duration)
+    gaps = protected_gaps(audio_result.protected_ranges, video_duration, min_silence_ms)
 
     adjusted: list[tuple[CutPoint, CutPoint]] = []
     adjustments_made = 0
