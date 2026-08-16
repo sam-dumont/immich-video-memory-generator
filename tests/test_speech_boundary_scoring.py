@@ -156,7 +156,7 @@ class TestAdjustCandidatesForAudioProportionalMax:
             video_duration=30.0,
             min_segment_duration=1.0,
             proportional_max=10.0,
-            min_silence_ms=0,
+            min_silence_ms=200,
         )
 
         assert len(adjusted) == 1

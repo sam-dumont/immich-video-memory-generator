@@ -586,7 +586,6 @@ def adjust_candidates_for_audio(
     video_duration: float,
     min_segment_duration: float,
     proportional_max: float,
-    max_adjustment: float = 5.0,
     *,
     min_silence_ms: int,
 ) -> list[tuple[CutPoint, CutPoint]]:
@@ -598,7 +597,6 @@ def adjust_candidates_for_audio(
         video_duration: Total video duration.
         min_segment_duration: Minimum segment duration.
         proportional_max: Max segment duration for this source.
-        max_adjustment: Maximum adjustment per boundary in seconds.
         min_silence_ms: `SpeechConfig.min_silence_ms`, the pause width the VAD
             split on -- sets how far each protected range may be widened.
 

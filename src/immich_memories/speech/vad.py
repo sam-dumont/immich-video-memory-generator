@@ -43,15 +43,19 @@ def extract_audio_16k(video_path: Path) -> np.ndarray | None:
         proc = subprocess.run(  # noqa: S603
             cmd, capture_output=True, check=True, timeout=60
         )
+        # Parsing sits inside the guard: a truncated pipe gives a byte count
+        # that is not a whole number of float32s, and np.frombuffer raises
+        # ValueError. Callers treat a failed extraction as "no speech data",
+        # which beats killing the clip over a short read.
+        return np.frombuffer(proc.stdout, dtype=np.float32)
     except (
         subprocess.CalledProcessError,
         subprocess.TimeoutExpired,
-        FileNotFoundError,
         OSError,
+        ValueError,
     ) as exc:
         logger.debug("Audio extraction failed for %s: %s", video_path, type(exc).__name__)
         return None
-    return np.frombuffer(proc.stdout, dtype=np.float32)
 
 
 def silence_gaps(regions: list[SpeechRegion], duration: float) -> list[tuple[float, float]]:

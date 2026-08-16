@@ -111,6 +111,21 @@ class TestExtractAudio16k:
         assert args[0] == "ffmpeg"
         assert "-map" in args and args[args.index("-map") + 1] == "0:a:0"
 
+    def test_truncated_stdout_returns_none_instead_of_raising(self, tmp_path: Path):
+        """A short read must degrade to None, not kill the clip with a ValueError.
+
+        7 bytes is not a whole number of float32s, which is what a pipe cut
+        mid-sample looks like.
+        """
+        truncated = subprocess.CompletedProcess(
+            args=["ffmpeg"], returncode=0, stdout=b"\x00" * 7, stderr=b""
+        )
+
+        # WHY: replaces the real ffmpeg subprocess to produce a byte count that
+        # no real encoder emits but a killed/broken pipe does.
+        with patch("immich_memories.speech.vad.subprocess.run", return_value=truncated):
+            assert extract_audio_16k(tmp_path / "clip.mov") is None
+
     def test_ffmpeg_failure_returns_none(self, tmp_path: Path):
         # WHY: replaces the real ffmpeg subprocess to force the
         # CalledProcessError branch without needing a corrupt real file.
