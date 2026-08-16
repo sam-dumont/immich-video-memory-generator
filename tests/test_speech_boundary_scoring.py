@@ -207,6 +207,37 @@ class TestAdjustCandidatesForAudioProportionalMax:
         assert new_end.time <= new_start.time + 10.0
 
 
+class TestCapEndToGap:
+    def test_a_usable_gap_near_the_cap_beats_a_wider_one_far_from_it(self):
+        """max_shift used to be the whole window, so every gap was reachable and
+        width alone decided it. That traded 6.3 seconds of clip for 1.4 seconds
+        of extra silence: the 2s-wide gap at 3.0s won over the 0.6s one at 9.3s,
+        turning a 10-second allowance into a 3-second clip.
+        """
+        from immich_memories.analysis.boundary_placement import cap_end_to_gap
+
+        end = cap_end_to_gap(
+            new_start=0.0,
+            cap_time=10.0,
+            gaps=[(2.0, 4.0), (9.0, 9.6)],
+            min_segment_duration=2.0,
+        )
+
+        assert end == 9.3
+
+    def test_a_distant_gap_still_beats_a_speech_blind_cap(self):
+        """Nothing near the cap, so the whole window competes again -- a cut
+        seconds early is still better than one mid-word at the cap itself.
+        """
+        from immich_memories.analysis.boundary_placement import cap_end_to_gap
+
+        end = cap_end_to_gap(
+            new_start=0.0, cap_time=10.0, gaps=[(2.0, 4.0)], min_segment_duration=2.0
+        )
+
+        assert end == 3.0
+
+
 class TestScoreCompletions:
     def test_scores_below_threshold_are_zeroed(self):
         import numpy as np

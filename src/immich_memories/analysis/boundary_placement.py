@@ -31,6 +31,11 @@ _MAX_PROTECTED_BUFFER_S = 0.3
 # anywhere this module could move it to.
 _MIN_EDGE_MARGIN_S = MIN_CUTTABLE_GAP_S / 2
 
+# How far before the proportional-max cap a gap may sit and still win on width
+# alone. Matches select_segment_boundaries' default shift budget: past it, the
+# seconds of clip given up outweigh the extra silence bought.
+_CAP_SEARCH_WINDOW_S = 2.0
+
 
 def speech_buffer_seconds(min_silence_ms: int) -> float:
     """Padding to widen each protected range by, derived from the VAD's min silence.
@@ -283,11 +288,21 @@ def cap_end_to_gap(
     fall within range) surfaces the same near-edge silences `_edge_options` already
     relies on. No candidate clearing the minimum duration means no safe cut exists
     before the cap, and the cap -- a real constraint -- wins.
+
+    Ranking runs near the cap first because gap width is the only term
+    `BoundaryWeights` carries, and every candidate here is reachable by
+    construction. Width alone therefore handed a wide early silence the win over
+    a usable one just before the cap and threw away every second in between --
+    a 3-second clip where the caller had asked for up to 10. Only when nothing
+    sits within `_CAP_SEARCH_WINDOW_S` of the cap does the whole window compete,
+    because a distant safe cut still beats a mid-word one.
     """
     window_start = new_start + min_segment_duration
     if window_start >= cap_time:
         return cap_time
 
     candidates = _candidates_within(gaps, window_start, cap_time)
-    chosen = best_boundary(candidates, cap_time, max_shift=cap_time - window_start)
+    chosen = best_boundary(candidates, cap_time, _CAP_SEARCH_WINDOW_S) or best_boundary(
+        candidates, cap_time, cap_time - window_start
+    )
     return chosen.snapped_time if chosen is not None else cap_time
