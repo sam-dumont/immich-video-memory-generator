@@ -685,13 +685,13 @@ class TestScoreVisualExcludesAudio:
 
 class TestBestSegmentOverlapHandling:
     def test_boundary_does_not_land_in_a_second_overlapping_range(self):
-        from immich_memories.analysis.segment_generation import (
-            _gaps_between,
+        from immich_memories.analysis.boundary_placement import (
+            gaps_between,
             select_segment_boundaries,
         )
 
         ranges = [(1.0, 10.0), (8.0, 15.0)]
-        gaps = _gaps_between(ranges, video_duration=20.0)
+        gaps = gaps_between(ranges, video_duration=20.0)
 
         start, end, _ = select_segment_boundaries(
             start=5.0, end=12.0, gaps=gaps, video_duration=20.0, min_segment_duration=1.0

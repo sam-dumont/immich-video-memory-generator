@@ -106,6 +106,7 @@ src/immich_memories/
 │   ├── speech_analysis.py      # SpeechAnalysisService: PANNs audio-content + VAD speech boundaries
 │   ├── unified_budget.py       # Unified photo+video budget selection (merge-then-fit)
 │   ├── segment_generation.py   # Boundary detection, candidate segment generation
+│   ├── boundary_placement.py   # Where a cut may land: protected-range gaps, edge selection
 │   ├── content_analyzer.py     # LLM-based content analysis
 │   ├── llm_response_parser.py  # Content analysis response parsing
 │   ├── _content_providers.py   # Content analysis provider helpers

@@ -18,10 +18,13 @@ from immich_memories.analysis.analyzer_factory import (  # noqa: F401
     create_unified_analyzer_from_config,
 )
 from immich_memories.analysis.analyzer_models import CutPoint, ScoredSegment  # noqa: F401
+from immich_memories.analysis.boundary_placement import (
+    gaps_between,
+    select_segment_boundaries,
+)
 from immich_memories.analysis.scenes import Scene, SceneDetector, get_video_info
 from immich_memories.analysis.scoring import SceneScorer
 from immich_memories.analysis.segment_generation import (
-    _gaps_between,
     adjust_candidates_for_audio,
     detect_audio_boundaries,
     detect_visual_boundaries,
@@ -29,7 +32,6 @@ from immich_memories.analysis.segment_generation import (
     generate_fallback_segments,
     merge_boundaries,
     score_segment_audio,
-    select_segment_boundaries,
 )
 from immich_memories.analysis.speech_analysis import SpeechAnalysisService
 
@@ -196,7 +198,7 @@ class UnifiedSegmentAnalyzer:
     ) -> None:
         """Fix best segment boundaries that cut through protected audio ranges.
 
-        Modifies the segment in place. Shares `_gaps_between` with the candidate
+        Modifies the segment in place. Shares `gaps_between` with the candidate
         path: walking the raw ranges one at a time let a boundary pushed out of
         one range land inside the next when two overlap, and overlapping ranges
         became routine once VAD speech regions were unioned with PANNs events.
@@ -206,7 +208,7 @@ class UnifiedSegmentAnalyzer:
             audio_content_result: Audio analysis results.
             video_duration: Total video duration.
         """
-        gaps = _gaps_between(audio_content_result.protected_ranges, video_duration)
+        gaps = gaps_between(audio_content_result.protected_ranges, video_duration)
         new_start, new_end, adjusted = select_segment_boundaries(
             best.start_time, best.end_time, gaps, video_duration, self.min_segment_duration
         )

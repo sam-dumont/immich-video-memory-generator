@@ -13,6 +13,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from immich_memories.analysis.analyzer_models import CutPoint, ScoredSegment
+from immich_memories.analysis.boundary_placement import (
+    merge_buffered_ranges,
+    speech_buffer_seconds,
+)
 from immich_memories.analysis.segment_generation import (
     classify_segment_events,
     collect_mixed_boundary_candidates,
@@ -20,9 +24,7 @@ from immich_memories.analysis.segment_generation import (
     detect_visual_boundaries,
     generate_candidate_segments,
     generate_fallback_segments,
-    merge_buffered_ranges,
     score_segment_audio,
-    speech_buffer_seconds,
 )
 from immich_memories.analysis.smart_pipeline import (
     PipelineConfig,

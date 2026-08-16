@@ -68,7 +68,7 @@ class TestBestBoundary:
 class TestSelectSegmentBoundaries:
     def test_segment_inside_speech_is_pulled_to_a_real_gap(self):
         """The old code gave up here and returned the segment unchanged."""
-        from immich_memories.analysis.segment_generation import select_segment_boundaries
+        from immich_memories.analysis.boundary_placement import select_segment_boundaries
 
         gaps = [(0.0, 1.0), (5.0, 6.0), (9.0, 10.0)]
 
@@ -81,7 +81,7 @@ class TestSelectSegmentBoundaries:
         assert end == 9.5
 
     def test_adjustment_that_would_undershoot_minimum_is_rejected(self):
-        from immich_memories.analysis.segment_generation import select_segment_boundaries
+        from immich_memories.analysis.boundary_placement import select_segment_boundaries
 
         gaps = [(4.0, 5.0), (5.5, 6.0)]
 
@@ -93,7 +93,7 @@ class TestSelectSegmentBoundaries:
         assert (start, end) == (4.2, 5.8)
 
     def test_no_usable_gaps_leaves_the_segment_alone(self):
-        from immich_memories.analysis.segment_generation import select_segment_boundaries
+        from immich_memories.analysis.boundary_placement import select_segment_boundaries
 
         start, end, adjusted = select_segment_boundaries(
             start=2.0, end=8.0, gaps=[], video_duration=10.0, min_segment_duration=1.0
@@ -108,7 +108,7 @@ class TestSelectSegmentBoundaries:
         Both directions are safe here, so nothing but the trimming preference
         decides it. Growing would pick 1.75 and 14.5 instead.
         """
-        from immich_memories.analysis.segment_generation import select_segment_boundaries
+        from immich_memories.analysis.boundary_placement import select_segment_boundaries
 
         gaps = [(1.0, 2.0), (4.0, 5.0), (11.0, 12.0), (14.0, 15.0)]
 
@@ -122,7 +122,7 @@ class TestSelectSegmentBoundaries:
 
     def test_a_long_silence_is_reachable_by_its_near_edge(self):
         """Ranking whole gaps would reject this: the gap's midpoint is 10.5s away."""
-        from immich_memories.analysis.segment_generation import select_segment_boundaries
+        from immich_memories.analysis.boundary_placement import select_segment_boundaries
 
         gaps = [(0.0, 1.0), (10.0, 30.0)]
 
