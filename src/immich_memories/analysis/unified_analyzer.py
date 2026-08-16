@@ -19,6 +19,7 @@ from immich_memories.analysis.analyzer_factory import (  # noqa: F401
 )
 from immich_memories.analysis.analyzer_models import CutPoint, ScoredSegment  # noqa: F401
 from immich_memories.analysis.boundary_placement import (
+    cap_end_to_gap,
     protected_gaps,
     select_segment_boundaries,
 )
@@ -226,7 +227,15 @@ class UnifiedSegmentAnalyzer:
         proportional_max = self._get_max_segment_for_source(video_duration)
         final_duration = best.end_time - best.start_time
         if final_duration > proportional_max:
-            best.end_time = best.start_time + proportional_max
+            # `start + proportional_max` is speech-blind and this is the segment
+            # that actually gets rendered -- snap the cap to a real gap, exactly
+            # as the candidate pass does.
+            best.end_time = cap_end_to_gap(
+                best.start_time,
+                best.start_time + proportional_max,
+                gaps,
+                self.min_segment_duration,
+            )
             logger.info(
                 f"  -> Re-trimmed to proportional max: {best.start_time:.1f}s-{best.end_time:.1f}s "
                 f"(was {final_duration:.1f}s, max={proportional_max:.1f}s for {video_duration:.1f}s source)"

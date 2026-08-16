@@ -739,3 +739,30 @@ class TestBestSegmentUsesTheSameSafetyBufferAsCandidates:
         for lo, hi in ranges:
             assert not lo - buffer < best.start_time < hi + buffer
             assert not lo - buffer < best.end_time < hi + buffer
+
+
+class TestBestSegmentProportionalMax:
+    def test_proportional_max_cap_lands_on_a_gap_not_mid_utterance(self):
+        """The cap on the shipping path was raw arithmetic: start + proportional_max.
+
+        The end escapes forward to the 29.5-30.5s silence, which makes the
+        segment 28s against a 15s ceiling. Capping at 2.0 + 15.0 = 17.0s puts
+        the shipped cut in the middle of a 21-second utterance. The only silence
+        at or before the cap is the 7.5-8.5s pause, so that is where it goes --
+        the same rule the candidate pass has followed since the cap was fixed
+        there.
+        """
+        from immich_memories.audio.audio_models import AudioAnalysisResult
+
+        # Buffered by 80 ms these merge to (4.0, 7.5), (8.5, 29.5), (30.5, 40.0).
+        ranges = [(4.08, 7.42), (8.58, 29.42), (30.58, 40.0)]
+        analyzer = _boundary_fixing_analyzer(min_segment_duration=2.0, max_segment_duration=15.0)
+        best = ScoredSegment(start_time=2.0, end_time=20.0)
+
+        analyzer._fix_best_segment_boundaries(
+            best, AudioAnalysisResult(events=[], protected_ranges=ranges), 40.0
+        )
+
+        assert best.end_time == 8.0
+        assert best.duration <= 15.0
+        assert not any(lo < best.end_time < hi for lo, hi in ranges)
