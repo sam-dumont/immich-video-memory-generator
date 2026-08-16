@@ -30,6 +30,10 @@ class TestRequestHeartbeat:
 
     def test_slow_operation_emits_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         """A call that outlasts several intervals should surface a WARNING."""
+
+        def warning_count() -> int:
+            return len([r for r in caplog.records if r.levelno >= logging.WARNING])
+
         with (
             caplog.at_level(logging.INFO, logger="immich_memories.analysis.request_heartbeat"),
             RequestHeartbeat(
@@ -38,7 +42,12 @@ class TestRequestHeartbeat:
                 warn_after_occurrences=2,
             ),
         ):
-            time.sleep(0.08)  # long enough for several 0.02s intervals to fire
+            # Wait for the heartbeat thread to actually fire rather than sleeping a
+            # fixed span and hoping it was scheduled. A loaded CI runner can starve
+            # a daemon thread well past several 0.02s intervals.
+            deadline = time.monotonic() + 10.0
+            while warning_count() < 1 and time.monotonic() < deadline:
+                time.sleep(0.01)
 
         warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
         assert len(warnings) >= 1
