@@ -36,9 +36,12 @@ class BoundaryWeights:
     completion: float = 0.0
 
 
+MIN_CUTTABLE_GAP_S = 0.3
+
+
 def candidates_from_gaps(
     gaps: list[tuple[float, float]],
-    min_gap: float = 0.3,
+    min_gap: float = MIN_CUTTABLE_GAP_S,
 ) -> list[BoundaryCandidate]:
     """One candidate per silence gap wide enough to cut inside."""
     return [

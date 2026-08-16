@@ -132,15 +132,57 @@ class TestSelectSegmentBoundaries:
 
         assert adjusted is True
         assert start == 10.75
-        assert end == 27.0
+        # The end is already 2s deep in that silence, so it stays put.
+        assert end == 28.0
+
+    def test_a_boundary_already_in_a_gap_is_left_alone(self):
+        """The inward window is inclusive of the target, so re-clipping the gap it
+        already sits in yields a midpoint past it. Left unchecked that pushes a
+        safe boundary toward its gap's far edge -- burning the margin for nothing.
+        """
+        from immich_memories.analysis.boundary_placement import select_segment_boundaries
+
+        gaps = [(4.0, 5.0), (10.0, 11.0)]
+
+        start, end, adjusted = select_segment_boundaries(
+            start=4.5, end=10.5, gaps=gaps, video_duration=15.0, min_segment_duration=1.0
+        )
+
+        assert adjusted is False
+        assert (start, end) == (4.5, 10.5)
+
+    def test_selection_is_idempotent(self):
+        """The pipeline runs this twice -- once per candidate, once on the winner.
+
+        Without idempotence the second pass erodes what the first established:
+        4.5 -> 4.75 -> 4.875, each step closer to the speech at 5.0.
+        """
+        from immich_memories.analysis.boundary_placement import select_segment_boundaries
+
+        gaps = [(1.0, 2.0), (4.0, 5.0), (11.0, 12.0)]
+
+        first_start, first_end, _ = select_segment_boundaries(
+            start=3.5, end=12.5, gaps=gaps, video_duration=16.0, min_segment_duration=1.0
+        )
+        second_start, second_end, adjusted_again = select_segment_boundaries(
+            start=first_start,
+            end=first_end,
+            gaps=gaps,
+            video_duration=16.0,
+            min_segment_duration=1.0,
+        )
+
+        assert (second_start, second_end) == (first_start, first_end)
+        assert adjusted_again is False
 
 
 class TestAdjustCandidatesForAudioProportionalMax:
     def test_oversized_segment_snaps_cap_to_a_real_gap(self):
         """The proportional-max cap used to be pure arithmetic: new_start + proportional_max,
-        with no regard for what sits at that time. Here the raw cap (13.0s) lands inside the
-        12-25s protected range. The cap must instead land on the best real gap at or before it
-        -- the 9-12s gap, whose midpoint (10.5s) beats the narrower 4-5s gap also in reach.
+        with no regard for what sits at that time. Here the raw cap lands inside the
+        12-25s protected range. The cap must instead land on the best real gap at or before
+        it -- the 9-12s gap, whose midpoint is 10.5s. The start is already deep in the
+        opening silence and stays where it is.
         """
         from immich_memories.analysis.analyzer_models import CutPoint
         from immich_memories.analysis.segment_generation import adjust_candidates_for_audio
@@ -161,7 +203,7 @@ class TestAdjustCandidatesForAudioProportionalMax:
 
         assert len(adjusted) == 1
         new_start, new_end = adjusted[0]
-        assert (new_start.time, new_end.time) == (3.0, 10.5)
+        assert (new_start.time, new_end.time) == (2.0, 10.5)
         assert new_end.time <= new_start.time + 10.0
 
 

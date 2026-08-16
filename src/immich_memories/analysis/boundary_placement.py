@@ -9,13 +9,23 @@ here, and if not, where instead".
 
 from __future__ import annotations
 
-from immich_memories.speech.boundary_scoring import best_boundary, candidates_from_gaps
+from immich_memories.speech.boundary_scoring import (
+    MIN_CUTTABLE_GAP_S,
+    best_boundary,
+    candidates_from_gaps,
+)
 from immich_memories.speech.models import BoundaryCandidate
 
 # Fraction of the VAD's min-silence window a protected-range buffer may use.
 # Must stay below 0.5 -- see speech_buffer_seconds.
 _BUFFER_SHARE_OF_MIN_SILENCE = 0.4
 _MAX_PROTECTED_BUFFER_S = 0.3
+
+# Margin a boundary must already have on both sides to be left where it is.
+# Half the narrowest cuttable gap is exactly what a fresh candidate placed at
+# that gap's midpoint would get, so a boundary clearing it is no worse off than
+# anywhere this module could move it to.
+_MIN_EDGE_MARGIN_S = MIN_CUTTABLE_GAP_S / 2
 
 
 def speech_buffer_seconds(min_silence_ms: int) -> float:
@@ -121,6 +131,14 @@ def _escape_time(
     return min(candidates, key=lambda c: abs(c.snapped_time - target)).snapped_time
 
 
+def _has_safe_margin(gaps: list[tuple[float, float]], target: float) -> bool:
+    """True when `target` already sits in silence with room to spare on both sides."""
+    return any(
+        gap_start + _MIN_EDGE_MARGIN_S <= target <= gap_end - _MIN_EDGE_MARGIN_S
+        for gap_start, gap_end in gaps
+    )
+
+
 def _edge_options(
     gaps: list[tuple[float, float]],
     target: float,
@@ -130,10 +148,16 @@ def _edge_options(
 ) -> list[float]:
     """Safe placements for one edge, most-preferred first.
 
-    Both directions are safe -- every candidate midpoint is silence -- so the
-    order is decided by duration: inward first because it shortens the clip,
-    then outward, then the nearest silence at any distance for an edge still
-    inside protected audio. `trims_later` is True for a start edge, where
+    Staying put ranks first when the edge is already in silence with margin.
+    Without that the inward window -- which is inclusive of the target -- keeps
+    re-clipping the gap the edge already sits in and returns a midpoint past it,
+    so a safe boundary drifts toward that gap's far edge on every pass and the
+    whole selection stops being idempotent.
+
+    Otherwise both directions are safe -- every candidate midpoint is silence --
+    so the order is decided by duration: inward first because it shortens the
+    clip, then outward, then the nearest silence at any distance for an edge
+    still inside protected audio. `trims_later` is True for a start edge, where
     moving later trims, and False for an end edge. Growing is the fallback,
     not the default; the old nudger only ever grew, which is why noisy clips
     kept their full duration.
@@ -142,7 +166,7 @@ def _edge_options(
     behind = (target - max_shift, target)
     inward, outward = (ahead, behind) if trims_later else (behind, ahead)
 
-    options: list[float] = []
+    options: list[float] = [target] if _has_safe_margin(gaps, target) else []
     for window_start, window_end in (inward, outward):
         chosen = best_boundary(
             _candidates_within(gaps, window_start, window_end), target, max_shift
@@ -193,6 +217,10 @@ def select_segment_boundaries(
     max_shift: float = 2.0,
 ) -> tuple[float, float, bool]:
     """Move a segment's edges to the best nearby silence gap.
+
+    Idempotent over a fixed gap set: re-running it on its own output returns
+    that output unchanged, which matters because the pipeline runs it twice --
+    once over every candidate, once over the winner.
 
     Replaces the previous outward nudging, which pushed boundaries away from
     speech and gave up entirely when a segment sat inside one long protected
