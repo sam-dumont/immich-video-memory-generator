@@ -60,6 +60,11 @@ def non_speech_protected_ranges(
     ]
 
 
+def voiced_seconds(regions: list[SpeechRegion], start: float, end: float) -> float:
+    """Total voice-activity time inside [start, end]."""
+    return sum(max(0.0, min(region.end, end) - max(region.start, start)) for region in regions)
+
+
 class SpeechAnalysisService:
     """Audio-content (PANNs) and VAD speech-boundary analysis.
 
@@ -90,6 +95,7 @@ class SpeechAnalysisService:
         self._audio_analyzer = audio_analyzer  # Injected or lazy-created
         self._audio_analysis_cache: dict[str, AudioAnalysisResult] = {}
         self._vad_audio_cache: dict[str, np.ndarray | None] = {}
+        self._vad_regions_cache: dict[str, list[SpeechRegion]] = {}
 
     def clear_cache(self, release_audio_analyzer: bool = False) -> None:
         """Clear internal caches to free memory.
@@ -100,6 +106,7 @@ class SpeechAnalysisService:
         """
         self._audio_analysis_cache.clear()
         self._vad_audio_cache.clear()
+        self._vad_regions_cache.clear()
         if release_audio_analyzer and self._audio_analyzer is not None:
             if hasattr(self._audio_analyzer, "cleanup"):
                 self._audio_analyzer.cleanup()
@@ -109,6 +116,7 @@ class SpeechAnalysisService:
         """Release current-video state while retaining reusable configuration and models."""
         self._audio_analysis_cache.clear()
         self._vad_audio_cache.clear()
+        self._vad_regions_cache.clear()
 
     def run_audio_content_analysis(
         self,
@@ -256,12 +264,12 @@ class SpeechAnalysisService:
         if not self.speech_config.enabled or self._speech_detector is None:
             return result
 
-        audio = self.extract_audio_cached(video_path)
-        if audio is None:
+        regions = self.detect_regions_cached(video_path)
+        if not regions:
             return result
 
-        regions = self._speech_detector.detect(audio, VAD_SAMPLE_RATE)
-        if not regions:
+        audio = self.extract_audio_cached(video_path)
+        if audio is None:
             return result
 
         duration = video_duration or (len(audio) / VAD_SAMPLE_RATE)
@@ -290,3 +298,20 @@ class SpeechAnalysisService:
         if cache_key not in self._vad_audio_cache:
             self._vad_audio_cache[cache_key] = extract_audio_16k(video_path)
         return self._vad_audio_cache[cache_key]
+
+    def detect_regions_cached(self, video_path: Path) -> list[SpeechRegion]:
+        """VAD regions for a video, computed once and reused.
+
+        Both boundary placement and the transcription gate need them; running
+        FireRedVAD twice over one cached array buys nothing.
+        """
+        cache_key = str(video_path)
+        if cache_key not in self._vad_regions_cache:
+            audio = self.extract_audio_cached(video_path)
+            if audio is None or self._speech_detector is None:
+                self._vad_regions_cache[cache_key] = []
+            else:
+                self._vad_regions_cache[cache_key] = self._speech_detector.detect(
+                    audio, VAD_SAMPLE_RATE
+                )
+        return self._vad_regions_cache[cache_key]
