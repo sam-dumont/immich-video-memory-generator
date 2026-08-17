@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from immich_memories.cache import database as cache_database
 from immich_memories.cache.database import VideoAnalysisCache
 from immich_memories.processing.output_contract import OutputProbe
 from immich_memories.tracking import DeliveryStatus, RunDatabase, RunMetadata, RunTracker
@@ -85,7 +86,9 @@ def test_fresh_database_has_delivery_state_defaults(tmp_path: Path) -> None:
         schema_version = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
 
     assert row == ("not_requested", 0, None, None, None, "[]")
-    assert schema_version == 16
+    # The subject here is the delivery defaults, not the version number. Assert
+    # against the constant so a schema bump does not break an unrelated test.
+    assert schema_version == cache_database.SCHEMA_VERSION
 
 
 def test_database_round_trip_preserves_delivery_and_automation_identity(tmp_path: Path) -> None:

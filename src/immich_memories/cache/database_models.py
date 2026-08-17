@@ -41,6 +41,11 @@ class CachedSegment:
     # Audio content categories (from PANNs analysis)
     audio_categories: list[str] | None = None
 
+    # Speech transcript (from whisper.cpp; nothing reads it for scoring)
+    transcript: str | None = None
+    transcript_language: str | None = None
+    transcript_confidence: float | None = None
+
     @property
     def duration(self) -> float:
         return self.end_time - self.start_time

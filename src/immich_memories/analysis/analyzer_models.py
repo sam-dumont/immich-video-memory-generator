@@ -75,6 +75,11 @@ class ScoredSegment:
     llm_quality: float | None = None
     llm_confidence: float | None = None
 
+    # Speech transcript (populated by the transcription step; never scored on)
+    transcript: str | None = None
+    transcript_language: str | None = None
+    transcript_confidence: float | None = None
+
     @property
     def duration(self) -> float:
         """Get segment duration in seconds."""

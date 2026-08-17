@@ -25,6 +25,7 @@ from immich_memories.cache.migration_v13 import migrate_delivery_state
 from immich_memories.cache.migration_v14 import migrate_operational_phases
 from immich_memories.cache.migration_v15 import migrate_notification_health
 from immich_memories.cache.migration_v16 import migrate_video_analysis_model_version
+from immich_memories.cache.migration_v17 import migrate_segment_transcripts
 from immich_memories.cache.versions import ANALYSIS_VERSION, SCHEMA_VERSION, SCORING_VERSION
 
 if TYPE_CHECKING:
@@ -105,6 +106,7 @@ class VideoAnalysisCache:
             14: migrate_operational_phases,
             15: migrate_notification_health,
             16: migrate_video_analysis_model_version,
+            17: migrate_segment_transcripts,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):
@@ -630,8 +632,9 @@ class VideoAnalysisCache:
                     llm_description, llm_emotion, llm_setting,
                     llm_activities, llm_subjects,
                     llm_interestingness, llm_quality,
-                    audio_categories
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    audio_categories,
+                    transcript, transcript_language, transcript_confidence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     asset_id,
@@ -652,6 +655,9 @@ class VideoAnalysisCache:
                     getattr(segment, "llm_interestingness", None),
                     getattr(segment, "llm_quality", None),
                     json.dumps(sorted(audio_cats)) if audio_cats else None,
+                    getattr(segment, "transcript", None),
+                    getattr(segment, "transcript_language", None),
+                    getattr(segment, "transcript_confidence", None),
                 ),
             )
 

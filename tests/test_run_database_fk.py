@@ -283,7 +283,9 @@ def test_fresh_database_has_exact_automation_run_identity_and_phase(tmp_path: Pa
         run_columns = {row[1] for row in conn.execute("PRAGMA table_info(pipeline_runs)")}
         run_indexes = {row[1] for row in conn.execute("PRAGMA index_list(pipeline_runs)")}
 
-    assert version == 16
+    # The subject here is the columns and indexes, not the version number. Assert
+    # against the constant so a schema bump does not break an unrelated test.
+    assert version == cache_database.SCHEMA_VERSION
     assert attempt_columns == {
         "id",
         "started_at",

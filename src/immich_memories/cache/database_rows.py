@@ -96,4 +96,7 @@ def row_to_segment(row: sqlite3.Row) -> CachedSegment:
         llm_interestingness=optional_float("llm_interestingness"),
         llm_quality=optional_float("llm_quality"),
         audio_categories=(json.loads(audio_categories_raw) if audio_categories_raw else None),
+        transcript=optional_str("transcript"),
+        transcript_language=optional_str("transcript_language"),
+        transcript_confidence=optional_float("transcript_confidence"),
     )
