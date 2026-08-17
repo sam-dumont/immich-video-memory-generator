@@ -17,10 +17,16 @@ logger = logging.getLogger(__name__)
 # Higher weight = more interesting for memory videos
 AUDIO_EVENT_WEIGHTS = {
     # Laughter (highly desirable)
+    # PANNs fires the generic and the specific class for one sound, so every
+    # member of a family needs naming -- anything missed falls through to the 0.2
+    # default. `Belly laugh` was missing, leaving the loudest kind of laughter
+    # rated below plain speech.
     "Laughter": 1.0,
     "Giggle": 0.95,
     "Chuckle, chortle": 0.9,
     "Baby laughter": 1.0,
+    "Belly laugh": 1.0,
+    "Snicker": 0.9,
     "Child speech, kid speaking": 0.85,
     # Positive sounds
     "Cheering": 0.8,
@@ -47,7 +53,7 @@ AUDIO_EVENT_WEIGHTS = {
     "Motor vehicle (road)": 0.4,
     "Car": 0.4,
     "Motorcycle": 0.5,
-    "Race car, racing car": 0.7,
+    "Race car, auto racing": 0.7,
     "Aircraft": 0.4,
     "Boat, Water vehicle": 0.4,
     # Nature sounds (atmospheric)

@@ -175,11 +175,30 @@ class SpeechAnalysisService:
         video_duration: float,
         enable_audio_content_analysis: bool,
     ) -> tuple[bool, AudioAnalysisResult | None]:
-        """Return this call's effective audio mode and its optional analysis result."""
+        """Return whether audio *scoring* applies, plus any analysis result.
+
+        The two are separate capabilities. Scoring needs PANNs, an optional extra
+        that is off by default; boundary placement needs only 16 kHz audio and the
+        bundled VAD model. Returning a result with protected ranges but no events
+        lets boundaries work while audio abstains from scoring.
+        """
         audio_content_enabled = enable_audio_content_analysis and self.audio_content_enabled
         if not audio_content_enabled:
-            return False, None
+            return False, self.speech_boundaries_only(audio_video, video_duration)
         return True, self.run_audio_content_analysis(audio_video, video_duration)
+
+    def speech_boundaries_only(
+        self, audio_video: Path, video_duration: float | None
+    ) -> AudioAnalysisResult | None:
+        """VAD-derived protected ranges with no audio events to score."""
+        if not self.speech_config.enabled or self._speech_detector is None:
+            return None
+        # Deferred like the other audio imports here: this module must stay
+        # importable without the optional audio extra installed.
+        from immich_memories.audio.audio_models import AudioAnalysisResult
+
+        result = self.apply_vad_ranges(audio_video, AudioAnalysisResult(), video_duration)
+        return result if result.protected_ranges else None
 
     def analyze(
         self, video_path: Path, video_duration: float | None = None
