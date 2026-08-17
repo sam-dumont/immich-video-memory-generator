@@ -244,6 +244,20 @@ def test_strip_non_speech_markers_keeps_speech_around_an_annotation():
     assert strip_non_speech_markers("*rires* Tu fais quoi ?") == "Tu fais quoi ?"
 
 
+def test_punctuation_only_transcript_is_discarded():
+    """Real output: on digital silence whisper returns '...' at confidence 0.83.
+
+    The marker stripper leaves it alone (no brackets), the loop detector sees no
+    words, and min_confidence no longer catches it by accident.
+    """
+    model = FakeModel(segments=[FakeSegment("...", 0.83)])
+    transcriber = WhisperCppTranscriber(
+        TranscriptionConfig(enabled=True, languages=["fr"], min_confidence=0.0), model=model
+    )
+
+    assert transcriber.transcribe(_audio()) is None
+
+
 def test_defaults_match_the_measured_operating_point():
     """base produced "- Dear." and "La papa." where medium produced whole sentences.
 

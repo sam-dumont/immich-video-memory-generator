@@ -291,9 +291,9 @@ Set `enabled: false` to turn voice activity off entirely — there is no alterna
 transcription:
   enabled: false                 # Transcribe speech in the top candidate clips
   languages: []                  # Languages your library contains, e.g. [fr, en]
-  model: base                    # tiny / base / small / medium / large, or a path
+  model: medium                  # tiny / base / small / medium / large, or a path
   min_voiced_seconds: 1.0        # Voice activity required before transcribing
-  min_confidence: 0.6            # Mean token probability floor
+  min_confidence: 0.0            # Mean token probability floor (see below)
   use_gpu: true                  # Metal on macOS; Linux wheels are CPU-only
 ```
 
@@ -312,8 +312,24 @@ Transcripts are stored on the top five candidate segments of each video and **do
 score**. Nothing reads them yet.
 
 Unlike the FireRedVAD weights, which ship inside the package, whisper models are downloaded from
-HuggingFace on first use (~148 MB for `base`, ~75 MB for `tiny`). In Docker, mount the model
-directory as a volume or every container start downloads it again.
+HuggingFace on first use — about 1.5 GB for the `medium` default. In Docker, mount the model
+directory as a volume or every container start downloads it again. Set `model: base` (~148 MB) if
+that download matters more to you than accuracy; measured on real family audio, `base` returned
+fragments where `medium` returned whole sentences.
+
+### A 30-second window, not the clip
+
+Whisper is transcribed over a **30-second window centred on the clip**, not the clip itself. It is
+trained on 30-second windows and pads shorter input with silence, which triggers hallucination: on
+short slices the same moments returned "- Dear." and "La papa." where a full window returned
+"Il est mignon. Tu veux lui faire une petite douce ? Pas la tête, pas le ventre."
+
+The stored transcript is therefore speech heard *around* the clip, and neighbouring candidates of
+one moment share it. Audio context distinguishes between videos, not between the top candidates
+of a single video.
+
+`min_voiced_seconds` is still measured on the clip itself — the question "is there speech here"
+is unchanged, only the audio handed to the model widens.
 
 ### What the gate can and cannot catch
 
@@ -324,22 +340,35 @@ Measured over 80 clips and 282 candidate segments from a real family library:
 | Clips with no voice activity at all | 9% |
 | Candidate segments declined before reaching whisper | 71% |
 | Whisper calls saved by reusing overlapping candidates | 46% |
-| Cost per segment considered | ~0.1 s |
+| Cost per segment, `medium` | ~0.6 s |
 
-`min_voiced_seconds` does most of the filtering. Transcripts that survive are also checked for
-repetition loops — whisper emitting one phrase several times over — which arrive at confidence
-0.90 and above and so are invisible to `min_confidence`.
+`min_voiced_seconds` does most of the filtering. Surviving transcripts are also rejected if they
+are a repetition loop — whisper emitting one phrase several times over — or contain no words at
+all, such as the `...` it returns on digital silence. Both arrive at confidence 0.83 and above and
+so are invisible to `min_confidence`.
 
-`min_confidence` almost never fires: of 102 transcripts, none scored between 0.60 and 0.62.
-Confidence does **not** track correctness. On noisy audio — children, distance from the
-microphone, several people at once — whisper produces fluent nonsense at 0.90+ alongside correct
-speech, and raising the floor discards the good with the bad. A larger model does not fix this:
-`small` declined more segments including correct ones, still produced confident nonsense, and ran
-about ten times slower.
+`min_confidence` defaults to **0.0** because the signal is inverted on this audio: correct
+transcripts measured 0.63–0.71 while fluent nonsense measured 0.84–0.95. Raising the floor removes
+good transcripts before bad ones. It stays configurable if your library is quieter than a house
+with children in it.
 
 The signal that would separate the two is `no_speech_prob`, and whisper.cpp does not expose it:
 the getter exists in the C API but neither the CLI's JSON output nor the Python bindings surface
-it. Treat transcripts as best-effort hints, not as facts.
+it.
+
+### What the transcript is used for
+
+Transcripts are given to the vision model alongside the frames, marked as possibly inaccurate,
+with an instruction to ignore them when they do not match the image. The vision model is the only
+component that sees both, so it is the only available check on a wrong transcript — and it works:
+a clip whose transcript was about refuelling a car, over footage of a beach, produced exactly the
+same description as the frames alone.
+
+Because the model reads the speech, spoken names can end up in the stored description. Enabling
+transcription therefore changes what the analysis cache records about the people in your videos.
+
+Turning transcription on changes LLM-derived scores, so it bumps the scoring version and cached
+scores are recomputed.
 
 ## Title screens
 

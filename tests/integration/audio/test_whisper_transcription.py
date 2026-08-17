@@ -51,8 +51,12 @@ def french_speech(tmp_path: Path) -> Path:
 def test_french_speech_is_transcribed_in_french(french_speech: Path):
     pytest.importorskip("pywhispercpp")
 
+    # `base` deliberately, not the shipped `medium` default: this test should not
+    # pull a 1.5 GB model onto a developer machine. TTS is clean, close-mic'd and
+    # single-speaker, so a small model handles it -- which is exactly why this test
+    # proves the wiring works and says nothing about real family audio.
     transcriber = select_transcriber(
-        TranscriptionConfig(enabled=True, languages=["fr"], model="tiny", min_confidence=0.0)
+        TranscriptionConfig(enabled=True, languages=["fr"], model="base", min_confidence=0.0)
     )
     assert transcriber is not None
 
@@ -84,8 +88,11 @@ def test_silence_produces_no_transcript(tmp_path: Path):
         capture_output=True,
     )
 
+    # min_confidence is spelled out because the default is now 0.0: the confidence
+    # signal is inverted on real audio, so the VAD gate, the marker stripper and the
+    # repetition guard are what must reject silence.
     transcriber = select_transcriber(
-        TranscriptionConfig(enabled=True, languages=["fr"], model="tiny")
+        TranscriptionConfig(enabled=True, languages=["fr"], model="base", min_confidence=0.0)
     )
     assert transcriber is not None
 

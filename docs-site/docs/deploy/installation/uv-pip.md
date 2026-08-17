@@ -135,9 +135,11 @@ range and leave boundary adjustment nowhere to move. Both `all` and `all-mac` in
 
 The `transcribe` extra adds pywhispercpp, which ships prebuilt wheels for macOS arm64 (with
 Metal), Linux x86_64 and aarch64, and Windows — nothing compiles at install. Linux wheels are
-CPU-only, which is fine for the three-to-five second slices this sends it. Model weights are
-**not** bundled: they are fetched from HuggingFace on first use (~148 MB for `base`). Without the
-extra, no transcripts are produced and nothing else changes. Both `all` and `all-mac` include it.
+CPU-only, which is fine for the 30-second windows this sends it. Model weights are **not**
+bundled: they are fetched from HuggingFace on first use, about 1.5 GB for the `medium` default.
+Set `advanced.transcription.model: base` for a ~148 MB download at a measured cost in accuracy.
+Without the extra, no transcripts are produced and nothing else changes. Both `all` and `all-mac`
+include it.
 
 ## Optional System Dependencies
 

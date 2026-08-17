@@ -116,6 +116,16 @@ def _has_stuttered_word(words: list[str]) -> bool:
     return False
 
 
+def _has_words(text: str) -> bool:
+    """Punctuation alone is not speech.
+
+    Real output: on digital silence whisper returns "..." at confidence 0.83. The
+    marker stripper leaves it (no brackets), the loop detector sees no words, and
+    the confidence floor no longer catches it.
+    """
+    return bool(re.search(r"\w", text))
+
+
 def _mean_probability(segments: list) -> float:
     """Unweighted mean of the per-segment token probabilities.
 
@@ -182,7 +192,7 @@ class WhisperCppTranscriber:
             return None
 
         text = strip_non_speech_markers(" ".join(segment.text for segment in segments))
-        if not text:
+        if not _has_words(text):
             return None
 
         if is_repetition_loop(text):
