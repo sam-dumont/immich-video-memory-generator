@@ -243,6 +243,7 @@ class ContentAnalyzer:
         start_time: float = 0,
         end_time: float | None = None,
         num_frames: int = 3,
+        transcript: str | None = None,
     ) -> ContentAnalysis:
         """Analyze a video segment using vision model.
 
@@ -251,6 +252,7 @@ class ContentAnalyzer:
             start_time: Start time in seconds.
             end_time: End time in seconds (None = end of video).
             num_frames: Number of frames to extract and analyze.
+            transcript: Speech heard around this moment, or None.
 
         Returns:
             ContentAnalysis with description, scores, etc.

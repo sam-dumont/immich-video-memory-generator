@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+from immich_memories.analysis._content_providers import (
+    OllamaContentAnalyzer,
+    OpenAICompatibleContentAnalyzer,
+)
+from immich_memories.analysis.analyzer_models import ScoredSegment
 from immich_memories.analysis.llm_response_parser import (
     CONTENT_ANALYSIS_PROMPT,
     PROMPT_TRANSCRIPT_MAX_CHARS,
     build_content_analysis_prompt,
 )
+from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
+from immich_memories.config_models import AnalysisConfig, AudioContentConfig
 
 # Hard-coded rather than compared against the constant: comparing against the
 # constant would pass even if both changed together, which is the regression this
@@ -58,3 +68,95 @@ def test_long_transcript_is_truncated_on_a_word_boundary():
     assert quoted.endswith("…")
     assert "mot mot" in quoted
     assert not quoted.rstrip("…").endswith("mo"), "must not cut mid-word"
+
+
+def _fake_frames(tmp_path):
+    frame = tmp_path / "f.jpg"
+    frame.write_bytes(b"\xff\xd8\xff\xd9")
+    return [frame]
+
+
+def test_ollama_puts_the_transcript_in_the_request(tmp_path):
+    analyzer = OllamaContentAnalyzer(model="moondream", base_url="http://x")
+
+    # WHY: replaces frame extraction, which shells out to FFmpeg.
+    # WHY: replaces the HTTP call to the Ollama server.
+    with (
+        patch.object(analyzer, "extract_frames", return_value=_fake_frames(tmp_path)),
+        patch.object(analyzer, "_ollama_request_with_retry", return_value=MagicMock()) as req,
+    ):
+        analyzer.analyze_segment(tmp_path / "v.mov", 0.0, 3.0, transcript="Tu fais quoi ?")
+
+    assert "Tu fais quoi ?" in req.call_args[0][0]["prompt"]
+
+
+def test_openai_compatible_puts_the_transcript_in_the_request(tmp_path):
+    """This provider posts directly rather than through a retry helper, so the
+    HTTP client is the boundary to replace."""
+    analyzer = OpenAICompatibleContentAnalyzer(model="qwen", base_url="http://x", api_key="")
+
+    response = MagicMock()
+    response.json.return_value = {
+        "choices": [{"message": {"content": '{"description": "x"}'}}],
+        "usage": {},
+    }
+
+    # WHY: replaces frame extraction, which shells out to FFmpeg.
+    # WHY: replaces the httpx POST, the network boundary. `client` itself is a
+    # read-only property, so the method is what gets replaced.
+    with (
+        patch.object(analyzer, "extract_frames", return_value=_fake_frames(tmp_path)),
+        patch.object(analyzer.client, "post", return_value=response) as post,
+    ):
+        analyzer.analyze_segment(tmp_path / "v.mov", 0.0, 3.0, transcript="Tu fais quoi ?")
+
+    payload = post.call_args.kwargs["json"]
+    prompt = payload["messages"][0]["content"][0]["text"]
+    assert "Tu fais quoi ?" in prompt
+
+
+def test_score_content_passes_the_segments_transcript():
+    """The analyzer must hand the stored transcript to the content analyzer.
+
+    Without this the whole feature is inert -- the transcript sits on the segment
+    and never reaches the prompt.
+    """
+    # WHY: replaces the vision LLM, an external network service.
+    content = MagicMock()
+    content.analyze_segment.return_value = MagicMock(
+        confidence=0.9,
+        description="d",
+        emotion="happy",
+        setting="",
+        activities=[],
+        subjects=[],
+        interestingness=0.7,
+        quality=0.8,
+        content_score=0.73,
+    )
+    analyzer = UnifiedSegmentAnalyzer(
+        scorer=MagicMock(),
+        content_analyzer=content,
+        audio_content_config=AudioContentConfig(),
+        analysis_config=AnalysisConfig(),
+    )
+    segment = ScoredSegment(start_time=0.0, end_time=3.0)
+    segment.transcript = "Il est mignon"
+
+    analyzer._score_content(Path("/fake.mov"), 0.0, 3.0, segment=segment)
+
+    assert content.analyze_segment.call_args.kwargs["transcript"] == "Il est mignon"
+
+
+def test_no_transcript_sends_the_unchanged_prompt(tmp_path):
+    """Transcription off must produce a byte-identical request."""
+    analyzer = OllamaContentAnalyzer(model="moondream", base_url="http://x")
+
+    # WHY: replaces frame extraction (FFmpeg) and the HTTP call.
+    with (
+        patch.object(analyzer, "extract_frames", return_value=_fake_frames(tmp_path)),
+        patch.object(analyzer, "_ollama_request_with_retry", return_value=MagicMock()) as req,
+    ):
+        analyzer.analyze_segment(tmp_path / "v.mov", 0.0, 3.0)
+
+    assert req.call_args[0][0]["prompt"] == TODAYS_PROMPT

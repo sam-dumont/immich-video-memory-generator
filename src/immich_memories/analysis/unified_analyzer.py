@@ -556,7 +556,12 @@ class UnifiedSegmentAnalyzer:
             return 0.5
 
         try:
-            analysis = self.content_analyzer.analyze_segment(video_path, start_time, end_time)
+            analysis = self.content_analyzer.analyze_segment(
+                video_path,
+                start_time,
+                end_time,
+                transcript=getattr(segment, "transcript", None),
+            )
 
             raw_confidence = getattr(analysis, "confidence", 0.0)
             confidence = float(raw_confidence) if isinstance(raw_confidence, (int, float)) else 0.0

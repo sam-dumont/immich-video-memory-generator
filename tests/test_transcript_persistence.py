@@ -93,10 +93,12 @@ def test_a_segment_without_a_transcript_stores_nulls(tmp_path: Path, mock_asset)
     assert loaded.segments[0].transcript_confidence is None
 
 
-def test_scoring_version_is_not_bumped_by_transcripts():
-    """No scoring path reads a transcript, so every cached score stays valid.
+def test_scoring_version_reflects_audio_context():
+    """Now that the LLM sees transcripts, its scores move.
 
-    Bumping would invalidate every scored segment in the library to record a
-    change that cannot move a number.
+    This reverses the argument in #298, which was right at the time: nothing read
+    a transcript, so no cached score could have been computed differently. Once
+    the LLM's input text changes, clips scored with and without audio context are
+    no longer comparable and cache.db would otherwise hold both.
     """
-    assert cache_database.SCORING_VERSION == 2
+    assert cache_database.SCORING_VERSION == 3

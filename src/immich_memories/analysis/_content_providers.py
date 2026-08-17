@@ -14,9 +14,9 @@ from pathlib import Path
 import httpx
 
 from immich_memories.analysis.llm_response_parser import (
-    CONTENT_ANALYSIS_PROMPT,
     ContentAnalysis,
     ContentAnalyzer,
+    build_content_analysis_prompt,
 )
 from immich_memories.analysis.request_heartbeat import RequestHeartbeat
 
@@ -189,6 +189,7 @@ class OllamaContentAnalyzer(ContentAnalyzer):
         start_time: float = 0,
         end_time: float | None = None,
         num_frames: int = 3,
+        transcript: str | None = None,
     ) -> ContentAnalysis:
         """Analyze a video segment using Ollama vision model.
 
@@ -226,7 +227,7 @@ class OllamaContentAnalyzer(ContentAnalyzer):
 
             payload = {
                 "model": self.model,
-                "prompt": CONTENT_ANALYSIS_PROMPT,
+                "prompt": build_content_analysis_prompt(transcript),
                 "images": images,
                 "stream": False,
                 "options": {"temperature": 0.3, "num_ctx": self.num_ctx},
@@ -333,6 +334,7 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
         start_time: float = 0,
         end_time: float | None = None,
         num_frames: int = 3,
+        transcript: str | None = None,
     ) -> ContentAnalysis:
         """Analyze a video segment using OpenAI vision model."""
         if not self.available:
@@ -348,7 +350,9 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
 
         try:
             # Build content with images
-            content: list[dict] = [{"type": "text", "text": CONTENT_ANALYSIS_PROMPT}]
+            content: list[dict] = [
+                {"type": "text", "text": build_content_analysis_prompt(transcript)}
+            ]
 
             for path in frames[:4]:
                 with path.open("rb") as f:
