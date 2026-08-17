@@ -19,9 +19,9 @@ import cv2
 logger = logging.getLogger(__name__)
 
 # Prompt for content analysis - optimized for small vision models like Moondream
-CONTENT_ANALYSIS_PROMPT = """Describe what you see in this image.
+_PROMPT_HEAD = """Describe what you see in this image."""
 
-Return JSON with these fields:
+_PROMPT_TAIL = """Return JSON with these fields:
 - description: What is happening in this scene?
 - emotion: What is the mood? (one word: happy, calm, excited, playful, joyful, peaceful)
 - interestingness: How memorable is this moment? (0.0 to 1.0)
@@ -30,6 +30,46 @@ Return JSON with these fields:
 Example format: {"description": "...", "emotion": "...", "interestingness": 0.7, "quality": 0.8}
 
 JSON:"""
+
+# A 30-second transcription window yields far more text than the old per-segment
+# slice, and these models have tight context: the Ollama provider already drops to
+# two images to stay under Moondream's 2048-token limit. ~600 chars is ~150 tokens --
+# several sentences of context without displacing the frames. cache.db keeps the
+# untruncated text.
+PROMPT_TRANSCRIPT_MAX_CHARS = 600
+
+
+def _truncate_on_word_boundary(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0]
+    return f"{cut or text[:limit]}…"
+
+
+def build_content_analysis_prompt(transcript: str | None = None) -> str:
+    """The vision prompt, carrying audio context only when there is some.
+
+    With no transcript this returns exactly the text used before audio context
+    existed, so a library with transcription off sees no change whatsoever.
+
+    The reliability warning is the point of the transcript section: whisper produces
+    fluent nonsense on noisy family audio at high confidence, and the vision model is
+    the only component that sees the frames and the transcript together, so it is the
+    only thing able to discount one against the other.
+    """
+    sections = [_PROMPT_HEAD]
+    if transcript and transcript.strip():
+        quoted = _truncate_on_word_boundary(transcript.strip(), PROMPT_TRANSCRIPT_MAX_CHARS)
+        sections.append(
+            "Speech heard around this moment (automatic transcription, may be "
+            "inaccurate — ignore it if it does not match the image):\n"
+            f'"{quoted}"'
+        )
+    sections.append(_PROMPT_TAIL)
+    return "\n\n".join(sections)
+
+
+CONTENT_ANALYSIS_PROMPT = build_content_analysis_prompt()
 
 
 @dataclass
