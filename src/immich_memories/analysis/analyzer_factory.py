@@ -47,6 +47,7 @@ def analyzer_kwargs_from_config(config: Config) -> dict:
         "audio_content_config": config.audio_content,
         "analysis_config": config.analysis,
         "speech_config": config.speech,
+        "transcription_config": config.transcription,
     }
 
 

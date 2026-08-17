@@ -66,3 +66,18 @@ def test_duration_settings_reach_the_production_analyzer(analyzer_from_config):
     assert analyzer.max_optimal_duration == 15.0
     assert analyzer.target_extraction_ratio == 0.25
     assert analyzer.min_silence_duration == 0.2
+
+
+def test_transcription_config_reaches_the_analyzer():
+    """analyzer_kwargs_from_config is the single mapping; a section missing from
+    it silently never runs in production."""
+    from immich_memories.analysis.analyzer_factory import analyzer_kwargs_from_config
+    from immich_memories.config_loader import Config
+
+    config = Config()
+    config.transcription.enabled = True
+    config.transcription.languages = ["fr"]
+
+    kwargs = analyzer_kwargs_from_config(config)
+
+    assert kwargs["transcription_config"] is config.transcription
