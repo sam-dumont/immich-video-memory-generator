@@ -722,12 +722,19 @@ class TestClassifySegmentEvents:
 
 
 class TestScoreSegmentAudio:
-    """Lines 577, 595: no events returns 0.5; zero duration returns 0.5."""
+    """No detected events earns no audio credit; real events are scored."""
 
-    def test_no_events_returns_neutral(self):
+    def test_no_events_earns_no_audio_credit(self):
+        """This returned 0.5 until it was measured against the formula's range.
+
+        The live formula's median over real candidates is 0.18 and its maximum
+        0.63, so a 0.5 "neutral" outranked 98% of segments containing actual
+        audio -- including, within a single clip, beating that clip's own
+        laughing segment. See tests/test_segment_audio_scoring.py.
+        """
         audio_result = AudioAnalysisResult(events=[])
         result = score_segment_audio(0.0, 5.0, audio_result)
-        assert result["score"] == 0.5
+        assert result["score"] == 0.0
         assert not result["has_laughter"]
 
     def test_with_matching_events_computes_real_score(self):

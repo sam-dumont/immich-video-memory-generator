@@ -468,6 +468,13 @@ LAUGHTER_KEYWORDS = ("laugh", "giggle", "chuckle", "chortle")
 # every other signal.
 MAX_LAUGHTER_BONUS = 0.3
 
+# Score for a segment where no audio events were detected. This was 0.5, chosen as
+# a neutral midpoint -- but the live formula produces a median of 0.18 and a
+# maximum of 0.63 over real candidates, so 0.5 outranked 98% of segments that
+# actually contained audio. Absence of evidence was beating evidence. Zero is the
+# honest value: no detected content earns no audio credit.
+NO_AUDIO_SCORE = 0.0
+
 
 def is_laughter(event_class: str) -> bool:
     """Whether an AudioSet class name denotes laughter."""
@@ -561,7 +568,7 @@ def score_segment_audio(
 
     if not segment_events:
         return {
-            "score": 0.5,
+            "score": NO_AUDIO_SCORE,
             "has_laughter": False,
             "has_speech": False,
             "has_music": False,
@@ -584,7 +591,7 @@ def score_segment_audio(
         laughter_share = laughter_seconds(segment_events, start_time, end_time) / segment_duration
         score = quality * min(1.0, coverage) + min(MAX_LAUGHTER_BONUS, laughter_share)
     else:
-        score = 0.5
+        score = NO_AUDIO_SCORE
 
     return {
         "score": min(1.0, max(0.0, score)),

@@ -45,6 +45,24 @@ def test_chuckle_counts_as_laughter():
     assert score_segment_audio(0.0, 10.0, result)["has_laughter"]
 
 
+def test_silence_does_not_outrank_real_audio():
+    """A segment where nothing was detected must not beat one with real content.
+
+    The no-events return used to be 0.5 while the live formula's output over 3708
+    real candidate segments had median 0.182 and maximum 0.627 -- so the "no
+    information" constant beat 98.2% of segments that actually contained audio,
+    and every ranking the audio term participated in was decided by the absence
+    of evidence rather than by evidence.
+    """
+    nothing = AudioAnalysisResult(events=[])
+    speech = AudioAnalysisResult(events=[AudioEvent("Speech", 0.0, 6.0, confidence=0.8)])
+    laughter = AudioAnalysisResult(events=[AudioEvent("Laughter", 0.0, 1.0, confidence=0.5)])
+
+    quiet_score = score_segment_audio(0.0, 6.0, nothing)["score"]
+    assert quiet_score < score_segment_audio(0.0, 6.0, speech)["score"]
+    assert quiet_score < score_segment_audio(0.0, 6.0, laughter)["score"]
+
+
 def test_more_laughter_beats_more_laughter_labels():
     """Actual laughter duration must win over a shorter laugh that fires more labels.
 
