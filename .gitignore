@@ -89,6 +89,7 @@ complexipy_results_*.json
 build/
 config.yaml
 coverage.xml
+bandit-report.json
 tests/*-coverage.xml
 tests/*-junit.xml
 tests/benchmark-*.json

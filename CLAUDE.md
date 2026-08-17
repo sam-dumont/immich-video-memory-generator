@@ -105,6 +105,7 @@ make critique
 - **Cognitive complexity**: complexipy ≤15 per function (`make cognitive-complexity`)
 - **Dead code**: Vulture must pass (`make dead-code`)
 - **Security**: Bandit must pass with no HIGH findings (`make security-lint`)
+- **Security (cross-file)**: Semgrep must pass with no ERROR findings (`make semgrep`)
 - **Modernization**: refurb must pass (`make refurb`)
 - **Dependency hygiene**: deptry must pass (`make dep-check`)
 - **Tests**: all tests must pass (`make test`)

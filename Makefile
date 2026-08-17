@@ -478,7 +478,7 @@ launch-check: check build build-check docs-check e2e
 	@echo "Launch readiness checks passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint refurb dep-check arch-check duplication critique test
+ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique test
 	@echo "Full CI pipeline passed!"
 
 # Self-critique for AI code smells
