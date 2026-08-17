@@ -21,6 +21,35 @@ def create_analyzer_from_config(config: Config):
     return create_unified_analyzer_from_config(config)
 
 
+def analyzer_kwargs_from_config(config: Config) -> dict:
+    """Every UnifiedSegmentAnalyzer argument that comes straight from config.
+
+    Both construction sites -- the factory below and ClipAnalyzer, which supplies
+    its own cached scorer and injected audio analyzer -- take this mapping rather
+    than each listing the arguments themselves. Listing them twice is how
+    `speech_config`, `min_silence_duration`, `optimal_clip_duration`,
+    `max_optimal_duration` and `target_extraction_ratio` came to be silently
+    dropped on the only path that runs in production.
+    """
+    return {
+        "min_segment_duration": config.analysis.min_segment_duration,
+        "max_segment_duration": config.analysis.max_segment_duration,
+        "silence_threshold_db": config.analysis.silence_threshold_db,
+        "min_silence_duration": config.analysis.min_silence_duration,
+        "cut_point_merge_tolerance": config.analysis.cut_point_merge_tolerance,
+        "audio_content_enabled": config.audio_content.enabled,
+        "audio_content_weight": (
+            config.audio_content.weight if config.audio_content.enabled else 0.0
+        ),
+        "optimal_clip_duration": config.analysis.optimal_clip_duration,
+        "max_optimal_duration": config.analysis.max_optimal_duration,
+        "target_extraction_ratio": config.analysis.target_extraction_ratio,
+        "audio_content_config": config.audio_content,
+        "analysis_config": config.analysis,
+        "speech_config": config.speech,
+    }
+
+
 def create_unified_analyzer_from_config(config: Config):
     """Create a UnifiedSegmentAnalyzer from current configuration.
 
@@ -53,11 +82,6 @@ def create_unified_analyzer_from_config(config: Config):
         except (ImportError, RuntimeError, ValueError) as e:
             logger.warning(f"Failed to initialize content analyzer: {e}")
 
-    # Get audio content analysis settings
-    audio_content_enabled = config.audio_content.enabled
-    audio_content_weight = config.audio_content.weight if audio_content_enabled else 0.0
-
-    # Log duration scoring config
     logger.info(
         f"Duration scoring config: base={config.analysis.optimal_clip_duration:.1f}s, "
         f"max={config.analysis.max_optimal_duration:.1f}s, "
@@ -70,18 +94,6 @@ def create_unified_analyzer_from_config(config: Config):
             analysis_config=config.analysis,
         ),
         content_analyzer=content_analyzer,
-        min_segment_duration=config.analysis.min_segment_duration,
-        max_segment_duration=config.analysis.max_segment_duration,
-        silence_threshold_db=config.analysis.silence_threshold_db,
-        min_silence_duration=config.analysis.min_silence_duration,
-        cut_point_merge_tolerance=config.analysis.cut_point_merge_tolerance,
         content_weight=content_weight,
-        audio_content_enabled=audio_content_enabled,
-        audio_content_weight=audio_content_weight,
-        optimal_clip_duration=config.analysis.optimal_clip_duration,
-        max_optimal_duration=config.analysis.max_optimal_duration,
-        target_extraction_ratio=config.analysis.target_extraction_ratio,
-        audio_content_config=config.audio_content,
-        analysis_config=config.analysis,
-        speech_config=config.speech,
+        **analyzer_kwargs_from_config(config),
     )

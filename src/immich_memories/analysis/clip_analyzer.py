@@ -472,6 +472,7 @@ class ClipAnalyzer:
         if self._cached_unified_analyzer is not None:
             return self._cached_unified_analyzer
 
+        from immich_memories.analysis.analyzer_factory import analyzer_kwargs_from_config
         from immich_memories.analysis.scoring import SceneScorer
         from immich_memories.analysis.unified_analyzer import UnifiedSegmentAnalyzer
 
@@ -485,16 +486,9 @@ class ClipAnalyzer:
         self._cached_unified_analyzer = UnifiedSegmentAnalyzer(
             scorer=self._cached_scene_scorer,
             content_analyzer=content_analyzer,
-            min_segment_duration=config.analysis.min_segment_duration,
-            max_segment_duration=config.analysis.max_segment_duration,
-            silence_threshold_db=config.analysis.silence_threshold_db,
-            cut_point_merge_tolerance=config.analysis.cut_point_merge_tolerance,
             content_weight=content_weight,
-            audio_content_enabled=config.audio_content.enabled,
-            audio_content_weight=config.audio_content.weight,
             audio_analyzer=audio_analyzer,
-            audio_content_config=config.audio_content,
-            analysis_config=config.analysis,
+            **analyzer_kwargs_from_config(config),
         )
         return self._cached_unified_analyzer
 
