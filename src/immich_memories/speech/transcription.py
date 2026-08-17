@@ -21,9 +21,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# whisper.cpp writes its non-speech annotations in brackets or parentheses:
-# [Music], [BLANK_AUDIO], (sighs). A result made of nothing else is not speech.
-_MARKER_RE = re.compile(r"[\[(][^\])]*[\])]")
+# whisper.cpp writes its non-speech annotations several ways, all found in real
+# output: [Music], [BLANK_AUDIO], (sighs), *bruits de foule* for crowd noise, and
+# sung content wrapped in music notes. A result made of nothing else is not speech.
+_MARKER_RE = re.compile(r"[\[(][^\])]*[\])]|\*[^*]*\*|♪[^♪]*♪")
 
 # Below this, repetition is normal speech: "Merci, merci." and "No. No!" are real
 # utterances from the library, not loops.

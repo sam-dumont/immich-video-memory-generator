@@ -228,3 +228,17 @@ def test_looping_transcript_is_discarded_by_the_transcriber():
     )
 
     assert transcriber.transcribe(_audio()) is None
+
+
+def test_strip_non_speech_markers_removes_asterisk_annotations():
+    """Real output: whisper labelled crowd noise rather than inventing speech."""
+    assert strip_non_speech_markers("*bruits de foule*") == ""
+
+
+def test_strip_non_speech_markers_removes_music_notes():
+    """Real output: whisper wraps sung content in music notes."""
+    assert strip_non_speech_markers("♪ I'm a champion ♪ ♪ Champion ♪") == ""
+
+
+def test_strip_non_speech_markers_keeps_speech_around_an_annotation():
+    assert strip_non_speech_markers("*rires* Tu fais quoi ?") == "Tu fais quoi ?"
