@@ -843,9 +843,12 @@ class TranscriptionConfig(BaseModel):
         ge=0.0,
         le=1.0,
         description=(
-            "Mean token probability below which a transcript is discarded. Unmeasured "
-            "starting value. whisper.cpp exposes no per-segment no_speech_prob, so this "
-            "and the voice-activity floor are the whole gate"
+            "Mean token probability below which a transcript is discarded. Measured on a "
+            "real library this floor almost never fires -- of 102 transcripts none scored "
+            "between 0.60 and 0.62 -- and confidence does not track correctness: fluent "
+            "nonsense arrives at 0.90+ alongside correct speech. Raising it discards good "
+            "transcripts without discarding bad ones. The voice-activity floor and the "
+            "repetition guard do the real filtering"
         ),
     )
     use_gpu: bool = Field(

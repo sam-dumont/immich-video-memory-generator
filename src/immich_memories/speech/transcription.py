@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 # [Music], [BLANK_AUDIO], (sighs). A result made of nothing else is not speech.
 _MARKER_RE = re.compile(r"[\[(][^\])]*[\])]")
 
+# Below this, repetition is normal speech: "Merci, merci." and "No. No!" are real
+# utterances from the library, not loops.
+_MIN_LOOP_WORDS = 4
+
 
 @dataclass(frozen=True)
 class Transcript:
@@ -68,6 +72,47 @@ def resolve_language(lang_probs: Mapping[str, float], configured: Sequence[str])
 def strip_non_speech_markers(text: str) -> str:
     """Drop whisper's bracketed non-speech annotations and normalise whitespace."""
     return " ".join(_MARKER_RE.sub(" ", text).split())
+
+
+def is_repetition_loop(text: str) -> bool:
+    """True when the text is whisper looping rather than reporting speech.
+
+    Measured on a real library: loops arrive at confidence 0.90 and above, so the
+    token-probability floor never sees them. `no_context=True` does not help --
+    the loop happens inside a single decode window, not across windows.
+
+    Two shapes are rejected: the whole text being one block repeated, and a single
+    word running three or more times. A doubled two-word-or-longer block counts,
+    which does discard the occasional genuine chant; a memory description loses
+    little by dropping one, and keeps a lot by dropping the rest.
+    """
+    words = re.findall(r"\w+", text.lower())
+    if len(words) < _MIN_LOOP_WORDS:
+        return False
+    return _is_repeated_block(words) or _has_stuttered_word(words)
+
+
+def _is_repeated_block(words: list[str]) -> bool:
+    total = len(words)
+    for period in range(1, total // 2 + 1):
+        if total % period:
+            continue
+        block = words[:period]
+        if any(words[start : start + period] != block for start in range(0, total, period)):
+            continue
+        repeats = total // period
+        if (period == 1 and repeats >= 3) or (period >= 2 and repeats >= 2):
+            return True
+    return False
+
+
+def _has_stuttered_word(words: list[str]) -> bool:
+    run = 1
+    for previous, current in zip(words, words[1:], strict=False):
+        run = run + 1 if current == previous else 1
+        if run >= 3:
+            return True
+    return False
 
 
 def _mean_probability(segments: list) -> float:
@@ -137,6 +182,10 @@ class WhisperCppTranscriber:
 
         text = strip_non_speech_markers(" ".join(segment.text for segment in segments))
         if not text:
+            return None
+
+        if is_repetition_loop(text):
+            logger.debug("Discarding looping transcript: %s", text[:80])
             return None
 
         confidence = _mean_probability(segments)

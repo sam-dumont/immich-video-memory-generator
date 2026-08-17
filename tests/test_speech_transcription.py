@@ -13,6 +13,7 @@ from immich_memories.config_models import TranscriptionConfig
 from immich_memories.speech.transcription import (
     Transcript,
     WhisperCppTranscriber,
+    is_repetition_loop,
     resolve_language,
     select_transcriber,
     strip_non_speech_markers,
@@ -181,3 +182,49 @@ def test_select_transcriber_returns_none_without_pywhispercpp():
     # a machine without the extra installed produces.
     with patch.dict(sys.modules, {"pywhispercpp": None, "pywhispercpp.model": None}):
         assert select_transcriber(TranscriptionConfig(enabled=True, languages=["fr"])) is None
+
+
+def test_repetition_loop_detected_from_a_repeated_phrase():
+    """Real output from the library: whisper looped one phrase three times.
+
+    `no_context=True` does not prevent this -- the loop happens inside a single
+    decode window, not across windows.
+    """
+    text = (
+        "Je vais vous faire un petit peu. Je vais vous faire un petit peu. "
+        "Je vais vous faire un petit peu."
+    )
+    assert is_repetition_loop(text) is True
+
+
+def test_repetition_loop_detected_from_a_doubled_fragment():
+    """Real output: a child babbling, transcribed as one fragment twice."""
+    assert is_repetition_loop("- La, bi, ho. - La, bi, ho.") is True
+
+
+def test_repetition_loop_detected_from_a_stuttered_word():
+    """Real output: one word emitted three times in a row."""
+    assert is_repetition_loop("Tu te te te") is True
+
+
+def test_short_genuine_repetition_is_not_a_loop():
+    """ "Merci, merci." and "No. No!" are real utterances, not loops."""
+    assert is_repetition_loop("Merci, merci.") is False
+    assert is_repetition_loop("No. No!") is False
+
+
+def test_ordinary_speech_is_not_a_loop():
+    assert is_repetition_loop("Tu fais quoi ?") is False
+    assert is_repetition_loop("Les enfants jouent sur la plage au bord de la mer.") is False
+
+
+def test_looping_transcript_is_discarded_by_the_transcriber():
+    """A confident loop must not survive: these arrive at conf 0.90+."""
+    model = FakeModel(
+        segments=[FakeSegment("bonjour bonjour bonjour bonjour", 0.94)],
+    )
+    transcriber = WhisperCppTranscriber(
+        TranscriptionConfig(enabled=True, languages=["fr"]), model=model
+    )
+
+    assert transcriber.transcribe(_audio()) is None

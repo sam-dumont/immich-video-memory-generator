@@ -34,6 +34,7 @@ from immich_memories.analysis.segment_generation import (
     merge_boundaries,
     score_segment_audio,
 )
+from immich_memories.analysis.segment_transcription import transcribe_top_segments
 from immich_memories.analysis.speech_analysis import SpeechAnalysisService
 
 if TYPE_CHECKING:
@@ -47,11 +48,6 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
-
-# Matches the hard-coded top_n in _run_llm_scoring. Not configurable: there is no
-# evidence for a different value, and the two steps drifting apart would be worse
-# than either number.
-TRANSCRIBE_TOP_N = 5
 
 
 def log_top_segments(segments: list[ScoredSegment], top_n: int = 5) -> None:
@@ -383,7 +379,7 @@ class UnifiedSegmentAnalyzer:
         scored_segments.sort(key=lambda s: s.total_score, reverse=True)
 
         # Step 4a-half: independent of content analysis by design.
-        self._run_transcription(scored_segments, audio_video)
+        transcribe_top_segments(self._speech_analysis, scored_segments, audio_video)
 
         if enable_content_analysis:
             self._run_llm_scoring(
@@ -729,26 +725,6 @@ class UnifiedSegmentAnalyzer:
         # Direct UnifiedSegmentAnalyzer callers have no ClipAnalyzer lifecycle.
         self.scorer.release_capture()
         return scored
-
-    def _run_transcription(self, scored_segments: list, audio_video: Path) -> None:
-        """Transcribe the top candidates in place.
-
-        Deliberately not folded into _run_llm_scoring, which returns early without
-        a content analyzer: transcription has to work with content analysis off.
-        """
-        top_n = min(TRANSCRIBE_TOP_N, len(scored_segments))
-        if not top_n:
-            return
-
-        for segment in scored_segments[:top_n]:
-            transcript = self._speech_analysis.transcribe_segment(
-                audio_video, segment.start_time, segment.end_time
-            )
-            if transcript is None:
-                continue
-            segment.transcript = transcript.text
-            segment.transcript_language = transcript.language
-            segment.transcript_confidence = transcript.confidence
 
     def _run_llm_scoring(
         self,

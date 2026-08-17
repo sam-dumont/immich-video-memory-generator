@@ -315,9 +315,31 @@ Unlike the FireRedVAD weights, which ship inside the package, whisper models are
 HuggingFace on first use (~148 MB for `base`, ~75 MB for `tiny`). In Docker, mount the model
 directory as a volume or every container start downloads it again.
 
-`min_voiced_seconds` and `min_confidence` are starting values, not measured optima. They are the
-whole gate, because whisper.cpp exposes no per-segment `no_speech_prob`: the getter exists in the
-C API but neither the CLI's JSON output nor the Python bindings surface it.
+### What the gate can and cannot catch
+
+Measured over 80 clips and 282 candidate segments from a real family library:
+
+| | |
+|---|---|
+| Clips with no voice activity at all | 9% |
+| Candidate segments declined before reaching whisper | 71% |
+| Whisper calls saved by reusing overlapping candidates | 46% |
+| Cost per segment considered | ~0.1 s |
+
+`min_voiced_seconds` does most of the filtering. Transcripts that survive are also checked for
+repetition loops — whisper emitting one phrase several times over — which arrive at confidence
+0.90 and above and so are invisible to `min_confidence`.
+
+`min_confidence` almost never fires: of 102 transcripts, none scored between 0.60 and 0.62.
+Confidence does **not** track correctness. On noisy audio — children, distance from the
+microphone, several people at once — whisper produces fluent nonsense at 0.90+ alongside correct
+speech, and raising the floor discards the good with the bad. A larger model does not fix this:
+`small` declined more segments including correct ones, still produced confident nonsense, and ran
+about ten times slower.
+
+The signal that would separate the two is `no_speech_prob`, and whisper.cpp does not expose it:
+the getter exists in the C API but neither the CLI's JSON output nor the Python bindings surface
+it. Treat transcripts as best-effort hints, not as facts.
 
 ## Title screens
 
