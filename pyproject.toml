@@ -345,6 +345,11 @@ module = [
     "onnxruntime.*",
     "kaldi_native_fbank",
     "kaldi_native_fbank.*",
+    # whisper.cpp bindings (optional, transcribe extra). CI installs only the dev
+    # extra, so the import must be ignorable or the type check fails there while
+    # passing on any machine that has the extra.
+    "pywhispercpp",
+    "pywhispercpp.*",
     # smart-turn's Hub download + log-mel extractor (not in any extra)
     "transformers",
     "transformers.*",
