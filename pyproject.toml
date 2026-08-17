@@ -86,6 +86,14 @@ speech = [
     "onnxruntime>=1.17",
     "kaldi-native-fbank>=1.20",
 ]
+# Speech transcription (whisper.cpp via pywhispercpp)
+# Prebuilt wheels exist for macOS arm64 (with Metal), manylinux x86_64/aarch64,
+# musllinux and Windows -- nothing compiles at install time. Linux wheels are
+# CPU-only. ggml model weights are NOT vendored (a base model is ~148 MB) and are
+# downloaded from HuggingFace on first use.
+transcribe = [
+    "pywhispercpp>=1.5",
+]
 # OIDC authentication (only needed for SSO login)
 auth = [
     "authlib>=1.6.12",
@@ -115,6 +123,7 @@ all = [
     "immich-memories[demucs]",
     "immich-memories[gpu]",
     "immich-memories[speech]",
+    "immich-memories[transcribe]",
 ]
 # All features for macOS (includes Apple Vision framework)
 all-mac = [
@@ -125,6 +134,7 @@ all-mac = [
     "immich-memories[mac]",
     "immich-memories[gpu]",
     "immich-memories[speech]",
+    "immich-memories[transcribe]",
 ]
 dev = [
     "pytest>=9.0.3",
