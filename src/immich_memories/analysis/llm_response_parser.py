@@ -47,8 +47,21 @@ class ContentAnalysis:
 
     @property
     def content_score(self) -> float:
-        """Combined content score for ranking."""
-        return (self.interestingness * 0.7 + self.quality * 0.3) * self.confidence
+        """Combined content score for ranking, always within 0-1.
+
+        Clamped here rather than at the call sites because the two parse paths
+        disagreed: the JSON path bounded its fields, the regex fallback for
+        malformed responses did not, and a model answering on a 0-10 scale
+        produced a score of 5.19 that outranked every other clip in the memory.
+
+        Confidence deliberately does not scale this. It is already enforced as a
+        gate before the score is used, and multiplying by it a second time put a
+        neutral verdict below the pivot that decides whether any bonus applies --
+        making most of the model's output range unreachable.
+        """
+        interestingness = max(0.0, min(1.0, self.interestingness))
+        quality = max(0.0, min(1.0, self.quality))
+        return interestingness * 0.7 + quality * 0.3
 
 
 # ---------------------------------------------------------------------------

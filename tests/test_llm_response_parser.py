@@ -33,17 +33,28 @@ class TestContentAnalysis:
 
     def test_content_score_weighted(self):
         ca = ContentAnalysis(interestingness=0.8, quality=0.6, confidence=0.5)
-        # (0.8 * 0.7 + 0.6 * 0.3) * 0.5 = (0.56 + 0.18) * 0.5 = 0.37
-        assert ca.content_score == pytest.approx(0.37)
+        # 0.8 * 0.7 + 0.6 * 0.3 = 0.56 + 0.18
+        assert ca.content_score == pytest.approx(0.74)
 
-    def test_content_score_zero_confidence(self):
-        ca = ContentAnalysis(interestingness=1.0, quality=1.0, confidence=0.0)
-        assert ca.content_score == pytest.approx(0.0)
+    def test_confidence_does_not_scale_the_score(self):
+        """Confidence is a gate, not a multiplier.
 
-    def test_content_score_defaults(self):
+        Both consumers reject an analysis below `min_confidence` before reading
+        `content_score`, so scaling by it here applied the penalty twice. It also
+        put a neutral verdict (0.5/0.5, confidence 0.8 -> 0.4) *below* the 0.5
+        pivot that decides whether any LLM bonus applies, making most of the
+        model's output range unreachable and the documented "content_score=1.0
+        adds content_weight" unattainable.
+        """
+        confident = ContentAnalysis(interestingness=1.0, quality=1.0, confidence=1.0)
+        unsure = ContentAnalysis(interestingness=1.0, quality=1.0, confidence=0.0)
+
+        assert confident.content_score == pytest.approx(unsure.content_score)
+
+    def test_content_score_defaults_to_the_neutral_pivot(self):
+        """A neutral verdict must land exactly on the pivot, earning no bonus."""
         ca = ContentAnalysis()
-        # (0.5 * 0.7 + 0.5 * 0.3) * 0.5 = 0.5 * 0.5 = 0.25
-        assert ca.content_score == pytest.approx(0.25)
+        assert ca.content_score == pytest.approx(0.5)
 
     def test_custom_fields(self):
         ca = ContentAnalysis(
