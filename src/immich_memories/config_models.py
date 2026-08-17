@@ -825,8 +825,13 @@ class TranscriptionConfig(BaseModel):
         ),
     )
     model: str = Field(
-        default="base",
-        description="ggml model name (tiny/base/small/medium/large) or a path to a model file",
+        default="medium",
+        description=(
+            "ggml model name (tiny/base/small/medium/large) or a path to a model file. "
+            "medium measured markedly better than base on real family audio -- base "
+            "returned '- Dear.' and 'La papa.' where medium returned whole sentences -- "
+            "for about 0.6s per segment. It is a ~1.5 GB first-use download"
+        ),
     )
     min_voiced_seconds: float = Field(
         default=1.0,
@@ -839,16 +844,15 @@ class TranscriptionConfig(BaseModel):
         ),
     )
     min_confidence: float = Field(
-        default=0.6,
+        default=0.0,
         ge=0.0,
         le=1.0,
         description=(
-            "Mean token probability below which a transcript is discarded. Measured on a "
-            "real library this floor almost never fires -- of 102 transcripts none scored "
-            "between 0.60 and 0.62 -- and confidence does not track correctness: fluent "
-            "nonsense arrives at 0.90+ alongside correct speech. Raising it discards good "
-            "transcripts without discarding bad ones. The voice-activity floor and the "
-            "repetition guard do the real filtering"
+            "Mean token probability below which a transcript is discarded. Defaults to "
+            "0.0 because this signal is inverted on real audio: correct transcripts "
+            "measured 0.63-0.71 and fluent nonsense 0.84-0.95, so raising the floor "
+            "removes good output before bad. The voice-activity floor and the repetition "
+            "guard do the filtering"
         ),
     )
     use_gpu: bool = Field(

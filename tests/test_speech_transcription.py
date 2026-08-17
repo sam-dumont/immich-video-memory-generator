@@ -242,3 +242,16 @@ def test_strip_non_speech_markers_removes_music_notes():
 
 def test_strip_non_speech_markers_keeps_speech_around_an_annotation():
     assert strip_non_speech_markers("*rires* Tu fais quoi ?") == "Tu fais quoi ?"
+
+
+def test_defaults_match_the_measured_operating_point():
+    """base produced "- Dear." and "La papa." where medium produced whole sentences.
+
+    The confidence floor defaults to 0.0 because it is inverted on this audio:
+    correct transcripts measured 0.63-0.71, fluent nonsense 0.84-0.95.
+    """
+    config = TranscriptionConfig()
+
+    assert config.model == "medium"
+    assert config.min_confidence == 0.0
+    assert config.min_voiced_seconds == 1.0, "the voice-activity gate still filters"
