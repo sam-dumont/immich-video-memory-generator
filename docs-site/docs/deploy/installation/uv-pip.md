@@ -47,6 +47,9 @@ uv sync --extra audio-ml
 # Speech boundaries (FireRedVAD, ~15 MB, no Torch)
 uv sync --extra speech
 
+# Speech transcription (whisper.cpp — what was said in a clip)
+uv sync --extra transcribe
+
 # GPU-accelerated title rendering (Metal, CUDA, Vulkan)
 uv sync --extra gpu
 
@@ -108,6 +111,9 @@ pip install immich-memories[audio-ml]
 # Speech boundaries (FireRedVAD, no Torch)
 pip install immich-memories[speech]
 
+# Speech transcription (whisper.cpp)
+pip install immich-memories[transcribe]
+
 # GPU-accelerated rendering
 pip install immich-memories[gpu]
 
@@ -126,6 +132,12 @@ The `speech` extra adds onnxruntime and kaldi-native-fbank (~15 MB, no Torch). T
 weights ship inside the package, so nothing is downloaded at runtime. Without the extra, clip
 boundaries fall back to PANNs speech tags, which merge a whole noisy clip into one protected
 range and leave boundary adjustment nowhere to move. Both `all` and `all-mac` include it.
+
+The `transcribe` extra adds pywhispercpp, which ships prebuilt wheels for macOS arm64 (with
+Metal), Linux x86_64 and aarch64, and Windows — nothing compiles at install. Linux wheels are
+CPU-only, which is fine for the three-to-five second slices this sends it. Model weights are
+**not** bundled: they are fetched from HuggingFace on first use (~148 MB for `base`). Without the
+extra, no transcripts are produced and nothing else changes. Both `all` and `all-mac` include it.
 
 ## Optional System Dependencies
 

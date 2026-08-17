@@ -285,6 +285,40 @@ pause or more would merge the regions back together and undo the split.
 
 Set `enabled: false` to turn voice activity off entirely — there is no alternative engine.
 
+## Transcription
+
+```yaml
+transcription:
+  enabled: false                 # Transcribe speech in the top candidate clips
+  languages: []                  # Languages your library contains, e.g. [fr, en]
+  model: base                    # tiny / base / small / medium / large, or a path
+  min_voiced_seconds: 1.0        # Voice activity required before transcribing
+  min_confidence: 0.6            # Mean token probability floor
+  use_gpu: true                  # Metal on macOS; Linux wheels are CPU-only
+```
+
+Requires the `transcribe` extra (`uv sync --extra transcribe`, included in `all` and `all-mac`)
+and `speech.enabled: true` — voice activity is what decides whether a clip is transcribed at all,
+so with speech off there is no gate and nothing is transcribed.
+
+`languages` is the one setting you have to fill in. Leave it empty and nothing is transcribed,
+which is deliberate: automatic detection across all 99 languages put French audio in Japanese and
+in German on both attempts, and a transcript in the wrong language is worse than no transcript.
+One entry forces that language and skips detection entirely. Several restrict detection to those
+languages, so the model chooses between the two or three your library actually contains instead of
+guessing among 99.
+
+Transcripts are stored on the top five candidate segments of each video and **do not affect any
+score**. Nothing reads them yet.
+
+Unlike the FireRedVAD weights, which ship inside the package, whisper models are downloaded from
+HuggingFace on first use (~148 MB for `base`, ~75 MB for `tiny`). In Docker, mount the model
+directory as a volume or every container start downloads it again.
+
+`min_voiced_seconds` and `min_confidence` are starting values, not measured optima. They are the
+whole gate, because whisper.cpp exposes no per-segment `no_speech_prob`: the getter exists in the
+C API but neither the CLI's JSON output nor the Python bindings surface it.
+
 ## Title screens
 
 ```yaml
