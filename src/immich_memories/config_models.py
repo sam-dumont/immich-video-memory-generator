@@ -803,6 +803,57 @@ class SpeechConfig(BaseModel):
     )
 
 
+class TranscriptionConfig(BaseModel):
+    """Settings for speech transcription of candidate clips.
+
+    Transcription is gated on voice activity, so it needs `speech.enabled`. With
+    speech off there are no VAD regions, so there is no gate, so nothing is
+    transcribed.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description="Transcribe speech in the top candidate clips",
+    )
+    languages: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Languages the library actually contains, e.g. ['fr', 'en']. One entry "
+            "forces that language and skips detection; several restrict detection to "
+            "that set. Empty means no transcription -- automatic detection across all "
+            "99 languages put French audio in Japanese and in German, twice out of two"
+        ),
+    )
+    model: str = Field(
+        default="base",
+        description="ggml model name (tiny/base/small/medium/large) or a path to a model file",
+    )
+    min_voiced_seconds: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=10.0,
+        description=(
+            "Voice activity required inside a clip before it is transcribed. Unmeasured "
+            "starting value: VAD already returns no regions at all on roughly half a "
+            "real library, which is where most of the saving comes from"
+        ),
+    )
+    min_confidence: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Mean token probability below which a transcript is discarded. Unmeasured "
+            "starting value. whisper.cpp exposes no per-segment no_speech_prob, so this "
+            "and the voice-activity floor are the whole gate"
+        ),
+    )
+    use_gpu: bool = Field(
+        default=True,
+        description="Use GPU when the installed whisper.cpp build supports it (Metal on macOS)",
+    )
+
+
 class ScoringPriorityConfig(BaseModel):
     """User-facing scoring knobs (Tier 1)."""
 
