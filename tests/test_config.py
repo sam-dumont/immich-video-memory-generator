@@ -191,10 +191,16 @@ class TestClipStyle:
         assert config.max_optimal_duration == 10.0  # rest from balanced
 
     def test_no_clip_style_keeps_field_defaults(self):
-        """Without clip_style, original field defaults are used."""
+        """Without clip_style, original field defaults are used.
+
+        `target_extraction_ratio` is the discriminator rather than
+        `max_optimal_duration`: the field default is now 10.0, which happens to
+        coincide with balanced's, so that assertion could no longer tell the two
+        apart.
+        """
         config = AnalysisConfig()
         assert config.optimal_clip_duration == 5.0
-        assert config.max_optimal_duration == 15.0  # original default, not balanced's 10.0
+        assert config.target_extraction_ratio == 0.15  # field default, not balanced's 0.4
 
     def test_download_workers_defaults_and_is_bounded(self):
         assert AnalysisConfig().download_workers == 3

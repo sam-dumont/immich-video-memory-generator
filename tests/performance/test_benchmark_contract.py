@@ -132,7 +132,7 @@ def test_profile_harness_requires_an_isolated_explicit_output_directory(tmp_path
             "llm_clients_constructed": False,
             "scene_detector": "SceneDetector",
             "silence_threshold_db": -40.0,
-            "min_silence_duration_seconds": 0.2,
+            "min_silence_duration_seconds": 0.3,
             "min_scene_duration_seconds": 1.0,
             "scene_threshold": 27.0,
         },

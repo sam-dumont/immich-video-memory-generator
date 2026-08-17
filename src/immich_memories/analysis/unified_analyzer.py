@@ -80,7 +80,9 @@ class UnifiedSegmentAnalyzer:
         content_analyzer: ContentAnalyzer | None = None,
         min_segment_duration: float = 2.0,
         max_segment_duration: float = 15.0,
-        silence_threshold_db: float = -30.0,
+        # -40.0, not -30.0: this argument was always passed from config, so -40.0
+        # is the threshold that runs. The constructor default was stale.
+        silence_threshold_db: float = -40.0,
         min_silence_duration: float = 0.3,
         cut_point_merge_tolerance: float = 0.5,
         content_weight: float = 0.0,

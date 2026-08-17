@@ -58,8 +58,8 @@ analysis:
   max_segment_duration: 15.0     # Long scenes get subdivided (2-30s)
   min_segment_duration: 2.0      # Clips shorter than this are discarded (0.5-5s)
   optimal_clip_duration: 5.0     # Sweet spot clip duration (2-15s)
-  max_optimal_duration: 15.0     # Max optimal duration for long sources (5-30s)
-  target_extraction_ratio: 0.25  # Target ratio of clip to source (0.25 = use 25%)
+  max_optimal_duration: 10.0     # Max optimal duration for long sources (5-30s)
+  target_extraction_ratio: 0.15  # Target ratio of clip to source (0.15 = use 15%)
 
   # Duplicate detection
   duplicate_hash_threshold: 8    # Perceptual hash threshold (0-64)
@@ -78,7 +78,7 @@ analysis:
   use_unified_analysis: true     # Avoid mid-sentence cuts
   cut_point_merge_tolerance: 0.5 # Window for merging nearby boundaries (0.1-2s)
   silence_threshold_db: -40.0    # Silence detection threshold (-60 to -10 dB)
-  min_silence_duration: 0.2      # Minimum silence gap duration (0.1-1s)
+  min_silence_duration: 0.3      # Minimum silence gap duration (0.1-1s)
 ```
 
 ## Generation defaults

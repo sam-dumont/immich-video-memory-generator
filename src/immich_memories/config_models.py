@@ -135,17 +135,22 @@ class AnalysisConfig(BaseModel):
         le=15.0,
         description="Base sweet spot clip duration in seconds (scales up for longer sources)",
     )
+    # 10.0 and 0.15 are what the pipeline has always actually run: these two
+    # never reached the analyzer, so its constructor defaults were in force while
+    # the documented 15.0/0.25 were never exercised. Wiring the config through
+    # made the documented values live and moved the duration curve's peak on 32
+    # of 92 clips, so the defaults were aligned to the behaviour instead.
     max_optimal_duration: float = Field(
-        default=15.0,
+        default=10.0,
         ge=5.0,
         le=30.0,
         description="Maximum optimal clip duration for long source videos",
     )
     target_extraction_ratio: float = Field(
-        default=0.25,
+        default=0.15,
         ge=0.05,
         le=0.5,
-        description="Target ratio of clip to source duration (0.25 = 25% of source)",
+        description="Target ratio of clip to source duration (0.15 = 15% of source)",
     )
 
     @model_validator(mode="before")
@@ -235,7 +240,10 @@ class AnalysisConfig(BaseModel):
         description="Audio level threshold in dB for silence detection (lower = more sensitive)",
     )
     min_silence_duration: float = Field(
-        default=0.2,
+        # 0.3 for the same reason as the duration fields above: this never
+        # reached the analyzer, so 0.3 is the gap width silence detection has
+        # actually been using.
+        default=0.3,
         ge=0.1,
         le=1.0,
         description="Minimum duration (seconds) of quiet audio to count as a silence gap",
