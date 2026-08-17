@@ -58,7 +58,7 @@ class AudioContentAnalyzer:
         sample_rate: int = 32000,
         window_size: float = 0.5,
         min_confidence: float = 0.3,
-        laughter_confidence: float = 0.2,  # Lower threshold for laughter (subtle sounds)
+        laughter_confidence: float = 0.1,  # Lower threshold for laughter (subtle sounds)
         # Backward compat: accept use_yamnet as alias
         use_yamnet: bool | None = None,
     ):

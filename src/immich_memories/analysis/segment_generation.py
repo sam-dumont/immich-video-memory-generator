@@ -458,6 +458,50 @@ def find_overlapping_events(
     return segment_events
 
 
+# AudioSet spells laughter six ways across its class list. Two different substring
+# tests for it used to exist, disagreeing about Giggle and Chuckle; this is the
+# single definition both the has_laughter flag and the score term now use.
+LAUGHTER_KEYWORDS = ("laugh", "giggle", "chuckle", "chortle")
+
+# Share of a segment that must be laughter to earn the full bonus. Above this the
+# bonus stops growing, so a clip that is nothing but laughter cannot crowd out
+# every other signal.
+MAX_LAUGHTER_BONUS = 0.3
+
+
+def is_laughter(event_class: str) -> bool:
+    """Whether an AudioSet class name denotes laughter."""
+    lower = event_class.lower()
+    return any(keyword in lower for keyword in LAUGHTER_KEYWORDS)
+
+
+def laughter_seconds(segment_events: list[tuple], start_time: float, end_time: float) -> float:
+    """Wall-clock seconds of laughter in a segment, counting overlaps once.
+
+    Event collection is multi-label, so one laugh arrives as several concurrent
+    classes. Summing their durations would count that laugh once per class and
+    let a brief laugh with many labels outrank a long one with few.
+    """
+    spans = sorted(
+        (max(event.start_time, start_time), min(event.end_time, end_time))
+        for event, _duration in segment_events
+        if is_laughter(event.event_class)
+    )
+
+    total = 0.0
+    current_start = current_end = None
+    for span_start, span_end in spans:
+        if current_end is None or span_start > current_end:
+            if current_end is not None:
+                total += current_end - current_start
+            current_start, current_end = span_start, span_end
+        else:
+            current_end = max(current_end, span_end)
+    if current_end is not None:
+        total += current_end - current_start
+    return total
+
+
 def classify_segment_events(
     segment_events: list[tuple],
 ) -> tuple[float, float, bool, bool, bool, set[str]]:
@@ -488,7 +532,7 @@ def classify_segment_events(
             categories.add(cat)
 
         event_lower = event.event_class.lower()
-        if "laugh" in event_lower or "giggle" in event_lower:
+        if is_laughter(event.event_class):
             has_laughter = True
         if "speech" in event_lower or "talk" in event_lower:
             has_speech = True
@@ -532,7 +576,13 @@ def score_segment_audio(
     if segment_duration > 0 and total_duration > 0:
         coverage = total_duration / segment_duration
         quality = total_weighted / total_duration
-        score = quality * min(1.0, coverage)
+        # The duration-weighted mean averages laughter's 1.0 weight against
+        # whatever else co-occurs, so a laughing segment and a talking one can
+        # score identically. Add laughter back proportional to how much of the
+        # segment it occupies -- duration, not event count, because multi-label
+        # collection splits one laugh across several overlapping classes.
+        laughter_share = laughter_seconds(segment_events, start_time, end_time) / segment_duration
+        score = quality * min(1.0, coverage) + min(MAX_LAUGHTER_BONUS, laughter_share)
     else:
         score = 0.5
 

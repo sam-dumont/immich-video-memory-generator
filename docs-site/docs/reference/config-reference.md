@@ -238,7 +238,7 @@ audio_content:
   weight: 0.15
   use_panns: true                # Semantic labels via optional audio-ml extra
   min_confidence: 0.3
-  laughter_confidence: 0.2
+  laughter_confidence: 0.1
   laughter_bonus: 0.1
   protect_laughter: true
   protect_speech: true
