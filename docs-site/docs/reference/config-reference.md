@@ -267,8 +267,13 @@ frames into one span: a noisy clip becomes a single protected range covering eve
 boundary adjustment has nowhere to move, so the clip stays at full duration. Voice activity
 keeps the pauses between utterances, giving cuts somewhere to land.
 
+Speech boundaries do not require `audio_content.enabled`. Voice activity needs only the audio
+track and the bundled model, so cut placement works on a default install; enabling
+`audio_content` adds event *scoring* on top, and the two degrade independently.
+
 Laughter, singing, cheering and applause protection still comes from PANNs (`audio_content`
-above) — the voice detector does not fire on them.
+above) — the voice detector does not fire on them, so that protection needs `audio_content`
+switched on.
 
 `vad_threshold` is below FireRedVAD upstream's 0.4 on purpose: measured across 143 clips, 0.25
 detected speech in 49 more of them with no false positives on clips below -40 dBFS. Raise it if
