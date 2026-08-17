@@ -67,6 +67,34 @@ def voiced_seconds(regions: list[SpeechRegion], start: float, end: float) -> flo
     return sum(max(0.0, min(region.end, end) - max(region.start, start)) for region in regions)
 
 
+# Whisper is trained on 30-second windows and pads anything shorter with silence,
+# which is a documented hallucination trigger. Measured on a real library, feeding it
+# 2-5 second slices produced confident nonsense -- "- Dear.", "La papa." -- where a
+# 30-second window around the same moment produced "Il est mignon. Tu veux lui faire
+# une petite douce ? Pas la tête, pas le ventre."
+TRANSCRIPTION_WINDOW_SECONDS = 30.0
+
+
+def transcription_window(audio_len_seconds: float, start: float, end: float) -> tuple[float, float]:
+    """The span of audio to hand the model for a segment.
+
+    Slides rather than shrinks near the ends of a file, so a clip at 0s still gets a
+    full window. A segment longer than the window is returned unchanged -- windowing
+    it would hand the model less audio than the clip itself contains.
+    """
+    if end - start >= TRANSCRIPTION_WINDOW_SECONDS:
+        return (start, end)
+    if audio_len_seconds <= TRANSCRIPTION_WINDOW_SECONDS:
+        return (0.0, audio_len_seconds)
+
+    centre = (start + end) / 2
+    hi = min(
+        audio_len_seconds,
+        max(centre + TRANSCRIPTION_WINDOW_SECONDS / 2, TRANSCRIPTION_WINDOW_SECONDS),
+    )
+    return (hi - TRANSCRIPTION_WINDOW_SECONDS, hi)
+
+
 class SpeechAnalysisService:
     """Audio-content (PANNs) and VAD speech-boundary analysis.
 
@@ -335,8 +363,11 @@ class SpeechAnalysisService:
         configured, too little voice activity, or a result the post-ASR gate
         rejected. Nothing downstream scores on the outcome either way.
 
-        The transcriber receives a slice of the cached 16 kHz array, never the
-        whole video, so whisper is only ever asked what was said and never when.
+        The transcriber receives a 30-second window of the cached 16 kHz array
+        centred on the segment, so the result is speech heard *around* this moment
+        rather than strictly inside it. Whisper is still never asked *when*
+        anything was said -- no code reads its timestamps -- but it is given the
+        window size it was trained on, which is what makes it accurate.
         """
         if self._transcriber is None or not self.speech_config.enabled:
             return None
@@ -357,7 +388,10 @@ class SpeechAnalysisService:
         if audio is None:
             return None
 
-        segment_audio = audio[int(start * VAD_SAMPLE_RATE) : int(end * VAD_SAMPLE_RATE)]
+        window_start, window_end = transcription_window(len(audio) / VAD_SAMPLE_RATE, start, end)
+        segment_audio = audio[
+            int(window_start * VAD_SAMPLE_RATE) : int(window_end * VAD_SAMPLE_RATE)
+        ]
         if segment_audio.size == 0:
             return None
 

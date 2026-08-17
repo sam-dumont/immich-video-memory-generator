@@ -7,7 +7,12 @@ from unittest.mock import patch
 
 import numpy as np
 
-from immich_memories.analysis.speech_analysis import SpeechAnalysisService, voiced_seconds
+from immich_memories.analysis.speech_analysis import (
+    TRANSCRIPTION_WINDOW_SECONDS,
+    SpeechAnalysisService,
+    transcription_window,
+    voiced_seconds,
+)
 from immich_memories.config_models import AudioContentConfig, SpeechConfig, TranscriptionConfig
 from immich_memories.speech.models import SpeechRegion
 from immich_memories.speech.transcription import Transcript
@@ -97,7 +102,7 @@ def test_thin_voice_activity_never_reaches_the_model():
     assert transcriber.calls == [], "whisper must not be called at all"
 
 
-def test_sufficient_voice_activity_transcribes_the_segment_slice():
+def test_sufficient_voice_activity_produces_a_transcript():
     transcriber = RecordingTranscriber()
     service = _service(transcriber, min_voiced_seconds=1.0)
     audio, detect = _patched(service, [SpeechRegion(start=2.0, end=4.0)])
@@ -107,7 +112,6 @@ def test_sufficient_voice_activity_transcribes_the_segment_slice():
 
     assert result is not None
     assert result.text == "bonjour"
-    assert transcriber.calls == [16000 * 3], "must receive the 3s slice, not the whole video"
 
 
 def test_no_transcriber_means_no_transcription():
@@ -162,3 +166,40 @@ def test_a_failing_model_leaves_the_segment_untranscribed():
 
     with audio, detect:
         assert service.transcribe_segment(Path("/fake.mov"), 0.0, 5.0) is None
+
+
+def test_window_is_centred_on_the_segment():
+    assert transcription_window(120.0, 50.0, 54.0) == (37.0, 67.0)
+
+
+def test_window_slides_rather_than_shrinks_at_the_start():
+    """A segment near the start still gets a full 30s of audio."""
+    assert transcription_window(120.0, 0.0, 4.0) == (0.0, 30.0)
+
+
+def test_window_slides_rather_than_shrinks_at_the_end():
+    assert transcription_window(120.0, 116.0, 120.0) == (90.0, 120.0)
+
+
+def test_short_file_yields_the_whole_file():
+    assert transcription_window(8.0, 1.0, 5.0) == (0.0, 8.0)
+
+
+def test_a_segment_longer_than_the_window_is_passed_whole():
+    """Windowing a 40s segment would hand whisper LESS audio than the clip."""
+    assert transcription_window(120.0, 10.0, 50.0) == (10.0, 50.0)
+    assert TRANSCRIPTION_WINDOW_SECONDS == 30.0
+
+
+def test_the_model_receives_the_window_not_the_segment():
+    """The gate still measures the segment; only the audio handed over widens."""
+    transcriber = RecordingTranscriber()
+    service = _service(transcriber, min_voiced_seconds=1.0)
+    audio, detect = _patched(service, [SpeechRegion(start=2.0, end=4.0)])
+
+    with audio, detect:
+        result = service.transcribe_segment(Path("/fake.mov"), 2.0, 5.0)
+
+    assert result is not None
+    # _patched supplies 10s of audio, so the whole file is the window.
+    assert transcriber.calls == [16000 * 10]
