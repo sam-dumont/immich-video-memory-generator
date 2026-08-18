@@ -1527,6 +1527,16 @@ class TestInitOpencvCascade:
             result = init_opencv_cascade()
         assert result is None
 
+    def test_opencv_without_cascade_api_degrades_to_no_face_detection(self):
+        """OpenCV 5 dropped cv2.CascadeClassifier; that must not fail the whole run (#339)."""
+        from immich_memories.analysis.scoring import init_opencv_cascade
+
+        # WHY: emulate an OpenCV build without the Haar cascade API (spec drops the attribute)
+        with patch("immich_memories.analysis.scoring.cv2", spec=["data"]) as mock_cv2:
+            mock_cv2.data = MagicMock(haarcascades="/opt/cv2/data/")
+            result = init_opencv_cascade()
+        assert result is None
+
 
 class TestComputeFaceScoreOpencvWithDetections:
     """Cover lines 178-196: face area computation when faces ARE detected."""

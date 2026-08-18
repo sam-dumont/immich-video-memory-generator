@@ -102,6 +102,19 @@ def test_install_extra_validator_resolves_declared_feature_sets(extra: str, expe
     assert result.stdout.strip() == expected
 
 
+def test_opencv_stays_below_5_because_the_docker_build_resolves_unlocked() -> None:
+    """The image is built with an unlocked `pip wheel`; OpenCV 5 has no CascadeClassifier (#339)."""
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    opencv = next(
+        Requirement(value)
+        for value in pyproject["project"]["dependencies"]
+        if Requirement(value).name == "opencv-python"
+    )
+
+    assert not opencv.specifier.contains("5.0.0.93"), opencv
+    assert opencv.specifier.contains("4.13.0.92"), opencv
+
+
 def test_gpu_extra_excludes_taichi_only_on_linux_arm64() -> None:
     """The all image must keep GPU support except where Taichi publishes no wheel."""
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())

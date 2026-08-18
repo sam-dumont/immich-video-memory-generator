@@ -96,7 +96,9 @@ def init_opencv_cascade() -> cv2.CascadeClassifier | None:
     try:
         cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         return cv2.CascadeClassifier(cascade_path)
-    except (OSError, RuntimeError) as e:
+    except (OSError, RuntimeError, AttributeError) as e:
+        # WHY: AttributeError is what an OpenCV build without the Haar cascade API
+        # (OpenCV 5) raises; face scoring must degrade, not take the run down.
         logger.warning(f"Could not load face cascade: {e}")
         return None
 
