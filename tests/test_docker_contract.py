@@ -303,3 +303,15 @@ def test_image_default_output_directory_is_the_compose_output_mount() -> None:
     assert image_output_dir in mount_targets, (
         f"{image_output_dir} is not a compose mount target: {sorted(mount_targets)}"
     )
+
+
+def test_image_runs_as_uid_1000() -> None:
+    """Bind mounts (./output, ./config) and the K8s manifests assume the common host UID.
+
+    A system UID from `useradd -r` (~999) cannot write a host directory owned by
+    the first Linux user, and the shipped manifests pin `runAsUser: 1000`.
+    """
+    dockerfile = _logical_instructions(_dockerfile())
+    assert re.search(r"groupadd\s+(-r\s+)?-g\s+1000\s+immich", dockerfile), "group must be GID 1000"
+    assert re.search(r"useradd\s+[^&]*-u\s+1000\s+", dockerfile), "user must be UID 1000"
+    assert "useradd -r" not in dockerfile

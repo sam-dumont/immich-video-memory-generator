@@ -64,8 +64,11 @@ COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir /wheels/*.whl && \
     rm -rf /wheels
 
-# Create non-root user for security
-RUN groupadd -r immich && useradd -r -g immich -d /home/immich -m immich
+# Create non-root user for security. UID/GID 1000 on purpose: it matches the first
+# Linux user on most home servers (bind mounts of ./output and ./config are
+# writable without chown) and the shipped Kubernetes/Terraform manifests
+# (runAsUser: 1000).
+RUN groupadd -g 1000 immich && useradd -u 1000 -g immich -d /home/immich -m immich
 
 # Create config, cache, and NiceGUI state directories with correct ownership
 RUN mkdir -p /home/immich/.immich-memories/cache /app/output /app/.nicegui && \
