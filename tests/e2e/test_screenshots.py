@@ -84,10 +84,21 @@ def _hide_warnings(page: Page) -> None:
     }""")
 
 
+def _hide_tooltips(page: Page) -> None:
+    """Park the pointer and hide Quasar tooltips left over from the last click."""
+    page.mouse.move(0, 0)
+    page.evaluate("""() => {
+        document.querySelectorAll('.q-tooltip, .q-menu').forEach(
+            el => el.style.display = 'none'
+        );
+    }""")
+
+
 def _prep(page: Page) -> None:
     enable_demo_mode(page)
     redact_page(page)
     _hide_warnings(page)
+    _hide_tooltips(page)
 
 
 def _hide_sidebar(page: Page) -> None:
@@ -146,6 +157,20 @@ def _choose_year(page: Page, year: int) -> None:
     the maintainer's live library; a fixed earlier year keeps shots stable.
     """
     _choose_select(page, "Year", str(year))
+
+
+def _fill_labelled_input(page: Page, label: str, value: str) -> None:
+    """Type a value into a NiceGUI input so the bound state (not just the DOM) changes.
+
+    WHY: DOM-only redaction is undone by the next NiceGUI repaint of a bound
+    input; typing a neutral value keeps every later frame consistent.
+    """
+    field = page.get_by_label(label, exact=True)
+    if field.count() and field.first.is_visible():
+        field.first.click(force=True)
+        field.first.fill(value)
+        field.first.press("Tab")
+        page.wait_for_timeout(500)
 
 
 def _set_manual_target_minutes(page: Page, minutes: float) -> None:
@@ -389,12 +414,25 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
         _save(page, d, _name("step2-clip-grid", theme))
 
     # Run the analysis pipeline from the "Generate Memories" panel.
-    page.evaluate("window.scrollTo(0, 0)")
-    page.wait_for_timeout(300)
+    # WHY: reload first — the DOM redaction used for the shots above leaves
+    # Vue-managed nodes that swallow the next click; state is server-side.
+    page.reload(wait_until="domcontentloaded")
+    _wait(page)
+    with contextlib.suppress(PlaywrightTimeoutError):
+        page.wait_for_function(
+            "() => !document.querySelector('[role=\"dialog\"]')", timeout=_CLIP_LOAD_TIMEOUT
+        )
+    page.wait_for_timeout(1000)
     _set_manual_target_minutes(page, 1)
     # WHY: the expansion header carries the same accessible name; target the real <button>
     gen_btn = page.locator("button.q-btn:visible").filter(has_text="Generate Memories").first
-    if gen_btn.is_visible(timeout=3000):
+    # WHY: is_visible() does not wait; the panel re-renders right after the target input
+    try:
+        gen_btn.wait_for(state="visible", timeout=10_000)
+        gen_ready = True
+    except PlaywrightTimeoutError:
+        gen_ready = False
+    if gen_ready:
         gen_btn.click(force=True)
         # WHY: the click navigates to the pipeline page; evaluate() on the old
         # document raises "execution context was destroyed"
@@ -452,6 +490,8 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
         }""")
         page.wait_for_timeout(500)
 
+        _fill_labelled_input(page, "Title", "Summer Adventures")
+        _fill_labelled_input(page, "Subtitle", "June 2025")
         page.evaluate("window.scrollTo(0, 0)")
         page.wait_for_timeout(300)
         _prep(page)
@@ -483,6 +523,7 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
         next4.click(force=True)
         page.wait_for_url("**/step4", timeout=30_000)
         _wait(page)
+        _fill_labelled_input(page, "Output filename", "alice_2025_memories.mp4")
         _prep(page)
         _save(page, d, _name("step4-preview-export", theme))
         _save(page, d, _name("step4-pre-generate", theme))
@@ -499,9 +540,14 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
     # STEP 4: Generation (requires FFmpeg — captures generating + complete)
     # ════════════════════════════════════════════════════════════════
     try:
+        # WHY: the DOM redaction above leaves Vue-managed nodes that swallow the
+        # next click; a reload gives a fresh page (state is server-side).
+        page.reload(wait_until="domcontentloaded")
+        _wait(page)
+        _fill_labelled_input(page, "Output filename", "alice_2025_memories.mp4")
         gen_btn = page.locator("button.q-btn:visible").filter(has_text="Generate Video").first
         if gen_btn.is_visible(timeout=3000):
-            gen_btn.click()
+            gen_btn.click(force=True)
             # Wait for progress to appear
             page.wait_for_timeout(3000)
             _prep(page)
