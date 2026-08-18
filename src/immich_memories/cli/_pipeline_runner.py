@@ -92,8 +92,10 @@ def _resolve_requested_duration(
     """Resolve Auto only after the CLI has discovered usable media."""
     if requested_duration is not None:
         return float(requested_duration)
-    if memory_type != "trip":
-        raise ValueError("Automatic media-aware duration is currently available for trips only")
+    if memory_type not in ("trip", "album"):
+        raise ValueError(
+            "Automatic media-aware duration is currently available for trips and albums only"
+        )
 
     from immich_memories.planning.auto_duration import resolve_trip_auto_duration
 
@@ -109,7 +111,8 @@ def _resolve_requested_duration(
         ending_duration=ending_duration,
     )
     logger.info(
-        "Trip Auto duration: %.0fs from %d active days (editorial %.0fs, capacity %.0fs)",
+        "%s Auto duration: %.0fs from %d active days (editorial %.0fs, capacity %.0fs)",
+        memory_type.capitalize(),
         result.total_seconds,
         result.active_days,
         result.editorial_seconds,

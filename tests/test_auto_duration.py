@@ -147,3 +147,18 @@ def test_trip_date_default_is_an_editorial_estimate_not_35_seconds_per_day() -> 
     date_range = DateRange(start=start, end=start + timedelta(days=11))
 
     assert default_duration_for_type("trip", date_range) == 150.0
+
+
+def test_cli_auto_album_resolves_from_the_albums_media() -> None:
+    """An album's span is unknown up front, so its runtime comes from its media."""
+    clips, photos = _dense_trip(12)
+
+    resolved = _resolve_requested_duration(
+        None,
+        memory_type="album",
+        clips=clips,
+        photos=photos,
+        config=Config(),
+    )
+
+    assert resolved == 150.0

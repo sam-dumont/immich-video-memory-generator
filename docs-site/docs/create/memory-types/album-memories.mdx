@@ -1,0 +1,85 @@
+---
+sidebar_label: "Album Memories"
+---
+
+# Album Memories
+
+Generate a memory from one Immich album instead of a date range. The album *is* the
+selection — nothing outside it is considered, and nothing inside it is filtered out by
+date.
+
+This is the right mode when you have already curated the moments: a birthday, a wedding,
+a single trip, a school year.
+
+## CLI
+
+```bash
+# By name
+immich-memories generate --from-album "Trip 2025"
+
+# By album ID
+immich-memories generate --from-album 59080965-22f0-46a4-be67-135692a9f584
+```
+
+The video is titled after the album, and named `album_<slug>.mp4` in your output
+directory. `--title` still overrides the title if you want something else.
+
+Because the album defines its own contents, `--from-album` cannot be combined with
+`--year`, `--start`/`--end`, `--period`, `--birthday`, `--season`, `--month`,
+`--memory-type` or `--person`. Everything else — `--duration`, `--orientation`,
+`--music`, `--no-music`, `--upload`, `--dry-run` — works as usual.
+
+## What gets used
+
+| Asset in the album | How it is used |
+|---|---|
+| Video | Analyzed and cut like any other clip |
+| Live Photo | Bursts merged into one moving clip (as everywhere else) |
+| Photo | Animated still, subject to the usual photo share of the runtime |
+| A Live Photo's video component | Ignored — it is already part of the merged clip |
+
+With Live Photo merging turned off, a Live Photo is used as a still rather than being
+dropped: you picked these assets by hand, so nothing silently disappears.
+
+## Duration
+
+Without `--duration`, the runtime is planned from the album's own media — the same
+media-aware planner trips use, bounded to 60–300 s and capped by what the album can
+honestly fill. A 10-asset album will not be stretched into a five-minute video.
+
+## Duplicate album names
+
+Immich libraries synced from iOS routinely carry several albums with the same name.
+When a name is ambiguous, the run stops and lists the candidates so you can pick one:
+
+```
+Error: 6 albums are named 'Récentes'. Pass the ID instead:
+  41e64fa3-3a6e-4024-820c-2e23bdc73186  (37318 assets)
+  a381c349-a0c7-43d9-913b-0013f4da8891  (15672 assets)
+  ...
+```
+
+## Very large albums
+
+Smart albums like *Recents* or *Favorites* can hold tens of thousands of assets. Reading
+one costs roughly 9 KB of memory per asset, so album mode reads at most
+`advanced.analysis.max_album_assets` assets **per media type** (default `10000`).
+
+Immich returns newest assets first, so a larger album is truncated to its most recent
+assets, and the run says so:
+
+```
+Album exceeds 10000 assets per type — using the most recent ones
+```
+
+If you hit that line, you probably want a date range rather than an album. Raise the
+limit only if you have the memory for it:
+
+```yaml
+advanced:
+  analysis:
+    max_album_assets: 25000
+```
+
+For reference, on a real library: a 1,052-asset trip album reads in 0.1 s and ~12 MB; a
+37,318-asset *Recents* album reads in 5.6 s and ~110 MB with the default limit.

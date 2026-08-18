@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -29,13 +29,108 @@ if TYPE_CHECKING:
     from immich_memories.config_loader import Config
 
 
+def _resolve_generation_scope(
+    *,
+    from_album: str | None,
+    year: int | None,
+    start: str | None,
+    end: str | None,
+    period: str | None,
+    birthday: str | None,
+    memory_type: str | None,
+    season: str | None,
+    month: int | None,
+    hemisphere: str,
+    years_back: int | None,
+    on_this_day_target: date | None,
+) -> tuple[DateRange, list[DateRange]]:
+    """Resolve what a memory covers: date range(s), or an album that defines its own.
+
+    Returns the display range plus the ranges to search. Album mode returns no ranges
+    at all — its span comes from the album's assets, which need a connection to read —
+    so the returned range is a stand-in that album mode replaces and never displays.
+    """
+    if from_album:
+        now = datetime.now()
+        return DateRange(start=now, end=now), []
+
+    # WHY: birthday="auto" means detect from Immich later — don't pass to parser
+    initial_birthday = None if birthday == "auto" else birthday
+    date_result = resolve_date_range(
+        year,
+        start,
+        end,
+        period,
+        initial_birthday,
+        memory_type=memory_type,
+        season=season,
+        month=month,
+        hemisphere=hemisphere,
+        years_back=years_back,
+        on_this_day_target=on_this_day_target,
+    )
+
+    # Normalize to single DateRange for display (multi-range for on_this_day)
+    if not isinstance(date_result, list):
+        return date_result, [date_result]
+    if not date_result:
+        print_error("No date ranges generated for On This Day")
+        sys.exit(1)
+    return DateRange(start=date_result[-1].start, end=date_result[0].end), date_result
+
+
+def _reject_album_scope_conflicts(
+    *,
+    year: int | None,
+    start: str | None,
+    end: str | None,
+    period: str | None,
+    birthday: str | None,
+    season: str | None,
+    month: int | None,
+    memory_type: str | None,
+    person_names: list[str] | tuple[str, ...],
+) -> None:
+    """Album mode replaces date-range discovery, so date scoping is meaningless."""
+    conflicts = {
+        "--year": year,
+        "--start": start,
+        "--end": end,
+        "--period": period,
+        "--birthday": birthday,
+        "--season": season,
+        "--month": month,
+        "--memory-type": memory_type,
+        "--person": person_names,
+    }
+    used = sorted(flag for flag, value in conflicts.items() if value)
+    if used:
+        raise click.UsageError(f"--from-album selects its own assets; drop {', '.join(used)}")
+
+
+def _add_scope_rows(table: Table, *, album_ref: str | None, date_range: DateRange) -> None:
+    """Describe what the memory is drawn from: an album, or a span of time."""
+    if album_ref:
+        table.add_row("Album", album_ref)
+        return
+    table.add_row("Time Period", date_range.description)
+    table.add_row("Duration", f"{date_range.days} days")
+
+
+def _format_target_duration(duration: float | None) -> str:
+    if duration is None:
+        return "auto"
+    return f"{duration / 60:.1f} min" if duration >= 60 else f"{duration:.0f}s"
+
+
 def _build_params_table(
     *,
     config: Config,
     memory_type: str | None,
     date_range: DateRange,
     person_names: list[str],
-    duration: float,
+    duration: float | None,
+    album_ref: str | None = None,
     orientation: str,
     scale_mode: str | None,
     transition: str,
@@ -59,11 +154,9 @@ def _build_params_table(
 
     if memory_type:
         table.add_row("Memory Type", memory_type)
-    table.add_row("Time Period", date_range.description)
-    table.add_row("Duration", f"{date_range.days} days")
+    _add_scope_rows(table, album_ref=album_ref, date_range=date_range)
     table.add_row("Person", ", ".join(person_names) if person_names else "All people")
-    dur_display = f"{duration / 60:.1f} min" if duration >= 60 else f"{duration:.0f}s"
-    table.add_row("Target Duration", dur_display)
+    table.add_row("Target Duration", _format_target_duration(duration))
     table.add_row("Orientation", orientation)
     table.add_row("Scale Mode", scale_mode or config.defaults.scale_mode)
     table.add_row("Transition", transition)
@@ -146,6 +239,13 @@ def register_generate_commands(main: click.Group) -> None:
         flag_value="auto",
         default=None,
         help="Use birthday-based year (auto-detects from Immich, or specify MM/DD)",
+    )
+    @click.option(
+        "--from-album",
+        "from_album",
+        type=str,
+        default=None,
+        help="Generate from an Immich album (name or ID) instead of a date range",
     )
     @click.option("--person", "-p", type=str, multiple=True, help="Person name (repeatable)")
     @click.option(
@@ -371,6 +471,7 @@ def register_generate_commands(main: click.Group) -> None:
         dry_run: bool,
         upload_to_immich: bool,
         album: str | None,
+        from_album: str | None,
         add_date: bool,
         keep_intermediates: bool,
         privacy_mode: bool,
@@ -447,6 +548,19 @@ def register_generate_commands(main: click.Group) -> None:
             except ValueError as exc:
                 raise click.UsageError(str(exc)) from exc
 
+        if from_album:
+            _reject_album_scope_conflicts(
+                year=year,
+                start=start,
+                end=end,
+                period=period,
+                birthday=birthday,
+                season=season,
+                month=month,
+                memory_type=memory_type,
+                person_names=person_names,
+            )
+
         # Validate memory type constraints
         if memory_type in ("person_spotlight", "multi_person") and not person_names:
             print_error(f"--person is required with --memory-type {memory_type}")
@@ -468,45 +582,27 @@ def register_generate_commands(main: click.Group) -> None:
             print_error("--years-back requires --memory-type on_this_day")
             sys.exit(1)
 
-        # Resolve date range(s)
-        # WHY: birthday="auto" means detect from Immich later — don't pass to parser
-        initial_birthday = None if birthday == "auto" else birthday
-        try:
-            date_result = resolve_date_range(
-                year,
-                start,
-                end,
-                period,
-                initial_birthday,
-                memory_type=memory_type,
-                season=season,
-                month=month,
-                hemisphere=hemisphere,
-                years_back=years_back,
-                on_this_day_target=exact_on_this_day,
-            )
-        except click.UsageError:
-            raise
-
-        # Normalize to single DateRange for display (multi-range for on_this_day)
-        if isinstance(date_result, list):
-            date_ranges = date_result
-            # Use first and last range for display
-            if date_ranges:
-                date_range = DateRange(
-                    start=date_ranges[-1].start,
-                    end=date_ranges[0].end,
-                )
-            else:
-                print_error("No date ranges generated for On This Day")
-                sys.exit(1)
-        else:
-            date_range = date_result
-            date_ranges = [date_result]
+        date_range, date_ranges = _resolve_generation_scope(
+            from_album=from_album,
+            year=year,
+            start=start,
+            end=end,
+            period=period,
+            birthday=birthday,
+            memory_type=memory_type,
+            season=season,
+            month=month,
+            hemisphere=hemisphere,
+            years_back=years_back,
+            on_this_day_target=exact_on_this_day,
+        )
 
         # Determine output path
         if output:
             output_path = normalize_output_path(Path(output), output_selection.container)
+        elif from_album:
+            # A placeholder directory anchor; the album handler names the file.
+            output_path = config.output.output_path / f"album.{output_selection.container}"
         else:
             output_dir = config.output.output_path
             person_slug = (
@@ -545,14 +641,16 @@ def register_generate_commands(main: click.Group) -> None:
             memory_type = "person_spotlight" if len(person_names) == 1 else "multi_person"
 
         # Resolve duration: CLI --duration > memory type default > date-range scaling
-        if duration is None:
+        # Album mode defers to the pipeline, which sizes it from the album's media.
+        if duration is None and not from_album:
             duration = default_duration_for_type(memory_type, date_range)
             if duration is None:
                 duration = duration_from_date_range(date_range)
 
         table = _build_params_table(
             config=config,
-            memory_type=memory_type,
+            memory_type="album" if from_album else memory_type,
+            album_ref=from_album,
             date_range=date_range,
             person_names=person_names,
             duration=duration,
@@ -602,6 +700,46 @@ def register_generate_commands(main: click.Group) -> None:
                     api_version=config.immich.api_version,
                 ) as client:
                     progress.update(task, completed=True)
+                    # Album flow: the album is the pool, so branch before discovery
+                    if from_album:
+                        from immich_memories.cli._album_generation import (
+                            handle_album_generation,
+                        )
+
+                        handle_album_generation(
+                            client=client,
+                            config=config,
+                            progress=progress,
+                            album_ref=from_album,
+                            person_names=[],
+                            output_path=output_path,
+                            use_live_photos=use_live_photos,
+                            use_photos=use_photos,
+                            effective_analysis_depth=effective_analysis_depth,
+                            transition=transition,
+                            music=music,
+                            music_volume=music_volume,
+                            no_music=no_music,
+                            resolution=resolution,
+                            scale_mode=scale_mode,
+                            output_format=output_format,
+                            add_date=add_date,
+                            keep_intermediates=keep_intermediates,
+                            privacy_mode=privacy_mode,
+                            title_override=title_override,
+                            subtitle_override=subtitle_override,
+                            upload_to_immich=upload_to_immich,
+                            album=album,
+                            duration=duration,
+                            orientation=orientation,
+                            source=source,
+                            memory_key=memory_key,
+                            memory_category=memory_category,
+                            automation_attempt_id=automation_attempt_id,
+                            dry_run=dry_run,
+                        )
+                        return
+
                     # Trip detection flow: branch early
                     if memory_type == "trip" and year:
                         handle_trip_generation(
