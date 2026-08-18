@@ -46,7 +46,6 @@ ace_step:
   api_url: "http://localhost:8000"
   model_variant: "acestep-v15-xl-turbo"
   lm_model_size: "4B"
-  bf16: true
   num_versions: 3
 ```
 

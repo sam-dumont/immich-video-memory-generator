@@ -20,7 +20,7 @@ pod it creates does not run cleanly. What to change by hand:
 2. **Probes hit `/`.** Use `/health/live` (liveness) and `/health/ready` (readiness).
 3. **Stale config keys.** `hardware.backend`, `audio.auto_music`, `audio.music_source`,
    `audio.ollama_url`, `audio.ollama_model`, `audio.ducking_*`, `audio.music_volume_db`,
-   `defaults.target_duration_seconds`, `defaults.output_orientation`, `analysis.keyframe_interval`
+   `defaults.target_duration_seconds`, `defaults.output_orientation`, `scoring_priority`, `analysis.keyframe_interval`
    are written into `config.yaml` but ignored by the app. In particular the `ollama_url` /
    `ollama_model` variables configure nothing: to get LLM analysis you need an `llm:` block plus
    `content_analysis.enabled: true` (see [Config Reference](../../reference/config-reference.md#llm-vision-model)).

@@ -22,7 +22,7 @@ advanced:
 
 When reading, both placements work; if a section appears in both places the top-level one wins.
 Everything else (`immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`,
-`trips`, `photos`, `scoring_priority`, `scheduler`) is Tier 1 and stays at the top level.
+`trips`, `photos`, `scheduler`) is Tier 1 and stays at the top level.
 Unknown keys *inside* a section are silently ignored; unknown top-level keys and invalid values
 fail validation at startup.
 :::
@@ -148,9 +148,6 @@ photos:
   enabled: true                  # Include photos in memories
   max_ratio: 0.50               # Max 50% of clips can be photos (0-1)
   duration: 4.0                  # Seconds per photo clip (1-10)
-  enable_collage: true           # Group photo series taken close together
-  series_gap_seconds: 60         # Max gap to group as series (1-300)
-  zoom_factor: 1.15              # Ken Burns zoom amount (1.0-2.0; 1.15 = 15%)
   score_penalty: 0.2             # Photos score 80% of equivalent videos (0-1)
 ```
 
@@ -201,7 +198,6 @@ ace_step:
   model_variant: "turbo"         # Default 2B; use acestep-v15-xl-turbo for the 4B production profile
   lm_model_size: "1.7B"          # Default planner; use 4B with the XL production profile
   use_lm: true
-  bf16: true                     # Set false for Pascal/older GPUs
   num_versions: 3                # 1-5
   hemisphere: "north"
   timeout_seconds: 3600          # 60-18000
@@ -260,6 +256,7 @@ audio_content:
   use_panns: true                # Semantic labels via optional audio-ml extra
   min_confidence: 0.3
   laughter_confidence: 0.1       # Lower threshold for laughter/baby sounds (0.1-0.5)
+  laughter_bonus: 0.1            # Score added to a segment with laughter (0-0.3)
   protect_laughter: true         # Avoid cutting through laughter events
   protect_speech: true           # Avoid cutting through speech regions
 ```
@@ -419,19 +416,6 @@ trips:
   min_duration_days: 2
   max_gap_days: 2
 ```
-
-## Scoring priority
-
-Three knobs that control how clips get ranked. Each can be `low`, `medium`, or `high`.
-
-```yaml
-scoring_priority:
-  people: high                   # Favor clips with recognized faces
-  quality: medium                # Favor stable, well-lit footage
-  moment: medium                 # Favor interesting content (motion, events)
-```
-
-`people: high` means clips with faces get a large score boost. Useful for family compilations. Set it to `low` if you're doing a landscape/travel memory where faces aren't the point.
 
 ## Cache
 

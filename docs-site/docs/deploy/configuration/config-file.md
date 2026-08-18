@@ -52,12 +52,6 @@ content_analysis:
 ace_step:
   enabled: false
   api_url: "http://localhost:8000"
-
-# ── Clip scoring priorities ────────────────────
-scoring_priority:
-  people: high       # low, medium, high: prioritize clips with faces
-  quality: medium    # low, medium, high: prioritize stable, well-shot clips
-  moment: medium     # low, medium, high: prioritize clips with audio events
 ```
 
 That's it. Everything else has sane defaults.
@@ -90,7 +84,7 @@ advanced:
 Tier 2 sections: `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`,
 `audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications`.
 Everything else (`immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`,
-`trips`, `photos`, `scoring_priority`, `scheduler`) stays at the top level.
+`trips`, `photos`, `scheduler`) stays at the top level.
 
 Unknown keys inside a section are silently ignored — a typo does not fail the load, it just does
 nothing. Unknown top-level keys and invalid values (`codec: av1`, `llm.provider: openai`) do fail

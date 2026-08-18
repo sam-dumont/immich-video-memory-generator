@@ -67,7 +67,7 @@ photos:
   score_penalty: 0.2      # Photos score 80% of equivalent videos
 ```
 
-The schema also accepts `collage_duration`, `animation_mode`, `enable_collage`, `series_gap_seconds` and `zoom_factor`, but the current pipeline does not read them (the zoom amount is randomized per photo, and collages are not wired in). Leave them out.
+Older configs may still contain `collage_duration`, `animation_mode`, `enable_collage`, `series_gap_seconds` or `zoom_factor`; those keys were removed in 0.41 and are ignored (the zoom amount is randomized per photo, and collages are not wired in).
 
 ## CLI Flags
 

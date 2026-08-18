@@ -173,9 +173,4 @@ photos:
   enabled: true           # Include photos (default: true)
   max_ratio: 0.50         # Max 50% of clips can be photos
   score_penalty: 0.2      # Photos score 80% of equivalent videos
-
-scoring_priority:
-  people: high      # Favor clips with recognized faces
-  quality: medium   # Favor stable, well-lit footage
-  moment: medium    # Favor interesting content (motion, events)
 ```
