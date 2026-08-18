@@ -200,11 +200,11 @@ class TestCheckAnalysisCache:
                 start=2.0,
                 end=7.0,
                 score=0.94,
-                llm_description="Emile building a sandcastle",
+                llm_description="Noah building a sandcastle",
                 llm_emotion="delighted",
                 llm_setting="beach",
                 llm_activities=["playing"],
-                llm_subjects=["Emile"],
+                llm_subjects=["Noah"],
                 llm_interestingness=0.91,
                 llm_quality=0.88,
                 audio_categories=["laughter", "waves"],
@@ -218,11 +218,11 @@ class TestCheckAnalysisCache:
 
         assert len(result) == 1
         assert (result[0].start_time, result[0].end_time, result[0].score) == (2.0, 7.0, 0.94)
-        assert clip.llm_description == "Emile building a sandcastle"
+        assert clip.llm_description == "Noah building a sandcastle"
         assert clip.llm_emotion == "delighted"
         assert clip.llm_setting == "beach"
         assert clip.llm_activities == ["playing"]
-        assert clip.llm_subjects == ["Emile"]
+        assert clip.llm_subjects == ["Noah"]
         assert clip.llm_interestingness == 0.91
         assert clip.llm_quality == 0.88
         assert clip.audio_categories == ["laughter", "waves"]

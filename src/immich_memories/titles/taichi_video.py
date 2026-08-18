@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from immich_memories.processing.encoding_plan import EncodingPlan, HdrTransfer
+from immich_memories.processing.ffmpeg_runner import drain_stderr_tail
 
 from .encoding import standalone_title_encoding_plan, title_color_filter, title_encoder_args
 from .renderer_taichi import TaichiTitleConfig, TaichiTitleRenderer
@@ -25,19 +26,6 @@ logger = logging.getLogger(__name__)
 
 _FFMPEG_STDERR_TAIL_BYTES = 8192
 _FRAME_QUEUE_POLL_SECONDS = 0.1
-
-
-def _drain_stderr_tail(
-    stream,
-    tail: bytearray,
-    *,
-    limit: int = _FFMPEG_STDERR_TAIL_BYTES,
-) -> None:
-    """Drain a byte stream to EOF while retaining only its newest bytes."""
-    while chunk := stream.read(65536):
-        tail.extend(chunk)
-        if len(tail) > limit:
-            del tail[:-limit]
 
 
 def _pipe_writer(
@@ -265,8 +253,9 @@ def create_title_video_taichi(
     process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     stderr_tail = bytearray()
     stderr_reader = threading.Thread(
-        target=_drain_stderr_tail,
+        target=drain_stderr_tail,
         args=(process.stderr, stderr_tail),
+        kwargs={"limit": _FFMPEG_STDERR_TAIL_BYTES},
         name="title-ffmpeg-stderr",
         daemon=True,
     )

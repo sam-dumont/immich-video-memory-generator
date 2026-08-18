@@ -95,11 +95,11 @@ class TestBuildTitlePrompt:
             start_date="2019-01-01",
             end_date="2025-12-31",
             duration_days=2556,
-            person_names=["Alice", "Emile"],
+            person_names=["Alice", "Noah"],
             clip_descriptions=["playing in park", "birthday party"],
         )
         assert "Alice" in prompt
-        assert "Emile" in prompt
+        assert "Noah" in prompt
         assert "French" in prompt
 
     def test_includes_rules(self):

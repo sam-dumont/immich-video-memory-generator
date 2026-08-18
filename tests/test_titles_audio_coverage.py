@@ -1392,12 +1392,12 @@ class TestBuildOutputFilename:
 
         result = build_output_filename(
             "multi_person",
-            {"person_names": ["Sam", "Emile"]},
+            {"person_names": ["Sam", "Noah"]},
             None,
             date(2025, 3, 1),
             date(2025, 3, 31),
         )
-        assert "sam_emile" in result
+        assert "sam_noah" in result
 
     def test_multi_person_many_names_truncated(self):
         from immich_memories.filename_builder import build_output_filename

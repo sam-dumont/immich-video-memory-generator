@@ -579,3 +579,70 @@ class TestHealthEndpoint:
             result = _get_last_successful_run(Config())
 
         assert result is None
+
+
+class TestHealthDisclosure:
+    """Detailed operational state must not leak to unauthenticated LAN clients."""
+
+    @pytest.mark.parametrize("path", ["/health", "/health/ready"])
+    def test_unauthenticated_health_omits_automation_detail_when_auth_enabled(self, path: str):
+        from immich_memories.ui.app import _ImmichDependency, app
+
+        config = Config(
+            immich={"url": "http://immich.test", "api_key": "health-secret"},
+            auth={"enabled": True, "provider": "basic", "username": "u", "password": "p"},
+        )
+        automation = {
+            "last_attempt": {"memory_key": "person_spotlight:2024:Alice", "outcome": "completed"},
+            "last_completed_auto_run": {
+                "memory_key": "person_spotlight:2024:Alice",
+                "output_path": "/data/output/alice_2024_memories.mp4",
+            },
+            "pending_delivery_count": 0,
+            "oldest_pending_delivery": None,
+            "notification_health": None,
+        }
+        client = TestClient(app, raise_server_exceptions=False)
+        with (
+            # WHY: config and Immich probe are external boundaries; the test is about payload shape.
+            patch("immich_memories.ui.app.get_config", return_value=config),
+            patch(
+                "immich_memories.ui.app._check_immich_dependency",
+                new_callable=AsyncMock,
+                return_value=_ImmichDependency(status="ready", reachable=True),
+            ),
+            patch("immich_memories.ui.app._get_automation_status", return_value=automation),
+            patch("immich_memories.ui.app._get_last_successful_run", return_value="run-123"),
+        ):
+            response = client.get(path)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] in {"ok", "ready"}
+        assert body["version"] == immich_memories.__version__
+        assert "Alice" not in response.text
+        assert "alice_2024_memories" not in response.text
+        assert body["automation"] is None
+        assert body["last_successful_run"] is None
+
+    def test_health_keeps_detail_when_auth_disabled(self):
+        from immich_memories.ui.app import _ImmichDependency, app
+
+        config = Config(immich={"url": "http://immich.test", "api_key": "health-secret"})
+        automation = {"last_attempt": {"memory_key": "year_in_review:2024"}}
+        client = TestClient(app, raise_server_exceptions=False)
+        with (
+            # WHY: same boundaries as above; auth disabled means a trusted LAN deployment.
+            patch("immich_memories.ui.app.get_config", return_value=config),
+            patch(
+                "immich_memories.ui.app._check_immich_dependency",
+                new_callable=AsyncMock,
+                return_value=_ImmichDependency(status="ready", reachable=True),
+            ),
+            patch("immich_memories.ui.app._get_automation_status", return_value=automation),
+            patch("immich_memories.ui.app._get_last_successful_run", return_value="run-123"),
+        ):
+            response = client.get("/health")
+
+        assert response.json()["last_automation_attempt"] == {"memory_key": "year_in_review:2024"}
+        assert response.json()["last_successful_run"] == "run-123"

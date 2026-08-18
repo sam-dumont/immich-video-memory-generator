@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
+    from immich_memories.config_loader import Config
     from immich_memories.config_models_auth import AuthConfig
 
 import httpx
@@ -414,6 +415,52 @@ def _redact_health_value(value: Any, secrets_to_redact: tuple[str, ...]) -> Any:
     return value
 
 
+def _health_detail_allowed(config: Config) -> bool:
+    """Return whether the current request may see automation/run detail."""
+    if not is_auth_enabled(config.auth):
+        return True
+    try:
+        return bool(app.storage.user.get("authenticated"))
+    except RuntimeError:
+        # No request/session context (e.g. called outside an HTTP request).
+        return False
+
+
+def _operational_detail(
+    config: Config, secrets_to_redact: tuple[str, ...]
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Return (automation status, last successful run) for the health payload.
+
+    WHY: /health is public so probes work, but automation detail carries person
+    names (memory keys) and host paths. With auth on, only a logged-in session
+    gets the detail; probes and other LAN devices get status + version.
+    """
+    if not _health_detail_allowed(config):
+        return None, None
+
+    automation: dict[str, Any] | None = None
+    try:
+        automation = _get_automation_status(config)
+    except Exception as exc:
+        logger.warning(
+            "Could not read automation status for readiness (%s)",
+            type(exc).__name__,
+        )
+
+    last_successful_run: str | None = None
+    try:
+        last_successful_run = _get_last_successful_run(config)
+    except Exception as exc:
+        logger.warning(
+            "Could not read run status for readiness (%s)",
+            type(exc).__name__,
+        )
+
+    if automation is not None:
+        automation = _redact_health_value(automation, secrets_to_redact)
+    return automation, last_successful_run
+
+
 async def _build_health_snapshot() -> dict[str, Any]:
     """Build the shared detailed health payload for readiness and compatibility."""
     try:
@@ -449,26 +496,7 @@ async def _build_health_snapshot() -> dict[str, Any]:
     else:
         immich = _ImmichDependency(status="missing_configuration", reachable=False)
 
-    automation: dict[str, Any] | None = None
-    try:
-        automation = _get_automation_status(config)
-    except Exception as exc:
-        logger.warning(
-            "Could not read automation status for readiness (%s)",
-            type(exc).__name__,
-        )
-
-    last_successful_run: str | None = None
-    try:
-        last_successful_run = _get_last_successful_run(config)
-    except Exception as exc:
-        logger.warning(
-            "Could not read run status for readiness (%s)",
-            type(exc).__name__,
-        )
-
-    if automation is not None:
-        automation = _redact_health_value(automation, secrets_to_redact)
+    automation, last_successful_run = _operational_detail(config, secrets_to_redact)
 
     ready = configured and immich.status == "ready"
     api_version_policy = getattr(config.immich.api_version, "value", config.immich.api_version)

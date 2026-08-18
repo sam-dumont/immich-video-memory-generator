@@ -179,12 +179,12 @@ def test_stderr_is_drained_while_frame_writer_is_active(
 
 
 def test_stderr_tail_is_bounded_and_keeps_latest_bytes() -> None:
-    from immich_memories.titles.taichi_video import _drain_stderr_tail
+    from immich_memories.processing.ffmpeg_runner import drain_stderr_tail
 
     stream = _FakeStderr(b"oldest-", b"middle-", b"latest")
     tail = bytearray()
 
-    _drain_stderr_tail(stream, tail, limit=13)
+    drain_stderr_tail(stream, tail, limit=13)
 
     assert bytes(tail) == b"middle-latest"
 

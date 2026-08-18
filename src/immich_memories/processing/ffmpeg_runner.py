@@ -20,7 +20,30 @@ __all__ = [
     "_parse_ffmpeg_time",
     "_parse_ffmpeg_progress",
     "_run_ffmpeg_with_progress",
+    "drain_stderr_tail",
 ]
+
+FFMPEG_STDERR_TAIL_BYTES = 64 * 1024
+
+
+def drain_stderr_tail(
+    stream: IO[bytes],
+    tail: bytearray,
+    *,
+    limit: int = FFMPEG_STDERR_TAIL_BYTES,
+) -> None:
+    """Read a pipe to EOF, keeping only its newest bytes.
+
+    Run this on a thread for any FFmpeg process whose stdin is fed frame by
+    frame: FFmpeg writes stats/warnings to stderr from its transcode loop and
+    stops reading stdin once the 64 KB OS pipe is full, which deadlocks the
+    frame writer. Draining continuously keeps the pipe empty and still leaves
+    the error tail available for diagnostics.
+    """
+    while chunk := stream.read(65536):
+        tail.extend(chunk)
+        if len(tail) > limit:
+            del tail[:-limit]
 
 
 @dataclass

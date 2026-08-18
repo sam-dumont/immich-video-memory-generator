@@ -32,8 +32,8 @@ def build_output_filename(
     """Build a human-readable output filename from memory context.
 
     Uses memory type, person names, and date range to produce filenames like:
-    - sam_emile_march_2026_memories.mp4 (multi-person, single month)
-    - emile_summer_2025_memories.mp4 (season preset)
+    - sam_noah_march_2026_memories.mp4 (multi-person, single month)
+    - noah_summer_2025_memories.mp4 (season preset)
     - sam_2025_memories.mp4 (year in review)
 
     Args:

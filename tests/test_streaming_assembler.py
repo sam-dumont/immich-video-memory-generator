@@ -1463,3 +1463,48 @@ class TestFramePreviewCallback:
             fps=10,
         )
         assert output.exists()
+
+
+def test_streaming_encoder_survives_noisy_ffmpeg_stderr(tmp_path: Path) -> None:
+    """A chatty encoder must not deadlock the frame writer.
+
+    FFmpeg <= 6.1 prints -stats/warnings from the transcode thread; once the 64 KB
+    stderr pipe is full it stops reading stdin and the encode hangs forever.
+    """
+    import sys
+    import threading
+
+    from immich_memories.processing.streaming_assembler import StreamingEncoder
+
+    fake_ffmpeg = tmp_path / "noisy_ffmpeg.py"
+    fake_ffmpeg.write_text(
+        "import sys\n"
+        "sys.stderr.write('x' * 200_000)\n"  # > pipe capacity, before touching stdin
+        "sys.stderr.flush()\n"
+        "data = sys.stdin.buffer.read()\n"
+        "open(sys.argv[-1], 'wb').write(b'fake' + len(data).to_bytes(4, 'big'))\n"
+    )
+    output = tmp_path / "out.mp4"
+    encoder = StreamingEncoder(
+        output,
+        width=64,
+        height=64,
+        fps=1,
+        encoding_plan=_h264_plan(),
+        ffmpeg_command=(sys.executable, str(fake_ffmpeg)),
+    )
+    frame = np.zeros((64, 64, 3), dtype=np.uint8)  # 12 KB per frame
+
+    def run() -> None:
+        encoder.start()
+        for _ in range(20):  # 240 KB > 64 KB stdin pipe
+            encoder.write_frame(frame)
+        encoder.finish()
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(timeout=20)
+    if worker.is_alive() and encoder._proc is not None:
+        encoder._proc.kill()
+    assert not worker.is_alive(), "frame writer deadlocked on an undrained stderr pipe"
+    assert output.read_bytes().startswith(b"fake")

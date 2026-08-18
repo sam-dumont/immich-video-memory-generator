@@ -271,7 +271,7 @@ class TestPipelinePixels:
 class TestPipelineWithTitles:
     """Verify title screen rendering in the full pipeline.
 
-    Title screens have been the source of most regressions (Emile crash,
+    Title screens have been the source of most regressions (Noah crash,
     divider count changes, pink HDR). These tests enable titles and verify
     the output includes them.
     """

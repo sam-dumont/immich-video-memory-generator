@@ -1108,7 +1108,7 @@ class TestPipelineRunner:
             clip_segments={clip.asset.id: (0.0, 8.0) for clip in clips},
             errors=[],
         )
-        output_path = tmp_path / "emile-preview.mp4"
+        output_path = tmp_path / "noah-preview.mp4"
 
         with (
             patch("immich_memories.generate.assets_to_clips", return_value=clips),
@@ -1128,7 +1128,7 @@ class TestPipelineRunner:
                 no_music=True,
                 output_path=output_path,
                 memory_type="person_spotlight",
-                person_names=["Emile"],
+                person_names=["Noah"],
                 date_range=DateRange(
                     start=datetime(2026, 1, 1), end=datetime(2026, 12, 31, 23, 59, 59)
                 ),

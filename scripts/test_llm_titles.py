@@ -170,7 +170,7 @@ async def test_trip(trip_name: str, assets, bases: list[OvernightBase]) -> None:
 async def test_person_memory() -> None:
     """Test a person memory title."""
     print(f"\n{'=' * 70}")
-    print("  PERSON MEMORY: Alice & Emile")
+    print("  PERSON MEMORY: Alice & Noah")
     print(f"{'=' * 70}")
 
     for temp in TEMPERATURES:
@@ -181,7 +181,7 @@ async def test_person_memory() -> None:
                 start_date="2019-01-01",
                 end_date="2025-12-31",
                 duration_days=2556,
-                person_names=["Alice", "Emile"],
+                person_names=["Alice", "Noah"],
             )
             raw = await query_llm(prompt, LLM_CFG, temperature=temp)
             result = parse_title_response(raw)

@@ -284,3 +284,22 @@ def test_pull_request_images_receive_required_build_arguments() -> None:
         assert "INSTALL_EXTRAS=all" in build_args
         assert "VCS_REF=${{ github.sha }}" in build_args
         assert "SOURCE_URL=https://github.com/${{ github.repository }}" in build_args
+
+
+def test_image_default_output_directory_is_the_compose_output_mount() -> None:
+    """Videos generated in the container must land on the volume the quickstart mounts.
+
+    Without this, the default `~/Videos/Memories` resolves inside the container's
+    home and `docker compose pull && up -d` silently discards every generated video.
+    """
+    dockerfile = _logical_instructions(_dockerfile())
+    match = re.search(r"ENV IMMICH_MEMORIES_OUTPUT__DIRECTORY=(\S+)", dockerfile)
+    assert match, "Dockerfile must pin the default output directory to a mounted path"
+    image_output_dir = match.group(1)
+
+    compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())
+    volumes = compose["services"]["immich-memories"]["volumes"]
+    mount_targets = {str(v).split(":")[1] for v in volumes if ":" in str(v)}
+    assert image_output_dir in mount_targets, (
+        f"{image_output_dir} is not a compose mount target: {sorted(mount_targets)}"
+    )

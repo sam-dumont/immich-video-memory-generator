@@ -60,14 +60,14 @@ class TestBuildOutputFilename:
         result = build_output_filename(
             memory_type="multi_person",
             preset_params={
-                "person_names": ["sam", "emile"],
+                "person_names": ["sam", "noah"],
                 "year": 2026,
             },
             person_name=None,
             date_start=date(2026, 3, 1),
             date_end=date(2026, 3, 31),
         )
-        assert result == "sam_emile_march_2026_memories.mp4"
+        assert result == "sam_noah_march_2026_memories.mp4"
 
     def test_multi_person_with_many_names_truncates(self):
         """More than 3 person names: truncate and add 'and_others'."""
@@ -110,22 +110,22 @@ class TestBuildOutputFilename:
         result = build_output_filename(
             memory_type="season",
             preset_params={"year": 2025, "season": "summer"},
-            person_name="emile",
+            person_name="noah",
             date_start=date(2025, 6, 1),
             date_end=date(2025, 8, 31),
         )
-        assert result == "emile_summer_2025_memories.mp4"
+        assert result == "noah_summer_2025_memories.mp4"
 
     def test_person_spotlight(self):
         """Person Spotlight: use person name from preset params."""
         result = build_output_filename(
             memory_type="person_spotlight",
-            preset_params={"person_names": ["emile"], "year": 2025},
-            person_name="emile",
+            preset_params={"person_names": ["noah"], "year": 2025},
+            person_name="noah",
             date_start=date(2025, 1, 1),
             date_end=date(2025, 12, 31),
         )
-        assert result == "emile_2025_memories.mp4"
+        assert result == "noah_2025_memories.mp4"
 
     def test_monthly_highlights(self):
         """Monthly Highlights: person + month + year."""

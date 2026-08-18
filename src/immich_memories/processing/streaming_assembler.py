@@ -6,7 +6,8 @@ import contextlib
 import logging
 import shutil
 import subprocess
-from collections.abc import Callable, Iterator
+import threading
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -21,6 +22,7 @@ from immich_memories.processing.encoding_plan import (
     software_fallback_plan,
     uses_hardware_encoder,
 )
+from immich_memories.processing.ffmpeg_runner import drain_stderr_tail
 from immich_memories.processing.hdr_utilities import (
     _detect_color_primaries,
     _detect_hdr_type,
@@ -278,6 +280,7 @@ class StreamingEncoder:
         height: int,
         fps: int,
         encoding_plan: EncodingPlan | None = None,
+        ffmpeg_command: Sequence[str] = ("ffmpeg",),
     ) -> None:
         self._output_path = output_path
         self._width = width
@@ -288,7 +291,10 @@ class StreamingEncoder:
         # WHY: Frames arrive as rgb24 (sRGB). For HDR output, zscale converts
         # sRGB → HLG/PQ on the encoder side. Same pattern as photo pipeline.
         self._target_transfer = self._encoding_plan.target_transfer
+        self._ffmpeg_command = tuple(ffmpeg_command)
         self._proc: subprocess.Popen[bytes] | None = None
+        self._stderr_tail = bytearray()
+        self._stderr_reader: threading.Thread | None = None
 
     def start(self) -> None:
         """Start the FFmpeg encode process."""
@@ -328,8 +334,9 @@ class StreamingEncoder:
         input_pix_fmt = "yuv420p10le" if self._encoding_plan.hdr else "rgb24"
 
         cmd = [
-            "ffmpeg",
+            *self._ffmpeg_command,
             "-y",
+            "-nostats",
             "-f",
             "rawvideo",
             "-pix_fmt",
@@ -353,6 +360,17 @@ class StreamingEncoder:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
+        # WHY: FFmpeg <= 6.1 prints stats/warnings from the transcode thread and
+        # stops reading stdin once the 64 KB stderr pipe is full — draining
+        # only in finish() deadlocks any encode longer than a few minutes.
+        self._stderr_tail = bytearray()
+        self._stderr_reader = threading.Thread(
+            target=drain_stderr_tail,
+            args=(self._proc.stderr, self._stderr_tail),
+            name="streaming-encoder-stderr",
+            daemon=True,
+        )
+        self._stderr_reader.start()
 
     def write_frame(self, frame: np.ndarray) -> None:
         """Write one frame to the encoder. Uses memoryview for zero-copy."""
@@ -371,14 +389,11 @@ class StreamingEncoder:
         assert self._proc.stdin is not None  # noqa: S101
         with contextlib.suppress(BrokenPipeError):
             self._proc.stdin.close()
-        # WHY: Popen.wait() with stderr=PIPE deadlocks when FFmpeg fills the
-        # 64KB OS pipe buffer with progress/warnings. Drain stderr first —
-        # read() blocks until FFmpeg exits and closes its end of the pipe,
-        # which is fine since stdin is already closed (FFmpeg will finish).
-        stderr_bytes = self._proc.stderr.read() if self._proc.stderr else b""
         self._proc.wait(timeout=3600)
+        if self._stderr_reader is not None:
+            self._stderr_reader.join(timeout=30)
         if self._proc.returncode != 0:
-            stderr = stderr_bytes.decode(errors="replace")
+            stderr = bytes(self._stderr_tail).decode(errors="replace")
             raise RuntimeError(
                 f"Streaming encode failed (exit {self._proc.returncode}): {stderr[-500:]}"
             )

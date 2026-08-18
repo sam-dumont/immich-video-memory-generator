@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import nicegui
 import pytest
 
 from immich_memories.config_loader import Config
@@ -36,8 +37,9 @@ class TestBypassPaths:
             "/logout",
             "/auth/callback",
             "/auth/authorize",
-            "/_nicegui/auto/test",
-            "/_nicegui/static/foo.js",
+            f"/_nicegui/{nicegui.__version__}/static/foo.js",
+            f"/_nicegui/{nicegui.__version__}/components/abc.js",
+            "/static/fonts/Montserrat.woff2",
         ],
     )
     def test_bypass_paths_return_true(self, path: str):
@@ -45,7 +47,17 @@ class TestBypassPaths:
 
     @pytest.mark.parametrize(
         "path",
-        ["/", "/step2", "/protected", "/settings/config", "/api/something"],
+        [
+            "/",
+            "/step2",
+            "/protected",
+            "/settings/config",
+            "/api/something",
+            # WHY: NiceGUI serves every locally previewed video/audio file under
+            # /_nicegui/auto/{media,static}; those must stay behind the login.
+            "/_nicegui/auto/media/0123456789abcdef/family_2025_memories.mp4",
+            "/_nicegui/auto/static/0123456789abcdef/track.wav",
+        ],
     )
     def test_protected_paths_return_false(self, path: str):
         assert is_bypass_path(path) is False

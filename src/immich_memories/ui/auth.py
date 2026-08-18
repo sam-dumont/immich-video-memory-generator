@@ -13,6 +13,8 @@ import threading
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
 
+import nicegui
+
 from immich_memories.config_models_auth import AuthConfig
 
 logger = logging.getLogger(__name__)
@@ -64,7 +66,10 @@ def reset_rate_limiter() -> None:
         _failed_attempts.clear()
 
 
-_BYPASS_PREFIXES = ("/_nicegui/",)
+# WHY: only NiceGUI's versioned framework assets (JS/CSS the login page needs) and
+# the app's own /static (fonts) are public. "/_nicegui/auto/{media,static}/..." serves
+# every locally previewed video/audio file and must stay behind the login.
+_BYPASS_PREFIXES = (f"/_nicegui/{nicegui.__version__}/", "/static/")
 _HEALTH_BYPASS_EXACT = frozenset({"/health", "/health/live", "/health/ready"})
 _BYPASS_EXACT = (
     frozenset(

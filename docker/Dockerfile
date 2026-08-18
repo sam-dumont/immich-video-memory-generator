@@ -74,6 +74,9 @@ RUN mkdir -p /home/immich/.immich-memories/cache /app/output /app/.nicegui && \
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV HOME=/home/immich
+# Generated videos must land on the volume the compose quickstart mounts;
+# the app default (~/Videos/Memories) would resolve inside the container.
+ENV IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output
 
 # Switch to non-root user
 USER immich
