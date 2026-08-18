@@ -206,16 +206,24 @@ class QuotaOutcome:
 def apply_subject_quotas(
     candidates: list[SubjectCandidate],
     *,
-    max_animal: int,
-    max_object: int,
+    animal_ratio: float,
+    object_ratio: float,
+    expected_clips: int,
 ) -> QuotaOutcome:
-    """Keep every person, ration animals and objects, make scenery earn its place.
+    """Keep every person, ration animals and objects, make the rest earn a place.
 
-    Scenery must beat the median people-clip score. That bar is derived rather
-    than configured because scores are not comparable across pools -- photos and
-    video clips sit on different scales, and one fixed threshold would silently
-    exclude one of them wholesale.
+    Scenery and objects must beat the median people-clip score. That bar is
+    derived rather than configured because scores are not comparable across
+    pools -- photos and video clips sit on different scales, and one fixed
+    threshold would silently exclude one of them wholesale.
+
+    Objects are rationed rather than banned: a new car is a memory and a
+    lawnmower is not, and the only thing separating them is whether the clip
+    is actually any good. Holding objects to the same bar as scenery, in a
+    quota of about one per short video, is what tells them apart.
     """
+    max_animal = quota_for(animal_ratio, expected_clips)
+    max_object = quota_for(object_ratio, expected_clips)
     by_category: dict[SubjectCategory, list[SubjectCandidate]] = {}
     for candidate in candidates:
         by_category.setdefault(candidate.category, []).append(candidate)
@@ -257,10 +265,24 @@ def _survivors(
     if category is SubjectCategory.ANIMAL:
         return _top(members, max_animal)
     if category is SubjectCategory.OBJECT:
-        return _top(members, max_object)
+        return _top([c for c in members if c.score >= bar], max_object)
     if category is SubjectCategory.LANDSCAPE:
         return [c for c in members if c.score >= bar]
     return members
+
+
+def quota_for(ratio: float, expected_clips: int) -> int:
+    """How many clips of a rationed category fit in a video of this length.
+
+    A ten-minute video should not get the same allowance as a sixty-second one,
+    so quotas are a share of the finished video rather than a fixed count. Any
+    non-zero ratio yields at least one slot: 5% of a fifteen-clip video rounds
+    below one, and the point of allowing objects at all is that a new car is a
+    memory. A ratio of zero is the lever for wanting none.
+    """
+    if ratio <= 0:
+        return 0
+    return max(1, round(ratio * expected_clips))
 
 
 def _top(members: list[SubjectCandidate], limit: int) -> list[SubjectCandidate]:
@@ -283,12 +305,20 @@ def _quality_bar(
 def filter_candidates_by_subject(
     candidates: list,
     *,
-    max_animal: int,
-    max_object: int,
+    animal_ratio: float,
+    object_ratio: float,
+    content_budget_seconds: float,
 ) -> list:
-    """Apply the subject policy to a pool of ClipWithSegment candidates."""
+    """Apply the subject policy to a pool of ClipWithSegment candidates.
+
+    Quotas are a share of the finished video, so the expected clip count is
+    estimated from the runtime budget and the typical candidate length rather
+    than from the size of the pool, which is many times larger.
+    """
     if not candidates:
         return candidates
+
+    expected_clips = _expected_clip_count(candidates, content_budget_seconds)
 
     described = [
         SubjectCandidate(
@@ -304,7 +334,12 @@ def filter_candidates_by_subject(
         for candidate in candidates
     ]
 
-    outcome = apply_subject_quotas(described, max_animal=max_animal, max_object=max_object)
+    outcome = apply_subject_quotas(
+        described,
+        animal_ratio=animal_ratio,
+        object_ratio=object_ratio,
+        expected_clips=expected_clips,
+    )
     if outcome.bypassed:
         logger.info(
             "Subject policy: nothing would survive — keeping all %d candidates",
@@ -324,3 +359,17 @@ def filter_candidates_by_subject(
 
     kept = set(outcome.kept_keys)
     return [c for c in candidates if c.clip.asset.id in kept]
+
+
+def _expected_clip_count(candidates: list, content_budget_seconds: float) -> int:
+    """Roughly how many clips the finished video will hold.
+
+    The candidate pool is many times larger than the final selection, so a share
+    of the pool would let far too many animals through. The runtime budget
+    divided by a typical candidate length is the closest estimate available
+    before selection has run.
+    """
+    lengths = [length for c in candidates if (length := (c.end_time - c.start_time)) > 0]
+    if not lengths or content_budget_seconds <= 0:
+        return len(candidates)
+    return max(1, round(content_budget_seconds / statistics.median(lengths)))

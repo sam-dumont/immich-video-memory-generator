@@ -396,7 +396,11 @@ def run_pipeline_and_generate(
         thumbnail_cache=thumbnail_cache,
     )
 
-    all_candidates = _apply_subject_policy(all_candidates, config=config)
+    all_candidates = _apply_subject_policy(
+        all_candidates,
+        config=config,
+        content_budget_seconds=timeline_plan.content_budget,
+    )
 
     # Phase 4: Unified selection (videos + photos compete together)
     phases.emit(OperationalPhase.SELECTION, 0, len(all_candidates), "Selecting clips")
@@ -660,8 +664,10 @@ def _merge_photos_into_pool(
     return analyzed_videos + photo_candidates
 
 
-def _apply_subject_policy(candidates: list, *, config: Config) -> list:
-    """Prefer clips of people, ration animals, drop object-only clips."""
+def _apply_subject_policy(
+    candidates: list, *, config: Config, content_budget_seconds: float
+) -> list:
+    """Prefer clips of people, and ration animals and objects by share of runtime."""
     if not config.analysis.subject_policy_enabled:
         return candidates
 
@@ -669,8 +675,9 @@ def _apply_subject_policy(candidates: list, *, config: Config) -> list:
 
     return filter_candidates_by_subject(
         candidates,
-        max_animal=config.analysis.max_animal_clips,
-        max_object=config.analysis.max_object_clips,
+        animal_ratio=config.analysis.max_animal_ratio,
+        object_ratio=config.analysis.max_object_ratio,
+        content_budget_seconds=content_budget_seconds,
     )
 
 

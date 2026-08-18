@@ -99,14 +99,24 @@ The quotas:
 | category | treatment |
 |---|---|
 | people | always eligible |
-| animal | best `max_animal_clips` only (default 2) |
-| object | best `max_object_clips` only (default 0 — excluded) |
+| animal | up to `max_animal_ratio` of the video (default 10%) |
+| object | up to `max_object_ratio` (default 5%) **and** must beat the median people clip |
 | landscape | must beat the median people-clip score |
 | unknown | always kept |
 
-Scenery is measured against the median people clip rather than a fixed number,
-because photo scores and video scores sit on different scales and one threshold
-would silently exclude a whole pool.
+Quotas are a **share of the finished video**, not a fixed count, so a ten-minute
+memory gets a proportionally larger allowance than a sixty-second one. The expected
+clip count is estimated from the runtime budget and the typical candidate length,
+because the candidate pool is many times larger than the final selection. Any
+non-zero ratio yields at least one slot; a ratio of `0` means none at all.
+
+Objects are rationed rather than banned. Buying a new car is a memory and a
+lawnmower is not, and the thing separating them is whether the clip is any good — so
+objects must clear the same bar as scenery *and* fit the quota.
+
+That bar is the median people-clip score rather than a fixed number, because photo
+scores and video scores sit on different scales and one threshold would silently
+exclude a whole pool.
 
 A clip nobody has described yet is **kept**. On a real library 35–46% of the pool
 has no cached description, and treating that silence as "probably an object" would

@@ -69,8 +69,9 @@ def test_a_high_scoring_object_still_loses_to_a_lower_scoring_person() -> None:
             _cand("lawnmower", SubjectCategory.OBJECT, 0.91),
             _cand("kid", SubjectCategory.PEOPLE, 0.42),
         ],
-        max_animal=2,
-        max_object=0,
+        animal_ratio=0.10,
+        object_ratio=0.0,
+        expected_clips=20,
     )
 
     assert outcome.kept_keys == ["kid"]
@@ -88,8 +89,9 @@ def test_animals_are_rationed_to_the_best_few() -> None:
             _cand("dog-mid", SubjectCategory.ANIMAL, 0.7),
             _cand("dog-worst", SubjectCategory.ANIMAL, 0.3),
         ],
-        max_animal=2,
-        max_object=0,
+        animal_ratio=0.10,
+        object_ratio=0.0,
+        expected_clips=20,
     )
 
     assert outcome.kept_keys == ["person", "dog-best", "dog-mid"]
@@ -107,8 +109,9 @@ def test_scenery_has_to_beat_the_median_person_clip() -> None:
             _cand("stunning-view", SubjectCategory.LANDSCAPE, 0.8),
             _cand("dull-view", SubjectCategory.LANDSCAPE, 0.2),
         ],
-        max_animal=2,
-        max_object=0,
+        animal_ratio=0.10,
+        object_ratio=0.0,
+        expected_clips=20,
     )
 
     assert outcome.kept_keys == ["p1", "p2", "stunning-view"]
@@ -123,8 +126,9 @@ def test_a_pool_with_no_people_still_produces_a_video() -> None:
             _cand("thing-a", SubjectCategory.OBJECT, 0.7),
             _cand("thing-b", SubjectCategory.OBJECT, 0.3),
         ],
-        max_animal=2,
-        max_object=0,
+        animal_ratio=0.10,
+        object_ratio=0.0,
+        expected_clips=20,
     )
 
     assert outcome.kept_keys, "policy emptied the pool"
@@ -141,8 +145,9 @@ def test_a_clip_we_know_nothing_about_is_kept() -> None:
             _cand("p2", SubjectCategory.PEOPLE, 0.8),
             _cand("unanalysed", SubjectCategory.UNKNOWN, 0.1),
         ],
-        max_animal=2,
-        max_object=0,
+        animal_ratio=0.10,
+        object_ratio=0.0,
+        expected_clips=20,
     )
 
     assert "unanalysed" in outcome.kept_keys
@@ -194,3 +199,46 @@ def test_an_unrecognised_category_falls_back_to_the_description() -> None:
         )
         is SubjectCategory.PEOPLE
     )
+
+
+def test_the_animal_quota_scales_with_the_length_of_the_video() -> None:
+    """A 10-minute video should not get the same two-animal allowance as a 60s one."""
+    from immich_memories.analysis.subject_policy import quota_for
+
+    assert quota_for(0.10, expected_clips=15) == 2  # ~60s
+    assert quota_for(0.10, expected_clips=150) == 15  # ~10min
+
+
+def test_a_zero_ratio_means_none_at_all() -> None:
+    """The lever for someone who never wants an animal in a memory."""
+    from immich_memories.analysis.subject_policy import quota_for
+
+    assert quota_for(0.0, expected_clips=150) == 0
+
+
+def test_a_tiny_ratio_still_allows_one() -> None:
+    """5% of a 15-clip video rounds to under one; the new car should still fit."""
+    from immich_memories.analysis.subject_policy import quota_for
+
+    assert quota_for(0.05, expected_clips=15) == 1
+
+
+def test_a_genuinely_good_object_gets_in_but_a_dull_one_does_not() -> None:
+    """Buying a new car is a memory. A lawnmower is not. Both are objects, so
+    the slot exists but has to be earned against the people clips."""
+    from immich_memories.analysis.subject_policy import apply_subject_quotas
+
+    outcome = apply_subject_quotas(
+        [
+            _cand("p1", SubjectCategory.PEOPLE, 0.40),
+            _cand("p2", SubjectCategory.PEOPLE, 0.60),
+            _cand("new-car", SubjectCategory.OBJECT, 0.85),
+            _cand("lawnmower", SubjectCategory.OBJECT, 0.45),
+        ],
+        animal_ratio=0.10,
+        object_ratio=0.05,
+        expected_clips=15,
+    )
+
+    assert "new-car" in outcome.kept_keys
+    assert "lawnmower" not in outcome.kept_keys

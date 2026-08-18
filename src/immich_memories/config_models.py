@@ -237,15 +237,23 @@ class AnalysisConfig(BaseModel):
         default=True,
         description="Prefer clips of people; ration animals and exclude object-only clips",
     )
-    max_animal_clips: int = Field(
-        default=2,
-        ge=0,
-        description="Maximum animal-only clips per video (0 disables them entirely)",
+    max_animal_ratio: float = Field(
+        default=0.10,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Share of a video that may be animal-only clips, so the allowance "
+            "scales with length (0 disables them entirely)"
+        ),
     )
-    max_object_clips: int = Field(
-        default=0,
-        ge=0,
-        description="Maximum object-only clips per video (a lawnmower is not a memory)",
+    max_object_ratio: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Share of a video that may be object-only clips. They must also beat "
+            "the median people clip, which is what separates a new car from a lawnmower"
+        ),
     )
 
 
