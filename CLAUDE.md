@@ -190,13 +190,16 @@ locally, CI will pass too. Use conventional commit message format (see above).
 **Integration test folders:**
 ```
 tests/integration/
+├── auth/         make test-integration-auth         (~10s, no external deps)
 ├── assembly/     make test-integration-assembly     (~1min, FFmpeg only)
 ├── audio/        make test-integration-audio        (~2min, demucs/acestep packages)
+├── titles/       make test-integration-titles       (~30s, FFmpeg only, pixel tests)
 ├── photos/       make test-integration-photos       (~20s, FFmpeg only)
 ├── processing/   make test-integration-processing   (~15s, FFmpeg only)
 ├── pipeline/     make test-integration-pipeline     (~7min, FFmpeg + Immich)
-├── cli/          make test-integration-cli          (~15min, full pipeline)
-└── live_photos/  make test-integration-live-photos  (~4min, FFmpeg + Immich)
+├── cli/          make test-integration-cli          (~15min, full pipeline; not in make test-integration)
+├── live_photos/  make test-integration-live-photos  (~4min, FFmpeg + Immich)
+└── automation/   (auto suggest; no dedicated make target yet)
 ```
 
 **Comments:**
@@ -207,7 +210,7 @@ tests/integration/
 **Config:**
 - New config options MUST have a sane default
 - User-facing options go in Tier 1 (top-level YAML). Everything else in Tier 2 (`advanced:`)
-- Tier 2 sections: analysis, hardware, llm, musicgen, ace_step, content_analysis, audio_content, server
+- Tier 2 sections (`_TIER2_SECTIONS` in `config_loader.py`): analysis, hardware, llm, musicgen, ace_step, content_analysis, audio_content, speech, transcription, server, auth, automation, notifications
 - At runtime, all sections are flat on Config (`config.analysis`, not `config.advanced.analysis`)
 - Do NOT add migration/compat shims for renamed fields — deprecate, document, remove
 

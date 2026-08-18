@@ -35,12 +35,16 @@ You have a Mac with Apple Silicon (M1/M2/M3/M4). You want LLM-powered content an
 ## Install
 
 ```bash
-# Install Immich Memories
-uv tool install immich-memories
+# Install Immich Memories with the Mac extras (Vision face detection, Taichi GPU titles, ...)
+uv tool install "immich-memories[all-mac]"
 
 # Start the UI
 immich-memories ui
 ```
+
+The bare `immich-memories` package works too, but face detection then falls back to CPU Haar
+cascades and title screens are PIL-rendered — the `all-mac` extra is what enables the Vision
+Framework and Taichi paths described below.
 
 Open [http://localhost:8080](http://localhost:8080).
 
@@ -73,6 +77,7 @@ Or set via environment variables:
 ```bash
 export IMMICH_MEMORIES_LLM__BASE_URL=http://localhost:8081/v1
 export IMMICH_MEMORIES_LLM__MODEL=mlx-community/Qwen2.5-VL-7B-Instruct-8bit
+export IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED=true
 ```
 
 ## What works

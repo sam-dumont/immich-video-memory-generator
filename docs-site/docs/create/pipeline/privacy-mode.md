@@ -14,7 +14,7 @@ This feature is how all the demo videos on this site were made. I would never ha
 When privacy mode is on:
 
 - All video clips get a heavy blur filter applied via FFmpeg before assembly
-- All clip audio gets a blanket lowpass filter (200 Hz cutoff) that makes speech unintelligible while keeping bass/rhythm. This applies to all audio, not just detected speech.
+- All clip audio is reversed in 200 ms segments (you hear people talking but can't make out words) and then low-passed at 300 Hz to remove the remaining consonant artifacts. This applies to all audio, not just detected speech.
 - GPS coordinates are relocated to a fake city (preserving cluster shape so the map animation still looks real)
 - Person names are replaced with deterministic fake names (same real name always maps to the same fake name)
 - Title screens stay unblurred: the generated text, map animations, and location cards are unaffected (but show the fake locations/names)
@@ -25,7 +25,7 @@ The result is a video that demonstrates the timing, transitions, music, and stru
 
 ### UI toggle
 
-In the sidebar, there's a "Demo mode" switch. Toggling it on also blurs thumbnails in the clip review screen (via a CSS class on `<body>`), so even the preview doesn't show your footage.
+If `server.enable_demo_mode` is true in your config, the sidebar shows a "Demo mode" switch. Toggling it on also blurs thumbnails in the clip review screen (via a CSS class on `<body>`), so even the preview doesn't show your footage.
 
 ### CLI flag
 
@@ -39,7 +39,7 @@ immich-memories generate --privacy-mode --year 2024
 
 ```yaml
 server:
-  enable_demo_mode: true    # Enable demo mode permanently
+  enable_demo_mode: true    # Show the Demo mode switch in the sidebar (off by default)
 ```
 
 ## What gets anonymized
@@ -47,7 +47,7 @@ server:
 | Data | How it's handled |
 |------|-----------------|
 | Video content | Heavy Gaussian blur filter |
-| Audio | Blanket 200 Hz lowpass filter (all audio, not speech-detected) |
+| Audio | Segment reversal (200 ms) + 300 Hz lowpass on all clip audio |
 | GPS coordinates | Relocated to a fake city, cluster shape preserved |
 | Person names | Replaced with deterministic fake names |
 | Title screen text | Uses fake names and locations |

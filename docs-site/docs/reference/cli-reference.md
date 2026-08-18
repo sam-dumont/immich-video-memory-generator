@@ -191,20 +191,22 @@ immich-memories export-project [OPTIONS]
 
 Generate a video compilation.
 
-        
-        Memory type presets:
-          --memory-type season --season summer --year 2024
-          --memory-type person_spotlight --person "Alice" --year 2024
-          --memory-type multi_person --person "Alice" --person "Bob" --year 2024
-          --memory-type monthly_highlights --month 7 --year 2024
-          --memory-type on_this_day
+```text
+Memory type presets:
+  --memory-type season --season summer --year 2024
+  --memory-type person_spotlight --person "Alice" --year 2024
+  --memory-type multi_person --person "Alice" --person "Bob" --year 2024
+  --memory-type monthly_highlights --month 7 --year 2024
+  --memory-type on_this_day
+```
 
-        
-        Manual time period options:
-          --year 2024                    Calendar year
-          --year 2024 --birthday 02/07   Birthday-based year
-          --start 2024-01-01 --end 2024-06-30   Custom range
-          --start 2024-01-01 --period 6m        Period from start
+```text
+Manual time period options:
+  --year 2024                    Calendar year
+  --year 2024 --birthday 02/07   Birthday-based year
+  --start 2024-01-01 --end 2024-06-30   Custom range
+  --start 2024-01-01 --period 6m        Period from start
+```
 
 ```bash
 immich-memories generate [OPTIONS]
@@ -218,18 +220,18 @@ immich-memories generate [OPTIONS]
 | `--period` | text | - | Period from start date (e.g., 6m, 1y, 2w) |
 | `--birthday`, `-b` | text | - | Use birthday-based year (auto-detects from Immich, or specify MM/DD) |
 | `--person`, `-p` | text | - | Person name (repeatable) |
-| `--memory-type` | choice | - | Memory type preset |
-| `--season` | choice | - | Season (use with --memory-type season) |
+| `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `trip` | - | Memory type preset |
+| `--season` | choice: `spring` \| `summer` \| `fall` \| `autumn` \| `winter` | - | Season (use with --memory-type season) |
 | `--month` | integer | - | Month 1-12 (narrows any yearly memory type; selects trip by month) |
-| `--hemisphere` | choice | north | Hemisphere for season calculation |
+| `--hemisphere` | choice: `north` \| `south` | north | Hemisphere for season calculation |
 | `--duration`, `-d` | integer | - | Target duration in seconds (default: from memory type preset) |
-| `--orientation`, `-o` | choice | landscape | Output orientation |
-| `--scale-mode`, `-s` | choice | - | Scale mode (default: from config or smart_crop) |
-| `--transition`, `-t` | choice | smart | Transition style (default: smart — mix of fades & cuts) |
-| `--resolution`, `-r` | choice | - | Output resolution (default: config value, 'auto' to match source clips) |
+| `--orientation`, `-o` | choice: `landscape` \| `portrait` \| `square` | landscape | Output orientation |
+| `--scale-mode`, `-s` | choice: `fit` \| `fill` \| `smart_crop` \| `blur` | - | Scale mode (default: from config or smart_crop) |
+| `--transition`, `-t` | choice: `smart` \| `cut` \| `crossfade` \| `none` | smart | Transition style (default: smart — mix of fades & cuts) |
+| `--resolution`, `-r` | choice: `auto` \| `4k` \| `1080p` \| `720p` | - | Output resolution (default: config value, 'auto' to match source clips) |
 | `--music-volume` | float | 0.5 | Music volume 0.0-1.0 (default: 0.5) |
-| `--format` | choice | - | Output format override (default: config value) |
-| `--quality`, `-q` | choice | - | Output quality (default: from config, typically high) |
+| `--format` | choice: `mp4` \| `h265` \| `prores` | - | Output format override (default: config value) |
+| `--quality`, `-q` | choice: `high` \| `medium` \| `low` | - | Output quality (default: from config, typically high) |
 | `--output`, `-O` | path | - | Output file path |
 | `--music`, `-m` | text | - | Music: path to audio file, 'auto' to generate from config, or omit for default behavior |
 | `--no-music` | boolean | false | Disable all music (skip both provided files and AI generation) |
@@ -244,16 +246,11 @@ immich-memories generate [OPTIONS]
 | `--include-live-photos` | boolean | false | Include Live Photo video clips (3s iPhone clips, merged when burst-captured) |
 | `--include-photos` | boolean | false | Include photos as animated Ken Burns clips (blur background, face-aware pan) |
 | `--photo-duration` | float | - | Duration per photo clip in seconds (default: 4.0) |
-| `--analysis-depth` | choice | - | Analysis depth: auto (full analysis for manageable pools), fast (favorites first), or thorough (every eligible clip) |
+| `--analysis-depth` | choice: `auto` \| `fast` \| `thorough` | - | Analysis depth: auto (full analysis for manageable pools), fast (favorites first), or thorough (every eligible clip) |
 | `--trip-index` | integer | - | Select a specific trip by index (use with --memory-type trip) |
 | `--all-trips` | boolean | false | Generate a video for every detected trip (use with --memory-type trip) |
 | `--years-back` | integer | - | Years to look back for on_this_day (default: all) |
 | `--near-date` | text | - | Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip) |
-| `--source` | choice | manual |  |
-| `--memory-key` | text | - |  |
-| `--memory-category` | text | - |  |
-| `--automation-attempt-id` | text | - |  |
-| `--automation-target-date` | text | - |  |
 | `--quiet` | boolean | false | Suppress interactive progress, emit log lines |
 
 ## `hardware`
@@ -276,8 +273,8 @@ immich-memories music [OPTIONS]
 
 Add background music to a video with automatic ducking.
 
-        If no music file is provided, automatically selects music based on video mood.
-        Music volume is automatically lowered when speech/sounds are detected.
+If no music file is provided, automatically selects music based on video mood.
+Music volume is automatically lowered when speech/sounds are detected.
 
 ```bash
 immich-memories music add [OPTIONS]
@@ -324,7 +321,7 @@ immich-memories music search [OPTIONS]
 | --- | --- | --- | --- |
 | `--mood`, `-m` | text | - | Mood (happy, calm, energetic, etc.) |
 | `--genre`, `-g` | text | - | Genre (acoustic, electronic, cinematic, etc.) |
-| `--tempo`, `-t` | choice | - | Tempo |
+| `--tempo`, `-t` | choice: `slow` \| `medium` \| `fast` | - | Tempo |
 | `--min-duration` | float | 60 | Minimum duration in seconds |
 | `--limit`, `-n` | integer | 10 | Number of results |
 
@@ -340,11 +337,11 @@ immich-memories people [OPTIONS]
 
 Run preflight checks to validate all provider connections.
 
-        Checks:
-        - Immich server connection and API key
-        - LLM availability (Ollama or OpenAI-compatible)
-        - Semantic audio analysis (PANNs or energy fallback)
-        - Hardware acceleration
+Checks:
+- Immich server connection and API key
+- LLM availability (Ollama or OpenAI-compatible)
+- Semantic audio analysis (PANNs or energy fallback)
+- Hardware acceleration
 
 ```bash
 immich-memories preflight [OPTIONS]
@@ -366,15 +363,17 @@ immich-memories runs [OPTIONS]
 
 Delete a run and optionally its output files.
 
-        Examples:
+Examples:
 
-        
-        # Delete run and its output
-        immich-memories runs delete 20260105_143052_a7b3
+```text
+# Delete run and its output
+immich-memories runs delete 20260105_143052_a7b3
+```
 
-        
-        # Delete run but keep the video
-        immich-memories runs delete 20260105_143052_a7b3 --keep-output
+```text
+# Delete run but keep the video
+immich-memories runs delete 20260105_143052_a7b3 --keep-output
+```
 
 ```bash
 immich-memories runs delete [OPTIONS]
@@ -392,19 +391,22 @@ immich-memories runs delete [OPTIONS]
 
 List recent pipeline runs.
 
-        Examples:
+Examples:
 
-        
-        # List recent runs
-        immich-memories runs list
+```text
+# List recent runs
+immich-memories runs list
+```
 
-        
-        # Filter by person
-        immich-memories runs list --person "John"
+```text
+# Filter by person
+immich-memories runs list --person "John"
+```
 
-        
-        # Show only failed runs
-        immich-memories runs list --status failed
+```text
+# Show only failed runs
+immich-memories runs list --status failed
+```
 
 ```bash
 immich-memories runs list [OPTIONS]
@@ -414,14 +416,14 @@ immich-memories runs list [OPTIONS]
 | --- | --- | --- | --- |
 | `--limit`, `-n` | integer | 20 | Number of runs to show |
 | `--person`, `-p` | text | - | Filter by person name |
-| `--status`, `-s` | choice | - | Filter by status |
+| `--status`, `-s` | choice: `completed` \| `failed` \| `running` \| `cancelled` \| `interrupted` | - | Filter by status |
 
 ### `runs show`
 
 Show detailed information about a specific run.
 
-        Example:
-            immich-memories runs show 20260105_143052_a7b3
+Example:
+    immich-memories runs show 20260105_143052_a7b3
 
 ```bash
 immich-memories runs show [OPTIONS]
@@ -498,8 +500,8 @@ immich-memories titles [OPTIONS]
 
 Manage title screen fonts.
 
-        Downloads OFL-licensed fonts from Google Fonts and caches
-        them locally in ~/.immich-memories/fonts/.
+Downloads OFL-licensed fonts from Google Fonts and caches
+them locally in ~/.immich-memories/fonts/.
 
 ```bash
 immich-memories titles fonts [OPTIONS]
@@ -515,27 +517,32 @@ immich-memories titles fonts [OPTIONS]
 
 Generate a test title screen to preview styles.
 
-        Examples:
+Examples:
 
-        
-        # Simple year title
-        immich-memories titles test --year 2024
+```text
+# Simple year title
+immich-memories titles test --year 2024
+```
 
-        
-        # Birthday title with person name
-        immich-memories titles test --birthday-age 1 --person "Emma"
+```text
+# Birthday title with person name
+immich-memories titles test --birthday-age 1 --person "Emma"
+```
 
-        
-        # Month divider
-        immich-memories titles test --month 6 --year 2024 --type month
+```text
+# Month divider
+immich-memories titles test --month 6 --year 2024 --type month
+```
 
-        
-        # Portrait orientation (for social media)
-        immich-memories titles test --year 2024 --orientation portrait
+```text
+# Portrait orientation (for social media)
+immich-memories titles test --year 2024 --orientation portrait
+```
 
-        
-        # French locale with specific style
-        immich-memories titles test --year 2024 --locale fr --style vintage_charm
+```text
+# French locale with specific style
+immich-memories titles test --year 2024 --locale fr --style vintage_charm
+```
 
 ```bash
 immich-memories titles test [OPTIONS]
@@ -547,12 +554,12 @@ immich-memories titles test [OPTIONS]
 | `--birthday-age` | integer | - | Age for birthday title (e.g., 1 for '1st Year') |
 | `--person`, `-p` | text | - | Person name for subtitle |
 | `--month`, `-m` | integer | - | Month for month divider (1-12) |
-| `--orientation`, `-o` | choice | landscape | Output orientation |
-| `--resolution`, `-r` | choice | 1080p | Output resolution |
-| `--locale`, `-l` | choice | en | Language |
-| `--style`, `-s` | choice | random | Visual style |
+| `--orientation`, `-o` | choice: `landscape` \| `portrait` \| `square` | landscape | Output orientation |
+| `--resolution`, `-r` | choice: `720p` \| `1080p` \| `4k` | 1080p | Output resolution |
+| `--locale`, `-l` | choice: `en` \| `fr` | en | Language |
+| `--style`, `-s` | choice: `modern_warm` \| `elegant_minimal` \| `vintage_charm` \| `playful_bright` \| `soft_romantic` \| `random` | random | Visual style |
 | `--output`, `-O` | path | - | Output file path |
-| `--type` | choice | title | Screen type |
+| `--type` | choice: `title` \| `month` \| `ending` | title | Screen type |
 | `--download-fonts` | boolean | false | Download fonts before generating |
 | `--no-animated-background` | boolean | false | Disable animated backgrounds (static gradient) |
 

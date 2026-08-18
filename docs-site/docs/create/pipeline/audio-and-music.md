@@ -86,15 +86,11 @@ ACE-Step is disabled, MusicGen handles both generation and stems.
 
 ### Custom Music
 
-You don't have to use AI-generated music. In the UI at Step 3, you can upload your own music file (MP3, WAV, FLAC, M4A, OGG). Or point at a directory:
+You don't have to use AI-generated music. In the UI at Step 3, choose **Upload file** under **Background music** (MP3, M4A or WAV) and set the **Music volume** slider. On the CLI, pass `--music /path/to/track.mp3` (and `--music-volume 0.0-1.0`, default 0.5).
 
-```yaml
-audio:
-  music_source: "local"
-  local_music_dir: "~/Music/Memories"
-```
+To disable music, choose **None** in the UI or pass `--no-music` on the CLI. Without `--music`, the CLI generates an AI track when `ace_step.enabled` or `musicgen.enabled` is set, and otherwise renders with the clips' own audio.
 
-Or disable music entirely with `auto_music: false` or `--no-music`.
+For a local library, `immich-memories music search` and `music add` read `audio.local_music_dir` (default `~/Music/Memories`); see the [music command](../cli/music.md). Generation itself does not pick from that directory.
 
 ## Semantic Audio Events (Optional PANNs)
 
@@ -143,10 +139,6 @@ On Apple Silicon with at least 20GB of unified memory, you can run the shown XL 
 in-process. Lower-memory machines should use the 2B `turbo` profile instead:
 
 ```yaml
-audio:
-  auto_music: true
-  music_source: "ace_step"
-
 ace_step:
   enabled: true
   mode: "lib"
@@ -203,27 +195,15 @@ server URL. For a desktop that normally runs locally but has a server available 
 
 ## Configuration
 
-```yaml
-audio:
-  auto_music: false
-  music_source: "musicgen"       # local, musicgen, or ace_step
-  local_music_dir: "~/Music/Memories"
-  ducking_threshold: 0.02        # Voice detection sensitivity (0-1)
-  ducking_ratio: 6.0             # How much to lower music (1-20)
-  music_volume_db: -6.0          # Base music volume (-20 to 0 dB)
-  fade_in_seconds: 2.0           # Music fade in (0-10s)
-  fade_out_seconds: 3.0          # Music fade out (0-10s)
-```
+Which music plays is decided by three switches:
 
-### Key parameters
+| Where | Switch | Effect |
+|-------|--------|--------|
+| Config | `ace_step.enabled` / `musicgen.enabled` | When either is true, generation produces an AI track by default (ACE-Step first when both are on) |
+| CLI | `--music PATH`, `--no-music`, `--music-volume 0.0-1.0` | Own file, no music at all, or the mix level (default 0.5) |
+| UI Step 3 | **Background music**: None / Upload file / AI Generated, plus the volume slider | Same choices per run |
 
-**`ducking_threshold` (0.02)**: the minimum audio energy in the clip that triggers ducking. Lower values make it more sensitive (music ducks for quieter sounds). If your clips have a lot of background noise, you might want to raise this to 0.05 or higher.
-
-**`ducking_ratio` (6.0)**: how much the volume drops when ducking activates. A ratio of 6.0 means a large dip. Lower values (e.g., 3.0) give a subtler dip.
-
-**`music_volume_db` (-6.0)**: the baseline music volume *before* any ducking. At -6 dB, the music is already mixed quieter than the clip audio.
-
-**`fade_in_seconds` (2.0)** / **`fade_out_seconds` (3.0)**: how quickly the music volume transitions. These are the global fade at the start and end of the video, not per-clip ducking fades.
+The music volume slider maps to a base music level of −20 dB (0.0) to 0 dB (1.0) before ducking. Ducking parameters are fixed in the mixer (sidechain threshold 0.02, ratio 4.0, 100 ms attack, 2.5 s release, 2 s fade in, 3 s fade out). The `audio:` section in the schema (`auto_music`, `music_source`, `ducking_threshold`, `ducking_ratio`, `music_volume_db`, `fade_in_seconds`, `fade_out_seconds`) is not read by generation; only `audio.local_music_dir` is used, by the `music` command. If you need custom fades or a dB level, run `immich-memories music add` on the finished file with `--volume`, `--fade-in`, `--fade-out`.
 
 ## Model Cache & Disk Usage
 

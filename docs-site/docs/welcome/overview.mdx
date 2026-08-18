@@ -11,7 +11,7 @@ import Video from '@site/src/components/Video';
 
 Turn your Immich photo library into video memories. Automatically.
 
-You point it at your Immich instance, pick a time period (or a person, or a trip), and it does everything: downloads the videos, finds the best scenes, throws out the duplicates, detects where you traveled, generates a title, adds AI music, and renders a final video. No cloud. No subscription. Your hardware, your data.
+You point it at your Immich instance, pick a time period (or a person, or a trip), and it does everything: downloads the videos, finds the best scenes, throws out the duplicates, detects where you traveled, generates a title, adds AI music, and renders a final video. No cloud required. No subscription. Your hardware, your data.
 
 <Video src="/demo/demo.mp4" controls autoPlay muted loop width="100%" style={{borderRadius: '12px', marginBottom: '1.5rem'}} />
 
@@ -21,19 +21,21 @@ A polished memory video with:
 
 - **Smart cuts** from your best clips, scored by visual interest, motion, faces, and audio
 - **Animated satellite map** flying from home to your destination (for trip memories)
-- **AI-generated title** that actually describes the trip: "Sous les falaises de la Saxe" instead of "TWO WEEKS IN GERMANY"
+- **AI-generated title** that actually describes the trip: "Sous les falaises de grès" instead of "TWO WEEKS IN GERMANY"
 - **AI music** that matches the mood of your clips (ACE-Step or MusicGen)
-- **Smooth transitions** with crossfades timed to the music
+- **Smooth transitions**: a smart mix of cuts and crossfades chosen per cut point
 
 <ThemedScreenshot name="hero-step4-complete" alt="Finished memory video" />
 
 ## What it connects to
 
-Your self-hosted [Immich](https://immich.app) server. That's it. No Google, no Apple, no cloud APIs. Everything runs locally:
+Your self-hosted [Immich](https://immich.app) server. That's it. No Google, no Apple, no telemetry, no account. Everything can run locally:
 
-- Video analysis on your GPU (NVIDIA, Apple Silicon, Intel, AMD)
-- LLM analysis via Ollama or any OpenAI-compatible server (mlx-vlm, vLLM, Groq)
+- Hardware-accelerated encoding (NVIDIA NVENC, Apple VideoToolbox, Intel QSV, AMD VAAPI); face detection on the Apple Neural Engine on Macs, CUDA scene analysis when OpenCV is built with CUDA, CPU otherwise
+- LLM analysis via Ollama or any OpenAI-compatible server (mlx-vlm, vLLM — or a hosted API like Groq if you choose)
 - Music generation via ACE-Step or MusicGen (local or API)
+
+The only outbound calls that are not your Immich server are the ones you configure (LLM, music server) plus map tiles and geocoding for trip maps. See [Network & Privacy](../deploy/configuration/network-and-privacy.md).
 
 ## Memory types
 
@@ -43,9 +45,9 @@ Your self-hosted [Immich](https://immich.app) server. That's it. No Google, no A
 | **Monthly highlights** | Best of a specific month | "August 2024" |
 | **Person spotlight** | Clips featuring a specific person | "Alice Through the Years" |
 | **Multi-person** | Moments with multiple people together | "Alice & Bob, 2025" |
-| **Trip memory** | GPS-detected trip with map animation | "Aosta Valley, July 2021" |
+| **Trip memory** | GPS-detected trip with map animation | "Lisbon, July 2024" |
 | **Season** | 3-month seasonal highlights | "Summer 2024" |
-| **On This Day** | Anniversary compilation | "This Day, 3 Years Ago" |
+| **On This Day** | Today's date across previous years | "June 12 — Through the Years" |
 
 <ThemedScreenshot name="step1-preset-cards" alt="Memory type selection" />
 
@@ -53,10 +55,10 @@ Your self-hosted [Immich](https://immich.app) server. That's it. No Google, no A
 
 The web UI walks you through 4 steps:
 
-1. **Configure**: pick your memory type, time period, and person
-2. **Analyze**: the pipeline downloads clips, scores them, detects duplicates, selects the best
-3. **Preview**: see the LLM-generated title, choose your music, adjust settings
-4. **Generate**: render the final video with map animation, title screens, and music
+1. **Configuration**: pick your memory type, time period, and person
+2. **Clip Review**: the pipeline scores clips, detects duplicates and selects the best; you refine the picks
+3. **Options**: check the LLM-generated title, choose your music, adjust output settings
+4. **Export**: render the final video with map animation, title screens, and music
 
 <ThemedScreenshot name="hero-step1" alt="Step 1: Configuration" />
 

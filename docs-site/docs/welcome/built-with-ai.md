@@ -21,13 +21,13 @@ The music pipeline went through 6 research rounds before a single line of code. 
 
 ## The quality infrastructure
 
-AI-generated code without guardrails is fast garbage. The project has 17 CI checks: lint, format, type checking, cyclomatic complexity limits, cognitive complexity limits, file length caps (800 lines max), dead code detection, security scanning, architectural boundary enforcement, dependency hygiene, and 1900+ tests.
+AI-generated code without guardrails is fast garbage. The project has ~20 CI checks: lint, format, type checking, cyclomatic complexity limits, cognitive complexity limits, file length caps (800 lines max), dead code detection, security scanning, architectural boundary enforcement, dependency hygiene, and 5,000+ tests.
 
 These aren't decoration. They catch real bugs that Claude introduces confidently. The complexity gate alone has blocked dozens of over-engineered functions. The file length cap forced a composition-based architecture (every class under 800 lines, zero mixins) that turned out to be the right call anyway.
 
 ## What the velocity actually looks like
 
-The project went from "I want to make a birthday video" to a shipped product with 64 merged PRs in about 84 days. That's nearly one PR per day, each one passing 17 CI gates and adding to a test suite that's now at 1,900+ tests.
+The project went from "I want to make a birthday video" to a shipped product with 64 merged PRs in about 84 days. That's nearly one PR per day, each one passing ~20 CI gates and adding to a test suite that's now past 5,000 tests.
 
 A typical feature cycle: I decide on Tuesday morning that trip memories need animated satellite maps. I spend a few hours researching map rendering approaches with Claude.ai (tile providers, zoom interpolation, Van Wijk smooth zoom for long distances vs. linear pan for short hops). By Wednesday I've picked the approach. Claude Code implements it. Thursday it's in the pipeline with tests, passing CI, ready for review.
 
@@ -35,4 +35,4 @@ That cycle used to take me 2-3 weeks when I wrote code myself (I'm a platform/in
 
 The hard problems still take time. The video assembly pipeline took 9 attempts over 2 months. Audio ducking needed 3 research rounds on stem separation. But the ratio of "thinking about the problem" to "typing code" shifted from maybe 30/70 to 80/20, which is where it should have been all along.
 
-I'm planning a series of blog posts about the development process: the research conversations, the debugging sessions, and the architectural decisions. Links will go here when they're published.
+The research conversations, debugging sessions and architectural decisions behind all of this are being written up as a series of blog posts; the [GitHub repo](https://github.com/sam-dumont/immich-video-memory-generator) README will link them as they go out.

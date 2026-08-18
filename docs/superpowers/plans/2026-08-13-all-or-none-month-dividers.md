@@ -349,7 +349,7 @@ git commit -m "fix: render finalized divider policy exactly"
 
 ---
 
-## Task 4: Verify the complete behavior and render Emile without music
+## Task 4: Verify the complete behavior and render Child A without music
 
 **Files:**
 
@@ -383,9 +383,9 @@ uv run pytest -m "not e2e" -q
 
 If an unrelated pre-existing failure appears, record the exact test and demonstrate that the focused changed-area suite remains green. Do not hide or rewrite unrelated failures.
 
-### Step 3: Run a real Emile dry-run with music disabled
+### Step 3: Run a real Child A dry-run with music disabled
 
-Use the same person and date range as the earlier Emile launch smoke, preserving its exact CLI arguments from shell history or the launch audit, and include:
+Use the same person and date range as the earlier Child A launch smoke, preserving its exact CLI arguments from shell history or the launch audit, and include:
 
 ```text
 --dry-run --no-music
@@ -393,7 +393,7 @@ Use the same person and date range as the earlier Emile launch smoke, preserving
 
 Confirm the output says either all selected month changes or none. For the known selection it should report all, not a partial cap. Record selected content duration, eligible divider count, final title budget, estimate, and soft maximum.
 
-### Step 4: Render the real Emile smoke with intermediates retained
+### Step 4: Render the real Child A smoke with intermediates retained
 
 Run the corresponding real-library command with:
 
@@ -401,7 +401,7 @@ Run the corresponding real-library command with:
 --no-music --keep-intermediates
 ```
 
-Use a new output name containing `emile-month-dividers-20260813`; do not overwrite the prior 51.77-second artifact. Keep upload and notifications disabled exactly as in the earlier smoke run.
+Use a new output name containing `child-a-month-dividers-20260813`; do not overwrite the prior 51.77-second artifact. Keep upload and notifications disabled exactly as in the earlier smoke run.
 
 Expected:
 
@@ -439,7 +439,7 @@ Append a dated subsection to `docs/reviews/2026-08-11-launch-readiness-audit.md`
 - ffprobe duration/codecs/resolution;
 - observed divider count and selected months;
 - confirmation that smoke used `--no-music` and production music configuration was not changed;
-- confirmation that Somme trip behavior is covered by unchanged regression tests and was not re-rendered unless a regression requires it.
+- confirmation that coastal trip behavior is covered by unchanged regression tests and was not re-rendered unless a regression requires it.
 
 ### Step 7: Run completion verification and commit evidence
 
@@ -465,6 +465,6 @@ Before reporting completion, verify all of the following from fresh command outp
 - final validation accepts the intentional bounded overrun and rejects values beyond its technical tolerance;
 - dry-run describes the same plan used by rendering;
 - trip and year regression tests remain unchanged and green;
-- real Emile smoke uses `--no-music`, renders all selected month changes or none, and passes ffprobe checks;
+- real Child A smoke uses `--no-music`, renders all selected month changes or none, and passes ffprobe checks;
 - no stacked photo-scaling regression is visible in the inspected smoke frames;
 - unrelated `MagicMock/` remains untouched.

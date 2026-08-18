@@ -7,38 +7,43 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Step 3: Generation Options
 
-This step controls what the final video looks and sounds like.
+This step controls what the final video looks and sounds like. The sidebar calls it **Options**.
 
 <ThemedScreenshot name="step3-options" alt="Step 3: Generation Options" />
 
-## Orientation
+## Output settings
 
-- **Landscape** (16:9): Standard widescreen. Best for TV playback.
-- **Portrait** (9:16): Vertical. Good for phone viewing or Instagram stories.
-- **Square** (1:1): Works everywhere, wastes some frame space.
+Two selects are always visible:
 
-The tool uses face-aware smart cropping when converting between orientations, so faces stay centered even when the source video doesn't match the output aspect ratio.
+- **Resolution**: **Auto (match clips)** (default), 4K, 1080p, 720p. Auto picks the tier of your source clips; 720p renders fastest, 4K needs the source material and the patience.
+- **Output Format**: MP4 (H.264), MP4 (H.265), MOV (H.264), MOV (H.265), MOV (ProRes). The default follows `output.codec` and `output.format` in your config — MP4 (H.264) out of the box.
 
-## Resolution
+## Advanced options
 
-- **720p**: Fast to render, small file size.
-- **1080p**: Good default. Looks sharp on most screens.
-- **4K**: If you have the source material and the patience.
+A collapsed expansion under the two selects:
 
-## Transitions
+- **Orientation**: **Auto (detect from clips)** (default), Landscape (16:9), Portrait (9:16), Square (1:1). When the source and target aspect ratios differ, [face-aware cropping](../pipeline/face-aware-cropping.md) keeps faces in frame.
+- **Scaling Mode**: Smart Crop (keep faces), Fill (crop), Fit (letterbox), Blur (blurred background). The UI defaults to Smart Crop; the CLI and config default to `blur`.
+- **Transition Style**: **Smart (mix of fades & cuts)** (default), Crossfade, Cut, None. Smart picks per cut point: crossfade for slow scenes, hard cut for fast action.
+- **Add date overlay** and **Keep intermediate files** checkboxes.
+- When photos are enabled: "Photos enabled (N found)" and a **Photo duration (seconds)** field (1–10).
 
-Choose the transition style between clips. The default `smart` mode picks the best transition per cut point (crossfade for slow scenes, hard cut for fast action).
+<ThemedScreenshot name="step3-advanced" alt="Advanced generation options" />
+
+## Title
+
+**Title** and **Subtitle** fields pre-filled with the pipeline's suggestion (LLM-generated when content analysis is on, template otherwise), a **Language** select (auto, en, fr, de, es, it, nl, pt, ja, ko) and a **Regenerate** button. Trip memories also show chips with the detected trip and map mode. See [Title Screens & Maps](../pipeline/title-screens-and-maps.md).
 
 ## Music
 
-Three options:
+The **Background music** select has up to three entries:
 
-- **AI-generated**: Uses your configured backend (ACE-Step, MusicGen, or both) to generate a soundtrack that matches the video's mood. See [Audio & Music](../pipeline/audio-and-music.md).
-- **Upload custom**: Drag and drop your own music file.
-- **None**: Just the original clip audio, no background music.
+- **None**: original clip audio only.
+- **Upload file**: a **Select music file** picker (`.mp3`, `.m4a`, `.wav`) and a **Music volume** slider.
+- **AI Generated**: only listed when `ace_step.enabled` or `musicgen.enabled` is set in your config, and then it is the default. Shows the volume slider and a **Generate Music** button so you can hear the track before rendering; **Regenerate Music** tries again. See [Audio & Music](../pipeline/audio-and-music.md).
 
-## Hardware Acceleration
+## Summary
 
-Auto-detected based on your system. If you have an NVIDIA GPU, Apple Silicon, or Intel QSV, the tool will use it for encoding. You'll see what was detected in this step.
+Stat cards for Clips, Duration, Resolution and Music, then **Back to Clip Review** / **Next: Preview & Export**.
 
-<ThemedScreenshot name="step3-advanced" alt="Advanced generation options" />
+Hardware acceleration is not shown here; it is auto-detected at encode time. Run `immich-memories hardware` or `immich-memories preflight` to see what your machine offers.

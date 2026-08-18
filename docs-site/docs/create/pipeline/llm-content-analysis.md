@@ -26,7 +26,7 @@ This works with anything that speaks the OpenAI chat completions API:
 
 ## LLM Title Generation
 
-Instead of generic "TWO WEEKS IN SPAIN, SUMMER 2025" template titles, the app feeds your trip's raw GPS data to a local LLM and gets back something like "Sous les falaises de la Saxe" or "Odyssée a travers l'Ombrie et les Marches". It works in any language and classifies your trip pattern too.
+Instead of generic "TWO WEEKS IN SPAIN, SUMMER 2025" template titles, the app feeds your trip's raw GPS data to a local LLM and gets back something like "Sous les falaises de grès" or "Odyssée le long de la côte". It works in any language and classifies your trip pattern too.
 
 ### What the LLM gets
 
@@ -86,7 +86,7 @@ llm:
   base_url: "http://localhost:8000/v1"
   model: "mlx-community/Qwen2.5-VL-7B-Instruct-8bit"
   api_key: "not-needed"        # for local models
-  provider: "openai"           # openai-compatible API
+  provider: "openai-compatible"  # or "ollama"
   timeout_seconds: 300
 
 # Content analysis settings

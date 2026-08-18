@@ -7,7 +7,10 @@ title: Config File
 
 Location: `~/.immich-memories/config.yaml`
 
-The config file is created automatically when you first run `immich-memories config`. File permissions are set to `600` (owner read/write only) since it contains API keys.
+The file is written the first time you save the connection settings — from Step 1 of the web UI or
+with `immich-memories config`. Permissions are set to `600` (owner read/write only) since it
+contains API keys. Sections are grouped in two tiers: everyday options at the top level, and the
+rest under `advanced:` (see [Tiers](#tiers) below).
 
 ## Quick start config
 
@@ -24,24 +27,28 @@ immich:
 output:
   directory: "~/Videos/Memories"
   resolution: "1080p"            # 720p, 1080p, 4k
-  codec: h265                     # Preserve HDR; use h264 for maximum compatibility
+  codec: h265                     # h264 is the default; h265 preserves HDR
   hdr_mode: auto                  # Preserve HLG/PQ when present; otherwise output SDR
 
 defaults:
-  target_duration_seconds: 600   # 10-3600 seconds
-  output_orientation: "auto"     # auto, landscape, portrait
+  scale_mode: "blur"             # fit, fill, smart_crop, blur
+  transition: "smart"            # cut, crossfade, smart, none
 
 # ── AI analysis (any OpenAI-compatible vision model) ──────
+# Both sections are needed: `llm` says where the model is,
+# `content_analysis.enabled` turns scoring with it on.
 llm:
   provider: "openai-compatible"
   base_url: "http://localhost:8080/v1"
   model: "qwen2.5-vl"
 
-# ── Background music (optional) ──────────────────────────
-audio:
-  auto_music: false
-  music_source: "ace_step"       # ace_step, musicgen, local, or none
+content_analysis:
+  enabled: true
 
+# ── AI background music (optional) ───────────────────────
+# Music is on when one generator is enabled. Per run you can
+# still pass `--music PATH` / `--no-music` (CLI) or pick
+# None / Upload file / AI Generated in the UI.
 ace_step:
   enabled: false
   api_url: "http://localhost:8000"
@@ -60,10 +67,34 @@ SDR clips, photos, and titles are converted to the same HDR transfer during asse
 always SDR. If you select `codec: h264`, detected HDR is tone-mapped to SDR even when
 `hdr_mode: auto` is set. Use H.264 when broad playback compatibility matters more than HDR.
 
-`target_duration_seconds` applies to the complete result, including titles and the time removed by
-overlapping fades. When eligible material exists, the optimizer backfills unused clips before
-accepting a short result. The encoded duration may differ by less than one transition because cuts
-land on video frame boundaries.
+The target duration you pick per run (UI slider or `--duration`) applies to the complete result,
+including titles and the time removed by overlapping fades. When eligible material exists, the
+optimizer backfills unused clips before accepting a short result. The encoded duration may differ by
+less than one transition because cuts land on video frame boundaries. There is no config default for
+it: the memory type preset supplies one.
+
+## Tiers
+
+`llm`, `content_analysis`, `ace_step` and the other tuning sections are Tier 2. When the app writes
+the file it groups them under `advanced:`; when reading, both placements work, and if the same key
+appears in both the top-level value wins.
+
+```yaml
+advanced:
+  llm:
+    base_url: "http://localhost:8080/v1"
+  content_analysis:
+    enabled: true
+```
+
+Tier 2 sections: `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`,
+`audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications`.
+Everything else (`immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`,
+`trips`, `photos`, `scoring_priority`, `scheduler`) stays at the top level.
+
+Unknown keys inside a section are silently ignored — a typo does not fail the load, it just does
+nothing. Unknown top-level keys and invalid values (`codec: av1`, `llm.provider: openai`) do fail
+with a validation error at startup.
 
 ## Immich API compatibility
 
@@ -99,15 +130,25 @@ analysis:
 
 | Style | Feel | Clip duration | Extraction ratio |
 |-------|------|---------------|-----------------|
+| *(unset)* | Default: natural pacing, conservative extraction | 5-10s | 15% |
 | `fast-cuts` | Energetic, music-video style | 3-6s | 30% |
-| `balanced` | Default, natural pacing | 5-10s | 40% |
+| `balanced` | Same durations as the default, pulls more footage per source | 5-10s | 40% |
 | `long-cuts` | Cinematic, slow | 8-15s | 50% |
 
-You can override individual duration parameters if needed. See the [Config Reference](../../reference/config-reference.md) for all options.
+A preset only fills in the five duration parameters you have not set yourself; explicit values win.
+See the [Config Reference](../../reference/config-reference.md#video-analysis) for the individual knobs.
 
 ## Environment variable substitution
 
-Any string value supports `${VAR_NAME}` syntax. The variable is expanded at load time:
+A handful of secret-bearing fields expand `${VAR_NAME}` (or `$VAR_NAME`) at load time:
+
+| Section | Fields |
+|---------|--------|
+| `immich` | `url`, `api_key` |
+| `llm` / `title_llm` | `api_key` |
+| `musicgen` | `base_url`, `api_key` |
+| `ace_step` | `api_url` (not `api_key`) |
+| `auth` | `password`, `client_secret`, `issuer_url`, `client_id` |
 
 ```yaml
 immich:
@@ -116,6 +157,10 @@ immich:
 llm:
   api_key: ${OPENAI_API_KEY}
 ```
+
+Every other string is stored literally — `output.directory: ${HOME}/x` is not expanded. To set any
+other field from the environment, use the `IMMICH_MEMORIES_<SECTION>__<FIELD>` form described in
+[Environment Variables](environment-variables.md).
 
 ## Trip memories
 
@@ -140,4 +185,4 @@ upload:
 
 ## All options
 
-For the full list of 100+ options (scoring weights, hardware acceleration, audio ducking, title screen styling, scheduler, etc.), see the [Config Reference](../../reference/config-reference.md).
+For the full list of options (analysis tuning, hardware acceleration, speech and transcription, title screens, scheduler, notifications, etc.), see the [Config Reference](../../reference/config-reference.md).

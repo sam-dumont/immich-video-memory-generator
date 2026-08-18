@@ -7,59 +7,79 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Step 1: Configuration
 
-This is where you tell the tool what to work with.
+This is where you tell the tool what to work with. The sidebar calls this step **Configuration**.
 
 <ThemedScreenshot name="step1-config-connected" alt="Step 1 Configuration" />
 
 ## Immich Connection
 
-Enter your Immich server URL and API key. If you've set these in your `config.yaml` or environment variables, they'll be pre-filled.
+A collapsible panel with two fields, **Immich Server URL** and **API Key**, and two buttons: **Test Connection** and **Save Config**. If the URL and key are already in your `config.yaml` or environment variables, they are pre-filled and the page connects on its own when it loads. Once connected, the panel collapses to a one-line header, "Immich Connection — *your name*"; expand it again to change the credentials.
+
+The rest of the page (Memory Type, Options, Next) only appears after a successful connection.
 
 ## Memory Type
 
-Pick one of the 7 preset cards or choose Custom for a manual date range.
+Pick one of the 8 cards: **Year in Review**, **Season**, **Person Spotlight**, **Multi-Person**, **Monthly Highlights**, **On This Day**, **Trip**, or **Custom**.
 
 <ThemedScreenshot name="step1-preset-cards" alt="Memory type preset cards" />
 
-Each preset auto-configures the date range and target duration. For example, "Season: Summer 2025" sets the range to June-August 2025 and a 3-minute target. "Year in Review: 2024" covers Jan-Dec 2024 with a 10-minute target.
+Each preset sets the date range and a default target duration, then shows the parameters it needs:
+
+| Card | Parameters shown | Default target |
+|------|------------------|----------------|
+| Year in Review | Year | 10 min |
+| Season | Year, Season (spring/summer/autumn/winter), Hemisphere (north/south) | 2 min 15 s |
+| Person Spotlight | Year (or "All Time"), Person, checkbox "Birthday to birthday" | 2 min |
+| Multi-Person | Year, People (select 2+) | 5 min |
+| Monthly Highlights | Year, Month | 1 min |
+| On This Day | none (uses today's date across previous years) | 45 s |
+| Trip | Year, then "Select a trip" from the trips detected in your GPS data | auto: 30 s + 10 s per active day, bounded 60–300 s |
+| Custom | date range tabs and person filter (below) | ~1 min per month of range |
 
 The presets also drive the output filename and title screen. A Multi-Person preset with Alice and Bob for March 2025 produces `alice_bob_march_2025_memories.mp4` with "Alice & Bob" as the title subtitle.
 
 <ThemedScreenshot name="step1-preset-selected" alt="Year in Review preset selected" />
 
-## Person Selection
+## Person selection
 
 <ThemedScreenshot name="step1-person-dropdown" alt="Person Selection" />
 
-A dropdown populated from Immich's face recognition data. Pick the person you want the memory video to focus on. The tool only pulls videos containing this person.
+The **Person** dropdown is populated from Immich's face recognition data. It appears inside the Person Spotlight card (one person) and the Multi-Person card (pick 2 or more; the tool keeps clips where all of them appear).
 
-For Multi-Person presets, you pick 2+ people and the tool finds clips where ALL of them appear.
+The Custom card has its own **Person** filter under "Person Filter", defaulting to **All people**, next to a **Target Duration (minutes)** field.
 
-You can also skip person selection entirely and generate from all videos in the time period.
+## Custom date range
 
-## Time Period (Custom mode)
+Choosing **Custom** opens a "Custom Date Range" section with three tabs:
 
-Three options when using Custom:
+- **Year**: pick a year, then choose **Calendar Year** or **From Birthday** (a birthday-to-birthday range, with a Birthday date field). Good for birthday compilations.
+- **Duration**: a number (1–24) plus a unit (Months/Years) and a **Starting from** date.
+- **Custom Range**: **Start date** and **End date**.
 
-- **Year**: all videos from a specific year (e.g., 2024)
-- **Birthday**: a birthday-year range (e.g., Jul 21, 2024 to Jul 20, 2025). Good for birthday compilations.
-- **Date range**: any custom start and end date
+The resulting range and its length in days are shown under the tabs. The target duration auto-fills at roughly 10 minutes per year of range (so a month is 1 minute, a half year 5); edit the number if you want something else.
 
-## Live Photos
+## Options
 
-Optional toggle to include iPhone Live Photo clips. When enabled, the tool pulls the ~3s video hidden in each photo and can merge rapid-fire bursts into longer clips. See [Live Photos](../pipeline/live-photos.md) for details.
+Four controls, each with a tooltip:
 
-Live Photos show up checked in Step 2 with the other discovered media. Deselect any you do not want. Fast analysis can rank a smaller shortlist, but every checked Live Photo remains available to fill the final timeline.
+- **Prioritize Favorites** (switch): rank favorited clips higher in selection.
+- **Include Photos** (switch): add still photos as animated clips. See [Photo Support](../pipeline/photo-support.md).
+- **Include Live Photos** (switch): pull the ~3 s video hidden in each Live Photo and merge rapid-fire bursts into longer clips. See [Live Photos](../pipeline/live-photos.md).
+- **Analysis Depth** (select): **Auto (recommended)** fully analyzes manageable pools and shortlists large libraries; **Fast (favorites first)** reserves LLM analysis for favorites; **Thorough (every eligible clip)** analyzes everything.
 
-## Target Duration
+Live Photos and photos show up checked in Step 2 with the other discovered media. Deselect any you do not want. Fast analysis can rank a smaller shortlist, but every checked item remains available to fill the final timeline.
 
-The target is the complete video, including titles and transition overlap. Trip memories default to **Auto** after media discovery: 30 seconds plus 10 seconds per active day, bounded to 60–300 seconds when the selected media is dense enough. Auto then caps that estimate using usable excerpts, so a sparse trip can be shorter than one minute. Switch to **Manual** for an exact runtime.
+## Target duration
+
+The target is the complete video, including titles and transition overlap. Presets set it (table above); Custom lets you type it. In Step 2 an **Auto duration** switch in the "Generate Memories" panel keeps the preset value, and for Trip memories recomputes it from the media: 30 seconds plus 10 seconds per active day, bounded to 60–300 seconds when the selected media is dense enough, then capped by usable excerpts (a sparse trip can end up under a minute). Turn the switch off to type an exact **Target duration (min)**.
 
 | Range | Auto-target | Notes |
 |-------|------------|-------|
 | 3 active days (trip) | 1 min | Dense-media Auto floor |
 | 1 week (trip) | 1 min 40 sec | Before the media-capacity check |
 | 12 active days (trip) | 2 min 30 sec | Before the media-capacity check |
-| 1 month | 1 min | Non-trip: ~1 min per month |
-| 3 months (season) | 3 min | Preset default |
-| 1 year | 8 min | |
+| 1 month (Monthly Highlights or Custom) | 1 min | |
+| 3 months (Season) | 2 min 15 s | Preset default |
+| 1 year (Year in Review or Custom) | 10 min | |
+
+Click **Next: Review Clips** when done.

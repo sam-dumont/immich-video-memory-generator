@@ -7,50 +7,55 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Step 4: Preview & Export
 
-Hit generate and watch it work.
+Hit generate and watch it work. The sidebar calls this step **Export**.
 
 <ThemedScreenshot name="step4-preview-export" alt="Step 4 Preview & Export" />
 
-## Output Filename
+## Summary
 
-The filename is auto-generated from your selections: person names, date range, and memory type. Examples:
+Stat cards for Clips, Photo Pool (when photos are enabled), Duration and Format. With photos on, an expansion "N Photos Available (auto-selected at generation)" previews the pool.
+
+## Output
+
+The **Output filename** is auto-generated from your selections: person names, date range, and memory type. Examples:
 
 - `alice_bob_march_2025_memories.mp4` (Multi-Person, March 2025)
 - `alice_summer_2025_memories.mp4` (Season preset)
 - `alice_2025_memories.mp4` (Year in Review)
 - `everyone_jan-apr_2025_memories.mp4` (Custom, no person)
 
-You can edit the filename before generating.
+Edit it before generating. The line "Will be saved to: …" shows `output.directory` (default `~/Videos/Memories`); the finished file actually lands in a per-run subfolder there, `<name>_<YYYYMMDD_HHMMSS_xxxx>/`, and the exact path is printed when the run completes.
+
+### Upload to Immich
+
+The same card has an **Upload after generation** switch and an **Album name** field. When on, the finished video is uploaded to your Immich server and added to that album (created if missing). Off by default; nothing in your library is modified either way.
 
 ## Dividers
 
-The tool automatically picks the right divider style based on your date range:
+The tool picks the divider style from your date range and memory type:
 
-- **Month dividers** (e.g., "January", "February"): for 4+ month ranges within a single year
-- **Year dividers** (e.g., "2023", "2024"): for multi-year ranges and "On This Day" memories
-- **No dividers**: for trips, single months, and ranges of 3 months or less
+- **Month dividers** ("January", "February"): ranges of 4+ months within a single year, whenever the month changes between clips
+- **Year dividers** ("2023", "2024"): multi-year ranges and "On This Day" memories
+- **No dividers**: trips, monthly highlights, and ranges of 3 months or less
 
-## Generation Progress
+## Generation progress
 
-Progress is shown in real-time as the tool:
-
-1. Downloads selected clips from Immich
-2. Processes and encodes each clip (with hardware acceleration if available)
-3. Generates music (if enabled)
-4. Assembles everything into the final video with transitions, title screens, and audio mixing
+Click **Generate Video**. A progress bar and status line follow the run: downloading clips and extracting the chosen segments, rendering photos (if any), assembling with transitions and title screens, then "Applying music" or "Music disabled", "Uploading to Immich" or "Delivery not requested", and "Complete". The run folder name is shown as "Output: …". A **Cancel** button stops after the current phase ("Cancelling…").
 
 <ThemedScreenshot name="step4-generating" alt="Video generation in progress" />
 
-## Live Frame Preview
+## Live frame preview
 
-During generation, a live preview image updates in real-time as each frame is assembled. You can watch the video take shape clip by clip without waiting for the full render to complete. The preview converts HDR frames to SDR for display and is throttled to avoid overloading the browser.
+During assembly, a preview image updates as frames are rendered, so you can watch the video take shape clip by clip. HDR frames are converted to SDR for display and the preview is throttled to keep the browser responsive.
 
-## Download
+## When it finishes
 
-When generation completes, you get a download button. The video is also saved to `~/Videos/Memories/` in a timestamped directory.
+"Your memory video is ready!" with **Saved to: path (size)**, an **Immich delivery: Delivered / Pending / Not Requested** line, and an inline player. There is no download button: open the path shown, or find the video in the Immich album you chose. Revisiting Step 4 later in the same session shows the same result under a **Result** header.
 
 <ThemedScreenshot name="step4-complete" alt="Generation complete with video ready" />
 
 ## Re-generating
 
-If the result isn't right, go back to Step 2 or 3, adjust your clip selection or settings, and generate again. The analysis cache means you won't have to re-analyze anything.
+If the result isn't right, **Back to Generation Options** or go back to Step 2, adjust clip selection or settings, and generate again. The analysis cache means you don't re-analyze anything. **Start New Project** clears the session and returns to Step 1.
+
+Timing depends on hardware: about 2 minutes per 5 minutes of 1080p output on Apple Silicon or a GPU, around 15 minutes for a 30-clip video on a 4-core NAS CPU. See the [resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements) and the [NAS guide](../../deploy/common-setups/nas-only.md).

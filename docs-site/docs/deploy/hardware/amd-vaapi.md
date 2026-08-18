@@ -39,7 +39,22 @@ This should list the available VA profiles and entrypoints for your GPU.
 ```yaml
 hardware:
   enabled: true
-  backend: "vaapi"   # or "auto"
+  encoder_preset: "balanced"   # fast | balanced | quality
+```
+
+VAAPI is the last backend probed, so it is used when nothing else (NVIDIA, Apple, QSV) is
+available. There is no explicit selector.
+
+## In Docker
+
+```yaml
+services:
+  immich-memories:
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "video"
+      - "render"     # numeric GID from `getent group render` if the name does not resolve
 ```
 
 ## Limitations

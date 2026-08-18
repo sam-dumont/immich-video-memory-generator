@@ -4,14 +4,15 @@ title: Testing Guide
 
 # Testing Guide
 
-Immich Memories uses a two-tier testing strategy: fast unit tests that run everywhere, and integration tests that need real services (FFmpeg, Immich).
+Immich Memories has about 5,000 tests: 4,400+ fast unit tests that run everywhere, and 600+ integration and E2E tests that need real services (FFmpeg, Immich, a browser).
 
 ## Testing Tiers
 
 | Tier | Where it runs | Command | What it needs |
 |------|--------------|---------|---------------|
-| **Unit tests** | CI + local | `make test` | Nothing external |
-| **Integration tests** | Local only | `make test-integration` | FFmpeg + Immich server |
+| **Unit tests** | CI (Linux + macOS) + local | `make test` | Nothing external |
+| **Integration tests** | Local + self-hosted Linux GPU runner | `make test-integration` | FFmpeg + Immich server |
+| **E2E (Playwright)** | CI launch check + local | `make e2e` (`make e2e-full` for the generation flow) | `make playwright-install`, no Immich (fake server) |
 
 ### Unit tests
 
@@ -27,8 +28,11 @@ make test-fast     # Skip slow tests
 Cover the real pipeline: download from Immich, FFmpeg assembly, video output validation, music mixing. They **read** from Immich (no writes) and skip gracefully if services aren't available.
 
 ```bash
-make test-integration   # Run all integration tests (~15 min)
+make test-integration            # Every suite except cli (~15 min)
+make test-integration-assembly   # One suite: assembly, audio, auth, cli, live-photos, photos, pipeline, processing, titles
 ```
+
+Each suite is a folder under `tests/integration/` with its own `make test-integration-<suite>` target and rough runtime (see the table in `CLAUDE.md`). `cli` re-runs the full pipeline (~15 min) and is not part of `make test-integration`.
 
 **What's tested:**
 - Real FFmpeg assembly (single clip, crossfade, smart transitions)
@@ -51,18 +55,14 @@ Tests skip gracefully if services aren't available: you won't get failures, just
 
 ### How coverage works
 
-CI runs unit tests and generates `coverage.xml`. Integration tests run locally and generate per-suite coverage XMLs (`tests/assembly-coverage.xml`, `tests/pipeline-coverage.xml`, etc.). All files are merged by CI's diff-cover check and uploaded to Codecov.
+CI runs unit tests and uploads `coverage.xml` to Codecov under the `unittests` flag. The self-hosted GPU runner runs the integration suites and uploads its coverage under the `integration-linux` flag; Codecov merges the two. The per-suite XMLs that `make test-integration` writes locally (`tests/*-coverage.xml`, `tests/*-junit.xml`) are gitignored — they are for your own inspection, not for committing.
 
 ### Workflow when you change code
 
 1. Write your code
 2. Run `make test` (unit tests, always)
-3. If you changed `src/immich_memories/processing/`, `analysis/`, `titles/`, or `generate.py`:
-   ```bash
-   make test-integration   # Runs real FFmpeg + Immich tests
-   git add tests/*-coverage.xml tests/integration-junit.xml
-   ```
-4. Commit and push: CI merges all coverage files
+3. If you changed `src/immich_memories/processing/`, `analysis/`, `titles/`, or `generate.py`, run the matching integration suite locally (`make test-integration-processing`, `make test-integration-titles`, ...) so you catch FFmpeg regressions before the GPU runner does
+4. Commit and push: CI runs unit tests + diff-cover, the GPU runner runs integration
 
 ### Check coverage locally before pushing
 
@@ -110,16 +110,19 @@ class TestMyFeature:
 
 ```
 tests/
-├── test_*.py                      # Unit tests (CI + local)
-├── integration/
-│   ├── conftest.py                # FFmpeg fixtures, requires_ffmpeg marker
-│   ├── test_assembly_real.py      # FFmpeg assembly tests
-│   ├── test_generate_real.py      # generate_memory() with synthetic clips
-│   ├── test_generate_scenarios.py # Music, trimming, error handling
-│   └── test_cli_generate.py       # Full Immich pipeline + CLI tests
-├── assembly-coverage.xml          # Committed: per-suite integration coverage
-├── pipeline-coverage.xml          # Committed: per-suite integration coverage
-├── photos-coverage.xml            # Committed: per-suite integration coverage
-├── live-photos-coverage.xml       # Committed: per-suite integration coverage
-└── integration-junit.xml          # Committed: Codecov test analytics
+├── test_*.py                # Unit tests (CI + local)
+├── benchmarks/, performance/ # Timing benchmarks (make benchmark*)
+├── e2e/                     # Playwright E2E against a fake Immich server (make e2e, make screenshots)
+└── integration/
+    ├── conftest.py          # FFmpeg fixtures, requires_ffmpeg marker
+    ├── immich_fixtures.py   # requires_immich, short-clip fixtures
+    ├── assembly/            # make test-integration-assembly   (FFmpeg only)
+    ├── audio/               # make test-integration-audio      (demucs/acestep packages)
+    ├── auth/                # make test-integration-auth       (no external deps)
+    ├── cli/                 # make test-integration-cli        (full pipeline, slow)
+    ├── live_photos/         # make test-integration-live-photos (FFmpeg + Immich)
+    ├── photos/              # make test-integration-photos     (FFmpeg only)
+    ├── pipeline/            # make test-integration-pipeline   (FFmpeg + Immich)
+    ├── processing/          # make test-integration-processing (FFmpeg only)
+    └── titles/              # make test-integration-titles     (FFmpeg only, pixel tests)
 ```

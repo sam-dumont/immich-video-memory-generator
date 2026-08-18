@@ -13,7 +13,6 @@ The pipeline is designed around GPU acceleration and ML-powered features for the
 |---------|----------|-------------|--------|
 | Video encoding | NVENC / VideoToolbox / VAAPI / QSV | libx264 / libx265 (software) | 3-10x slower encoding |
 | Title screens | Animated GPU-rendered (Taichi: bokeh particles, gradient animation, SDF text) | Static PIL-rendered (gradient background, text overlay) | Simpler visuals, same text |
-| Frame blending (transitions) | Taichi GPU kernel | NumPy CPU blending | Slightly slower crossfades |
 | Face detection (macOS) | Apple Vision (Neural Engine) | OpenCV Haar cascades (CPU) | Slightly less accurate |
 | SDF text rendering | Taichi GPU kernels + FreeType atlas | PIL text drawing | No SDF glow/shadow effects |
 | Video scaling | GPU-accelerated (scale_cuda, scale_vaapi) | FFmpeg swscale (CPU) | Slower for resolution changes |
@@ -30,11 +29,11 @@ The pipeline is designed around GPU acceleration and ML-powered features for the
 
 ## Configuration
 
-No configuration is needed. The pipeline auto-detects available hardware and falls back to CPU automatically. To explicitly force CPU mode:
+No configuration is needed. The pipeline auto-detects available hardware and falls back to CPU automatically. To explicitly force CPU encoding (skip GPU probing entirely):
 
 ```yaml
 hardware:
-  backend: "none"
+  enabled: false
 ```
 
 ## Taichi (optional GPU dependency)
@@ -43,7 +42,7 @@ Taichi powers the animated title screen renderer (particle effects, gradient ani
 
 ```bash
 # Install with GPU title support
-pip install immich-memories[gpu]
+pip install "immich-memories[gpu]"
 
 # Or install without it (CPU-only titles)
 pip install immich-memories
@@ -51,11 +50,15 @@ pip install immich-memories
 
 When Taichi is not installed, title screens are rendered with PIL (static gradient + text). The video output is functionally identical: same title text, same timing, same encoding.
 
+Taichi also has a CPU backend. To keep Taichi but force it off the GPU (a broken driver, or
+comparing timings), set `IMMICH_FORCE_CPU=1`. On `linux/arm64` (Raspberry Pi, the arm64 Docker
+image) the `gpu` extra skips Taichi altogether — titles are always PIL-rendered there.
+
 ## Performance expectations
 
 On a modern CPU (4+ cores), expect roughly:
 
-- **Encoding**: 2-5x realtime for 1080p H.264 (a 3-minute video takes 6-15 minutes)
+- **Encoding**: 0.2-0.5x realtime for 1080p H.264 (a 3-minute video takes 6-15 minutes)
 - **Analysis**: Similar speed (most analysis is CPU-bound regardless of GPU)
 - **Title rendering**: Near-instant with PIL (no GPU kernel compilation)
 - **Transitions**: Negligible difference for typical clip counts
@@ -73,7 +76,9 @@ immich-memories hardware
 If no GPU is found, you will see:
 
 ```
-Hardware: No GPU acceleration. Video encoding will use CPU (slower).
+No hardware acceleration detected
+
+Video encoding will use CPU (libx264).
 ```
 
 This is a warning, not an error. The pipeline will work fine.

@@ -37,7 +37,7 @@ ci:
   - changed-files:
       - any-glob-to-any-file:
           - '.github/**'
-          - 'justfile'
+          - 'Makefile'
 
 dependencies:
   - changed-files:

@@ -2,7 +2,7 @@
 
 ## About this project
 
-This codebase is built almost entirely with AI (Claude by Anthropic). That's not a disclaimer: it's a deliberate choice, and the quality gates exist because of it, not in spite of it. 1,100+ tests, 17 CI gates, mutation testing, composition over inheritance, TDD.
+This codebase is built almost entirely with AI (Claude by Anthropic). That's not a disclaimer: it's a deliberate choice, and the quality gates exist because of it, not in spite of it. 5,000+ tests, ~20 CI gates, 80% diff-coverage on every PR, composition over inheritance, TDD.
 
 If you spot something the AI got wrong, please fix it. That's how this gets better.
 
@@ -10,7 +10,7 @@ If you spot something the AI got wrong, please fix it. That's how this gets bett
 
 This entire project was built with GenAI (Claude by Anthropic). AI-assisted contributions are absolutely welcome: this is not a project that's going to lecture you about using Copilot.
 
-That said, AI code has specific failure modes: bloat, over-abstraction, tests that test mocks instead of behavior, verbose docstrings that add no value. That's why this project has 17 CI gates, mutation testing, and architectural rules like "no mixins": they exist specifically to catch the things AI gets wrong.
+That said, AI code has specific failure modes: bloat, over-abstraction, tests that test mocks instead of behavior, verbose docstrings that add no value. That's why this project has ~20 CI gates, a hermetic browser launch test, and architectural rules like "no mixins": they exist specifically to catch the things AI gets wrong.
 
 When contributing with AI tools:
 

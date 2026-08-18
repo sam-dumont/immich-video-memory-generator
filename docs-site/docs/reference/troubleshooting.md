@@ -11,7 +11,8 @@ ConnectionError: Cannot connect to Immich at https://photos.example.com
 ```
 
 - Double-check your URL. Include the protocol (`https://`). Don't include a trailing slash.
-- Verify your API key is correct: **Immich > Account Settings > API Keys**.
+- Verify your API key is correct: **Immich > Account Settings > API Keys**. A `403 Forbidden` means the key exists but lacks permissions — recreate it with **All** permissions (or the read + upload + album scopes described in the quick start).
+- Immich must be **v2 or newer**; Immich 1.x is rejected at connect time (`Unsupported Immich major version 1`).
 - Make sure Immich is actually reachable from wherever you're running this tool. If you're in Docker, `localhost` means the container, not your host machine: use the host's IP or Docker network hostname.
 
 Run the read-only compatibility check before changing anything:
@@ -55,11 +56,12 @@ relevant Immich server logs. API keys are redacted.
 
 ## Slow Analysis
 
-Analysis runs at roughly 1-2 minutes per video on CPU. Speed it up:
+First-run analysis takes roughly 1-2 minutes per clip on a CPU-only box, about 1 minute per 10 clips on Apple Silicon or a GPU. Downscaling to 480p is already on by default (`analysis.enable_downscaling`, `analysis.analysis_resolution`), so the levers left are:
 
-- **Enable GPU analysis**: Set `hardware.gpu_analysis: true` in your config.
-- **Enable downscaling**: Set `analysis.enable_downscaling: true` and `analysis.analysis_resolution: 480`.
-- **Reduce keyframe interval**: Lower `analysis.keyframe_interval` to analyze fewer frames per second.
+- **Analyze fewer clips**: `--analysis-depth fast` (or the "Analysis Depth" selector in Step 1) scores favorites first instead of every eligible clip. `auto` (the default) already does this for large pools.
+- **Narrow the period**: a month or a person filter is analyzed in minutes; a whole year of a busy library is an overnight job on a NAS.
+- **Let the cache work**: results are stored per asset in `~/.immich-memories/cache.db`, so the second run over the same clips skips analysis. Do not clear the cache between runs.
+- **Turn off the LLM pass**: with `content_analysis.enabled: true`, every candidate waits on the model server; a slow Ollama box dominates the run.
 
 ## Out of Memory (OOM)
 

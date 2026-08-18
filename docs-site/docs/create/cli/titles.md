@@ -54,8 +54,9 @@ immich-memories titles test --year 2024 --locale fr --style vintage_charm
 Manage the fonts used for title screens. Fonts are OFL-licensed from Google Fonts and cached locally in `~/.immich-memories/fonts/`.
 
 ```bash
-# List available fonts and their status
+# List fonts and their status (bare command or --list)
 immich-memories titles fonts
+immich-memories titles fonts --list
 
 # Download all fonts
 immich-memories titles fonts --download

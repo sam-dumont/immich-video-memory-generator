@@ -357,7 +357,7 @@ export const GenerateMemoriesScene: React.FC<Props> = ({ bassIntensity }) => {
                 marginBottom: 10,
               }}
             >
-              <Slider label="Max non-favorites:" value="25%" percent={25} />
+              <Slider label="Preferred max non-favorites:" value="25%" percent={25} />
             </div>
 
             {/* Explanation text */}

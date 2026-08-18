@@ -5,20 +5,26 @@ sidebar_label: Config Reference
 
 # Config Reference
 
-These options have sane defaults and most users don't need to change them. Add any of these to your `~/.immich-memories/config.yaml` to override.
+These options have sane defaults and most users don't need to change them. Add any of these to your `~/.immich-memories/config.yaml` to override. Values shown below are the built-in defaults (placeholders like URLs and example schedules aside).
 
 :::tip Config tiers
-These advanced sections can be placed under an `advanced:` key in your config file for organization:
+Tier 2 sections — `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`,
+`audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications` — are
+written under an `advanced:` key when the app saves the file:
 
 ```yaml
 advanced:
   analysis:
     scene_threshold: 25.0
   hardware:
-    backend: "apple"
+    encoder_preset: "quality"
 ```
 
-Or kept at the top level (both formats work).
+When reading, both placements work; if a section appears in both places the top-level one wins.
+Everything else (`immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`,
+`trips`, `photos`, `scoring_priority`, `scheduler`) is Tier 1 and stays at the top level.
+Unknown keys *inside* a section are silently ignored; unknown top-level keys and invalid values
+fail validation at startup.
 :::
 
 ## Immich connection
@@ -46,12 +52,12 @@ credentials and see the resolved API contract without generating or uploading a 
 
 ```yaml
 analysis:
-  # Clip pacing preset (overrides individual duration params below)
+  # Clip pacing preset (fills in the five duration params below; explicit values win)
   clip_style: null               # fast-cuts | balanced | long-cuts (null = use individual values)
 
   # Scene detection
   scene_threshold: 27.0          # Scene change sensitivity (1-100, lower = more scenes)
-  min_scene_duration: 1.0        # Minimum scene length in seconds
+  min_scene_duration: 1.0        # Minimum scene length in seconds (0.5-10)
   use_scene_detection: true      # Use scene detection for natural cut points
 
   # Clip duration tuning (or use clip_style above)
@@ -59,20 +65,19 @@ analysis:
   min_segment_duration: 2.0      # Clips shorter than this are discarded (0.5-5s)
   optimal_clip_duration: 5.0     # Sweet spot clip duration (2-15s)
   max_optimal_duration: 10.0     # Max optimal duration for long sources (5-30s)
-  target_extraction_ratio: 0.15  # Target ratio of clip to source (0.15 = use 15%)
+  target_extraction_ratio: 0.15  # Target ratio of clip to source (0.15 = use 15%; 0.05-0.5)
 
   # Duplicate detection
   duplicate_hash_threshold: 8    # Perceptual hash threshold (0-64)
-  keyframe_interval: 1.0         # Seconds between keyframe extractions
 
   # Performance
+  download_workers: 3            # Parallel download clients for video prefetching (1-8)
   enable_downscaling: true       # Downscale for analysis (~3-5x faster)
   analysis_resolution: 480       # Target height for analysis (240-1080)
 
   # Live Photos (iPhone 3s video clips)
   include_live_photos: true      # Include Live Photo clips (ON by default)
   live_photo_merge_window_seconds: 10.0  # Max gap to group as burst (1-60s)
-  live_photo_min_burst_count: 3  # Min photos for burst merging (2-20)
 
   # Audio-aware boundaries
   use_unified_analysis: true     # Avoid mid-sentence cuts
@@ -81,25 +86,28 @@ analysis:
   min_silence_duration: 0.3      # Minimum silence gap duration (0.1-1s)
 ```
 
+Presets: `fast-cuts` = 3–6 s clips, 30% extraction; `balanced` = 5–10 s, 40%; `long-cuts` =
+8–15 s, 50%. With no preset the defaults above apply (5–10 s, 15%). Any Live Photo cluster of two
+or more within the merge window is treated as a burst — the count is not configurable.
+
 ## Generation defaults
 
 ```yaml
 defaults:
-  target_duration_seconds: 600   # 10-3600 seconds
-  output_orientation: "auto"     # auto, landscape, portrait, square
-  scale_mode: "blur"             # fit, fill, smart_crop, blur
-  transition: "smart"            # cut, crossfade, smart, none
+  scale_mode: "blur"             # fit, fill, smart_crop, blur (used when --scale-mode is not given)
+  transition: "smart"            # cut, crossfade, smart, none (used when --transition is left on smart)
   transition_duration: 0.5       # 0-2 seconds
-  transition_buffer: 0.5         # Extra footage around clips for smooth fades
 ```
 
-`target_duration_seconds` describes the finished video, not just the selected source clips. The
-planner budgets opening/title/ending cards and subtracts the expected overlap from fades before it
-sets the content budget. Month dividers use an all-or-none policy, and trip location cards are
-counted only after the final media selection. If filtering leaves usable time on the table, the
-optimizer backfills eligible leftovers and can relax the preferred photo ratio; hard eligibility
-and deduplication rules remain enforced. Frame and transition boundaries can leave the encoded
-result less than one transition away from the requested duration.
+Target duration and orientation are chosen per run — the UI slider / `--duration` (seconds) and
+`--orientation` — with the memory type preset supplying the default duration; there is no config
+default for either. The target duration describes the finished video, not just the selected source
+clips. The planner budgets opening/title/ending cards and subtracts the expected overlap from fades
+before it sets the content budget. Month dividers use an all-or-none policy, and trip location cards
+are counted only after the final media selection. If filtering leaves usable time on the table, the
+optimizer backfills eligible leftovers and can relax the preferred photo ratio; hard eligibility and
+deduplication rules remain enforced. Frame and transition boundaries can leave the encoded result
+less than one transition away from the requested duration.
 
 ## Output
 
@@ -108,10 +116,10 @@ output:
   directory: "~/Videos/Memories"
   format: "mp4"                  # mp4 or mov
   resolution: "1080p"            # 720p, 1080p, 4k
-  codec: h265                     # h264, h265, prores
+  codec: h264                     # h264 (default), h265 (HDR-capable), prores
   hdr_mode: auto                  # auto, sdr, hdr
-  crf: 18                        # Quality (0-51, lower = better)
   quality: "high"                # high, medium, low (shorthand for CRF presets)
+  crf: null                      # unset = derived from quality; 0-51 overrides (lower = better)
 ```
 
 CRF is the image-quality authority. `quality` is only a shorthand used when `crf` is omitted;
@@ -138,28 +146,30 @@ tone-maps detected HDR sources and logs the reason. Use `hdr_mode: sdr` when SDR
 ```yaml
 photos:
   enabled: true                  # Include photos in memories
-  max_ratio: 0.50               # Max 50% of clips can be photos
-  duration: 4.0                  # Seconds per photo clip
-  animation_mode: auto           # auto | ken_burns | face_zoom | blur_bg
-  enable_collage: true           # Group series as collages
-  series_gap_seconds: 60         # Max gap to group as series
-  collage_duration: 6.0          # Seconds per collage clip (2-15s)
-  zoom_factor: 1.15              # Ken Burns zoom amount (15%)
-  score_penalty: 0.2             # Photos score 80% of equivalent videos
+  max_ratio: 0.50               # Max 50% of clips can be photos (0-1)
+  duration: 4.0                  # Seconds per photo clip (1-10)
+  enable_collage: true           # Group photo series taken close together
+  series_gap_seconds: 60         # Max gap to group as series (1-300)
+  zoom_factor: 1.15              # Ken Burns zoom amount (1.0-2.0; 1.15 = 15%)
+  score_penalty: 0.2             # Photos score 80% of equivalent videos (0-1)
 ```
+
+The animation per photo (Ken Burns, face pan, blurred background) is picked automatically from the
+photo's content; it is not configurable.
 
 ## Hardware acceleration
 
 ```yaml
 hardware:
-  enabled: true
-  backend: "auto"                # auto, nvidia, apple, vaapi, qsv, none
+  enabled: true                  # false = CPU encoding, no GPU probing at all
   encoder_preset: "balanced"     # fast, balanced, quality
-  device_index: 0                # GPU index for multi-GPU systems
-  gpu_analysis: true             # Use GPU for video analysis
+  gpu_analysis: true             # CUDA frame differencing for scene analysis when available
   gpu_decode: true               # Hardware video decoding
-  gpu_memory_limit: 0            # GPU memory limit in MB (0 = unlimited)
 ```
+
+The backend is detected automatically (NVIDIA NVENC → Apple VideoToolbox → Intel QSV → VAAPI, first
+hit wins); there is no override. `hardware.enabled: false` is the only way to force CPU. On multi-GPU
+Linux hosts pick the card with `CUDA_VISIBLE_DEVICES` / `NVIDIA_VISIBLE_DEVICES`.
 
 `encoder_preset` controls encoder speed/effort; it does not replace `output.crf`. On Apple,
 `fast` enables VideoToolbox's speed-priority mode while `balanced` and `quality` leave it disabled.
@@ -167,37 +177,41 @@ Image quality still comes from the CRF translation described above.
 
 ## Audio and music
 
-```yaml
-audio:
-  auto_music: false
-  music_source: "musicgen"       # local, musicgen, or ace_step
-  local_music_dir: "~/Music/Memories"
-  ducking_threshold: 0.02        # Voice detection sensitivity (0-1)
-  ducking_ratio: 6.0             # How much to lower music (1-20)
-  music_volume_db: -6.0          # Base music volume (-20 to 0 dB)
-  fade_in_seconds: 2.0           # Music fade in (0-10s)
-  fade_out_seconds: 3.0          # Music fade out (0-10s)
+Background music is generated when `ace_step.enabled` or `musicgen.enabled` is on. With both on,
+ACE-Step generates and the MusicGen server is used only for stem separation (ducking); with neither,
+stems come from a local Demucs install if present. Per run you can still override that:
+`--music PATH` uses your own file, `--no-music` skips music, and the UI offers None / Upload file /
+AI Generated in Step 3. Music volume is a per-run setting too (`--music-volume` or the UI slider);
+ducking under speech and the 2 s / 3 s fades are fixed.
 
+```yaml
 musicgen:
-  enabled: false
+  enabled: false                 # Use a MusicGen API server
   base_url: "http://localhost:8000"
   api_key: ""
-  timeout_seconds: 10800         # 3 hours
-  num_versions: 3
-  hemisphere: "north"
+  timeout_seconds: 10800         # 3 hours (60-18000)
+  num_versions: 3                # Versions generated for selection (1-5)
+  hemisphere: "north"            # north or south, for seasonal prompts
 
 ace_step:
-  enabled: false
+  enabled: false                 # Use ACE-Step (remote server or local library)
   mode: "api"                    # api (remote REST server) or lib (local, requires Python 3.12)
   api_url: "http://localhost:8000"
+  api_key: ""                    # Bearer token for a protected ACE-Step server (api mode)
   model_variant: "turbo"         # Default 2B; use acestep-v15-xl-turbo for the 4B production profile
   lm_model_size: "1.7B"          # Default planner; use 4B with the XL production profile
   use_lm: true
-  bf16: true
-  num_versions: 3
+  bf16: true                     # Set false for Pascal/older GPUs
+  num_versions: 3                # 1-5
   hemisphere: "north"
-  timeout_seconds: 3600
+  timeout_seconds: 3600          # 60-18000
+
+audio:
+  local_music_dir: "~/Music/Memories"   # Library scanned by `immich-memories music search`
 ```
+
+`audio.local_music_dir` only feeds the `immich-memories music` helper commands; generation never
+picks music from it on its own — pass the file with `--music`.
 
 ## LLM (vision model)
 
@@ -212,15 +226,22 @@ llm:
   timeout_seconds: 300             # increase for slow local models (10-3600)
 ```
 
-A separate `title_llm` section can override these for trip title generation (useful if you want a different model for titles vs. content analysis):
+A separate `title_llm` section can point the web UI's title step at a different model than the one
+used for content analysis:
 
 ```yaml
 title_llm:
+  provider: "openai-compatible"
   base_url: "http://localhost:11434/v1"
   model: "llama3.2"
+  api_key: ""
+  timeout_seconds: 300
 ```
 
-Any field not set in `title_llm` falls back to the `llm` values.
+The switch is all-or-nothing on `title_llm.model`: when it is set the whole `title_llm` block is
+used, and any field you leave out takes the *built-in* default (`provider: openai-compatible`,
+`base_url: http://localhost:8080/v1`, empty `api_key`) — it is not inherited from `llm`. When
+`title_llm.model` is empty, `llm` is used. CLI title generation always uses `llm`.
 
 ## Content analysis (LLM-based scoring)
 
@@ -238,10 +259,9 @@ audio_content:
   weight: 0.15
   use_panns: true                # Semantic labels via optional audio-ml extra
   min_confidence: 0.3
-  laughter_confidence: 0.1
-  laughter_bonus: 0.1
-  protect_laughter: true
-  protect_speech: true
+  laughter_confidence: 0.1       # Lower threshold for laughter/baby sounds (0.1-0.5)
+  protect_laughter: true         # Avoid cutting through laughter events
+  protect_speech: true           # Avoid cutting through speech regions
 ```
 
 `use_panns: true` uses PANNs to label laughter, babies, speech, music, cheering, engines, and
@@ -374,22 +394,20 @@ scores are recomputed.
 
 ```yaml
 title_screens:
-  enabled: true
-  title_duration: 3.5
-  month_divider_duration: 2.0
-  ending_duration: 7.0
-  animation_duration: 0.5
+  enabled: true                  # Opening title, month dividers and ending screen
+  title_duration: 3.5            # seconds (1-10)
+  month_divider_duration: 2.0    # seconds (1-5)
+  ending_duration: 7.0           # seconds (2-15)
   locale: "auto"                 # en, fr, or auto-detect
   style_mode: "auto"             # auto (mood-based) or random
-  animated_background: true
-  show_decorative_lines: false
-  avoid_dark_colors: false
-  minimum_brightness: 0
-  show_month_dividers: true
-  month_divider_threshold: 2
-  use_first_name_only: true
-  custom_font_path: null
+  show_month_dividers: true      # When the video spans several months (all-or-none)
+  month_divider_threshold: 2     # Min clips in a month to show its divider (1-10)
+  use_first_name_only: true      # "Alice" instead of "Alice Smith" in titles
 ```
+
+Look-and-feel (animated backgrounds, decorative lines, colour palette, custom fonts) is not
+configurable from the config file today. The `immich-memories titles` command exposes some of these
+as flags for previewing.
 
 ## Trip detection
 
@@ -437,7 +455,7 @@ The video cache defaults to 10 GB. If you're tight on disk, lower `video_cache_m
 server:
   host: "0.0.0.0"               # Listen address (use 127.0.0.1 to restrict to localhost)
   port: 8080                     # Listen port (1-65535)
-  enable_demo_mode: false        # Enable privacy/demo mode permanently
+  enable_demo_mode: false        # Show the demo/privacy (blur) toggle in the sidebar
 ```
 
 These can also be set via CLI flags: `immich-memories ui --host 127.0.0.1 --port 9090`.
@@ -471,11 +489,11 @@ scheduler:
 
 ## Smart automation
 
-Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../create/cli/auto.md) for the full command reference.
+Controls what `immich-memories auto suggest` and `auto run` detect and generate. See the [auto CLI docs](../create/cli/auto.md) for the full command reference. Tier 2 — lives under `advanced:` when the app writes the file.
 
 ```yaml
 automation:
-  cooldown_hours: 24              # min hours between auto-generated memories
+  cooldown_hours: 24              # min hours between auto-generated memories (1-168)
   upload_to_immich: false         # auto-upload results
   album_name: null                # target album for uploads
   detect_monthly: true            # monthly highlights candidates
@@ -501,12 +519,11 @@ auth:
   password: ""                   # Supports ${ENV_VAR} expansion
 
   # OIDC / SSO
-  issuer_url: ""                 # Auto-discovers via /.well-known/openid-configuration
-  client_id: ""
+  issuer_url: ""                 # Auto-discovers via /.well-known/openid-configuration; supports ${ENV_VAR}
+  client_id: ""                  # Supports ${ENV_VAR} expansion
   client_secret: ""              # Supports ${ENV_VAR} expansion; empty for public clients
   scope: "openid email profile"
   auto_launch: false             # Skip login page, redirect straight to IdP
-  allow_insecure_issuer: false   # Allow http:// issuer URLs (dev only)
   button_text: "Sign in with SSO"
 
   # Trusted header (reverse proxy)
@@ -519,9 +536,7 @@ Place under `advanced:` in your config file (like all Tier 2 sections).
 
 ## Notifications
 
-Get notified when auto-generation or scheduled jobs complete. Uses [Apprise](https://github.com/caronc/apprise) (130+ services: ntfy, Discord, Telegram, Slack, email, webhooks).
-
-Install: `pip install immich-memories[notifications]`
+Get notified when auto-generation or scheduled jobs complete. Uses [Apprise](https://github.com/caronc/apprise) (130+ services: ntfy, Discord, Telegram, Slack, email, webhooks). Apprise ships with the base package — no extra to install. Tier 2 — lives under `advanced:` when the app writes the file.
 
 ```yaml
 notifications:
@@ -533,7 +548,7 @@ notifications:
   on_success: true                # notify on successful generation
   on_failure: true                # notify on failed generation
   attach_thumbnail: false         # opt in; attachments cost bandwidth/provider quota
-  cooldown_hours: 24              # pause normal attempts after a delivery failure
+  cooldown_hours: 24              # pause normal attempts after a delivery failure (1-168)
 ```
 
 Delivery failures are stored as sanitized health state. Normal success and failure

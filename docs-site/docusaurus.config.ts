@@ -18,6 +18,8 @@ const config: Config = {
   projectName: 'immich-video-memory-generator',
 
   onBrokenLinks: 'throw',
+  // TODO(launch): flip to 'throw' once the full docs build reports zero broken anchors.
+  onBrokenAnchors: 'warn',
   markdown: {
     hooks: {
       onBrokenMarkdownLinks: 'throw',

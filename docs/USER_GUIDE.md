@@ -42,9 +42,11 @@ single-replica; run one instance.
 
 - **Server URL**: Your Immich server address
 - **API Key**: Your personal API key from Immich
-- **Test Connection**: Verifies your credentials work
+- **Test Connection**: Verifies your credentials work (runs automatically on load when credentials are pre-filled)
 - **Save Config**: Saves settings for future sessions
-- **Preflight Check**: Tests all dependencies (FFmpeg, etc.)
+
+Once connected, the panel collapses to "Immich Connection — *your name*". To check FFmpeg, hardware
+acceleration and the LLM/music servers, run `immich-memories preflight` from a terminal.
 
 Immich Memories supports **Immich v2 and v3**. Leave API selection on its default:
 
@@ -69,46 +71,66 @@ check:
 immich-memories config test
 ```
 
-### Time Period Selection
+### Memory Type
 
-Choose how to select which videos to include:
+Eight cards: **Year in Review**, **Season**, **Person Spotlight**, **Multi-Person**, **Monthly
+Highlights**, **On This Day**, **Trip**, **Custom**. Each preset sets the date range and target
+duration and shows only the parameters it needs (Year; Season + Hemisphere; Person with a
+"Birthday to birthday" checkbox; People (select 2+); Month; a "Select a trip" list detected from
+GPS data). See the [Web UI docs](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/web-ui/step1-configuration) for the full table.
 
-#### Year Mode
+### Custom date range
+
+Choosing **Custom** shows three tabs:
+
+#### Year
 - Select a calendar year (January 1 - December 31)
-- Or select "Birthday Year" to use a person's birthday as the start
+- Or click **From Birthday** (instead of **Calendar Year**) to run birthday to birthday
 
-#### Duration Mode
-- Set a duration (e.g., 1 month, 6 months)
-- Choose a start date
+#### Duration
+- Set a duration (1-24 months or years)
+- Choose a **Starting from** date
 - Good for seasonal compilations
 
-#### Custom Range Mode
-- Pick exact start and end dates
-- Maximum flexibility
+#### Custom Range
+- Pick exact **Start date** and **End date**
 
-### Person Filter
+### Person Filter (Custom only)
 
-- **All People**: Include videos with anyone
-- **Specific Person**: Only include videos featuring a recognized person
-- Uses Immich's face recognition
+- **All people**: Include videos with anyone
+- A named person: Only include videos featuring that recognized person (Immich face recognition)
+- Next to it, **Target Duration (minutes)** — auto-filled at about 10 minutes per year of range
 
-### Cache Management
+### Options
 
-An expandable "Cache Management" panel at the bottom of Step 1 shows disk usage for each cache type (analysis database, video files, thumbnails, preview clips). You can clear individual caches or all of them at once. Useful when you want a fresh start or need to reclaim disk space.
+Four controls: **Prioritize Favorites**, **Include Photos**, **Include Live Photos** (switches) and
+**Analysis Depth** (Auto (recommended) / Fast (favorites first) / Thorough (every eligible clip)).
+
+### Config and Cache pages
+
+The sidebar has two extra entries below the steps:
+
+- **Config** (`/settings/config`): read-only view of the active configuration, section by section,
+  with API keys redacted, and a **Reload from Disk** button.
+- **Cache** (`/settings/cache`): disk usage for each cache (analysis database, video files,
+  thumbnails, preview clips) with a **Clear** button per cache and **Clear all caches**.
 
 ### Target Duration
 
 For trip memories, **Auto** is the default after discovery. It starts at 30 seconds plus 10 seconds
 per active day, bounded to 60–300 seconds when there is enough media. It then checks usable
 excerpts—not raw source lengths—and shortens sparse trips rather than producing filler. A dense
-seven-day trip is about 1:40; a dense 12-day trip is 2:30. Switch to **Manual** for an exact target.
+seven-day trip is about 1:40; a dense 12-day trip is 2:30. Turn off the **Auto duration** switch in
+Step 2 to type an exact **Target duration (min)**.
 
-Other memory types use preset durations that scale with their time period:
-- Full year: 10 minutes
-- Half year: 6 minutes
-- Quarter: 4 minutes
-- Month: 2 minutes
-- Less than a month: 1 minute
+Other memory types use preset defaults:
+- Year in Review: 10 minutes
+- Multi-Person: 5 minutes
+- Season: 2 minutes 15 seconds
+- Person Spotlight: 2 minutes
+- Monthly Highlights: 1 minute
+- On This Day: 45 seconds
+- Custom: about 10 minutes per year of range, pro-rated (a half year is 5, a month is 1)
 
 The target is the finished video's duration, including the opening, dividers, ending, and
 transition overlap. The selector reserves those seconds before choosing media. If normal quality
@@ -127,12 +149,14 @@ After clicking "Next: Review Clips", you'll see all available videos.
 
 - **Selected Clips**: How many reviewed media items are checked
 - **Total Duration**: Combined length of all video content
-- **Target Duration**: Your goal for the final compilation
+
+(**Target** and **Difference** appear later, in Review & Refine mode.)
 
 ### Analysis Settings
 
 | Setting | Description |
 |---------|-------------|
+| **Auto duration** | Switch (on by default). Shows "Auto · Xm YYs"; off shows a **Target duration (min)** field |
 | **Avg seconds per clip** | How much to use from each video (default: 5s) |
 | **Clips needed** | Auto-calculated based on target duration |
 | **HDR clips only** | Only use HDR videos (if available) |
@@ -161,7 +185,7 @@ For example, with 25% max:
 
 ### The Analysis Pipeline
 
-When you click "Analyze", the system runs 4 phases:
+When you click **Generate Memories**, the system runs 4 phases:
 
 1. **Clustering**: Groups similar videos together (avoids duplicates)
 2. **Filtering**: Applies hard eligibility and builds a cost-bounded deep-analysis shortlist
@@ -181,16 +205,20 @@ You'll see:
 - LLM analysis results (if enabled)
 - Progress bar with time estimate
 
-### Review Mode
+### Selection toolbar (before analysis)
 
-After analysis completes, you can review and refine the selected clips:
+Above the media list: **Select All**, **Deselect All**, **Invert Selection**, and a grid/list
+view toggle. Duplicate copies are detected and the lower-quality one is auto-deselected.
 
-- Toggle inclusion with checkboxes
-- Adjust start/end times with range sliders
-- Preview each clip inline
-- View LLM analysis results (if enabled)
+### Review & Refine (after analysis)
 
-Bulk actions: Select All, Deselect All, Invert Selection.
+Click **Review & Refine Selected Clips** to adjust what the pipeline chose:
+
+- Metrics: Selected Clips, Total Duration, Target, Difference
+- Bulk actions: **Set all to first 5s**, **Set all to middle 5s**, or **Custom seconds** + **Apply**
+- Per clip: **Include in compilation** checkbox, **Select range** slider, **Preview** / **First 5s** /
+  **Last 5s** / **Middle 5s** / **Full clip** buttons, **Rotation** (Auto, 0°, 90° CW, 180°, 90° CCW)
+- Navigation: **Back to Selection**, **Re-run Analysis**, **Continue to Generation**
 
 ---
 
@@ -200,15 +228,19 @@ After reviewing your clips, this step configures how the final video gets assemb
 
 ### Output Settings
 
+Resolution and Output Format are always visible; the rest sit under a collapsed **Advanced
+options** expansion.
+
 | Setting | Options | Default |
 |---------|---------|---------|
-| **Orientation** | Auto (detect from clips), Landscape (16:9), Portrait (9:16), Square (1:1) | Auto |
-| **Scaling Mode** | Smart Crop (keeps faces centered), Fill (crops to fit), Fit (letterbox) | Smart Crop |
-| **Transition Style** | Smart (mix of fades and cuts), Crossfade, Cut, None | Smart |
 | **Resolution** | Auto (match clips), 4K, 1080p, 720p | Auto |
-| **Output Format** | MP4 (H.264), MOV (ProRes) | MP4 |
+| **Output Format** | MP4 (H.264), MP4 (H.265), MOV (H.264), MOV (H.265), MOV (ProRes) | follows `output.codec`/`output.format` (MP4 (H.264) out of the box) |
+| **Orientation** | Auto (detect from clips), Landscape (16:9), Portrait (9:16), Square (1:1) | Auto |
+| **Scaling Mode** | Smart Crop (keep faces), Fill (crop), Fit (letterbox), Blur (blurred background) | Smart Crop in the UI (`blur` in config/CLI) |
+| **Transition Style** | Smart (mix of fades and cuts), Crossfade, Cut, None | Smart |
 | **Date overlay** | Checkbox to burn date text into the video | Off |
 | **Keep intermediate files** | Saves temporary files for debugging | Off |
+| **Photo duration (seconds)** | 1-10, shown when photos are enabled | 4 |
 
 The table above describes the UI. For CLI and scheduled runs, omitting `--resolution` uses
 `output.resolution` from your config; pass `--resolution auto` explicitly to match the source
@@ -216,13 +248,18 @@ clips. Output quality comes from the configured CRF (or the `quality` shorthand 
 set) for software H.264/H.265 and Apple VideoToolbox. Other hardware backends retain their
 existing quality policies. On Apple, `encoder_preset` controls speed/effort, not image quality.
 
+### Title
+
+**Title** and **Subtitle** fields (pre-filled with the pipeline's suggestion — LLM-generated when
+content analysis is on, template otherwise), a **Language** select and a **Regenerate** button.
+
 ### Music
 
-Three options for background music:
+The **Background music** select offers:
 
 - **None**: No background music.
 - **Upload file**: Upload your own MP3, M4A, or WAV file. Volume slider controls how loud the music plays relative to original clip audio.
-- **AI Generated**: Generates a soundtrack based on the mood of your clips. ACE-Step supports direct local generation on Apple Silicon/CUDA and a hosted REST server. In local mode it automatically uses the configured ACE-Step server if the local package is unavailable. MusicGen is an alternative generator when ACE-Step is disabled, and can also provide remote Demucs stem separation. You can generate 1-3 versions and pick the best one.
+- **AI Generated**: Only listed when `ace_step.enabled` or `musicgen.enabled` is set (then it is the default). Generates a soundtrack based on the mood of your clips. ACE-Step supports direct local generation on Apple Silicon/CUDA and a hosted REST server. In local mode it automatically uses the configured ACE-Step server if the local package is unavailable. MusicGen is an alternative generator when ACE-Step is disabled, and can also provide remote Demucs stem separation. Click **Generate Music** to preview one track before rendering; **Regenerate Music** tries again.
 
 For ACE-Step v0.1.8 on a machine with at least 20GB of GPU/unified memory, use
 `model_variant: "acestep-v15-xl-turbo"` with `lm_model_size: "4B"`. These select two different
@@ -245,21 +282,28 @@ This is where the video gets built.
 
 ### Output
 
-The filename defaults to `{person}_{daterange}_memories.mp4` and saves to `~/Videos/Memories/`. You can change the filename before generating.
+The filename defaults to `{person}_{daterange}_memories.mp4` and saves under `output.directory`
+(default `~/Videos/Memories/`) in a per-run folder named `{filename}_{run-id}/`. You can change the
+filename before generating.
+
+The same card has an **Upload after generation** switch and an **Album name** field: when on, the
+finished video is uploaded to Immich and added to that album (created if missing).
 
 ### Generating
 
-Click **Generate Video** to start the pipeline. Three phases run in sequence:
+Click **Generate Video** to start the pipeline. The status line follows the run: downloading clips
+and extracting the selected segments, rendering photos (if any), assembling with transitions and
+title screens, then "Applying music" or "Music disabled" (background music is mixed with automatic
+ducking), "Uploading to Immich" or "Delivery not requested", and "Complete".
 
-1. **Downloading and extracting segments** (0-70%): Downloads each clip from Immich, extracts the selected time range
-2. **Assembling** (70-85%): Combines all segments with transitions, applies resolution and orientation settings
-3. **Music** (85-100%): If music is enabled, generates or mixes in the background track with automatic audio ducking
-
-A progress bar and status label update in real time.
+A progress bar, a live frame preview and a **Cancel** button (stops after the current phase) are
+shown while it runs.
 
 ### After Generation
 
-The finished video plays directly in the browser. The file path is shown below the player.
+"Your memory video is ready!" — the finished video plays directly in the browser, with **Saved to:**
+(path and size) and an **Immich delivery:** status line (Delivered / Pending / Not Requested). There
+is no download button; use the path shown.
 
 From here you can:
 - **Back to Generation Options**: Change settings and re-generate
@@ -340,20 +384,6 @@ Run `immich-memories preflight` to test the connection. Check logs for specific 
 - Reduce target duration
 - Expand date range
 - Include more people
-
----
-
-## Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `J` | Rewind |
-| `K` | Pause |
-| `L` | Forward |
-| `I` | Set in-point |
-| `O` | Set out-point |
-| `Space` | Play/Pause |
-| `←` / `→` | Frame step |
 
 ---
 

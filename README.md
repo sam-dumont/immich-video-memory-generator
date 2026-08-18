@@ -14,32 +14,15 @@ Immich Memories connects to your self-hosted Immich server, selects the best mom
 
 > **Full documentation**: [sam-dumont.github.io/immich-video-memory-generator](https://sam-dumont.github.io/immich-video-memory-generator/)
 
-### Reference Setup
+<p align="center">
+  <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/welcome/overview">
+    <img src="https://sam-dumont.github.io/immich-video-memory-generator/img/demo-hero.gif" alt="Immich Memories demo: clip review, title screens and a finished memory video" width="800">
+  </a>
+  <br/>
+  <sub><a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/welcome/overview">▶ Watch the 60-second demo</a> · <a href="https://sam-dumont.github.io/immich-video-memory-generator/docs/create/first-memory">Make your first memory</a></sub>
+</p>
 
-```mermaid
-graph LR
-    subgraph "Apple M2 Pro – 16GB RAM"
-        IM["Immich Memories<br/>Python + FFmpeg"]
-        LLM["omlx (mlx-vlm)<br/>Qwen2.5-VL local"]
-    end
-
-    subgraph "K8s Cluster (GPUs)"
-        ACE["ACE-Step 1.5<br/>T1000 8GB"]
-        MG["MusicGen API<br/>GTX 1070 8GB"]
-    end
-
-    subgraph "Synology NAS"
-        Immich["Immich v2 or v3<br/>Photos + Videos"]
-    end
-
-    IM -->|"API reads<br/>(download clips)"| Immich
-    IM -->|"Vision analysis<br/>(clip scoring)"| LLM
-    IM -->|"Background music<br/>(AI-generated)"| ACE
-    ACE -.->|"fallback"| MG
-    IM -->|"Upload back<br/>(optional)"| Immich
-```
-
-*The LLM runs locally on the Mac via [omlx](https://github.com/nicepkg/omlx) (Apple Silicon MLX). Music generation runs on a K8s cluster with dedicated GPUs. Both are optional — the tool works without them, just without AI clip descriptions and generated music.*
+**Why:** you left Google Photos for Immich and lost the year-in-review / trip / "your kid's year" videos. This brings them back — on your hardware, with clips you can veto and music that isn't canned. LLM titles and AI music are optional extras; the core pipeline runs on CPU.
 
 ---
 
@@ -66,16 +49,25 @@ docker compose up -d
 
 ### Resource Requirements
 
-| Phase | RAM | CPU | Time estimate |
-|-------|-----|-----|---------------|
-| Idle (UI) | ~100MB | minimal | — |
-| Analyzing clips | 2-4GB | 2+ cores | ~1 min per 10 clips |
-| Encoding (1080p) | 4GB | 4 cores | ~2 min for 5 min video |
-| Encoding (4K) | 6-8GB | 4+ cores | ~5 min for 5 min video |
+Time depends mostly on whether analysis runs on a GPU/Apple Silicon or on a CPU-only box, and
+analysis results are cached, so the first run of a library is the slow one.
 
-Default Docker limits: 4GB RAM, 4 CPUs. This is **not a NAS app** — video analysis and encoding need real compute. Best run on a machine with 8GB+ RAM.
+| Phase | RAM | CPU | Apple Silicon / GPU | CPU-only (4-core NAS class) |
+|-------|-----|-----|---------------------|-----------------------------|
+| Idle (UI) | ~100MB | minimal | — | — |
+| Analyzing clips (first run) | 2-4GB | 2+ cores | ~1 min per 10 clips | ~1-2 min per clip |
+| Encoding 1080p | 4GB | 4 cores | ~2 min per 5 min of output | ~15 min for a 30-clip video |
+| Encoding 4K | 6-8GB | 4+ cores | ~5 min per 5 min of output | not recommended |
 
-> **Developed and tested on:** Apple M2 Pro, 16GB RAM, macOS. Not yet tested on other hardware. If you run it on Linux/x86, Synology, Unraid, or Raspberry Pi — please [report your experience](https://github.com/sam-dumont/immich-video-memory-generator/issues).
+Default Docker limits: 4GB RAM, 4 CPUs. A monthly memory (~30 clips) is a coffee break on a
+Mac or GPU box and up to an hour on a NAS; a full year is an overnight job on a NAS. See the
+[NAS-only guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/common-setups/nas-only)
+for a Celeron-class table and the settings that keep it usable.
+
+> **Developed on** Apple Silicon (macOS). CI runs the unit suite on Ubuntu + macOS, the
+> integration suite on a Linux NVIDIA runner, and publishes amd64 + arm64 images. Field reports
+> from Synology, Unraid, Proxmox and Raspberry Pi are welcome — please
+> [report your experience](https://github.com/sam-dumont/immich-video-memory-generator/issues).
 
 ### Supported Immich Versions
 
@@ -186,6 +178,33 @@ See the [full documentation](https://sam-dumont.github.io/immich-video-memory-ge
 - [Audio & Music](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/pipeline/audio-and-music)
 - [Recipes](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/recipes/birthday-compilations) (birthday compilations, automation, best practices)
 
+## How the maintainer runs it
+
+```mermaid
+graph LR
+    subgraph "Apple Silicon Mac"
+        IM["Immich Memories<br/>Python + FFmpeg"]
+        LLM["omlx (mlx-vlm)<br/>local vision LLM"]
+    end
+
+    subgraph "Optional GPU box / K8s"
+        ACE["ACE-Step 1.5<br/>(or in-process on the Mac)"]
+        MG["MusicGen API<br/>(fallback)"]
+    end
+
+    subgraph "Synology NAS"
+        Immich["Immich v2 or v3<br/>Photos + Videos"]
+    end
+
+    IM -->|"API reads<br/>(download clips)"| Immich
+    IM -->|"Vision analysis<br/>(clip scoring)"| LLM
+    IM -->|"Background music<br/>(AI-generated)"| ACE
+    ACE -.->|"fallback"| MG
+    IM -->|"Upload back<br/>(optional)"| Immich
+```
+
+*One example, not a requirement. The LLM runs locally on the Mac via [omlx](https://github.com/nicepkg/omlx) (Apple Silicon MLX); music generation runs either in-process (ACE-Step on Apple Silicon) or on a remote GPU API. Both are optional — without them you get template titles and your own music (or silence), and everything else still works.*
+
 ## Development
 
 ```bash
@@ -200,7 +219,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## Built with AI
 
 > This entire codebase was written with AI (Claude) as an experiment in building complex
-> software cleanly with AI assistance. 3,900+ tests, 20+ CI quality gates, 225 source modules.
+> software cleanly with AI assistance. 5,000+ tests (4,400+ unit, 600+ integration/E2E), ~20 CI quality gates, 250+ source modules.
 > See [DISCLAIMER.md](DISCLAIMER.md) for the full story.
 
 ## License

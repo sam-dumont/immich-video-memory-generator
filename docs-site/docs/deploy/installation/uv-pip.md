@@ -5,6 +5,8 @@ title: uv / pip
 
 # Install with uv or pip
 
+Requires **Python 3.11 or newer** and FFmpeg on your `PATH`.
+
 ## uv (Recommended)
 
 [uv](https://docs.astral.sh/uv/) is 10-100x faster than pip.
@@ -25,7 +27,11 @@ uvx immich-memories --help
 git clone https://github.com/sam-dumont/immich-video-memory-generator.git
 cd immich-video-memory-generator
 uv sync
+uv run immich-memories ui      # `uv sync` installs into .venv — the command is not on your PATH
 ```
+
+To get a plain `immich-memories` command instead, install it as a tool: `uv tool install "immich-memories[all]"`
+(or `[all-mac]` on macOS).
 
 ### Platform Extras
 
@@ -38,11 +44,17 @@ uv sync --extra mac
 # Face recognition (any platform)
 uv sync --extra face
 
-# AI music generation features
+# Local music library metadata (mutagen) for `immich-memories music search`
 uv sync --extra audio
 
 # Semantic audio labels (PANNs + Torch: laughter, speech, babies, music)
 uv sync --extra audio-ml
+
+# OIDC / SSO login (authlib)
+uv sync --extra auth
+
+# Local Demucs stem separation for music ducking (Torch, ~80 MB model)
+uv sync --extra demucs
 
 # Speech boundaries (FireRedVAD, ~15 MB, no Torch)
 uv sync --extra speech
@@ -59,6 +71,9 @@ uv sync --extra all
 # Everything on macOS
 uv sync --extra all-mac
 ```
+
+AI music generation (ACE-Step, MusicGen) is not a pip extra — it talks to a server or an
+in-process ACE-Step install; see [Audio and music](../../create/pipeline/audio-and-music.md).
 
 ### Install uv
 
@@ -95,33 +110,42 @@ pip install -e .
 
 ### Extras
 
+Quote the package spec — zsh (the macOS default shell) treats `[...]` as a glob and fails with
+`no matches found` otherwise.
+
 ```bash
 # Face recognition
-pip install immich-memories[face]
+pip install "immich-memories[face]"
 
 # macOS Apple Vision framework
-pip install immich-memories[mac]
+pip install "immich-memories[mac]"
 
-# Audio metadata support
-pip install immich-memories[audio]
+# Local music library metadata (mutagen)
+pip install "immich-memories[audio]"
 
 # Semantic audio labels (PANNs + Torch)
-pip install immich-memories[audio-ml]
+pip install "immich-memories[audio-ml]"
 
 # Speech boundaries (FireRedVAD, no Torch)
-pip install immich-memories[speech]
+pip install "immich-memories[speech]"
 
 # Speech transcription (whisper.cpp)
-pip install immich-memories[transcribe]
+pip install "immich-memories[transcribe]"
+
+# OIDC / SSO login
+pip install "immich-memories[auth]"
+
+# Local Demucs stem separation
+pip install "immich-memories[demucs]"
 
 # GPU-accelerated rendering
-pip install immich-memories[gpu]
+pip install "immich-memories[gpu]"
 
 # Everything (cross-platform)
-pip install immich-memories[all]
+pip install "immich-memories[all]"
 
 # Everything on macOS
-pip install immich-memories[all-mac]
+pip install "immich-memories[all-mac]"
 ```
 
 The `audio-ml` extra is optional because Torch and PANNs are large. Without it, audio-content

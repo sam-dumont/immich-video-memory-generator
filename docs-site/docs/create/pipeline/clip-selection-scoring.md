@@ -72,7 +72,7 @@ Photo scores are multiplied by `(1 - score_penalty)` (default 0.8) so videos win
 
 ### Live Photo Scoring
 
-Live photos go through the same pipeline as videos after burst merging. A 0.9x penalty reflects that live photos are less intentional than deliberate recordings.
+Live photos go through the same pipeline as videos after burst merging and are scored the same way.
 
 **Favorite inheritance**: If ANY photo in a burst cluster is favorited, the entire merged live photo clip inherits the favorite flag.
 

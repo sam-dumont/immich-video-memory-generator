@@ -23,8 +23,9 @@ The pipeline picks the face detection backend automatically based on your hardwa
 | Platform | Backend | Speed |
 |----------|---------|-------|
 | macOS (Apple Silicon) | Apple Vision Framework (Neural Engine) | ~10x faster than OpenCV CPU |
-| NVIDIA GPU | OpenCV CUDA | Fast, requires CUDA drivers |
-| Everything else | OpenCV CPU (Haar cascades) | Works everywhere, just slower |
+| Everything else (including NVIDIA/Intel/AMD boxes) | OpenCV CPU (Haar cascades) | Works everywhere, just slower |
+
+There is no CUDA face-detection path; on Linux, GPUs are used for encoding, scaling and (with a CUDA build of OpenCV) scene analysis, not for faces.
 
 On a Mac with an M-series chip, the Vision Framework runs face detection on the Neural Engine, which is purpose-built for this kind of work. It's not just faster: it's more accurate too, especially with small or partially occluded faces.
 

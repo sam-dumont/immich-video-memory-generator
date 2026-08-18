@@ -11,7 +11,7 @@ How the code is organized, why it's built this way, and where to make changes.
 
 The codebase used to split large classes into mixins. That worked for a while, but mixins create implicit coupling: you can't understand a mixin without knowing what `self` looks like on the host class. When `VideoAssembler` hit 11 mixins, it was time to refactor.
 
-Now the four main orchestrators compose smaller service objects via constructor injection:
+Now the four main orchestrators compose smaller service objects via constructor injection. Above them, `generate_memory()` in `generate.py` is the top-level entry that runs the whole lifecycle (discovery → download → analysis → selection → render → music → delivery):
 
 | Orchestrator | Services | What it does |
 |---|---|---|
@@ -34,31 +34,32 @@ CI runs in tiers, cheap to expensive. If lint fails in 10 seconds, there's no po
 - mypy type checking
 - Dead code detection (Vulture)
 - Cyclomatic complexity (Xenon grade C)
-- Cognitive complexity checks
-- File length enforcement (800 lines max)
+- Cognitive complexity (complexipy)
+- File length (800-line soft limit warns, 1000-line hard limit fails)
 - Refurb modernization checks
-- Dependency vulnerability audit (pip-audit)
-- Docstring coverage
-- Architecture layer enforcement
-- Code duplication detection
+- Dependency hygiene (deptry)
+- Architecture layer enforcement (import-linter)
+- Code duplication detection (jscpd)
 - AI code critique
 
 **Tier 2: Security** (parallel with Tier 1):
 - Bandit static analysis
 - Semgrep rules
+- pip-audit dependency CVEs
 - Gitleaks secret detection
 - Hadolint Dockerfile linting
 
 **Tier 3: Tests** (runs after Tier 1 passes):
-- Full test suite
+- Full test suite (Linux + macOS matrix)
 - Tests with optional extras (Taichi GPU, etc.)
 
 **Tier 4: Build + Docker** (runs after tests pass):
 - Package build verification
 - Docker image build
 - Docs site build
+- Hermetic launch check on pull requests (`make launch-check`: build + docs + Playwright e2e)
 
-17 quality gates total. Every PR must pass all of them.
+Locally, `make ci` runs the same 15 gates: lint, format-check, typecheck, file-length, complexity, cognitive-complexity, dead-code, security-lint, semgrep, refurb, dep-check, arch-check, duplication, critique, test. CI adds commitlint, pip-audit, gitleaks, hadolint, the build/docker/docs jobs and the launch check on top. Every PR must pass all of them.
 
 ## Quality Gates Overview
 
@@ -67,23 +68,22 @@ CI runs in tiers, cheap to expensive. If lint fails in 10 seconds, there's no po
 | Lint + format | Ruff | Style issues, import ordering, unused imports |
 | Type check | mypy | Type mismatches, missing annotations |
 | Complexity | Xenon | Functions too complex to reason about (grade C max) |
-| File length | Custom script | Files over 800 lines (split into services) |
+| File length | Makefile script | Files over 800 lines warn, over 1000 fail (split into services) |
 | Dead code | Vulture | Unused functions, variables, imports |
-| Duplication | Custom | Copy-pasted code blocks |
+| Duplication | jscpd | Copy-pasted code blocks (≤5%) |
 | Security | Bandit + Semgrep | Common vulnerability patterns |
 | Secrets | Gitleaks | Accidentally committed API keys |
-| Dependencies | pip-audit | Known CVEs in dependencies |
-| Docstrings | Custom | Missing documentation on public APIs |
-| Architecture | Custom | Layer violations (e.g., UI importing from processing internals) |
+| Dependencies | pip-audit + deptry | Known CVEs; unused, missing or transitive imports |
+| Architecture | import-linter | Layer violations (e.g., UI importing from processing internals) |
 | Commits | commitizen | Non-conventional commit messages |
-| Tests | pytest | 1,000+ tests covering unit, integration, and benchmarks |
+| Tests | pytest | 5,000+ tests: 4,400+ unit in CI, 600+ integration/E2E locally and on the GPU runner |
 
 ## How to Add a New Feature
 
 ### Adding a new processing capability
 
 1. Create a service class in the relevant package (e.g., `processing/my_service.py`)
-2. Keep it under 800 lines. If it needs more, split into a service + helpers file
+2. Keep it under 800 lines (soft limit; 1000 is the hard CI failure). If it needs more, split into a service + helpers file
 3. Inject it into the orchestrator's `__init__` in `video_assembler.py`
 4. Add tests in `tests/test_my_service.py`
 5. Run `make check` before committing

@@ -63,7 +63,7 @@ Runs on every push to `main` and automatically releases if there are releasable 
 3. Creates git tag and GitHub Release
 4. Builds and pushes Docker images
 
-> **Note:** This project does NOT publish to PyPI. Releases are available via GitHub Releases and Docker images only.
+> **Note:** Releases publish to GitHub Releases, GHCR (multi-arch Docker image) and [PyPI](https://pypi.org/project/immich-memories/) via OIDC trusted publishing.
 
 **Environments required:**
 - `production` - For minor/patch releases

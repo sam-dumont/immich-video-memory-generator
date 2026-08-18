@@ -131,7 +131,7 @@ invocation. Exactly one action per invocation, then it exits.
 |------|------|---------|-------------|
 | `--dry-run` | flag | `false` | Show what would be generated, don't do it |
 | `--force` | flag | `false` | Skip cooldown check |
-| `--cooldown` | int | `24` | Min hours since last auto-run |
+| `--cooldown` | int | config `automation.cooldown_hours` (24) | Min hours since last auto-run |
 | `--upload` | flag | `false` | Upload result to Immich |
 | `--quiet` | flag | `false` | Emit exactly one JSON result object on stdout |
 
@@ -187,7 +187,7 @@ Sets up your OS scheduler. Detects the platform and generates the right config f
 | **Linux** | systemd user service + timer in `~/.config/systemd/user/` | `systemctl --user enable --now immich-memories-auto.timer` |
 | **Other** | Prints a crontab entry | `crontab -e` |
 
-On macOS, launchd wakes the machine from sleep, runs the command, and goes back to sleep.
+On macOS the plist uses `StartCalendarInterval`; launchd runs a missed job the next time the Mac wakes rather than waking it from sleep. If the Mac is asleep at the scheduled time, expect the run once it wakes.
 
 ### Installing with a custom config
 

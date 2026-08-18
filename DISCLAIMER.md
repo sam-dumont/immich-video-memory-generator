@@ -10,7 +10,7 @@ The question I'm trying to answer: can you build something genuinely complex wit
 
 The AI writes code. I make sure it's good. Every line goes through:
 
-- 1,100+ tests (unit, integration, benchmarks)
+- 5,000+ tests (unit, integration, E2E, benchmarks)
 - Ruff linting and formatting on every PR
 - mypy static type checking
 - Cyclomatic complexity gates (Xenon grade C max, cognitive complexity checks)

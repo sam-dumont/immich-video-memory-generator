@@ -18,13 +18,12 @@ Yes. Skip the `--person` flag and it'll pull all videos from the selected time p
 
 **How long does analysis take?**
 
-Depends on your library size and hardware. Rough numbers:
+Depends mostly on whether analysis runs on Apple Silicon / a GPU or on a CPU-only box. First-run analysis is roughly:
 
-- CPU only: ~1-2 minutes per video
-- GPU analysis enabled: ~15-30 seconds per video
-- With downscaling to 480p: roughly half the above
+- Apple Silicon or GPU: ~1 minute per 10 clips
+- CPU-only (4-core NAS class): ~1-2 minutes per clip
 
-Results are cached, so you only pay this cost once per video.
+Analysis already downscales to 480p by default, so there is no extra "fast mode" to switch on. Results are cached, so a library only pays this once; re-runs over the same period are quick. The [README resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements) has RAM and encoding numbers, and the [NAS-only guide](../deploy/common-setups/nas-only.md) has a Celeron-class table.
 
 **Can I run it headless?**
 
@@ -32,7 +31,7 @@ Yes. The CLI works without a display. Use `immich-memories generate` with flags 
 
 **Is it safe for production?**
 
-The codebase is AI-written (on purpose, as an experiment) with 1,000+ tests and strict quality gates. The output (music, clip selection, mood analysis) is AI-generated too, so results vary. Review what it produces before showing it at grandma's birthday party.
+The codebase is AI-written (on purpose, as an experiment) with 5,000+ tests (4,400+ unit, 600+ integration/E2E) and strict quality gates. The output (music, clip selection, mood analysis) is AI-generated too, so results vary. Review what it produces before showing it at grandma's birthday party.
 
 **Can I generate for multiple people at once?**
 

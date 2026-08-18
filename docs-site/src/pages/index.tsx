@@ -19,7 +19,7 @@ function HeroSection() {
             <p className={styles.heroSubtitle}>
               Point it at your Immich server. Pick a year, a person, or a trip.
               Get a polished video with smart cuts, animated maps, AI music,
-              and title screens. No cloud. No subscription.
+              and title screens. Self-hosted. No subscription.
             </p>
             <div className={styles.heroCtas}>
               <Link className={styles.ctaPrimary} to="/docs/welcome/quick-start">
@@ -79,28 +79,28 @@ docker compose up -d
             <div className={styles.step}>
               <span className={styles.stepNumber}>1</span>
               <div>
-                <strong>Configure</strong>
+                <strong>Configuration</strong>
                 <p>Pick memory type, time period, person</p>
               </div>
             </div>
             <div className={styles.step}>
               <span className={styles.stepNumber}>2</span>
               <div>
-                <strong>Review clips</strong>
-                <p>AI scores and ranks your best moments</p>
+                <strong>Clip Review</strong>
+                <p>Scores and ranks your best moments; you refine the picks</p>
               </div>
             </div>
             <div className={styles.step}>
               <span className={styles.stepNumber}>3</span>
               <div>
-                <strong>Customize</strong>
+                <strong>Options</strong>
                 <p>Edit title, pick music, adjust settings</p>
               </div>
             </div>
             <div className={styles.step}>
               <span className={styles.stepNumber}>4</span>
               <div>
-                <strong>Generate</strong>
+                <strong>Export</strong>
                 <p>Render with map animations, titles, music</p>
               </div>
             </div>
@@ -120,8 +120,8 @@ type ShowcaseItem = {
 
 const showcaseItems: ShowcaseItem[] = [
   {
-    title: '6 memory types',
-    description: 'Year in review, monthly highlights, person spotlight, trip memory, season, on this day. Pick a preset and it handles the rest.',
+    title: '7 memory types',
+    description: 'Year in Review, Season, Person Spotlight, Multi-Person, Monthly Highlights, On This Day, Trip. Pick a preset and it handles the rest.',
     image: '/img/screenshots/step1-preset-cards.png',
     alt: 'Memory type preset selection cards',
   },
@@ -185,7 +185,7 @@ function ValuesSection() {
               </svg>
             </div>
             <strong>Your data stays home</strong>
-            <p>Zero telemetry. Zero cloud calls. Everything runs on your hardware. The Immich API key never leaves your network.</p>
+            <p>No telemetry, no account. Runs on your hardware; the only outbound calls are the ones you configure (LLM, music server) plus map tiles for trip maps. The Immich API key never leaves your network.</p>
           </div>
           <div className={styles.value}>
             <div className={styles.valueIcon}>
@@ -228,7 +228,7 @@ function CtaSection() {
           Your videos deserve better than a camera roll
         </Heading>
         <p className={styles.ctaDescription}>
-          Install in 2 minutes. Generate your first memory in 10.
+          Install in about 2 minutes. First memory in about 10 on a Mac or GPU box.
         </p>
         <div className={styles.heroCtas}>
           <Link className={styles.ctaPrimary} to="/docs/welcome/quick-start">
@@ -247,7 +247,7 @@ export default function Home(): ReactNode {
   return (
     <Layout
       title="Home"
-      description="Turn your Immich photo library into polished video memories. Smart clips, animated maps, AI music, title screens. Self-hosted, no cloud.">
+      description="Turn your Immich photo library into polished video memories. Smart clips, animated maps, AI music, title screens. Self-hosted, no cloud required.">
       <HeroSection />
       <QuickstartSection />
       <ShowcaseSection />

@@ -47,7 +47,7 @@ All styles use dark cinematic palettes with white text. No pastel or bright back
 | `modern_warm` | Warm charcoal/stone | Bold, semibold Montserrat. Amber accents. |
 | `elegant_minimal` | Deep navy/black | Clean, medium weight. Cyan accents. |
 | `vintage_charm` | Warm charcoal | Nostalgic feel. Amber/gold accents. |
-| `playful_bright` | Midnight slate | Energetic, semibold. Purple accents. |
+| `playful_bright` | Deep teal | Energetic, semibold. Teal accents. |
 | `soft_romantic` | Warm stone/zinc | Gentle fades. Warm amber accents. |
 
 ### Mood-based selection (default)
@@ -106,12 +106,12 @@ Configure with `map_style: osm` under `title_screens` if you want a different st
 
 The LLM looks at which locations repeat across days:
 
-| Pattern | Classification | Map mode | Real example |
+| Pattern | Classification | Map mode | Example |
 |---------|---------------|----------|-------------|
-| Same spot every night, excursions during the day | `base_camp` | `excursions` | Val d'Aoste: Ville Sur Sarre as base, hikes to Cogne and La Thuile |
-| 2-3 spots, each for multiple consecutive days | `multi_base` | `overnight_stops` | Cyprus: 5 nights in Nicosia, 5 nights in Geroskipou |
-| Different town each day, big distances | `road_trip` | `overnight_stops` | Italy 2022: 14 days from Umbria through Marche to Alsace |
-| Daily moves but short distances, progressive | `hiking_trail` | `overnight_stops` | Saxon Switzerland: Hohnstein to Bad Schandau to Konigstein |
+| Same spot every night, excursions during the day | `base_camp` | `excursions` | A week in a mountain village, day hikes into two neighbouring valleys |
+| 2-3 spots, each for multiple consecutive days | `multi_base` | `overnight_stops` | An island: 5 nights in the capital, 5 nights on the coast |
+| Different town each day, big distances | `road_trip` | `overnight_stops` | Two weeks driving through three regions, a new town every night |
+| Daily moves but short distances, progressive | `hiking_trail` | `overnight_stops` | A hut-to-hut trail: three villages a day's walk apart |
 
 ## Configuration
 
@@ -125,7 +125,7 @@ title_screens:
   locale: auto                  # auto, en, or fr
   show_decorative_lines: false  # subtle line accents
   show_month_dividers: true     # month dividers in yearly memories
-  use_first_name_only: true     # "Emma" instead of "Emma Dumont"
+  use_first_name_only: true     # "Alice" instead of "Alice Martin"
 ```
 
 Map coordinates for trip memories come from the `trips` config section:

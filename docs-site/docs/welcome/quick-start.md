@@ -42,7 +42,7 @@ immich:
   api_key: your-api-key-here
 ```
 
-Get your API key from Immich: **Account Settings > API Keys > New API Key**.
+Get your API key from Immich: **Account Settings > API Keys > New API Key**. When Immich asks which permissions to grant, pick **All** — or, for a minimal key: read access to assets, people, albums, timeline and search, plus **asset upload** and **album create/update** if you turn on upload-back to Immich. This tool never deletes or modifies existing assets.
 
 ## 3. Launch
 
@@ -56,7 +56,7 @@ immich-memories ui
 **CLI** (for scripts and automation):
 
 ```bash
-# Last 30 days, 5-minute video (duration is in seconds)
+# 30 days starting Jan 1 2024, 5-minute video (duration is in seconds)
 immich-memories generate --start 2024-01-01 --period 30d --duration 300
 
 # Or just a full year

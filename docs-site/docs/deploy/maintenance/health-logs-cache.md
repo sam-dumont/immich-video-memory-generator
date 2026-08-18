@@ -24,7 +24,7 @@ to `ok` and leaves a degraded payload as `degraded`. Do not use `/health` as a r
   "status": "ready",
   "immich_reachable": true,
   "last_successful_run": "2025-12-15T10:30:00.000000",
-  "version": "0.2.0"
+  "version": "0.40.1"
 }
 ```
 
@@ -71,9 +71,16 @@ Set `IMMICH_MEMORIES_LOG_FORMAT=json` for structured output:
 
 The `run_id` field only appears when a pipeline run is active. Filter in production with: `jq 'select(.run_id=="abc123")'`.
 
+### Log file
+
+Set `IMMICH_MEMORIES_LOG_FILE=/path/to/immich-memories.log` to write the same lines to a file in
+addition to stdout (same format as chosen above). In Docker, point it at a mounted path.
+
 ### Log level
 
-Set via the standard Python logging level: `DEBUG`, `INFO` (default), `WARNING`, `ERROR`, `CRITICAL`. Configure by calling `configure_logging(level="DEBUG")` or setting it in code.
+`INFO`. There is no user-facing switch for the log level yet — no env var, no CLI flag. If you
+need `DEBUG` output for a bug report, run from a checkout and call
+`configure_logging(level="DEBUG")` in code.
 
 ## Video cache
 
@@ -111,15 +118,23 @@ From the CLI:
 ```bash
 # View cache stats
 immich-memories cache stats
-
-# Clear video cache (analysis cache is preserved)
-immich-memories cache clear-videos
-
-# Clear everything
-immich-memories cache clear
 ```
 
-From the UI: the Cache management page (sidebar > Cache) shows current usage and has clear buttons.
+The CLI has no `clear` command. To clear caches:
+
+- **UI**: the Cache page (sidebar > Cache) shows current usage and has per-cache
+  **Clear** buttons plus a **Clear all**.
+- **Shell**: the video and thumbnail caches are plain directories that are safe to
+  delete while the app is idle:
+
+  ```bash
+  rm -rf ~/.immich-memories/cache/video-cache      # downloaded clips (re-downloaded on demand)
+  rm -rf ~/.immich-memories/cache/thumbnails       # UI thumbnails
+  # Docker: docker exec immich-memories rm -rf /home/immich/.immich-memories/cache/video-cache
+  ```
+
+  The analysis cache lives in `~/.immich-memories/cache.db`; deleting it forces a full
+  re-analysis on the next run, so back it up first (`immich-memories cache backup`).
 
 ### Analysis cache
 

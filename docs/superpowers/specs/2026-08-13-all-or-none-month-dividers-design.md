@@ -9,7 +9,7 @@ music configuration, and ACE-Step versions are out of scope.
 
 ## Problem
 
-The 60-second Emile person spotlight selected content from six months but rendered only two month
+The 60-second Child A person spotlight selected content from six months but rendered only two month
 dividers. The result is internally inconsistent: April and May are announced while later months
 are not.
 
@@ -33,7 +33,7 @@ For chronological month-divider flows:
 4. Selected content is preserved. Dividers do not remove clips after selection.
 5. Requested duration is a target. A coherent result may exceed it within a bounded soft envelope.
 
-Trip location cards and year dividers retain their existing policies. The Somme trip output is the
+Trip location cards and year dividers retain their existing policies. The coastal trip output is the
 reference for unchanged trip behavior.
 
 ## Duration Policy
@@ -56,7 +56,7 @@ is above the soft maximum, include none. Transition overlap is deliberately not 
 estimate; that keeps the decision conservative and avoids coupling planning to a particular
 transition implementation.
 
-For a 60-second request the maximum is 70 seconds. Emile's selected months should fit with all
+For a 60-second request the maximum is 70 seconds. Child A's selected months should fit with all
 dividers. Actual output will normally be shorter than the raw estimate because transitions overlap.
 
 Short requests scale proportionally: a 15-second request may use at most 3 seconds of overrun, not
@@ -141,17 +141,17 @@ Implementation follows vertical red-green TDD.
 5. Trip and year regression tests prove their current policies are unchanged.
 6. CLI dry-run integration proves the displayed divider policy and estimated duration come from
    the finalized plan.
-7. A real Emile smoke render uses `--no-music`; ffprobe checks 1280x720, H.264/AAC, and duration at
+7. A real Child A smoke render uses `--no-music`; ffprobe checks 1280x720, H.264/AAC, and duration at
    or below the 70-second soft maximum. Frame inspection verifies every subsequent selected month
    divider appears and photo aspect-fit treatment remains stable.
 
 ## Acceptance Criteria
 
-- Emile shows the opening plus every subsequent selected month, or no month dividers at all.
+- Child A shows the opening plus every subsequent selected month, or no month dividers at all.
 - No output can contain an arbitrary prefix such as April and May while omitting June and July.
 - For a 60-second request, the divider decision never intentionally raises the raw estimate above
   70 seconds.
 - Selected content is not removed during post-selection divider finalization.
 - Dry-run describes the actual all-or-none decision.
 - Smoke and automated tests generate no music; production auto-music behavior is unchanged.
-- Somme trip behavior remains unchanged.
+- coastal trip behavior remains unchanged.

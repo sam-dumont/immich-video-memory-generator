@@ -5,7 +5,7 @@ title: Hardware Acceleration Overview
 
 # Hardware Acceleration Overview
 
-The pipeline is designed around GPU acceleration for the best quality and speed: animated title screens, fast encoding, GPU-accelerated face detection, and more. However, **every feature has a CPU fallback**, so it works on any machine. See [CPU-Only Mode](./cpu-only.md) for details on running without a GPU.
+The pipeline is designed around GPU acceleration for the best quality and speed: animated title screens, fast encoding, and (on Apple Silicon) GPU-accelerated face detection. However, **every feature has a CPU fallback**, so it works on any machine. See [CPU-Only Mode](./cpu-only.md) for details on running without a GPU.
 
 Encoding video in software (libx264) works everywhere but it's slow. If you have a GPU or dedicated media engine, hardware acceleration can speed up encoding by 5-10x. The pipeline auto-detects your hardware and picks the best available backend.
 
@@ -13,21 +13,29 @@ Encoding video in software (libx264) works everywhere but it's slow. If you have
 
 | Backend | Platform | Encode | Decode | GPU Scaling | Face Detection |
 |---------|----------|--------|--------|-------------|----------------|
-| **NVIDIA NVENC** | Linux, Windows | h264_nvenc, hevc_nvenc | NVDEC | scale_cuda | OpenCV CUDA |
+| **NVIDIA NVENC** | Linux (Windows untested) | h264_nvenc, hevc_nvenc | NVDEC | scale_cuda | CPU (OpenCV Haar cascades) |
 | **Apple VideoToolbox** | macOS | h264_videotoolbox, hevc_videotoolbox | VideoToolbox | - | Vision Framework (Neural Engine) |
-| **Intel QSV** | Linux, Windows | h264_qsv, hevc_qsv | QSV | scale_qsv | CPU fallback |
-| **AMD VAAPI** | Linux | h264_vaapi, hevc_vaapi | VAAPI | scale_vaapi | CPU fallback |
-| **Software** | Everywhere | libx264, libx265 | FFmpeg | swscale | OpenCV CPU |
+| **Intel QSV** | Linux (Windows untested) | h264_qsv, hevc_qsv | QSV | scale_qsv | CPU (OpenCV Haar cascades) |
+| **AMD VAAPI** | Linux | h264_vaapi, hevc_vaapi | VAAPI | scale_vaapi | CPU (OpenCV Haar cascades) |
+| **Software** | Everywhere | libx264, libx265 | FFmpeg | swscale | CPU (OpenCV Haar cascades) |
+
+Face detection runs on the GPU only on Apple Silicon (Vision Framework). Everywhere else it is
+OpenCV Haar cascades on the CPU. On NVIDIA, CUDA is also used for scene analysis (frame
+differencing) when OpenCV has CUDA support and `hardware.gpu_analysis` is on.
 
 ## Configuration
 
 ```yaml
 hardware:
-  enabled: true       # turn hardware acceleration on/off
-  backend: "auto"     # auto | nvidia | apple | vaapi | qsv | none
+  enabled: true                # false = software encoding, no GPU probing
+  encoder_preset: "balanced"   # fast | balanced | quality
+  gpu_decode: true             # hardware decoding when the backend supports it
+  gpu_analysis: true           # CUDA scene analysis on NVIDIA when available
 ```
 
-`auto` is the default and the right choice for most people. It probes for available backends in order of preference and picks the first one that works. Set a specific backend only if auto-detection picks the wrong one (rare) or you want to force CPU encoding for testing.
+The backend is probed automatically in the order NVIDIA → Apple → Intel QSV → VAAPI, and the first
+one that works is used. There is no override to pick a specific backend; the only switch is
+`hardware.enabled: false`, which forces software encoding (useful for testing or a broken driver).
 
 ## Checking your hardware
 
@@ -39,7 +47,7 @@ This prints what backends are available, which one would be selected, and the sp
 
 ## Per-backend details
 
-- [NVIDIA](./nvidia.md): NVENC/NVDEC, CUDA scaling and face detection
+- [NVIDIA](./nvidia.md): NVENC/NVDEC, CUDA scaling and scene analysis
 - [Apple Silicon](./apple-silicon.md): VideoToolbox, Vision Framework, mlx-vlm
 - [Intel Quick Sync](./intel-qsv.md): QSV encoding and scaling
 - [AMD VAAPI](./amd-vaapi.md): VAAPI encoding and scaling (Linux only)

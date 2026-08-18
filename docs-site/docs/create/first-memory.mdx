@@ -7,13 +7,13 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Your First Memory
 
-This walks you through creating a video from start to finish. Takes about 15 minutes total: 5 to set up, 10 for the generation.
+This walks you through creating a video from start to finish. Plan on about 2 minutes to install and 10 for a first short video on a Mac or GPU box; on a CPU-only NAS the analysis and encoding take longer (see the [resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements)).
 
 ## Prerequisites
 
 Before you start:
 
-- **Immich running** with an API key (Account Settings > API Keys > New API Key)
+- **Immich v2 or newer** with an API key (Account Settings > API Keys > New API Key — grant **All**, or at least read access to assets/people/albums/timeline/search plus asset upload + album create/update if you want upload-back)
 - **Docker** or **Python 3.11+** installed
 - **~2 GB free disk** for the video cache (downloaded clips get cached locally)
 - At least 20-30 videos in your Immich library for the time period you want
@@ -44,7 +44,7 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 
 ## Step 2: Connect to Immich
 
-Enter your Immich server URL and API key in the Configuration tab. Click connect. A green checkmark confirms the connection.
+Enter your Immich server URL and API key in the **Immich Connection** panel of the Configuration step and click **Test Connection** (it connects on its own if the config already has credentials). On success the panel collapses to "Immich Connection — *you*" and the memory type cards appear.
 
 <ThemedScreenshot name="step1-config-connected" alt="Connected to Immich" />
 
@@ -54,9 +54,9 @@ Select the **Year in Review** preset card. Pick the year you want (the one with 
 
 ## Step 4: Review clips
 
-Go to Step 2 (Clip Review). The pipeline will fetch your videos, analyze them, and score each clip. This takes 1-3 minutes depending on how many videos you have.
+Click **Next: Review Clips**. Step 2 loads every video in the range (all checked) — deselect anything you already know you don't want, then click **Generate Memories**. The pipeline clusters, filters, analyzes and refines; the first run costs about a minute per 10 clips on Apple Silicon or a GPU, 1–2 minutes per clip on a CPU-only box. Later runs reuse the cache.
 
-Once done, you'll see a grid of clips sorted by score. The best ones are pre-selected. You can deselect clips you don't want or re-include ones the AI skipped.
+When it finishes, click **Review & Refine Selected Clips** to see what it picked. Untick a clip to drop it, drag the range slider to change the excerpt, then **Continue to Generation**.
 
 <ThemedScreenshot name="step2-clip-review" alt="Reviewing selected clips" />
 
@@ -64,28 +64,23 @@ Once done, you'll see a grid of clips sorted by score. The best ones are pre-sel
 
 Move to Step 3 (Generation Options). The defaults work well for a first video:
 
-- **Resolution:** 1080p (the default)
+- **Resolution:** Auto (match clips) — the default
 - **Transition:** Smart (mixes cuts and crossfades based on clip content)
-- **Music:** Auto-generated if you have a music backend configured, or upload your own
+- **Background music:** **AI Generated** is the default when a music backend is configured; otherwise **None**. Pick **Upload file** for your own MP3/M4A/WAV
 
 You can leave everything at defaults. The only setting worth changing on your first run: if you have a specific MP3 you want as background music, upload it here.
 
 ## Step 6: Generate
 
-Hit Generate in Step 4. The progress bar shows four phases:
-
-1. **Downloading clips** from Immich (cached for next time)
-2. **Assembling** the video with transitions and title screens
-3. **Mixing music** (if configured)
-4. **Done**: video ready to watch
+Click **Generate Video** in Step 4. The status line walks through the run: downloading clips and extracting segments (cached for next time), assembling with transitions and title screens, "Applying music" (or "Music disabled"), "Uploading to Immich" (or "Delivery not requested"), then "Complete".
 
 <ThemedScreenshot name="step4-generating" alt="Generation in progress" />
 
-30 clips at 1080p takes about 8 minutes on an M2 Pro, 15 minutes on a NAS-grade Celeron. 4K roughly doubles the time.
+Encoding a 30-clip 1080p video takes a couple of minutes on Apple Silicon or a GPU and around 15 minutes on a 4-core NAS CPU; 4K roughly doubles the time on a GPU and is not recommended on a NAS.
 
 ## Step 7: Watch
 
-When it's done, the built-in video player shows your result. You can download the MP4 directly or (if configured) upload it back to an Immich album.
+When it's done, the built-in player shows your result and "Saved to:" gives the file path (a per-run folder under `~/Videos/Memories` by default). If you turned on **Upload after generation**, it is also in the Immich album you named.
 
 ## What just happened?
 
@@ -97,5 +92,5 @@ The analysis results are cached in a local SQLite database. Next time you genera
 
 - Try other memory types: [Trip Memories](./memory-types/trip-memories.mdx) (needs GPS data), [Person Spotlight](./memory-types/monthly-person-season.mdx) (needs face recognition in Immich)
 - Set up [LLM content analysis](./pipeline/llm-content-analysis.md) for smarter clip scoring
-- Automate it: [Scheduled generation](./cli/scheduler.md) via cron
+- Automate it: schedule one daily [`auto run`](./cli/auto.md) — see [Automated Generation](./recipes/automated-generation.md)
 - Explore [all CLI options](./cli/generate.md) for fine-grained control

@@ -113,7 +113,7 @@ ok "  intro card (2.5s)"
 # Outro card: dark background with call-to-action (3 seconds)
 ffmpeg -y -f lavfi \
     -i "color=c=0x1a1a2e:s=1920x1080:d=3:r=30" \
-    -vf "drawtext=text='Try it yourself':fontfile=${FONT}:fontsize=56:fontcolor=white:x=(w-tw)/2:y=(h-th)/2-60,drawtext=text='github.com/samuelMusic/immich-memories':fontfile=${FONT}:fontsize=32:fontcolor=0x6C8EBF:x=(w-tw)/2:y=(h-th)/2+20,drawtext=text='Open source · Self-hosted · Privacy-first':fontfile=${FONT}:fontsize=24:fontcolor=0x888888:x=(w-tw)/2:y=(h-th)/2+80" \
+    -vf "drawtext=text='Try it yourself':fontfile=${FONT}:fontsize=56:fontcolor=white:x=(w-tw)/2:y=(h-th)/2-60,drawtext=text='github.com/sam-dumont/immich-video-memory-generator':fontfile=${FONT}:fontsize=32:fontcolor=0x6C8EBF:x=(w-tw)/2:y=(h-th)/2+20,drawtext=text='Open source · Self-hosted · Privacy-first':fontfile=${FONT}:fontsize=24:fontcolor=0x888888:x=(w-tw)/2:y=(h-th)/2+80" \
     -c:v libx264 -crf 18 -preset fast -pix_fmt yuv420p \
     "$WORK_DIR/outro.mp4" 2>/dev/null
 ok "  outro card (3s)"

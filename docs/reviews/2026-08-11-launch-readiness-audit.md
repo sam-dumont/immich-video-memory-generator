@@ -120,18 +120,18 @@ This validation found and closed two additional launch blockers:
 
 Real selection evidence demonstrates the intended fallback behavior:
 
-- Emile yearly fell from 185 seconds to 83.4 seconds after temporal and photo filters, then added
+- Child A yearly fell from 185 seconds to 83.4 seconds after temporal and photo filters, then added
   16 unused clips and recovered to 185.3 seconds of a 187.5-second content budget.
-- Somme fell to 93.1 seconds after filters. Strict 50% photos could not fill the remaining gap, so
+- coastal-trip fell to 93.1 seconds after filters. Strict 50% photos could not fill the remaining gap, so
   the selector used all valid motion, relaxed photos to the 70% ceiling, added 11 leftovers, and
   recovered to 156.1 seconds of a 157.5-second content budget.
 
 | Memory | Final artifact | Duration | Probe/decode result |
 |---|---|---:|---|
-| Emile — June 2026 | `emile-june-2026-xl-music.mp4` | 59.917s | 1280×720 H.264 + stereo AAC; full decode passed |
-| Emile — July 2026 | `emile-july-2026-xl-music.mp4` | 62.633s | 1280×720 H.264 + stereo AAC; full decode passed |
-| Emile — 2026 yearly | `emile-yearly-2026-180s-xl-music.mp4` | 181.333s | 1280×720 H.264 + stereo AAC; full decode passed |
-| Somme — July 25 to August 5 | `trip_somme,_france_2026-07-25.mp4` | 155.533s | 1280×720 H.264 + stereo AAC; full decode passed |
+| Child A — June 2026 | `child-a-june-2026-xl-music.mp4` | 59.917s | 1280×720 H.264 + stereo AAC; full decode passed |
+| Child A — July 2026 | `child-a-july-2026-xl-music.mp4` | 62.633s | 1280×720 H.264 + stereo AAC; full decode passed |
+| Child A — 2026 yearly | `child-a-yearly-2026-180s-xl-music.mp4` | 181.333s | 1280×720 H.264 + stereo AAC; full decode passed |
+| coastal-trip — July 25 to August 5 | `trip_somme,_france_2026-07-25.mp4` | 155.533s | 1280×720 H.264 + stereo AAC; full decode passed |
 
 The final post-fix repository gate passed 4,334 tests with 7 skipped and 662 deselected. Ruff and
 `git diff --check` were clean. The LaunchAgent remained unloaded throughout this validation.
@@ -618,9 +618,9 @@ installed LaunchAgent remained unloaded. Three local 1080p H.264/AAC videos comp
 
 | Flow | Source/selection evidence | Wall time | Final artifact |
 |---|---|---:|---|
-| Emile Dumont, 2026 person spotlight | 378 videos, 212 Live Photos, 2,096 photos; 16 final clips | 2m45s | 73.27s, 21 MB |
+| Family member A, 2026 person spotlight | 378 videos, 212 Live Photos, 2,096 photos; 16 final clips | 2m45s | 73.27s, 21 MB |
 | Sam Dumont, 2026 person spotlight + automatic ACE-Step music | 71 videos, 61 Live Photos, 444 photos; 13 final clips | 2m12s | 69.83s, 11 MB |
-| Somme, France trip, 2026-07-25 to 2026-08-05 | 823 detected trip assets; 66 videos, 29 Live Photos, 728 geofiltered photos; 21 final clips | 6m31s | 91.65s, 35 MB |
+| coastal France trip, 2026-07-25 to 2026-08-05 | 823 detected trip assets; 66 videos, 29 Live Photos, 728 geofiltered photos; 21 final clips | 6m31s | 91.65s, 35 MB |
 
 `ffprobe` confirmed all three artifacts are playable MP4 files with 1920x1080 `yuv420p` H.264 video
 and AAC audio. Eight-frame contact sheets were inspected for each output. The sampled frames had no
@@ -698,9 +698,9 @@ sending notifications:
 
 | Flow | Discovery and selection | Planned output |
 |---|---|---|
-| Emile Dumont, 2026 person spotlight | 378 videos, 212 Live Photos, 2,096 photos; 12 photos selected; 47.0s content + 11.5s titles | 58.5s, 1280x720 |
+| Family member A, 2026 person spotlight | 378 videos, 212 Live Photos, 2,096 photos; 12 photos selected; 47.0s content + 11.5s titles | 58.5s, 1280x720 |
 | Sam Dumont, 2026 person spotlight | 71 videos, 61 Live Photos, 444 photos; 11 photos selected; 44.0s content + 11.5s titles | 55.5s, 1280x720 |
-| Somme, France trip near 2026-07-28 | Four trips detected; the 2026-07-25 to 2026-08-05 Somme trip had 823 assets; 2 videos + 9 photos selected; 45.4s content + 11.5s titles | 56.9s, 1280x720 |
+| coastal France trip near 2026-07-28 | Four trips detected; the 2026-07-25 to 2026-08-05 coastal trip had 823 assets; 2 videos + 9 photos selected; 45.4s content + 11.5s titles | 56.9s, 1280x720 |
 
 After the Immich host became reachable again, preflight authenticated against 3.1.0 and the three
 post-fix flows rendered successfully in sequence. Each command requested a 60-second, 720p
@@ -709,16 +709,16 @@ notifications disabled by environment override.
 
 | Flow | Selected clips | Wall time | Verified artifact |
 |---|---:|---:|---|
-| Emile Dumont person spotlight | 12 | 99.0s | 51.766667s, 6,746,310 bytes |
+| Family member A person spotlight | 12 | 99.0s | 51.766667s, 6,746,310 bytes |
 | Sam Dumont person spotlight | 10 | 61.7s | 54.333333s, 6,089,594 bytes |
-| Somme, France trip | 11 | 76.9s | 49.333333s, 8,805,018 bytes |
+| coastal France trip | 11 | 76.9s | 49.333333s, 8,805,018 bytes |
 
 FFprobe confirmed that all three are playable MP4 artifacts with 1280x720 H.264 `yuv420p` video
-and AAC audio. The Emile and Sam flows exercised content-backed opening titles and bounded month
+and AAC audio. The Child A and Sam flows exercised content-backed opening titles and bounded month
 dividers. The trip flow exercised GPS selection, the animated map intro, real video segments, and
 portrait photos. Contact sheets for all three were inspected. The frames were coherent and
 uncorrupted; portrait/4:3 photos stayed in one centered aspect-fit window with one blurred side
-fill. A two-frame comparison inside one Emile photo confirmed a single gentle motion treatment,
+fill. A two-frame comparison inside one Child A photo confirmed a single gentle motion treatment,
 not stacked Ken Burns/crop effects. The apparent black final cell in the trip contact-sheet grid
 was an unused tile: a direct extraction at 48 seconds showed the intentional blurred ending.
 
@@ -730,7 +730,7 @@ sent.
 
 Artifacts:
 
-- `/Users/sam/Videos/Memories/launch-smoke-emile-2026-20260813_20260813_130744_1277/launch-smoke-emile-2026-20260813.mp4`
+- `/Users/sam/Videos/Memories/launch-smoke-child-a-2026-20260813_20260813_130744_1277/launch-smoke-child-a-2026-20260813.mp4`
 - `/Users/sam/Videos/Memories/launch-smoke-sam-2026-20260813_20260813_131040_5bd2/launch-smoke-sam-2026-20260813.mp4`
 - `/Users/sam/Videos/Memories/trip_somme,_france_2026-07-25_20260813_131227_9489/trip_somme,_france_2026-07-25.mp4`
 
@@ -740,8 +740,8 @@ was not modified or activated. The owner's untracked `MagicMock/` directory was 
 ### Daily automation activation checkpoint
 
 Smart discovery is healthy today and produced a varied candidate list: July monthly highlights,
-the Somme trip, yearly reviews, person spotlights, on-this-day, multi-person memories, and another
-trip. July monthly highlights scored first and Somme scored second. No successful automatic history
+the coastal trip, yearly reviews, person spotlights, on-this-day, multi-person memories, and another
+trip. July monthly highlights scored first and coastal-trip scored second. No successful automatic history
 exists yet, so cooldown and recent-category variety state are intentionally empty.
 
 The macOS LaunchAgent is installed but inactive. It points to the root checkout's virtualenv rather
@@ -753,7 +753,7 @@ the three local artifacts have been reviewed by the owner.
 
 ### All-or-none month-divider closure — 2026-08-13
 
-The follow-up Emile review found a real coherence defect in the strict title budget: the opening
+The follow-up Child A review found a real coherence defect in the strict title budget: the opening
 was followed by April and May cards, while later selected months such as June and July had no
 divider. The pre-selection planner had room for only two cards inside its 20% title allowance, and
 the renderer then reapplied a per-month clip-count threshold. Both layers were doing what they were
@@ -768,7 +768,7 @@ Chronological month flows now have two explicit planning stages:
 - A 60-second request has a conservative 70-second soft maximum. Selected content is not trimmed a
   second time to pay for cards, and transition overlap is not guessed during planning.
 - Dry-run, rendering, logging, and final-duration validation consume the same finalized decision.
-- Trip location cards and year dividers retain their prior capped behavior; the successful Somme
+- Trip location cards and year dividers retain their prior capped behavior; the successful coastal-trip
   flow was not changed.
 
 Implementation commits are `06d7aca`, `832b33d`, and `52d8fc1`. The focused gates passed 182
@@ -783,7 +783,7 @@ timeline/title code: `ClipScaler` reduces seven protected candidates to zero sel
 changed-area suites and the normal full gate remain green; this direct-pipeline edge case is a
 separate follow-up rather than hidden evidence.
 
-The live Emile dry-run used 720p landscape, medium quality, photos and Live Photos, fast analysis,
+The live Child A dry-run used 720p landscape, medium quality, photos and Live Photos, fast analysis,
 `--no-music`, notifications disabled, no upload flag, and a 60-second target. It selected 13 photos
 for 51.0 seconds of content and reported:
 
@@ -803,7 +803,7 @@ partial prefix remained.
 
 Final artifact:
 
-`/Users/sam/Videos/Memories/launch-smoke-emile-month-dividers-20260813_20260813_162637_7ce7/launch-smoke-emile-month-dividers-20260813.mp4`
+`/Users/sam/Videos/Memories/launch-smoke-child-a-month-dividers-20260813_20260813_162637_7ce7/launch-smoke-child-a-month-dividers-20260813.mp4`
 
 FFprobe and a full decode pass confirmed a 60.966667-second, 8,590,766-byte MP4 with 1280x720 H.264
 `yuv420p` video and 48 kHz stereo AAC audio. A retained 4:3 photo inspected at 0.5 and 3.5 seconds
@@ -838,9 +838,9 @@ notifications were disabled, and the macOS scheduler stayed unloaded.
 | ACE base, second 10-second WAV in same process | 48 kHz stereo PCM | 5.420s | warm model |
 | ACE v0.1.8 XL-turbo + 4B LM, cached cold process, 10-second WAV | 48 kHz stereo PCM | 26.783s | native MLX; includes initialization |
 | ACE v0.1.8 XL-turbo + 4B LM, second WAV in same process | 48 kHz stereo PCM | 2.707s | production-model warm result |
-| Emile 2026, local ACE base + local Demucs | 64.967s, 14 clips, 10,204,559 bytes | 140.3s | 72.9s generation/stems/mix |
+| Child A 2026, local ACE base + local Demucs | 64.967s, 14 clips, 10,204,559 bytes | 140.3s | 72.9s generation/stems/mix |
 | Sam 2026, local ACE base + local Demucs | 61.333s, 11 clips, 7,560,058 bytes | 133.6s | 66.0s generation/stems/mix |
-| Somme trip, no-music control | 56.333s, 13 clips, 9,495,535 bytes | 72.0s | disabled |
+| coastal trip, no-music control | 56.333s, 13 clips, 9,495,535 bytes | 72.0s | disabled |
 
 The very first ACE run took about 6m41s because it downloaded model weights. That one-time network
 cost is deliberately excluded from cached performance. The warm result is the important automation
@@ -855,7 +855,7 @@ at exactly 10 seconds, 48 kHz stereo. Cold time was essentially unchanged from 2
 warm 8-step XL run was 2.707 seconds instead of 5.420 seconds. The downloaded XL checkpoint occupies
 about 19GB in the local Hugging Face layout, despite upstream's roughly 9GB bf16 weight estimate.
 
-The corrected Emile render spent about 9.1s in analysis, 25.3s downloading selected media, 30.4s
+The corrected Child A render spent about 9.1s in analysis, 25.3s downloading selected media, 30.4s
 assembling video, and 72.9s generating/separating/mixing music. Its ACE portion generated an
 80-second base-model track at 50 steps: roughly 22s initialization and 40s generation, followed by
 about 4.2s of local Demucs separation. Sam showed the same shape: 11.5s analysis, 35.8s downloads,
@@ -864,7 +864,7 @@ time is in network I/O, FFmpeg, and model lifecycle.
 
 ### Root-cause fix found by the benchmark
 
-The first new Emile run generated a valid ACE WAV, then discarded it. TorchAudio 2.10 now routes
+The first new Child A run generated a valid ACE WAV, then discarded it. TorchAudio 2.10 now routes
 audio loading through TorchCodec, which was not installed. The optional Demucs stage raised
 `ImportError`, while the pipeline's optional-stem boundary caught only `RuntimeError` and
 `OSError`. The final video therefore kept only source audio despite successful music generation.
@@ -896,7 +896,7 @@ Mypy reported no issues across 252 source files.
 
 ### Visual and flow review
 
-FFprobe and full decode checks passed for all three videos. Emile and Sam are 1280x720 H.264 with
+FFprobe and full decode checks passed for all three videos. Child A and Sam are 1280x720 H.264 with
 stereo AAC and completed without warnings. Their opening title covers the first selected month, and
 every later selected month has a divider. Contact-sheet inspection found one centered aspect-fit
 photo window with one blurred fill for portrait/4:3 media; no stacked or multi-Ken-Burns treatment
@@ -904,7 +904,7 @@ was visible.
 
 Artifacts:
 
-- `/Users/sam/Videos/Memories/demo-emile-ace-v15-base-fixed-20260813_20260813_182825_d9cc/demo-emile-ace-v15-base-fixed-20260813.mp4`
+- `/Users/sam/Videos/Memories/demo-child-a-ace-v15-base-fixed-20260813_20260813_182825_d9cc/demo-child-a-ace-v15-base-fixed-20260813.mp4`
 - `/Users/sam/Videos/Memories/demo-sam-ace-v15-base-20260813_20260813_183124_95cd/demo-sam-ace-v15-base-20260813.mp4`
 - `/Users/sam/Videos/Memories/trip_somme,_france_2026-07-25_20260813_183406_47f2/trip_somme,_france_2026-07-25.mp4`
 
@@ -966,14 +966,14 @@ they are less mature and inherit non-commercial model terms.
 
 1. **P1 — reuse the ACE runtime across a smart-automation batch.** The production XL benchmark
    measured a 24.076-second first-to-warm saving on this Mac.
-2. **P1 — make trip duration planning match the rendered card set.** The Somme dry-run estimated
+2. **P1 — make trip duration planning match the rendered card set.** The coastal-trip dry-run estimated
    64.9 seconds, but the actual artifact is 56.3 seconds because only the map intro and ending were
    rendered and transition overlap was not represented accurately. This misses the owner's
    preferred roughly 65-second result.
 3. **P2 — correct saved target-duration metadata.** These 65-second CLI requests are recorded as
    target 60 even though the actual generation parameters received 65.
 4. **P2 — avoid unnecessary 96 kHz AAC for ACE-mixed output.** The generated WAV is 48 kHz, but
-   Emile and Sam were published with 96 kHz audio. It works, but doubles audio sample work for no
+   Child A and Sam were published with 96 kHz audio. It works, but doubles audio sample work for no
    obvious benefit.
 5. **P2 — make `--quiet` quiet.** Candidate analysis and HTTP pagination still flood the console;
    this is an observability problem, not a measured performance bottleneck.
@@ -1007,19 +1007,19 @@ finalized timeline decision.
 
 Real-library evidence, with upload and notifications disabled:
 
-- Emile June monthly: 60.917s, HEVC Main 10, `yuv420p10le`, BT.2020/HLG, AAC; full decode passed.
-- Emile July monthly: 63.633s, same HDR contract, AAC; full decode passed.
-- Emile yearly with all seven subsequent month dividers and ACE music: 179.300s, same HDR
+- Child A June monthly: 60.917s, HEVC Main 10, `yuv420p10le`, BT.2020/HLG, AAC; full decode passed.
+- Child A July monthly: 63.633s, same HDR contract, AAC; full decode passed.
+- Child A yearly with all seven subsequent month dividers and ACE music: 179.300s, same HDR
   contract, AAC; full decode passed. The 0.700s delta is below one configured transition.
-- Somme trip with 26 content clips, one selected location card, and ACE music: 150.683s, same HDR
+- coastal trip with 26 content clips, one selected location card, and ACE music: 150.683s, same HDR
   contract, AAC; full decode passed. The selector backfilled ten eligible leftovers, changing the
   previously short 130.533s result into a duration-correct publication.
 
 Validated artifacts:
 
-- `/Users/sam/Videos/Memories/emile-june-2026-hdr-xl-music_20260813_214159_9195/emile-june-2026-hdr-xl-music.mp4`
-- `/Users/sam/Videos/Memories/emile-july-2026-hdr-xl-music_20260813_214357_32c8/emile-july-2026-hdr-xl-music.mp4`
-- `/Users/sam/Videos/Memories/emile-yearly-2026-180s-hdr-xl-music-final_20260813_221122_8893/emile-yearly-2026-180s-hdr-xl-music-final.mp4`
+- `/Users/sam/Videos/Memories/child-a-june-2026-hdr-xl-music_20260813_214159_9195/child-a-june-2026-hdr-xl-music.mp4`
+- `/Users/sam/Videos/Memories/child-a-july-2026-hdr-xl-music_20260813_214357_32c8/child-a-july-2026-hdr-xl-music.mp4`
+- `/Users/sam/Videos/Memories/child-a-yearly-2026-180s-hdr-xl-music-final_20260813_221122_8893/child-a-yearly-2026-180s-hdr-xl-music-final.mp4`
 - `/Users/sam/Videos/Memories/trip_somme,_france_2026-07-25_20260813_221557_c814/trip_somme,_france_2026-07-25.mp4`
 
 The local Qwen warning was resolved on 2026-08-14. The authenticated `/v1/models` endpoint showed
@@ -1040,12 +1040,12 @@ stamped as model-authored scores. Existing rows and generated media were not del
 
 The first normal-cache Qwen 3.6 generation rejected six unversioned video analyses and refreshed
 all 18 shortlisted photos. The database now contains six video analyses and 18 photo scores stamped
-with the exact 35B-A3B model ID. Photo scores span 0.546–0.772. The resulting 11-clip Emile July
+with the exact 35B-A3B model ID. Photo scores span 0.546–0.772. The resulting 11-clip Child A July
 selection covers fountains, a ride, drawing, family contact, a close-up, and the beach rather than
 collapsing into one repeated activity. It is 59.967s HEVC Main 10 HLG HDR with stereo AAC and passes
 a full decode:
 
-- `/Users/sam/Videos/Memories/emile-july-2026-qwen36-model-aware_20260814_082903_bb73/emile-july-2026-qwen36-model-aware.mp4`
+- `/Users/sam/Videos/Memories/child-a-july-2026-qwen36-model-aware_20260814_082903_bb73/child-a-july-2026-qwen36-model-aware.mp4`
 
 The final cache review also closed two failure-mode holes. Video analysis now carries an explicit
 confidence signal through the unified analyzer and stamps the configured model only when at least
@@ -1097,7 +1097,7 @@ metadata rather than leaving the requested encoder recorded after a runtime fall
 
 Real local-library validation with Qwen selection and local ACE-Step music completed successfully:
 
-- `/Users/sam/Videos/Memories/emile-july-2026-4k-hdr-title-fixed_20260814_132025_566b/emile-july-2026-4k-hdr-title-fixed.mp4`
+- `/Users/sam/Videos/Memories/child-a-july-2026-4k-hdr-title-fixed_20260814_132025_566b/child-a-july-2026-4k-hdr-title-fixed.mp4`
 - 60.467s, 3840×2160 at 60 fps, HEVC Main 10, `yuv420p10le`, TV range, BT.2020/HLG.
 - 1,169,050,248 bytes; video bitrate 154,460,436 bit/s; stereo AAC soundtrack generated locally
   through the ACE-Step MLX backend.
@@ -1110,7 +1110,7 @@ Real local-library validation with Qwen selection and local ACE-Step music compl
 
 ## Realistic trip Auto duration and lossless selection — 2026-08-14
 
-The Step 2 Somme flow exposed two separate bugs that amplified each other. A 12-day trip requested
+The Step 2 coastal-trip flow exposed two separate bugs that amplified each other. A 12-day trip requested
 seven minutes because the CLI and documentation still used 35 seconds per calendar day. The UI then
 showed 61 clips but preselected 32 using raw source duration, and downstream selection filtered that
 already-reduced set again. Density shortlists, photo VLM shortlists, the two-photos/day limit, photo
@@ -1151,7 +1151,7 @@ Final verification for this correction:
 
 ## Model-aware analysis modes and visible cache reuse — 2026-08-14
 
-The Somme review run showed 35 clips in the analysis phase even though 41 clips survived hard
+The coastal-trip review run showed 35 clips in the analysis phase even though 41 clips survived hard
 eligibility. This was not an LLM outage. The density budget shortlisted 35 clips, Fast mode sent
 only favorites through unified/LLM analysis, and the remaining clips received local scoring or
 metadata fallbacks. The UI exposed two overlapping controls—Analysis Depth and “Analyze all
@@ -1186,7 +1186,7 @@ documentation animation now use the same three definitions.
 Final verification for this correction:
 
 - Focused cache/mode/UI/CLI regression set: 143 passed, 67 deliberate deselections.
-- Somme-shaped 60-clip integration and affected regression set: 130 passed.
+- coastal-trip-shaped 60-clip integration and affected regression set: 130 passed.
 - Full repository suite: 4,430 passed, 7 skipped, 662 deliberate integration deselections.
 - Mypy: no issues in 257 source files.
 - Ruff lint, `git diff --check`, and the Docusaurus production build: passed.

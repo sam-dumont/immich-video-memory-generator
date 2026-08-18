@@ -4,7 +4,7 @@ sidebar_label: "Linux + NVIDIA"
 
 # Linux + NVIDIA GPU Setup
 
-For Linux servers with NVIDIA GPUs. Docker with nvidia-container-toolkit for NVENC encoding, CUDA face detection, and optional AI music generation.
+For Linux servers with NVIDIA GPUs. Docker with nvidia-container-toolkit for NVENC encoding, CUDA scene analysis, GPU title rendering, and optional AI music generation.
 
 ## Who this is for
 
@@ -65,10 +65,12 @@ services:
       - "8080:8080"
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
-      - ./output:/app/output
+      - ./output:/app/output          # mkdir + chown to the container UID first, see below
     environment:
       IMMICH_URL: "${IMMICH_URL}"
       IMMICH_API_KEY: "${IMMICH_API_KEY}"
+      IMMICH_MEMORIES_OUTPUT__DIRECTORY: /app/output   # default is ~/Videos/Memories, outside every volume
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility   # `video` = NVENC/NVDEC libraries
     restart: unless-stopped
     deploy:
       resources:
@@ -76,13 +78,23 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [gpu, video]
         limits:
           memory: 8G
 
 volumes:
   immich-memories-config:
 ```
+
+Two things the compose file cannot do for you:
+
+- **Output directory**: without `IMMICH_MEMORIES_OUTPUT__DIRECTORY` the videos are written to
+  `/home/immich/Videos/Memories` inside the container and vanish with it.
+- **Bind-mount ownership**: the container runs as the unprivileged `immich` user. Create the
+  output directory yourself and `chown` it to that UID
+  (`sudo chown "$(docker run --rm ghcr.io/sam-dumont/immich-video-memory-generator:latest id -u)" output`)
+  or Docker creates it as root and the app cannot write there. See
+  [Docker install](../installation/docker.md) for the alternatives.
 
 ## .env file
 
@@ -93,8 +105,8 @@ IMMICH_API_KEY=your-api-key-here
 
 ## What works
 
-- **NVENC encoding**: hardware-accelerated H.264/H.265 encoding. The `hardware.backend` auto-detects NVIDIA and uses NVENC automatically.
-- **CUDA face detection**: faster face detection using GPU compute.
+- **NVENC encoding**: hardware-accelerated H.264/H.265 encoding. NVIDIA is probed first, so NVENC is used automatically — nothing to configure.
+- **CUDA scene analysis**: frame differencing for scene detection runs on the GPU when OpenCV has CUDA support. Face detection is CPU (OpenCV Haar cascades) on Linux — there is no CUDA face path.
 - **Taichi GPU title renderer**: full particle effects, animated globes, gradient backgrounds using the NVIDIA GPU.
 - **AI music generation**: if you run a MusicGen or ACE-Step server alongside, configure it in the `musicgen` or `ace_step` config sections.
 - **All memory types and features**: everything works with GPU acceleration.
@@ -153,6 +165,6 @@ advanced:
 ## Tips
 
 - **Check GPU detection**: run `docker exec immich-memories immich-memories hardware` to verify GPU detection inside the container.
-- **Multi-GPU**: set `hardware.device_index` in config to select a specific GPU (0-indexed).
+- **Multi-GPU**: pick the card with `NVIDIA_VISIBLE_DEVICES=0` (or `CUDA_VISIBLE_DEVICES`) in the container environment; there is no config knob for it.
 - **VRAM monitoring**: watch `nvidia-smi` during generation. Peak VRAM usage is about 2-3 GB for encoding, 1-2 GB for Taichi title rendering.
 - **Headless Linux**: the CLI works fully on headless servers. Use `immich-memories generate` instead of the UI if you don't need a browser.

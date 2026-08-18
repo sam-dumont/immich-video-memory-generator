@@ -399,7 +399,7 @@ through `_generation_preview.py`; do not claim the planned output path exists.
 ```python
 def test_trip_dry_run_uses_detected_trip_without_generation():
     handle_trip_generation(..., dry_run=True)
-    assert preview.location_name == "Somme"
+    assert preview.location_name == "coastal-trip"
     assert preview.photo_candidates == 12
     generate_memory.assert_not_called()
 ```

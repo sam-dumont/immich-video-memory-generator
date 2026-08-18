@@ -16,7 +16,7 @@ IMMICH_URL=https://photos.example.com
 IMMICH_API_KEY=your-api-key-here
 ```
 
-Get the API key from Immich: **Account Settings > API Keys > New API Key**.
+Get the API key from Immich: **Account Settings > API Keys > New API Key**. When Immich asks which permissions to grant, pick **All** — or, for a minimal key: read access to assets, people, albums, timeline and search, plus **asset upload** and **album create/update** if you turn on upload-back to Immich. This tool never deletes or modifies existing assets.
 
 Then grab the compose file from the repo and start it:
 
@@ -34,8 +34,32 @@ exposing it. The UI is single-user, single-replica; keep this service at one ins
 :::
 
 The compose volume at `/home/immich/.immich-memories` must stay writable. It holds config, cache,
-automation history, and pending-delivery state. Keep `/app/output` writable too if you want output
-to survive a container replacement.
+automation history, and pending-delivery state.
+
+:::caution Where the videos go
+The compose file mounts `./output` at `/app/output`, but the app's default output directory is
+`~/Videos/Memories` — inside the container that is `/home/immich/Videos/Memories`, which is not on
+any volume and disappears with the container. Until the image sets it for you, add this to the
+service's `environment:` block (or use `--output` on every CLI run):
+
+```yaml
+    environment:
+      IMMICH_MEMORIES_OUTPUT__DIRECTORY: /app/output
+```
+
+The container runs as the unprivileged `immich` user (a system UID below 1000). If Docker creates
+`./output` for you it is owned by root and the app cannot write to it. Either create it first and
+hand it to the container's UID —
+
+```bash
+mkdir -p output
+sudo chown "$(docker run --rm ghcr.io/sam-dumont/immich-video-memory-generator:latest id -u)" output
+```
+
+— or replace the bind mount with a named volume (`immich-memories-output:/app/output`) and copy
+files out with `docker cp`. Setting `user: "1000:1000"` on the service also works, but then the
+config volume must be writable by that UID too (bind-mount it and `chown` it the same way).
+:::
 
 ## Resource requirements
 
@@ -61,6 +85,7 @@ docker run -d \
   -p 8080:8080 \
   -e IMMICH_URL=https://photos.example.com \
   -e IMMICH_API_KEY=your-api-key-here \
+  -e IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output \
   -v immich-memories-config:/home/immich/.immich-memories \
   -v ./output:/app/output \
   ghcr.io/sam-dumont/immich-video-memory-generator:latest
@@ -74,6 +99,8 @@ Published images include the `all` dependency set. For a local build, make the e
 docker build --build-arg APP_VERSION=0.0.0 --build-arg INSTALL_EXTRAS=all -f docker/Dockerfile .
 ```
 
+From a checkout, `make docker` runs the same build with the version and git metadata filled in
+(`INSTALL_EXTRAS=none make docker` for a slim image), and `make docker-run` starts it.
 `INSTALL_EXTRAS` is validated at build time; use an explicit supported extra set rather than
 assuming a base image happens to include optional features.
 
@@ -88,11 +115,12 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - IMMICH_URL=http://immich_server:3001
+      - IMMICH_URL=http://immich-server:2283
       - IMMICH_API_KEY=${IMMICH_API_KEY}
+      - IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
-      - ./output:/app/output
+      - ./output:/app/output   # pre-create and chown to the container UID, see above
     networks:
       - default
     depends_on:
@@ -103,7 +131,7 @@ volumes:
 ```
 
 :::tip Immich port
-If you're connecting from a separate compose stack (not added to Immich's), use the external port. The internal port varies by Immich version: 2283 for older versions, 3001 for newer ones. When in doubt, use whatever URL you access Immich from in your browser.
+Inside Immich's own compose stack, `immich-server` listens on **2283** (every Immich v2/v3 release; this tool requires Immich v2 or newer). If you're connecting from a separate compose stack, use the URL you open Immich with in your browser instead (for example `http://nas.local:2283`).
 :::
 
 ## Environment variables
@@ -112,9 +140,11 @@ If you're connecting from a separate compose stack (not added to Immich's), use 
 |----------|----------|-------------|
 | `IMMICH_URL` | Yes | Your Immich server URL |
 | `IMMICH_API_KEY` | Yes | Immich API key |
+| `IMMICH_MEMORIES_OUTPUT__DIRECTORY` | Recommended | Set to `/app/output` so videos land in the mounted output directory (default is `~/Videos/Memories` inside the container). |
 | `IMMICH_MEMORIES_STORAGE_SECRET` | No | Session secret for the web UI. Auto-generated if not set. Set this explicitly to keep sessions across restarts. It does not make multiple replicas supported. |
-| `IMMICH_MEMORIES_LLM__BASE_URL` | No | LLM endpoint for content analysis (any OpenAI-compatible API) |
+| `IMMICH_MEMORIES_LLM__BASE_URL` | No | LLM endpoint (any OpenAI-compatible API). On its own it does nothing for scoring — see the next row. |
 | `IMMICH_MEMORIES_LLM__MODEL` | No | LLM model name (e.g., `qwen2.5-vl`) |
+| `IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED` | No | `true` to actually use the LLM for clip scoring. Off by default. |
 | `IMMICH_MEMORIES_AUTH_USERNAME` | No | Basic auth username. Set with `IMMICH_MEMORIES_AUTH_PASSWORD` to enable auth. |
 | `IMMICH_MEMORIES_AUTH_PASSWORD` | No | Basic auth password. Set with `IMMICH_MEMORIES_AUTH_USERNAME` to enable auth. |
 
@@ -185,13 +215,13 @@ To back up or migrate the cache separately:
 
 ```bash
 # Backup
-docker exec immich-memories immich-memories cache backup /output/cache-backup.db
+docker exec immich-memories immich-memories cache backup /app/output/cache-backup.db
 
 # Export to JSON (portable)
-docker exec immich-memories immich-memories cache export /output/scores.json
+docker exec immich-memories immich-memories cache export /app/output/scores.json
 
 # Import on a new instance
-docker exec immich-memories immich-memories cache import /output/scores.json
+docker exec immich-memories immich-memories cache import /app/output/scores.json
 
 # Check what's cached
 docker exec immich-memories immich-memories cache stats
@@ -203,14 +233,17 @@ Export to JSON before migrating. The JSON format is portable across SQLite versi
 
 ## Custom music
 
-To use local music files, bind-mount a directory:
+In the web UI, pick **Upload file** in Step 3 and the browser uploads the track — no mount needed.
+For CLI runs inside the container, bind-mount a directory and point `--music` at it:
 
 ```yaml
 volumes:
   - ./music:/app/music:ro
 ```
 
-Then set `audio.local_music_dir: /app/music` in your config.
+```bash
+docker exec immich-memories immich-memories generate --year 2024 --music /app/music/track.mp3
+```
 
 ## Updating
 

@@ -45,7 +45,7 @@ immich-memories generate [OPTIONS]
 | `--resolution` | `-r` | choice | config value; `auto` matches source clips | `auto`, `4k`, `1080p`, or `720p` |
 | `--scale-mode` | `-s` | choice | config/`blur` | `fit`, `fill`, `smart_crop`, or `blur` |
 | `--transition` | `-t` | choice | `smart` | `smart`, `cut`, `crossfade`, or `none` |
-| `--quality` | — | choice | config value | `high`, `medium`, or `low` |
+| `--quality` | `-q` | choice | config value | `high`, `medium`, or `low` |
 | `--format` | — | choice | config value | `mp4`, `h265`, or `prores` |
 | `--output` | `-O` | path | auto | Output file path |
 | `--title` | — | string | — | Override title screen text |
@@ -195,7 +195,7 @@ Period format: number + unit (`d` days, `w` weeks, `m` months, `y` years). Examp
 
 ## Output
 
-If you don't pass `--output`, the file lands in your configured output directory (default `~/Videos/Memories/`) with an auto-generated name like `all_2024_memories.mp4` or `emma_20240207-20250206_memories.mp4`.
+If you don't pass `--output`, the file lands in your configured output directory (default `~/Videos/Memories/`), inside a per-run folder, with an auto-generated name of the form `{person}_{memory-type}_{date}.mp4` — for example `all_memories_2024.mp4`, `alice_year_in_review_2024.mp4` or `alice_memories_20240207-20250206.mp4`. (The web UI names its files differently, e.g. `alice_2024_memories.mp4`.)
 
 ## Upload to Immich
 

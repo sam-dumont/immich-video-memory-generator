@@ -54,12 +54,12 @@ const PRESETS = [
   {
     icon: "flight_takeoff",
     name: "Trip",
-    desc: "Adventure recap, GPS-tagged",
+    desc: "Auto-detect trips from GPS data",
   },
   {
     icon: "tune",
     name: "Custom",
-    desc: "Full manual configuration",
+    desc: "Full control over date range",
   },
 ];
 

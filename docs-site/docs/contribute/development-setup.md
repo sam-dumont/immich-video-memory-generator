@@ -18,10 +18,19 @@ Get the project running locally for development. The full contribution guideline
 ```bash
 git clone https://github.com/sam-dumont/immich-video-memory-generator.git
 cd immich-video-memory-generator
-make dev
+make dev-test
 ```
 
-`make dev` installs all development dependencies (pytest, ruff, mypy, and the 17 CI tools) into the project virtualenv. Run it before any other make target.
+`make dev-test` installs the dev tools (pytest, ruff, mypy and the other CI gates) plus the `gpu` and `speech` extras — the same set the CI test jobs use. It is the fast path: no torch, no CUDA, no dlib compile. Run it before any other make target.
+
+Other install targets, when you need them:
+
+| Target | Installs | When |
+|--------|----------|------|
+| `make dev-ci` | dev tools only | Lint/typecheck-only work |
+| `make dev-test` | dev + `gpu` + `speech` | Default for contributors (what CI tests with) |
+| `make dev-mac` | dev + `all-mac` (Apple Vision, Metal, ACE-Step MLX) | Apple Silicon, full feature set |
+| `make dev` | every extra, including `face` (compiles dlib, slow) | Only if you work on face recognition |
 
 ## Verify everything works
 
@@ -39,7 +48,7 @@ This runs lint, format check, type check, file length gate, complexity gate, and
 | `make lint` | Ruff linter |
 | `make format` | Auto-format code |
 | `make typecheck` | mypy type checking |
-| `make ci` | Full CI pipeline (all 17 gates) |
+| `make ci` | Full CI pipeline (the 15 local gates) |
 | `make critique` | AI smell audit |
 | `make test-integration` | Integration tests (needs FFmpeg + Immich) |
 
@@ -57,14 +66,9 @@ If `make ci` passes locally, CI will pass too. Use [conventional commit](https:/
 
 **Unit tests** (`make test`): pure logic, no external dependencies. Run in CI on every PR.
 
-**Integration tests** (`make test-integration`): real FFmpeg assembly, real Immich API reads. Run locally because they need your Immich server and FFmpeg installed. They skip gracefully if services aren't available.
+**Integration tests** (`make test-integration`, or one suite such as `make test-integration-assembly`): real FFmpeg assembly, real Immich API reads. They live in per-suite folders under `tests/integration/` (`assembly`, `audio`, `auth`, `cli`, `live_photos`, `photos`, `pipeline`, `processing`, `titles`) and skip gracefully if a service isn't available. They run locally and on a self-hosted Linux GPU runner, which uploads its coverage to Codecov under the `integration-linux` flag. The per-suite coverage XMLs they write under `tests/` are gitignored — do not try to commit them.
 
-If CI's diff-cover fails because changed lines aren't covered by unit tests, run integration tests locally and commit the coverage XMLs:
-
-```bash
-make test-integration
-git add tests/*-coverage.xml
-```
+If CI's diff-cover fails because changed lines aren't covered by unit tests, add unit tests for those lines; the GPU runner's integration coverage is merged on Codecov but does not feed diff-cover.
 
 ## Project structure
 
@@ -72,13 +76,19 @@ git add tests/*-coverage.xml
 src/immich_memories/
   api/          # Immich API client
   analysis/     # Video analysis, scoring, clip selection
+  speech/       # VAD + transcription for cut placement
+  photos/       # Photo-to-video animation
   processing/   # Video assembly (FFmpeg)
   titles/       # Title screens, maps, globe animation
   audio/        # Music generation, audio ducking
   ui/           # NiceGUI web interface
+  cli/          # Click commands
   cache/        # Analysis and video caching
   tracking/     # Run history
+  operations/   # Lifecycle phases, storage report
+  planning/     # Auto-duration planning
   scheduling/   # Cron-based generation
+  automation/   # auto suggest/run
   memory_types/ # Preset system
 ```
 

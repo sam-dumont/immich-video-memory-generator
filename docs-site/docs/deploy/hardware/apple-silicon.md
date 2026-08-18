@@ -27,10 +27,10 @@ The `mac` extra installs the Apple-specific dependencies (pyobjc bindings for Vi
 ```yaml
 hardware:
   enabled: true
-  backend: "apple"   # or "auto" (auto detects it)
+  encoder_preset: "balanced"   # fast turns on VideoToolbox's speed-priority mode
 ```
 
-`auto` works perfectly on macOS. It'll find VideoToolbox and Vision Framework without any manual config.
+Nothing to select: VideoToolbox and the Vision Framework are found automatically on macOS.
 
 ## Supported chips
 

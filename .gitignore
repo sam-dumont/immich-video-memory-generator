@@ -137,3 +137,6 @@ docs-site/static/demo/cli-demo.gif
 !docs-site/remotion/public/output-preview.mp4
 # Rendered demo video (embedded on docs landing page, tracked in LFS)
 !docs-site/static/demo/demo.mp4
+
+# Playwright diagnostics (may contain unredacted frames from a real library)
+test-results/

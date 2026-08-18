@@ -40,10 +40,11 @@ services:
       - "8080:8080"
     volumes:
       - immich-memories-config:/home/immich/.immich-memories
-      - ./output:/app/output
+      - ./output:/app/output          # create it first and chown to the container UID, see below
     environment:
       IMMICH_URL: "${IMMICH_URL}"
       IMMICH_API_KEY: "${IMMICH_API_KEY}"
+      IMMICH_MEMORIES_OUTPUT__DIRECTORY: /app/output   # default is ~/Videos/Memories, outside every volume
     restart: unless-stopped
     deploy:
       resources:
@@ -54,6 +55,17 @@ services:
 volumes:
   immich-memories-config:
 ```
+
+Two things to get right before the first run:
+
+- **`IMMICH_MEMORIES_OUTPUT__DIRECTORY`**: without it, videos are written to
+  `/home/immich/Videos/Memories` inside the container — not on any volume — and vanish when the
+  container is recreated.
+- **Ownership of `./output`**: the container runs as the unprivileged `immich` user. Create the
+  folder yourself and `chown` it to that UID
+  (`sudo chown "$(docker run --rm ghcr.io/sam-dumont/immich-video-memory-generator:latest id -u)" output`).
+  On Synology/QNAP where that is awkward, use a named volume (`immich-memories-output:/app/output`)
+  and `docker cp` the finished video out — or turn on upload-back to Immich and fetch it there.
 
 ## .env file
 
@@ -70,7 +82,7 @@ If Immich runs on the same Docker network, use the container name (`immich-serve
 - **Title screens**: PIL-based renderer (works everywhere, no GPU needed)
 - **Custom music**: upload your own MP3/WAV in Step 3
 - **All memory types**: year in review, monthly, person spotlight, trips (if GPS data exists)
-- **Scheduling**: cron-based automated generation via the CLI
+- **Scheduling**: `immich-memories auto install` cannot install a cron job inside the container. Run it from the NAS host's scheduler instead: `docker exec immich-memories immich-memories auto run --quiet --cooldown 24` (daily is plenty)
 - **Photo support**: Ken Burns animations, face-aware pan, blur backgrounds
 
 ## What doesn't work

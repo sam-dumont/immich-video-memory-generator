@@ -7,6 +7,42 @@ title: Kubernetes
 
 Deploy Immich Memories to Kubernetes with NVIDIA GPU support. The manifests live in `deploy/kubernetes/`.
 
+:::warning Known gaps in the shipped manifests
+The manifests in `deploy/kubernetes/` were written before the current image and config schema and
+are being fixed. As of v0.40.1 they do **not** boot as-is. What you need to change by hand:
+
+1. **The Secret is not applied by `kubectl apply -k .`** — `kustomization.yaml` has `- secret.yaml`
+   commented out, so the Deployment fails with `CreateContainerConfigError`. Apply
+   `secret.yaml` yourself (or uncomment the line) before `-k`.
+2. **UID / home mismatch.** The image runs as the system user `immich` (UID below 1000,
+   `HOME=/home/immich`, writable dirs `/home/immich/.immich-memories`, `/app/output`,
+   `/app/.nicegui`); the manifests force `runAsUser: 1000` and `HOME=/home/appuser`. Two
+   consequences: the ConfigMap is mounted read-only at `/home/appuser/.immich-memories`, and the
+   app creates `cache/`, `projects/`, `cache.db` and `.storage_secret` in exactly that directory
+   at startup, so it fails on the read-only mount; and UID 1000 cannot write `/app/.nicegui`
+   (NiceGUI's session store). Fix: mount the **cache PVC** at `/home/appuser/.immich-memories`
+   (writable; `fsGroup: 1000` makes it group-writable) and project the ConfigMap into it as a
+   single file with `subPath: config.yaml`; add an `emptyDir` at `/app/.nicegui`; set
+   `IMMICH_MEMORIES_STORAGE_SECRET` from the Secret so sessions survive restarts. The
+   `~/.cache/immich-memories` mount is never written to and can go.
+3. **Stale config keys.** `audio.ollama_*`, `content_analysis.provider|ollama_*|openai_*`,
+   `hardware.backend` and the env var `IMMICH_MEMORIES_CONTENT_ANALYSIS__OLLAMA_URL` are not part
+   of the schema and are silently ignored, so LLM analysis is never configured. Use an `llm:` block
+   (`provider: ollama`, `base_url`, `model`) plus `content_analysis.enabled: true`, or the env vars
+   `IMMICH_MEMORIES_LLM__PROVIDER=ollama`, `IMMICH_MEMORIES_LLM__BASE_URL=…`,
+   `IMMICH_MEMORIES_LLM__MODEL=…`, `IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED=true`.
+   `OPENAI_API_KEY` sets `llm.api_key` only; `PIXABAY_API_KEY` is read by nothing.
+4. **Probes hit `/health`**, which always returns 200. Use `/health/live` for liveness and
+   `/health/ready` for readiness.
+5. **`job.yaml` durations are seconds**: `--duration 10` / `--duration 5` produce 5–10 second
+   videos. Use `600` / `300`.
+6. **`service.yaml` contains an Ingress** (`memories.example.com`, nginx) that `-k` creates
+   even though auth is off by default. Delete or comment it out until you have enabled
+   [authentication](../configuration/authentication.mdx).
+7. **NetworkPolicy egress allows Immich on port 3001 only**; current Immich listens on 2283. Add it.
+8. **`newTag: v1.0.0`** in the kustomization example — published tags carry no `v` prefix (`0.40.1`, `latest`).
+:::
+
 ## Prerequisites
 
 1. **NVIDIA GPU Operator** installed in your cluster:
@@ -41,7 +77,11 @@ cp secret.yaml.example secret.yaml
 # Edit with your actual values
 vim secret.yaml
 
-# Deploy everything
+# The secret is NOT in kustomization.yaml — apply it first (or uncomment `- secret.yaml`)
+kubectl apply -f namespace.yaml
+kubectl apply -f secret.yaml
+
+# Deploy the rest (after the fixes in the box above)
 kubectl apply -k .
 ```
 
@@ -115,12 +155,16 @@ Default PVC sizes:
 
 | PVC | Size | Purpose |
 |-----|------|---------|
-| Output | 50Gi | Generated videos |
-| Cache | 20Gi | Downloaded assets and analysis cache |
+| Output | 50Gi | Generated videos (`output.directory: /output` in the ConfigMap) |
+| Cache | 20Gi | Meant for `cache.db` + the video cache — see below |
 
-Adjust in `pvc.yaml` based on how many videos you plan to generate.
+Adjust in `pvc.yaml` based on how many videos you plan to generate. Config itself is a ConfigMap
+(`immich-memories-config`), not a PVC.
 
-The **Cache** PVC holds `cache.db` (analysis scores). This is the most valuable volume: it stores all LLM scoring results. Losing it means re-analyzing your entire library on the next run.
+The **Cache** PVC is meant to hold `cache.db` (analysis scores, the most valuable data: losing it
+means re-analyzing your entire library) and the downloaded-video cache. The app writes both under
+`~/.immich-memories/` (`cache.db`, `cache/`), so the PVC has to be mounted there — the shipped
+manifest mounts it at `~/.cache/immich-memories`, which nothing writes to (gap 2 above).
 
 ```bash
 # Backup cache from the running pod
@@ -151,6 +195,10 @@ kubectl apply -f sealed-secret.yaml
 
 ## Monitoring
 
-The deployment includes liveness and readiness probes hitting `/health`. The `/health` endpoint returns JSON with `status`, `immich_reachable`, `last_successful_run`, and `version`.
+Three endpoints on port 8080:
 
-For monitoring tools like Uptime Kuma or your existing health check infrastructure, point them at the `/health` endpoint on port 8080.
+- `/health/live` — process is up; always `200`. Use for the liveness probe.
+- `/health/ready` — `200` only when config is present and Immich is reachable, else `503`. Use for the readiness probe.
+- `/health` — the same JSON as `/health/ready` (`status`, `immich_reachable`, `last_successful_run`, `version`, automation state) but always HTTP `200`. Compatibility endpoint; do not use it as a probe.
+
+The shipped manifest points both probes at `/health` (gap 4 above). For monitoring tools like Uptime Kuma, use `/health/ready`.

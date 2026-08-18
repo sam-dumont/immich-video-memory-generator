@@ -9,7 +9,7 @@ Welcome to the Immich Memories documentation.
 
 ## For Developers
 
-- **[Architecture](ARCHITECTURE.md)** - Technical overview of the codebase
+- **[Architecture](../ARCHITECTURE.md)** - Package map, key classes, data flow, composition pattern
 - **[Contributing](../CONTRIBUTING.md)** - How to contribute to the project
 - **[Changelog](../CHANGELOG.md)** - Version history and changes
 
@@ -22,10 +22,10 @@ Welcome to the Immich Memories documentation.
 
 | Topic | Document |
 |-------|----------|
-| Installation | [README - Installation](../README.md#installation) |
-| Configuration | [README - Configuration](../README.md#configuration) |
-| CLI Commands | [README - CLI Commands](../README.md#cli-commands) |
-| Hardware Acceleration | [README - Hardware](../README.md#hardware-acceleration) |
-| Docker Deployment | [README - Docker](../README.md#docker) |
+| Installation | [README - Quick Install](../README.md#quick-install) |
+| Configuration | [Docs site - Config file](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/configuration/config-file) |
+| CLI Commands | [Docs site - CLI reference](https://sam-dumont.github.io/immich-video-memory-generator/docs/reference/cli-reference) |
+| Hardware Acceleration | [Docs site - Hardware overview](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/hardware/overview) |
+| Docker Deployment | [README - Docker](../README.md#docker-recommended-for-self-hosters) |
 | Kubernetes | [deploy/kubernetes/README.md](../deploy/kubernetes/README.md) |
 | Terraform | [deploy/terraform/README.md](../deploy/terraform/README.md) |

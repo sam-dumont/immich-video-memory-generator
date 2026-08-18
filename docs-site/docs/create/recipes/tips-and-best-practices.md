@@ -26,7 +26,7 @@ If you have a GPU, use it. The tool auto-detects NVIDIA (NVENC), Apple (VideoToo
 immich-memories hardware
 ```
 
-Encoding a 10-minute 1080p video takes ~30 seconds with NVENC vs ~5 minutes on CPU.
+Encoding 1080p runs at about 2 minutes per 5 minutes of output on Apple Silicon or a GPU; a 30-clip video takes around 15 minutes on a 4-core NAS CPU. See the [resource table](https://github.com/sam-dumont/immich-video-memory-generator#resource-requirements).
 
 ## Adjust Scene Detection Threshold
 

@@ -39,7 +39,11 @@ IMMICH_MEMORIES_AUTH_USERNAME=admin
 IMMICH_MEMORIES_AUTH_PASSWORD=your-password-here
 ```
 
-Setting both vars automatically enables auth and sets the provider to `basic`.
+Setting both vars automatically enables auth and sets the provider to `basic`. Set **both** — one
+alone is ignored. The shortcut is applied only when the app loads the default config path; with
+`immich-memories --config PATH` (or a scheduler started with an explicit config file) use the
+full form instead: `IMMICH_MEMORIES_AUTH__ENABLED=true`, `IMMICH_MEMORIES_AUTH__PROVIDER=basic`,
+`IMMICH_MEMORIES_AUTH__USERNAME`, `IMMICH_MEMORIES_AUTH__PASSWORD`.
 
 **YAML config (under `advanced.auth`):**
 
@@ -53,7 +57,8 @@ advanced:
     session_ttl_hours: 24  # default
 ```
 
-The password field supports `${ENV_VAR}` expansion, so you can avoid hardcoding it:
+The `password`, `client_secret`, `issuer_url` and `client_id` fields support `${ENV_VAR}`
+expansion, so you can avoid hardcoding secrets:
 
 ```yaml
 advanced:
@@ -98,7 +103,10 @@ Or with Docker, use the image tag that includes auth extras (the default image i
 
 #### Auth0 example
 
+Two files. The compose file passes the secret in as an environment variable:
+
 ```yaml
+# docker-compose.yml
 services:
   immich-memories:
     image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
@@ -107,7 +115,13 @@ services:
       - IMMICH_API_KEY=${IMMICH_API_KEY}
       - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
     # ...
+```
 
+The app config references it (do not paste the `services:` block into `config.yaml` — unknown
+top-level keys make the config fail to load):
+
+```yaml
+# ~/.immich-memories/config.yaml
 advanced:
   auth:
     enabled: true
@@ -175,7 +189,7 @@ For setups where a reverse proxy (Traefik + Authelia, nginx + oauth2-proxy, etc.
 **How it works:** The middleware reads the `Remote-User` header (configurable) and creates a session automatically. Requests from untrusted IPs have the headers stripped before they reach the app.
 
 :::caution trusted_proxies is required
-Without `trusted_proxies`, header auth is not enabled. Any client could forge the headers and gain access. Set this to your proxy's IP or CIDR range.
+With `provider: header` and an empty `trusted_proxies`, the config fails validation and the app refuses to start (`trusted_proxies must be non-empty when provider is 'header'`). Without the check, any client could forge the headers and gain access. Set this to your proxy's IP or CIDR range.
 :::
 
 **YAML config:**
@@ -215,7 +229,7 @@ services:
     # ... your Authelia config ...
 ```
 
-In your config YAML, set `trusted_proxies` to Traefik's container IP or Docker network CIDR. Authelia forwards `Remote-User` and `Remote-Email` by default, which match the defaults.
+In your config YAML, set `trusted_proxies` to Traefik's container IP (prefer a single `/32` over a whole Docker network CIDR — on a shared `proxy` network any container in that range could send `Remote-User`). Authelia forwards `Remote-User` and `Remote-Email` by default, which match the defaults.
 
 ---
 
@@ -225,22 +239,31 @@ In your config YAML, set `trusted_proxies` to Traefik's container IP or Docker n
 - Logout via the sidebar button or by navigating to `/logout`.
 - OIDC logout redirects to the IdP's `end_session_endpoint` when available (the IdP terminates the SSO session too). Falls back to a local-only logout if the IdP doesn't advertise that endpoint.
 
-:::warning Secure cookies over HTTPS
+:::warning Behind a reverse proxy: bind locally and tell uvicorn who the proxy is
 
-If you run behind a reverse proxy with HTTPS (Traefik, Caddy, nginx -- most setups do), make sure the proxy sets `X-Forwarded-Proto: https` so the app knows the connection is encrypted. Without this, the session cookie may be sent over plain HTTP on internal hops, which means an attacker on the same network could intercept it and hijack the session.
+Two things to know when the UI sits behind Traefik, Caddy or nginx with TLS:
 
-Most reverse proxies set this header by default. If yours doesn't, add it explicitly:
-
-```nginx
-# nginx example
-proxy_set_header X-Forwarded-Proto $scheme;
-```
+1. **The session cookie is not marked `Secure` today** (the app does not read
+   `X-Forwarded-Proto`). That is only a problem if the plain-HTTP port is *also* reachable, so
+   don't publish `8080` on the LAN once the proxy is up: bind it to localhost
+   (`127.0.0.1:8080:8080` in compose) or keep the container on the proxy network only.
+2. **Set `FORWARDED_ALLOW_IPS` to your proxy's address** so uvicorn trusts its `X-Forwarded-For`
+   / `X-Forwarded-Proto` headers. Without it every visitor looks like the proxy's IP — five wrong
+   passwords from anyone lock the whole household out of login for 10 minutes — and the OIDC
+   `redirect_uri` is built as `http://…` instead of `https://…`, which most identity providers
+   reject.
 
 ```yaml
-# Traefik — enabled by default when using entrypoints with TLS
+# docker-compose.yml
+services:
+  immich-memories:
+    ports:
+      - "127.0.0.1:8080:8080"     # or drop `ports:` entirely and expose via the proxy network
+    environment:
+      FORWARDED_ALLOW_IPS: "172.20.0.2"   # your proxy container's IP (or "*" on a trusted network)
 ```
 
-When running without a reverse proxy (e.g. direct access on localhost for development), this is not a concern.
+When running without a reverse proxy (direct access on localhost), none of this applies.
 :::
 
 ---
@@ -256,8 +279,8 @@ All fields under `advanced.auth` with their defaults:
 | `session_ttl_hours` | `24` | How long a session lasts (1–720) |
 | `username` | `""` | Basic auth: username |
 | `password` | `""` | Basic auth: password (supports `${ENV_VAR}`) |
-| `issuer_url` | `""` | OIDC: IdP base URL (autodiscovery via `/.well-known/openid-configuration`) |
-| `client_id` | `""` | OIDC: client ID |
+| `issuer_url` | `""` | OIDC: IdP base URL (autodiscovery via `/.well-known/openid-configuration`; supports `${ENV_VAR}`) |
+| `client_id` | `""` | OIDC: client ID (supports `${ENV_VAR}`) |
 | `client_secret` | `""` | OIDC: client secret (empty for public clients; supports `${ENV_VAR}`) |
 | `scope` | `openid email profile` | OIDC: requested scopes |
 | `auto_launch` | `false` | OIDC: redirect directly to IdP (skip the login page) |

@@ -6,7 +6,10 @@
 ## Overview
 
 Immich Memories generates video compilations from an Immich photo library.
-The pipeline: **fetch clips -> analyze -> select -> assemble -> export**.
+The public lifecycle of one run (`operations/phases.py`, `OperationalPhase`):
+**discovery -> download -> analysis -> selection -> render -> music -> delivery**.
+Inside the analysis step, `SmartPipeline` reports its own sub-phases
+(`analysis/progress.py`, `PipelinePhase`): **clustering -> filtering -> analyzing -> refining**.
 
 ## Build System
 
@@ -32,12 +35,16 @@ The four core orchestrators and their composed services:
 - `AudioMixerService` (audio_mixer_service.py): background music mixing
 - `TitleInserter` (title_inserter.py): title screen concatenation
 
-**SmartPipeline** (analysis/smart_pipeline.py) composes 5 services:
+**SmartPipeline** (analysis/smart_pipeline.py) composes 4 services:
 - `ClipAnalyzer` (clip_analyzer.py): download, analyze, and score clips
 - `PreviewBuilder` (preview_builder.py): extract preview segments
 - `ClipRefiner` (clip_refiner.py): select and distribute final clips
 - `ClipScaler` (clip_scaler.py): scale to target duration, deduplicate
-- `DensityBudget` (density_budget.py): density-proportional asset budget
+
+It also owns a `ProviderCircuit` (provider_health.py, LLM provider circuit breaker) and an
+optional `VideoDownloadCache`. The density-proportional asset budget is a plain function,
+`compute_density_budget()` (density_budget.py), called from `_phase_filter()` — not an
+injected service.
 
 **ImmichClient** (api/immich.py) composes 5 services:
 - `SearchService` (search_service.py): video search and time bucket queries
@@ -51,13 +58,16 @@ The four core orchestrators and their composed services:
 - `EndingService` (ending_service.py): fade-to-white ending generation
 - `TripService` (trip_service.py): trip map and location card screens
 
-**GenerationPipeline** (generate.py) orchestrates the end-to-end flow:
+**`generate_memory()`** (generate.py) is the top-level orchestrator above the four; it runs
+the `OperationalPhase` lifecycle end to end (there is no `GenerationPipeline` class) with
+these helper modules:
 - `generate_downloads.py`: parallel asset downloads
 - `generate_clips.py`: clip extraction, probing, cleanup
 - `generate_photos.py`: photo rendering, budget allocation, clip merging
 - `generate_music.py`: music resolution, AI generation, audio mixing
 - `generate_privacy.py`: GPS anonymization, fake names/cities, trip titles
 - `generate_settings.py`: assembly/title settings, assembler creation
+- `generate_timeline.py`: final-duration validation and content budget guards
 
 ## Package Structure
 
@@ -71,6 +81,7 @@ src/immich_memories/
 │   ├── person_service.py       # PersonService: person/face operations
 │   ├── album_service.py        # AlbumService: album operations
 │   ├── sync_client.py          # Sync wrapper for async client
+│   ├── compatibility.py        # Immich API-version compatibility policy (v1/v2 resolution)
 │   └── models.py               # API data models (Asset, Person, etc.)
 │
 ├── photos/                     # Photo-to-video animation (converts stills to .mp4 clips)
@@ -89,27 +100,30 @@ src/immich_memories/
 │   ├── registry.py             # MemoryType enum
 │   ├── presets.py              # ScoringProfile, PersonFilter, MemoryPreset
 │   ├── date_builders.py        # build_season(), build_month(), build_on_this_day()
-│   └── factory.py              # Registry + 6 built-in preset factories
+│   └── factory.py              # Registry + 7 built-in preset factories (incl. trip)
 │
 ├── analysis/                   # Video analysis & clip selection
-│   ├── smart_pipeline.py       # SmartPipeline (composes 5 services)
-│   ├── pipeline.py             # Pipeline base/helpers
+│   ├── smart_pipeline.py       # SmartPipeline (composes 4 services)
+│   ├── pipeline.py             # ClusterManager / DuplicateCluster: duplicate cluster bookkeeping
+│   ├── provider_health.py      # ProviderCircuit: bounded, credential-safe LLM provider health
+│   ├── cache_projection.py     # Project compatible cached analysis back onto in-memory clips
 │   ├── clip_analyzer.py        # ClipAnalyzer: download + analyze + score
 │   ├── clip_refiner.py         # ClipRefiner: final selection + distribution
 │   ├── clip_scaler.py          # ClipScaler: duration scaling + dedup
 │   ├── clip_selection.py       # Standalone clip selection functions
-│   ├── density_budget.py       # DensityBudget: density-proportional asset budget
+│   ├── density_budget.py       # compute_density_budget(): density-proportional asset budget
 │   ├── preview_builder.py      # PreviewBuilder: preview segment extraction
 │   ├── progress.py             # Progress tracking helpers
 │   ├── trip_detection.py       # GPS-based trip detection (clustering, geocoding)
 │   ├── unified_analyzer.py     # UnifiedSegmentAnalyzer (composes SpeechAnalysisService)
 │   ├── speech_analysis.py      # SpeechAnalysisService: PANNs audio-content + VAD speech boundaries
+│   ├── segment_transcription.py # Transcribe the top candidate segments (whisper via speech/transcription.py)
 │   ├── unified_budget.py       # Unified photo+video budget selection (merge-then-fit)
 │   ├── segment_generation.py   # Boundary detection, candidate segment generation
 │   ├── boundary_placement.py   # Where a cut may land: protected-range gaps, edge selection
 │   ├── content_analyzer.py     # LLM-based content analysis
 │   ├── llm_response_parser.py  # Content analysis response parsing
-│   ├── _content_providers.py   # Content analysis provider helpers
+│   ├── _content_providers.py   # Ollama / OpenAI-compatible ContentAnalyzer implementations
 │   ├── request_heartbeat.py    # RequestHeartbeat: periodic log line for long-outstanding HTTP calls
 │   ├── analyzer_factory.py     # Analyzer factory
 │   ├── analyzer_models.py      # Analyzer data models
@@ -138,6 +152,12 @@ src/immich_memories/
 │   ├── clip_transitions.py     # Clip transition helpers
 │   ├── clip_validation.py      # Clip validation helpers
 │   ├── clips.py                # ClipExtractor: download & re-encode
+│   ├── download_coordinator.py # DownloadCoordinator: bounded prefetching, one sync client per worker
+│   ├── probe_cache.py          # ProbeCache: run-scoped normalized source probing (injected into FFmpegProber)
+│   ├── encoding_plan.py        # EncodingPlan / resolve_encoding_plan(): immutable output encoding contract
+│   ├── output_canvas.py        # Resolve the single pixel canvas used by one run
+│   ├── output_contract.py      # probe/validate/atomically publish finished video artifacts
+│   ├── timeline_budget.py      # plan_timeline(): pure planning of content + title-screen timeline
 │   ├── title_inserter.py       # TitleInserter: title screen concatenation
 │   ├── audio_mixer_service.py  # AudioMixerService: background music mixing
 │   ├── privacy_audio.py        # Privacy mode audio processing (lowpass filter)
@@ -180,6 +200,7 @@ src/immich_memories/
 │   ├── fireredvad.py           # FireRedSpeechDetector: vendored AED ONNX + Kaldi fbank/CMVN
 │   ├── boundary_scoring.py     # BoundaryWeights, candidates_from_gaps, best_boundary
 │   ├── turn_detection.py       # SmartTurnDetector (weighted 0.0; deps in no extra)
+│   ├── transcription.py        # whisper.cpp transcription of one segment's audio slice (`transcribe` extra)
 │   ├── models.py               # SpeechRegion, BoundaryCandidate
 │   └── bundled_models/         # fireredvad_aed.onnx (2.4 MB, Apache-2.0) — no runtime download
 │
@@ -218,17 +239,18 @@ src/immich_memories/
 │
 ├── cli/                        # Command-line interface (Click)
 │   ├── __init__.py             # Main CLI group + `ui` command
-│   ├── generate.py             # `generate`, `analyze`, `export-project`
+│   ├── generate.py             # `generate`
+│   ├── _analyze_export.py      # `analyze`, `export-project`
 │   ├── config_cmd.py           # `config`, `people`, `years`, `preflight`
-│   ├── scheduler_cmd.py        # `scheduler start/stop/status/list`
-│   ├── auto_cmd.py             # `auto suggest/run/install/history/test-notification`
+│   ├── scheduler_cmd.py        # `scheduler list/status/start`
+│   ├── auto_cmd.py             # `auto suggest/run/history/status/install/test-notification`
 │   ├── cache_cmd.py            # `cache stats/export/import/backup`
 │   ├── titles.py               # `titles test`, `titles fonts`
-│   ├── runs.py                 # `runs list`, `runs show`, `runs stats`
-│   ├── music_cmd.py            # `music search`, `music analyze`
+│   ├── runs.py                 # `runs list/show/stats/storage/delete`
+│   ├── music_cmd.py            # `music search/analyze/add`
 │   ├── hardware_cmd.py         # `hardware` info display
 │   ├── _helpers.py             # Shared console/print utilities
-│   ├── _analyze_export.py      # Analysis export helpers
+│   ├── _generation_preview.py  # Plain-text summary for read-only generation planning (--dry-run)
 │   ├── _config_errors.py       # Config error formatting
 │   ├── _pipeline_runner.py     # Fetch assets + run SmartPipeline + generate
 │   ├── _trip_generation.py     # Trip detection, selection, per-trip generation
@@ -244,6 +266,7 @@ src/immich_memories/
 │   ├── state.py                # Shared UI state
 │   ├── theme.py                # UI theme
 │   ├── components.py           # Shared UI components
+│   ├── nicegui_compat.py       # Compatibility helpers for NiceGUI background work
 │   └── pages/
 │       ├── login.py                # Login page (basic form + OIDC SSO button)
 │       ├── step1_config.py         # Connection & time period config
@@ -275,15 +298,19 @@ src/immich_memories/
 │
 ├── cache/                      # Analysis caching system
 │   ├── __init__.py             # Re-exports public API
-│   ├── database.py             # VideoAnalysisCache class
+│   ├── database.py             # VideoAnalysisCache class (SQLite)
 │   ├── database_models.py      # CachedSegment, CachedVideoAnalysis, SimilarVideo
+│   ├── database_rows.py        # SQLite row <-> model conversion
+│   ├── versions.py             # SCHEMA_VERSION / ANALYSIS_VERSION (independent)
+│   ├── migration_sql.py        # Transactional migration helpers
+│   ├── migration_v11.py … v17.py # One module per schema migration
 │   ├── asset_score_cache.py    # Asset score persistence (photo/video scores)
 │   ├── thumbnail_cache.py      # File-based thumbnail storage
 │   └── video_cache.py          # Downloaded video file cache
 │
 ├── scheduling/                 # Scheduled memory generation
 │   ├── engine.py               # Scheduler: cron parsing, next job calculation
-│   ├── executor.py             # JobExecutor: parameter resolution
+│   ├── executor.py             # resolve_schedule_params(): schedule entry -> generation params
 │   ├── daemon.py               # Daemon loop (foreground, SIGINT/SIGTERM)
 │   └── models.py               # Scheduling data models
 │
@@ -293,9 +320,23 @@ src/immich_memories/
 │   ├── candidate_scorer.py     # Candidate scoring & ranking
 │   ├── event_detectors.py      # Event-based detectors (activity bursts)
 │   ├── calendar_detectors.py   # Calendar-based detectors (monthly, yearly)
+│   ├── variety.py              # Cadence and rotation rules for candidates
+│   ├── models.py               # Typed values returned/persisted by automation
+│   ├── generation_request.py   # Typed boundary from candidates to the `generate` CLI
+│   ├── state_store.py          # SQLite persistence for automation attempts
+│   ├── delivery_retry.py       # Durable state for one pending delivery retry
+│   ├── notification_state.py   # Durable, sanitized notification delivery health
+│   ├── trip_input_cache.py     # Durable, identity-checked inputs for auto trip discovery
 │   ├── notifications.py        # Apprise notification integration
 │   ├── runner.py               # Auto-run orchestrator
 │   └── system_scheduler.py     # OS scheduler integration (launchd/systemd/cron)
+│
+├── operations/                 # Public lifecycle contract + read-only ops reports
+│   ├── phases.py               # OperationalPhase / PhaseEvent: stable outer lifecycle
+│   └── storage_report.py       # build_storage_report(): output + cache storage inventory (`runs storage`)
+│
+├── planning/                   # Media-aware duration planning
+│   └── auto_duration.py        # resolve_trip_auto_duration(): trip auto-duration heuristics
 │
 ├── config.py                   # YAML configuration management (re-exports)
 ├── config_loader.py            # Config loading logic
@@ -308,12 +349,14 @@ src/immich_memories/
 ├── generate_photos.py          # Photo rendering, budget allocation, clip merging
 ├── generate_privacy.py         # GPS anonymization, fake names/cities, trip titles
 ├── generate_settings.py        # Assembly/title settings, assembler creation, music, upload
+├── generate_timeline.py        # Final-duration validation + content budget guards
 ├── filename_builder.py         # Output filename generation
 ├── timeperiod.py               # Date range utilities
 ├── security.py                 # Input sanitization
 ├── i18n.py                     # Internationalization
 ├── preflight.py                # Dependency checks
-└── logging_config.py           # Logging setup
+├── logging_config.py           # Logging setup
+└── _version.py                 # Auto-generated by hatch-vcs (do not edit)
 ```
 
 ## Key Classes & Their Relationships
@@ -324,18 +367,20 @@ Videos and photos compete in a single selection pool:
 
 ```
 SmartPipeline.run_analysis()           (Phases 1-3: videos only)
-  ├── _phase_cluster()     → thumbnail dedup → Immich API
-  ├── _phase_filter()      → density budget, quality gate, adaptive target
-  │                            ├── _adapt_target_for_content() → sparse content detection
-  │                            └── _maybe_switch_to_thorough() → auto LLM depth
-  └── _phase_analyze()     → ClipAnalyzer.analyze()
-                               via UnifiedSegmentAnalyzer:
-                               ├── boundary detection
-                               ├── candidate generation
-                               ├── protected-range adjustment
-                               │     speech/ VAD regions ∪ non-speech PANNs events
-                               ├── visual + LLM scoring
-                               └── best segment selection
+  ├── _phase_cluster()            → thumbnail dedup → Immich API
+  ├── _hard_eligible_clips()      → hard eligibility filter
+  ├── _analysis_candidates()      → analysis depth (fast/auto/thorough) → shortlist
+  │     └── _phase_filter()       → compute_density_budget(), _adapt_target_for_content()
+  └── _analyze_with_cache_batch() → ClipAnalyzer.analyze() (one cache batch)
+        │  (leftovers: ClipAnalyzer.plan_cached_or_metadata() fallback)
+        └── via UnifiedSegmentAnalyzer:
+              ├── boundary detection
+              ├── candidate generation
+              ├── protected-range adjustment
+              │     speech/ VAD regions ∪ non-speech PANNs events
+              ├── visual + LLM scoring
+              ├── transcription of top segments (segment_transcription.py, optional)
+              └── best segment selection
 
 score_photos()                         (Photos: metadata + LLM thumbnails)
   ├── metadata scoring (favorites, faces, camera)
@@ -387,8 +432,9 @@ Immich API → Asset models → ClipExtractor → VideoClipInfo
 Config is organized in 3 tiers (see `config_loader.py`):
 
 - **Tier 1** (top-level YAML): `immich`, `defaults`, `output`, `audio`, `title_screens`, `cache`, `upload`, `trips`, `photos`
-- **Tier 2** (under `advanced:` in YAML): `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`, `audio_content`, `server`
+- **Tier 2** (under `advanced:` in YAML, `_TIER2_SECTIONS`): `analysis`, `hardware`, `llm`, `musicgen`, `ace_step`, `content_analysis`, `audio_content`, `speech`, `transcription`, `server`, `auth`, `automation`, `notifications`
 - **Tier 3** (internal): `scheduler`, `title_llm`
+- Not in any tier list (top-level field on `Config`): `scoring_priority`
 
 At runtime, all sections are flat fields on `Config` (e.g. `config.analysis`).
 Both flat and nested YAML formats are accepted.
@@ -404,5 +450,5 @@ Both flat and nested YAML formats are accepted.
 - **No `_`-prefixed overflow files**: All files have descriptive names
 - **Private helpers**: Prefixed with `_`, same package
 - **Tests**: `tests/` directory, run with `make test`
-- **Integration tests**: Run locally via pre-commit hook on processing/titles changes (`make test-integration`)
+- **Integration tests**: run manually with `make test-integration*` (per-suite folders under `tests/integration/`, see CLAUDE.md); also run on the self-hosted GPU runner. Not a pre-commit hook.
 - **Pre-commit**: Run `make ci` before committing

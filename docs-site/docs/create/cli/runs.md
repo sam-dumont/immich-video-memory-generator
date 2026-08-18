@@ -66,6 +66,18 @@ immich-memories runs delete 20260105_143052_a7b3
 
 # Delete the record but keep the video
 immich-memories runs delete 20260105_143052_a7b3 --keep-output
+
+# Skip the confirmation prompt (scripts)
+immich-memories runs delete 20260105_143052_a7b3 --yes
 ```
 
-You'll get a confirmation prompt before anything is deleted.
+You'll get a confirmation prompt before anything is deleted unless you pass `--yes`.
+
+## runs storage
+
+Report the configured output and cache locations and how much they hold, without changing anything:
+
+```bash
+immich-memories runs storage
+immich-memories runs storage --json   # machine-readable
+```

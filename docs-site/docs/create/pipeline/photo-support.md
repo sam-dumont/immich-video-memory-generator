@@ -31,14 +31,7 @@ When a portrait photo is displayed in a landscape frame (or vice versa), the mis
 ### Face-Aware Pan
 When Immich has detected faces in a photo, the Ken Burns camera automatically pans toward the largest face. The face position comes from Immich's ML face detection bounding boxes.
 
-### Slide-In
-Photos slide into the frame with a smooth cubic ease-out animation, settling into the blur-background layout.
-
-### Collage
-2-4 photos displayed side by side (landscape) or stacked (portrait) with slide-in animation. Gaps between photos are filled with a blurred average of all photos.
-
-### Split Screen
-Apple Photos style grid: 2 photos side by side, 3 photos in a 2/3 + 1/3 layout, or 4 photos in a 2x2 grid.
+Every photo goes through the same renderer: a Ken Burns zoom of 5–12 % (seeded from the asset ID so re-runs are stable) that pans toward the face target, over a blurred background when the aspect ratios don't match. Collage and split-screen renderers exist in the code base but are not wired into the pipeline yet.
 
 ## HEIC/HEIF Support
 
@@ -71,13 +64,10 @@ photos:
   enabled: true           # Include photos in memories
   max_ratio: 0.50         # Max 50% of clips can be photos
   duration: 4.0           # Seconds per photo clip
-  collage_duration: 6.0   # Seconds per collage clip
-  animation_mode: auto    # auto | ken_burns | face_zoom | blur_bg
-  enable_collage: true    # Group series as collages
-  series_gap_seconds: 60  # Max gap to group as series
-  zoom_factor: 1.15       # Ken Burns zoom amount (15%)
   score_penalty: 0.2      # Photos score 80% of equivalent videos
 ```
+
+The schema also accepts `collage_duration`, `animation_mode`, `enable_collage`, `series_gap_seconds` and `zoom_factor`, but the current pipeline does not read them (the zoom amount is randomized per photo, and collages are not wired in). Leave them out.
 
 ## CLI Flags
 

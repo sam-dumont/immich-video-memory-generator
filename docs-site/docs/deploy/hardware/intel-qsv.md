@@ -32,7 +32,24 @@ immich-memories hardware
 ```yaml
 hardware:
   enabled: true
-  backend: "qsv"   # or "auto"
+  encoder_preset: "balanced"   # fast | balanced | quality
+```
+
+QSV is picked automatically when no NVIDIA GPU is present and the QSV encoders work.
+
+## In Docker
+
+Pass the render device through and make sure the container user can open it (it is usually owned
+by the `render` group):
+
+```yaml
+services:
+  immich-memories:
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "video"
+      - "render"     # use the numeric GID from `getent group render` if the name is not resolvable
 ```
 
 ## Good for headless servers

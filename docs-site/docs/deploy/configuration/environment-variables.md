@@ -11,7 +11,17 @@ Every config field can be set via environment variable. The pattern is:
 IMMICH_MEMORIES_<SECTION>__<FIELD>
 ```
 
-Note the **double underscore** between section and field. All uppercase.
+Note the **double underscore** between section and field. Case does not matter, but uppercase is
+the convention. `<SECTION>` is always the flat runtime name (`LLM`, `AUTH`, `SPEECH`…) — never
+`ADVANCED__LLM`, even for sections that live under `advanced:` in the YAML file.
+
+List-valued fields (`auth.trusted_proxies`, `notifications.urls`, `transcription.languages`,
+`scheduler.schedules`) must be given as JSON:
+
+```bash
+export IMMICH_MEMORIES_AUTH__TRUSTED_PROXIES='["10.0.0.0/8"]'
+export IMMICH_MEMORIES_TRANSCRIPTION__LANGUAGES='["fr", "en"]'
+```
 
 ## Examples
 
@@ -48,15 +58,18 @@ export IMMICH_MEMORIES_LLM__PROVIDER="openai-compatible"
 export IMMICH_MEMORIES_LLM__BASE_URL="https://api.openai.com/v1"
 export IMMICH_MEMORIES_LLM__MODEL="gpt-4.1-nano"
 export IMMICH_MEMORIES_LLM__API_KEY="sk-..."
+export IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED="true"   # without this the LLM is never called for scoring
 ```
 
 ### Hardware
 
 ```bash
-export IMMICH_MEMORIES_HARDWARE__ENABLED="true"
-export IMMICH_MEMORIES_HARDWARE__BACKEND="nvidia"
+export IMMICH_MEMORIES_HARDWARE__ENABLED="true"       # false = CPU-only encoding
 export IMMICH_MEMORIES_HARDWARE__ENCODER_PRESET="quality"
+export IMMICH_MEMORIES_HARDWARE__GPU_DECODE="true"
 ```
+
+The backend (NVENC, VideoToolbox, QSV, VAAPI) is auto-detected; there is no working override.
 
 ### Output
 
@@ -79,6 +92,16 @@ export IMMICH_MEMORIES_ACE_STEP__MODE="api"
 export IMMICH_MEMORIES_ACE_STEP__API_URL="http://gpu-server:8000"
 ```
 
+### Output directory (Docker)
+
+```bash
+export IMMICH_MEMORIES_OUTPUT__DIRECTORY="/app/output"
+```
+
+The default is `~/Videos/Memories`, which inside the container is `/home/immich/Videos/Memories` —
+outside every volume. Set this so videos land in the `./output` mount (see
+[Docker](../installation/docker.md)).
+
 ## Shorthand overrides
 
 A few common variables are also supported without the full prefix, for convenience:
@@ -92,17 +115,43 @@ A few common variables are also supported without the full prefix, for convenien
 | `MUSICGEN_BASE_URL` | `musicgen.base_url` |
 | `MUSICGEN_API_KEY` | `musicgen.api_key` |
 | `ACE_STEP_ENABLED` | `ace_step.enabled` |
-| `ACE_STEP_MODE` | `ace_step.mode` |
+| `ACE_STEP_MODE` | `ace_step.mode` (`api` or `lib`; other values ignored) |
 | `ACE_STEP_API_URL` | `ace_step.api_url` |
-| `IMMICH_MEMORIES_AUTH_USERNAME` | `auth.username` (also sets `auth.enabled=true`, `auth.provider=basic`) |
-| `IMMICH_MEMORIES_AUTH_PASSWORD` | `auth.password` (also sets `auth.enabled=true`, `auth.provider=basic`) |
+| `IMMICH_MEMORIES_AUTH_USERNAME` + `IMMICH_MEMORIES_AUTH_PASSWORD` | `auth.username` / `auth.password`, and sets `auth.enabled=true`, `auth.provider=basic`. **Both** must be set; either alone is ignored. |
+
+:::caution Shorthand vars are skipped with an explicit config path
+The shorthand table is applied only when the app loads its default config path
+(`~/.immich-memories/config.yaml`). `immich-memories --config PATH …` and a scheduler daemon
+started with an explicit config file ignore every row above — including the basic-auth shortcut.
+The `IMMICH_MEMORIES_<SECTION>__<FIELD>` form always works.
+:::
+
+## Other environment variables
+
+Not config fields, but read by the app:
+
+| Variable | Effect |
+|----------|--------|
+| `IMMICH_MEMORIES_STORAGE_SECRET` | Secret for the web UI session store. Priority: this var > `~/.immich-memories/.storage_secret` file > generated on first start. Set it in Docker so sessions survive container recreation. |
+| `IMMICH_MEMORIES_LOG_FORMAT` | `text` (default) or `json`. |
+| `IMMICH_MEMORIES_LOG_FILE` | When set, logs are written to this file in addition to stdout. |
+| `IMMICH_FORCE_CPU` | `1`/`true`/`yes` forces the Taichi title renderer onto CPU even when a GPU is available. |
+| `ACESTEP_CHECKPOINTS_DIR` | ACE-Step `lib` mode: where model checkpoints are downloaded (default `~/.cache/ace-step/checkpoints`). |
+| `ACESTEP_MLX_VAE_CHUNK` | ACE-Step `lib` mode on Apple Silicon: VAE decode chunk size in latent frames (minimum 192). Lower it if MLX runs out of memory. |
+| `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32` | ACE-Step `lib` mode on Apple Silicon: `1` keeps the MLX decoder in fp32 instead of casting to bf16 (roughly doubles decoder memory). |
+| `FORWARDED_ALLOW_IPS` | uvicorn: proxies whose `X-Forwarded-*` headers are trusted. Needed behind a reverse proxy — see [Authentication](authentication.mdx). |
+
+There is no environment variable for the log *level*.
 
 ## Precedence
 
-Environment variables override config file values. The full precedence order:
+Highest wins:
 
-1. CLI flags (highest priority)
-2. Environment variables (`IMMICH_MEMORIES_*` prefix)
-3. Shorthand environment variables (`IMMICH_URL`, etc.)
+1. CLI flags (`--duration`, `--output`, …) for the options they cover
+2. Shorthand environment variables (`IMMICH_URL`, `OPENAI_API_KEY`, `MUSICGEN_*`, `ACE_STEP_*`, the auth pair) — applied last, on top of everything below
+3. `IMMICH_MEMORIES_<SECTION>__<FIELD>` environment variables
 4. Config file (`~/.immich-memories/config.yaml`)
-5. Built-in defaults (lowest priority)
+5. Built-in defaults
+
+So `IMMICH_URL=http://a` beats `IMMICH_MEMORIES_IMMICH__URL=http://b`, which beats `immich.url` in
+the YAML file.

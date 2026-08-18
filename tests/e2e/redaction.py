@@ -14,11 +14,16 @@ _INPUT_REDACTIONS = [
     ('input[aria-label="Immich Server URL"]', "https://photos.example.com"),
     ('input[aria-label="API Key"]', "your-api-key-here"),
     ('input[aria-label="Output filename"]', "alice_2025_memories.mp4"),
+    ('input[aria-label="Title"]', "Summer Adventures"),
+    ('input[aria-label="Subtitle"]', "June 2025"),
 ]
 
 # Regex patterns (as JS source) → replacement strings for visible text nodes
 _TEXT_REDACTIONS = [
     (r"Connected as: .+", "Connected as: user@example.com"),
+    (r"Immich Connection — .+", "Immich Connection — user@example.com"),
+    # Catch-all: any email address that slipped past the specific patterns above
+    (r"[\w.+-]+@[\w-]+(\.[\w-]+)+", "user@example.com"),
     (r"http:\/\/\d+\.\d+\.\d+\.\d+:\d+", "https://photos.example.com"),
     (r"\/Users\/\w+\/Videos\/Memories\/.*", "/home/user/Videos/Memories/alice_2025_memories.mp4"),
     (r"\/Users\/\w+\/\.immich-memories\/.*", "/home/user/.immich-memories/config.yaml"),

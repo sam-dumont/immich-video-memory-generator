@@ -12,6 +12,10 @@ Usage:
 
 from __future__ import annotations
 
+import calendar
+import contextlib
+import os
+import re
 from pathlib import Path
 
 import pytest
@@ -24,7 +28,14 @@ from tests.e2e.redaction import redact_page, redact_person_names
 pytestmark = [pytest.mark.e2e, pytest.mark.visual]
 
 _THEMES = ["light", "dark"]
-_CLIP_LOAD_TIMEOUT = 300_000  # 5 minutes
+# WHY: never capture the current year (maintainer's live library); previous year is stable
+_CAPTURE_YEAR = int(os.environ.get("IMMICH_MEMORIES_E2E_CAPTURE_YEAR", "2025"))
+# WHY: Steps 2-4 run the real pipeline; one month keeps the pool (and render) small
+_CAPTURE_MONTH = int(os.environ.get("IMMICH_MEMORIES_E2E_CAPTURE_MONTH", "6"))
+# WHY: first-time analysis of a real library can exceed 5 minutes; allow the capture
+# session to raise the cap without editing the test (default unchanged).
+_CLIP_LOAD_TIMEOUT = int(os.environ.get("IMMICH_MEMORIES_E2E_CLIP_TIMEOUT_MS", "300000"))
+_GENERATION_TIMEOUT = int(os.environ.get("IMMICH_MEMORIES_E2E_GENERATION_TIMEOUT_MS", "600000"))
 
 
 def _name(base: str, theme: str) -> str:
@@ -36,9 +47,15 @@ def _save(page: Page, d: Path, name: str) -> None:
 
 
 def _save_navigation_diagnostic(page: Page, name: str) -> None:
-    """Keep one browser artifact when optional visual navigation times out."""
+    """Keep one browser artifact when optional visual navigation times out.
+
+    WHY: diagnostics come from a real library, so redact before saving; the
+    directory is gitignored (`test-results/`) — never commit these.
+    """
     output = Path("test-results") / "e2e"
     output.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(Exception):
+        _prep(page)
     page.screenshot(path=str(output / f"{name}.png"))
 
 
@@ -75,18 +92,81 @@ def _prep(page: Page) -> None:
 
 def _hide_sidebar(page: Page) -> None:
     page.evaluate("document.querySelector('.q-drawer')?.style.setProperty('display','none')")
-    page.evaluate(
-        "document.querySelector('.q-page-container')?.style.setProperty('padding-left','0')"
-    )
+    # WHY: Quasar positions the page with an inline padding-left; remember it so
+    # _show_sidebar can restore it — removeProperty() would leave the drawer
+    # overlaying the content and intercepting clicks.
+    page.evaluate("""() => {
+        const c = document.querySelector('.q-page-container');
+        if (!c) return;
+        c.dataset.imPrevPaddingLeft = c.style.paddingLeft;
+        c.style.setProperty('padding-left', '0');
+    }""")
     page.wait_for_timeout(200)
 
 
 def _show_sidebar(page: Page) -> None:
     page.evaluate("document.querySelector('.q-drawer')?.style.removeProperty('display')")
-    page.evaluate(
-        "document.querySelector('.q-page-container')?.style.removeProperty('padding-left')"
-    )
+    page.evaluate("""() => {
+        const c = document.querySelector('.q-page-container');
+        if (!c) return;
+        const prev = c.dataset.imPrevPaddingLeft;
+        if (prev) c.style.setProperty('padding-left', prev);
+        else c.style.removeProperty('padding-left');
+    }""")
     page.wait_for_timeout(200)
+
+
+def _choose_select(page: Page, label_text: str, option_text: str) -> None:
+    """Pick an option in a labelled Quasar q-select (e.g. Year → 2025)."""
+    label = (
+        page.locator(".q-select .q-field__label")
+        .filter(has_text=re.compile(rf"^{re.escape(label_text)}$"))
+        .first
+    )
+    if not label.count():
+        return
+    label.evaluate("el => el.closest('.q-select').click()")
+    page.wait_for_timeout(500)
+    option = (
+        page.locator(".q-menu .q-item")
+        .filter(has_text=re.compile(rf"^{re.escape(option_text)}$"))
+        .first
+    )
+    if option.count():
+        option.evaluate("el => el.click()")
+        page.wait_for_timeout(700)
+    else:
+        page.keyboard.press("Escape")
+
+
+def _choose_year(page: Page, year: int) -> None:
+    """Pick a year in the preset's Year select.
+
+    WHY: the capture must not default to the current year — its content is
+    the maintainer's live library; a fixed earlier year keeps shots stable.
+    """
+    _choose_select(page, "Year", str(year))
+
+
+def _set_manual_target_minutes(page: Page, minutes: float) -> None:
+    """Turn the Auto duration switch off and type a manual target.
+
+    WHY: a 1-minute target keeps the Step 4 render short enough for a capture
+    session; Auto would plan the preset length (10 min for a year).
+    """
+    # WHY: real clicks (force=True) — synthetic el.click() is not reliably picked
+    # up by Quasar's toggle/button handlers after a re-render
+    auto_switch = page.locator(".q-toggle").filter(has_text="Auto duration").first
+    if auto_switch.count() and auto_switch.get_attribute("aria-checked") == "true":
+        auto_switch.click(force=True)
+        page.wait_for_timeout(800)
+    target_field = page.locator(".q-field").filter(has_text="Target duration")
+    if target_field.count():
+        field_input = target_field.first.locator("input")
+        field_input.click(force=True)
+        field_input.fill(str(minutes))
+        field_input.press("Tab")
+    page.wait_for_timeout(700)
 
 
 @pytest.mark.parametrize("theme", _THEMES)
@@ -123,6 +203,7 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
 
         year_preset.click()
         page.wait_for_timeout(500)
+        _choose_year(page, _CAPTURE_YEAR)
         _prep(page)
         _save(page, d, _name("step1-preset-selected", theme))
         _save(page, d, _name("type-year-review", theme))
@@ -195,11 +276,13 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
             _save_navigation_diagnostic(page, "trip-detection-timeout")
             pass
 
-    # Switch back to Year in Review for wizard navigation
-    year_btn = page.get_by_text("Year in Review")
-    if year_btn.is_visible(timeout=3000):
-        year_btn.click()
+    # Wizard navigation runs the real pipeline: use one month of the capture year
+    monthly_btn = page.get_by_text("Monthly Highlights")
+    if monthly_btn.is_visible(timeout=3000):
+        monthly_btn.click()
         page.wait_for_timeout(500)
+        _choose_select(page, "Year", str(_CAPTURE_YEAR))
+        _choose_select(page, "Month", calendar.month_name[_CAPTURE_MONTH])
 
     # WHY: Low target duration prevents "exceeds available content" warning in step2.
     # NiceGUI/Quasar inputs need JS injection — get_by_label + fill doesn't trigger state.
@@ -291,7 +374,12 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
         _save(page, d, _name("step2-list", theme))
 
     # Expand first month in list view
-    month_button = page.locator("button").filter(has_text=r"\(\d+ clips?\)").first
+    # WHY: NiceGUI expansion headers are .q-item[role=button], not <button>; has_text needs a compiled regex
+    month_button = (
+        page.locator(".q-expansion-item .q-item")
+        .filter(has_text=re.compile(r"\(\d+ clips?\)"))
+        .first
+    )
     if month_button.is_visible():
         month_button.scroll_into_view_if_needed()
         month_button.click()
@@ -300,12 +388,32 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
         _prep(page)
         _save(page, d, _name("step2-clip-grid", theme))
 
-    # Refine Moments
-    refine_btn = page.get_by_role("button", name="Next: Refine Moments")
-    if refine_btn.is_visible():
-        refine_btn.scroll_into_view_if_needed()
-        # WHY: JS click bypasses sidebar overlay pointer interception
-        refine_btn.evaluate("el => el.click()")
+    # Run the analysis pipeline from the "Generate Memories" panel.
+    page.evaluate("window.scrollTo(0, 0)")
+    page.wait_for_timeout(300)
+    _set_manual_target_minutes(page, 1)
+    # WHY: the expansion header carries the same accessible name; target the real <button>
+    gen_btn = page.locator("button.q-btn:visible").filter(has_text="Generate Memories").first
+    if gen_btn.is_visible(timeout=3000):
+        gen_btn.click(force=True)
+        # WHY: the click navigates to the pipeline page; evaluate() on the old
+        # document raises "execution context was destroyed"
+        page.wait_for_timeout(1500)
+        _wait(page)
+        page.wait_for_timeout(2500)
+        _prep(page)
+        _save(page, d, _name("pipeline-loading", theme))
+        review_btn = (
+            page.locator("button.q-btn:visible")
+            .filter(has_text="Review & Refine Selected Clips")
+            .first
+        )
+        try:
+            review_btn.wait_for(timeout=_CLIP_LOAD_TIMEOUT)
+        except PlaywrightTimeoutError:
+            _save_navigation_diagnostic(page, "pipeline-timeout")
+            return
+        review_btn.click(force=True)
         _wait(page)
         _prep(page)
         _save(page, d, _name("step2-refine-moments", theme))
@@ -317,7 +425,7 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
     page.wait_for_timeout(500)
     cont = page.get_by_role("button", name="Continue to Generation")
     try:
-        cont.evaluate("el => el.click()")
+        cont.click(force=True)
         page.wait_for_url("**/step3", timeout=30_000)
         _wait(page)
 
@@ -360,17 +468,9 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
             _save(page, d, _name("step3-advanced", theme))
 
         # LLM title fields
-        title_field = page.get_by_label("Title")
-        if title_field.is_visible(timeout=3000):
-            title_field.scroll_into_view_if_needed()
-            _prep(page)
-            _save(page, d, _name("llm-title-step3", theme))
-
-        regen_btn = page.get_by_role("button", name="Regenerate")
-        if regen_btn.is_visible(timeout=3000):
-            regen_btn.scroll_into_view_if_needed()
-            _prep(page)
-            _save(page, d, _name("llm-title-regenerate", theme))
+        # WHY: the capture environment has no in-process music backend; render
+        # without music so the Step 4 frames don't show a failed-music warning.
+        _choose_select(page, "Background music", "None")
     except PlaywrightTimeoutError:
         _save_navigation_diagnostic(page, "step3-navigation-timeout")
         pass
@@ -380,7 +480,7 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
     # ════════════════════════════════════════════════════════════════
     next4 = page.get_by_role("button", name="Next: Preview & Export")
     try:
-        next4.evaluate("el => el.click()")
+        next4.click(force=True)
         page.wait_for_url("**/step4", timeout=30_000)
         _wait(page)
         _prep(page)
@@ -399,7 +499,7 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
     # STEP 4: Generation (requires FFmpeg — captures generating + complete)
     # ════════════════════════════════════════════════════════════════
     try:
-        gen_btn = page.get_by_role("button", name="Generate")
+        gen_btn = page.locator("button.q-btn:visible").filter(has_text="Generate Video").first
         if gen_btn.is_visible(timeout=3000):
             gen_btn.click()
             # Wait for progress to appear
@@ -410,7 +510,16 @@ def test_capture_all(page: Page, app_url: str, screenshot_dir: Path, theme: str)
 
             # Wait for generation to complete (up to 10 minutes)
             try:
-                page.wait_for_selector("text=Generation complete", timeout=600_000)
+                try:
+                    page.wait_for_selector(
+                        "text=Your memory video is ready!", timeout=_GENERATION_TIMEOUT
+                    )
+                except PlaywrightTimeoutError:
+                    # WHY: the completion write can miss a client that NiceGUI
+                    # considers gone; the run itself is durable, so reload once.
+                    page.reload(wait_until="domcontentloaded")
+                    _wait(page)
+                    page.wait_for_selector("text=Your memory video is ready!", timeout=60_000)
                 page.wait_for_timeout(1000)
                 _prep(page)
                 _save(page, d, _name("step4-complete", theme))
