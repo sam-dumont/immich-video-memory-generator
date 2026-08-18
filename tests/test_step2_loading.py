@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import immich_memories.ui.pages.step2_loading as step2_loading
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
+from immich_memories.cache.versions import ANALYSIS_VERSION
 from immich_memories.config_loader import Config
 from immich_memories.ui.pages.step2_loading import _set_initial_selection
 from immich_memories.ui.state import AppState
@@ -66,7 +67,9 @@ def test_load_surfaces_only_current_model_cached_analysis() -> None:
         llm_quality=0.86,
         audio_categories=["waves"],
     )
-    current_analysis = MagicMock(model_version="qwen-3.6", segments=[current_segment])
+    current_analysis = MagicMock(
+        model_version="qwen-3.6", segments=[current_segment], analysis_version=ANALYSIS_VERSION
+    )
     current_analysis.get_best_segment.return_value = current_segment
     stale_analysis = MagicMock(model_version="qwen-3.5", segments=[MagicMock()])
     cache = MagicMock()

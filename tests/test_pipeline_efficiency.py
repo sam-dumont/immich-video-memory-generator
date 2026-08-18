@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from immich_memories.cache.versions import ANALYSIS_VERSION
 from immich_memories.config_loader import Config
 
 
@@ -217,7 +218,11 @@ class TestAnalysisEligibility:
 
         def cached_or_missing(asset_id: str):
             if int(asset_id.removeprefix("clip-")) < 50:
-                return MagicMock(model_version="qwen-3.6", segments=[MagicMock()])
+                return MagicMock(
+                    model_version="qwen-3.6",
+                    analysis_version=ANALYSIS_VERSION,
+                    segments=[MagicMock()],
+                )
             return None
 
         pipeline.analysis_cache.get_analysis.side_effect = cached_or_missing

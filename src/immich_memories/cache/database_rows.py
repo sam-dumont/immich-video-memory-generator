@@ -27,6 +27,7 @@ def row_to_analysis(row: sqlite3.Row) -> CachedVideoAnalysis:
             datetime.fromisoformat(row["file_modified_at"]) if row["file_modified_at"] else None
         ),
         analysis_timestamp=datetime.fromisoformat(row["analysis_timestamp"]),
+        analysis_version=_row_value(row, "analysis_version", 0),
         scoring_version=_row_value(row, "scoring_version", 1),
         model_version=_row_value(row, "model_version", None),
         perceptual_hash=row["perceptual_hash"],
