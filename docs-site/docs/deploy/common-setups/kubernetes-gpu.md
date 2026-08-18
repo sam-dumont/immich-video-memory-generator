@@ -26,7 +26,7 @@ You run a Kubernetes cluster with NVIDIA GPU nodes (on-prem, cloud, or hybrid). 
 │  │  │ GPU: 1      │  │ GPU: 1     │              │   │
 │  │  └────────────┘  └────────────┘              │   │
 │  │                                               │   │
-│  │  ConfigMap: config.yaml                       │   │
+│  │  Secret: IMMICH_URL, IMMICH_API_KEY           │   │
 │  │  PVCs: cache (20Gi), output (50Gi)            │   │
 │  └──────────────────────────────────────────────┘   │
 │                                                     │
@@ -59,40 +59,24 @@ helm install gpu-operator nvidia/gpu-operator \
 
 ## Deploy with Kustomize
 
-The manifests live in `deploy/kubernetes/` in the repo:
-
-:::warning Read the known gaps first
-The shipped manifests need hand edits before they boot (Secret not in the kustomization,
-UID/home and read-only config mount, stale LLM keys, `/health` probes, job durations in seconds,
-an Ingress that is on by default). The list is in [Kubernetes deployment](../installation/kubernetes.md).
-:::
+The manifests live in `deploy/kubernetes/` in the repo: a CPU-only `base/` and an
+`overlays/gpu/` patch that adds the NVIDIA bits. Detailed manifest reference:
+[Kubernetes deployment](../installation/kubernetes.md).
 
 ```bash
 cd deploy/kubernetes
 
-# Create the secret
-cp secret.yaml.example secret.yaml
-# Edit with your Immich URL and API key
-vim secret.yaml
+# Secret: Immich URL + API key
+cp base/secret.yaml.example base/secret.yaml
+vim base/secret.yaml
 
-# The secret is not part of kustomization.yaml — apply it first
-kubectl apply -f namespace.yaml
-kubectl apply -f secret.yaml
-
-# Deploy the rest
-kubectl apply -k .
+# GPU nodes
+kubectl apply -k overlays/gpu
+# (CPU only: kubectl apply -k base)
 ```
 
-Or apply individually:
-
-```bash
-kubectl apply -f namespace.yaml
-kubectl apply -f secret.yaml
-kubectl apply -f configmap.yaml
-kubectl apply -f pvc.yaml
-kubectl apply -f deployment.yaml
-kubectl apply -f service.yaml
-```
+`kubectl kustomize overlays/gpu` shows the rendered result. `base/kustomization.yaml` pins the
+image tag (no `v` prefix: `0.41.0`); bump it when you upgrade.
 
 ## Access the UI
 
@@ -100,29 +84,29 @@ kubectl apply -f service.yaml
 kubectl port-forward -n immich-memories svc/immich-memories 8080:80
 ```
 
-Open [http://localhost:8080](http://localhost:8080). `service.yaml` already contains an Ingress
-(`memories.example.com`, nginx class) — edit the host or remove it, and do not expose the Service
-until [authentication](../configuration/authentication.mdx) is enabled.
+Open [http://localhost:8080](http://localhost:8080). No Ingress is shipped: enable
+[authentication](../configuration/authentication.mdx) first, then copy
+`base/ingress.yaml.example` into place.
 
 ## GPU resource requests
 
-The deployment requests 1 NVIDIA GPU. Adjust in the deployment manifest:
+`overlays/gpu/deployment-gpu.yaml` requests one `nvidia.com/gpu`, sets `runtimeClassName: nvidia`
+and the `NVIDIA_*` env vars. Adjust there:
 
 ```yaml
 resources:
   requests:
     nvidia.com/gpu: "1"
-    memory: "2Gi"
-    cpu: "1000m"
   limits:
     nvidia.com/gpu: "1"
-    memory: "8Gi"
-    cpu: "4000m"
 ```
+
+The base Deployment keeps `2Gi/1000m` requests and `8Gi/4000m` limits.
 
 ## Node selection
 
-Pods schedule on nodes with `nvidia.com/gpu.present=true` (set by the GPU Operator). If your cluster uses different labels:
+The overlay schedules on nodes with `nvidia.com/gpu.present=true` (set by the GPU Operator) and
+tolerates the `nvidia.com/gpu` taint. If your cluster uses different labels:
 
 ```yaml
 nodeSelector:
@@ -138,12 +122,14 @@ For music generation pods (MusicGen/ACE-Step), you might want separate node affi
 Run one-off generation without the UI:
 
 ```bash
-kubectl apply -f job.yaml
+kubectl apply -f base/job.yaml
 kubectl logs -n immich-memories -f job/immich-memories-generate
 ```
 
-`--duration` is in **seconds**. The example job passes `--duration 10` — change it to something
-like `600` before applying, or you get a ten-second video.
+`--duration` is in **seconds** (the example job uses `600`). The jobs are CPU-only as shipped;
+copy the fields from `overlays/gpu/deployment-gpu.yaml` into the pod spec for GPU nodes. They
+share the Deployment's `ReadWriteOnce` PVCs, so the job pod has to land on the same node — or
+skip the CronJobs and set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` on the Deployment instead.
 
 ## Storage
 
@@ -151,15 +137,17 @@ Default PVC sizes:
 
 | Volume | Size | Purpose |
 |-----|------|---------|
-| ConfigMap `immich-memories-config` | – | `config.yaml` |
-| Cache PVC | 20Gi | `cache.db` (analysis scores) + downloaded video cache — once mounted at `~/.immich-memories` (see the gaps list) |
-| Output PVC | 50Gi | Generated videos (`/output`) |
+| Cache PVC | 20Gi | mounted at `/home/immich/.immich-memories`: `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
+| Output PVC | 50Gi | mounted at `/app/output`: generated videos |
+
+There is no ConfigMap — connection details come from the Secret, everything else from
+`IMMICH_MEMORIES_*` env vars or the UI settings page (which writes `config.yaml` on the PVC).
 
 `cache.db` holds the analysis scores from all previous runs. This is the most valuable data: losing it means re-analyzing your entire library. Back it up:
 
 ```bash
 kubectl exec -n immich-memories deployment/immich-memories -- \
-  immich-memories cache backup /output/cache-backup.db
+  immich-memories cache backup /app/output/cache-backup.db
 ```
 
 ## Secrets management
@@ -167,8 +155,8 @@ kubectl exec -n immich-memories deployment/immich-memories -- \
 Don't commit plain secrets to git. Use [sealed-secrets](https://github.com/bitnami-labs/sealed-secrets) or your cluster's secret management:
 
 ```bash
-kubeseal --format=yaml < secret.yaml > sealed-secret.yaml
-kubectl apply -f sealed-secret.yaml
+kubeseal --format=yaml < base/secret.yaml > base/sealed-secret.yaml
+kubectl apply -f base/sealed-secret.yaml
 ```
 
 ## Health monitoring
@@ -181,11 +169,13 @@ kubectl apply -f sealed-secret.yaml
   "configuration": "configured",
   "immich_reachable": true,
   "last_successful_run": "2025-12-15T10:30:00",
-  "version": "0.40.1"
+  "version": "0.41.0"
 }
 ```
 
-`/health/live` only says the process is up. `/health` returns the same JSON as `/health/ready` but always with HTTP `200` (`status: ok`), so it is useless as a probe — the shipped manifest still points both probes at it; switch them to `/health/live` (liveness) and `/health/ready` (readiness).
+`/health/live` only says the process is up. `/health` returns the same JSON as `/health/ready` but
+always with HTTP `200` (`status: ok`), so it is useless as a probe — the manifests use
+`/health/live` for liveness and `/health/ready` for readiness.
 
 Point your monitoring (Uptime Kuma, Prometheus blackbox exporter, etc.) at `/health/ready` on port 8080.
 

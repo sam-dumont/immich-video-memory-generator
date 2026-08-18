@@ -5,53 +5,57 @@ title: Terraform
 
 # Terraform Deployment
 
-Deploy Immich Memories to Kubernetes using Terraform. The module lives in `deploy/terraform/`.
+Deploy Immich Memories to Kubernetes using Terraform. The module lives in `deploy/terraform/` and
+uses the `hashicorp/kubernetes` provider. CPU only by default; NVIDIA GPU scheduling is a variable.
 
-:::warning Known gaps in the shipped module
-The module predates the current image and config schema and is being fixed. As of v0.40.1 the
-pod it creates does not run cleanly. What to change by hand:
-
-1. **Read-only config.** The image runs as `immich`, UID/GID 1000 (matching `run_as_user = 1000`),
-   and the module mounts the ConfigMap read-only at `/home/immich/.immich-memories`. The app
-   creates `cache/`, `projects/`, `cache.db` and `.storage_secret` in that directory at startup
-   and fails on the read-only mount. Fix: mount the cache PVC at `/home/immich/.immich-memories`
-   (`fs_group = 1000` makes it writable) and project `config.yaml` into it with `sub_path`.
-   The `/home/immich/.cache/immich-memories` mount is never used.
-2. **Probes hit `/`.** Use `/health/live` (liveness) and `/health/ready` (readiness).
-3. **Stale config keys.** `hardware.backend`, `audio.auto_music`, `audio.music_source`,
-   `audio.ollama_url`, `audio.ollama_model`, `audio.ducking_*`, `audio.music_volume_db`,
-   `defaults.target_duration_seconds`, `defaults.output_orientation`, `scoring_priority`, `analysis.keyframe_interval`
-   are written into `config.yaml` but ignored by the app. In particular the `ollama_url` /
-   `ollama_model` variables configure nothing: to get LLM analysis you need an `llm:` block plus
-   `content_analysis.enabled: true` (see [Config Reference](../../reference/config-reference.md#llm-vision-model)).
-   `openai_api_key` only fills `llm.api_key`.
-4. **Example tfvars.** `examples/production/terraform.tfvars.example` pins `image_tag = "v1.0.0"`
-   — published tags have no `v` prefix (`0.40.1`, `latest`). Both example tfvars also set
-   variables the module does not declare (`use_scene_detection`, `enable_downscaling`,
-   `content_analysis_*`), which Terraform warns about and ignores.
+:::note Less travelled than Docker Compose
+Docker Compose is the primary self-hosting path. The module and both examples pass
+`terraform validate` and their contracts are pinned in the test suite (writable state volume,
+`/health/live` + `/health/ready` probes, `gpu_enabled = false` by default), but they are not
+applied to a live cluster on every release. Read the plan before you apply it, and open an issue
+if something does not boot.
 :::
 
 :::caution Before enabling Ingress
 Authentication is disabled by default. An enabled Ingress exposes the UI to every client that can
-reach it, so configure authentication first. The UI is single-user, single-replica; do not scale
-the deployment beyond one pod.
+reach it, so configure authentication first (`secret_env` with `IMMICH_MEMORIES_AUTH_USERNAME` /
+`IMMICH_MEMORIES_AUTH_PASSWORD`, or [OIDC](../configuration/authentication.mdx)). The UI is
+single-user, single-replica; do not scale the deployment beyond one pod.
 :::
+
+## What it creates
+
+Namespace (optional), Secret, two `ReadWriteOnce` PVCs, Deployment, Service, Ingress (optional).
+
+The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich` (`run_as_user` / `fs_group`
+1000, all capabilities dropped, `RuntimeDefault` seccomp):
+
+| Mount | Backed by | Holds |
+|-------|-----------|-------|
+| `/home/immich/.immich-memories` | cache PVC (writable) | `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
+| `/app/output` | output PVC | generated videos (`IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`) |
+| `/tmp` | emptyDir (`tmp_size`, 4Gi) | FFmpeg intermediates — 8Gi for 4K |
+
+There is no ConfigMap. `immich_url` / `immich_api_key` (plus `llm_api_key`, `musicgen_api_key` and
+anything in `secret_env`) land in the Secret and reach the pod through `envFrom`; every other
+setting is an `IMMICH_MEMORIES_<SECTION>__<KEY>` env var (`env`). Settings saved from the UI go to
+`config.yaml` on the PVC; env vars override them.
+
+Probes: `/health/live` (liveness) and `/health/ready` (readiness — `503` until config is present
+and Immich answers, which keeps the pod out of the Service while Immich is down).
 
 ## Prerequisites
 
 1. **Terraform** >= 1.0 and the `hashicorp/kubernetes` provider >= 2.20
-2. **Kubernetes cluster** with:
-   - NVIDIA GPU Operator installed
-   - NVIDIA RuntimeClass configured
-   - Storage class for PVCs
+2. **Kubernetes cluster** with a storage class for PVCs and Immich reachable from it (port 2283
+   by default). For `gpu_enabled = true`: NVIDIA GPU Operator and the `nvidia` RuntimeClass
 3. **kubeconfig** configured and pointing at your cluster
 
 ## Quick Start
 
-### Basic Deployment
-
 ```bash
-cd deploy/terraform/examples/basic
+cd deploy/terraform/examples/basic        # CPU, no ingress, port-forward
+# or: cd deploy/terraform/examples/production   # pinned tag, basic auth, ingress + TLS, GPU optional
 
 cp terraform.tfvars.example terraform.tfvars
 vim terraform.tfvars
@@ -59,19 +63,8 @@ vim terraform.tfvars
 terraform init
 terraform plan
 terraform apply
-```
 
-### Production Deployment
-
-```bash
-cd deploy/terraform/examples/production
-
-cp terraform.tfvars.example terraform.tfvars
-vim terraform.tfvars
-
-terraform init
-terraform plan
-terraform apply
+$(terraform output -raw port_forward_command)   # http://localhost:8080
 ```
 
 ## Module Usage
@@ -84,17 +77,22 @@ module "immich_memories" {
   immich_url     = "https://photos.example.com"
   immich_api_key = var.immich_api_key
 
-  # GPU Configuration
+  # Optional: LLM clip content analysis (any OpenAI-compatible API)
+  llm_base_url = "http://ollama.ollama.svc.cluster.local:11434/v1"
+  llm_model    = "qwen2.5-vl"
+
+  # Optional: anything else, e.g. the in-pod daily automation
+  env = {
+    IMMICH_MEMORIES_AUTOMATION__ENABLED  = "true"
+    IMMICH_MEMORIES_AUTOMATION__DAILY_AT = "09:00"
+  }
+
+  # Optional: NVIDIA GPU nodes
   gpu_enabled = true
-  gpu_count   = 1
 
   # Storage
   output_storage_size = "100Gi"
   cache_storage_size  = "50Gi"
-
-  # Ingress
-  ingress_enabled = true
-  ingress_host    = "memories.example.com"
 }
 ```
 
@@ -114,16 +112,19 @@ module "immich_memories" {
 | `namespace` | Kubernetes namespace | `string` | `"immich-memories"` |
 | `create_namespace` | Create the namespace | `bool` | `true` |
 | `image_repository` | Container image | `string` | `"ghcr.io/sam-dumont/immich-video-memory-generator"` |
-| `image_tag` | Image tag (no `v` prefix: `0.40.1`, `latest`) | `string` | `"latest"` |
+| `image_tag` | Image tag (no `v` prefix: `0.41.0`, `latest`) | `string` | `"latest"` |
 | `replicas` | Replica count — keep at 1, the UI is single-replica | `number` | `1` |
 | `resources` | Requests/limits object (`requests.memory/cpu`, `limits.memory/cpu`) | `object` | `2Gi/1000m` – `8Gi/4000m` |
+| `tmp_size` | `/tmp` emptyDir for FFmpeg intermediates (8Gi for 4K) | `string` | `"4Gi"` |
+| `env` | Extra `IMMICH_MEMORIES_<SECTION>__<KEY>` env vars | `map(string)` | `{}` |
+| `secret_env` | Extra env vars stored in the Secret (auth password, storage secret) | `map(string)` | `{}` |
 | `labels` | Extra labels on every resource | `map(string)` | `{}` |
 
 ### GPU Configuration
 
 | Name | Description | Type | Default |
 |------|-------------|------|---------|
-| `gpu_enabled` | Enable NVIDIA GPU support | `bool` | `true` |
+| `gpu_enabled` | Schedule on NVIDIA GPU nodes (RuntimeClass, `nvidia.com/gpu`, node selector, toleration, `NVIDIA_*` env) | `bool` | `false` |
 | `gpu_count` | Number of GPUs to request | `number` | `1` |
 | `gpu_node_selector` | Node selector for GPU nodes | `map(string)` | `{"nvidia.com/gpu.present": "true"}` |
 | `runtime_class_name` | RuntimeClass for NVIDIA | `string` | `"nvidia"` |
@@ -132,8 +133,8 @@ module "immich_memories" {
 
 | Name | Description | Type | Default |
 |------|-------------|------|---------|
-| `output_storage_size` | Size of output PVC | `string` | `"50Gi"` |
-| `cache_storage_size` | Size of cache PVC | `string` | `"20Gi"` |
+| `output_storage_size` | Size of the output PVC | `string` | `"50Gi"` |
+| `cache_storage_size` | Size of the cache/state PVC | `string` | `"20Gi"` |
 | `storage_class_name` | Storage class for PVCs | `string` | `null` (cluster default) |
 
 ### Ingress
@@ -147,24 +148,17 @@ module "immich_memories" {
 | `ingress_tls_secret_name` | TLS secret name | `string` | `"immich-memories-tls"` |
 | `ingress_annotations` | Extra ingress annotations | `map(string)` | `{}` |
 
-### Music and LLM
+### LLM and music
 
 | Name | Description | Type | Default |
 |------|-------------|------|---------|
+| `llm_base_url` | OpenAI-compatible endpoint (Ollama: append `/v1`). Sets `llm.base_url` and turns on `content_analysis.enabled`; empty disables LLM analysis | `string` | `""` |
+| `llm_model` | Vision model name served at `llm_base_url` | `string` | `""` |
+| `llm_api_key` | API key for `llm_base_url` (stored in the Secret) | `string` | `""` |
 | `musicgen_enabled` | Generate AI music with a MusicGen server | `bool` | `false` |
 | `musicgen_base_url` | MusicGen server URL | `string` | `"http://musicgen.musicgen.svc.cluster.local:8000"` |
 | `musicgen_api_key` | MusicGen API key (stored in the Secret) | `string` | `""` |
-| `openai_api_key` | Sets `llm.api_key` via `OPENAI_API_KEY`. Only useful together with an `llm:` block, which the module does not write yet | `string` | `""` |
-| `ollama_url`, `ollama_model` | Written to `audio.ollama_*`, which the app ignores — no effect (gap 3) | `string` | Ollama in-cluster URL / `"llava"` |
-
-### Application
-
-| Name | Description | Type | Default |
-|------|-------------|------|---------|
-| `output_resolution` | Video resolution (720p, 1080p, 4k) | `string` | `"1080p"` |
-| `target_duration_seconds` | Written to `defaults.target_duration_seconds`, which the app does not read (duration is per run) | `number` | `600` |
-| `output_orientation` | Written to `defaults.output_orientation`, which the app does not read (orientation is per run) | `string` | `"landscape"` |
-| `hardware_backend` | Written to `hardware.backend`, which the app does not read — the backend is auto-detected; `gpu_enabled` is the real switch | `string` | `"nvidia"` |
+| `output_resolution` | Video resolution (`720p`, `1080p`, `4k`) | `string` | `"1080p"` |
 
 ## Outputs
 
@@ -177,46 +171,25 @@ module "immich_memories" {
 | `port_forward_command` | Ready-to-run kubectl port-forward command |
 | `deployment_name` | Deployment name |
 | `pvc_output` | Name of the output PVC |
-| `pvc_cache` | Name of the cache PVC |
+| `pvc_cache` | Name of the cache/state PVC |
 | `gpu_enabled` | Whether GPU support is enabled |
-
-## Accessing the UI
-
-After `terraform apply`:
-
-```bash
-# Use the output directly
-$(terraform output -raw port_forward_command)
-
-# Or manually
-kubectl port-forward -n immich-memories svc/immich-memories 8080:80
-
-# Open http://localhost:8080
-```
 
 ## Troubleshooting
 
-### GPU Not Detected
-
 ```bash
-# Check GPU Operator pods are running
+# Pod events: scheduling, PVC binding, GPU
+kubectl describe pod -n immich-memories -l app.kubernetes.io/name=immich-memories
+kubectl get pvc -n immich-memories
+
+# Readiness stays 503 until Immich answers — check the payload
+kubectl port-forward -n immich-memories svc/immich-memories 8080:80
+curl -s localhost:8080/health/ready
+
+# GPU: operator pods, node label, RuntimeClass
 kubectl get pods -n gpu-operator
-
-# Verify nodes have GPU labels
 kubectl get nodes -L nvidia.com/gpu.present
-
-# Verify RuntimeClass exists
 kubectl get runtimeclass nvidia
 ```
 
-### Pod Stuck in Pending
-
-```bash
-# Check pod events for scheduling errors
-kubectl describe pod -n immich-memories -l app.kubernetes.io/name=immich-memories
-
-# Verify PVCs are bound
-kubectl get pvc -n immich-memories
-```
-
-Common causes: no GPU nodes available, PVC storage class doesn't exist, or resource requests exceed what the cluster can provide.
+Common causes of a Pending pod: the storage class doesn't exist, resource requests exceed the
+cluster, or `gpu_enabled = true` without GPU nodes.

@@ -1,4 +1,4 @@
-# Basic deployment with NVIDIA GPU support
+# Basic deployment: CPU only, no ingress, port-forward to reach the UI.
 
 terraform {
   required_version = ">= 1.0"
@@ -26,18 +26,18 @@ module "immich_memories" {
   immich_url     = var.immich_url
   immich_api_key = var.immich_api_key
 
-  # GPU Configuration (defaults to enabled)
-  gpu_enabled = true
-  gpu_count   = 1
+  # Optional: LLM clip content analysis (any OpenAI-compatible API)
+  llm_base_url = var.llm_base_url
+  llm_model    = var.llm_model
+  llm_api_key  = var.llm_api_key
+
+  # Optional: NVIDIA GPU nodes (GPU Operator required)
+  gpu_enabled = var.gpu_enabled
 
   # Optional: Override defaults
   namespace           = "immich-memories"
   output_storage_size = "100Gi"
   cache_storage_size  = "50Gi"
-
-  # Optional: Enable ingress
-  ingress_enabled = false
-  # ingress_host    = "memories.example.com"
 }
 
 output "port_forward_command" {

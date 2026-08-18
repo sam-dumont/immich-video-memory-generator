@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: immich-memories
+
+# CPU-only base that boots on any cluster:  kubectl apply -k base
+# For NVIDIA nodes apply the overlay instead:  kubectl apply -k overlays/gpu
+resources:
+  - namespace.yaml
+  # cp secret.yaml.example secret.yaml and fill in IMMICH_URL / IMMICH_API_KEY.
+  # kustomize refuses to build until the file exists.
+  - secret.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml
+  # Optional CLI batch jobs (one-off Job + CronJobs)
+  # - job.yaml
+  # Optional Ingress — only after enabling authentication:
+  #   cp ingress.yaml.example ingress.yaml
+  # - ingress.yaml
+
+# Published image tags carry no `v` prefix (0.41.0, latest). Bump on upgrade.
+images:
+  - name: ghcr.io/sam-dumont/immich-video-memory-generator
+    newTag: "0.41.0"

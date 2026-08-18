@@ -1,4 +1,5 @@
-# Production deployment with ingress, TLS, and full configuration
+# Production deployment: pinned image, ingress with TLS, GPU optional.
+# Enable authentication (secret_env below) before enabling the ingress.
 
 terraform {
   required_version = ">= 1.0"
@@ -38,20 +39,34 @@ module "immich_memories" {
   immich_url     = var.immich_url
   immich_api_key = var.immich_api_key
 
-  # Optional API keys
-  openai_api_key  = var.openai_api_key
+  # LLM clip content analysis
+  llm_base_url = var.llm_base_url
+  llm_model    = var.llm_model
+  llm_api_key  = var.llm_api_key
 
   # MusicGen AI music generation
   musicgen_enabled  = var.musicgen_enabled
   musicgen_base_url = var.musicgen_base_url
   musicgen_api_key  = var.musicgen_api_key
 
-  # GPU Configuration
-  gpu_enabled = true
+  # Basic auth for the UI (required before exposing it through the ingress)
+  secret_env = {
+    IMMICH_MEMORIES_AUTH_USERNAME = var.auth_username
+    IMMICH_MEMORIES_AUTH_PASSWORD = var.auth_password
+  }
+
+  # Daily automation inside the pod
+  env = {
+    IMMICH_MEMORIES_AUTOMATION__ENABLED  = "true"
+    IMMICH_MEMORIES_AUTOMATION__DAILY_AT = "09:00"
+    TZ                                   = var.timezone
+  }
+
+  # GPU (optional)
+  gpu_enabled = var.gpu_enabled
   gpu_count   = var.gpu_count
   gpu_node_selector = {
     "nvidia.com/gpu.present" = "true"
-    "node-type"              = "gpu"
   }
 
   # Resources
@@ -65,6 +80,7 @@ module "immich_memories" {
       cpu    = "8000m"
     }
   }
+  tmp_size = "8Gi"
 
   # Storage
   output_storage_size = "200Gi"
@@ -78,19 +94,12 @@ module "immich_memories" {
   ingress_tls_enabled     = true
   ingress_tls_secret_name = "immich-memories-tls"
   ingress_annotations = {
-    "cert-manager.io/cluster-issuer"           = "letsencrypt-prod"
+    "cert-manager.io/cluster-issuer"              = "letsencrypt-prod"
     "nginx.ingress.kubernetes.io/proxy-body-size" = "0"
   }
 
-  # Ollama for mood analysis
-  ollama_url   = var.ollama_url
-  ollama_model = "llava"
-
   # Application settings
-  target_duration_seconds = 600
-  output_orientation      = "landscape"
-  output_resolution       = "1080p"
-  hardware_backend        = "nvidia"
+  output_resolution = "1080p"
 
   labels = {
     "environment" = var.environment

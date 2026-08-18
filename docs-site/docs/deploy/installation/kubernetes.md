@@ -5,94 +5,52 @@ title: Kubernetes
 
 # Kubernetes Deployment
 
-Deploy Immich Memories to Kubernetes with NVIDIA GPU support. The manifests live in `deploy/kubernetes/`.
+Kustomize manifests live in `deploy/kubernetes/`. The base boots on any cluster (CPU only); NVIDIA
+GPU scheduling is an overlay.
 
-:::warning Known gaps in the shipped manifests
-The manifests in `deploy/kubernetes/` were written before the current image and config schema and
-are being fixed. As of v0.40.1 they do **not** boot as-is. What you need to change by hand:
-
-1. **The Secret is not applied by `kubectl apply -k .`** — `kustomization.yaml` has `- secret.yaml`
-   commented out, so the Deployment fails with `CreateContainerConfigError`. Apply
-   `secret.yaml` yourself (or uncomment the line) before `-k`.
-2. **Read-only config mount.** The image runs as `immich`, UID/GID 1000 (matching the manifests'
-   `runAsUser: 1000`; `HOME` is overridden to `/home/appuser`, which is fine). The ConfigMap is
-   mounted read-only at `/home/appuser/.immich-memories`, but the app creates `cache/`,
-   `projects/`, `cache.db` and `.storage_secret` in exactly that directory at startup, so it
-   fails on the read-only mount. Fix: mount the **cache PVC** at `/home/appuser/.immich-memories`
-   (writable; `fsGroup: 1000` makes it group-writable) and project the ConfigMap into it as a
-   single file with `subPath: config.yaml`; set
-   `IMMICH_MEMORIES_STORAGE_SECRET` from the Secret so sessions survive restarts. The
-   `~/.cache/immich-memories` mount is never written to and can go.
-3. **Stale config keys.** `audio.ollama_*`, `content_analysis.provider|ollama_*|openai_*`,
-   `hardware.backend` and the env var `IMMICH_MEMORIES_CONTENT_ANALYSIS__OLLAMA_URL` are not part
-   of the schema and are silently ignored, so LLM analysis is never configured. Use an `llm:` block
-   (`provider: ollama`, `base_url`, `model`) plus `content_analysis.enabled: true`, or the env vars
-   `IMMICH_MEMORIES_LLM__PROVIDER=ollama`, `IMMICH_MEMORIES_LLM__BASE_URL=…`,
-   `IMMICH_MEMORIES_LLM__MODEL=…`, `IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED=true`.
-   `OPENAI_API_KEY` sets `llm.api_key` only; `PIXABAY_API_KEY` is read by nothing.
-4. **Probes hit `/health`**, which always returns 200. Use `/health/live` for liveness and
-   `/health/ready` for readiness.
-5. **`job.yaml` durations are seconds**: `--duration 10` / `--duration 5` produce 5–10 second
-   videos. Use `600` / `300`.
-6. **`service.yaml` contains an Ingress** (`memories.example.com`, nginx) that `-k` creates
-   even though auth is off by default. Delete or comment it out until you have enabled
-   [authentication](../configuration/authentication.mdx).
-7. **NetworkPolicy egress allows Immich on port 3001 only**; current Immich listens on 2283. Add it.
-8. **`newTag: v1.0.0`** in the kustomization example — published tags carry no `v` prefix (`0.40.1`, `latest`).
+:::note Less travelled than Docker Compose
+Docker Compose is the primary self-hosting path. These manifests are rendered with
+`kubectl kustomize` in the test suite (base and GPU overlay) and their contracts are pinned —
+Secret applied, writable state volume, `/health/live` + `/health/ready` probes, no GPU
+requirement in the base — but they are not applied to a live cluster on every release. Read the
+rendered output before you apply it, and open an issue if something does not boot.
 :::
+
+```
+deploy/kubernetes/
+├── base/                    Namespace, Secret, PVCs, Deployment, Service, NetworkPolicy
+│   ├── job.yaml             optional CLI Job + CronJobs (commented out in kustomization.yaml)
+│   └── ingress.yaml.example optional Ingress — only after enabling authentication
+└── overlays/gpu/            + runtimeClassName nvidia, nvidia.com/gpu, node selector, tolerations
+```
 
 ## Prerequisites
 
-1. **NVIDIA GPU Operator** installed in your cluster:
-
-   ```bash
-   helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
-   helm repo update
-   helm install gpu-operator nvidia/gpu-operator \
-     --namespace gpu-operator \
-     --create-namespace
-   ```
-
-2. **RuntimeClass** for NVIDIA (usually created by GPU Operator automatically):
-
-   ```yaml
-   apiVersion: node.k8s.io/v1
-   kind: RuntimeClass
-   metadata:
-     name: nvidia
-   handler: nvidia
-   ```
-
-3. **Storage Class** available for PVCs
+1. A storage class for two `ReadWriteOnce` PVCs (cache/state 20Gi, output 50Gi)
+2. Immich reachable from the cluster — in-cluster (`http://immich-server.<ns>.svc.cluster.local:2283`)
+   or external
+3. GPU overlay only: the [NVIDIA GPU Operator](https://github.com/NVIDIA/gpu-operator), which
+   provides the `nvidia` RuntimeClass, `nvidia.com/gpu` resources and the
+   `nvidia.com/gpu.present` node label
 
 ## Quick Start
 
 ```bash
 cd deploy/kubernetes
 
-# Create the secret with your Immich credentials
-cp secret.yaml.example secret.yaml
-# Edit with your actual values
-vim secret.yaml
+# Secret: Immich URL + API key. Every key becomes an env var in the pod.
+cp base/secret.yaml.example base/secret.yaml
+vim base/secret.yaml
 
-# The secret is NOT in kustomization.yaml — apply it first (or uncomment `- secret.yaml`)
-kubectl apply -f namespace.yaml
-kubectl apply -f secret.yaml
-
-# Deploy the rest (after the fixes in the box above)
-kubectl apply -k .
+# CPU only
+kubectl apply -k base
+# ...or on NVIDIA nodes
+kubectl apply -k overlays/gpu
 ```
 
-Or deploy resources individually if you prefer:
-
-```bash
-kubectl apply -f namespace.yaml
-kubectl apply -f secret.yaml
-kubectl apply -f configmap.yaml
-kubectl apply -f pvc.yaml
-kubectl apply -f deployment.yaml
-kubectl apply -f service.yaml
-```
+`kubectl kustomize base` shows what will be applied. `base/kustomization.yaml` pins the image
+tag (`images: newTag`); published tags carry no `v` prefix (`0.41.0`, `latest`) — bump it when you
+upgrade.
 
 ## Access the UI
 
@@ -107,71 +65,70 @@ authentication is enabled. The UI is single-user, single-replica because active 
 kept in-process; leave `replicas: 1` even when using shared storage.
 :::
 
+Once auth is on (basic-auth keys in the Secret, or [OIDC](../configuration/authentication.mdx)):
+`cp base/ingress.yaml.example base/ingress.yaml`, set the host, and add `- ingress.yaml` to
+`base/kustomization.yaml`.
+
+## How the pod is wired
+
+The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich` — the manifests set
+`runAsUser`/`fsGroup` 1000, drop all capabilities and use the `RuntimeDefault` seccomp profile.
+
+| Mount | Backed by | Holds |
+|-------|-----------|-------|
+| `/home/immich/.immich-memories` | PVC `immich-memories-cache` (writable) | `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
+| `/app/output` | PVC `immich-memories-output` | generated videos (`IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`) |
+| `/tmp` | emptyDir 4Gi | FFmpeg intermediates — 8Gi for 4K |
+
+There is no ConfigMap. `IMMICH_URL` / `IMMICH_API_KEY` come from the Secret (`envFrom`), so any
+secret setting — `IMMICH_MEMORIES_LLM__API_KEY`, `IMMICH_MEMORIES_STORAGE_SECRET`,
+`IMMICH_MEMORIES_AUTH_PASSWORD` — can live there too. Everything else is an
+`IMMICH_MEMORIES_<SECTION>__<KEY>` env var on the Deployment; `base/deployment.yaml` carries
+commented examples for LLM clip analysis and the in-pod daily automation. Settings saved from the
+UI go to `config.yaml` on the PVC; env vars override them.
+
+The NetworkPolicy allows egress to DNS, 80/443, Immich on 2283 and an optional local LLM on 11434.
+Edit it if your Immich listens elsewhere.
+
+## GPU
+
+`overlays/gpu/deployment-gpu.yaml` is a strategic-merge patch on the Deployment: `runtimeClassName:
+nvidia`, one `nvidia.com/gpu` request/limit, `NVIDIA_VISIBLE_DEVICES` / `NVIDIA_DRIVER_CAPABILITIES`,
+a `nodeSelector` on `nvidia.com/gpu.present=true` and a toleration for the `nvidia.com/gpu` taint.
+Change the label or GPU count there. The app auto-detects the GPU (NVENC encoding, CUDA analysis,
+GPU title rendering); no config change is needed.
+
 ## Batch Jobs
 
-Run one-off video generation via CLI instead of the UI:
+`base/job.yaml` holds a one-off `generate` Job (10-minute person spotlight) and two CronJobs
+(monthly highlights on the 1st, `auto run` daily). Uncomment `- job.yaml` in the kustomization or
+apply it directly:
 
 ```bash
-# Edit job.yaml with your parameters
-kubectl apply -f job.yaml
-
-# Watch the logs
+kubectl apply -f base/job.yaml
 kubectl logs -n immich-memories -f job/immich-memories-generate
-
-# Check output
-kubectl exec -n immich-memories deployment/immich-memories -- ls -la /output/
+kubectl exec -n immich-memories deployment/immich-memories -- ls -la /app/output/
 ```
 
-## Configuration
+`--duration` is seconds. The jobs mount the same two PVCs as the Deployment; with
+`ReadWriteOnce` storage the job pod has to land on the node that holds them, so use
+`ReadWriteMany` storage or scale the Deployment to 0 first. If you only want scheduled memories,
+`IMMICH_MEMORIES_AUTOMATION__ENABLED=true` on the Deployment does that in-process — no job needed.
+CPU by default; copy the fields from the GPU patch into the pod spec to run them on GPU nodes.
 
-### GPU Resources
+## Storage and backups
 
-The deployment requests 1 NVIDIA GPU by default. Adjust in `deployment.yaml`:
-
-```yaml
-resources:
-  requests:
-    nvidia.com/gpu: "1"
-  limits:
-    nvidia.com/gpu: "1"
-```
-
-### Node Selection
-
-Pods schedule on nodes labeled `nvidia.com/gpu.present=true`. Change the `nodeSelector` if your cluster uses different labels:
-
-```yaml
-nodeSelector:
-  nvidia.com/gpu.present: "true"
-  # Or your custom label
-  # gpu-node: "true"
-```
-
-### Storage
-
-Default PVC sizes:
-
-| PVC | Size | Purpose |
-|-----|------|---------|
-| Output | 50Gi | Generated videos (`output.directory: /output` in the ConfigMap) |
-| Cache | 20Gi | Meant for `cache.db` + the video cache — see below |
-
-Adjust in `pvc.yaml` based on how many videos you plan to generate. Config itself is a ConfigMap
-(`immich-memories-config`), not a PVC.
-
-The **Cache** PVC is meant to hold `cache.db` (analysis scores, the most valuable data: losing it
-means re-analyzing your entire library) and the downloaded-video cache. The app writes both under
-`~/.immich-memories/` (`cache.db`, `cache/`), so the PVC has to be mounted there — the shipped
-manifest mounts it at `~/.cache/immich-memories`, which nothing writes to (gap 2 above).
+Adjust the PVC sizes in `base/pvc.yaml`. `cache.db` is the expensive part: losing it means
+re-analyzing your entire library.
 
 ```bash
 # Backup cache from the running pod
 kubectl exec -n immich-memories deployment/immich-memories -- \
-  immich-memories cache backup /output/cache-backup.db
+  immich-memories cache backup /app/output/cache-backup.db
 
 # Or export as portable JSON
 kubectl exec -n immich-memories deployment/immich-memories -- \
-  immich-memories cache export /output/scores.json
+  immich-memories cache export /app/output/scores.json
 ```
 
 ## Sealed Secrets
@@ -179,24 +136,20 @@ kubectl exec -n immich-memories deployment/immich-memories -- \
 For production, don't commit plain secrets. Use [sealed-secrets](https://github.com/bitnami-labs/sealed-secrets):
 
 ```bash
-# Install kubeseal
 brew install kubeseal
-
-# Create and seal the secret
-cp secret.yaml.example secret.yaml
-# Fill in your values, then seal
-kubeseal --format=yaml < secret.yaml > sealed-secret.yaml
-
-# Apply
-kubectl apply -f sealed-secret.yaml
+cp base/secret.yaml.example base/secret.yaml   # fill in your values, then seal
+kubeseal --format=yaml < base/secret.yaml > base/sealed-secret.yaml
+kubectl apply -f base/sealed-secret.yaml
 ```
 
 ## Monitoring
 
 Three endpoints on port 8080:
 
-- `/health/live` — process is up; always `200`. Use for the liveness probe.
-- `/health/ready` — `200` only when config is present and Immich is reachable, else `503`. Use for the readiness probe.
-- `/health` — the same JSON as `/health/ready` (`status`, `immich_reachable`, `last_successful_run`, `version`, automation state) but always HTTP `200`. Compatibility endpoint; do not use it as a probe.
+- `/health/live` — process is up; always `200`. The liveness probe.
+- `/health/ready` — `200` only when config is present and Immich is reachable, else `503`. The
+  readiness probe (every 15s), which also keeps the pod out of the Service while Immich is down.
+- `/health` — the same JSON as `/health/ready` (`status`, `immich_reachable`, `last_successful_run`,
+  `version`, automation state) but always HTTP `200`. Compatibility endpoint; not used as a probe.
 
-The shipped manifest points both probes at `/health` (gap 4 above). For monitoring tools like Uptime Kuma, use `/health/ready`.
+For monitoring tools like Uptime Kuma, use `/health/ready`.

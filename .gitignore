@@ -59,10 +59,14 @@ complexipy_results_*.json
 *.temp
 *.tfstate
 *.tfstate.backup
+*.tfvars
+!*.tfvars.example
 *.tmp
 *~
 *$py.class
 /cache/
+/deploy/kubernetes/base/secret.yaml
+/deploy/kubernetes/base/ingress.yaml
 # Auto-generated version file
 # Byte-compiled / optimized / DLL files
 # C extensions

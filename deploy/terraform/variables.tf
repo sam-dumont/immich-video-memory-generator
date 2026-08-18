@@ -17,20 +17,20 @@ variable "image_repository" {
 }
 
 variable "image_tag" {
-  description = "Container image tag"
+  description = "Container image tag. Published tags carry no `v` prefix: 0.41.0, latest"
   type        = string
   default     = "latest"
 }
 
 variable "replicas" {
-  description = "Number of replicas for the deployment"
+  description = "Replica count. Keep at 1: the UI is single-user and keeps workflow state in-process"
   type        = number
   default     = 1
 }
 
-# Immich Configuration
+# Immich
 variable "immich_url" {
-  description = "URL of your Immich instance"
+  description = "URL of your Immich instance (in-cluster: http://immich-server.<ns>.svc.cluster.local:2283)"
   type        = string
 }
 
@@ -40,17 +40,29 @@ variable "immich_api_key" {
   sensitive   = true
 }
 
-# Optional API Keys
-variable "openai_api_key" {
-  description = "OpenAI API key for mood analysis fallback"
+# LLM clip content analysis (any OpenAI-compatible API; optional)
+variable "llm_base_url" {
+  description = "LLM endpoint, e.g. http://ollama.ollama.svc.cluster.local:11434/v1. Empty disables LLM analysis"
+  type        = string
+  default     = ""
+}
+
+variable "llm_model" {
+  description = "Vision model name served at llm_base_url"
+  type        = string
+  default     = ""
+}
+
+variable "llm_api_key" {
+  description = "API key for llm_base_url (stored in the Secret)"
   type        = string
   default     = ""
   sensitive   = true
 }
 
-# MusicGen Configuration
+# MusicGen (optional)
 variable "musicgen_enabled" {
-  description = "Enable AI music generation using MusicGen API"
+  description = "Enable AI music generation using a MusicGen API server"
   type        = bool
   default     = false
 }
@@ -62,17 +74,31 @@ variable "musicgen_base_url" {
 }
 
 variable "musicgen_api_key" {
-  description = "MusicGen API key for authentication"
+  description = "MusicGen API key (stored in the Secret)"
   type        = string
   default     = ""
   sensitive   = true
 }
 
-# GPU Configuration
+# Any other setting: IMMICH_MEMORIES_<SECTION>__<KEY>
+variable "env" {
+  description = "Extra environment variables, e.g. { IMMICH_MEMORIES_AUTOMATION__ENABLED = \"true\" }"
+  type        = map(string)
+  default     = {}
+}
+
+variable "secret_env" {
+  description = "Extra environment variables stored in the Secret, e.g. IMMICH_MEMORIES_AUTH_PASSWORD"
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
+
+# GPU (optional; the base deployment runs on CPU-only clusters)
 variable "gpu_enabled" {
-  description = "Enable NVIDIA GPU support"
+  description = "Schedule on NVIDIA GPU nodes (GPU Operator required)"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "gpu_count" {
@@ -95,9 +121,9 @@ variable "runtime_class_name" {
   default     = "nvidia"
 }
 
-# Resource Limits
+# Resources
 variable "resources" {
-  description = "Resource requests and limits"
+  description = "Resource requests and limits (idle ~100 MB; analysis 2-4 GB; FFmpeg assembly 4-8 GB)"
   type = object({
     requests = object({
       memory = string
@@ -120,26 +146,32 @@ variable "resources" {
   }
 }
 
-# Storage Configuration
+variable "tmp_size" {
+  description = "emptyDir size for /tmp (FFmpeg intermediates): 2Gi is enough for 1080p, 8Gi for 4K"
+  type        = string
+  default     = "4Gi"
+}
+
+# Storage
 variable "output_storage_size" {
-  description = "Size of output PVC"
+  description = "Size of the output PVC (generated videos, /app/output)"
   type        = string
   default     = "50Gi"
 }
 
 variable "cache_storage_size" {
-  description = "Size of cache PVC"
+  description = "Size of the cache/state PVC (/home/immich/.immich-memories: config, cache.db, video cache)"
   type        = string
   default     = "20Gi"
 }
 
 variable "storage_class_name" {
-  description = "Storage class for PVCs (null for default)"
+  description = "Storage class for PVCs (null for the cluster default)"
   type        = string
   default     = null
 }
 
-# Ingress Configuration
+# Ingress. Authentication is disabled by default: enable it before turning this on.
 variable "ingress_enabled" {
   description = "Enable ingress"
   type        = bool
@@ -176,42 +208,11 @@ variable "ingress_annotations" {
   default     = {}
 }
 
-# Ollama Configuration (for mood analysis)
-variable "ollama_url" {
-  description = "URL of Ollama service for mood analysis"
-  type        = string
-  default     = "http://ollama.ollama.svc.cluster.local:11434"
-}
-
-variable "ollama_model" {
-  description = "Ollama model for vision analysis"
-  type        = string
-  default     = "llava"
-}
-
-# Application Configuration
-variable "target_duration_seconds" {
-  description = "Default video duration in seconds"
-  type        = number
-  default     = 600
-}
-
-variable "output_orientation" {
-  description = "Output video orientation (landscape, portrait, square)"
-  type        = string
-  default     = "landscape"
-}
-
+# Application
 variable "output_resolution" {
   description = "Output video resolution (720p, 1080p, 4k)"
   type        = string
   default     = "1080p"
-}
-
-variable "hardware_backend" {
-  description = "Hardware acceleration backend (nvidia, auto, none)"
-  type        = string
-  default     = "nvidia"
 }
 
 variable "labels" {

@@ -149,14 +149,13 @@ done
 
 ## Kubernetes Batch Job
 
-There's a job manifest in the repo at `deploy/kubernetes/job.yaml`. Customize the configmap with your Immich connection details and submit:
+There's a job manifest in the repo at `deploy/kubernetes/base/job.yaml` (one-off `generate` Job plus monthly and `auto run` CronJobs). It reads the Immich connection from the `immich-memories-secrets` Secret and shares the PVCs of the [Kubernetes deployment](../../deploy/installation/kubernetes.md):
 
 ```bash
-kubectl apply -f deploy/kubernetes/configmap.yaml
-kubectl apply -f deploy/kubernetes/job.yaml
+kubectl apply -f deploy/kubernetes/base/job.yaml
 ```
 
-The job runs to completion and writes the output video to the configured volume. Good for running generation on a GPU node in your cluster without tying up your local machine.
+The job runs to completion and writes the output video to the output volume (`/app/output`). Good for running generation in your cluster without tying up your local machine.
 
 ## Headless Mode
 

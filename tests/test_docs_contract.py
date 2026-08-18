@@ -439,3 +439,25 @@ def test_docs_check_preserves_the_underlying_build_exit_status(tmp_path: Path) -
 
     assert "synthetic nonzero build" in result.stdout
     assert result.returncode != 0
+
+
+def test_kubernetes_and_terraform_docs_describe_the_fixed_manifests() -> None:
+    """Issue #307: the deploy pages must not describe hand-fixes for solved gaps."""
+    for relative_path in (
+        "docs-site/docs/deploy/installation/kubernetes.md",
+        "docs-site/docs/deploy/installation/terraform.md",
+        "docs-site/docs/deploy/common-setups/kubernetes-gpu.md",
+        "deploy/kubernetes/README.md",
+        "deploy/terraform/README.md",
+    ):
+        text = _read(relative_path)
+        assert "Known gaps" not in text, relative_path
+        assert "appuser" not in text, relative_path
+        assert "configmap.yaml" not in text, relative_path
+        assert "/home/immich/.immich-memories" in text, relative_path
+        assert "/health/ready" in text, relative_path
+        assert "gpu" in text.lower(), relative_path
+
+    recipe = _read("docs-site/docs/create/recipes/automated-generation.md")
+    assert "configmap" not in recipe.lower()
+    assert "deploy/kubernetes/base/job.yaml" in recipe

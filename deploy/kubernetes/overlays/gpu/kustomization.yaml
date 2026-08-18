@@ -1,0 +1,11 @@
+# NVIDIA GPU overlay: kubectl apply -k overlays/gpu
+# Needs the GPU Operator (RuntimeClass `nvidia`, nvidia.com/gpu resources,
+# nvidia.com/gpu.present node label). base/secret.yaml must exist.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - path: deployment-gpu.yaml

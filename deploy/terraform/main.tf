@@ -16,57 +16,48 @@ locals {
     "app.kubernetes.io/managed-by" = "terraform"
   }, var.labels)
 
-  config_yaml = yamlencode({
-    immich = {
-      url     = "$${IMMICH_URL}"
-      api_key = "$${IMMICH_API_KEY}"
-    }
-    defaults = {
-      target_duration_seconds = var.target_duration_seconds
-      output_orientation      = var.output_orientation
-      scale_mode              = "smart_crop"
-      transition              = "crossfade"
-      transition_duration     = 0.5
-    }
-    analysis = {
-      scene_threshold          = 27.0
-      min_scene_duration       = 1.0
-      duplicate_hash_threshold = 8
-      keyframe_interval        = 1.0
-    }
-    output = {
-      directory  = "/output"
-      format     = "mp4"
-      resolution = var.output_resolution
-      codec      = "h264"
-      crf        = 18
-    }
-    hardware = {
-      enabled        = var.gpu_enabled
-      backend        = var.hardware_backend
-      encoder_preset = "balanced"
-      gpu_decode     = true
-      gpu_analysis   = true
-    }
-    audio = {
-      auto_music        = false
-      music_source      = "musicgen"
-      ollama_url        = var.ollama_url
-      ollama_model      = var.ollama_model
-      ducking_threshold = 0.02
-      ducking_ratio     = 6.0
-      music_volume_db   = -6.0
-    }
-    musicgen = {
-      enabled  = var.musicgen_enabled
-      base_url = var.musicgen_base_url
-      # API key passed via env var
-    }
-  })
+  # The image runs as `immich`, UID/GID 1000, HOME=/home/immich. The app writes
+  # config.yaml, cache.db, the video cache and automation history under
+  # ~/.immich-memories, so that directory is a writable PVC, not a ConfigMap.
+  data_dir   = "/home/immich/.immich-memories"
+  output_dir = "/app/output"
+
+  # Everything is configured through IMMICH_MEMORIES_<SECTION>__<KEY> env vars,
+  # the same way docker-compose does it. Secrets live in the Secret (envFrom).
+  env = merge(
+    {
+      IMMICH_MEMORIES_OUTPUT__DIRECTORY  = local.output_dir
+      IMMICH_MEMORIES_OUTPUT__RESOLUTION = var.output_resolution
+    },
+    var.llm_base_url != "" ? {
+      IMMICH_MEMORIES_LLM__BASE_URL             = var.llm_base_url
+      IMMICH_MEMORIES_LLM__MODEL                = var.llm_model
+      IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED = "true"
+    } : {},
+    var.musicgen_enabled ? {
+      IMMICH_MEMORIES_MUSICGEN__ENABLED  = "true"
+      IMMICH_MEMORIES_MUSICGEN__BASE_URL = var.musicgen_base_url
+    } : {},
+    var.gpu_enabled ? {
+      NVIDIA_VISIBLE_DEVICES     = "all"
+      NVIDIA_DRIVER_CAPABILITIES = "compute,video,utility"
+    } : {},
+    var.env,
+  )
+
+  secret_data = merge(
+    {
+      IMMICH_URL     = var.immich_url
+      IMMICH_API_KEY = var.immich_api_key
+    },
+    var.llm_api_key != "" ? { IMMICH_MEMORIES_LLM__API_KEY = var.llm_api_key } : {},
+    var.musicgen_api_key != "" ? { IMMICH_MEMORIES_MUSICGEN__API_KEY = var.musicgen_api_key } : {},
+    var.secret_env,
+  )
 }
 
 # Namespace
-resource "kubernetes_namespace" "this" {
+resource "kubernetes_namespace_v1" "this" {
   count = var.create_namespace ? 1 : 0
 
   metadata {
@@ -76,42 +67,21 @@ resource "kubernetes_namespace" "this" {
 }
 
 # Secret
-resource "kubernetes_secret" "this" {
+resource "kubernetes_secret_v1" "this" {
   metadata {
     name      = "immich-memories-secrets"
     namespace = var.namespace
     labels    = local.labels
   }
 
-  data = {
-    IMMICH_URL      = var.immich_url
-    IMMICH_API_KEY  = var.immich_api_key
-    OPENAI_API_KEY  = var.openai_api_key
-    MUSICGEN_API_KEY = var.musicgen_api_key
-  }
-
+  data = local.secret_data
   type = "Opaque"
 
-  depends_on = [kubernetes_namespace.this]
+  depends_on = [kubernetes_namespace_v1.this]
 }
 
-# ConfigMap
-resource "kubernetes_config_map" "this" {
-  metadata {
-    name      = "immich-memories-config"
-    namespace = var.namespace
-    labels    = local.labels
-  }
-
-  data = {
-    "config.yaml" = local.config_yaml
-  }
-
-  depends_on = [kubernetes_namespace.this]
-}
-
-# Output PVC
-resource "kubernetes_persistent_volume_claim" "output" {
+# Output PVC (generated videos)
+resource "kubernetes_persistent_volume_claim_v1" "output" {
   metadata {
     name      = "immich-memories-output"
     namespace = var.namespace
@@ -129,11 +99,14 @@ resource "kubernetes_persistent_volume_claim" "output" {
     }
   }
 
-  depends_on = [kubernetes_namespace.this]
+  # WaitForFirstConsumer storage classes never bind before a pod mounts the PVC.
+  wait_until_bound = false
+
+  depends_on = [kubernetes_namespace_v1.this]
 }
 
-# Cache PVC
-resource "kubernetes_persistent_volume_claim" "cache" {
+# Cache/state PVC (config.yaml, cache.db, video cache, automation history)
+resource "kubernetes_persistent_volume_claim_v1" "cache" {
   metadata {
     name      = "immich-memories-cache"
     namespace = var.namespace
@@ -151,11 +124,13 @@ resource "kubernetes_persistent_volume_claim" "cache" {
     }
   }
 
-  depends_on = [kubernetes_namespace.this]
+  wait_until_bound = false
+
+  depends_on = [kubernetes_namespace_v1.this]
 }
 
 # Deployment
-resource "kubernetes_deployment" "this" {
+resource "kubernetes_deployment_v1" "this" {
   metadata {
     name      = "immich-memories"
     namespace = var.namespace
@@ -163,7 +138,12 @@ resource "kubernetes_deployment" "this" {
   }
 
   spec {
+    # Single-user, single-replica: workflow state lives in-process.
     replicas = var.replicas
+
+    strategy {
+      type = "Recreate" # both PVCs are ReadWriteOnce
+    }
 
     selector {
       match_labels = {
@@ -178,8 +158,8 @@ resource "kubernetes_deployment" "this" {
 
       spec {
         runtime_class_name = var.gpu_enabled ? var.runtime_class_name : null
+        node_selector      = var.gpu_enabled ? var.gpu_node_selector : null
 
-        # Pod-level security context
         security_context {
           run_as_non_root = true
           run_as_user     = 1000
@@ -196,10 +176,9 @@ resource "kubernetes_deployment" "this" {
           image             = "${var.image_repository}:${var.image_tag}"
           image_pull_policy = "Always"
 
-          # Container-level security context
           security_context {
             allow_privilege_escalation = false
-            read_only_root_filesystem  = false # NiceGUI needs write access
+            read_only_root_filesystem  = false # NiceGUI writes under /app/.nicegui
 
             capabilities {
               drop = ["ALL"]
@@ -212,81 +191,17 @@ resource "kubernetes_deployment" "this" {
             protocol       = "TCP"
           }
 
-          env {
-            name = "IMMICH_URL"
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret.this.metadata[0].name
-                key  = "IMMICH_URL"
-              }
-            }
-          }
-
-          env {
-            name = "IMMICH_API_KEY"
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret.this.metadata[0].name
-                key  = "IMMICH_API_KEY"
-              }
-            }
-          }
-
-          env {
-            name = "OPENAI_API_KEY"
-            value_from {
-              secret_key_ref {
-                name     = kubernetes_secret.this.metadata[0].name
-                key      = "OPENAI_API_KEY"
-                optional = true
-              }
-            }
-          }
-
-          # MusicGen AI music generation
-          dynamic "env" {
-            for_each = var.musicgen_enabled ? [1] : []
-            content {
-              name  = "IMMICH_MEMORIES_MUSICGEN__ENABLED"
-              value = "true"
+          env_from {
+            secret_ref {
+              name = kubernetes_secret_v1.this.metadata[0].name
             }
           }
 
           dynamic "env" {
-            for_each = var.musicgen_enabled ? [1] : []
+            for_each = local.env
             content {
-              name  = "IMMICH_MEMORIES_MUSICGEN__BASE_URL"
-              value = var.musicgen_base_url
-            }
-          }
-
-          dynamic "env" {
-            for_each = var.musicgen_enabled ? [1] : []
-            content {
-              name = "IMMICH_MEMORIES_MUSICGEN__API_KEY"
-              value_from {
-                secret_key_ref {
-                  name     = kubernetes_secret.this.metadata[0].name
-                  key      = "MUSICGEN_API_KEY"
-                  optional = true
-                }
-              }
-            }
-          }
-
-          dynamic "env" {
-            for_each = var.gpu_enabled ? [1] : []
-            content {
-              name  = "NVIDIA_VISIBLE_DEVICES"
-              value = "all"
-            }
-          }
-
-          dynamic "env" {
-            for_each = var.gpu_enabled ? [1] : []
-            content {
-              name  = "NVIDIA_DRIVER_CAPABILITIES"
-              value = "compute,video,utility"
+              name  = env.key
+              value = env.value
             }
           }
 
@@ -308,19 +223,13 @@ resource "kubernetes_deployment" "this" {
           }
 
           volume_mount {
-            name       = "config"
-            mount_path = "/home/immich/.immich-memories"
-            read_only  = true
+            name       = "data"
+            mount_path = local.data_dir
           }
 
           volume_mount {
             name       = "output"
-            mount_path = "/output"
-          }
-
-          volume_mount {
-            name       = "cache"
-            mount_path = "/home/immich/.cache/immich-memories"
+            mount_path = local.output_dir
           }
 
           volume_mount {
@@ -328,65 +237,50 @@ resource "kubernetes_deployment" "this" {
             mount_path = "/tmp"
           }
 
+          # /health/live only says the process is up.
           liveness_probe {
             http_get {
-              path = "/"
+              path = "/health/live"
               port = "http"
             }
-            initial_delay_seconds = 30
+            initial_delay_seconds = 15
             period_seconds        = 10
             timeout_seconds       = 5
             failure_threshold     = 3
           }
 
+          # /health/ready is 503 until config is present and Immich answers.
           readiness_probe {
             http_get {
-              path = "/"
+              path = "/health/ready"
               port = "http"
             }
             initial_delay_seconds = 10
-            period_seconds        = 5
-            timeout_seconds       = 3
+            period_seconds        = 15
+            timeout_seconds       = 5
             failure_threshold     = 3
           }
         }
 
         volume {
-          name = "config"
-          config_map {
-            name = kubernetes_config_map.this.metadata[0].name
-            items {
-              key  = "config.yaml"
-              path = "config.yaml"
-            }
+          name = "data"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim_v1.cache.metadata[0].name
           }
         }
 
         volume {
           name = "output"
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.output.metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim_v1.output.metadata[0].name
           }
         }
 
-        volume {
-          name = "cache"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.cache.metadata[0].name
-          }
-        }
-
+        # FFmpeg intermediates: 2Gi is enough for 1080p, use 8Gi for 4K.
         volume {
           name = "tmp"
           empty_dir {
-            size_limit = "2Gi"
-          }
-        }
-
-        dynamic "node_selector" {
-          for_each = var.gpu_enabled ? [var.gpu_node_selector] : []
-          content {
-            # Node selector is a map, but Terraform requires dynamic block workaround
+            size_limit = var.tmp_size
           }
         }
 
@@ -403,16 +297,15 @@ resource "kubernetes_deployment" "this" {
   }
 
   depends_on = [
-    kubernetes_namespace.this,
-    kubernetes_config_map.this,
-    kubernetes_secret.this,
-    kubernetes_persistent_volume_claim.output,
-    kubernetes_persistent_volume_claim.cache,
+    kubernetes_namespace_v1.this,
+    kubernetes_secret_v1.this,
+    kubernetes_persistent_volume_claim_v1.output,
+    kubernetes_persistent_volume_claim_v1.cache,
   ]
 }
 
 # Service
-resource "kubernetes_service" "this" {
+resource "kubernetes_service_v1" "this" {
   metadata {
     name      = "immich-memories"
     namespace = var.namespace
@@ -434,10 +327,11 @@ resource "kubernetes_service" "this" {
     }
   }
 
-  depends_on = [kubernetes_namespace.this]
+  depends_on = [kubernetes_namespace_v1.this]
 }
 
-# Ingress (optional)
+# Ingress (optional). Authentication is disabled by default: enable it before
+# turning this on.
 resource "kubernetes_ingress_v1" "this" {
   count = var.ingress_enabled ? 1 : 0
 
@@ -461,7 +355,7 @@ resource "kubernetes_ingress_v1" "this" {
 
           backend {
             service {
-              name = kubernetes_service.this.metadata[0].name
+              name = kubernetes_service_v1.this.metadata[0].name
               port {
                 name = "http"
               }
@@ -480,5 +374,5 @@ resource "kubernetes_ingress_v1" "this" {
     }
   }
 
-  depends_on = [kubernetes_service.this]
+  depends_on = [kubernetes_service_v1.this]
 }

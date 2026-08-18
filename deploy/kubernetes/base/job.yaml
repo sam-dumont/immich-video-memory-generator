@@ -1,3 +1,14 @@
+# CLI batch jobs. Optional: uncomment `- job.yaml` in kustomization.yaml or
+# `kubectl apply -f job.yaml`.
+#
+# The jobs share the two PVCs with the Deployment. With ReadWriteOnce storage a
+# job pod can only start on the node that already has the volumes mounted, so
+# either use ReadWriteMany storage or scale the Deployment to 0 first. If you
+# only want scheduled memories, prefer the in-process daily timer instead
+# (IMMICH_MEMORIES_AUTOMATION__ENABLED=true on the Deployment) — no job needed.
+#
+# CPU by default. For GPU nodes add the fields from ../overlays/gpu/deployment-gpu.yaml
+# (runtimeClassName, nvidia.com/gpu resources, nodeSelector, tolerations, NVIDIA_* env).
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -15,10 +26,8 @@ spec:
         app.kubernetes.io/name: immich-memories
         app.kubernetes.io/component: batch-job
     spec:
-      runtimeClassName: nvidia
       restartPolicy: OnFailure
 
-      # Pod-level security context
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -32,7 +41,6 @@ spec:
           image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
           imagePullPolicy: Always
 
-          # Container-level security context
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
@@ -40,84 +48,54 @@ spec:
               drop:
                 - ALL
 
-          # Example: Generate 2024 memories for person "John"
+          # Example: 10-minute 2024 spotlight for one person. --duration is seconds.
           command:
             - immich-memories
             - generate
             - --year
             - "2024"
             - --person
-            - "John"
+            - "Alice"
             - --duration
-            - "10"
+            - "600"
             - --output
-            - /output/john_2024_memories.mp4
+            - /app/output/alice_2024_memories.mp4
 
+          envFrom:
+            - secretRef:
+                name: immich-memories-secrets
           env:
-            - name: IMMICH_URL
-              valueFrom:
-                secretKeyRef:
-                  name: immich-memories-secrets
-                  key: IMMICH_URL
-            - name: IMMICH_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: immich-memories-secrets
-                  key: IMMICH_API_KEY
-            - name: NVIDIA_VISIBLE_DEVICES
-              value: "all"
-            - name: NVIDIA_DRIVER_CAPABILITIES
-              value: "compute,video,utility"
-            - name: HOME
-              value: "/home/appuser"
+            - name: IMMICH_MEMORIES_OUTPUT__DIRECTORY
+              value: /app/output
 
           resources:
             requests:
               memory: "4Gi"
               cpu: "2000m"
-              nvidia.com/gpu: "1"
             limits:
               memory: "16Gi"
               cpu: "8000m"
-              nvidia.com/gpu: "1"
 
           volumeMounts:
-            - name: config
-              mountPath: /home/appuser/.immich-memories
-              readOnly: true
+            - name: data
+              mountPath: /home/immich/.immich-memories
             - name: output
-              mountPath: /output
-            - name: cache
-              mountPath: /home/appuser/.cache/immich-memories
+              mountPath: /app/output
             - name: tmp
               mountPath: /tmp
 
       volumes:
-        - name: config
-          configMap:
-            name: immich-memories-config
-            items:
-              - key: config.yaml
-                path: config.yaml
+        - name: data
+          persistentVolumeClaim:
+            claimName: immich-memories-cache
         - name: output
           persistentVolumeClaim:
             claimName: immich-memories-output
-        - name: cache
-          persistentVolumeClaim:
-            claimName: immich-memories-cache
         - name: tmp
           emptyDir:
-            sizeLimit: 1Gi
-
-      nodeSelector:
-        nvidia.com/gpu.present: "true"
-
-      tolerations:
-        - key: nvidia.com/gpu
-          operator: Exists
-          effect: NoSchedule
+            sizeLimit: 4Gi
 ---
-# CronJob for scheduled generation (e.g., monthly)
+# CronJob: last month's highlights, 5 minutes, on the 1st of each month.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -140,10 +118,8 @@ spec:
             app.kubernetes.io/name: immich-memories
             app.kubernetes.io/component: cronjob
         spec:
-          runtimeClassName: nvidia
           restartPolicy: OnFailure
 
-          # Pod-level security context
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
@@ -156,7 +132,6 @@ spec:
             - name: generate
               image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
 
-              # Container-level security context
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: false
@@ -164,7 +139,6 @@ spec:
                   drop:
                     - ALL
 
-              # Generate last month's memories
               command:
                 - /bin/sh
                 - -c
@@ -174,73 +148,45 @@ spec:
                   immich-memories generate \
                     --start "$LAST_MONTH" \
                     --end "$THIS_MONTH" \
-                    --duration 5 \
-                    --output "/output/monthly_$(date -d 'last month' +%Y_%m).mp4"
+                    --duration 300 \
+                    --output "/app/output/monthly_$(date -d 'last month' +%Y_%m).mp4"
 
+              envFrom:
+                - secretRef:
+                    name: immich-memories-secrets
               env:
-                - name: IMMICH_URL
-                  valueFrom:
-                    secretKeyRef:
-                      name: immich-memories-secrets
-                      key: IMMICH_URL
-                - name: IMMICH_API_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: immich-memories-secrets
-                      key: IMMICH_API_KEY
-                - name: NVIDIA_VISIBLE_DEVICES
-                  value: "all"
-                - name: NVIDIA_DRIVER_CAPABILITIES
-                  value: "compute,video,utility"
-                - name: HOME
-                  value: "/home/appuser"
+                - name: IMMICH_MEMORIES_OUTPUT__DIRECTORY
+                  value: /app/output
 
               resources:
                 requests:
                   memory: "4Gi"
                   cpu: "2000m"
-                  nvidia.com/gpu: "1"
                 limits:
                   memory: "16Gi"
                   cpu: "8000m"
-                  nvidia.com/gpu: "1"
 
               volumeMounts:
-                - name: config
-                  mountPath: /home/appuser/.immich-memories
-                  readOnly: true
+                - name: data
+                  mountPath: /home/immich/.immich-memories
                 - name: output
-                  mountPath: /output
-                - name: cache
-                  mountPath: /home/appuser/.cache/immich-memories
+                  mountPath: /app/output
                 - name: tmp
                   mountPath: /tmp
 
           volumes:
-            - name: config
-              configMap:
-                name: immich-memories-config
+            - name: data
+              persistentVolumeClaim:
+                claimName: immich-memories-cache
             - name: output
               persistentVolumeClaim:
                 claimName: immich-memories-output
-            - name: cache
-              persistentVolumeClaim:
-                claimName: immich-memories-cache
             - name: tmp
               emptyDir:
-                sizeLimit: 1Gi
-
-          nodeSelector:
-            nvidia.com/gpu.present: "true"
-
-          tolerations:
-            - key: nvidia.com/gpu
-              operator: Exists
-              effect: NoSchedule
+                sizeLimit: 4Gi
 ---
-# CronJob using smart automation mode.
-# Instead of hardcoding --year/--person/--start/--end, `auto run` picks the
-# best candidate automatically, skips duplicates, and respects cooldown.
+# CronJob: smart automation. `auto run` picks the best candidate (monthly,
+# yearly, trip, person spotlight...), skips duplicates and respects cooldown.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -263,7 +209,6 @@ spec:
             app.kubernetes.io/name: immich-memories
             app.kubernetes.io/component: cronjob-auto
         spec:
-          runtimeClassName: nvidia
           restartPolicy: OnFailure
 
           securityContext:
@@ -293,63 +238,36 @@ spec:
                 - --cooldown
                 - "24"
 
+              envFrom:
+                - secretRef:
+                    name: immich-memories-secrets
               env:
-                - name: IMMICH_URL
-                  valueFrom:
-                    secretKeyRef:
-                      name: immich-memories-secrets
-                      key: IMMICH_URL
-                - name: IMMICH_API_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: immich-memories-secrets
-                      key: IMMICH_API_KEY
-                - name: NVIDIA_VISIBLE_DEVICES
-                  value: "all"
-                - name: NVIDIA_DRIVER_CAPABILITIES
-                  value: "compute,video,utility"
-                - name: HOME
-                  value: "/home/appuser"
+                - name: IMMICH_MEMORIES_OUTPUT__DIRECTORY
+                  value: /app/output
 
               resources:
                 requests:
                   memory: "4Gi"
                   cpu: "2000m"
-                  nvidia.com/gpu: "1"
                 limits:
                   memory: "16Gi"
                   cpu: "8000m"
-                  nvidia.com/gpu: "1"
 
               volumeMounts:
-                - name: config
-                  mountPath: /home/appuser/.immich-memories
-                  readOnly: true
+                - name: data
+                  mountPath: /home/immich/.immich-memories
                 - name: output
-                  mountPath: /output
-                - name: cache
-                  mountPath: /home/appuser/.cache/immich-memories
+                  mountPath: /app/output
                 - name: tmp
                   mountPath: /tmp
 
           volumes:
-            - name: config
-              configMap:
-                name: immich-memories-config
+            - name: data
+              persistentVolumeClaim:
+                claimName: immich-memories-cache
             - name: output
               persistentVolumeClaim:
                 claimName: immich-memories-output
-            - name: cache
-              persistentVolumeClaim:
-                claimName: immich-memories-cache
             - name: tmp
               emptyDir:
-                sizeLimit: 1Gi
-
-          nodeSelector:
-            nvidia.com/gpu.present: "true"
-
-          tolerations:
-            - key: nvidia.com/gpu
-              operator: Exists
-              effect: NoSchedule
+                sizeLimit: 4Gi

@@ -1,21 +1,7 @@
-apiVersion: v1
-kind: Service
-metadata:
-  name: immich-memories
-  namespace: immich-memories
-  labels:
-    app.kubernetes.io/name: immich-memories
-spec:
-  type: ClusterIP
-  ports:
-    - name: http
-      port: 80
-      targetPort: http
-      protocol: TCP
-  selector:
-    app.kubernetes.io/name: immich-memories
----
-# Optional: Ingress for external access
+# Authentication is disabled by default: anyone who reaches the UI can use it.
+# Enable auth first (IMMICH_MEMORIES_AUTH_USERNAME/PASSWORD in the Secret, or
+# OIDC), then: cp ingress.yaml.example ingress.yaml, edit the host, and add
+# `- ingress.yaml` to kustomization.yaml.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -24,7 +10,6 @@ metadata:
   labels:
     app.kubernetes.io/name: immich-memories
   annotations:
-    # Adjust for your ingress controller
     # nginx.ingress.kubernetes.io/proxy-body-size: "0"
     # cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
@@ -40,7 +25,6 @@ spec:
                 name: immich-memories
                 port:
                   name: http
-  # Uncomment for TLS
   # tls:
   #   - hosts:
   #       - memories.example.com

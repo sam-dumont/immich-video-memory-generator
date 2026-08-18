@@ -15,32 +15,32 @@ spec:
     - Egress
 
   ingress:
-    # Allow inbound HTTP traffic to the UI
+    # Inbound HTTP to the UI
     - ports:
         - port: 8080
           protocol: TCP
 
   egress:
-    # Allow DNS resolution
+    # DNS
     - ports:
         - port: 53
           protocol: UDP
         - port: 53
           protocol: TCP
 
-    # Allow HTTPS outbound (Immich API, Pixabay, OpenAI, etc.)
+    # HTTPS/HTTP outbound: Immich behind a reverse proxy, cloud LLM APIs, MusicGen
     - ports:
         - port: 443
           protocol: TCP
         - port: 80
           protocol: TCP
 
-    # Allow Immich server communication (common port)
+    # Immich server: 2283 on every Immich v2/v3 release. Change if yours differs.
     - ports:
-        - port: 3001
+        - port: 2283
           protocol: TCP
 
-    # Allow Ollama (if used for mood analysis)
+    # Optional: local LLM (Ollama default port) or an OpenAI-compatible server
     - ports:
         - port: 11434
           protocol: TCP

@@ -1,0 +1,30 @@
+# Strategic-merge patch: NVENC encoding, CUDA analysis and GPU title rendering.
+# The app auto-detects the GPU; no config change is needed. Copy these fields
+# into job.yaml pods if you run the CLI jobs on GPU nodes too.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-memories
+  namespace: immich-memories
+spec:
+  template:
+    spec:
+      runtimeClassName: nvidia
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: immich-memories
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,video,utility"
+          resources:
+            requests:
+              nvidia.com/gpu: "1"
+            limits:
+              nvidia.com/gpu: "1"

@@ -1,136 +1,112 @@
 # Kubernetes Deployment
 
-Deploy Immich Memories to Kubernetes with NVIDIA GPU support.
+Kustomize manifests for Immich Memories. The base runs on any cluster (CPU only);
+NVIDIA GPU scheduling is an overlay.
 
 Authentication is disabled by default. Do not expose the Service until auth is enabled. The UI is
 single-user, single-replica because active workflow state is in-process; keep `replicas: 1`.
 
+These manifests get less exercise than Docker Compose. They are validated with
+`kubectl kustomize` in the test suite, not applied to a live cluster on every release — read the
+rendered output before you apply it.
+
+```
+base/                  CPU-only: Namespace, Secret, PVCs, Deployment, Service, NetworkPolicy
+  job.yaml             optional CLI Job + CronJobs (commented out in kustomization.yaml)
+  ingress.yaml.example optional Ingress — only after enabling authentication
+overlays/gpu/          adds runtimeClassName nvidia, nvidia.com/gpu, node selector, tolerations
+```
+
 ## Prerequisites
 
-1. **NVIDIA GPU Operator** installed in your cluster:
-   ```bash
-   helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
-   helm repo update
-   helm install gpu-operator nvidia/gpu-operator \
-     --namespace gpu-operator \
-     --create-namespace
-   ```
-
-2. **RuntimeClass** for NVIDIA (usually created by GPU Operator):
-   ```yaml
-   apiVersion: node.k8s.io/v1
-   kind: RuntimeClass
-   metadata:
-     name: nvidia
-   handler: nvidia
-   ```
-
-3. **Storage Class** available for PVCs
+1. A storage class for two `ReadWriteOnce` PVCs (cache/state 20Gi, output 50Gi)
+2. Immich reachable from the cluster (in-cluster or external, port 2283 by default)
+3. GPU overlay only: the [NVIDIA GPU Operator](https://github.com/NVIDIA/gpu-operator)
+   (RuntimeClass `nvidia`, `nvidia.com/gpu` resources, `nvidia.com/gpu.present` node label)
 
 ## Quick Start
 
-1. **Create the secret** with your Immich credentials:
-   ```bash
-   cp secret.yaml.example secret.yaml
-   # Edit with your values
-   vim secret.yaml
-   ```
+```bash
+cd deploy/kubernetes
 
-2. **Deploy with kubectl**:
-   ```bash
-   kubectl apply -k .
-   ```
+# 1. Secret: Immich URL + API key (every key becomes an env var in the pod)
+cp base/secret.yaml.example base/secret.yaml
+vim base/secret.yaml
 
-3. **Or deploy individually**:
-   ```bash
-   kubectl apply -f namespace.yaml
-   kubectl apply -f secret.yaml
-   kubectl apply -f configmap.yaml
-   kubectl apply -f pvc.yaml
-   kubectl apply -f deployment.yaml
-   kubectl apply -f service.yaml
-   ```
+# 2. Deploy — CPU only
+kubectl apply -k base
+#    or on NVIDIA nodes
+kubectl apply -k overlays/gpu
 
-4. **Access the UI**:
-   ```bash
-   kubectl port-forward -n immich-memories svc/immich-memories 8080:80
-   # Open http://localhost:8080
-   ```
+# 3. Open the UI
+kubectl port-forward -n immich-memories svc/immich-memories 8080:80
+# http://localhost:8080
+```
 
-## Running Batch Jobs
+`base/kustomization.yaml` pins the image tag (`images: newTag`). Published tags carry no `v`
+prefix (`0.41.0`, `latest`); bump it when you upgrade.
 
-Generate memories via CLI:
+## How the pod is wired
+
+The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich`.
+
+| Mount | Backed by | Holds |
+|-------|-----------|-------|
+| `/home/immich/.immich-memories` | PVC `immich-memories-cache` (writable) | `config.yaml`, `cache.db` (analysis scores), video cache, projects, automation history |
+| `/app/output` | PVC `immich-memories-output` | generated videos (`IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`) |
+| `/tmp` | emptyDir 4Gi | FFmpeg intermediates (use 8Gi for 4K) |
+
+There is no ConfigMap. `IMMICH_URL` / `IMMICH_API_KEY` come from the Secret; anything else is an
+`IMMICH_MEMORIES_<SECTION>__<KEY>` env var on the Deployment (commented examples for LLM analysis
+and daily automation are in `base/deployment.yaml`), and the UI settings page writes
+`config.yaml` on the PVC.
+
+Probes: liveness `/health/live` (process up), readiness `/health/ready` (`200` only when config
+is present and Immich answers, otherwise `503`). `/health` always returns `200` and is not used.
+
+## Batch Jobs
+
+`base/job.yaml` holds a one-off `generate` Job and two CronJobs (monthly highlights, `auto run`).
+Uncomment `- job.yaml` in the kustomization or apply it directly:
 
 ```bash
-# Edit job.yaml with your parameters
-kubectl apply -f job.yaml
-
-# Watch the job
+kubectl apply -f base/job.yaml
 kubectl logs -n immich-memories -f job/immich-memories-generate
-
-# Check output
-kubectl exec -n immich-memories deployment/immich-memories -- ls -la /output/
+kubectl exec -n immich-memories deployment/immich-memories -- ls -la /app/output/
 ```
 
-## Configuration
+`--duration` is seconds (`600` = 10 minutes). The jobs mount the same two PVCs as the
+Deployment; with `ReadWriteOnce` storage the job pod has to land on the same node, so use
+`ReadWriteMany` storage or scale the Deployment to 0 first. If you only want scheduled memories,
+`IMMICH_MEMORIES_AUTOMATION__ENABLED=true` on the Deployment does that in-process without a job.
 
-### GPU Resources
+## GPU
 
-The deployment requests 1 NVIDIA GPU. Adjust in `deployment.yaml`:
+`overlays/gpu/deployment-gpu.yaml` is a strategic-merge patch on the Deployment: `runtimeClassName:
+nvidia`, one `nvidia.com/gpu`, `NVIDIA_*` env, `nodeSelector` on `nvidia.com/gpu.present=true`
+and a toleration for the `nvidia.com/gpu` taint. Edit the label or GPU count there. The app
+auto-detects the GPU (NVENC encoding, CUDA analysis, GPU title rendering).
 
-```yaml
-resources:
-  requests:
-    nvidia.com/gpu: "1"
-  limits:
-    nvidia.com/gpu: "1"
-```
+## Ingress
 
-### Node Selection
+Not shipped by default because auth is off. Enable auth first (basic auth keys in the Secret, or
+OIDC), then `cp base/ingress.yaml.example base/ingress.yaml`, set the host, and add
+`- ingress.yaml` to `base/kustomization.yaml`.
 
-Pods are scheduled on nodes with `nvidia.com/gpu.present=true` label.
-Modify `nodeSelector` if your cluster uses different labels:
-
-```yaml
-nodeSelector:
-  nvidia.com/gpu.present: "true"
-  # Or use your custom label
-  # gpu-node: "true"
-```
-
-### Storage
-
-Default PVC sizes:
-- Output: 50Gi (for generated videos)
-- Cache: 20Gi (for downloaded assets and analysis cache)
-
-Adjust in `pvc.yaml` based on your needs.
-
-## Using with Sealed Secrets
-
-For production, use sealed-secrets instead of plain secrets:
+## Sealed Secrets
 
 ```bash
-# Install kubeseal
 brew install kubeseal
-
-# Seal the secret
-cp secret.yaml.example secret.yaml
-# Fill in your values, then seal
-kubeseal --format=yaml < secret.yaml > sealed-secret.yaml
-
-# Apply sealed secret
-kubectl apply -f sealed-secret.yaml
+cp base/secret.yaml.example base/secret.yaml   # fill in, then seal
+kubeseal --format=yaml < base/secret.yaml > base/sealed-secret.yaml
+kubectl apply -f base/sealed-secret.yaml
 ```
 
-## Monitoring
+## Backups
 
-The deployment includes health probes. For metrics:
+`cache.db` is the expensive part (losing it means re-analyzing the library):
 
-```yaml
-# Add to deployment.yaml
-annotations:
-  prometheus.io/scrape: "true"
-  prometheus.io/port: "8080"
-  prometheus.io/path: "/metrics"
+```bash
+kubectl exec -n immich-memories deployment/immich-memories -- \
+  immich-memories cache backup /app/output/cache-backup.db
 ```

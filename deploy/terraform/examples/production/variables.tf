@@ -23,9 +23,15 @@ variable "environment" {
 }
 
 variable "image_tag" {
-  description = "Container image tag"
+  description = "Container image tag (no `v` prefix)"
   type        = string
   default     = "latest"
+}
+
+variable "timezone" {
+  description = "Timezone for the in-pod daily automation"
+  type        = string
+  default     = "UTC"
 }
 
 # Immich Configuration
@@ -40,9 +46,33 @@ variable "immich_api_key" {
   sensitive   = true
 }
 
-# Optional API Keys
-variable "openai_api_key" {
-  description = "OpenAI API key for mood analysis fallback"
+# UI authentication
+variable "auth_username" {
+  description = "Basic auth username for the UI"
+  type        = string
+}
+
+variable "auth_password" {
+  description = "Basic auth password for the UI"
+  type        = string
+  sensitive   = true
+}
+
+# LLM
+variable "llm_base_url" {
+  description = "LLM endpoint for clip content analysis (empty disables it)"
+  type        = string
+  default     = ""
+}
+
+variable "llm_model" {
+  description = "Vision model name served at llm_base_url"
+  type        = string
+  default     = ""
+}
+
+variable "llm_api_key" {
+  description = "API key for llm_base_url"
   type        = string
   default     = ""
   sensitive   = true
@@ -69,6 +99,12 @@ variable "musicgen_api_key" {
 }
 
 # GPU Configuration
+variable "gpu_enabled" {
+  description = "Schedule on NVIDIA GPU nodes"
+  type        = bool
+  default     = false
+}
+
 variable "gpu_count" {
   description = "Number of GPUs to request"
   type        = number
@@ -86,11 +122,4 @@ variable "storage_class_name" {
 variable "ingress_host" {
   description = "Ingress hostname"
   type        = string
-}
-
-# Ollama
-variable "ollama_url" {
-  description = "URL of Ollama service"
-  type        = string
-  default     = "http://ollama.ollama.svc.cluster.local:11434"
 }

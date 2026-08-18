@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-memories
+  namespace: immich-memories
+  labels:
+    app.kubernetes.io/name: immich-memories
+    app.kubernetes.io/component: web-ui
+spec:
+  # Single-user, single-replica: workflow state lives in-process.
+  replicas: 1
+  strategy:
+    type: Recreate  # both PVCs are ReadWriteOnce
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: immich-memories
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: immich-memories
+    spec:
+      # The image runs as `immich`, UID/GID 1000, HOME=/home/immich.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: immich-memories
+          # Tag is set by `images:` in kustomization.yaml
+          image: ghcr.io/sam-dumont/immich-video-memory-generator:latest
+          imagePullPolicy: Always
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # NiceGUI writes under /app/.nicegui
+            capabilities:
+              drop:
+                - ALL
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # IMMICH_URL / IMMICH_API_KEY (and any other secret setting) come from
+          # the Secret. Everything else is IMMICH_MEMORIES_<SECTION>__<KEY>.
+          envFrom:
+            - secretRef:
+                name: immich-memories-secrets
+          env:
+            - name: IMMICH_MEMORIES_OUTPUT__DIRECTORY
+              value: /app/output
+            # Optional: LLM clip content analysis (any OpenAI-compatible API)
+            # - name: IMMICH_MEMORIES_LLM__BASE_URL
+            #   value: "http://your-llm.llm.svc.cluster.local:8080/v1"
+            # - name: IMMICH_MEMORIES_LLM__MODEL
+            #   value: "qwen2.5-vl"
+            # - name: IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED
+            #   value: "true"
+            # Optional: daily automation inside the pod (no CronJob needed)
+            # - name: IMMICH_MEMORIES_AUTOMATION__ENABLED
+            #   value: "true"
+            # - name: IMMICH_MEMORIES_AUTOMATION__DAILY_AT
+            #   value: "09:00"
+            # - name: TZ
+            #   value: "Europe/Brussels"
+
+          # Idle ~100 MB; analysis 2-4 GB; FFmpeg assembly 4-8 GB (more for 4K).
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+            limits:
+              memory: "8Gi"
+              cpu: "4000m"
+
+          volumeMounts:
+            # config.yaml, cache.db, video cache, projects, automation history
+            - name: data
+              mountPath: /home/immich/.immich-memories
+            - name: output
+              mountPath: /app/output
+            - name: tmp
+              mountPath: /tmp
+
+          livenessProbe:
+            httpGet:
+              path: /health/live  # process is up
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # 503 until config is present and Immich answers; that keeps the pod
+          # out of the Service while Immich is down (port-forward still works).
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: immich-memories-cache
+        - name: output
+          persistentVolumeClaim:
+            claimName: immich-memories-output
+        # FFmpeg intermediates: 2Gi is enough for 1080p, use 8Gi for 4K.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi

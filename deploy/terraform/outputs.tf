@@ -5,12 +5,12 @@ output "namespace" {
 
 output "service_name" {
   description = "Service name for internal access"
-  value       = kubernetes_service.this.metadata[0].name
+  value       = kubernetes_service_v1.this.metadata[0].name
 }
 
 output "service_endpoint" {
   description = "Internal service endpoint"
-  value       = "${kubernetes_service.this.metadata[0].name}.${var.namespace}.svc.cluster.local"
+  value       = "${kubernetes_service_v1.this.metadata[0].name}.${var.namespace}.svc.cluster.local"
 }
 
 output "ingress_host" {
@@ -20,22 +20,22 @@ output "ingress_host" {
 
 output "deployment_name" {
   description = "Deployment name"
-  value       = kubernetes_deployment.this.metadata[0].name
+  value       = kubernetes_deployment_v1.this.metadata[0].name
 }
 
 output "pvc_output" {
   description = "Output PVC name"
-  value       = kubernetes_persistent_volume_claim.output.metadata[0].name
+  value       = kubernetes_persistent_volume_claim_v1.output.metadata[0].name
 }
 
 output "pvc_cache" {
   description = "Cache PVC name"
-  value       = kubernetes_persistent_volume_claim.cache.metadata[0].name
+  value       = kubernetes_persistent_volume_claim_v1.cache.metadata[0].name
 }
 
 output "port_forward_command" {
   description = "Command to port-forward the UI"
-  value       = "kubectl port-forward -n ${var.namespace} svc/${kubernetes_service.this.metadata[0].name} 8080:80"
+  value       = "kubectl port-forward -n ${var.namespace} svc/${kubernetes_service_v1.this.metadata[0].name} 8080:80"
 }
 
 output "gpu_enabled" {

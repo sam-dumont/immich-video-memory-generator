@@ -1,57 +1,51 @@
 # Terraform Module for Immich Memories
 
-Deploy Immich Memories to Kubernetes using Terraform with NVIDIA GPU support.
+Deploys Immich Memories to Kubernetes with the `hashicorp/kubernetes` provider. CPU only by
+default; NVIDIA GPU scheduling is a variable.
 
 Authentication is disabled by default. Configure it before enabling Ingress. The UI is
 single-user, single-replica because active workflow state is in-process; do not scale past one pod.
 
-## Features
+This module gets less exercise than Docker Compose: it is `terraform validate`d in the repo, not
+applied to a live cluster on every release. Read the plan before you apply it.
 
-- Full Kubernetes deployment with GPU support
-- Configurable resources and storage
-- Optional ingress with TLS
-- Integration with Ollama for AI-powered mood analysis
-- Flexible configuration via variables
+## What it creates
+
+Namespace (optional), Secret, two `ReadWriteOnce` PVCs, Deployment, Service, Ingress (optional).
+
+The image runs as user `immich`, UID/GID 1000, `HOME=/home/immich`:
+
+| Mount | Backed by | Holds |
+|-------|-----------|-------|
+| `/home/immich/.immich-memories` | cache PVC (writable) | `config.yaml`, `cache.db`, video cache, projects, automation history |
+| `/app/output` | output PVC | generated videos (`IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output`) |
+| `/tmp` | emptyDir (`tmp_size`, 4Gi) | FFmpeg intermediates |
+
+There is no ConfigMap. `immich_url` / `immich_api_key` (and `llm_api_key`, `musicgen_api_key`,
+`secret_env`) land in the Secret and reach the pod through `envFrom`; every other setting is an
+`IMMICH_MEMORIES_<SECTION>__<KEY>` env var (`env`). Probes: `/health/live` (liveness) and
+`/health/ready` (readiness, `503` until config is present and Immich answers).
 
 ## Prerequisites
 
-1. **Terraform** >= 1.0
-2. **Kubernetes cluster** with:
-   - NVIDIA GPU Operator installed
-   - NVIDIA RuntimeClass configured
-   - Storage class for PVCs
+1. **Terraform** >= 1.0, `hashicorp/kubernetes` provider >= 2.20
+2. **Kubernetes cluster** with a storage class for PVCs and Immich reachable from it
+   (port 2283 by default). GPU only: NVIDIA GPU Operator + RuntimeClass `nvidia`
 3. **kubeconfig** configured
 
 ## Quick Start
 
-### Basic Deployment
-
 ```bash
-cd examples/basic
+cd examples/basic            # CPU, no ingress, port-forward
+# or: cd examples/production # pinned tag, basic auth, ingress + TLS, GPU optional
 
-# Copy and edit the example tfvars
 cp terraform.tfvars.example terraform.tfvars
 vim terraform.tfvars
 
-# Initialize and apply
 terraform init
 terraform plan
 terraform apply
-```
-
-### Production Deployment
-
-```bash
-cd examples/production
-
-# Copy and edit the example tfvars
-cp terraform.tfvars.example terraform.tfvars
-vim terraform.tfvars
-
-# Initialize and apply
-terraform init
-terraform plan
-terraform apply
+$(terraform output -raw port_forward_command)   # http://localhost:8080
 ```
 
 ## Module Usage
@@ -64,17 +58,25 @@ module "immich_memories" {
   immich_url     = "https://photos.example.com"
   immich_api_key = var.immich_api_key
 
-  # GPU Configuration
+  # Optional: LLM clip content analysis (any OpenAI-compatible API)
+  llm_base_url = "http://ollama.ollama.svc.cluster.local:11434/v1"
+  llm_model    = "qwen2.5-vl"
+
+  # Optional: anything else, e.g. the in-pod daily automation
+  env = {
+    IMMICH_MEMORIES_AUTOMATION__ENABLED  = "true"
+    IMMICH_MEMORIES_AUTOMATION__DAILY_AT = "09:00"
+  }
+
+  # Optional: NVIDIA GPU nodes
   gpu_enabled = true
-  gpu_count   = 1
 
   # Storage
   output_storage_size = "100Gi"
   cache_storage_size  = "50Gi"
 
-  # Ingress
-  ingress_enabled = true
-  ingress_host    = "memories.example.com"
+  # Ingress — enable auth first (secret_env = { IMMICH_MEMORIES_AUTH_USERNAME = ..., IMMICH_MEMORIES_AUTH_PASSWORD = ... })
+  ingress_enabled = false
 }
 ```
 
@@ -87,22 +89,49 @@ module "immich_memories" {
 | `immich_url` | URL of your Immich instance | `string` |
 | `immich_api_key` | Immich API key | `string` |
 
-### GPU Configuration
+### Deployment
 
 | Name | Description | Type | Default |
 |------|-------------|------|---------|
-| `gpu_enabled` | Enable NVIDIA GPU support | `bool` | `true` |
-| `gpu_count` | Number of GPUs to request | `number` | `1` |
-| `gpu_node_selector` | Node selector for GPU nodes | `map(string)` | `{"nvidia.com/gpu.present": "true"}` |
-| `runtime_class_name` | RuntimeClass for NVIDIA | `string` | `"nvidia"` |
+| `namespace` | Kubernetes namespace | `string` | `"immich-memories"` |
+| `create_namespace` | Create the namespace | `bool` | `true` |
+| `image_repository` | Container image | `string` | `"ghcr.io/sam-dumont/immich-video-memory-generator"` |
+| `image_tag` | Image tag (no `v` prefix: `0.41.0`, `latest`) | `string` | `"latest"` |
+| `replicas` | Keep at 1 | `number` | `1` |
+| `resources` | Requests/limits object | `object` | `2Gi/1000m` – `8Gi/4000m` |
+| `tmp_size` | `/tmp` emptyDir (8Gi for 4K) | `string` | `"4Gi"` |
+| `env` | Extra `IMMICH_MEMORIES_*` env vars | `map(string)` | `{}` |
+| `secret_env` | Extra env vars stored in the Secret | `map(string)` | `{}` |
+| `labels` | Extra labels on every resource | `map(string)` | `{}` |
+
+### LLM and music
+
+| Name | Description | Type | Default |
+|------|-------------|------|---------|
+| `llm_base_url` | OpenAI-compatible endpoint; empty disables LLM analysis | `string` | `""` |
+| `llm_model` | Vision model name | `string` | `""` |
+| `llm_api_key` | API key (Secret) | `string` | `""` |
+| `musicgen_enabled` | AI music via a MusicGen server | `bool` | `false` |
+| `musicgen_base_url` | MusicGen server URL | `string` | in-cluster URL |
+| `musicgen_api_key` | MusicGen API key (Secret) | `string` | `""` |
+| `output_resolution` | `720p`, `1080p`, `4k` | `string` | `"1080p"` |
+
+### GPU
+
+| Name | Description | Type | Default |
+|------|-------------|------|---------|
+| `gpu_enabled` | Schedule on NVIDIA GPU nodes | `bool` | `false` |
+| `gpu_count` | GPUs to request | `number` | `1` |
+| `gpu_node_selector` | Node selector | `map(string)` | `{"nvidia.com/gpu.present": "true"}` |
+| `runtime_class_name` | RuntimeClass | `string` | `"nvidia"` |
 
 ### Storage
 
 | Name | Description | Type | Default |
 |------|-------------|------|---------|
-| `output_storage_size` | Size of output PVC | `string` | `"50Gi"` |
-| `cache_storage_size` | Size of cache PVC | `string` | `"20Gi"` |
-| `storage_class_name` | Storage class for PVCs | `string` | `null` |
+| `output_storage_size` | Output PVC | `string` | `"50Gi"` |
+| `cache_storage_size` | Cache/state PVC | `string` | `"20Gi"` |
+| `storage_class_name` | Storage class (`null` = cluster default) | `string` | `null` |
 
 ### Ingress
 
@@ -110,122 +139,29 @@ module "immich_memories" {
 |------|-------------|------|---------|
 | `ingress_enabled` | Enable ingress | `bool` | `false` |
 | `ingress_class_name` | Ingress class | `string` | `"nginx"` |
-| `ingress_host` | Ingress hostname | `string` | `"memories.example.com"` |
-| `ingress_tls_enabled` | Enable TLS | `bool` | `false` |
-| `ingress_annotations` | Ingress annotations | `map(string)` | `{}` |
-
-### Application
-
-| Name | Description | Type | Default |
-|------|-------------|------|---------|
-| `target_duration_seconds` | Default video duration in seconds | `number` | `600` |
-| `output_orientation` | Video orientation | `string` | `"landscape"` |
-| `output_resolution` | Video resolution | `string` | `"1080p"` |
-| `hardware_backend` | HW acceleration backend | `string` | `"nvidia"` |
+| `ingress_host` | Hostname | `string` | `"memories.example.com"` |
+| `ingress_tls_enabled` | TLS | `bool` | `false` |
+| `ingress_tls_secret_name` | TLS secret | `string` | `"immich-memories-tls"` |
+| `ingress_annotations` | Annotations | `map(string)` | `{}` |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| `namespace` | Kubernetes namespace |
-| `service_name` | Service name |
-| `service_endpoint` | Internal service endpoint |
-| `ingress_host` | Ingress hostname (if enabled) |
-| `port_forward_command` | kubectl port-forward command |
-
-## Accessing the UI
-
-After deployment:
-
-```bash
-# Use the output command
-$(terraform output -raw port_forward_command)
-
-# Or manually
-kubectl port-forward -n immich-memories svc/immich-memories 8080:80
-
-# Open http://localhost:8080
-```
-
-## Integration with Other Modules
-
-### With Ollama
-
-```hcl
-module "ollama" {
-  source = "your-ollama-module"
-  # ... configuration
-}
-
-module "immich_memories" {
-  source = "path/to/deploy/terraform"
-
-  ollama_url = "http://${module.ollama.service_name}.${module.ollama.namespace}.svc.cluster.local:11434"
-  # ... other configuration
-}
-```
-
-### With External Secrets
-
-```hcl
-# Use external-secrets operator for production secrets
-resource "kubernetes_manifest" "external_secret" {
-  manifest = {
-    apiVersion = "external-secrets.io/v1beta1"
-    kind       = "ExternalSecret"
-    metadata = {
-      name      = "immich-memories-secrets"
-      namespace = var.namespace
-    }
-    spec = {
-      secretStoreRef = {
-        name = "vault-backend"
-        kind = "ClusterSecretStore"
-      }
-      target = {
-        name = "immich-memories-secrets"
-      }
-      data = [
-        {
-          secretKey = "IMMICH_API_KEY"
-          remoteRef = {
-            key      = "immich/api-key"
-            property = "value"
-          }
-        }
-      ]
-    }
-  }
-}
-```
+`namespace`, `service_name`, `service_endpoint`, `ingress_host`, `deployment_name`,
+`pvc_output`, `pvc_cache`, `port_forward_command`, `gpu_enabled`.
 
 ## Troubleshooting
 
-### GPU Not Detected
+```bash
+# Pod events (scheduling, PVC binding, GPU)
+kubectl describe pod -n immich-memories -l app.kubernetes.io/name=immich-memories
+kubectl get pvc -n immich-memories
 
-1. Verify GPU Operator is running:
-   ```bash
-   kubectl get pods -n gpu-operator
-   ```
+# Readiness: 503 until Immich answers
+kubectl port-forward -n immich-memories svc/immich-memories 8080:80
+curl -s localhost:8080/health/ready
 
-2. Check node labels:
-   ```bash
-   kubectl get nodes -L nvidia.com/gpu.present
-   ```
-
-3. Verify RuntimeClass:
-   ```bash
-   kubectl get runtimeclass nvidia
-   ```
-
-### Pod Stuck in Pending
-
-1. Check events:
-   ```bash
-   kubectl describe pod -n immich-memories -l app.kubernetes.io/name=immich-memories
-   ```
-
-2. Verify PVCs are bound:
-   ```bash
-   kubectl get pvc -n immich-memories
-   ```
+# GPU: operator pods, node label, RuntimeClass
+kubectl get pods -n gpu-operator
+kubectl get nodes -L nvidia.com/gpu.present
+kubectl get runtimeclass nvidia
+```
