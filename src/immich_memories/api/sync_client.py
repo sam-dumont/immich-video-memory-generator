@@ -7,9 +7,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.api.album_service import AlbumRef
 from immich_memories.api.compatibility import ResolvedApiVersion
 from immich_memories.api.models import (
     Asset,
+    AssetType,
     MetadataSearchResult,
     Person,
     ServerInfo,
@@ -260,6 +262,23 @@ class SyncImmichClient:
 
     def upload_asset(self, file_path: Path) -> str:
         return self._run(self._async_client.upload_asset(file_path))
+
+    def get_assets_for_album(
+        self,
+        album_id: str,
+        *,
+        asset_type: AssetType,
+        limit: int | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[Asset]:
+        return self._run(
+            self._async_client.get_assets_for_album(
+                album_id, asset_type=asset_type, limit=limit, progress_callback=progress_callback
+            )
+        )
+
+    def resolve_album(self, name_or_id: str) -> AlbumRef:
+        return self._run(self._async_client.resolve_album(name_or_id))
 
     def create_album(self, name: str, description: str | None = None) -> str:
         return self._run(self._async_client.create_album(name, description))

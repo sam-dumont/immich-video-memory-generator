@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 
 RequestFn = Callable[..., Any]
 
+# Immich caps search page size at 1000; album fetches are bounded by asset count, not pages.
+_ALBUM_PAGE_SIZE = 1000
+
 
 def _api_datetime(value: date | datetime, *, inclusive_end: bool = False) -> str:
     """Serialize a date boundary or datetime with an explicit UTC offset."""
@@ -37,6 +40,7 @@ class SearchService:
     async def search_metadata(
         self,
         person_ids: list[str] | None = None,
+        album_ids: list[str] | None = None,
         asset_type: AssetType | None = None,
         taken_after: date | datetime | None = None,
         taken_before: date | datetime | None = None,
@@ -54,6 +58,8 @@ class SearchService:
 
         if person_ids:
             payload["personIds"] = person_ids
+        if album_ids:
+            payload["albumIds"] = album_ids
         if asset_type:
             payload["type"] = asset_type.value
         if taken_after:
@@ -137,6 +143,45 @@ class SearchService:
             page += 1
 
         all_assets.sort(key=lambda a: a.file_created_at)
+        return all_assets
+
+    async def get_assets_for_album(
+        self,
+        album_id: str,
+        *,
+        asset_type: AssetType,
+        limit: int | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[Asset]:
+        """Fetch an album's assets of one type, newest first, bounded by ``limit``.
+
+        Smart albums ('Récentes', 'Favorites') reach tens of thousands of assets —
+        ~9 KB of resident metadata each — so paging stops at ``limit`` rather than
+        materialising the whole album. Immich orders newest-first, so a truncated
+        album keeps its most recent assets.
+        """
+        all_assets: list[Asset] = []
+        page = 1
+
+        while True:
+            result = await self.search_metadata(
+                album_ids=[album_id],
+                asset_type=asset_type,
+                page=page,
+                size=_ALBUM_PAGE_SIZE,
+            )
+            all_assets.extend(result.all_assets)
+
+            if progress_callback:
+                progress_callback(len(all_assets), None)
+
+            if limit is not None and len(all_assets) >= limit:
+                del all_assets[limit:]
+                break
+            if not result.next_page:
+                break
+            page += 1
+
         return all_assets
 
     async def get_videos_for_date_range(

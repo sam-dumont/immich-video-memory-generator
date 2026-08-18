@@ -12,6 +12,7 @@ from immich_memories.api.models import VideoClipInfo
 
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
+    from immich_memories.api.models import Asset
     from immich_memories.config_loader import Config
     from immich_memories.timeperiod import DateRange
 
@@ -60,7 +61,6 @@ def _search_live_photos_multi_person(
     merge_window_seconds: float = 10.0,
 ) -> list:
     """Intersect live photos across multiple persons."""
-    from immich_memories.api.models import Asset
 
     per_person: list[set[str]] = []
     assets_by_id: dict[str, Asset] = {}
@@ -86,7 +86,6 @@ def _search_live_photos_for_person(
     merge_window_seconds: float = 10.0,
 ) -> list:
     """Fetch live photos tagged with a specific person, then expand to neighbors."""
-    from immich_memories.api.models import Asset
 
     tagged: list[Asset] = []
     page = 1
@@ -160,8 +159,6 @@ def fetch_live_photo_clips(
     Returns:
         Tuple of (live_photo_clips, live_video_ids).
     """
-    from immich_memories.processing.live_photo_merger import cluster_live_photos
-
     merge_window = config.analysis.live_photo_merge_window_seconds
 
     try:
@@ -180,6 +177,20 @@ def fetch_live_photo_clips(
         logger.info("No live photos found in date range")
         return [], set()
 
+    return build_live_photo_clips(live_assets, config=config)
+
+
+def build_live_photo_clips(
+    live_assets: list[Asset], *, config: Config
+) -> tuple[list[VideoClipInfo], set[str]]:
+    """Cluster Live Photo stills into merged clips.
+
+    Returns:
+        Tuple of (live_photo_clips, live_video_ids).
+    """
+    from immich_memories.processing.live_photo_merger import cluster_live_photos
+
+    merge_window = config.analysis.live_photo_merge_window_seconds
     live_video_ids = {a.live_photo_video_id for a in live_assets if a.live_photo_video_id}
 
     clusters = cluster_live_photos(

@@ -91,6 +91,13 @@ class AnalysisConfig(BaseModel):
         le=8,
         description="Concurrent isolated clients used for video and thumbnail prefetching",
     )
+    max_album_assets: int = Field(
+        default=10000,
+        ge=1,
+        description="Per media type, the most assets read from an album (#270). "
+        "Smart albums reach tens of thousands; Immich returns newest first, so a "
+        "larger album is truncated to its most recent assets.",
+    )
     scene_threshold: float = Field(default=27.0, ge=1.0, le=100.0)
     min_scene_duration: float = Field(default=1.0, ge=0.5, le=10.0)
     duplicate_hash_threshold: int = Field(default=8, ge=0, le=64)

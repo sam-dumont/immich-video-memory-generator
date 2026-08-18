@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from pydantic import ValidationError
 
-from immich_memories.api.album_service import AlbumService
+from immich_memories.api.album_service import AlbumRef, AlbumService
 from immich_memories.api.all_assets_service import AllAssetsService
 from immich_memories.api.asset_service import AssetService
 from immich_memories.api.compatibility import (
@@ -424,6 +424,21 @@ class ImmichClient:
         return await self.search.get_photos_for_date_range(
             date_range, progress_callback, person_id=person_id
         )
+
+    async def get_assets_for_album(
+        self,
+        album_id: str,
+        *,
+        asset_type: AssetType,
+        limit: int | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[Asset]:
+        return await self.search.get_assets_for_album(
+            album_id, asset_type=asset_type, limit=limit, progress_callback=progress_callback
+        )
+
+    async def resolve_album(self, name_or_id: str) -> AlbumRef:
+        return await self.albums.resolve_album(name_or_id)
 
     async def iter_videos_for_date_range(
         self,
