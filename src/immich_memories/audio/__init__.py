@@ -29,7 +29,6 @@ __all__ = [
     "AudioEvent",
     "AudioAnalysisResult",
     "AudioContentAnalyzer",
-    "adjust_boundaries_for_audio",
     "get_audio_content_score",
     # Audio mixing
     "AudioMixer",
@@ -49,7 +48,6 @@ _SUBMODULE_MAP = {
     "AudioAnalysisResult": "immich_memories.audio.audio_models",
     "AudioContentAnalyzer": "immich_memories.audio.content_analyzer",
     "AudioEvent": "immich_memories.audio.audio_models",
-    "adjust_boundaries_for_audio": "immich_memories.audio.audio_models",
     "get_audio_content_score": "immich_memories.audio.audio_models",
     "AudioMixer": "immich_memories.audio.mixer_class",
     "loop_audio_to_duration": "immich_memories.audio.mixer",

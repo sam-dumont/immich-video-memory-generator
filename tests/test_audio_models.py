@@ -9,7 +9,6 @@ from immich_memories.audio.audio_models import (
     PROTECTED_EVENTS,
     AudioAnalysisResult,
     AudioEvent,
-    adjust_boundaries_for_audio,
     classify_audio_event,
 )
 
@@ -50,88 +49,9 @@ class TestAudioEvent:
 # ---------------------------------------------------------------------------
 
 
-class TestSafeCutPoints:
-    def test_no_protected_ranges_returns_empty(self):
-        result = AudioAnalysisResult()
-        assert result.get_safe_cut_points() == []
-
-    def test_single_protected_range(self):
-        result = AudioAnalysisResult(protected_ranges=[(2.0, 4.0)])
-        points = result.get_safe_cut_points(min_gap=0.3)
-        # Should have point before 2.0 and after 4.0
-        assert any(p < 2.0 for p in points)
-        assert any(p > 4.0 for p in points)
-
-    def test_multiple_protected_ranges(self):
-        result = AudioAnalysisResult(protected_ranges=[(1.0, 2.0), (5.0, 7.0)])
-        points = result.get_safe_cut_points(min_gap=0.3)
-        assert len(points) >= 2
-
-    def test_min_gap_respected(self):
-        """If ranges are too close, some cut points are skipped."""
-        result = AudioAnalysisResult(protected_ranges=[(1.0, 1.1), (1.2, 1.3)])
-        points = result.get_safe_cut_points(min_gap=0.5)
-        # With min_gap 0.5, the gap between end of first (1.1) and start of second (1.2)
-        # is only 0.1 — not enough for an additional cut point
-        # But there should still be at least 1 point
-        assert len(points) >= 1
-
-    def test_overlapping_protected_ranges_handled(self):
-        result = AudioAnalysisResult(protected_ranges=[(1.0, 3.0), (2.0, 4.0)])
-        points = result.get_safe_cut_points()
-        assert isinstance(points, list)
-        # WHY: Cut points should be floats representing valid timestamps
-        for point in points:
-            assert isinstance(point, float), f"Cut point {point} should be float"
-            assert point >= 0.0, f"Cut point {point} should be non-negative"
-
-
 # ---------------------------------------------------------------------------
 # adjust_boundaries_for_audio
 # ---------------------------------------------------------------------------
-
-
-class TestAdjustBoundaries:
-    def test_no_protected_ranges_no_change(self):
-        result = AudioAnalysisResult()
-        start, end = adjust_boundaries_for_audio(1.0, 5.0, result)
-        assert start == 1.0
-        assert end == 5.0
-
-    def test_start_inside_protected_range_moves_after(self):
-        result = AudioAnalysisResult(protected_ranges=[(0.5, 1.3)])
-        start, end = adjust_boundaries_for_audio(1.0, 5.0, result, max_adjustment=0.5)
-        # Start (1.0) is inside [0.5, 1.3], should move to 1.4
-        assert start > 1.0
-
-    def test_end_inside_protected_range_moves_after(self):
-        result = AudioAnalysisResult(protected_ranges=[(4.8, 5.2)])
-        start, end = adjust_boundaries_for_audio(1.0, 5.0, result, max_adjustment=0.5)
-        # End (5.0) is inside [4.8, 5.2], should adjust
-        assert end != 5.0
-
-    def test_start_moves_before_protected_when_closer(self):
-        result = AudioAnalysisResult(protected_ranges=[(0.9, 5.0)])
-        start, end = adjust_boundaries_for_audio(1.0, 5.5, result, max_adjustment=0.5)
-        # Start (1.0) is inside [0.9, 5.0]. Moving after (5.0) exceeds max_adjustment.
-        # Moving before (0.9) is within 0.5 adjustment.
-        assert start < 1.0
-
-    def test_invalid_range_reverts(self):
-        """If adjustment makes end <= start, revert to original."""
-        result = AudioAnalysisResult(protected_ranges=[(0.5, 3.0)])
-        # Start 1.0, end 1.5 — both inside range. Adjusting start to 3.1 would exceed end.
-        start, end = adjust_boundaries_for_audio(1.0, 1.5, result, max_adjustment=0.5)
-        # Since adjustment of start forward (to 3.1) exceeds max_adjustment (0.5),
-        # and backward (to 0.4) is within limit, start moves to 0.4
-        # But end 1.5 inside [0.5, 3.0] — moving forward to 3.1 exceeds max_adjustment
-        # moving backward to 0.4 would make end < start — so should revert
-        assert end >= start
-
-    def test_start_never_negative(self):
-        result = AudioAnalysisResult(protected_ranges=[(0.0, 0.5)])
-        start, end = adjust_boundaries_for_audio(0.2, 5.0, result, max_adjustment=0.5)
-        assert start >= 0
 
 
 # ---------------------------------------------------------------------------

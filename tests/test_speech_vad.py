@@ -14,52 +14,7 @@ import pytest
 from pydantic import ValidationError
 
 from immich_memories.config_models import SpeechConfig
-from immich_memories.speech.models import SpeechRegion
-from immich_memories.speech.vad import extract_audio_16k, select_detector, silence_gaps
-
-
-class TestSilenceGaps:
-    def test_gap_between_two_regions(self):
-        regions = [SpeechRegion(0.0, 1.0), SpeechRegion(3.0, 4.0)]
-
-        gaps = silence_gaps(regions, duration=5.0)
-
-        assert gaps == [(1.0, 3.0), (4.0, 5.0)]
-
-    def test_leading_and_trailing_gaps_included(self):
-        regions = [SpeechRegion(1.0, 2.0)]
-
-        gaps = silence_gaps(regions, duration=4.0)
-
-        assert gaps == [(0.0, 1.0), (2.0, 4.0)]
-
-    def test_no_regions_is_one_whole_gap(self):
-        gaps = silence_gaps([], duration=3.0)
-
-        assert gaps == [(0.0, 3.0)]
-
-    def test_unordered_input_is_sorted_before_gap_derivation(self):
-        # Regions passed newest-first. Without the sorted() call in
-        # silence_gaps, the cursor walk would process (3, 4) before (0, 1)
-        # and produce a wrong, unclamped result -- see the module's git
-        # history for the exact miscomputation this catches.
-        regions = [SpeechRegion(3.0, 4.0), SpeechRegion(0.0, 1.0)]
-
-        gaps = silence_gaps(regions, duration=5.0)
-
-        assert gaps == [(1.0, 3.0), (4.0, 5.0)]
-
-    def test_region_end_beyond_duration_does_not_emit_out_of_bounds_gap(self):
-        # A region ending past `duration` (e.g. detected on a longer audio
-        # slice) must not produce a gap entirely outside [0, duration].
-        regions = [SpeechRegion(2.0, 15.0), SpeechRegion(20.0, 25.0)]
-
-        gaps = silence_gaps(regions, duration=10.0)
-
-        assert gaps == [(0.0, 2.0)]
-        for start, end in gaps:
-            assert 0.0 <= start <= 10.0
-            assert 0.0 <= end <= 10.0
+from immich_memories.speech.vad import extract_audio_16k, select_detector
 
 
 class TestSelectDetector:

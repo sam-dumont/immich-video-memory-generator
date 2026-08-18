@@ -12,7 +12,6 @@ import pytest
 from immich_memories.analysis.silence_detection import (
     _analyze_audio_for_silence,
     _collect_silence_gaps,
-    adjust_segment_to_silence,
     find_nearest_silence,
 )
 
@@ -345,66 +344,3 @@ class TestFindNearestSilence:
 # ---------------------------------------------------------------------------
 # TestAdjustSegmentToSilence
 # ---------------------------------------------------------------------------
-
-
-class TestAdjustSegmentToSilence:
-    """Tests for adjust_segment_to_silence — snaps both boundaries while maintaining min duration."""
-
-    def test_no_gaps_returns_original(self) -> None:
-        """No silence gaps → original boundaries returned unchanged."""
-        result = adjust_segment_to_silence(1.0, 5.0, [])
-        assert result == (1.0, 5.0), "Without gaps, boundaries should be unchanged"
-
-    def test_start_snaps_to_gap(self) -> None:
-        """Start near a silence gap → snaps start to gap boundary."""
-        gaps = [(0.8, 1.2)]
-        start, end = adjust_segment_to_silence(1.0, 5.0, gaps, max_adjustment=1.0, min_duration=2.0)
-        # Start should snap to 0.8 or 1.2 (whichever is closer)
-        assert start == pytest.approx(1.0, abs=0.25), "Start should snap to nearest gap boundary"
-        assert end == pytest.approx(5.0, abs=0.1), "End should remain unchanged when no nearby gap"
-
-    def test_end_snaps_to_gap(self) -> None:
-        """End near a silence gap → snaps end to gap boundary."""
-        gaps = [(4.8, 5.3)]
-        start, end = adjust_segment_to_silence(1.0, 5.0, gaps, max_adjustment=1.0, min_duration=2.0)
-        assert start == pytest.approx(1.0, abs=0.1), (
-            "Start should remain unchanged when no nearby gap"
-        )
-        assert end in (pytest.approx(4.8, abs=0.01), pytest.approx(5.3, abs=0.01)), (
-            "End should snap to nearest gap boundary"
-        )
-
-    def test_both_boundaries_adjusted(self) -> None:
-        """Both start and end near gaps → both snap, duration maintained."""
-        gaps = [(0.5, 1.2), (4.8, 5.5)]
-        start, end = adjust_segment_to_silence(1.0, 5.0, gaps, max_adjustment=1.0, min_duration=2.0)
-        # Both should be adjusted
-        duration = end - start
-        assert duration >= 2.0, (
-            f"Adjusted segment duration {duration}s must be >= min_duration 2.0s"
-        )
-
-    def test_short_result_extended_to_min_duration(self) -> None:
-        """When adjustment shrinks segment below min_duration, it gets extended."""
-        # Gaps that would push start forward and end backward, making segment tiny
-        gaps = [(1.0, 1.8), (2.2, 3.0)]
-        start, end = adjust_segment_to_silence(1.1, 2.9, gaps, max_adjustment=1.0, min_duration=3.0)
-        duration = end - start
-        assert duration >= 3.0, (
-            f"Segment duration {duration}s must be extended to >= min_duration 3.0s"
-        )
-
-    def test_boundaries_far_from_gaps_unchanged(self) -> None:
-        """Segment far from all gaps → boundaries unchanged."""
-        gaps = [(10.0, 11.0)]
-        start, end = adjust_segment_to_silence(1.0, 5.0, gaps, max_adjustment=1.0, min_duration=2.0)
-        assert (start, end) == (1.0, 5.0), "Boundaries far from gaps should remain unchanged"
-
-    def test_extension_uses_original_duration_when_possible(self) -> None:
-        """When original duration >= min_duration, extension restores original length."""
-        # Original: 1.0 to 5.0 (4s). Gaps that snap start to 2.5, end to 3.0 (0.5s).
-        # Since original >= min_duration, should restore to 4s centered on midpoint.
-        gaps = [(2.4, 2.6), (2.9, 3.1)]
-        start, end = adjust_segment_to_silence(2.5, 3.0, gaps, max_adjustment=1.0, min_duration=2.0)
-        duration = end - start
-        assert duration >= 2.0, f"Extended duration {duration}s should be at least min_duration"

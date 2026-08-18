@@ -58,34 +58,6 @@ def extract_audio_16k(video_path: Path) -> np.ndarray | None:
         return None
 
 
-def silence_gaps(regions: list[SpeechRegion], duration: float) -> list[tuple[float, float]]:
-    """Complement of the speech regions across [0, duration].
-
-    Gap boundaries are clamped to [0, duration] -- a region whose end exceeds
-    duration (e.g. detected on a longer audio slice than the caller now has)
-    must not produce a gap outside that window.
-    """
-    if not regions:
-        return [(0.0, duration)]
-
-    ordered = sorted(regions, key=lambda r: r.start)
-    gaps: list[tuple[float, float]] = []
-    cursor = 0.0
-
-    for region in ordered:
-        if cursor >= duration:
-            break
-        gap_end = min(region.start, duration)
-        if gap_end > cursor:
-            gaps.append((cursor, gap_end))
-        cursor = max(cursor, min(region.end, duration))
-
-    if cursor < duration:
-        gaps.append((cursor, duration))
-
-    return gaps
-
-
 class SpeechDetector(Protocol):
     def detect(self, audio: np.ndarray, sample_rate: int) -> list[SpeechRegion]: ...
 
