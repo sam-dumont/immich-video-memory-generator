@@ -173,6 +173,10 @@ immich-memories auto install [OPTIONS]
 
 Sets up your OS scheduler. Detects the platform and generates the right config file.
 
+Running in Docker (or wanting the web UI process to do it)? Skip this command and set
+`automation.enabled: true` + `automation.daily_at` instead — the UI process then runs `auto run`
+once a day itself. See [automated generation](../recipes/automated-generation.md#docker-and-the-web-ui-built-in-daily-timer).
+
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--hour` | int | `9` | Hour to run (0-23) |

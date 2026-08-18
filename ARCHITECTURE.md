@@ -329,6 +329,7 @@ src/immich_memories/
 │   ├── trip_input_cache.py     # Durable, identity-checked inputs for auto trip discovery
 │   ├── notifications.py        # Apprise notification integration
 │   ├── runner.py               # Auto-run orchestrator
+│   ├── in_process_scheduler.py # Daily timer inside the UI/Docker process
 │   └── system_scheduler.py     # OS scheduler integration (launchd/systemd/cron)
 │
 ├── operations/                 # Public lifecycle contract + read-only ops reports

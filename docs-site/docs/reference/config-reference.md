@@ -477,6 +477,8 @@ Controls what `immich-memories auto suggest` and `auto run` detect and generate.
 
 ```yaml
 automation:
+  enabled: false                  # run the daily auto-run decision inside the web UI process (Docker)
+  daily_at: "09:00"               # HH:MM, local time of that process (container TZ)
   cooldown_hours: 24              # min hours between auto-generated memories (1-168)
   upload_to_immich: false         # auto-upload results
   album_name: null                # target album for uploads

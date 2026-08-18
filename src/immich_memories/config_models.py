@@ -806,6 +806,14 @@ class PhotoConfig(BaseModel):
 class AutomationConfig(BaseModel):
     """Smart automation settings for candidate detection and auto-generation."""
 
+    enabled: bool = Field(
+        default=False,
+        description="Run the daily auto-run decision inside the UI/Docker process",
+    )
+    daily_at: str = Field(
+        default="09:00",
+        description="Local wall-clock time (HH:MM) for the in-process daily run",
+    )
     cooldown_hours: int = Field(default=24, ge=1, le=168)
     upload_to_immich: bool = Field(default=False)
     album_name: str | None = Field(default=None)
@@ -815,6 +823,14 @@ class AutomationConfig(BaseModel):
     detect_person_spotlight: bool = Field(default=True)
     detect_activity_burst: bool = Field(default=True)
     burst_threshold: float = Field(default=2.0, ge=1.0, le=10.0)
+
+    @field_validator("daily_at")
+    @classmethod
+    def _normalize_daily_at(cls, value: str) -> str:
+        match = re.fullmatch(r"(\d{1,2}):(\d{2})", value.strip())
+        if not match or int(match[1]) > 23 or int(match[2]) > 59:
+            raise ValueError("daily_at must be a 24h wall-clock time like '09:00'")
+        return f"{int(match[1]):02d}:{match[2]}"
 
 
 class NotificationConfig(BaseModel):

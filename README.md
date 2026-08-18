@@ -162,6 +162,9 @@ one eligible memory. It never tries to catch up by doing several things in one i
 The terminal outcome is `skipped`, `dry_run`, `completed`, or `failed`. The first three exit 0;
 `failed` exits 1. Use `--quiet` when a scheduler needs the stable JSON result.
 
+Docker: no cron needed — set `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` (and `…__DAILY_AT=09:00`)
+and the web UI process runs that same decision once a day itself.
+
 The selector keeps variety on purpose: latest completed month only, at most one monthly review per
 calendar month, no category twice in a row, and no category more than twice in the last six
 completed automatic runs. See the [auto CLI docs](https://sam-dumont.github.io/immich-video-memory-generator/docs/create/cli/auto).

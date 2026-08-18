@@ -22,6 +22,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from immich_memories import __version__
+from immich_memories.automation.in_process_scheduler import automation_scheduler
 from immich_memories.config import get_config, init_config_dir
 from immich_memories.security import configured_secret_values, sanitize_error_message
 from immich_memories.ui.auth import (
@@ -483,6 +484,7 @@ async def _build_health_snapshot() -> dict[str, Any]:
             "oldest_pending_delivery": None,
             "notification_health": None,
             "last_successful_run": None,
+            "in_process_scheduler": None,
             "version": __version__,
         }
 
@@ -523,6 +525,9 @@ async def _build_health_snapshot() -> dict[str, Any]:
         ),
         "notification_health": _automation_field(automation, "notification_health"),
         "last_successful_run": last_successful_run,
+        "in_process_scheduler": (
+            automation_scheduler.snapshot().to_dict() if _health_detail_allowed(config) else None
+        ),
         "version": __version__,
     }
 
@@ -732,6 +737,7 @@ def _start_cleanup_task() -> None:
 
 
 app.on_startup(_start_cleanup_task)
+app.on_startup(lambda: asyncio.ensure_future(automation_scheduler.run_forever()))
 
 
 def _shutdown_app() -> None:

@@ -142,6 +142,8 @@ Inside Immich's own compose stack, `immich-server` listens on **2283** (every Im
 | `IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED` | No | `true` to actually use the LLM for clip scoring. Off by default. |
 | `IMMICH_MEMORIES_AUTH_USERNAME` | No | Basic auth username. Set with `IMMICH_MEMORIES_AUTH_PASSWORD` to enable auth. |
 | `IMMICH_MEMORIES_AUTH_PASSWORD` | No | Basic auth password. Set with `IMMICH_MEMORIES_AUTH_USERNAME` to enable auth. |
+| `IMMICH_MEMORIES_AUTOMATION__ENABLED` | No | `true` to run the daily `auto run` decision inside the container. Off by default. See [Daily automation](#daily-automation). |
+| `IMMICH_MEMORIES_AUTOMATION__DAILY_AT` | No | Wall-clock time for that run, `HH:MM` in the container's `TZ` (default `09:00`). |
 
 All config options can also be set via env vars with the `IMMICH_MEMORIES_` prefix. Double underscores for nesting: `IMMICH_MEMORIES_ANALYSIS__SCENE_THRESHOLD=25`.
 
@@ -180,6 +182,27 @@ The root `docker-compose.yml` has these options as a commented section: uncommen
 :::caution tmpfs size for 4K
 The default tmpfs is 2 GB. If you're generating 4K videos, FFmpeg intermediates can exceed that. Either increase to 8 GB (`/tmp:size=8G`) or remove the tmpfs entry and let the container write to disk.
 :::
+
+## Daily automation
+
+The container's only process is the web UI, so there is no cron to install. Turn on the built-in
+timer instead:
+
+```yaml
+    environment:
+      - IMMICH_MEMORIES_AUTOMATION__ENABLED=true
+      - IMMICH_MEMORIES_AUTOMATION__DAILY_AT=09:00
+      - TZ=Europe/Brussels   # daily_at is read in this zone
+```
+
+Every day at that time the UI process runs the same `auto run` decision as the CLI (retry one
+pending upload, or generate one eligible memory, then notify) with the same lock and history. If
+the container was down at that time it catches up on start; if the day's run already happened it
+waits for tomorrow. Details and the config-file form: [automated generation](../../create/recipes/automated-generation.md#docker-and-the-web-ui-built-in-daily-timer).
+
+Check it from outside with `/health/ready` — the `in_process_scheduler` block shows `next_run`,
+`running`, and the last outcome. Automation history stays in the config volume, so keep it
+persistent (see below).
 
 ## Health check
 

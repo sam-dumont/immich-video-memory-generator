@@ -33,6 +33,10 @@ services:
       # Optional: basic auth
       # IMMICH_MEMORIES_AUTH_USERNAME: "${IMMICH_MEMORIES_AUTH_USERNAME}"
       # IMMICH_MEMORIES_AUTH_PASSWORD: "${IMMICH_MEMORIES_AUTH_PASSWORD}"
+      # Optional: daily automation inside the container (no host cron needed)
+      # IMMICH_MEMORIES_AUTOMATION__ENABLED: "true"
+      # IMMICH_MEMORIES_AUTOMATION__DAILY_AT: "09:00"
+      # TZ: "Europe/Brussels"
     restart: unless-stopped
     deploy:
       resources:

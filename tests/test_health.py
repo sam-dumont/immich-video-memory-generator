@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -99,6 +100,41 @@ class TestHealthEndpoint:
         assert ready.json()["status"] == "degraded"
         assert legacy.status_code == 200
         assert legacy.json()["status"] == "degraded"
+
+    def test_readiness_reports_the_in_process_automation_timer(self, tmp_path: Path):
+        """Docker users check /health to see when the in-app daily run will fire (#305)."""
+        from immich_memories.ui.app import _ImmichDependency, app
+
+        config = Config(
+            immich={"url": "http://immich.test", "api_key": "health-secret"},
+            cache={"database": str(tmp_path / "t.db"), "directory": str(tmp_path / "c")},
+            automation={"enabled": True, "daily_at": "07:30"},
+        )
+        from immich_memories.automation.in_process_scheduler import InProcessScheduler
+
+        # WHY: a fixed clock before the slot keeps the timer from catch-up firing a real run.
+        scheduler = InProcessScheduler(
+            lambda: config, clock=lambda: datetime(2026, 8, 18, 6, 0).astimezone()
+        )
+        asyncio.run(scheduler.tick())
+        client = TestClient(app, raise_server_exceptions=False)
+        with (
+            # WHY: /health must not reach out to a real Immich in a unit test.
+            patch("immich_memories.ui.app.get_config", return_value=config),
+            patch(
+                "immich_memories.ui.app._check_immich_dependency",
+                new_callable=AsyncMock,
+                return_value=_ImmichDependency(status="ready", reachable=True),
+            ),
+            patch("immich_memories.ui.app.automation_scheduler", scheduler),
+        ):
+            response = client.get("/health/ready")
+
+        timer = response.json()["in_process_scheduler"]
+        assert timer["enabled"] is True
+        assert timer["daily_at"] == "07:30"
+        assert timer["next_run"] is not None
+        assert timer["running"] is False
 
     def test_registered_readiness_uses_one_configuration_snapshot(self):
         """A real detailed request cannot reload config while reading run history."""

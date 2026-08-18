@@ -32,6 +32,34 @@ completed automatic runs.
 
 See [auto CLI docs](../cli/auto.md) for the full reference including detector details and scoring.
 
+### Docker and the web UI: built-in daily timer
+
+`auto install` needs a host scheduler and the binary on the host. In Docker the container's only
+process is the web UI, so the timer lives there instead: one config toggle makes the UI process
+run the same `auto run` decision once a day — same lease, history, delivery retry, and
+notifications as the CLI.
+
+```yaml
+advanced:
+  automation:
+    enabled: true        # default false
+    daily_at: "09:00"    # local wall-clock time of the container (set TZ=)
+```
+
+or, for compose, `IMMICH_MEMORIES_AUTOMATION__ENABLED=true` and
+`IMMICH_MEMORIES_AUTOMATION__DAILY_AT=09:00`. Then `docker compose up` is the whole setup: a memory
+appears on schedule, uploads if `upload_to_immich` is on, and notifies if notifications are on.
+
+- One automation decision per calendar day: a container that was down at `daily_at` catches up
+  when it starts; if the day's run already happened (including a manual `docker exec … auto run`),
+  it waits for tomorrow.
+- A manual UI or CLI run in progress holds the same lock, so the timer's run is reported as
+  `skipped` rather than overlapping it.
+- `/health/ready` shows the timer under `in_process_scheduler` (`enabled`, `daily_at`, `next_run`,
+  `running`, `last_fired_at`, `last_outcome`, `last_reason`).
+- The timer never runs when `enabled` is `false` (the default) — `auto install` stays the route
+  for bare-metal installs.
+
 ## Scheduler daemon (advanced/legacy)
 
 :::tip Use smart automation instead
