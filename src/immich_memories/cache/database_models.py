@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from immich_memories.cache.versions import ANALYSIS_VERSION
+
 if TYPE_CHECKING:
     from immich_memories.analysis.scenes import Scene
     from immich_memories.analysis.scoring import MomentScore
@@ -87,6 +89,10 @@ class CachedVideoAnalysis:
     analysis_timestamp: datetime
 
     # Versioning
+    # Defaults to the current generation: an instance built in memory describes
+    # analysis being produced now. row_to_analysis() passes 0 for a stored row
+    # that predates the column, which correctly reads as stale.
+    analysis_version: int = ANALYSIS_VERSION
     scoring_version: int = 1
     model_version: str | None = None
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
+from immich_memories.cache.versions import ANALYSIS_VERSION
+
 if TYPE_CHECKING:
     from immich_memories.api.models import VideoClipInfo
     from immich_memories.cache.database_models import CachedSegment, CachedVideoAnalysis
@@ -11,8 +13,16 @@ if TYPE_CHECKING:
 
 
 def is_compatible_analysis_cache(cached: CachedVideoAnalysis | None, config: Config) -> bool:
-    """Return whether a cache row is safe to reuse under the active configuration."""
+    """Return whether a cache row is safe to reuse under the active configuration.
+
+    The analysis generation is part of that question. needs_reanalysis() has always
+    compared it, but this check -- the one the analyzer actually consults -- did not,
+    so bumping ANALYSIS_VERSION invalidated nothing here and fields added by a new
+    generation stayed empty on every already-analysed clip.
+    """
     if not (cached and cached.segments):
+        return False
+    if cached.analysis_version != ANALYSIS_VERSION:
         return False
     if config.content_analysis.enabled:
         return cached.model_version == config.llm.model

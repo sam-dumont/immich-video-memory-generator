@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from immich_memories.analysis.clip_analyzer import ClipAnalyzer
 from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineConfig
+from immich_memories.cache.versions import ANALYSIS_VERSION
 from immich_memories.config_loader import Config
 from tests.conftest import make_clip
 
@@ -88,6 +89,7 @@ def _make_cached_analysis(segment: MagicMock | None = None) -> MagicMock:
     """Build a mock CachedVideoAnalysis wrapping a segment."""
     analysis = MagicMock()
     analysis.segments = [segment] if segment else []
+    analysis.analysis_version = ANALYSIS_VERSION
     return analysis
 
 
@@ -295,6 +297,7 @@ class TestCheckAnalysisCache:
         high = _make_cached_segment(start=5.0, end=8.0, score=0.95)
         analysis = MagicMock()
         analysis.segments = [low, high]
+        analysis.analysis_version = ANALYSIS_VERSION
         mock_cache.get_analysis.return_value = analysis
 
         clip = make_clip("asset-6", duration=10.0)
