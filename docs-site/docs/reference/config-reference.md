@@ -440,6 +440,7 @@ server:
   host: "0.0.0.0"               # Listen address (use 127.0.0.1 to restrict to localhost)
   port: 8080                     # Listen port (1-65535)
   enable_demo_mode: false        # Show the demo/privacy (blur) toggle in the sidebar
+  secure_cookies: false          # Mark the session cookie Secure (turn on behind an HTTPS reverse proxy)
 ```
 
 These can also be set via CLI flags: `immich-memories ui --host 127.0.0.1 --port 9090`.
@@ -515,7 +516,8 @@ auth:
   # Trusted header (reverse proxy)
   user_header: "Remote-User"
   email_header: "Remote-Email"
-  trusted_proxies: []            # Required for header provider — IPs/CIDRs of your proxy
+  trusted_proxies: []            # IPs/CIDRs of your proxy. Required for header provider;
+                                 # for basic/oidc their X-Forwarded-* headers are trusted
 ```
 
 Place under `advanced:` in your config file (like all Tier 2 sections).

@@ -139,7 +139,7 @@ Not config fields, but read by the app:
 | `ACESTEP_CHECKPOINTS_DIR` | ACE-Step `lib` mode: where model checkpoints are downloaded (default `~/.cache/ace-step/checkpoints`). |
 | `ACESTEP_MLX_VAE_CHUNK` | ACE-Step `lib` mode on Apple Silicon: VAE decode chunk size in latent frames (minimum 192). Lower it if MLX runs out of memory. |
 | `IMMICH_MEMORIES_ACESTEP_MLX_DIT_FP32` | ACE-Step `lib` mode on Apple Silicon: `1` keeps the MLX decoder in fp32 instead of casting to bf16 (roughly doubles decoder memory). |
-| `FORWARDED_ALLOW_IPS` | uvicorn: proxies whose `X-Forwarded-*` headers are trusted. Needed behind a reverse proxy — see [Authentication](authentication.mdx). |
+| `FORWARDED_ALLOW_IPS` | uvicorn: proxies whose `X-Forwarded-*` headers are trusted. Wins over `auth.trusted_proxies` when set — see [Authentication](authentication.mdx). |
 
 There is no environment variable for the log *level*.
 

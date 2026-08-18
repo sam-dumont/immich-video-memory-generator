@@ -263,6 +263,7 @@ src/immich_memories/
 │   ├── app.py                  # App setup & routing
 │   ├── auth.py                 # Auth middleware, credential verification, session helpers
 │   ├── auth_oidc.py            # OIDC client (authlib starlette integration, singleton)
+│   ├── reverse_proxy.py        # Secure cookie + trusted X-Forwarded-* kwargs for ui.run
 │   ├── state.py                # Shared UI state
 │   ├── theme.py                # UI theme
 │   ├── components.py           # Shared UI components

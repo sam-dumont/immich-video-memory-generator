@@ -239,19 +239,35 @@ In your config YAML, set `trusted_proxies` to Traefik's container IP (prefer a s
 - Logout via the sidebar button or by navigating to `/logout`.
 - OIDC logout redirects to the IdP's `end_session_endpoint` when available (the IdP terminates the SSO session too). Falls back to a local-only logout if the IdP doesn't advertise that endpoint.
 
-:::warning Behind a reverse proxy: bind locally and tell uvicorn who the proxy is
+:::warning Behind a reverse proxy: bind locally, name the proxy, mark the cookie Secure
 
-Two things to know when the UI sits behind Traefik, Caddy or nginx with TLS:
+Three things to set when the UI sits behind Traefik, Caddy or nginx with TLS:
 
-1. **The session cookie is not marked `Secure` today** (the app does not read
-   `X-Forwarded-Proto`). That is only a problem if the plain-HTTP port is *also* reachable, so
-   don't publish `8080` on the LAN once the proxy is up: bind it to localhost
+1. **Don't publish `8080` on the LAN once the proxy is up.** Bind it to localhost
    (`127.0.0.1:8080:8080` in compose) or keep the container on the proxy network only.
-2. **Set `FORWARDED_ALLOW_IPS` to your proxy's address** so uvicorn trusts its `X-Forwarded-For`
-   / `X-Forwarded-Proto` headers. Without it every visitor looks like the proxy's IP — five wrong
-   passwords from anyone lock the whole household out of login for 10 minutes — and the OIDC
-   `redirect_uri` is built as `http://…` instead of `https://…`, which most identity providers
-   reject.
+2. **List the proxy in `auth.trusted_proxies`.** The app passes it to uvicorn as
+   `forwarded_allow_ips`, so `X-Forwarded-For` / `X-Forwarded-Proto` from that address are
+   honored. Without it every visitor looks like the proxy's IP — five wrong passwords from anyone
+   lock the whole household out of login for 10 minutes — and the OIDC `redirect_uri` is built as
+   `http://…` instead of `https://…`, which most identity providers reject. `"*"` trusts any
+   peer; only use it when the app is unreachable except through the proxy.
+3. **Set `server.secure_cookies: true`** so the session cookie carries the `Secure` flag and
+   browsers never send it over plain HTTP. Only do this once every visitor arrives over HTTPS —
+   with it on, a plain `http://` origin (other than `localhost`) can't log in at all.
+
+```yaml
+# ~/.immich-memories/config.yaml
+advanced:
+  server:
+    secure_cookies: true
+  auth:
+    enabled: true
+    provider: basic            # or oidc
+    username: admin
+    password: ${MY_SECRET_PASSWORD}
+    trusted_proxies:
+      - 172.20.0.2             # your proxy container's IP or CIDR
+```
 
 ```yaml
 # docker-compose.yml
@@ -259,9 +275,13 @@ services:
   immich-memories:
     ports:
       - "127.0.0.1:8080:8080"     # or drop `ports:` entirely and expose via the proxy network
-    environment:
-      FORWARDED_ALLOW_IPS: "172.20.0.2"   # your proxy container's IP (or "*" on a trusted network)
 ```
+
+The `FORWARDED_ALLOW_IPS` environment variable still works and, when set, wins over
+`trusted_proxies`. With `provider: header` the forwarded headers are deliberately *not* applied:
+the app has to keep seeing the proxy's own address to trust `Remote-User`, and the login rate
+limiter and OIDC redirect don't apply to that provider anyway. Leave `FORWARDED_ALLOW_IPS` unset
+in that case.
 
 When running without a reverse proxy (direct access on localhost), none of this applies.
 :::
@@ -287,4 +307,4 @@ All fields under `advanced.auth` with their defaults:
 | `button_text` | `Sign in with SSO` | OIDC: login button label |
 | `user_header` | `Remote-User` | Header: header name for the username |
 | `email_header` | `Remote-Email` | Header: header name for the email |
-| `trusted_proxies` | `[]` | Header: IPs/CIDRs allowed to set auth headers |
+| `trusted_proxies` | `[]` | IPs/CIDRs of your reverse proxy. Header provider: allowed to set auth headers. Basic/OIDC: their `X-Forwarded-For` / `X-Forwarded-Proto` are honored (uvicorn `forwarded_allow_ips`) |

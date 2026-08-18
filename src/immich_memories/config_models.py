@@ -377,6 +377,10 @@ class ServerConfig(BaseModel):
     enable_demo_mode: bool = Field(
         default=False, description="Show demo/privacy toggle in sidebar (for screenshots/E2E)"
     )
+    secure_cookies: bool = Field(
+        default=False,
+        description="Mark the session cookie Secure (only when every visitor arrives over HTTPS)",
+    )
 
 
 class TripsConfig(BaseModel):

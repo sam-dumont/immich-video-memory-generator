@@ -34,6 +34,7 @@ from immich_memories.ui.auth import (
     is_trusted_proxy,
     set_session,
 )
+from immich_memories.ui.reverse_proxy import reverse_proxy_run_kwargs
 from immich_memories.ui.state import ensure_config, get_app_state
 from immich_memories.ui.theme import apply_theme, render_theme_toggle
 
@@ -787,6 +788,7 @@ def main(port: int = 8080, host: str = "0.0.0.0", reload: bool = False) -> None:
         "reload": reload,
         "storage_secret": _get_storage_secret(),
     }
+    kwargs.update(reverse_proxy_run_kwargs(get_config(), os.environ))
     if reload:
         kwargs["uvicorn_reload_includes"] = "*.py"
         kwargs["uvicorn_reload_excludes"] = ".*, *.log, *.db, *.db-journal"
