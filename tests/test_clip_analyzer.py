@@ -62,7 +62,6 @@ def _make_cached_segment(
     llm_category: str | None = None,
     llm_emotion: str | None = None,
     llm_setting: str | None = None,
-    llm_activities: list[str] | None = None,
     llm_subjects: list[str] | None = None,
     llm_interestingness: float | None = None,
     llm_quality: float | None = None,
@@ -77,7 +76,6 @@ def _make_cached_segment(
     seg.llm_category = llm_category
     seg.llm_emotion = llm_emotion
     seg.llm_setting = llm_setting
-    seg.llm_activities = llm_activities
     seg.llm_subjects = llm_subjects
     seg.llm_interestingness = llm_interestingness
     seg.llm_quality = llm_quality
@@ -207,7 +205,6 @@ class TestCheckAnalysisCache:
                 llm_description="Noah building a sandcastle",
                 llm_emotion="delighted",
                 llm_setting="beach",
-                llm_activities=["playing"],
                 llm_subjects=["Noah"],
                 llm_interestingness=0.91,
                 llm_quality=0.88,
@@ -225,7 +222,6 @@ class TestCheckAnalysisCache:
         assert clip.llm_description == "Noah building a sandcastle"
         assert clip.llm_emotion == "delighted"
         assert clip.llm_setting == "beach"
-        assert clip.llm_activities == ["playing"]
         assert clip.llm_subjects == ["Noah"]
         assert clip.llm_interestingness == 0.91
         assert clip.llm_quality == 0.88
@@ -257,7 +253,6 @@ class TestCheckAnalysisCache:
             llm_description="Kids playing",
             llm_emotion="joyful",
             llm_setting="park",
-            llm_activities=["running", "laughing"],
             llm_subjects=["children"],
             llm_interestingness=0.85,
             llm_quality=0.7,
@@ -274,7 +269,6 @@ class TestCheckAnalysisCache:
         assert llm_analysis["description"] == "Kids playing"
         assert llm_analysis["emotion"] == "joyful"
         assert llm_analysis["setting"] == "park"
-        assert llm_analysis["activities"] == ["running", "laughing"]
         assert llm_analysis["subjects"] == ["children"]
         assert llm_analysis["interestingness"] == 0.85
         assert llm_analysis["quality"] == 0.7
@@ -457,7 +451,6 @@ class TestPhaseAnalyzeLLMMapping:
             "description": "Sunset over the ocean",
             "emotion": "calm",
             "setting": "beach",
-            "activities": ["watching"],
             "subjects": ["sky", "water"],
             "interestingness": 0.9,
             "quality": 0.8,
@@ -472,7 +465,6 @@ class TestPhaseAnalyzeLLMMapping:
         assert result_clip.llm_description == "Sunset over the ocean"
         assert result_clip.llm_emotion == "calm"
         assert result_clip.llm_setting == "beach"
-        assert result_clip.llm_activities == ["watching"]
         assert result_clip.llm_subjects == ["sky", "water"]
         assert result_clip.llm_interestingness == 0.9
         assert result_clip.llm_quality == 0.8

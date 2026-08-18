@@ -2479,7 +2479,6 @@ class TestClipAnalyzerRunUnifiedAnalysis:
         mock_segment.llm_description = "People laughing at a party"
         mock_segment.llm_emotion = "joy"
         mock_segment.llm_setting = "indoor"
-        mock_segment.llm_activities = ["socializing"]
         mock_segment.llm_subjects = ["group"]
         mock_segment.llm_interestingness = 0.9
         mock_segment.llm_quality = 0.8

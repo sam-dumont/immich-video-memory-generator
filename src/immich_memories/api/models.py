@@ -399,7 +399,6 @@ class VideoClipInfo(BaseModel):
     llm_category: str | None = None  # people | animal | landscape | object
     llm_emotion: str | None = None  # Detected emotional tone (happy, calm, excited, etc.)
     llm_setting: str | None = None  # Where it takes place (indoor, outdoor, beach, etc.)
-    llm_activities: list[str] | None = None  # Activities detected
     llm_subjects: list[str] | None = None  # Who/what is in the video
     llm_interestingness: float | None = None  # Score 0-1 for how interesting
     llm_quality: float | None = None  # Score 0-1 for visual quality

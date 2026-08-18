@@ -36,7 +36,6 @@ class CachedSegment:
     llm_category: str | None = None
     llm_emotion: str | None = None
     llm_setting: str | None = None
-    llm_activities: list[str] | None = None
     llm_subjects: list[str] | None = None
     llm_interestingness: float | None = None
     llm_quality: float | None = None

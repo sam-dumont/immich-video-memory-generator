@@ -18,7 +18,6 @@ class TestContentAnalysis:
     def test_default_values(self):
         ca = ContentAnalysis()
         assert ca.description == ""
-        assert ca.activities == []
         assert ca.subjects == []
         assert ca.setting == ""
         assert ca.emotion == ""
@@ -59,7 +58,6 @@ class TestContentAnalysis:
     def test_custom_fields(self):
         ca = ContentAnalysis(
             description="A park scene",
-            activities=["walking", "talking"],
             subjects=["person"],
             setting="outdoor park",
             emotion="happy",
@@ -68,7 +66,6 @@ class TestContentAnalysis:
             confidence=0.95,
         )
         assert ca.description == "A park scene"
-        assert ca.activities == ["walking", "talking"]
         assert ca.subjects == ["person"]
         assert ca.setting == "outdoor park"
         assert ca.emotion == "happy"
@@ -241,20 +238,15 @@ class TestBuildContentAnalysis:
         result = ContentAnalyzer._build_content_analysis(data, long_emotion)
         assert len(result.emotion) == 500
 
-    def test_limits_activities_list(self):
-        data = {"activities": [f"act_{i}" for i in range(15)]}
-        result = ContentAnalyzer._build_content_analysis(data, "")
-        assert len(result.activities) == 10
-
     def test_limits_subjects_list(self):
         data = {"subjects": [f"sub_{i}" for i in range(15)]}
         result = ContentAnalyzer._build_content_analysis(data, "")
         assert len(result.subjects) == 10
 
     def test_truncates_items_in_lists(self):
-        data = {"activities": ["a" * 600]}
+        data = {"subjects": ["a" * 600]}
         result = ContentAnalyzer._build_content_analysis(data, "")
-        assert len(result.activities[0]) == 500
+        assert len(result.subjects[0]) == 500
 
     def test_clamps_interestingness_above_1(self):
         data = {"interestingness": 1.5}
@@ -280,7 +272,6 @@ class TestBuildContentAnalysis:
         data: dict = {}
         result = ContentAnalyzer._build_content_analysis(data, "")
         assert result.description == ""
-        assert result.activities == []
         assert result.subjects == []
         assert result.setting == ""
         assert result.interestingness == pytest.approx(0.5)

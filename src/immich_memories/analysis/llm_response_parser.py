@@ -30,11 +30,12 @@ _PROMPT_TAIL = """Return JSON with these fields:
   toy, figurine, drawing or photo of one. Use "landscape" only for a wide outdoor view,
   never for a close-up of a thing. Use "object" for anything else.
 - subjects: What is in frame? (short lowercase nouns, e.g. ["child", "dog", "beach"])
+- setting: Where is it? (one or two words: beach, kitchen, park, car)
 - emotion: What is the mood? (one word: happy, calm, excited, playful, joyful, peaceful)
 - interestingness: How memorable is this moment? (0.0 to 1.0)
 - quality: How good is the image quality? (0.0 to 1.0)
 
-Example format: {"description": "...", "category": "people", "subjects": ["child", "sand"], "emotion": "...", "interestingness": 0.7, "quality": 0.8}
+Example format: {"description": "...", "category": "people", "subjects": ["child", "sand"], "setting": "beach", "emotion": "...", "interestingness": 0.7, "quality": 0.8}
 
 JSON:"""
 
@@ -87,7 +88,6 @@ class ContentAnalysis:
 
     description: str = ""
     category: str = ""
-    activities: list[str] = field(default_factory=list)
     subjects: list[str] = field(default_factory=list)
     setting: str = ""
     emotion: str = ""
@@ -381,7 +381,6 @@ class ContentAnalyzer:
         """
         MAX_STR = 500
         description = str(data.get("description", ""))[:MAX_STR]
-        activities = [str(a)[:MAX_STR] for a in data.get("activities", [])[:MAX_LIST]]
         subjects = [str(s)[:MAX_STR] for s in data.get("subjects", [])[:MAX_LIST]]
         category = str(data.get("category", ""))[:MAX_STR]
         setting = str(data.get("setting", ""))[:MAX_STR]
@@ -394,7 +393,6 @@ class ContentAnalyzer:
 
         return ContentAnalysis(
             description=description,
-            activities=activities,
             subjects=subjects,
             category=category,
             setting=setting,

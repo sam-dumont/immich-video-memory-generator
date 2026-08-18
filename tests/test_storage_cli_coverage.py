@@ -352,7 +352,7 @@ class TestSaveAnalysisWithLLMSegments:
         return VideoAnalysisCache(tmp_path / "test.db")
 
     def test_llm_fields_persisted(self, cache):
-        """LLM description, emotion, activities survive save/load cycle."""
+        """LLM description, emotion and setting survive a save/load cycle."""
         from immich_memories.analysis.scoring import MomentScore
 
         asset = _make_asset()
@@ -368,7 +368,6 @@ class TestSaveAnalysisWithLLMSegments:
         segment.llm_description = "Kids playing in park"
         segment.llm_emotion = "joyful"
         segment.llm_setting = "outdoor"
-        segment.llm_activities = ["running", "laughing"]
         segment.llm_subjects = ["child", "dog"]
         segment.llm_interestingness = 0.85
         segment.llm_quality = 0.9
@@ -380,7 +379,6 @@ class TestSaveAnalysisWithLLMSegments:
         assert seg.llm_description == "Kids playing in park"
         assert seg.llm_emotion == "joyful"
         assert seg.llm_setting == "outdoor"
-        assert seg.llm_activities == ["running", "laughing"]
         assert seg.llm_subjects == ["child", "dog"]
         assert seg.llm_interestingness == pytest.approx(0.85)
         assert seg.llm_quality == pytest.approx(0.9)

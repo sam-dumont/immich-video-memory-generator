@@ -71,7 +71,6 @@ def row_to_segment(row: sqlite3.Row) -> CachedSegment:
         value = row[name] if name in keys else None
         return float(value) if value is not None else None
 
-    activities_raw = optional_str("llm_activities")
     subjects_raw = optional_str("llm_subjects")
     audio_categories_raw = optional_str("audio_categories")
 
@@ -93,7 +92,6 @@ def row_to_segment(row: sqlite3.Row) -> CachedSegment:
         llm_category=optional_str("llm_category"),
         llm_emotion=optional_str("llm_emotion"),
         llm_setting=optional_str("llm_setting"),
-        llm_activities=(json.loads(activities_raw) if activities_raw else None),
         llm_subjects=(json.loads(subjects_raw) if subjects_raw else None),
         llm_interestingness=optional_float("llm_interestingness"),
         llm_quality=optional_float("llm_quality"),

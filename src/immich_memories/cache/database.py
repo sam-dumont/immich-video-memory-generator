@@ -320,7 +320,7 @@ class VideoAnalysisCache:
             ("llm_description", "TEXT"),
             ("llm_emotion", "TEXT"),
             ("llm_setting", "TEXT"),
-            ("llm_activities", "TEXT"),  # JSON array
+            ("llm_activities", "TEXT"),  # JSON array; no longer written, never read
             ("llm_subjects", "TEXT"),  # JSON array
             ("llm_interestingness", "REAL"),
             ("llm_quality", "REAL"),
@@ -630,7 +630,6 @@ class VideoAnalysisCache:
     ) -> None:
         for i, segment in enumerate(segments):
             # Serialize list fields to JSON
-            activities = getattr(segment, "llm_activities", None)
             subjects = getattr(segment, "llm_subjects", None)
             audio_cats = getattr(segment, "audio_categories", None)
 
@@ -641,11 +640,11 @@ class VideoAnalysisCache:
                     face_score, motion_score, stability_score,
                     audio_score, total_score, face_positions,
                     llm_description, llm_category, llm_emotion, llm_setting,
-                    llm_activities, llm_subjects,
+                    llm_subjects,
                     llm_interestingness, llm_quality,
                     audio_categories,
                     transcript, transcript_language, transcript_confidence
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     asset_id,
@@ -662,7 +661,6 @@ class VideoAnalysisCache:
                     getattr(segment, "llm_category", None),
                     getattr(segment, "llm_emotion", None),
                     getattr(segment, "llm_setting", None),
-                    json.dumps(list(activities)) if activities else None,
                     json.dumps(list(subjects)) if subjects else None,
                     getattr(segment, "llm_interestingness", None),
                     getattr(segment, "llm_quality", None),

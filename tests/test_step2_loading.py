@@ -61,7 +61,6 @@ def test_load_surfaces_only_current_model_cached_analysis() -> None:
         llm_description="A child running into the sea",
         llm_emotion="excited",
         llm_setting="beach",
-        llm_activities=["running"],
         llm_subjects=["child"],
         llm_interestingness=0.9,
         llm_quality=0.86,
@@ -93,7 +92,6 @@ def test_load_surfaces_only_current_model_cached_analysis() -> None:
     assert current.llm_description == "A child running into the sea"
     assert current.llm_emotion == "excited"
     assert current.llm_setting == "beach"
-    assert current.llm_activities == ["running"]
     assert current.llm_subjects == ["child"]
     assert current.llm_interestingness == 0.9
     assert current.llm_quality == 0.86

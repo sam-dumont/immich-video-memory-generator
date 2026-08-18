@@ -107,7 +107,6 @@ class TestPerInvocationAnalysisModes:
             description="family at the beach",
             emotion="joy",
             setting="beach",
-            activities=["swimming"],
             subjects=["family"],
             interestingness=0.9,
             quality=0.9,
