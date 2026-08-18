@@ -68,6 +68,8 @@ jobs:
         run: make lint
       - name: Ruff format check
         run: make format-check
+      - name: CLI reference drift
+        run: make docs-cli-check
 
   typecheck:
     name: Type Check (mypy)

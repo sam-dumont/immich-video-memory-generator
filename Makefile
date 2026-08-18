@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast mutation benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
+.PHONY: help install dev dev-ci dev-test run preflight docs-cli-check test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast mutation benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
 
 # Default target
 help:
@@ -509,7 +509,7 @@ launch-check: check build build-check docs-check e2e
 	@echo "Launch readiness checks passed!"
 
 # Full CI-equivalent pipeline (locally)
-ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique test
+ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check test
 	@echo "Full CI pipeline passed!"
 
 # Self-critique for AI code smells
@@ -669,6 +669,16 @@ release:
 
 docs-cli:
 	uv run python scripts/generate_cli_docs.py
+
+# Fail when the committed CLI reference no longer matches the Click command tree
+docs-cli-check:
+	@uv run python scripts/generate_cli_docs.py >/dev/null && \
+	if ! git diff --quiet -- docs-site/docs/reference/cli-reference.md; then \
+		echo "cli-reference.md is stale — run 'make docs-cli' and commit the result"; \
+		git --no-pager diff --stat -- docs-site/docs/reference/cli-reference.md; \
+		exit 1; \
+	fi; \
+	echo "CLI reference is up to date"
 
 docs-install:
 	cd docs-site && npm ci
