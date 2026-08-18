@@ -22,7 +22,6 @@ complexipy_results_*.json
 .ipynb_checkpoints
 .junie/
 .kiro/
-.mutmut-cache/
 .mypy_cache/
 .nox/
 .pytest_cache/

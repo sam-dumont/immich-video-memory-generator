@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight docs-cli-check test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast mutation benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
+.PHONY: help install dev dev-ci dev-test run preflight docs-cli-check test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
 
 # Default target
 help:
@@ -279,10 +279,6 @@ diagrams:  ## Render architecture diagrams from Mermaid source files
 		npx --yes @mermaid-js/mermaid-cli -i "$$f" -o "docs-site/static/img/diagrams/$${name}-light.png" -w 800 -H 400 -b transparent -c docs-site/diagrams/mermaid-config-light.json 2>/dev/null; \
 	done
 	@echo "Diagrams saved to docs-site/static/img/diagrams/"
-
-mutation:  ## Run mutation testing (slow — weekly CI or local deep validation)
-	uv run mutmut run --max-children 4
-	uv run mutmut results
 
 test-cov:
 	uv run pytest --cov=src/immich_memories --cov-report=html --cov-report=term-missing

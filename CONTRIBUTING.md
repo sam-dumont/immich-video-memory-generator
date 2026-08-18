@@ -57,7 +57,6 @@ make test              # Unit tests
 make test-integration  # Real FFmpeg + integration tests (requires FFmpeg)
 make ci                # Full CI pipeline locally
 make critique          # AI smell audit
-make mutation          # Mutation testing (slow, weekly CI)
 ```
 
 ### Testing tiers
@@ -169,6 +168,10 @@ test: add integration test for HDR passthrough
 - **Questions**: [GitHub Discussions](https://github.com/sam-dumont/immich-video-memory-generator/discussions)
 - **Bugs**: [GitHub Issues](https://github.com/sam-dumont/immich-video-memory-generator/issues)
 - **Security**: See [SECURITY.md](SECURITY.md)
+
+This is a hobby project maintained in spare time: issues and PRs are answered on a best-effort
+basis, usually within a few days, sometimes longer. No SLA. If something is urgent for you, say
+so in the issue and include logs, it helps.
 
 ## License
 

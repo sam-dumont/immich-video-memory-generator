@@ -154,7 +154,6 @@ dev = [
     "import-linter>=2.0",
     "grimp>=3.0",
     "deptry>=0.20",
-    "mutmut>=2.0",
     "diff-cover>=9.0",
     "oidc-provider-mock>=0.3",
     # E2E browser tests
@@ -558,7 +557,6 @@ DEP002 = [
     "grimp",                                            # import-linter backend
     "refurb", "import-linter",                          # quality CLI tools
     "diff-cover", "deptry",                             # quality tools
-    "mutmut",                                           # mutation testing (CLI tool)
     "python-semantic-release",                          # CI release tool
     "types-PyYAML", "types-croniter",                   # mypy stubs
     "authlib",                                          # auth: used in upcoming OIDC client task
@@ -613,14 +611,6 @@ ignore = [
 ]
 # refurb sees src/ layout modules twice — only scan the package, not src/
 python_version = "3.11"
-
-[tool.mutmut]
-paths_to_mutate = ["src/immich_memories/"]
-pytest_add_cli_args_test_selection = ["tests/"]
-backup = false
-# Exclude modules that use C extensions (segfault risk during mutation):
-# taichi GPU kernels, face-recognition/dlib, PyAV frame blending
-dict_synonyms = ""
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
