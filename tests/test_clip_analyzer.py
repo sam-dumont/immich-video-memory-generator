@@ -58,6 +58,7 @@ def _make_cached_segment(
     end: float = 4.0,
     score: float = 0.75,
     llm_description: str | None = None,
+    llm_category: str | None = None,
     llm_emotion: str | None = None,
     llm_setting: str | None = None,
     llm_activities: list[str] | None = None,
@@ -72,6 +73,7 @@ def _make_cached_segment(
     seg.end_time = end
     seg.total_score = score
     seg.llm_description = llm_description
+    seg.llm_category = llm_category
     seg.llm_emotion = llm_emotion
     seg.llm_setting = llm_setting
     seg.llm_activities = llm_activities

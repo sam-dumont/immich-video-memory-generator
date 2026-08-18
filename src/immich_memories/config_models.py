@@ -233,6 +233,20 @@ class AnalysisConfig(BaseModel):
         le=1.0,
         description="Minimum duration (seconds) of quiet audio to count as a silence gap",
     )
+    subject_policy_enabled: bool = Field(
+        default=True,
+        description="Prefer clips of people; ration animals and exclude object-only clips",
+    )
+    max_animal_clips: int = Field(
+        default=2,
+        ge=0,
+        description="Maximum animal-only clips per video (0 disables them entirely)",
+    )
+    max_object_clips: int = Field(
+        default=0,
+        ge=0,
+        description="Maximum object-only clips per video (a lawnmower is not a memory)",
+    )
 
 
 class HardwareAccelConfig(BaseModel):

@@ -396,6 +396,8 @@ def run_pipeline_and_generate(
         thumbnail_cache=thumbnail_cache,
     )
 
+    all_candidates = _apply_subject_policy(all_candidates, config=config)
+
     # Phase 4: Unified selection (videos + photos compete together)
     phases.emit(OperationalPhase.SELECTION, 0, len(all_candidates), "Selecting clips")
     pipeline_result = pipeline.run_selection(all_candidates)
@@ -656,6 +658,20 @@ def _merge_photos_into_pool(
     )
 
     return analyzed_videos + photo_candidates
+
+
+def _apply_subject_policy(candidates: list, *, config: Config) -> list:
+    """Prefer clips of people, ration animals, drop object-only clips."""
+    if not config.analysis.subject_policy_enabled:
+        return candidates
+
+    from immich_memories.analysis.subject_policy import filter_candidates_by_subject
+
+    return filter_candidates_by_subject(
+        candidates,
+        max_animal=config.analysis.max_animal_clips,
+        max_object=config.analysis.max_object_clips,
+    )
 
 
 def _drop_photos_already_shown_as_motion(

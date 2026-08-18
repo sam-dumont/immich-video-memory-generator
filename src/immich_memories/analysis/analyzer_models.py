@@ -67,6 +67,7 @@ class ScoredSegment:
 
     # LLM analysis results (populated by content analyzer)
     llm_description: str | None = None
+    llm_category: str | None = None
     llm_emotion: str | None = None
     llm_setting: str | None = None
     llm_activities: list[str] | None = None

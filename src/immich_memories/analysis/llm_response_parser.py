@@ -23,11 +23,15 @@ _PROMPT_HEAD = """Describe what you see in this image."""
 
 _PROMPT_TAIL = """Return JSON with these fields:
 - description: What is happening in this scene?
+- category: What is this mainly of? Exactly one of: people, animal, landscape, object.
+  Use "people" if any person is visible, even partly. Use "landscape" only for a wide
+  outdoor view, never for a close-up of a thing. Use "object" for anything else.
+- subjects: What is in frame? (short lowercase nouns, e.g. ["child", "dog", "beach"])
 - emotion: What is the mood? (one word: happy, calm, excited, playful, joyful, peaceful)
 - interestingness: How memorable is this moment? (0.0 to 1.0)
 - quality: How good is the image quality? (0.0 to 1.0)
 
-Example format: {"description": "...", "emotion": "...", "interestingness": 0.7, "quality": 0.8}
+Example format: {"description": "...", "category": "people", "subjects": ["child", "sand"], "emotion": "...", "interestingness": 0.7, "quality": 0.8}
 
 JSON:"""
 
@@ -77,6 +81,7 @@ class ContentAnalysis:
     """Analysis results for video content."""
 
     description: str = ""
+    category: str = ""
     activities: list[str] = field(default_factory=list)
     subjects: list[str] = field(default_factory=list)
     setting: str = ""
@@ -374,6 +379,7 @@ class ContentAnalyzer:
         description = str(data.get("description", ""))[:MAX_STR]
         activities = [str(a)[:MAX_STR] for a in data.get("activities", [])[:MAX_LIST]]
         subjects = [str(s)[:MAX_STR] for s in data.get("subjects", [])[:MAX_LIST]]
+        category = str(data.get("category", ""))[:MAX_STR]
         setting = str(data.get("setting", ""))[:MAX_STR]
         emotion = emotion[:MAX_STR]
 
@@ -386,6 +392,7 @@ class ContentAnalyzer:
             description=description,
             activities=activities,
             subjects=subjects,
+            category=category,
             setting=setting,
             emotion=emotion,
             interestingness=interestingness,

@@ -396,6 +396,7 @@ class VideoClipInfo(BaseModel):
 
     # LLM Content Analysis results (populated during pipeline analysis)
     llm_description: str | None = None  # Brief description of what's happening
+    llm_category: str | None = None  # people | animal | landscape | object
     llm_emotion: str | None = None  # Detected emotional tone (happy, calm, excited, etc.)
     llm_setting: str | None = None  # Where it takes place (indoor, outdoor, beach, etc.)
     llm_activities: list[str] | None = None  # Activities detected

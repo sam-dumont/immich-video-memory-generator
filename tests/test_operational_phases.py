@@ -211,7 +211,16 @@ def test_analysis_continues_when_attempt_phase_write_fails(tmp_path: Path) -> No
             side_effect=sqlite3.OperationalError("database is busy"),
         ),
     ):
-        pipeline_type.return_value.run_analysis.return_value = [MagicMock()]
+        # WHY: selection now reads clip subject metadata, so an analysed
+        # candidate has to carry a real clip rather than a bare mock.
+        analysed = MagicMock()
+        analysed.clip.asset.id = "asset-1"
+        analysed.clip.asset.people = []
+        analysed.clip.llm_category = None
+        analysed.clip.llm_subjects = None
+        analysed.clip.llm_description = None
+        analysed.score = 0.5
+        pipeline_type.return_value.run_analysis.return_value = [analysed]
         pipeline_type.return_value.run_selection.return_value = result
         actual, _, _ = run_pipeline_and_generate(
             assets=[clip.asset],

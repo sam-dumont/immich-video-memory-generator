@@ -89,6 +89,7 @@ def row_to_segment(row: sqlite3.Row) -> CachedSegment:
         motion_vectors=(json.loads(row["motion_vectors"]) if row["motion_vectors"] else None),
         keyframe_path=row["keyframe_path"],
         llm_description=optional_str("llm_description"),
+        llm_category=optional_str("llm_category"),
         llm_emotion=optional_str("llm_emotion"),
         llm_setting=optional_str("llm_setting"),
         llm_activities=(json.loads(activities_raw) if activities_raw else None),

@@ -76,6 +76,46 @@ Live photos go through the same pipeline as videos after burst merging and are s
 
 **Favorite inheritance**: If ANY photo in a burst cluster is favorited, the entire merged live photo clip inherits the favorite flag.
 
+## What a Clip Is Of
+
+A memory is about the people in it. Scoring ranks clips on faces, motion, stability
+and cut quality, so a steady handheld pan across a lawn can outrank a shaky clip of
+a child — a real generation put a string trimmer in a family video that way.
+
+Every candidate is therefore categorised as **people**, **animal**, **landscape** or
+**object** before selection, using the most trustworthy signal available:
+
+1. **Immich face tags.** Face recognition has already run over your library. A clip
+   with a tagged person is people, no model call needed. This covers roughly half a
+   typical pool and works on already-cached clips.
+2. **The category the model picks.** Content analysis asks the VLM to choose one of
+   the four. This fills in as clips are analysed — existing cache entries keep
+   working through step 3 until they are re-analysed.
+3. **Keywords in the description**, for clips analysed before the model was ever
+   asked for a category.
+
+The quotas:
+
+| category | treatment |
+|---|---|
+| people | always eligible |
+| animal | best `max_animal_clips` only (default 2) |
+| object | best `max_object_clips` only (default 0 — excluded) |
+| landscape | must beat the median people-clip score |
+| unknown | always kept |
+
+Scenery is measured against the median people clip rather than a fixed number,
+because photo scores and video scores sit on different scales and one threshold
+would silently exclude a whole pool.
+
+A clip nobody has described yet is **kept**. On a real library 35–46% of the pool
+has no cached description, and treating that silence as "probably an object" would
+delete half the memory. If the quotas would empty the pool entirely — an all-scenery
+trip — the policy stands down and logs that it did. A shorter video is the goal; an
+empty one is a failure.
+
+Set `subject_policy_enabled: false` to turn the whole thing off.
+
 ## Selection Process: Unified Pool
 
 Videos, live photos, and regular photos all compete in a single selection pool. There are no separate pipelines — temporal dedup, duration scaling, and all caps apply to the combined pool.
