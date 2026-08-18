@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -120,11 +121,24 @@ def _get_duration_unchecked(path: Path) -> float:
         return 0.0
 
 
+def plan_loop_copies(*, audio_duration: float, target_duration: float, crossfade: float) -> int:
+    """How many copies of a track are needed to cover ``target_duration``.
+
+    Consecutive copies overlap by ``crossfade`` seconds, so each repeat adds
+    ``audio_duration - crossfade``, not the full track length.
+    """
+    if audio_duration >= target_duration:
+        return 1
+    # A crossfade cannot be longer than the track it joins.
+    effective = max(audio_duration - min(crossfade, audio_duration / 2), 0.01)
+    return max(2, math.ceil((target_duration - audio_duration) / effective) + 1)
+
+
 def loop_audio_to_duration(
     audio_path: Path,
     target_duration: float,
     output_path: Path | None = None,
-    _crossfade_seconds: float = 2.0,  # noqa: ARG001 - reserved for future use
+    crossfade_seconds: float = 2.0,
 ) -> Path:
     """Loop an audio file to reach target duration with crossfade.
 
@@ -166,24 +180,36 @@ def loop_audio_to_duration(
         subprocess.run(cmd, capture_output=True, check=True, timeout=600)
         return output_path
 
-    # Calculate how many loops we need
-    num_loops = int(target_duration / audio_duration) + 2
+    copies = plan_loop_copies(
+        audio_duration=audio_duration,
+        target_duration=target_duration,
+        crossfade=crossfade_seconds,
+    )
+    # A crossfade cannot be longer than half the track it joins on either side.
+    fade = min(crossfade_seconds, audio_duration / 2)
 
-    # Use FFmpeg's aloop filter for seamless looping
-    # Then apply crossfade between loops using acrossfade
-    filter_complex = (
-        f"[0:a]aloop=loop={num_loops}:size=2e9[looped];"
-        f"[looped]atrim=0:{target_duration}[trimmed];"
-        f"[trimmed]afade=t=in:st=0:d=1,afade=t=out:st={target_duration - 2}:d=2[out]"
+    # WHY: acrossfade joins two streams, so the track is opened once per copy and
+    # the copies are folded together pairwise. Without this the loop is a butt
+    # splice and every repeat clicks.
+    chain = []
+    previous = "0:a"
+    for index in range(1, copies):
+        label = f"x{index}"
+        chain.append(f"[{previous}][{index}:a]acrossfade=d={fade}:c1=tri:c2=tri[{label}]")
+        previous = label
+
+    fade_out_start = max(target_duration - 2, 0)
+    chain.append(
+        f"[{previous}]atrim=0:{target_duration},"
+        f"afade=t=in:st=0:d=1,afade=t=out:st={fade_out_start}:d=2[out]"
     )
 
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        str(audio_path),
+    cmd = ["ffmpeg", "-y"]
+    for _ in range(copies):
+        cmd += ["-i", str(audio_path)]
+    cmd += [
         "-filter_complex",
-        filter_complex,
+        ";".join(chain),
         "-map",
         "[out]",
         "-acodec",

@@ -193,6 +193,7 @@ tests/integration/
 ├── auth/         make test-integration-auth         (~10s, no external deps)
 ├── assembly/     make test-integration-assembly     (~1min, FFmpeg only)
 ├── audio/        make test-integration-audio        (~2min, demucs/acestep packages)
+├── audio_mixing/ make test-integration-audio-mixing (~5s, FFmpeg only, loop seams)
 ├── titles/       make test-integration-titles       (~30s, FFmpeg only, pixel tests)
 ├── photos/       make test-integration-photos       (~20s, FFmpeg only)
 ├── processing/   make test-integration-processing   (~15s, FFmpeg only)

@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight docs-cli-check test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
+.PHONY: help install dev dev-ci dev-test run preflight docs-cli-check test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
 
 # Default target
 help:
@@ -212,6 +212,11 @@ test-integration-auth:  ## Run ONLY auth integration tests (~10s, no external de
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/auth-coverage.xml --cov-fail-under=0 \
 		--junitxml=tests/auth-junit.xml
 
+test-integration-audio-mixing:  ## Run ONLY FFmpeg audio mixing tests (~5s, no ML models needed)
+	uv run pytest tests/integration/audio_mixing/ -v -s -m integration --log-cli-level=INFO --tb=short \
+		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/audio-mixing-coverage.xml --cov-fail-under=0 \
+		--junitxml=tests/audio-mixing-junit.xml
+
 test-integration-audio:  ## Run ONLY audio ML tests (~2min, needs demucs/acestep packages)
 	uv run pytest tests/integration/audio/ -v -s -m integration --log-cli-level=INFO --tb=short \
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/audio-coverage.xml --cov-fail-under=0 \
@@ -230,6 +235,7 @@ test-integration-processing:  ## Run ONLY processing probing/runner/filter tests
 test-integration:  ## Run ALL integration tests per-suite (requires FFmpeg/Immich), saves per-suite coverage XMLs
 	$(MAKE) test-integration-auth
 	$(MAKE) test-integration-assembly
+	$(MAKE) test-integration-audio-mixing
 	$(MAKE) test-integration-processing
 	$(MAKE) test-integration-titles
 	$(MAKE) test-integration-photos
@@ -467,6 +473,7 @@ integration-coverage-for-diff:  ## Run only the FFmpeg-only integration suites t
 	case "$$CHANGED" in *src/immich_memories/titles/*) SUITES="$$SUITES titles";; esac; \
 	case "$$CHANGED" in *src/immich_memories/processing/*) SUITES="$$SUITES processing assembly";; esac; \
 	case "$$CHANGED" in *src/immich_memories/photos/*) SUITES="$$SUITES photos";; esac; \
+	case "$$CHANGED" in *src/immich_memories/audio/*) SUITES="$$SUITES audio-mixing";; esac; \
 	case "$$CHANGED" in *src/immich_memories/generate*) SUITES="$$SUITES assembly";; esac; \
 	SUITES=$$(echo $$SUITES | tr ' ' '\n' | sort -u | tr '\n' ' '); \
 	if [ -z "$$(echo $$SUITES | tr -d ' ')" ]; then \
