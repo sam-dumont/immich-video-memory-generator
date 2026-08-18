@@ -109,7 +109,12 @@ def render_config_viewer() -> None:
 
     im_info_card(
         "Active config from ~/.immich-memories/config.yaml with env overrides. "
-        "API keys are redacted.",
+        "API keys are redacted."
+        + (
+            f" Preset '{config.preset}' is active and fills the knobs you have not set."
+            if config.preset
+            else ""
+        ),
         variant="info",
     )
 

@@ -22,6 +22,7 @@ from immich_memories.analysis.clip_scaler import ClipScaler
 from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
 from immich_memories.analysis.thumbnail_prefetch import ThumbnailPrefetcher
+from immich_memories.config_presets import resolve_analysis_depth
 
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
@@ -269,7 +270,11 @@ class SmartPipeline:
 
     def _analysis_candidates(self, eligible: list[VideoClipInfo]) -> list[VideoClipInfo]:
         """Resolve user-facing analysis depth into the concrete candidate set."""
-        requested_depth = self.config.analysis_depth
+        requested_depth = resolve_analysis_depth(
+            self.config.analysis_depth, self._app_config.preset
+        )
+        # The analyzer reads the same PipelineConfig, so the resolved depth has to land there.
+        self.config.analysis_depth = requested_depth
         if requested_depth == "thorough":
             logger.info("Thorough mode: analyzing all %d eligible clips", len(eligible))
             self._complete_passthrough_filter("Thorough", len(eligible))

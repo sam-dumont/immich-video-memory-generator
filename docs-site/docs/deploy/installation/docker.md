@@ -135,6 +135,7 @@ Inside Immich's own compose stack, `immich-server` listens on **2283** (every Im
 |----------|----------|-------------|
 | `IMMICH_URL` | Yes | Your Immich server URL |
 | `IMMICH_API_KEY` | Yes | Immich API key |
+| `IMMICH_MEMORIES_PRESET` | No | `fast` = CPU-only/NAS profile (1080p h264, fast encoder, static titles, no speech pass, favorites-first analysis). Explicit settings win. See the [NAS guide](../common-setups/nas-only.md#one-switch-preset-fast). |
 | `IMMICH_MEMORIES_OUTPUT__DIRECTORY` | Recommended | Set to `/app/output` so videos land in the mounted output directory (default is `~/Videos/Memories` inside the container). |
 | `IMMICH_MEMORIES_STORAGE_SECRET` | No | Session secret for the web UI. Auto-generated if not set. Set this explicitly to keep sessions across restarts. It does not make multiple replicas supported. |
 | `IMMICH_MEMORIES_LLM__BASE_URL` | No | LLM endpoint (any OpenAI-compatible API). On its own it does nothing for scoring — see the next row. |

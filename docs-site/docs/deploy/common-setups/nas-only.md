@@ -92,6 +92,22 @@ If Immich runs on the same Docker network, use the container name (`immich-serve
 - **GPU encoding**: NAS CPUs (Celeron, Atom, low-end Xeon) don't have usable GPU encoders. Encoding is CPU-only via libx264.
 - **Taichi GPU title renderer**: falls back to PIL. Title screens still look good, just without particle effects and animated globes.
 
+## One switch: `preset: fast`
+
+Add `IMMICH_MEMORIES_PRESET=fast` to the compose `environment:` (or `preset: fast` at the top of
+`config.yaml`) and the CPU-only profile is on: 1080p H.264 with the fast encoder preset and
+medium quality, static title backgrounds instead of animated ones, no per-clip speech analysis,
+photos capped at a quarter of the cut, and analysis depth `auto` running as `fast` (favorites
+first). Every value you set explicitly still wins, and the web UI's Step 3 shows a banner when
+the preset is active. `immich-memories --preset fast generate …` does the same for one CLI run.
+
+```yaml
+    environment:
+      IMMICH_URL: "${IMMICH_URL}"
+      IMMICH_API_KEY: "${IMMICH_API_KEY}"
+      IMMICH_MEMORIES_PRESET: "fast"
+```
+
 ## Performance expectations
 
 On a typical NAS CPU (Intel Celeron J4125, 4 cores, 2.0 GHz):

@@ -27,6 +27,30 @@ Unknown keys *inside* a section are silently ignored; unknown top-level keys and
 fail validation at startup.
 :::
 
+## Preset
+
+One top-level switch that fills several knobs at once. `fast` is the CPU-only / NAS profile.
+Anything you set yourself — a key in the file, an `IMMICH_MEMORIES_…` env var, a CLI flag, a
+choice in the web UI — wins over the preset, exactly like `clip_style`.
+
+```yaml
+preset: null                       # null | fast
+```
+
+`fast` sets, unless you set them yourself: `output.resolution: 1080p`, `output.codec: h264`,
+`output.quality: medium`, `hardware.encoder_preset: fast`, `speech.enabled: false` (no per-clip
+voice-activity pass), `title_screens.animated_background: false` (static title backgrounds),
+`photos.max_ratio: 0.25`; and an analysis depth of `auto` runs as `fast` (favorites first).
+The heavy optional features (LLM scoring, music generation, audio-content tagging, transcription)
+are already off by default and stay wherever you put them.
+
+Env: `IMMICH_MEMORIES_PRESET=fast`. One-off on the CLI: `immich-memories --preset fast generate …`
+(root option, before the subcommand). The settings page names the active preset; Step 3 defaults
+its resolution to the preset's and says so.
+
+Caveat: the settings page's "save" writes every value to `config.yaml`, after which they all count
+as "set by you" — remove the keys you want the preset to own again.
+
 ## Immich connection
 
 Immich Memories supports **Immich v2 and v3**. Automatic runtime detection is the default:

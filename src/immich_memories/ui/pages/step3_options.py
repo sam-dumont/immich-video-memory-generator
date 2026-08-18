@@ -37,6 +37,28 @@ def configured_output_format_label(config) -> str:
     return f"{container} ({codec_label})"
 
 
+_RESOLUTION_LABELS = {"4k": "4K", "1080p": "1080p", "720p": "720p"}
+
+
+def default_resolution_label(config) -> str:
+    """Match clips unless a preset pins the resolution (fast → 1080p on a NAS, not 4K)."""
+    if config is None or config.preset is None:
+        return "Auto (match clips)"
+    return _RESOLUTION_LABELS.get(config.output.resolution, "Auto (match clips)")
+
+
+def _render_preset_banner(config) -> None:
+    if config is None or config.preset != "fast":
+        return
+    im_info_card(
+        "Fast (NAS) preset is active: 1080p H.264 with the fast encoder preset, static "
+        "title backgrounds, no speech analysis, fewer photos, favorites-first analysis. "
+        "Set with `preset: fast` in config.yaml or IMMICH_MEMORIES_PRESET=fast; the choices "
+        "below still win for this run.",
+        variant="info",
+    )
+
+
 def _render_volume_slider(options: dict, width: str = "w-64") -> None:
     """Render a music volume slider."""
     with ui.row().classes("items-center gap-4 mt-2"):
@@ -127,7 +149,7 @@ def render_step3() -> None:
             "orientation": "Auto (detect from clips)",
             "scale_mode": "Smart Crop (keep faces)",
             "transition": "Smart (mix of fades & cuts)",
-            "resolution": "Auto (match clips)",
+            "resolution": default_resolution_label(config),
             "format": configured_format,
             "add_date": False,
             "music_source": "AI Generated" if musicgen_available else "None",
@@ -141,6 +163,7 @@ def render_step3() -> None:
     # Output Settings
     # ========================================================================
     im_section_header("Output Settings", icon="tune")
+    _render_preset_banner(config)
 
     with im_card() as card:
         card.classes("p-4")

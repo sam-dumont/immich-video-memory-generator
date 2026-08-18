@@ -14,7 +14,7 @@ import stat
 from pathlib import Path
 
 import yaml
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from immich_memories.config_models import (
@@ -41,6 +41,7 @@ from immich_memories.config_models import (
     UploadConfig,
 )
 from immich_memories.config_models_auth import AuthConfig
+from immich_memories.config_presets import PresetName, apply_preset
 from immich_memories.scheduling.models import SchedulerConfig
 
 # Tier 2 sections — grouped under `advanced:` in YAML, flat on Config at runtime.
@@ -129,6 +130,12 @@ class Config(BaseSettings):
         case_sensitive=False,
     )
 
+    preset: PresetName | None = Field(
+        default=None,
+        description="Named profile that fills several knobs at once (fast = CPU-only/NAS); "
+        "explicit values win",
+    )
+
     server: ServerConfig = Field(default_factory=ServerConfig)
     immich: ImmichConfig = Field(default_factory=ImmichConfig)
     defaults: DefaultsConfig = Field(default_factory=DefaultsConfig)
@@ -155,6 +162,11 @@ class Config(BaseSettings):
     auth: AuthConfig = Field(default_factory=AuthConfig)
     automation: AutomationConfig = Field(default_factory=AutomationConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
+
+    @model_validator(mode="after")
+    def _apply_preset(self) -> Config:
+        apply_preset(self)
+        return self
 
     @classmethod
     def from_yaml(cls, path: Path) -> Config:

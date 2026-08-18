@@ -48,8 +48,15 @@ def _warn_about_unauthenticated_external_bind(config: Config, host: str) -> None
 @click.group()
 @click.version_option(version=__version__)
 @click.option("--config", "-c", type=click.Path(), help="Path to config file")
+@click.option(
+    "--preset",
+    type=click.Choice(["fast"]),
+    default=None,
+    help="Config preset for this run: fast = CPU-only/NAS profile (1080p h264, fast encoder, "
+    "no speech analysis, static titles, fewer photos, favorites-first analysis)",
+)
 @click.pass_context
-def main(ctx: click.Context, config: str | None) -> None:
+def main(ctx: click.Context, config: str | None, preset: str | None) -> None:
     """Immich Memories - Create video compilations from your Immich library."""
     ctx.ensure_object(dict)
 
@@ -77,6 +84,11 @@ def main(ctx: click.Context, config: str | None) -> None:
         else:
             ctx.obj["config"] = get_config()
             ctx.obj["config_path"] = None
+        if preset:
+            from immich_memories.config_presets import apply_preset
+
+            ctx.obj["config"].preset = preset
+            apply_preset(ctx.obj["config"])
     except ValidationError as e:
         print_error(format_validation_error(e))
         sys.exit(1)

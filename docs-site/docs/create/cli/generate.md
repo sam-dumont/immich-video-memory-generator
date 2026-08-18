@@ -58,11 +58,19 @@ tier. `--quality` changes the effective CRF preset; an explicit `output.crf` in 
 more precise control. The app passes it directly to software H.264/H.265 and translates it for
 Apple VideoToolbox; other hardware backends retain their existing quality policies.
 
+### Preset (root option)
+
+`--preset fast` is a root option — it goes before `generate`: `immich-memories --preset fast generate --month 6`.
+It applies the CPU-only/NAS profile for this run (1080p H.264, fast encoder, medium quality,
+static title backgrounds, no speech pass, photos ≤25 %, favorites-first analysis) to every knob you
+have not set explicitly; the flags below still win. Persistent form: `preset: fast` in
+`config.yaml` or `IMMICH_MEMORIES_PRESET=fast` — see the [config reference](../../reference/config-reference.md#preset).
+
 ### Analysis
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--analysis-depth` | — | choice | `auto` | `auto` (all manageable cache misses, shortlist large pools), `fast` (favorites first), or `thorough` (every eligible clip) |
+| `--analysis-depth` | — | choice | `auto` | `auto` (all manageable cache misses, shortlist large pools), `fast` (favorites first), or `thorough` (every eligible clip). Under `preset: fast`, `auto` runs as `fast` |
 | `--include-photos` | — | flag | — | Include photos alongside videos |
 | `--photo-duration` | — | float | `4.0` | Seconds per photo clip (use with `--include-photos`) |
 

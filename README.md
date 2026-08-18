@@ -60,7 +60,10 @@ analysis results are cached, so the first run of a library is the slow one.
 | Encoding 4K | 6-8GB | 4+ cores | ~5 min per 5 min of output | not recommended |
 
 Default Docker limits: 4GB RAM, 4 CPUs. A monthly memory (~30 clips) is a coffee break on a
-Mac or GPU box and up to an hour on a NAS; a full year is an overnight job on a NAS. See the
+Mac or GPU box and up to an hour on a NAS; a full year is an overnight job on a NAS. On a
+CPU-only box set `IMMICH_MEMORIES_PRESET=fast` (or `preset: fast` in config.yaml): 1080p H.264,
+fast encoder, static titles, no speech pass, favorites-first analysis — one switch, explicit
+settings still win. See the
 [NAS-only guide](https://sam-dumont.github.io/immich-video-memory-generator/docs/deploy/common-setups/nas-only)
 for a Celeron-class table and the settings that keep it usable.
 
