@@ -155,6 +155,17 @@ inference dependencies:
 
 ```bash
 uv sync --extra demucs
+make install-acestep
+```
+
+`make install-acestep` runs the pinned commands below and then imports the backend to
+prove the install actually works — a mismatched `torchvision` fails only at model load,
+several minutes into a generation, with `operator torchvision::nms does not exist`.
+
+<details>
+<summary>What the target runs</summary>
+
+```bash
 uv pip install --python .venv/bin/python --no-deps \
   'ace-step @ git+https://github.com/ace-step/ACE-Step-1.5.git@v0.1.8'
 uv pip install --python .venv/bin/python \
@@ -165,10 +176,15 @@ uv pip install --python .venv/bin/python \
   'vector-quantize-pytorch>=1.27.15'
 ```
 
+</details>
+
 The command above is the tested Apple Silicon inference installation; it deliberately does not
 install ACE-Step's Gradio UI. CUDA hosts should use the pinned v0.1.8 release with the appropriate
-PyTorch wheels. `uv sync --inexact` preserves this manual installation. An exact `uv sync` removes
-packages not declared by this project, so rerun the ACE-Step commands afterward.
+PyTorch wheels. :::note Quality gates remove this install
+`make ci`, `make check` and friends run an exact `uv sync`, which deletes packages this
+project does not declare — ACE-Step among them. Rerun `make install-acestep` afterwards
+to get music generation back; it is fast once the wheels are cached.
+:::
 
 ### Memory on Apple Silicon
 

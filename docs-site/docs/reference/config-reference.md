@@ -93,6 +93,7 @@ analysis:
 
   # Duplicate detection
   duplicate_hash_threshold: 8    # Perceptual hash threshold (0-64)
+  min_source_short_side: 1080    # Drop smaller clips unless they carry camera EXIF
   subject_policy_enabled: true   # Prefer clips of people over things
   max_animal_ratio: 0.10         # Share of the video that may be animal clips
   max_object_ratio: 0.05         # Share that may be object clips (must also score well)

@@ -330,8 +330,9 @@ def test_v13_delivery_migration_keeps_v12_analysis_cache_current(
             (asset.id,),
         ).fetchone()[0]
     assert schema_version == 13
-    assert cache_database.ANALYSIS_VERSION == 12
-    assert analysis_version == 12
+    # The claim is that a delivery-only schema migration leaves the analysis
+    # generation alone -- not that it happens to be any particular number.
+    assert analysis_version == cache_database.ANALYSIS_VERSION
     assert migrated_cache.needs_reanalysis(asset, max_age_days=365) is False
 
 

@@ -222,6 +222,8 @@ def test_analysis_continues_when_attempt_phase_write_fails(tmp_path: Path) -> No
         analysed.score = 0.5
         analysed.start_time = 0.0
         analysed.end_time = 4.0
+        analysed.clip.width = 3840
+        analysed.clip.height = 2160
         pipeline_type.return_value.run_analysis.return_value = [analysed]
         pipeline_type.return_value.run_selection.return_value = result
         actual, _, _ = run_pipeline_and_generate(

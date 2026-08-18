@@ -233,6 +233,14 @@ class AnalysisConfig(BaseModel):
         le=1.0,
         description="Minimum duration (seconds) of quiet audio to count as a silence gap",
     )
+    min_source_short_side: int = Field(
+        default=1080,
+        ge=0,
+        description=(
+            "Clips below this short side are dropped unless they carry camera EXIF, "
+            "which is how messaging re-encodes are told from genuinely old footage"
+        ),
+    )
     subject_policy_enabled: bool = Field(
         default=True,
         description="Prefer clips of people; ration animals and exclude object-only clips",

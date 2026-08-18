@@ -76,23 +76,37 @@ Live photos go through the same pipeline as videos after burst merging and are s
 
 **Favorite inheritance**: If ANY photo in a burst cluster is favorited, the entire merged live photo clip inherits the favorite flag.
 
+## Source Quality
+
+Messaging apps re-encode video to a few hundred pixels and strip the camera EXIF on
+the way through. A clip whose short side is under `min_source_short_side` (default
+1080) is dropped **unless it carries a camera make or model**, which is what
+separates a WhatsApp forward from genuinely old footage that was always small.
+
+Measured on a 111-clip June pool: all 17 sub-1080p candidates had no camera EXIF
+whatsoever, and all 89 with camera EXIF were 1080p or better.
+
 ## What a Clip Is Of
 
 A memory is about the people in it. Scoring ranks clips on faces, motion, stability
 and cut quality, so a steady handheld pan across a lawn can outrank a shaky clip of
 a child — a real generation put a string trimmer in a family video that way.
 
-Every candidate is therefore categorised as **people**, **animal**, **landscape** or
-**object** before selection, using the most trustworthy signal available:
+Every candidate is therefore categorised as **people**, **animal**, **landscape**,
+**object** or **screen** before selection, from two signals only:
 
 1. **Immich face tags.** Face recognition has already run over your library. A clip
-   with a tagged person is people, no model call needed. This covers roughly half a
-   typical pool and works on already-cached clips.
-2. **The category the model picks.** Content analysis asks the VLM to choose one of
-   the four. This fills in as clips are analysed — existing cache entries keep
-   working through step 3 until they are re-analysed.
-3. **Keywords in the description**, for clips analysed before the model was ever
-   asked for a category.
+   with a tagged person is people, no model call needed — this covers roughly half a
+   typical pool.
+2. **The category the model picks**, from that closed set, as part of content
+   analysis.
+
+Nothing else decides. An earlier version matched keywords in the model's written
+description and it was wrong in every interesting case: a treadmill and a
+driver's-eye road view became "landscape" because both descriptions said *close-up
+view*; a tray of animal figurines became "animal"; a smartwatch demo became "people"
+because a person was wearing the watch. Prose is not a label. A clip the model has
+not labelled is **unknown**, and unknown is kept.
 
 The quotas:
 
@@ -101,6 +115,7 @@ The quotas:
 | people | always eligible |
 | animal | up to `max_animal_ratio` of the video (default 10%) |
 | object | up to `max_object_ratio` (default 5%) **and** must beat the median people clip |
+| screen | never — a screenshot, a phone or watch display, or a document is not a memory |
 | landscape | must beat the median people-clip score |
 | unknown | always kept |
 

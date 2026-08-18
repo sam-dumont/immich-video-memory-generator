@@ -5,17 +5,20 @@ animals are a garnish, and a clip of a lawnmower is not a memory. Selection
 scored clips on faces, motion and stability alone, so a steady handheld pan
 across a lawn outranked a shaky clip of a child.
 
-The policy acts only on evidence. A clip nobody has described yet is kept, not
-rationed -- on a real library 35-46% of the pool has no cached description, and
+The policy acts only on evidence, and the evidence is a label, never prose.
+Keyword matching over the model's description was tried and measured: it called
+a treadmill and a driver's-eye road view "landscape" because both descriptions
+said "close-up view", a tray of animal figurines "animal", and a smartwatch
+demo "people" because a person was holding the watch. The model is now asked
+for the category outright. A clip it has not labelled is unknown, and unknown
+is kept -- on a real library a third of the pool has no analysis yet, and
 treating that silence as "probably an object" would delete half the memory.
 """
 
 from __future__ import annotations
 
 import logging
-import re
 import statistics
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -29,142 +32,28 @@ class SubjectCategory(Enum):
     ANIMAL = "animal"
     LANDSCAPE = "landscape"
     OBJECT = "object"
+    SCREEN = "screen"
     UNKNOWN = "unknown"
-
-
-_PEOPLE_TERMS = frozenset(
-    {
-        "person",
-        "people",
-        "man",
-        "men",
-        "woman",
-        "women",
-        "child",
-        "children",
-        "kid",
-        "kids",
-        "baby",
-        "babies",
-        "toddler",
-        "boy",
-        "boys",
-        "girl",
-        "girls",
-        "family",
-        "adult",
-        "adults",
-        "couple",
-        "crowd",
-        "group",
-        "someone",
-        "father",
-        "mother",
-        "dad",
-        "mom",
-        "parent",
-        "parents",
-        "friends",
-    }
-)
-
-_ANIMAL_TERMS = frozenset(
-    {
-        "dog",
-        "dogs",
-        "puppy",
-        "cat",
-        "cats",
-        "kitten",
-        "kittens",
-        "animal",
-        "animals",
-        "pet",
-        "pets",
-        "bird",
-        "birds",
-        "horse",
-        "horses",
-        "cow",
-        "cows",
-        "sheep",
-        "duck",
-        "ducks",
-        "chicken",
-        "rabbit",
-        "fish",
-        "goat",
-    }
-)
-
-# Deliberately narrow, and narrowed further by measurement. "view" and "field"
-# were dropped after they classified a treadmill, a bike hub and an office
-# renovation as scenery -- each of those descriptions said "close-up view".
-# A term earns its place only if it cannot also describe an object in a room.
-_LANDSCAPE_TERMS = frozenset(
-    {
-        "landscape",
-        "scenery",
-        "vista",
-        "panorama",
-        "horizon",
-        "skyline",
-        "sunset",
-        "sunrise",
-        "mountain",
-        "mountains",
-        "valley",
-        "countryside",
-        "sea",
-        "ocean",
-        "lake",
-        "river",
-        "waterfall",
-        "forest",
-        "beach",
-        "cliff",
-        "cliffs",
-        "meadow",
-        "shoreline",
-    }
-)
 
 
 def classify_subject(
     *,
     tagged_people: int,
     category: str | None = None,
-    subjects: Sequence[str] | None = None,
     description: str | None = None,
 ) -> SubjectCategory:
-    """Categorise a clip, most trustworthy signal first.
+    """Categorise a clip from Immich face tags and the model's own label.
 
-    1. Immich face tags. Face recognition has already run across the library, so
-       a tagged clip needs no model call and no guessing.
-    2. The category the VLM was asked to pick from a closed set.
-    3. Keywords in the VLM's prose, for the segments cached before the model was
-       ever asked for a category.
-
-    People win over anything else in frame -- a child chasing a dog is a memory
-    about the child.
+    Face tags settle it outright -- face recognition has already run across the
+    library, so a tagged clip needs no model call. Otherwise the answer is
+    whichever category the model was asked to choose, and nothing else. The
+    description is accepted so callers can pass what they have, and is
+    deliberately ignored; the module docstring records what happened when it
+    was trusted.
     """
     if tagged_people > 0:
         return SubjectCategory.PEOPLE
-
-    stated = _stated_category(category)
-    if stated is not None:
-        return stated
-
-    words = _words(subjects, description)
-    if not words:
-        return SubjectCategory.UNKNOWN
-    if words & _PEOPLE_TERMS:
-        return SubjectCategory.PEOPLE
-    if words & _ANIMAL_TERMS:
-        return SubjectCategory.ANIMAL
-    if words & _LANDSCAPE_TERMS:
-        return SubjectCategory.LANDSCAPE
-    return SubjectCategory.OBJECT
+    return _stated_category(category) or SubjectCategory.UNKNOWN
 
 
 def _stated_category(category: str | None) -> SubjectCategory | None:
@@ -176,12 +65,6 @@ def _stated_category(category: str | None) -> SubjectCategory | None:
     except ValueError:
         return None
     return None if stated is SubjectCategory.UNKNOWN else stated
-
-
-def _words(subjects: Sequence[str] | None, description: str | None) -> set[str]:
-    """Lowercased word set over the VLM's structured subjects and its prose."""
-    blob = " ".join([*(subjects or []), description or ""])
-    return set(re.findall(r"[a-z]+", blob.lower()))
 
 
 @dataclass(frozen=True)
@@ -270,6 +153,8 @@ def _survivors(
     def clears(candidate: SubjectCandidate) -> bool:
         return candidate.score >= bars.get(candidate.scale, 0.0)
 
+    if category is SubjectCategory.SCREEN:
+        return []
     if category is SubjectCategory.OBJECT:
         return _top([c for c in members if clears(c)], max_object)
     if category is SubjectCategory.LANDSCAPE:
@@ -346,8 +231,6 @@ def filter_candidates_by_subject(
             category=classify_subject(
                 tagged_people=len(candidate.clip.asset.people or []),
                 category=candidate.clip.llm_category,
-                subjects=candidate.clip.llm_subjects,
-                description=candidate.clip.llm_description,
             ),
             score=candidate.score,
             scale="photo" if candidate.clip.asset.id in photos else "motion",
