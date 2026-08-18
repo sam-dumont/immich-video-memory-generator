@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from contextlib import suppress
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -23,6 +24,16 @@ from immich_memories.audio.generators.base import GenerationRequest
 # ---------------------------------------------------------------------------
 # _detect_season
 # ---------------------------------------------------------------------------
+
+
+# WHY: several tests below swap a fake "mlx"/"mlx.core" into sys.modules. Metal
+# initialises once per process, so if the real extension is first imported *after*
+# one of those fakes has been installed and removed, the re-import aborts the whole
+# pytest run (SIGABRT) instead of failing a test. Loading it up front, before any
+# patching, keeps the real module object in sys.modules for the fakes to shadow and
+# restore. No-op when MLX is not installed, which is the case in CI.
+with suppress(ImportError):
+    import mlx.core  # noqa: F401
 
 
 class TestDetectSeason:
@@ -541,6 +552,11 @@ class TestACEStepBackendV15Library:
     ):
         captured = {}
         modules, _ = self._fake_v15_modules(tmp_path, captured)
+        # WHY: _init_pipeline calls _bound_mlx_memory, which imports mlx.core. With
+        # ACE-Step actually installed that pulls in the real Metal runtime and aborts
+        # the pytest process; the sibling tests in this class fake it for the same
+        # reason. This test asserts generation wiring, not GPU behaviour.
+        modules.update(self._fake_mlx_modules(captured))
         checkpoint_root = tmp_path / "checkpoints"
         backend = ACEStepBackend(ACEStepConfig(mode="lib", model_variant=variant, use_lm=False))
         backend._effective_mode = "lib"
