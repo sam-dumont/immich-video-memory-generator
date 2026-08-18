@@ -237,6 +237,32 @@ def _resolve_backfill_candidates(
     if exact:
         return _BackfillCandidates(exact, active_photo_limit)
 
+    # The photo ratio is spent last. It used to be the first constraint relaxed,
+    # so any shortage of runtime was answered with more stills: a real June video
+    # finished with 7 photos out of 13 clips against a cap that had just been
+    # computed as 4. Loosening who appears (non-favorites) or when (a nearby
+    # moment) changes the edit far less than turning a video into a slideshow.
+    relaxed_favorites = _admissible_backfill_candidates(
+        available,
+        context=context,
+        photo_limit=active_photo_limit,
+        remaining_budget=remaining_budget,
+        enforce_favorite_ratio=False,
+    )
+    if relaxed_favorites:
+        return _BackfillCandidates(relaxed_favorites, active_photo_limit, "favorite_ratio")
+
+    relaxed_temporal = _admissible_backfill_candidates(
+        available,
+        context=context,
+        photo_limit=active_photo_limit,
+        remaining_budget=remaining_budget,
+        enforce_favorite_ratio=False,
+        enforce_temporal_spacing=False,
+    )
+    if relaxed_temporal:
+        return _BackfillCandidates(relaxed_temporal, active_photo_limit, "temporal_spacing")
+
     relaxed_photo_limit = active_photo_limit
     if active_photo_limit is not None and active_photo_limit < 0.70:
         relaxed_photo_limit = 0.70
@@ -245,30 +271,11 @@ def _resolve_backfill_candidates(
             context=context,
             photo_limit=relaxed_photo_limit,
             remaining_budget=remaining_budget,
+            enforce_favorite_ratio=False,
+            enforce_temporal_spacing=False,
         )
         if relaxed_photos:
             return _BackfillCandidates(relaxed_photos, relaxed_photo_limit, "photo_ratio_70")
-
-    relaxed_favorites = _admissible_backfill_candidates(
-        available,
-        context=context,
-        photo_limit=relaxed_photo_limit,
-        remaining_budget=remaining_budget,
-        enforce_favorite_ratio=False,
-    )
-    if relaxed_favorites:
-        return _BackfillCandidates(relaxed_favorites, relaxed_photo_limit, "favorite_ratio")
-
-    relaxed_temporal = _admissible_backfill_candidates(
-        available,
-        context=context,
-        photo_limit=relaxed_photo_limit,
-        remaining_budget=remaining_budget,
-        enforce_favorite_ratio=False,
-        enforce_temporal_spacing=False,
-    )
-    if relaxed_temporal:
-        return _BackfillCandidates(relaxed_temporal, relaxed_photo_limit, "temporal_spacing")
 
     if relaxed_photo_limit is not None:
         unlimited_photos = _admissible_backfill_candidates(
