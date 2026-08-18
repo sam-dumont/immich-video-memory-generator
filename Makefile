@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast mutation benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
+.PHONY: help install dev dev-ci dev-test run preflight test test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-titles test-fast mutation benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
 
 # Default target
 help:
@@ -448,9 +448,28 @@ diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merg
 		echo "   tests/test_ffmpeg_pipe.py for the pattern." && \
 		exit 1)
 
-# Diff coverage for PRs — merges CI unit coverage with local integration coverage.
-# If coverage is low, run `make test-integration` locally and commit the updated
-# per-suite coverage XMLs (tests/*-coverage.xml) before pushing.
+integration-coverage-for-diff:  ## Run only the FFmpeg-only integration suites the diff touches (used by CI before diff-cover)
+	@CHANGED=$$(git diff --name-only origin/main...HEAD -- 'src/immich_memories/**/*.py' 2>/dev/null); \
+	SUITES=""; \
+	case "$$CHANGED" in *src/immich_memories/titles/*) SUITES="$$SUITES titles";; esac; \
+	case "$$CHANGED" in *src/immich_memories/processing/*) SUITES="$$SUITES processing assembly";; esac; \
+	case "$$CHANGED" in *src/immich_memories/photos/*) SUITES="$$SUITES photos";; esac; \
+	case "$$CHANGED" in *src/immich_memories/generate*) SUITES="$$SUITES assembly";; esac; \
+	SUITES=$$(echo $$SUITES | tr ' ' '\n' | sort -u | tr '\n' ' '); \
+	if [ -z "$$(echo $$SUITES | tr -d ' ')" ]; then \
+		echo "No FFmpeg-reachable source changed -- skipping integration coverage."; \
+	else \
+		echo "Changed source touches: $$SUITES"; \
+		for s in $$SUITES; do \
+			echo "Running integration suite: $$s"; \
+			$(MAKE) test-integration-$$s || exit 1; \
+		done; \
+	fi
+
+# Diff coverage for PRs. CI runs integration-coverage-for-diff first, so the
+# FFmpeg-only suites covering the changed paths have written their XMLs here.
+# tests/*-coverage.xml is gitignored and can never arrive from a contributor's
+# machine, which is why CI produces it rather than asking them to commit it.
 diff-cover-ci:
 	@SRC_CHANGED=$$(git diff --numstat origin/main...HEAD -- '*.py' 2>/dev/null | grep '^' | grep -v 'tests/' | awk '{s+=$$1+$$2} END {print s+0}'); \
 	echo "Changed source lines (excl tests): $${SRC_CHANGED}"; \
