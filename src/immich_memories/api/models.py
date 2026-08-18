@@ -389,6 +389,7 @@ class VideoClipInfo(BaseModel):
     live_burst_video_ids: list[str] | None = None
     live_burst_trim_points: list[tuple[float, float]] | None = None
     live_burst_shutter_timestamps: list[float] | None = None  # epoch seconds per clip
+    live_burst_still_ids: list[str] | None = None  # still assets merged into this clip
 
     # Audio categories detected (populated during pipeline analysis)
     audio_categories: list[str] | None = None  # e.g. ["laughter", "speech", "engine"]

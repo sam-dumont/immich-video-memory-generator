@@ -298,6 +298,9 @@ test-watch:
 	uv run pytest-watch -- -v
 
 # Run specific test file
+test-one:  ## Run one test file or node id: make test-one T=tests/test_foo.py
+	uv run pytest $(T) -v
+
 test-cache:
 	uv run pytest tests/test_cache.py -v
 

@@ -206,6 +206,7 @@ def fetch_live_photo_clips(
             live_burst_video_ids=burst_ids,
             live_burst_trim_points=burst_trims,
             live_burst_shutter_timestamps=burst_shutters,
+            live_burst_still_ids=[a.id for a in cluster.assets],
         )
         if cluster.is_favorite:
             clip.asset.is_favorite = True

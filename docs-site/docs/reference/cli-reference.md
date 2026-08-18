@@ -243,8 +243,8 @@ immich-memories generate [OPTIONS]
 | `--privacy-mode` | boolean | false | Blur faces and mute speech |
 | `--title` | text | - | Override video title text |
 | `--subtitle` | text | - | Override video subtitle text |
-| `--include-live-photos` | boolean | false | Include Live Photo video clips (3s iPhone clips, merged when burst-captured) |
-| `--include-photos` | boolean | false | Include photos as animated Ken Burns clips (blur background, face-aware pan) |
+| `--include-live-photos` | boolean | - | Include Live Photo video clips (3s iPhone clips, merged when burst-captured) |
+| `--include-photos` | boolean | - | Include photos as animated Ken Burns clips (blur background, face-aware pan) |
 | `--photo-duration` | float | - | Duration per photo clip in seconds (default: 4.0) |
 | `--analysis-depth` | choice: `auto` \| `fast` \| `thorough` | - | Analysis depth: auto (full analysis for manageable pools), fast (favorites first), or thorough (every eligible clip) |
 | `--trip-index` | integer | - | Select a specific trip by index (use with --memory-type trip) |
