@@ -799,15 +799,8 @@ class TestACEStepConfig:
         assert config.model_variant == "turbo"
         assert config.lm_model_size == "1.7B"
         assert config.use_lm
-        assert config.bf16
         assert config.num_versions == 3
         assert config.timeout_seconds == 3600
-
-    def test_pascal_gpu_config(self):
-        """Config for Pascal GPUs should disable bf16."""
-        config = ACEStepConfig(bf16=False, lm_model_size="0.6B")
-        assert not config.bf16
-        assert config.lm_model_size == "0.6B"
 
     def test_low_memory_config(self):
         """Config for low memory should disable LM."""
@@ -1031,17 +1024,12 @@ class TestConfigIntegration:
         assert config.ace_step.mode == "api"
         assert config.ace_step.model_variant == "turbo"
 
-    def test_music_source_accepts_ace_step(self):
+    def test_old_music_source_key_is_ignored(self):
+        """Pre-0.41 YAML still loads: `audio.music_source` was removed, not renamed."""
         from immich_memories.config import AudioConfig
 
-        audio = AudioConfig(music_source="ace_step")
-        assert audio.music_source == "ace_step"
-
-    def test_music_source_still_accepts_musicgen(self):
-        from immich_memories.config import AudioConfig
-
-        audio = AudioConfig(music_source="musicgen")
-        assert audio.music_source == "musicgen"
+        audio = AudioConfig(music_source="ace_step", local_music_dir="~/Music/x")
+        assert audio.local_music_dir == "~/Music/x"
 
     def test_ace_step_env_vars(self):
         """ACE-Step config should support env var overrides."""

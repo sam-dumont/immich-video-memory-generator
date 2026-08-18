@@ -86,11 +86,11 @@ class TestCLIConfigErrorIntegration:
         from immich_memories.cli import main
 
         bad_config = tmp_path / "bad.yaml"
-        bad_config.write_text("defaults:\n  target_duration_seconds: -999\n")
+        bad_config.write_text("defaults:\n  transition_duration: -999\n")
 
         runner = CliRunner()
         with patch("immich_memories.cli.init_config_dir"):
             result = runner.invoke(main, ["-c", str(bad_config), "config", "--help"])
 
         assert result.exit_code != 0
-        assert "target_duration_seconds" in result.output or "Configuration error" in result.output
+        assert "transition_duration" in result.output or "Configuration error" in result.output

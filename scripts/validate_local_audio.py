@@ -46,14 +46,12 @@ def build_acestep_config(quality: str) -> ACEStepConfig:
             model_variant="acestep-v15-xl-turbo",
             lm_model_size="4B",
             use_lm=True,
-            bf16=True,
         )
     return ACEStepConfig(
         mode="lib",
         model_variant="turbo",
         lm_model_size="0.6B",
         use_lm=True,
-        bf16=True,
     )
 
 

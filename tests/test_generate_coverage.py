@@ -2393,3 +2393,36 @@ class TestMusicConfigAvailable:
         config.ace_step = None
         config.musicgen = None
         assert music_config_available(config) is False
+
+
+class TestTitleStyleSwitchesReachTheRenderer:
+    """title_screens.animated_background / show_decorative_lines must travel app config → renderer."""
+
+    def test_settings_carry_style_switches(self):
+        config = Config()
+        config.title_screens.animated_background = False
+        config.title_screens.show_decorative_lines = True
+        params = GenerationParams(clips=[], output_path=Path("/tmp/o.mp4"), config=config)
+        result = _build_title_settings(params, config, [])
+        assert result is not None
+        assert result.animated_background is False
+        assert result.show_decorative_lines is True
+
+    def test_title_config_honors_settings(self):
+        from unittest.mock import MagicMock
+
+        from immich_memories.processing.title_inserter import TitleInserter
+
+        # WHY: mock prober — it probes video files via FFmpeg subprocess
+        inserter = TitleInserter(settings=MagicMock(), prober=MagicMock())
+        config = Config()
+        config.title_screens.animated_background = False
+        config.title_screens.show_decorative_lines = True
+        params = GenerationParams(clips=[], output_path=Path("/tmp/o.mp4"), config=config)
+        settings = _build_title_settings(params, config, [])
+        assert settings is not None
+        title_config = inserter._build_title_config(
+            title_settings=settings, target_w=1920, target_h=1080, fps=30
+        )
+        assert title_config.animated_background is False
+        assert title_config.show_decorative_lines is True

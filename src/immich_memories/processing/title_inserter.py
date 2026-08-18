@@ -185,6 +185,8 @@ class TitleInserter:
             style_mode=title_settings.style_mode,
             show_month_dividers=title_settings.show_month_dividers,
             month_divider_threshold=title_settings.month_divider_threshold,
+            animated_background=title_settings.animated_background,
+            show_decorative_lines=title_settings.show_decorative_lines,
             orientation=orientation,
             resolution=resolution_tier,
             resolution_width=target_w,

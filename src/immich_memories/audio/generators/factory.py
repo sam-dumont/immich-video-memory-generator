@@ -84,7 +84,6 @@ def _app_config_to_ace_step(app_config) -> Any:
         "num_versions",
         "hemisphere",
         "timeout_seconds",
-        "bf16",
     ):
         if hasattr(app_config, field_name):
             kwargs[field_name] = getattr(app_config, field_name)

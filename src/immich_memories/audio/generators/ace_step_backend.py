@@ -199,7 +199,6 @@ class ACEStepConfig:
     num_versions: int = 3
     hemisphere: str = "north"
     timeout_seconds: int = 3600  # 1 hour (local gen can be slow)
-    bf16: bool = True
     extra_args: dict[str, Any] = field(default_factory=dict)
 
 

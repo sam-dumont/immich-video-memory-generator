@@ -107,13 +107,12 @@ class TestACEStepConfig:
         assert cfg.api_url == "http://localhost:8000"
         assert cfg.model_variant == "turbo"
         assert cfg.timeout_seconds == 3600
-        assert cfg.bf16 is True
 
     def test_custom_config(self):
-        cfg = ACEStepConfig(mode="api", api_url="http://remote:9000", bf16=False)
+        cfg = ACEStepConfig(mode="api", api_url="http://remote:9000", lm_model_size="0.6B")
         assert cfg.mode == "api"
         assert cfg.api_url == "http://remote:9000"
-        assert cfg.bf16 is False
+        assert cfg.lm_model_size == "0.6B"
 
 
 # ---------------------------------------------------------------------------

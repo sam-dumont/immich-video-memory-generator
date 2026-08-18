@@ -257,23 +257,9 @@ class TestBackgroundGeneration:
 class TestTitleConfigDefaults:
     """Verify TitleScreenConfig defaults are cinematic."""
 
-    def test_avoid_dark_colors_is_false(self):
-        """Config should NOT avoid dark colors (dark is the new default)."""
-        from immich_memories.titles.generator import TitleScreenConfig
-
-        config = TitleScreenConfig()
-        assert not config.avoid_dark_colors
-
     def test_show_decorative_lines_is_false(self):
         """Config should not show decorative lines by default."""
         from immich_memories.titles.generator import TitleScreenConfig
 
         config = TitleScreenConfig()
         assert not config.show_decorative_lines
-
-    def test_minimum_brightness_is_zero(self):
-        """No minimum brightness enforcement (dark colors are intentional)."""
-        from immich_memories.titles.generator import TitleScreenConfig
-
-        config = TitleScreenConfig()
-        assert config.minimum_brightness == 0

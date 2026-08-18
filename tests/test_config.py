@@ -100,9 +100,6 @@ class TestDefaultsConfig:
     @pytest.mark.parametrize(
         "field,value,match",
         [
-            pytest.param("target_duration_seconds", 0, "greater than", id="duration-zero"),
-            pytest.param("target_duration_seconds", -1, "greater than", id="duration-negative"),
-            pytest.param("target_duration_seconds", 7200, "less than", id="duration-over-max"),
             pytest.param("transition_duration", 5.0, "less than", id="transition-over-max"),
             pytest.param("transition_duration", -0.1, "greater than", id="transition-negative"),
         ],
@@ -114,12 +111,10 @@ class TestDefaultsConfig:
 
     def test_boundary_values_accepted(self):
         """Exact boundary values are accepted."""
-        config = DefaultsConfig(target_duration_seconds=10, transition_duration=0.0)
-        assert config.target_duration_seconds == 10
+        config = DefaultsConfig(transition_duration=0.0)
         assert config.transition_duration == 0.0
 
-        config = DefaultsConfig(target_duration_seconds=3600, transition_duration=2.0)
-        assert config.target_duration_seconds == 3600
+        config = DefaultsConfig(transition_duration=2.0)
         assert config.transition_duration == 2.0
 
 
@@ -134,7 +129,6 @@ class TestAnalysisConfig:
             pytest.param("min_scene_duration", 0.1, id="scene-dur-below-min"),
             pytest.param("duplicate_hash_threshold", -1, id="hash-negative"),
             pytest.param("duplicate_hash_threshold", 65, id="hash-above-max"),
-            pytest.param("keyframe_interval", 0.1, id="keyframe-below-min"),
         ],
     )
     def test_validation_rejects_out_of_range(self, field, value):
@@ -148,7 +142,6 @@ class TestAnalysisConfig:
             scene_threshold=1.0,
             min_scene_duration=0.5,
             duplicate_hash_threshold=0,
-            keyframe_interval=0.5,
         )
         assert config.scene_threshold == 1.0
         assert config.duplicate_hash_threshold == 0
@@ -295,7 +288,7 @@ class TestConfig:
         """Test default configuration."""
         config = Config()
         assert config.immich.url == ""
-        assert config.defaults.target_duration_seconds == 600
+        assert config.defaults.transition_duration == 0.5
         assert config.output.format == "mp4"
 
     def test_default_server_config(self):
@@ -318,7 +311,7 @@ class TestConfig:
 
         original = Config(
             immich=ImmichConfig(url="https://test.com", api_key="test_key"),
-            defaults=DefaultsConfig(target_duration_seconds=900),
+            defaults=DefaultsConfig(transition_duration=0.9),
         )
 
         original.save_yaml(config_path)
@@ -326,7 +319,7 @@ class TestConfig:
 
         assert loaded.immich.url == "https://test.com"
         assert loaded.immich.api_key == "test_key"
-        assert loaded.defaults.target_duration_seconds == 900
+        assert loaded.defaults.transition_duration == 0.9
 
     def test_api_version_yaml_roundtrip(self, tmp_path):
         """The API-version override is stored as plain YAML and restored as an enum."""
@@ -344,7 +337,7 @@ class TestConfig:
         """Missing YAML file returns default config."""
         config = Config.from_yaml(Path("/nonexistent/path/config.yaml"))
         assert config.immich.url == ""
-        assert config.defaults.target_duration_seconds == 600
+        assert config.defaults.transition_duration == 0.5
 
     def test_get_default_path(self):
         """Default path points to ~/.immich-memories/config.yaml."""
@@ -354,16 +347,19 @@ class TestConfig:
     def test_yaml_with_unknown_nested_field_in_known_section(self, tmp_path):
         """Unknown nested fields in a known section do not crash loading."""
         config_path = tmp_path / "config.yaml"
-        config_path.write_text("defaults:\n  target_duration_seconds: 300\n")
+        # WHY: target_duration_seconds was removed in 0.41; old YAML files still carry it
+        config_path.write_text(
+            "defaults:\n  target_duration_seconds: 300\n  transition_duration: 0.7\n"
+        )
         loaded = Config.from_yaml(config_path)
-        assert loaded.defaults.target_duration_seconds == 300
+        assert loaded.defaults.transition_duration == 0.7
 
     def test_empty_yaml_returns_defaults(self, tmp_path):
         """Empty YAML file returns default config."""
         config_path = tmp_path / "config.yaml"
         config_path.write_text("")
         loaded = Config.from_yaml(config_path)
-        assert loaded.defaults.target_duration_seconds == 600
+        assert loaded.defaults.transition_duration == 0.5
 
     def test_tiered_yaml_loads_advanced_sections(self, tmp_path):
         """Tier 2 sections under advanced: are flattened to top-level fields."""

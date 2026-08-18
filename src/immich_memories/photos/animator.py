@@ -448,6 +448,11 @@ def detect_photo_hdr_type(photo_path: Path) -> str | None:
     return None
 
 
+# Fixed Ken Burns zoom for the seed animator; the production pipeline randomizes
+# its own zoom range in photo_pipeline.py.
+_KEN_BURNS_ZOOM_FACTOR = 1.15
+
+
 class PhotoAnimator:
     """Converts photos to short .mp4 clips with animation effects."""
 
@@ -531,7 +536,7 @@ class PhotoAnimator:
                 self._target_h,
                 duration,
                 fps,
-                zoom_factor=self._config.zoom_factor,
+                zoom_factor=_KEN_BURNS_ZOOM_FACTOR,
                 seed=seed,
             )
 

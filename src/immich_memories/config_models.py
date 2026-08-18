@@ -52,17 +52,10 @@ class ImmichConfig(BaseModel):
 class DefaultsConfig(BaseModel):
     """Default settings for video generation."""
 
-    target_duration_seconds: int = Field(default=600, ge=10, le=3600)
     output_orientation: Literal["landscape", "portrait", "square", "auto"] = "auto"
     scale_mode: Literal["fit", "fill", "smart_crop", "blur"] = "blur"
     transition: Literal["cut", "crossfade", "smart", "none"] = "smart"
     transition_duration: float = Field(default=0.5, ge=0, le=2.0)
-    transition_buffer: float = Field(
-        default=0.5,
-        ge=0,
-        le=2.0,
-        description="Extra footage (seconds) before/after each clip for smooth fades",
-    )
 
 
 _CLIP_STYLE_PRESETS: dict[str, dict[str, float]] = {
@@ -102,7 +95,6 @@ class AnalysisConfig(BaseModel):
     scene_threshold: float = Field(default=27.0, ge=1.0, le=100.0)
     min_scene_duration: float = Field(default=1.0, ge=0.5, le=10.0)
     duplicate_hash_threshold: int = Field(default=8, ge=0, le=64)
-    keyframe_interval: float = Field(default=1.0, ge=0.5, le=5.0)
 
     # Clip style preset — sets the 5 duration params below.
     # Explicit overrides win over the preset.
@@ -183,12 +175,6 @@ class AnalysisConfig(BaseModel):
         le=60.0,
         description="Max gap between Live Photos to group into a burst cluster",
     )
-    live_photo_min_burst_count: int = Field(
-        default=3,
-        ge=2,
-        le=20,
-        description="Minimum photos in a cluster to qualify as a burst (merged into one clip)",
-    )
 
     @model_validator(mode="after")
     def validate_duration_constraints(self) -> AnalysisConfig:
@@ -256,18 +242,10 @@ class HardwareAccelConfig(BaseModel):
     # Auto-detect available hardware by default
     enabled: bool = Field(default=True, description="Enable hardware acceleration")
 
-    # Preferred backend: auto will detect best available
-    backend: Literal["auto", "nvidia", "apple", "vaapi", "qsv", "none"] = Field(
-        default="auto", description="Hardware acceleration backend"
-    )
-
     # Encoding settings
     encoder_preset: Literal["fast", "balanced", "quality"] = Field(
         default="balanced", description="Encoder speed/quality tradeoff"
     )
-
-    # GPU device index (for multi-GPU systems)
-    device_index: int = Field(default=0, ge=0, description="GPU device index")
 
     # Use GPU for frame analysis (OpenCV CUDA, etc.)
     gpu_analysis: bool = Field(
@@ -276,11 +254,6 @@ class HardwareAccelConfig(BaseModel):
 
     # Decode on GPU (can speed up processing significantly)
     gpu_decode: bool = Field(default=True, description="Use hardware video decoding")
-
-    # Memory limit for GPU operations (MB, 0 = no limit)
-    gpu_memory_limit: int = Field(
-        default=0, ge=0, description="GPU memory limit in MB (0 = unlimited)"
-    )
 
 
 class OutputConfig(BaseModel):
@@ -429,40 +402,14 @@ class TripsConfig(BaseModel):
 
 
 class AudioConfig(BaseModel):
-    """Audio and music settings."""
+    """Local music library used by the `music` CLI subcommand.
 
-    # Automatic music selection
-    auto_music: bool = Field(
-        default=False, description="Automatically select background music based on video mood"
-    )
+    Generation picks its music backend from `ace_step.enabled` / `musicgen.enabled`
+    and the `--music` / `--no-music` flags; ducking and fades are fixed in the mixer.
+    """
 
-    # Music sources
-    music_source: Literal["local", "musicgen", "ace_step"] = Field(
-        default="musicgen",
-        description="Source for automatic music selection (musicgen = MusicGen API, ace_step = ACE-Step local/API)",
-    )
     local_music_dir: str = Field(
         default="~/Music/Memories", description="Directory for local music library"
-    )
-
-    # Audio ducking settings
-    ducking_threshold: float = Field(
-        default=0.02,
-        ge=0.0,
-        le=1.0,
-        description="Sensitivity for voice detection (lower = more sensitive)",
-    )
-    ducking_ratio: float = Field(
-        default=6.0, ge=1.0, le=20.0, description="How much to lower music when speech detected"
-    )
-    music_volume_db: float = Field(
-        default=-6.0, ge=-20.0, le=0.0, description="Base music volume in dB"
-    )
-    fade_in_seconds: float = Field(
-        default=2.0, ge=0.0, le=10.0, description="Music fade in duration"
-    )
-    fade_out_seconds: float = Field(
-        default=3.0, ge=0.0, le=10.0, description="Music fade out duration"
     )
 
     @property
@@ -549,10 +496,6 @@ class ACEStepConfig(BaseModel):
     use_lm: bool = Field(
         default=True,
         description="Use language model for 'thinking mode' (disable to save memory/time)",
-    )
-    bf16: bool = Field(
-        default=True,
-        description="Use bfloat16 precision (set False for Pascal/older GPUs)",
     )
     num_versions: int = Field(
         default=3,
@@ -648,12 +591,6 @@ class TitleScreenConfig(BaseModel):
         le=15.0,
         description="Duration of ending screen in seconds",
     )
-    animation_duration: float = Field(
-        default=0.5,
-        ge=0.2,
-        le=2.0,
-        description="Duration of text animations in seconds",
-    )
 
     # Localization
     locale: Literal["en", "fr", "auto"] = Field(
@@ -675,18 +612,6 @@ class TitleScreenConfig(BaseModel):
         description="Show decorative line accents on title screens",
     )
 
-    # Color preferences
-    avoid_dark_colors: bool = Field(
-        default=False,
-        description="Avoid dark/black color schemes, prefer warm light colors",
-    )
-    minimum_brightness: int = Field(
-        default=0,
-        ge=0,
-        le=255,
-        description="Minimum brightness for colors (0-255)",
-    )
-
     # Month dividers
     show_month_dividers: bool = Field(
         default=True,
@@ -703,12 +628,6 @@ class TitleScreenConfig(BaseModel):
     use_first_name_only: bool = Field(
         default=True,
         description="Use only the first name for titles (e.g., 'John' instead of 'John Smith')",
-    )
-
-    # Custom font
-    custom_font_path: str | None = Field(
-        default=None,
-        description="Path to custom font file (TTF/OTF)",
     )
 
 
@@ -884,32 +803,6 @@ class PhotoConfig(BaseModel):
         ge=1.0,
         le=10.0,
         description="Duration per single photo clip in seconds",
-    )
-    collage_duration: float = Field(
-        default=6.0,
-        ge=2.0,
-        le=15.0,
-        description="Duration per collage clip in seconds",
-    )
-    animation_mode: Literal["auto", "ken_burns", "face_zoom", "blur_bg"] = Field(
-        default="auto",
-        description="Animation mode (auto selects per photo based on content)",
-    )
-    enable_collage: bool = Field(
-        default=True,
-        description="Enable multi-photo collage for photo series",
-    )
-    series_gap_seconds: float = Field(
-        default=60.0,
-        ge=1.0,
-        le=300.0,
-        description="Max gap between photos to group as a series",
-    )
-    zoom_factor: float = Field(
-        default=1.15,
-        ge=1.0,
-        le=2.0,
-        description="Ken Burns zoom factor (1.15 = 15% zoom)",
     )
     score_penalty: float = Field(
         default=0.2,

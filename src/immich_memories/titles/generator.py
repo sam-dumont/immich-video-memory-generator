@@ -51,7 +51,6 @@ class TitleScreenConfig:
     title_duration: float = 3.5  # seconds
     month_divider_duration: float = 2.0
     ending_duration: float = 4.0
-    animation_duration: float = 0.5
 
     # Localization
     locale: str = "en"
@@ -63,16 +62,9 @@ class TitleScreenConfig:
     # Decorative elements
     show_decorative_lines: bool = False
 
-    # Color preferences
-    avoid_dark_colors: bool = False
-    minimum_brightness: int = 0
-
     # Performance
     use_image_rendering: bool = True
     use_gpu_rendering: bool = True  # Use Taichi GPU when available
-
-    # Font override
-    custom_font_path: str | None = None
 
     # LLM-generated title override (bypasses template generation)
     title_override: str | None = None

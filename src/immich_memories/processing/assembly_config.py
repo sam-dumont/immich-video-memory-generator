@@ -86,6 +86,8 @@ class TitleScreenSettings:
     # Title background style: "content_backed" (slow-mo blur from clip) or
     # "gradient" (classic dark gradient with crossfade)
     title_background: str = "content_backed"
+    animated_background: bool = True  # gradient titles: animate the background
+    show_decorative_lines: bool = False
 
     # LLM-generated title override (bypasses template generation)
     title_override: str | None = None

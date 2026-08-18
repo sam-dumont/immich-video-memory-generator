@@ -636,23 +636,15 @@ class TestLivePhotoConfig:
         config = AnalysisConfig()
         assert config.live_photo_merge_window_seconds == 10.0
 
-    def test_default_min_burst_count(self):
-        from immich_memories.config_models import AnalysisConfig
-
-        config = AnalysisConfig()
-        assert config.live_photo_min_burst_count == 3
-
     def test_custom_values(self):
         from immich_memories.config_models import AnalysisConfig
 
         config = AnalysisConfig(
             include_live_photos=True,
             live_photo_merge_window_seconds=15.0,
-            live_photo_min_burst_count=2,
         )
         assert config.include_live_photos
         assert config.live_photo_merge_window_seconds == 15.0
-        assert config.live_photo_min_burst_count == 2
 
 
 class TestFilterValidClips:

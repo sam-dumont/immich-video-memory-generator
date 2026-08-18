@@ -1366,3 +1366,30 @@ class TestRunsDatabaseRunWithDateRange:
         db.save_run(run)
         loaded = db.get_run("r1")
         assert loaded.target_duration_seconds == 600
+
+
+class TestMusicAddUsesConfiguredLibrary:
+    def test_auto_select_searches_audio_local_music_dir(self, tmp_path):
+        """`music add` without --music must look in audio.local_music_dir, not a hidden cache."""
+        config = Config()
+        config.audio.local_music_dir = str(tmp_path / "library")
+        seen: dict[str, object] = {}
+
+        class FakeMixer:
+            def __init__(self, ducking_config=None, cache_dir=None):
+                seen["cache_dir"] = cache_dir
+
+            async def add_music_to_video(self, **_kwargs):
+                return tmp_path / "out.mp4"
+
+        (tmp_path / "in.mp4").write_bytes(b"not really a video")
+        # WHY: AudioMixer runs FFmpeg + stem separation; only the wiring is under test
+        with patch("immich_memories.audio.mixer_class.AudioMixer", FakeMixer):
+            result = _invoke(
+                ["music", "add", str(tmp_path / "in.mp4"), str(tmp_path / "out.mp4")],
+                config=config,
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Video saved" in result.output, result.output
+        assert seen["cache_dir"] == tmp_path / "library"

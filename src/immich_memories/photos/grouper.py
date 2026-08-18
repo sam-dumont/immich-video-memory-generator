@@ -7,16 +7,15 @@ animation modes based on content (faces, orientation, series size).
 from __future__ import annotations
 
 from immich_memories.api.models import Asset
-from immich_memories.config_models import PhotoConfig
 from immich_memories.photos.models import AnimationMode, PhotoGroup
 
 
 class PhotoGrouper:
     """Groups photos into singles and series for animation."""
 
-    def __init__(self, config: PhotoConfig) -> None:
-        self._gap = config.series_gap_seconds
-        self._collage_enabled = config.enable_collage
+    def __init__(self, series_gap_seconds: float = 60.0, enable_collage: bool = True) -> None:
+        self._gap = series_gap_seconds
+        self._collage_enabled = enable_collage
 
     def group(self, photos: list[Asset]) -> list[PhotoGroup]:
         """Group photos by temporal proximity, then assign animation modes."""

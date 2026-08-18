@@ -63,7 +63,7 @@ def register_music_commands(main: click.Group) -> None:
             console.print(f"Tempo: {tempo}")
         console.print()
 
-        tracks = asyncio.get_event_loop().run_until_complete(search())
+        tracks = asyncio.run(search())
 
         if not tracks:
             print_error("No tracks found matching criteria")
@@ -126,7 +126,7 @@ def register_music_commands(main: click.Group) -> None:
             task = progress.add_task("Extracting keyframes and analyzing...", total=None)
 
             try:
-                mood = asyncio.get_event_loop().run_until_complete(analyze())
+                mood = asyncio.run(analyze())
                 progress.update(task, completed=True)
             except Exception as e:  # WHY: CLI error display boundary
                 print_error(f"Analysis failed: {e}")
@@ -186,10 +186,11 @@ def register_music_commands(main: click.Group) -> None:
 
         from immich_memories.audio.mixer_class import AudioMixer
 
-        ctx.obj["config"]
+        config = ctx.obj["config"]
 
         async def add_music():
-            mixer = AudioMixer()
+            # WHY: auto-select must search the user's configured library, not a hidden cache dir
+            mixer = AudioMixer(cache_dir=config.audio.local_music_path)
             return await mixer.add_music_to_video(
                 video_path=Path(video_path),
                 output_path=Path(output_path),
@@ -222,7 +223,7 @@ def register_music_commands(main: click.Group) -> None:
             task = progress.add_task("Processing...", total=None)
 
             try:
-                result = asyncio.get_event_loop().run_until_complete(add_music())
+                result = asyncio.run(add_music())
                 progress.update(task, completed=True)
             except Exception as e:  # WHY: CLI error display boundary
                 print_error(f"Failed: {e}")

@@ -813,3 +813,21 @@ class TestProtectionToggles:
         ranges = protected_ranges_from_speech([SpeechRegion(1.0, 2.0)], max_duration=10.0)
 
         assert ranges == [(1.0, 2.0)]
+
+
+class TestLaughterBonus:
+    def test_configured_laughter_bonus_is_applied_to_laughing_segments(self):
+        """audio_content.laughter_bonus is the extra score a segment gets for laughter."""
+        from immich_memories.analysis.analyzer_models import ScoredSegment
+
+        def total(bonus: float, laughing: bool) -> float:
+            analyzer = UnifiedSegmentAnalyzer(
+                scorer=MagicMock(),  # WHY: frame scoring is an OpenCV boundary; unused here
+                audio_content_config=AudioContentConfig(laughter_bonus=bonus),
+                analysis_config=AnalysisConfig(),
+            )
+            segment = ScoredSegment(start_time=0.0, end_time=5.0, has_laughter=laughing)
+            return analyzer._compute_total_score(segment, enable_content_analysis=False)
+
+        assert total(0.25, True) - total(0.25, False) == pytest.approx(0.25)
+        assert total(0.0, True) == pytest.approx(total(0.0, False))

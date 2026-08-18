@@ -143,6 +143,7 @@ class UnifiedSegmentAnalyzer:
         self.target_extraction_ratio = target_extraction_ratio
         self.duration_weight = duration_weight
         self._analysis_config = analysis_config
+        self._laughter_bonus = audio_content_config.laughter_bonus
         self._speech_analysis = speech_analysis or SpeechAnalysisService(
             audio_content_config=audio_content_config,
             speech_config=speech_config,
@@ -645,7 +646,7 @@ class UnifiedSegmentAnalyzer:
         cut_bonus = segment.cut_quality * 0.15
 
         # Extra bonus for segments with laughter (highly desirable for memories)
-        laughter_bonus = 0.1 if segment.has_laughter else 0.0
+        laughter_bonus = self._laughter_bonus if segment.has_laughter else 0.0
 
         return base_score + llm_bonus + cut_bonus + laughter_bonus
 
