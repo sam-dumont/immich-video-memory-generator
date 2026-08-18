@@ -110,7 +110,20 @@ the preset is active. `immich-memories --preset fast generate …` does the same
 
 ## Performance expectations
 
-On a typical NAS CPU (Intel Celeron J4125, 4 cores, 2.0 GHz):
+One measured number (2026-08-18), so you can calibrate: a monthly memory from a real library,
+14 clips (7 videos + 6 photos, HDR iPhone sources), 62 s of 1080p H.264 out, cold cache, the
+Docker image with `--cpus=4 --memory=4g` and no GPU (4 cores of an Apple M5 Max running the
+linux/arm64 image):
+
+| Profile | Wall time | Analysis | Render | Output |
+|---------|-----------|----------|--------|--------|
+| `preset: fast` | 10 min 08 s | 7.4 min | 2.7 min | 30 MB |
+| default | 15 min 42 s | 10.1 min | 5.6 min | 87 MB |
+
+Analysis (downloading, downscaling, scoring every candidate clip) is where the time goes, and it
+is cached: a second run of the same month skips most of it. A Celeron-class NAS core is a good
+deal slower than an M5 core, so budget 2–3× these numbers there. Estimates for that class of CPU
+(Intel Celeron J4125, 4 cores, 2.0 GHz):
 
 | Clips | Resolution | Time |
 |-------|-----------|------|
