@@ -6,7 +6,6 @@ by quality, date distribution, and favorites status.
 
 from __future__ import annotations
 
-import contextlib
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -25,87 +24,7 @@ __all__ = [
     "_allocate_day_slots",
     "_select_from_day",
     "_enforce_non_favorite_ratio",
-    "_get_fast_encoder_args",
 ]
-
-
-def _get_fast_encoder_args(*, hardware_enabled: bool = True) -> list[str]:
-    """Get fast encoder arguments with GPU acceleration when available.
-
-    Returns encoder optimized for speed (preview temp files).
-    """
-    import subprocess
-    import sys
-
-    if not hardware_enabled:
-        return [
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "23",
-        ]
-
-    # macOS: Use VideoToolbox hardware encoder
-    if sys.platform == "darwin":
-        return [
-            "-c:v",
-            "h264_videotoolbox",
-            "-q:v",
-            "65",  # Lower quality OK for previews (faster)
-        ]
-
-    # Other platforms: Check for available encoders
-    with contextlib.suppress(Exception):
-        result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        encoders = result.stdout
-
-        # Try NVIDIA NVENC (GPU accelerated)
-        if "h264_nvenc" in encoders:
-            return [
-                "-c:v",
-                "h264_nvenc",
-                "-preset",
-                "p1",  # Fastest preset
-                "-rc",
-                "constqp",
-                "-qp",
-                "23",
-            ]
-
-        # Try VAAPI (Linux GPU)
-        if "h264_vaapi" in encoders:
-            return [
-                "-c:v",
-                "h264_vaapi",
-                "-qp",
-                "23",
-            ]
-
-        # Try Intel QSV
-        if "h264_qsv" in encoders:
-            return [
-                "-c:v",
-                "h264_qsv",
-                "-preset",
-                "veryfast",
-            ]
-
-    # Fallback to CPU libx264
-    return [
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-crf",
-        "23",
-    ]
 
 
 def _clip_quality_key(c: VideoClipInfo) -> tuple:

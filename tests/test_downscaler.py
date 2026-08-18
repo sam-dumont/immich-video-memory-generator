@@ -7,11 +7,11 @@ from unittest.mock import MagicMock, patch
 
 from immich_memories.processing.downscaler import (
     DEFAULT_ANALYSIS_HEIGHT,
-    _get_fast_encoder_args,
     cleanup_downscaled,
     get_downscaled_path,
     needs_downscaling,
 )
+from immich_memories.processing.hardware import fast_encoder_args
 
 
 class TestGetDownscaledPath:
@@ -134,98 +134,50 @@ class TestCleanupDownscaled:
         assert not downscaled.exists()
 
 
-class TestGetFastEncoderArgs:
-    """Tests for platform-dependent encoder selection."""
+class TestFastEncoderArgs:
+    """Analysis/preview temp encodes use a hardware encoder only when the probe passed (#343)."""
 
-    @patch("immich_memories.processing.downscaler.sys")
+    @staticmethod
+    def _caps(backend):
+        from immich_memories.processing.hardware import HWAccelCapabilities
+
+        return HWAccelCapabilities(backend=backend, supports_h264_encode=True)
+
+    @patch("immich_memories.processing.hardware.sys")
     def test_macos_uses_videotoolbox(self, mock_sys: MagicMock):
-        mock_sys.platform = "darwin"
-        args = _get_fast_encoder_args()
-        assert "-c:v" in args
-        assert "h264_videotoolbox" in args
+        mock_sys.platform = "darwin"  # WHY: VideoToolbox is always present on macOS
+        assert "h264_videotoolbox" in fast_encoder_args()
 
-    @patch("immich_memories.processing.downscaler.subprocess")
-    @patch("immich_memories.processing.downscaler.sys")
-    def test_linux_nvenc_available(self, mock_sys: MagicMock, mock_subprocess: MagicMock):
+    @patch("immich_memories.processing.hardware.detect_hardware_acceleration")
+    @patch("immich_memories.processing.hardware.sys")
+    def test_probed_backend_picks_its_fast_encoder(self, mock_sys, detect):
+        from immich_memories.processing.hardware import HWAccelBackend
+
         mock_sys.platform = "linux"
-        # WHY: mock subprocess.run to avoid calling real ffmpeg
-        mock_result = MagicMock()
-        mock_result.stdout = "V..... h264_nvenc\nV..... libx264"
-        mock_subprocess.run.return_value = mock_result
-        mock_subprocess.SubprocessError = Exception
+        for backend, encoder in (
+            (HWAccelBackend.NVIDIA, "h264_nvenc"),
+            (HWAccelBackend.VAAPI, "h264_vaapi"),
+            (HWAccelBackend.QSV, "h264_qsv"),
+        ):
+            detect.return_value = self._caps(backend)  # WHY: stands in for a probed device
+            assert encoder in fast_encoder_args()
 
-        args = _get_fast_encoder_args()
-        assert "h264_nvenc" in args
-        assert "-preset" in args
-        assert "p1" in args
+    @patch("immich_memories.processing.hardware.detect_hardware_acceleration")
+    @patch("immich_memories.processing.hardware.sys")
+    def test_no_probed_backend_means_software_even_if_ffmpeg_lists_nvenc(self, mock_sys, detect):
+        from immich_memories.processing.hardware import HWAccelBackend
 
-    @patch("immich_memories.processing.downscaler.subprocess")
-    @patch("immich_memories.processing.downscaler.sys")
-    def test_linux_vaapi_available(self, mock_sys: MagicMock, mock_subprocess: MagicMock):
         mock_sys.platform = "linux"
-        # WHY: mock subprocess.run to avoid calling real ffmpeg
-        mock_result = MagicMock()
-        mock_result.stdout = "V..... h264_vaapi\nV..... libx264"
-        mock_subprocess.run.return_value = mock_result
-        mock_subprocess.SubprocessError = Exception
+        detect.return_value = self._caps(HWAccelBackend.NONE)  # WHY: GPU-less Docker host
+        args = fast_encoder_args()
+        assert "libx264" in args and "ultrafast" in args
+        assert "nvenc" not in " ".join(args)
 
-        args = _get_fast_encoder_args()
-        assert "h264_vaapi" in args
-
-    @patch("immich_memories.processing.downscaler.subprocess")
-    @patch("immich_memories.processing.downscaler.sys")
-    def test_linux_qsv_available(self, mock_sys: MagicMock, mock_subprocess: MagicMock):
-        mock_sys.platform = "linux"
-        # WHY: mock subprocess.run to avoid calling real ffmpeg
-        mock_result = MagicMock()
-        mock_result.stdout = "V..... h264_qsv\nV..... libx264"
-        mock_subprocess.run.return_value = mock_result
-        mock_subprocess.SubprocessError = Exception
-
-        args = _get_fast_encoder_args()
-        assert "h264_qsv" in args
-
-    @patch("immich_memories.processing.downscaler.subprocess")
-    @patch("immich_memories.processing.downscaler.sys")
-    def test_linux_cpu_fallback(self, mock_sys: MagicMock, mock_subprocess: MagicMock):
-        mock_sys.platform = "linux"
-        # WHY: mock subprocess.run to avoid calling real ffmpeg
-        mock_result = MagicMock()
-        mock_result.stdout = "V..... libx264"  # No GPU encoders
-        mock_subprocess.run.return_value = mock_result
-        mock_subprocess.SubprocessError = Exception
-
-        args = _get_fast_encoder_args()
+    @patch("immich_memories.processing.hardware.detect_hardware_acceleration")
+    def test_hardware_disabled_never_probes(self, detect):
+        args = fast_encoder_args(hardware_enabled=False)
         assert "libx264" in args
-        assert "ultrafast" in args
-
-    @patch("immich_memories.processing.downscaler.subprocess")
-    @patch("immich_memories.processing.downscaler.sys")
-    def test_ffmpeg_not_found_falls_back_to_cpu(
-        self, mock_sys: MagicMock, mock_subprocess: MagicMock
-    ):
-        mock_sys.platform = "linux"
-        # WHY: mock subprocess.run to simulate ffmpeg not being installed
-        mock_subprocess.run.side_effect = OSError("ffmpeg not found")
-        mock_subprocess.SubprocessError = Exception
-
-        args = _get_fast_encoder_args()
-        assert "libx264" in args
-        assert "ultrafast" in args
-
-    @patch("immich_memories.processing.downscaler.subprocess")
-    @patch("immich_memories.processing.downscaler.sys")
-    def test_nvenc_preferred_over_vaapi(self, mock_sys: MagicMock, mock_subprocess: MagicMock):
-        mock_sys.platform = "linux"
-        # WHY: mock subprocess.run to test encoder priority
-        mock_result = MagicMock()
-        mock_result.stdout = "V..... h264_nvenc\nV..... h264_vaapi\nV..... libx264"
-        mock_subprocess.run.return_value = mock_result
-        mock_subprocess.SubprocessError = Exception
-
-        args = _get_fast_encoder_args()
-        assert "h264_nvenc" in args
-        assert "h264_vaapi" not in args
+        detect.assert_not_called()
 
 
 class TestDefaultAnalysisHeight:

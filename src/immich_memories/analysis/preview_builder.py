@@ -10,7 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from immich_memories.analysis.clip_selection import _get_fast_encoder_args
+from immich_memories.processing.hardware import fast_encoder_args
 from immich_memories.security import sanitize_filename
 
 if TYPE_CHECKING:
@@ -321,7 +321,7 @@ class PreviewBuilder:
             f"(duration: {duration:.1f}s, video: {video_duration:.1f}s)"
         )
 
-        encoder_args = _get_fast_encoder_args(hardware_enabled=self._hardware_enabled)
+        encoder_args = fast_encoder_args(hardware_enabled=self._hardware_enabled)
 
         cmd = [
             "ffmpeg",

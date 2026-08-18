@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
@@ -377,6 +378,28 @@ def print_hardware_info(capabilities: HWAccelCapabilities) -> None:
     print()
 
 
+_SOFTWARE_FAST_ARGS = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "28"]
+_HARDWARE_FAST_ARGS = {
+    HWAccelBackend.NVIDIA: ["-c:v", "h264_nvenc", "-preset", "p1", "-rc", "constqp", "-qp", "28"],
+    HWAccelBackend.VAAPI: ["-c:v", "h264_vaapi", "-qp", "28"],
+    HWAccelBackend.QSV: ["-c:v", "h264_qsv", "-preset", "veryfast"],
+}
+
+
+def fast_encoder_args(*, hardware_enabled: bool = True) -> list[str]:
+    """Speed-first encoder args for analysis/preview temp files.
+
+    Uses the probed backend from `detect_hardware_acceleration()` — never a bare
+    `ffmpeg -encoders` listing, which advertises NVENC/VAAPI/QSV on GPU-less boxes (#343).
+    """
+    if not hardware_enabled:
+        return _SOFTWARE_FAST_ARGS.copy()
+    if sys.platform == "darwin":
+        return ["-c:v", "h264_videotoolbox", "-q:v", "65"]  # lower quality is fine for temp files
+    backend = detect_hardware_acceleration().backend
+    return list(_HARDWARE_FAST_ARGS.get(backend, _SOFTWARE_FAST_ARGS))
+
+
 # ---------------------------------------------------------------------------
 # Re-export detect_hardware_acceleration from the backends module so that
 # existing ``from immich_memories.processing.hardware import ...`` keeps working.
@@ -390,6 +413,7 @@ __all__ = [
     "HWAccelBackend",
     "HWAccelCapabilities",
     "detect_hardware_acceleration",
+    "fast_encoder_args",
     "get_ffmpeg_encoder",
     "get_ffmpeg_hwaccel_args",
     "get_ffmpeg_scale_filter",

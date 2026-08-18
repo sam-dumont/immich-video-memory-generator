@@ -56,7 +56,7 @@ class TestPreviewCacheLocation:
         monkeypatch.setattr(Path, "home", classmethod(lambda _cls: forbidden_home))
         monkeypatch.setattr("subprocess.run", fake_run)
         monkeypatch.setattr(
-            "immich_memories.analysis.preview_builder._get_fast_encoder_args",
+            "immich_memories.analysis.preview_builder.fast_encoder_args",
             lambda **_kwargs: [],
         )
 

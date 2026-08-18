@@ -9,80 +9,12 @@ from __future__ import annotations
 
 import logging
 import subprocess
-import sys
 from pathlib import Path
 
+from immich_memories.processing.hardware import fast_encoder_args
 from immich_memories.security import validate_video_path
 
 logger = logging.getLogger(__name__)
-
-
-def _get_fast_encoder_args() -> list[str]:
-    """Get fast encoder arguments with GPU acceleration when available.
-
-    Returns encoder optimized for speed (analysis temp files).
-    """
-    # macOS: Use VideoToolbox hardware encoder
-    if sys.platform == "darwin":
-        return [
-            "-c:v",
-            "h264_videotoolbox",
-            "-q:v",
-            "65",  # Lower quality OK for analysis (faster)
-        ]
-
-    # Other platforms: Check for available encoders
-    try:
-        result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        encoders = result.stdout
-
-        # Try NVIDIA NVENC (GPU accelerated)
-        if "h264_nvenc" in encoders:
-            return [
-                "-c:v",
-                "h264_nvenc",
-                "-preset",
-                "p1",  # Fastest preset
-                "-rc",
-                "constqp",
-                "-qp",
-                "28",
-            ]
-
-        # Try VAAPI (Linux GPU)
-        if "h264_vaapi" in encoders:
-            return [
-                "-c:v",
-                "h264_vaapi",
-                "-qp",
-                "28",
-            ]
-
-        # Try Intel QSV
-        if "h264_qsv" in encoders:
-            return [
-                "-c:v",
-                "h264_qsv",
-                "-preset",
-                "veryfast",
-            ]
-    except (subprocess.SubprocessError, OSError, ValueError):
-        pass
-
-    # Fallback to CPU libx264
-    return [
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-crf",
-        "28",
-    ]
 
 
 DEFAULT_ANALYSIS_HEIGHT = 480  # 480p for analysis
@@ -171,7 +103,7 @@ def downscale_video(
     # ffmpeg command for fast downscaling with GPU acceleration
     # -vf scale=-2:{height} maintains aspect ratio and ensures even dimensions
     # -an strips audio (not needed for analysis)
-    encoder_args = _get_fast_encoder_args()
+    encoder_args = fast_encoder_args()
     cmd = [
         "ffmpeg",
         "-y",
