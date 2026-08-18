@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Container
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -14,6 +15,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from immich_memories.api.immich import ImmichAPIError
+from immich_memories.processing.probe_cache import ProbeCache, ProbeError
 from immich_memories.security import sanitize_error_message
 
 if TYPE_CHECKING:
@@ -21,6 +23,9 @@ if TYPE_CHECKING:
     from immich_memories.api.models import Asset
 
 logger = logging.getLogger(__name__)
+
+_PARTIAL_SUFFIX = ".part"
+_PARTIAL_GRACE_SECONDS = 3600
 
 
 def _safe_download_error(exc: Exception, client: SyncImmichClient) -> str:
@@ -53,7 +58,8 @@ class CacheBatch:
     """One explicit cache-maintenance lifecycle.
 
     A batch snapshots the cache once at creation, records successful downloads
-    in memory, and performs size eviction from that manifest when it finishes.
+    in memory, and evicts from that manifest after each download (sparing files
+    it already handed out) and once more, unconditionally, when it finishes.
     Call :meth:`invalidate_manifest` only when another actor changed the cache;
     that deliberately permits one replacement scan at finish.
     """
@@ -62,6 +68,7 @@ class CacheBatch:
         self._cache = cache
         self._condition = threading.Condition(cache._batch_lock)
         self._manifest: dict[Path, _ManifestEntry] = {}
+        self._handed_out: set[Path] = set()
         self._invalidated = False
         self._closing = False
         self._finished = False
@@ -172,9 +179,15 @@ class CacheBatch:
                     self._condition.notify_all()
 
     def _record_manifest_entry(self, path: Path) -> None:
-        """Update one manifest entry under the narrow batch lock."""
+        """Update one manifest entry and keep the cap enforced under the batch lock.
+
+        Files this batch already handed to callers are spared until finish: a
+        prefetched clip evicted before extraction reads it would fail the run.
+        """
         with self._condition:
             self._cache._record_manifest_entry(self._manifest, path)
+            self._handed_out.add(path)
+            self._cache._evict_manifest(self._manifest, protected=self._handed_out)
 
     def _require_open_locked(self) -> None:
         if self._finished or self._closing:
@@ -199,6 +212,7 @@ class VideoDownloadCache:
         self.max_age_days = max_age_days
         self._batch_lock = threading.RLock()
         self._active_batch: CacheBatch | None = None
+        self._probe_cache = ProbeCache()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def begin_batch(self) -> CacheBatch:
@@ -232,7 +246,10 @@ class VideoDownloadCache:
         if not sub_path.exists():
             return None
         # Match {asset_id}.* but not {asset_id}_480p.* (analysis downscale)
+        # nor an in-flight/abandoned {asset_id}.ext.part download.
         for match in sub_path.glob(f"{asset_id}.*"):
+            if match.suffix == _PARTIAL_SUFFIX:
+                continue
             if match.is_file() and match.stat().st_size > 0:
                 return match
         return None
@@ -276,26 +293,45 @@ class VideoDownloadCache:
         """Download one resolved video ID and update the active manifest."""
         cached = self._find_cached(download_id)
         if cached is not None:
-            batch._record_manifest_entry(cached)
-            return cached
+            if self._is_readable_media(cached):
+                batch._record_manifest_entry(cached)
+                return cached
+            logger.warning("Evicting cached video ffprobe cannot read: %s", cached)
+            cached.unlink(missing_ok=True)
+            batch._record_manifest_entry(cached)  # a missing path drops the manifest entry
 
         dest = self._video_path(download_id, extension)
         dest.parent.mkdir(parents=True, exist_ok=True)
+        # WHY: stream into a .part sibling and rename only once complete, so a run
+        # killed mid-download can never leave a truncated file at the cached path.
+        part = dest.with_name(f"{dest.name}{_PARTIAL_SUFFIX}")
 
         try:
-            client.download_asset(download_id, dest)
-            if dest.exists() and dest.stat().st_size > 0:
+            client.download_asset(download_id, part)
+            if part.exists() and part.stat().st_size > 0:
+                os.replace(part, dest)
                 batch._record_manifest_entry(dest)
                 return dest
             logger.warning("Downloaded file empty or missing: %s", dest)
-            dest.unlink(missing_ok=True)
         except (ImmichAPIError, httpx.HTTPError, OSError, RuntimeError) as e:
             logger.warning(
                 "Failed to download video %s: %s", download_id, _safe_download_error(e, client)
             )
-            dest.unlink(missing_ok=True)
+        finally:
+            part.unlink(missing_ok=True)
 
         return None
+
+    def _is_readable_media(self, path: Path) -> bool:
+        """Treat a cache hit ffprobe rejects as corrupt (truncated by a killed run, bad disk)."""
+        try:
+            self._probe_cache.get(path)
+        except ProbeError:
+            return False
+        except ValueError:
+            # Extension outside the probe whitelist: nothing to verify against.
+            pass
+        return True
 
     def get_analysis_video(
         self,
@@ -393,11 +429,12 @@ class VideoDownloadCache:
         return original, original
 
     def _scan_manifest(self) -> dict[Path, _ManifestEntry]:
-        """Scan once, removing expired files and returning valid metadata."""
+        """Scan once, dropping expired files and abandoned partial downloads."""
         if not self.cache_dir.exists():
             return {}
 
-        cutoff = time.time() - (self.max_age_days * 86400)
+        now = time.time()
+        cutoff = now - (self.max_age_days * 86400)
         manifest: dict[Path, _ManifestEntry] = {}
         for path in self.cache_dir.rglob("*"):
             if not path.is_file():
@@ -405,6 +442,12 @@ class VideoDownloadCache:
             try:
                 stat = path.stat()
             except OSError:
+                continue
+            if path.suffix == _PARTIAL_SUFFIX:
+                # WHY: a .part nobody wrote to for an hour is a download killed
+                # mid-stream; a fresh one may belong to another live cache instance.
+                if stat.st_mtime < now - _PARTIAL_GRACE_SECONDS:
+                    path.unlink(missing_ok=True)
                 continue
             if stat.st_mtime < cutoff:
                 path.unlink(missing_ok=True)
@@ -421,9 +464,14 @@ class VideoDownloadCache:
             return
         manifest[path] = _ManifestEntry(path, stat.st_size, stat.st_mtime)
 
-    def _evict_manifest(self, manifest: dict[Path, _ManifestEntry]) -> int:
-        """Evict oldest manifest entries without scanning the filesystem again."""
+    def _evict_manifest(
+        self, manifest: dict[Path, _ManifestEntry], protected: Container[Path] = ()
+    ) -> int:
+        """Evict oldest unprotected manifest entries without scanning the filesystem again."""
         max_bytes = self.max_size_gb * 1_073_741_824
+        # WHY: called after every batch download; skip the per-entry stat while under cap.
+        if sum(entry.size for entry in manifest.values()) <= max_bytes:
+            return 0
         entries = [entry for entry in manifest.values() if entry.path.exists()]
         total_size = sum(entry.size for entry in entries)
         if total_size <= max_bytes:
@@ -433,6 +481,8 @@ class VideoDownloadCache:
         for entry in sorted(entries, key=lambda item: item.mtime):
             if total_size <= max_bytes:
                 break
+            if entry.path in protected:
+                continue
             try:
                 entry.path.unlink()
             except OSError:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -38,13 +40,29 @@ def mock_asset():
     return asset
 
 
+@pytest.fixture(scope="session")
+def tiny_video_bytes(tmp_path_factory) -> bytes:
+    """A real, probe-able MP4 so cache hits survive the ffprobe validity check."""
+    if not shutil.which("ffmpeg"):
+        pytest.skip("FFmpeg not available")
+    path = tmp_path_factory.mktemp("video") / "tiny.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=red:size=32x32:duration=0.2:rate=10"]
+        + ["-c:v", "libx264", "-pix_fmt", "yuv420p", str(path)],
+        capture_output=True,
+        timeout=60,
+        check=True,
+    )
+    return path.read_bytes()
+
+
 @pytest.fixture
-def mock_client(tmp_path):
-    """Create a mock Immich client that writes a fake video file on download."""
+def mock_client(tiny_video_bytes):
+    """Create a mock Immich client that writes a real tiny video file on download."""
 
     def fake_download(asset_id: str, output_path: Path) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_bytes(b"fake-video-data-" * 100)
+        output_path.write_bytes(tiny_video_bytes)
         return output_path
 
     client = MagicMock()
@@ -141,6 +159,71 @@ class TestDownloadOrGet:
         assert path is not None
         assert path.read_bytes() == b"complete"
         assert client.download_asset.call_count == 2
+
+    def test_download_is_only_visible_at_final_path_once_complete(self, cache, mock_asset):
+        """A killed or failed download never leaves a truncated file the cache would trust."""
+        final_path = cache._video_path(mock_asset.id, ".MOV")
+        seen_final_during_write: list[bool] = []
+        attempts = 0
+
+        def write_halfway_then_succeed(_asset_id: str, output_path: Path) -> None:
+            nonlocal attempts
+            attempts += 1
+            output_path.write_bytes(b"half")
+            seen_final_during_write.append(final_path.exists())
+            if attempts == 1:
+                raise OSError("connection reset")
+            output_path.write_bytes(b"complete")
+
+        # WHY: the Immich download is the only network boundary; the writer runs for real
+        client = MagicMock()
+        client.download_asset.side_effect = write_halfway_then_succeed
+
+        assert cache.download_or_get(client, mock_asset) is None
+        assert not final_path.exists()
+        assert list(final_path.parent.glob("*")) == []
+
+        assert cache.download_or_get(client, mock_asset) == final_path
+        assert final_path.read_bytes() == b"complete"
+        assert seen_final_during_write == [False, False]
+
+    def test_stale_partial_from_killed_run_is_never_served_and_gets_cleaned(
+        self, cache, mock_client, mock_asset
+    ):
+        import os
+
+        final_path = cache._video_path(mock_asset.id, ".MOV")
+        final_path.parent.mkdir(parents=True)
+        stale_part = final_path.with_name(f"{final_path.name}.part")
+        stale_part.write_bytes(b"truncated-by-sigkill" * 100)
+        # WHY: a .part nobody has written to for hours belongs to a dead process
+        two_hours_ago = time.time() - 7200
+        os.utime(stale_part, (two_hours_ago, two_hours_ago))
+        other_id = "ff000000-6789-0abc-def0-123456789abc"
+        in_flight_part = cache._video_path(other_id, ".MOV").with_name(f"{other_id}.MOV.part")
+        in_flight_part.parent.mkdir(parents=True)
+        in_flight_part.write_bytes(b"still-streaming")
+
+        assert cache._find_cached(mock_asset.id) is None
+        assert cache._find_cached(other_id) is None
+        assert cache.download_or_get(mock_client, mock_asset) == final_path
+        mock_client.download_asset.assert_called_once()
+        assert not stale_part.exists()
+        assert in_flight_part.exists(), "a freshly written .part may be another instance's download"
+
+    def test_entry_ffprobe_cannot_read_is_evicted_and_fetched_again(
+        self, cache, mock_client, mock_asset, tiny_video_bytes
+    ):
+        """A corrupt cached file must not poison every later run that requests it."""
+        corrupt = cache._video_path(mock_asset.id, ".MOV")
+        corrupt.parent.mkdir(parents=True)
+        corrupt.write_bytes(b"not-a-video" * 100)
+
+        path = cache.download_or_get(mock_client, mock_asset)
+
+        mock_client.download_asset.assert_called_once()
+        assert path == corrupt
+        assert path.read_bytes() == tiny_video_bytes
 
 
 class TestCacheBatch:
@@ -347,6 +430,36 @@ class TestCacheBatch:
         assert finish_returned.is_set()
         with pytest.raises(RuntimeError, match="finished"):
             batch.download_or_get(client, asset)
+
+    def test_cap_is_enforced_inside_the_batch_but_spares_files_it_handed_out(
+        self, cache_dir, mock_client, tiny_video_bytes
+    ):
+        """Prefetch of a large batch must not blow past the cap before extraction starts."""
+        import os
+
+        # WHY: one clip fits under the cap, two do not
+        cache = VideoDownloadCache(
+            cache_dir=cache_dir, max_size_gb=len(tiny_video_bytes) * 1.5 / 1024**3
+        )
+        previous_run = cache_dir / "zz" / "zz_previous_run.mp4"
+        previous_run.parent.mkdir(parents=True)
+        previous_run.write_bytes(tiny_video_bytes)
+        # WHY: older than anything this batch writes, but younger than the age cutoff
+        an_hour_ago = time.time() - 3600
+        os.utime(previous_run, (an_hour_ago, an_hour_ago))
+
+        def make_asset(asset_id: str):
+            asset = MagicMock()
+            asset.id = asset_id
+            asset.original_file_name = "clip.mp4"
+            asset.live_photo_video_id = None
+            return asset
+
+        with cache.begin_batch() as batch:
+            first = batch.download_or_get(mock_client, make_asset("aa-first"))
+            assert not previous_run.exists(), "stale entry must go before the batch ends"
+            second = batch.download_or_get(mock_client, make_asset("bb-second"))
+            assert first.exists() and second.exists(), "files this batch returned stay usable"
 
 
 class TestGetStats:

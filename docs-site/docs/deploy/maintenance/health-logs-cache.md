@@ -88,14 +88,14 @@ Downloaded Immich clips are cached locally to avoid re-downloading on repeat run
 
 ### How it works
 
-The cache uses a two-level directory structure: `{id[:2]}/{id}{ext}`. When you request a clip, it checks the cache first. On a hit, it returns the local path instantly. On a miss, it downloads from Immich and stores the file.
+The cache uses a two-level directory structure: `{id[:2]}/{id}{ext}`. When you request a clip, it checks the cache first. On a hit, it runs a quick `ffprobe` on the file and returns the local path; if ffprobe cannot read it (a truncated or corrupt file), the entry is deleted and downloaded again. On a miss, it streams the download into `{id}{ext}.part` and renames it into place only once complete, so a run killed mid-download never leaves a half file that the next run would trust. Leftover `.part` files nobody has written to for an hour are removed at the start of the next run.
 
 ### Eviction
 
 Two eviction strategies run automatically:
 
-1. **Age-based eviction** (`evict_old`): removes files older than `video_cache_max_age_days` (default: 7 days). Runs at the start of every generation.
-2. **Size-based eviction** (`evict_if_over_limit`): removes oldest files (by modification time, LRU) until the cache is under `video_cache_max_size_gb` (default: 10 GB). Runs after each new download.
+1. **Age-based eviction**: removes files older than `video_cache_max_age_days` (default: 7 days). Runs at the start of every generation.
+2. **Size-based eviction**: removes oldest files (by modification time, LRU) until the cache is under `video_cache_max_size_gb` (default: 10 GB). Runs after each download during a run — files the current run already handed out are spared until it finishes, so a large prefetch can temporarily exceed the cap — and once more at the end of the run.
 
 ### Configuration
 
