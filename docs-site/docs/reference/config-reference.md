@@ -148,6 +148,8 @@ photos:
   enabled: true                  # Include photos in memories
   max_ratio: 0.50               # Max 50% of clips can be photos (0-1)
   duration: 4.0                  # Seconds per photo clip (1-10)
+  moment_gap_seconds: 120        # Window for "same moment as a video" (0-3600)
+  moment_hash_threshold: 10      # Hash bits allowed between photo and that video (0-64)
   score_penalty: 0.2             # Photos score 80% of equivalent videos (0-1)
 ```
 

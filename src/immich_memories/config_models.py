@@ -799,6 +799,24 @@ class PhotoConfig(BaseModel):
         le=10.0,
         description="Duration per single photo clip in seconds",
     )
+    moment_gap_seconds: float = Field(
+        default=120.0,
+        ge=0.0,
+        le=3600.0,
+        description=(
+            "Time window for treating a photo and a video as the same moment. "
+            "A photo this close to a visually matching video is dropped."
+        ),
+    )
+    moment_hash_threshold: int = Field(
+        default=10,
+        ge=0,
+        le=64,
+        description=(
+            "Perceptual-hash bits a photo may differ from a nearby video and "
+            "still count as the same scene (0 = only identical framing)"
+        ),
+    )
     score_penalty: float = Field(
         default=0.2,
         ge=0.0,

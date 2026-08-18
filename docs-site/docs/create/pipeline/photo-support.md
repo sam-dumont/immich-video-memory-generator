@@ -64,16 +64,43 @@ photos:
   enabled: true           # Include photos in memories
   max_ratio: 0.50         # Max 50% of clips can be photos
   duration: 4.0           # Seconds per photo clip
+  moment_gap_seconds: 120 # Window for "same moment as a video" (seconds)
+  moment_hash_threshold: 10  # Bits a photo may differ from that video and still match
   score_penalty: 0.2      # Photos score 80% of equivalent videos
 ```
 
 Older configs may still contain `collage_duration`, `animation_mode`, `enable_collage`, `series_gap_seconds` or `zoom_factor`; those keys were removed in 0.41 and are ignored (the zoom amount is randomized per photo, and collages are not wired in).
+
+## Photos a video already shows
+
+A still shot seconds before a video of the same thing puts that instant on screen
+twice — once as motion, once as a Ken Burns pan. Before scoring, photos are grouped
+with the video clips by capture time and dropped when a clip already covers them:
+
+- **Same scene.** A photo within `moment_gap_seconds` of a clip whose thumbnail is
+  within `moment_hash_threshold` bits of it is dropped as redundant. On a 5,128-photo
+  year, 802 photos fell inside a clip's window and 101 of them were dropped.
+- **Same asset.** A Live Photo's still and its motion clip are one asset, so a still
+  that reaches the photo pool by ID — including every still merged into a burst — is
+  removed outright. Immich normally keeps Live Photo stills out of the photo pool on
+  its own; this is a guard for when it doesn't.
+
+A photo with no cached thumbnail is always kept — redundancy is measured, never
+assumed. Thumbnails are only fetched for photos that fall inside a clip's window, so
+photos nowhere near a video cost nothing. Set `moment_gap_seconds: 0` to leave
+everything but the exact-asset case alone.
 
 ## CLI Flags
 
 ```bash
 # Include photos in generation
 immich-memories generate --include-photos --year 2024
+
+# Leave photos out even when photos.enabled is true in config
+immich-memories generate --no-photos --year 2024
+
+# Same for Live Photos
+immich-memories generate --no-live-photos --year 2024
 
 # Override photo duration
 immich-memories generate --include-photos --photo-duration 5.0

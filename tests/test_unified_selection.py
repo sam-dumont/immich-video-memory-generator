@@ -21,6 +21,7 @@ from immich_memories.analysis.smart_pipeline import (
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
 from immich_memories.config_loader import Config
 from immich_memories.config_models import AnalysisConfig
+from tests.conftest import make_asset
 
 
 def _make_clip(
@@ -335,7 +336,17 @@ class TestMergePhotosIntoPool:
         mock_client.download_asset = MagicMock()
         mock_client.get_asset_thumbnail = MagicMock()
 
-        video_candidates = [MagicMock(), MagicMock()]
+        # WHY: the merge now groups photos against clip capture times, so the
+        # video candidates have to be real ClipWithSegment objects, not mocks.
+        video_candidates = [
+            ClipWithSegment(
+                clip=VideoClipInfo(asset=make_asset(f"video-{i}"), duration_seconds=8.0),
+                start_time=0.0,
+                end_time=8.0,
+                score=0.7,
+            )
+            for i in range(2)
+        ]
 
         photo_asset = Asset(
             id="photo-merge-001",
