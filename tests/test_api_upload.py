@@ -443,6 +443,7 @@ class TestUploadMemory:
         client.albums.find_album_by_name = AsyncMock(return_value=None)
         client.albums.create_album = AsyncMock(return_value="album-new")
         client.albums.add_assets_to_album = AsyncMock()
+        client.albums.list_album_assets = AsyncMock(return_value=[])
 
         result = await client.upload_memory(video, album_name="2024 Memories")
 
@@ -464,6 +465,7 @@ class TestUploadMemory:
         client.albums.find_album_by_name = AsyncMock(return_value="album-existing")
         client.albums.create_album = AsyncMock()
         client.albums.add_assets_to_album = AsyncMock()
+        client.albums.list_album_assets = AsyncMock(return_value=[])
 
         result = await client.upload_memory(video, album_name="2024 Memories")
 
@@ -497,6 +499,7 @@ class TestSyncUploadWrappers:
         client._async_client.albums.find_album_by_name = AsyncMock(return_value=None)
         client._async_client.albums.create_album = AsyncMock(return_value="album-1")
         client._async_client.albums.add_assets_to_album = AsyncMock()
+        client._async_client.albums.list_album_assets = AsyncMock(return_value=[])
 
         result = client.upload_memory(video, album_name="Test Album")
 

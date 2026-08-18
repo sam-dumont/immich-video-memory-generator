@@ -3,9 +3,22 @@
 from __future__ import annotations
 
 import calendar
+import hashlib
+import json
+import re
+from collections.abc import Mapping, Sequence
 from datetime import date
 from pathlib import Path
 from typing import Literal
+
+# 8 hex characters: short enough to read in a filename, and with a few hundred
+# renders per library the odds of two recipes colliding are negligible.
+_RECIPE_HASH_CHARS = 8
+_RECIPE_HASH_SUFFIX = re.compile(rf"_[0-9a-f]{{{_RECIPE_HASH_CHARS}}}$")
+
+# Segment boundaries are floats derived from analysis. A rerun landing a few
+# milliseconds apart is the same edit, so boundaries are compared at 10 ms.
+_BOUNDARY_PRECISION = 2
 
 
 def build_music_output_path(video_path: Path) -> Path:
@@ -293,3 +306,48 @@ def _date_range_slug(start: date, end: date) -> str:
 
     # Different years
     return f"{start.strftime('%Y%m%d')}-{end.strftime('%Y%m%d')}"
+
+
+def recipe_hash(
+    *,
+    memory_type: str | None,
+    date_start: date | None,
+    date_end: date | None,
+    target_duration: float,
+    clips: Sequence[tuple[str, float, float]],
+    extras: Mapping[str, object] | None = None,
+) -> str:
+    """Fingerprint the inputs that decide what a render contains.
+
+    Two runs that would cut the same clips, in the same order, over the same
+    range hash the same and so write the same file -- the newer render replaces
+    the older instead of piling up beside it. Change the selection, the order,
+    the duration or the memory type and the hash changes with it.
+
+    This is a fingerprint of the *recipe*, not of the output. Music generation is
+    unseeded, so two renders sharing a hash are the same edit but not the same
+    bytes; the newer one wins deliberately.
+    """
+    payload = {
+        "memory_type": memory_type or "",
+        "date_start": date_start.isoformat() if date_start else "",
+        "date_end": date_end.isoformat() if date_end else "",
+        "target_duration": round(target_duration, _BOUNDARY_PRECISION),
+        "clips": [
+            [
+                asset_id,
+                round(start, _BOUNDARY_PRECISION),
+                round(end, _BOUNDARY_PRECISION),
+            ]
+            for asset_id, start, end in clips
+        ],
+        "extras": {k: str(v) for k, v in sorted((extras or {}).items())},
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()[:_RECIPE_HASH_CHARS]
+
+
+def apply_recipe_hash(path: Path, digest: str) -> Path:
+    """Return the path carrying this recipe hash, replacing any it already has."""
+    stem = _RECIPE_HASH_SUFFIX.sub("", path.stem)
+    return path.with_name(f"{stem}_{digest}{path.suffix}")
