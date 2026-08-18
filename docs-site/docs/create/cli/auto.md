@@ -131,7 +131,7 @@ invocation. Exactly one action per invocation, then it exits.
 |------|------|---------|-------------|
 | `--dry-run` | flag | `false` | Show what would be generated, don't do it |
 | `--force` | flag | `false` | Skip cooldown check |
-| `--cooldown` | int | config `automation.cooldown_hours` (24) | Min hours since last auto-run |
+| `--cooldown` | int | config `automation.cooldown_hours` (24) | Min hours since the last auto-run *started* (30 min tolerance, so a daily timer with `24` fires every day) |
 | `--upload` | flag | `false` | Upload result to Immich |
 | `--quiet` | flag | `false` | Emit exactly one JSON result object on stdout |
 
@@ -239,7 +239,7 @@ Under `advanced:` in `config.yaml`:
 ```yaml
 advanced:
   automation:
-    cooldown_hours: 24              # min hours between auto-generated memories
+    cooldown_hours: 24              # min hours between auto-run starts (daily timer + 24 = once a day)
     upload_to_immich: false         # auto-upload generated videos
     album_name: null                # album for uploads
     detect_monthly: true

@@ -44,6 +44,11 @@ logger = logging.getLogger(__name__)
 _GENERATION_TIMEOUT_SECONDS = 7200
 _GENERATION_TIMEOUT_REASON = "generation timed out after 2 hours"
 _OUTPUT_TAIL_LENGTH = 2000
+# A fixed-time scheduler (cron, launchd, in-process timer) fires at the same wall-clock
+# time every day; the child process records its start a few seconds later. Without slack,
+# "24h since the last run" is never quite true at the next day's fire and every other day
+# gets skipped (#330). 30 min still rejects any realistic double fire.
+_COOLDOWN_SCHEDULE_TOLERANCE = timedelta(minutes=30)
 
 
 class ImmichDiscoveryError(RuntimeError):
@@ -272,16 +277,16 @@ def _cooldown_status(
     cooldown_hours: int,
     now: datetime | None = None,
 ) -> CooldownStatus:
-    """Derive cooldown from completion time, falling back for legacy rows."""
+    """Cooldown counts from the last run's *start* so a daily timer means once a day."""
     if last_run is None:
         return CooldownStatus(hours=cooldown_hours, active=False, until=None)
-    completed_at = last_run.completed_at or last_run.created_at
-    if completed_at.tzinfo is None:
-        completed_at = completed_at.replace(tzinfo=UTC)
+    started_at = last_run.created_at
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=UTC)
     current = now or datetime.now(tz=UTC)
     if current.tzinfo is None:
         current = current.replace(tzinfo=UTC)
-    until = completed_at + timedelta(hours=cooldown_hours)
+    until = started_at + timedelta(hours=cooldown_hours) - _COOLDOWN_SCHEDULE_TOLERANCE
     return CooldownStatus(hours=cooldown_hours, active=current < until, until=until)
 
 

@@ -619,6 +619,51 @@ class TestRunOneCooldown:
         finish.assert_called_once()
         assert runner.state.get_last_attempt().outcome is AutoOutcome.SKIPPED
 
+    def test_daily_schedule_is_not_blocked_by_previous_days_completion_time(
+        self, config: Config
+    ) -> None:
+        """A 24h cooldown must not skip a fixed daily timer because yesterday's run took a while.
+
+        Yesterday's run started 24h minus a little scheduler jitter ago and finished 40 min later.
+        Measured from completion it would still be "active" and every other day gets skipped.
+        """
+        runner = AutoRunner(config)
+        started = datetime.now(tz=UTC) - timedelta(hours=24) + timedelta(seconds=45)
+        runner.db.save_run(
+            RunMetadata(
+                run_id="yesterday",
+                created_at=started,
+                completed_at=started + timedelta(minutes=40),
+                status="completed",
+                source="auto",
+            )
+        )
+
+        with patch.object(runner, "suggest", return_value=[]) as suggest:
+            result = runner.run_one(cooldown_hours=24)
+
+        assert result.reason == "no eligible candidates"
+        suggest.assert_called_once_with(limit=1)
+
+    def test_second_fire_an_hour_after_start_is_still_cooled_down(self, config: Config) -> None:
+        """Jitter tolerance must not open the door to a second run shortly after the first."""
+        runner = AutoRunner(config)
+        started = datetime.now(tz=UTC) - timedelta(hours=1)
+        runner.db.save_run(
+            RunMetadata(
+                run_id="an-hour-ago",
+                created_at=started,
+                completed_at=started + timedelta(minutes=30),
+                status="completed",
+                source="auto",
+            )
+        )
+
+        result = runner.run_one(cooldown_hours=24)
+
+        assert result.outcome is AutoOutcome.SKIPPED
+        assert result.reason == "cooldown active"
+
     def test_recent_manual_run_does_not_activate_auto_cooldown(self, config: Config) -> None:
         """A manual export must not consume the smart automation cooldown."""
         runner = AutoRunner(config)

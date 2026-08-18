@@ -242,7 +242,7 @@ def test_v11_canonical_utc_keeps_completion_order_and_cooldown_chronological(
     assert _cooldown_status(
         runs[0],
         24,
-        now=datetime(2026, 8, 11, 7, 45, tzinfo=UTC),
+        now=datetime(2026, 8, 11, 7, 0, tzinfo=UTC),
     ).active
     last_attempt = AutomationStateStore(db_path).get_last_attempt()
     assert last_attempt is not None

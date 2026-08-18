@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -533,16 +533,16 @@ def test_status_does_not_hide_detector_programming_failures(tmp_path: Path) -> N
         runner.status(refresh_suggestion=True)
 
 
-def test_cooldown_uses_auto_completion_time_not_start_time(tmp_path: Path) -> None:
-    """A long run completed recently even if it started before the cooldown window."""
+def test_cooldown_counts_from_auto_run_start_not_completion(tmp_path: Path) -> None:
+    """A daily timer fires at the same wall-clock time; run duration must not push it out (#330)."""
     config = _config(tmp_path)
     runner = AutoRunner(config)
-    now = datetime.now()
+    now = datetime.now(tz=UTC)
     runner.db.save_run(
         RunMetadata(
-            run_id="long-auto-run",
-            created_at=now - timedelta(hours=30),
-            completed_at=now - timedelta(hours=1),
+            run_id="yesterdays-auto-run",
+            created_at=now - timedelta(hours=24),
+            completed_at=now - timedelta(hours=23),
             status="completed",
             source="auto",
         )
@@ -550,9 +550,9 @@ def test_cooldown_uses_auto_completion_time_not_start_time(tmp_path: Path) -> No
 
     status = runner.status(cooldown_hours=24)
 
-    assert status.cooldown.active is True
+    assert status.cooldown.active is False
     assert status.last_completed_auto_run is not None
-    assert status.last_completed_auto_run.run_id == "long-auto-run"
+    assert status.last_completed_auto_run.run_id == "yesterdays-auto-run"
 
 
 def test_status_preserves_explicit_zero_cooldown(tmp_path: Path) -> None:
