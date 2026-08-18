@@ -47,18 +47,13 @@ service's `environment:` block (or use `--output` on every CLI run):
       IMMICH_MEMORIES_OUTPUT__DIRECTORY: /app/output
 ```
 
-The container runs as the unprivileged `immich` user (a system UID below 1000). If Docker creates
-`./output` for you it is owned by root and the app cannot write to it. Either create it first and
-hand it to the container's UID —
-
-```bash
-mkdir -p output
-sudo chown "$(docker run --rm ghcr.io/sam-dumont/immich-video-memory-generator:latest id -u)" output
-```
-
-— or replace the bind mount with a named volume (`immich-memories-output:/app/output`) and copy
-files out with `docker cp`. Setting `user: "1000:1000"` on the service also works, but then the
-config volume must be writable by that UID too (bind-mount it and `chown` it the same way).
+The container runs as the unprivileged `immich` user, **UID/GID 1000** — the first user on most
+Linux hosts, so a `./output` folder you create yourself is writable without any `chown`. If Docker
+creates the folder for you it is owned by root; then either `mkdir -p output` before the first
+`up`, or `sudo chown 1000:1000 output`. On a host where your user is not 1000, set
+`user: "<uid>:<gid>"` on the service — the config volume must then be writable by that UID too
+(bind-mount it and `chown` it the same way) — or use a named volume
+(`immich-memories-output:/app/output`) and copy files out with `docker cp`.
 :::
 
 ## Resource requirements

@@ -14,15 +14,13 @@ are being fixed. As of v0.40.1 they do **not** boot as-is. What you need to chan
 1. **The Secret is not applied by `kubectl apply -k .`** — `kustomization.yaml` has `- secret.yaml`
    commented out, so the Deployment fails with `CreateContainerConfigError`. Apply
    `secret.yaml` yourself (or uncomment the line) before `-k`.
-2. **UID / home mismatch.** The image runs as the system user `immich` (UID below 1000,
-   `HOME=/home/immich`, writable dirs `/home/immich/.immich-memories`, `/app/output`,
-   `/app/.nicegui`); the manifests force `runAsUser: 1000` and `HOME=/home/appuser`. Two
-   consequences: the ConfigMap is mounted read-only at `/home/appuser/.immich-memories`, and the
-   app creates `cache/`, `projects/`, `cache.db` and `.storage_secret` in exactly that directory
-   at startup, so it fails on the read-only mount; and UID 1000 cannot write `/app/.nicegui`
-   (NiceGUI's session store). Fix: mount the **cache PVC** at `/home/appuser/.immich-memories`
+2. **Read-only config mount.** The image runs as `immich`, UID/GID 1000 (matching the manifests'
+   `runAsUser: 1000`; `HOME` is overridden to `/home/appuser`, which is fine). The ConfigMap is
+   mounted read-only at `/home/appuser/.immich-memories`, but the app creates `cache/`,
+   `projects/`, `cache.db` and `.storage_secret` in exactly that directory at startup, so it
+   fails on the read-only mount. Fix: mount the **cache PVC** at `/home/appuser/.immich-memories`
    (writable; `fsGroup: 1000` makes it group-writable) and project the ConfigMap into it as a
-   single file with `subPath: config.yaml`; add an `emptyDir` at `/app/.nicegui`; set
+   single file with `subPath: config.yaml`; set
    `IMMICH_MEMORIES_STORAGE_SECRET` from the Secret so sessions survive restarts. The
    `~/.cache/immich-memories` mount is never written to and can go.
 3. **Stale config keys.** `audio.ollama_*`, `content_analysis.provider|ollama_*|openai_*`,

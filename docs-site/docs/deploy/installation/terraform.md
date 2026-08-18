@@ -11,13 +11,12 @@ Deploy Immich Memories to Kubernetes using Terraform. The module lives in `deplo
 The module predates the current image and config schema and is being fixed. As of v0.40.1 the
 pod it creates does not run cleanly. What to change by hand:
 
-1. **UID / read-only config.** The image runs as the system user `immich` (UID below 1000,
-   `HOME=/home/immich`); the module sets `run_as_user = 1000` and mounts the ConfigMap read-only at
-   `/home/immich/.immich-memories`. The app creates `cache/`, `projects/`, `cache.db` and
-   `.storage_secret` in that directory at startup and fails on the read-only mount; UID 1000 also
-   cannot write `/app/.nicegui`. Fix: mount the cache PVC at `/home/immich/.immich-memories`
-   (`fs_group = 1000` makes it writable), project `config.yaml` into it with `sub_path`, add an
-   `empty_dir` at `/app/.nicegui`. The `/home/immich/.cache/immich-memories` mount is never used.
+1. **Read-only config.** The image runs as `immich`, UID/GID 1000 (matching `run_as_user = 1000`),
+   and the module mounts the ConfigMap read-only at `/home/immich/.immich-memories`. The app
+   creates `cache/`, `projects/`, `cache.db` and `.storage_secret` in that directory at startup
+   and fails on the read-only mount. Fix: mount the cache PVC at `/home/immich/.immich-memories`
+   (`fs_group = 1000` makes it writable) and project `config.yaml` into it with `sub_path`.
+   The `/home/immich/.cache/immich-memories` mount is never used.
 2. **Probes hit `/`.** Use `/health/live` (liveness) and `/health/ready` (readiness).
 3. **Stale config keys.** `hardware.backend`, `audio.auto_music`, `audio.music_source`,
    `audio.ollama_url`, `audio.ollama_model`, `audio.ducking_*`, `audio.music_volume_db`,

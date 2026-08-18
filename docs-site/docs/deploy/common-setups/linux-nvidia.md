@@ -90,10 +90,9 @@ Two things the compose file cannot do for you:
 
 - **Output directory**: without `IMMICH_MEMORIES_OUTPUT__DIRECTORY` the videos are written to
   `/home/immich/Videos/Memories` inside the container and vanish with it.
-- **Bind-mount ownership**: the container runs as the unprivileged `immich` user. Create the
-  output directory yourself and `chown` it to that UID
-  (`sudo chown "$(docker run --rm ghcr.io/sam-dumont/immich-video-memory-generator:latest id -u)" output`)
-  or Docker creates it as root and the app cannot write there. See
+- **Bind-mount ownership**: the container runs as UID/GID 1000. Create the output directory
+  yourself (`mkdir -p output`; `chown 1000:1000 output` if your user isn't 1000) or Docker
+  creates it as root and the app cannot write there. See
   [Docker install](../installation/docker.md) for the alternatives.
 
 ## .env file
