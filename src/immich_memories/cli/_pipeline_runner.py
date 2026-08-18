@@ -400,6 +400,7 @@ def run_pipeline_and_generate(
         all_candidates,
         config=config,
         content_budget_seconds=timeline_plan.content_budget,
+        photo_assets=photo_assets,
     )
 
     # Phase 4: Unified selection (videos + photos compete together)
@@ -665,7 +666,11 @@ def _merge_photos_into_pool(
 
 
 def _apply_subject_policy(
-    candidates: list, *, config: Config, content_budget_seconds: float
+    candidates: list,
+    *,
+    config: Config,
+    content_budget_seconds: float,
+    photo_assets: list | None = None,
 ) -> list:
     """Prefer clips of people, and ration animals and objects by share of runtime."""
     if not config.analysis.subject_policy_enabled:
@@ -678,6 +683,7 @@ def _apply_subject_policy(
         animal_ratio=config.analysis.max_animal_ratio,
         object_ratio=config.analysis.max_object_ratio,
         content_budget_seconds=content_budget_seconds,
+        photo_asset_ids={a.id for a in photo_assets or []},
     )
 
 

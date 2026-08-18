@@ -53,10 +53,10 @@ def test_people_outrank_whatever_else_is_in_frame() -> None:
     )
 
 
-def _cand(key, category, score):
+def _cand(key, category, score, scale="motion"):
     from immich_memories.analysis.subject_policy import SubjectCandidate
 
-    return SubjectCandidate(key=key, category=category, score=score)
+    return SubjectCandidate(key=key, category=category, score=score, scale=scale)
 
 
 def test_a_high_scoring_object_still_loses_to_a_lower_scoring_person() -> None:
@@ -242,3 +242,26 @@ def test_a_genuinely_good_object_gets_in_but_a_dull_one_does_not() -> None:
 
     assert "new-car" in outcome.kept_keys
     assert "lawnmower" not in outcome.kept_keys
+
+
+def test_the_bar_is_computed_within_a_scale_not_across_two() -> None:
+    """Measured on a real June pool: people video clips score a 0.70 median,
+    photos a much lower one. Pooling both gave a 0.43 bar, and a string trimmer
+    scoring 0.61 cleared it. Judged against its own scale it does not."""
+    from immich_memories.analysis.subject_policy import apply_subject_quotas
+
+    outcome = apply_subject_quotas(
+        [
+            _cand("clip-person-a", SubjectCategory.PEOPLE, 0.70, scale="motion"),
+            _cand("clip-person-b", SubjectCategory.PEOPLE, 0.85, scale="motion"),
+            _cand("trimmer", SubjectCategory.OBJECT, 0.61, scale="motion"),
+            _cand("photo-person-a", SubjectCategory.PEOPLE, 0.28, scale="photo"),
+            _cand("photo-person-b", SubjectCategory.PEOPLE, 0.43, scale="photo"),
+        ],
+        animal_ratio=0.10,
+        object_ratio=0.05,
+        expected_clips=15,
+    )
+
+    assert "trimmer" not in outcome.kept_keys
+    assert "photo-person-a" in outcome.kept_keys
