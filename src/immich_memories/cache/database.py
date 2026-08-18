@@ -107,6 +107,7 @@ class VideoAnalysisCache:
             15: migrate_notification_health,
             16: migrate_video_analysis_model_version,
             17: migrate_segment_transcripts,
+            18: self._migration_v18_llm_category,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):
@@ -331,6 +332,15 @@ class VideoAnalysisCache:
             )  # nosemgrep: sqlalchemy-execute-raw-query — col_name/col_type are hardcoded above
         logger.info("Added LLM and audio_categories columns to video_segments")
 
+    def _migration_v18_llm_category(self, conn: sqlite3.Connection) -> None:
+        """Add the closed-set subject category to video_segments.
+
+        Existing rows stay NULL and fall back to keyword classification of
+        llm_description until they are re-analysed.
+        """
+        conn.execute("ALTER TABLE video_segments ADD COLUMN llm_category TEXT")
+        logger.info("Added llm_category column to video_segments")
+
     def _migration_v7_asset_scores(self, conn: sqlite3.Connection) -> None:
         """Add asset_scores table for cache-first LLM scoring."""
         execute_migration_script(
@@ -343,6 +353,7 @@ class VideoAnalysisCache:
                 llm_quality REAL,
                 llm_emotion TEXT,
                 llm_description TEXT,
+                llm_category TEXT,
                 metadata_score REAL NOT NULL,
                 combined_score REAL NOT NULL,
                 analyzed_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -629,12 +640,12 @@ class VideoAnalysisCache:
                     asset_id, segment_index, start_time, end_time,
                     face_score, motion_score, stability_score,
                     audio_score, total_score, face_positions,
-                    llm_description, llm_emotion, llm_setting,
+                    llm_description, llm_category, llm_emotion, llm_setting,
                     llm_activities, llm_subjects,
                     llm_interestingness, llm_quality,
                     audio_categories,
                     transcript, transcript_language, transcript_confidence
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     asset_id,
@@ -648,6 +659,7 @@ class VideoAnalysisCache:
                     segment.total_score,
                     (json.dumps(segment.face_positions) if segment.face_positions else None),
                     getattr(segment, "llm_description", None),
+                    getattr(segment, "llm_category", None),
                     getattr(segment, "llm_emotion", None),
                     getattr(segment, "llm_setting", None),
                     json.dumps(list(activities)) if activities else None,

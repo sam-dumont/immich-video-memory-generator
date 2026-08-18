@@ -69,6 +69,9 @@ analysis:
 
   # Duplicate detection
   duplicate_hash_threshold: 8    # Perceptual hash threshold (0-64)
+  subject_policy_enabled: true   # Prefer clips of people over things
+  max_animal_clips: 2            # Animal-only clips per video
+  max_object_clips: 0            # Object-only clips per video
 
   # Performance
   download_workers: 3            # Parallel download clients for video and thumbnail prefetching (1-8)

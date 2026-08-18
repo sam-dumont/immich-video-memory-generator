@@ -31,6 +31,7 @@ class CachedSegment:
 
     # LLM analysis results (persisted from unified analysis)
     llm_description: str | None = None
+    llm_category: str | None = None
     llm_emotion: str | None = None
     llm_setting: str | None = None
     llm_activities: list[str] | None = None

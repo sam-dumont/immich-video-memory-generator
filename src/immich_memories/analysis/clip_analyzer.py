@@ -433,6 +433,7 @@ class ClipAnalyzer:
             if best_segment.llm_description or best_segment.llm_emotion:
                 llm_analysis = {
                     "description": best_segment.llm_description,
+                    "category": best_segment.llm_category,
                     "emotion": best_segment.llm_emotion,
                     "setting": best_segment.llm_setting,
                     "activities": best_segment.llm_activities,

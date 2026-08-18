@@ -51,6 +51,13 @@ def _create_minimal_v10_database(db_path: Path) -> None:
             );
             INSERT INTO schema_migrations (version) VALUES (10);
 
+            -- A real v10 database has this from v1; later migrations ALTER it.
+            CREATE TABLE video_segments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset_id TEXT NOT NULL,
+                segment_index INTEGER NOT NULL
+            );
+
             CREATE TABLE pipeline_runs (
                 run_id TEXT PRIMARY KEY,
                 created_at TEXT NOT NULL,

@@ -23,6 +23,7 @@ def semantic_payload_from_segment(segment: CachedSegment) -> dict[str, object] |
     """Extract persisted semantic fields from one cached segment."""
     payload: dict[str, object] = {
         "description": segment.llm_description,
+        "category": segment.llm_category,
         "emotion": segment.llm_emotion,
         "setting": segment.llm_setting,
         "activities": segment.llm_activities,
@@ -41,6 +42,7 @@ def apply_semantic_payload(
     if not payload:
         return
     clip.llm_description = cast(str | None, payload.get("description"))
+    clip.llm_category = cast(str | None, payload.get("category"))
     clip.llm_emotion = cast(str | None, payload.get("emotion"))
     clip.llm_setting = cast(str | None, payload.get("setting"))
     clip.llm_activities = cast(list[str] | None, payload.get("activities"))

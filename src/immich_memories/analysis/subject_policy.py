@@ -1,0 +1,326 @@
+"""What a clip is *of*, and how much of each kind belongs in a memory.
+
+A memory video is about the people in it. Scenery earns its place by being good,
+animals are a garnish, and a clip of a lawnmower is not a memory. Selection
+scored clips on faces, motion and stability alone, so a steady handheld pan
+across a lawn outranked a shaky clip of a child.
+
+The policy acts only on evidence. A clip nobody has described yet is kept, not
+rationed -- on a real library 35-46% of the pool has no cached description, and
+treating that silence as "probably an object" would delete half the memory.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+import statistics
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from enum import Enum
+
+logger = logging.getLogger(__name__)
+
+
+class SubjectCategory(Enum):
+    """What a clip is primarily of."""
+
+    PEOPLE = "people"
+    ANIMAL = "animal"
+    LANDSCAPE = "landscape"
+    OBJECT = "object"
+    UNKNOWN = "unknown"
+
+
+_PEOPLE_TERMS = frozenset(
+    {
+        "person",
+        "people",
+        "man",
+        "men",
+        "woman",
+        "women",
+        "child",
+        "children",
+        "kid",
+        "kids",
+        "baby",
+        "babies",
+        "toddler",
+        "boy",
+        "boys",
+        "girl",
+        "girls",
+        "family",
+        "adult",
+        "adults",
+        "couple",
+        "crowd",
+        "group",
+        "someone",
+        "father",
+        "mother",
+        "dad",
+        "mom",
+        "parent",
+        "parents",
+        "friends",
+    }
+)
+
+_ANIMAL_TERMS = frozenset(
+    {
+        "dog",
+        "dogs",
+        "puppy",
+        "cat",
+        "cats",
+        "kitten",
+        "kittens",
+        "animal",
+        "animals",
+        "pet",
+        "pets",
+        "bird",
+        "birds",
+        "horse",
+        "horses",
+        "cow",
+        "cows",
+        "sheep",
+        "duck",
+        "ducks",
+        "chicken",
+        "rabbit",
+        "fish",
+        "goat",
+    }
+)
+
+# Deliberately narrow, and narrowed further by measurement. "view" and "field"
+# were dropped after they classified a treadmill, a bike hub and an office
+# renovation as scenery -- each of those descriptions said "close-up view".
+# A term earns its place only if it cannot also describe an object in a room.
+_LANDSCAPE_TERMS = frozenset(
+    {
+        "landscape",
+        "scenery",
+        "vista",
+        "panorama",
+        "horizon",
+        "skyline",
+        "sunset",
+        "sunrise",
+        "mountain",
+        "mountains",
+        "valley",
+        "countryside",
+        "sea",
+        "ocean",
+        "lake",
+        "river",
+        "waterfall",
+        "forest",
+        "beach",
+        "cliff",
+        "cliffs",
+        "meadow",
+        "shoreline",
+    }
+)
+
+
+def classify_subject(
+    *,
+    tagged_people: int,
+    category: str | None = None,
+    subjects: Sequence[str] | None = None,
+    description: str | None = None,
+) -> SubjectCategory:
+    """Categorise a clip, most trustworthy signal first.
+
+    1. Immich face tags. Face recognition has already run across the library, so
+       a tagged clip needs no model call and no guessing.
+    2. The category the VLM was asked to pick from a closed set.
+    3. Keywords in the VLM's prose, for the segments cached before the model was
+       ever asked for a category.
+
+    People win over anything else in frame -- a child chasing a dog is a memory
+    about the child.
+    """
+    if tagged_people > 0:
+        return SubjectCategory.PEOPLE
+
+    stated = _stated_category(category)
+    if stated is not None:
+        return stated
+
+    words = _words(subjects, description)
+    if not words:
+        return SubjectCategory.UNKNOWN
+    if words & _PEOPLE_TERMS:
+        return SubjectCategory.PEOPLE
+    if words & _ANIMAL_TERMS:
+        return SubjectCategory.ANIMAL
+    if words & _LANDSCAPE_TERMS:
+        return SubjectCategory.LANDSCAPE
+    return SubjectCategory.OBJECT
+
+
+def _stated_category(category: str | None) -> SubjectCategory | None:
+    """The model's own label, when it is one of the ones we asked for."""
+    if not category:
+        return None
+    try:
+        stated = SubjectCategory(category.strip().lower())
+    except ValueError:
+        return None
+    return None if stated is SubjectCategory.UNKNOWN else stated
+
+
+def _words(subjects: Sequence[str] | None, description: str | None) -> set[str]:
+    """Lowercased word set over the VLM's structured subjects and its prose."""
+    blob = " ".join([*(subjects or []), description or ""])
+    return set(re.findall(r"[a-z]+", blob.lower()))
+
+
+@dataclass(frozen=True)
+class SubjectCandidate:
+    """A selection candidate reduced to what the subject policy needs."""
+
+    key: str
+    category: SubjectCategory
+    score: float
+
+
+@dataclass(frozen=True)
+class QuotaOutcome:
+    """Surviving candidate keys, in input order, and what was cut."""
+
+    kept_keys: list[str]
+    dropped: dict[SubjectCategory, int] = field(default_factory=dict)
+    quality_bar: float = 0.0
+    bypassed: bool = False
+
+
+def apply_subject_quotas(
+    candidates: list[SubjectCandidate],
+    *,
+    max_animal: int,
+    max_object: int,
+) -> QuotaOutcome:
+    """Keep every person, ration animals and objects, make scenery earn its place.
+
+    Scenery must beat the median people-clip score. That bar is derived rather
+    than configured because scores are not comparable across pools -- photos and
+    video clips sit on different scales, and one fixed threshold would silently
+    exclude one of them wholesale.
+    """
+    by_category: dict[SubjectCategory, list[SubjectCandidate]] = {}
+    for candidate in candidates:
+        by_category.setdefault(candidate.category, []).append(candidate)
+
+    bar = _quality_bar(by_category, candidates)
+
+    keep: set[str] = set()
+    dropped: dict[SubjectCategory, int] = {}
+    for category, members in by_category.items():
+        survivors = _survivors(category, members, bar, max_animal, max_object)
+        keep.update(c.key for c in survivors)
+        if len(survivors) < len(members):
+            dropped[category] = len(members) - len(survivors)
+
+    if not keep:
+        # A pool of nothing but rationed categories -- an all-object month. A
+        # shorter video is the goal; an empty one is a failure, so the policy
+        # stands down rather than deleting the memory.
+        return QuotaOutcome(
+            kept_keys=[c.key for c in candidates],
+            quality_bar=bar,
+            bypassed=True,
+        )
+
+    return QuotaOutcome(
+        kept_keys=[c.key for c in candidates if c.key in keep],
+        dropped=dropped,
+        quality_bar=bar,
+    )
+
+
+def _survivors(
+    category: SubjectCategory,
+    members: list[SubjectCandidate],
+    bar: float,
+    max_animal: int,
+    max_object: int,
+) -> list[SubjectCandidate]:
+    if category is SubjectCategory.ANIMAL:
+        return _top(members, max_animal)
+    if category is SubjectCategory.OBJECT:
+        return _top(members, max_object)
+    if category is SubjectCategory.LANDSCAPE:
+        return [c for c in members if c.score >= bar]
+    return members
+
+
+def _top(members: list[SubjectCandidate], limit: int) -> list[SubjectCandidate]:
+    if limit <= 0:
+        return []
+    return sorted(members, key=lambda c: -c.score)[:limit]
+
+
+def _quality_bar(
+    by_category: dict[SubjectCategory, list[SubjectCandidate]],
+    candidates: list[SubjectCandidate],
+) -> float:
+    people = by_category.get(SubjectCategory.PEOPLE)
+    reference = people or candidates
+    if not reference:
+        return 0.0
+    return statistics.median(c.score for c in reference)
+
+
+def filter_candidates_by_subject(
+    candidates: list,
+    *,
+    max_animal: int,
+    max_object: int,
+) -> list:
+    """Apply the subject policy to a pool of ClipWithSegment candidates."""
+    if not candidates:
+        return candidates
+
+    described = [
+        SubjectCandidate(
+            key=candidate.clip.asset.id,
+            category=classify_subject(
+                tagged_people=len(candidate.clip.asset.people or []),
+                category=candidate.clip.llm_category,
+                subjects=candidate.clip.llm_subjects,
+                description=candidate.clip.llm_description,
+            ),
+            score=candidate.score,
+        )
+        for candidate in candidates
+    ]
+
+    outcome = apply_subject_quotas(described, max_animal=max_animal, max_object=max_object)
+    if outcome.bypassed:
+        logger.info(
+            "Subject policy: nothing would survive — keeping all %d candidates",
+            len(candidates),
+        )
+        return candidates
+
+    if outcome.dropped:
+        counts = ", ".join(
+            f"{n} {category.value}" for category, n in sorted(outcome.dropped.items(), key=str)
+        )
+        logger.info(
+            "Subject policy: dropped %s (scenery had to beat %.2f, the median people clip)",
+            counts,
+            outcome.quality_bar,
+        )
+
+    kept = set(outcome.kept_keys)
+    return [c for c in candidates if c.clip.asset.id in kept]

@@ -579,6 +579,7 @@ class UnifiedSegmentAnalyzer:
             # If segment provided, store full LLM analysis results
             if segment is not None:
                 segment.llm_description = analysis.description
+                segment.llm_category = analysis.category
                 segment.llm_emotion = analysis.emotion
                 segment.llm_setting = analysis.setting
                 segment.llm_activities = analysis.activities
