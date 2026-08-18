@@ -25,9 +25,12 @@ TODAYS_PROMPT = """Describe what you see in this image.
 
 Return JSON with these fields:
 - description: What is happening in this scene?
-- category: What is this mainly of? Exactly one of: people, animal, landscape, object.
-  Use "people" if any person is visible, even partly. Use "landscape" only for a wide
-  outdoor view, never for a close-up of a thing. Use "object" for anything else.
+- category: What is this mainly of? Exactly one of: people, animal, landscape, object, screen.
+  Use "screen" if the subject is a phone, watch, computer or TV display, a screenshot,
+  or a document or form -- even when a person is holding or wearing the device.
+  Use "people" if a person is the subject. Use "animal" only for a live animal, not a
+  toy, figurine, drawing or photo of one. Use "landscape" only for a wide outdoor view,
+  never for a close-up of a thing. Use "object" for anything else.
 - subjects: What is in frame? (short lowercase nouns, e.g. ["child", "dog", "beach"])
 - emotion: What is the mood? (one word: happy, calm, excited, playful, joyful, peaceful)
 - interestingness: How memorable is this moment? (0.0 to 1.0)

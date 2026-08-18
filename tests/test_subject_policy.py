@@ -8,47 +8,7 @@ from immich_memories.analysis.subject_policy import SubjectCategory, classify_su
 def test_an_immich_face_tag_settles_it() -> None:
     """Immich's own face tagging is authoritative and needs no LLM round trip."""
     assert (
-        classify_subject(tagged_people=1, subjects=None, description="a red lawnmower on grass")
-        is SubjectCategory.PEOPLE
-    )
-
-
-def test_an_untagged_clip_is_people_when_the_description_says_so() -> None:
-    """Immich only tags faces it recognises; a stranger or a back of a head is
-    still a person. These are verbatim descriptions from a real cache."""
-    for text in (
-        "Three children are playing with sand at the beach.",
-        "A man and a baby are interacting playfully in a cozy indoor setting.",
-        "A woman and a child are seated in the back of a bicycle-like vehicle.",
-    ):
-        assert (
-            classify_subject(tagged_people=0, subjects=None, description=text)
-            is SubjectCategory.PEOPLE
-        ), text
-
-
-def test_animals_landscapes_and_objects_are_told_apart() -> None:
-    cases = {
-        "A dog is running across the garden": SubjectCategory.ANIMAL,
-        "Two cats sit on a windowsill": SubjectCategory.ANIMAL,
-        "Sunset over the sea with mountains in the distance": SubjectCategory.LANDSCAPE,
-        "A view of the valley from the top of the hill": SubjectCategory.LANDSCAPE,
-        "A red lawnmower parked on the lawn": SubjectCategory.OBJECT,
-        "A bicycle mounted on an indoor trainer": SubjectCategory.OBJECT,
-        "A shelf holding plastic storage boxes": SubjectCategory.OBJECT,
-    }
-    for text, expected in cases.items():
-        assert classify_subject(tagged_people=0, subjects=None, description=text) is expected, text
-
-
-def test_people_outrank_whatever_else_is_in_frame() -> None:
-    """A child playing with the dog is a memory about the child."""
-    assert (
-        classify_subject(
-            tagged_people=0,
-            subjects=None,
-            description="A dog runs along the beach while two children chase it",
-        )
+        classify_subject(tagged_people=1, description="a red lawnmower on grass")
         is SubjectCategory.PEOPLE
     )
 
@@ -153,27 +113,12 @@ def test_a_clip_we_know_nothing_about_is_kept() -> None:
     assert "unanalysed" in outcome.kept_keys
 
 
-def test_a_close_up_of_an_object_is_not_scenery() -> None:
-    """'view' appears in 'a close-up view of a treadmill'. Real misclassifications
-    from a live library: a bike hub, a treadmill, an office renovation."""
-    for text in (
-        "A close-up view of a modern treadmill against a wall",
-        "This is a close-up photograph of the rear wheel hub and disc brake assembly",
-        "A series of images showing an office renovation",
-    ):
-        assert (
-            classify_subject(tagged_people=0, subjects=None, description=text)
-            is not SubjectCategory.LANDSCAPE
-        ), text
-
-
 def test_an_explicit_category_from_the_model_is_used_directly() -> None:
     """Asking the VLM to pick from a closed set beats keyword-matching its prose."""
     assert (
         classify_subject(
             tagged_people=0,
             category="object",
-            subjects=None,
             description="A close-up of a string trimmer lying on concrete blocks",
         )
         is SubjectCategory.OBJECT
@@ -183,20 +128,7 @@ def test_an_explicit_category_from_the_model_is_used_directly() -> None:
 def test_face_tags_still_beat_an_explicit_category() -> None:
     """Immich recognised a face; the VLM saying 'object' does not overrule that."""
     assert (
-        classify_subject(tagged_people=2, category="object", subjects=None, description=None)
-        is SubjectCategory.PEOPLE
-    )
-
-
-def test_an_unrecognised_category_falls_back_to_the_description() -> None:
-    """Models return junk. A bad label must not silently become OBJECT."""
-    assert (
-        classify_subject(
-            tagged_people=0,
-            category="Category.PEOPLE!!",
-            subjects=None,
-            description="Two children are digging in the sand",
-        )
+        classify_subject(tagged_people=2, category="object", description=None)
         is SubjectCategory.PEOPLE
     )
 
@@ -265,3 +197,35 @@ def test_the_bar_is_computed_within_a_scale_not_across_two() -> None:
 
     assert "trimmer" not in outcome.kept_keys
     assert "photo-person-a" in outcome.kept_keys
+
+
+def test_a_screen_demo_is_its_own_category() -> None:
+    """A clip of a smartwatch showing running data has a person in it and is
+    still not a memory. The model is asked to say so directly."""
+    assert (
+        classify_subject(tagged_people=0, category="screen", description=None)
+        is SubjectCategory.SCREEN
+    )
+
+
+def test_the_description_never_decides_the_category() -> None:
+    """Keyword matching on prose classified figurines as animals, a smartwatch
+    demo as people, and a treadmill as scenery. Only the model's own label and
+    Immich's face tags decide; anything else is unknown, and unknown is kept."""
+    for text in (
+        "A collection of small animal figurines arranged in a winding line",
+        "A person sitting still while wearing a smartwatch displaying running data",
+        "Sunset over the sea with mountains in the distance",
+    ):
+        assert (
+            classify_subject(tagged_people=0, category=None, description=text)
+            is SubjectCategory.UNKNOWN
+        ), text
+
+
+def test_a_junk_label_is_unknown_not_a_guess() -> None:
+    """Models return junk. An unrecognised label must not become a category."""
+    assert (
+        classify_subject(tagged_people=0, category="Category.PEOPLE!!", description=None)
+        is SubjectCategory.UNKNOWN
+    )
