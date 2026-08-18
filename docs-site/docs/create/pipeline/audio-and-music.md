@@ -180,11 +180,9 @@ uv pip install --python .venv/bin/python \
 
 The command above is the tested Apple Silicon inference installation; it deliberately does not
 install ACE-Step's Gradio UI. CUDA hosts should use the pinned v0.1.8 release with the appropriate
-PyTorch wheels. :::note Quality gates remove this install
-`make ci`, `make check` and friends run an exact `uv sync`, which deletes packages this
-project does not declare — ACE-Step among them. Rerun `make install-acestep` afterwards
-to get music generation back; it is fast once the wheels are cached.
-:::
+PyTorch wheels. The `make` quality gates sync with `--inexact`, so they leave this installation alone.
+A bare `uv sync` is exact and removes packages this project does not declare, so rerun
+`make install-acestep` afterwards if you run one.
 
 ### Memory on Apple Silicon
 

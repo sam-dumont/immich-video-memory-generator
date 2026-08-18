@@ -505,14 +505,10 @@ build-check:
 	uvx twine check dist/*
 
 # Ensure dev dependencies are installed
-# Deliberately an exact sync. --inexact would preserve a manually installed
-# ACE-Step, but tests/test_ace_step_backend.py aborts the pytest process with
-# SIGABRT when a real acestep is importable: its fakes only override five
-# acestep.* keys, the real install leaves its others in sys.modules, and the
-# code under test then initialises Metal for real. Until that test is made
-# hermetic, the gates run against a clean tree and `make install-acestep`
-# restores music generation afterwards.
-ENSURE_DEV_COMMAND ?= uv sync --all-extras --quiet
+# --inexact: an exact sync deletes anything this project does not declare, which
+# silently uninstalls the ACE-Step inference stack (make install-acestep) every
+# time a quality gate runs, so music generation breaks after every `make ci`.
+ENSURE_DEV_COMMAND ?= uv sync --all-extras --inexact --quiet
 ensure-dev:
 	@$(ENSURE_DEV_COMMAND)
 
