@@ -13,10 +13,10 @@ def test_an_immich_face_tag_settles_it() -> None:
     )
 
 
-def _cand(key, category, score, scale="motion"):
+def _cand(key, category, score, scale="motion", labelled=True):
     from immich_memories.analysis.subject_policy import SubjectCandidate
 
-    return SubjectCandidate(key=key, category=category, score=score, scale=scale)
+    return SubjectCandidate(key=key, category=category, score=score, scale=scale, labelled=labelled)
 
 
 def test_a_high_scoring_object_still_loses_to_a_lower_scoring_person() -> None:
@@ -229,3 +229,32 @@ def test_a_junk_label_is_unknown_not_a_guess() -> None:
         classify_subject(tagged_people=0, category="Category.PEOPLE!!", description=None)
         is SubjectCategory.UNKNOWN
     )
+
+
+def test_the_bar_ignores_candidates_that_were_never_semantically_scored() -> None:
+    """ClipWithSegment.score is not one scale. An analysed clip carries its
+    segment's semantic score; a clip that was only pre-filtered carries
+    Asset.quality_score, which is resolution and bitrate, not how good the
+    moment is; a clip whose analysis failed carries 0.0. Mixing them dragged a
+    real June run's motion bar from ~0.83 down to 0.31, which let objects and
+    scenery through. Only clips the model actually labelled are comparable."""
+    from immich_memories.analysis.subject_policy import apply_subject_quotas
+
+    outcome = apply_subject_quotas(
+        [
+            _cand("labelled-a", SubjectCategory.PEOPLE, 0.80, scale="motion", labelled=True),
+            _cand("labelled-b", SubjectCategory.PEOPLE, 0.86, scale="motion", labelled=True),
+            _cand("failed", SubjectCategory.PEOPLE, 0.00, scale="motion", labelled=False),
+            _cand("prefiltered", SubjectCategory.PEOPLE, 0.20, scale="motion", labelled=False),
+            _cand("mediocre-object", SubjectCategory.OBJECT, 0.60, scale="motion", labelled=True),
+        ],
+        animal_ratio=0.10,
+        object_ratio=0.05,
+        expected_clips=15,
+    )
+
+    # bar is the median of the two labelled people clips (0.83), not of all four
+    assert "mediocre-object" not in outcome.kept_keys
+    assert outcome.bars["motion"] > 0.8
+    # unlabelled people are still kept -- they are just not evidence for the bar
+    assert "prefiltered" in outcome.kept_keys

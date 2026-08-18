@@ -75,6 +75,7 @@ class SubjectCandidate:
     category: SubjectCategory
     score: float
     scale: str = "motion"
+    labelled: bool = True
 
 
 @dataclass(frozen=True)
@@ -183,25 +184,31 @@ def _top(members: list[SubjectCandidate], limit: int) -> list[SubjectCandidate]:
 
 
 def _quality_bars(candidates: list[SubjectCandidate]) -> dict[str, float]:
-    """The median people-clip score, computed separately for each score scale.
+    """The median people-clip score, per score scale, over comparable scores only.
 
-    Photos and motion clips are scored by different pipelines and land in
-    different ranges -- on a real June pool, people motion clips sat at a 0.70
-    median while photos sat far below. One pooled median put the bar at 0.43,
-    low enough for a clip of a string trimmer to clear it. Each scale is
-    therefore judged against its own people.
+    Two things make scores incomparable. Photos and motion clips come from
+    different pipelines and land in different ranges, so each scale gets its own
+    bar -- pooling them once put the bar at 0.43, low enough for a clip of a
+    string trimmer scoring 0.61 to clear it.
+
+    Within a scale, a score is only a semantic judgement if the clip was actually
+    analysed. One that was merely pre-filtered carries Asset.quality_score --
+    resolution and bitrate, not how good the moment is -- and one whose analysis
+    failed carries 0.0. Only clips the model labelled went through the same
+    scoring as the objects and scenery being judged against them, so only those
+    set the bar. A real run mixing all three produced a 0.31 motion bar against a
+    labelled-people median of about 0.83.
     """
     by_scale: dict[str, list[float]] = {}
+    comparable: dict[str, list[float]] = {}
     for candidate in candidates:
         by_scale.setdefault(candidate.scale, []).append(candidate.score)
-
-    people: dict[str, list[float]] = {}
-    for candidate in candidates:
-        if candidate.category is SubjectCategory.PEOPLE:
-            people.setdefault(candidate.scale, []).append(candidate.score)
+        if candidate.category is SubjectCategory.PEOPLE and candidate.labelled:
+            comparable.setdefault(candidate.scale, []).append(candidate.score)
 
     return {
-        scale: statistics.median(people.get(scale) or scores) for scale, scores in by_scale.items()
+        scale: statistics.median(comparable.get(scale) or scores)
+        for scale, scores in by_scale.items()
     }
 
 
@@ -234,6 +241,7 @@ def filter_candidates_by_subject(
             ),
             score=candidate.score,
             scale="photo" if candidate.clip.asset.id in photos else "motion",
+            labelled=bool(candidate.clip.llm_category),
         )
         for candidate in candidates
     ]
@@ -256,9 +264,10 @@ def filter_candidates_by_subject(
             f"{n} {category.value}" for category, n in sorted(outcome.dropped.items(), key=str)
         )
         logger.info(
-            "Subject policy: dropped %s (had to beat %s)",
+            "Subject policy: dropped %s (had to beat %s, from %d labelled people clips)",
             counts,
             ", ".join(f"{scale} {bar:.2f}" for scale, bar in sorted(outcome.bars.items())),
+            sum(1 for c in described if c.labelled and c.category is SubjectCategory.PEOPLE),
         )
 
     kept = set(outcome.kept_keys)
