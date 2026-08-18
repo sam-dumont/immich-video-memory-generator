@@ -76,6 +76,8 @@ def build_content_analysis_prompt(transcript: str | None = None) -> str:
     return "\n\n".join(sections)
 
 
+MAX_LIST = 10
+
 CONTENT_ANALYSIS_PROMPT = build_content_analysis_prompt()
 
 
@@ -378,7 +380,6 @@ class ContentAnalyzer:
             ContentAnalysis instance.
         """
         MAX_STR = 500
-        MAX_LIST = 10
         description = str(data.get("description", ""))[:MAX_STR]
         activities = [str(a)[:MAX_STR] for a in data.get("activities", [])[:MAX_LIST]]
         subjects = [str(s)[:MAX_STR] for s in data.get("subjects", [])[:MAX_LIST]]
@@ -491,6 +492,23 @@ class ContentAnalyzer:
         setting_match = re.search(r'"setting"\s*:\s*"([^"]+)"', text)
         if setting_match:
             result.setting = setting_match.group(1)
+
+        # WHY: the subject policy decides on the category alone, so a response that
+        # reaches this path without one silently drops out of the filter. Sampled
+        # against the live model every response was well-formed and carried a
+        # category, so this is insurance rather than a fix for something observed --
+        # but the two fields it adds are the two the policy cannot work without.
+        category_match = re.search(r'"category"\s*:\s*"([^"]+)"', text)
+        if category_match:
+            result.category = category_match.group(1)
+
+        subjects_match = re.search(r'"subjects"\s*:\s*\[([^\]]*)\]', text)
+        if subjects_match:
+            result.subjects = [
+                item.strip().strip('"').strip("'")
+                for item in subjects_match.group(1).split(",")
+                if item.strip().strip('"').strip("'")
+            ][:MAX_LIST]
 
         if result.description or result.emotion:
             desc_preview = result.description[:50] if result.description else "(none)"
