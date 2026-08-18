@@ -21,6 +21,7 @@ from immich_memories.analysis.clip_refiner import ClipRefiner
 from immich_memories.analysis.clip_scaler import ClipScaler
 from immich_memories.analysis.preview_builder import PreviewBuilder
 from immich_memories.analysis.progress import PipelinePhase, ProgressTracker
+from immich_memories.analysis.thumbnail_prefetch import ThumbnailPrefetcher
 
 if TYPE_CHECKING:
     from immich_memories.api.immich import SyncImmichClient
@@ -203,6 +204,12 @@ class SmartPipeline:
         )
         self.scaler = ClipScaler()
         self.refiner = ClipRefiner(self.config, self.scaler)
+        self.thumbnail_prefetcher = ThumbnailPrefetcher.from_client(
+            client,
+            thumbnail_cache,
+            api_policy=app_config.immich.api_version,
+            max_workers=analysis_config.download_workers,
+        )
 
     def run(
         self,
@@ -374,6 +381,7 @@ class SmartPipeline:
         from immich_memories.analysis.thumbnail_clustering import deduplicate_by_thumbnails
 
         self.tracker.start_phase(PipelinePhase.CLUSTERING, len(clips))
+        self.thumbnail_prefetcher.ensure_cached(clips)
 
         def progress(current: int, total: int) -> None:
             if current <= len(clips) and current > 0:

@@ -26,6 +26,9 @@ class ThumbnailCache:
             return path.read_bytes()
         return None
 
+    def has(self, asset_id: str, size: str) -> bool:
+        return self._path(asset_id, size).exists()
+
     def get_batch(self, asset_ids: set[str] | list[str], size: str) -> dict[str, bytes]:
         result: dict[str, bytes] = {}
         for asset_id in asset_ids:
@@ -34,10 +37,11 @@ class ThumbnailCache:
                 result[asset_id] = data
         return result
 
-    def put(self, asset_id: str, size: str, data: bytes) -> None:
+    def put(self, asset_id: str, size: str, data: bytes) -> Path:
         path = self._path(asset_id, size)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
+        return path
 
     def clear(self) -> int:
         """Remove all cached thumbnails. Returns count of removed files."""

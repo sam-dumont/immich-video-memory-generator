@@ -13,6 +13,8 @@ Each video gets a perceptual hash: a fingerprint based on what the video *looks 
 
 The hamming distance between hashes determines similarity. A distance of 0 means identical. Higher values mean more different.
 
+Hashes are computed on Immich's preview thumbnails, not the full videos. The web UI caches those in Step 1. `generate` and `auto run` fetch whatever is missing at the start of the clustering phase, using `analysis.download_workers` parallel clients (3 by default), so the automated path de-duplicates the same way the UI does. Previews are cached on disk, so a second run over the same clips fetches nothing. If a preview can't be fetched, that clip skips duplicate detection, a warning is logged, and the run continues.
+
 ## Configuration
 
 ```yaml

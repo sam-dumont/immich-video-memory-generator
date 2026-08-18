@@ -89,7 +89,7 @@ class AnalysisConfig(BaseModel):
         default=3,
         ge=1,
         le=8,
-        description="Concurrent isolated clients used for video download prefetching",
+        description="Concurrent isolated clients used for video and thumbnail prefetching",
     )
     scene_threshold: float = Field(default=27.0, ge=1.0, le=100.0)
     min_scene_duration: float = Field(default=1.0, ge=0.5, le=10.0)

@@ -71,7 +71,7 @@ analysis:
   duplicate_hash_threshold: 8    # Perceptual hash threshold (0-64)
 
   # Performance
-  download_workers: 3            # Parallel download clients for video prefetching (1-8)
+  download_workers: 3            # Parallel download clients for video and thumbnail prefetching (1-8)
   enable_downscaling: true       # Downscale for analysis (~3-5x faster)
   analysis_resolution: 480       # Target height for analysis (240-1080)
 

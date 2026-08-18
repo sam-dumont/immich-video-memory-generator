@@ -130,6 +130,7 @@ src/immich_memories/
 │   ├── duplicates.py           # Duplicate/near-duplicate detection
 │   ├── duplicate_hashing.py    # Perceptual hashing for duplicates
 │   ├── thumbnail_clustering.py # Thumbnail-based clustering
+│   ├── thumbnail_prefetch.py   # ThumbnailPrefetcher: fills the thumbnail cache before phase 1 (CLI/auto path)
 │   ├── scoring.py              # Quality scoring (face, motion, duration, segments)
 │   ├── scenes.py               # Scene detection
 │   ├── silence_detection.py    # Audio silence detection
