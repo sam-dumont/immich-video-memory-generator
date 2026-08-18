@@ -446,6 +446,15 @@ def run_pipeline_and_generate(
             timeline_plan.max_dividers,
         )
 
+    output_path = _name_after_recipe(
+        output_path,
+        selected_clips=selected_clips,
+        clip_segments=clip_segments,
+        memory_type=memory_type,
+        date_range=date_range,
+        target_duration=timeline_plan.target_duration,
+    )
+
     print_success(f"Selected {len(selected_clips)} clips for final video")
 
     should_upload = upload_to_immich or config.upload.enabled
@@ -696,6 +705,38 @@ def _drop_reencoded_sources(candidates: list, *, config: Config) -> list:
 def _has_camera_exif(asset) -> bool:
     exif = getattr(asset, "exif_info", None)
     return bool(exif and (exif.make or exif.model))
+
+
+def _name_after_recipe(
+    output_path: Path,
+    *,
+    selected_clips: list,
+    clip_segments: dict,
+    memory_type: str | None,
+    date_range,
+    target_duration: float,
+) -> Path:
+    """Name the output after its recipe so an identical rerun replaces it.
+
+    The name can only be finalised here: the CLI builds it before analysis, and
+    the clips that define the edit are not known until selection has run.
+    """
+    from immich_memories.filename_builder import apply_recipe_hash, recipe_hash
+
+    clips = []
+    for clip in selected_clips:
+        asset_id = clip.asset.id
+        start, end = clip_segments.get(asset_id, (0.0, 0.0))
+        clips.append((asset_id, start, end))
+
+    digest = recipe_hash(
+        memory_type=memory_type,
+        date_start=date_range.start.date() if date_range else None,
+        date_end=date_range.end.date() if date_range else None,
+        target_duration=target_duration,
+        clips=clips,
+    )
+    return apply_recipe_hash(output_path, digest)
 
 
 def _apply_subject_policy(

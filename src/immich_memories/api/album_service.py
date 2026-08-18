@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +18,9 @@ _UPLOAD_MEDIA_TYPES = {
     ".mov": "video/quicktime",
     ".mp4": "video/mp4",
 }
+
+
+logger = logging.getLogger(__name__)
 
 
 class InvalidUploadResponse(ValueError):
@@ -113,6 +117,17 @@ class AlbumService:
                 return album["id"]
         return None
 
+    async def list_album_assets(self, album_id: str) -> list[dict]:
+        """Assets in an album, via search: /albums/{id} omits them on Immich 3.x."""
+        data = await self._request(
+            "POST", "/search/metadata", json={"albumIds": [album_id], "size": 1000}
+        )
+        return list(data.get("assets", {}).get("items", []))
+
+    async def trash_assets(self, asset_ids: list[str]) -> None:
+        """Move assets to Immich's trash. Recoverable; never a hard delete."""
+        await self._request("DELETE", "/assets", json={"ids": asset_ids, "force": False})
+
     async def upload_memory(
         self, video_path: Path, album_name: str | None = None
     ) -> dict[str, str | None]:
@@ -129,4 +144,54 @@ class AlbumService:
                 album_id = await self.create_album(album_name)
             await self.add_assets_to_album(album_id, [asset_id])
 
+        # WHY: the upload has already succeeded. Failing the delivery because the
+        # tidy-up of a previous copy did not work would turn a working memory into
+        # a reported failure, so this never propagates.
+        try:
+            superseded = await supersede_previous_renders(
+                self, album_id=album_id, filename=video_path.name, keep_asset_id=asset_id
+            )
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
+            logger.warning("Could not supersede earlier renders: %s", exc)
+        else:
+            if superseded:
+                logger.info(
+                    "Superseded %d earlier upload(s) of the same recipe (moved to Immich trash)",
+                    len(superseded),
+                )
+
         return {"asset_id": asset_id, "album_id": album_id}
+
+
+async def supersede_previous_renders(
+    client,
+    *,
+    album_id: str | None,
+    filename: str,
+    keep_asset_id: str,
+) -> list[str]:
+    """Trash earlier uploads of the same recipe, keeping the one just uploaded.
+
+    The filename carries a hash of the recipe -- the memory type, range, duration
+    and the exact clips in order -- so an identical name means an identical edit
+    and the older copy is superseded rather than kept beside it. Without this, a
+    library accumulates one indistinguishable file per run; eight of them is what
+    prompted this.
+
+    Deliberately narrow. Only assets inside the album we just uploaded to, with
+    exactly this filename, and never the asset we just created. An identically
+    named file the user filed elsewhere is not ours to touch. Immich's trash is
+    recoverable, so this is reversible by the user.
+    """
+    if not album_id:
+        return []
+
+    assets = await client.list_album_assets(album_id)
+    superseded = [
+        asset["id"]
+        for asset in assets
+        if asset.get("originalFileName") == filename and asset.get("id") != keep_asset_id
+    ]
+    if superseded:
+        await client.trash_assets(superseded)
+    return superseded
