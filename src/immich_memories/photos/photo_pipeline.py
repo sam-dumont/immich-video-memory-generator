@@ -71,11 +71,16 @@ def score_photos(
     metadata_scored = [(a, score_photo(a, config)) for a in assets]
 
     # Cap only the expensive semantic-scoring shortlist.
-    max_photos = _compute_max_photos(video_clip_count, config.max_ratio)
-    shortlist_size = min(len(metadata_scored), max_photos * 3)
+    shortlist_size = llm_shortlist_size(video_clip_count, len(metadata_scored), config.max_ratio)
     shortlist = metadata_scored
     if len(shortlist) > shortlist_size:
         shortlist = _select_distributed(shortlist, shortlist_size)
+    logger.info(
+        "Photo scoring: %d available -> %d shortlisted for LLM (max %d selectable)",
+        len(metadata_scored),
+        len(shortlist),
+        _compute_max_photos(video_clip_count, config.max_ratio),
+    )
 
     # Phase 2: LLM scoring on shortlist (uses thumbnails, not full downloads)
     enhanced = _enhance_with_llm(
@@ -221,15 +226,47 @@ def render_photo_clips(
     return clips
 
 
+# Scoring one photo costs an LLM round trip, so the shortlist is what actually
+# determines how long a run takes. A real library produced a 1194-photo
+# shortlist to place a few dozen photos, which ran for hours.
+LLM_SHORTLIST_CEILING = 200
+_LLM_SHORTLIST_HEADROOM = 3
+
+
 def _compute_max_photos(video_count: int, max_ratio: float) -> int:
     """How many photos to render given video count and max photo ratio."""
     if max_ratio >= 1.0:
         return 999
     if video_count == 0:
         return 10  # Sensible limit when there are no videos
-    # max_ratio of total: photos / (videos + photos) <= max_ratio
-    # photos <= max_ratio * videos / (1 - max_ratio)
-    return max(1, int(max_ratio * video_count / (1 - max_ratio)))
+    # max_ratio is the photos' share of the finished timeline:
+    #   photos / (videos + photos) <= max_ratio
+    # so photos <= max_ratio * videos / (1 - max_ratio). At max_ratio 0.5 that
+    # is exactly video_count, which reads as a cap but is really a 1:1 licence
+    # to score a photo for every video. Never exceed the video count.
+    ratio_bound = int(max_ratio * video_count / (1 - max_ratio))
+    return max(1, min(ratio_bound, video_count))
+
+
+def video_count_for_photo_budget(total_clips: int, live_photo_clips: int) -> int:
+    """Real video clips, excluding live-photo clips.
+
+    The photo budget is a ratio against video content. Live-photo clips are
+    themselves built from photos, so counting them as videos lets the photo
+    budget grow from the content it is supposed to be balanced against -- on a
+    real library 778 live photos became 349 clips and tripled the shortlist.
+    """
+    return max(0, total_clips - live_photo_clips)
+
+
+def llm_shortlist_size(video_count: int, available: int, max_ratio: float) -> int:
+    """How many photos are worth an LLM call.
+
+    Headroom over what can actually be selected, then an absolute ceiling: on a
+    large library the relative bound alone still authorises thousands of calls.
+    """
+    selectable = _compute_max_photos(video_count, max_ratio)
+    return min(available, selectable * _LLM_SHORTLIST_HEADROOM, LLM_SHORTLIST_CEILING)
 
 
 def _select_distributed(

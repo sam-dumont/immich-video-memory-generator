@@ -101,6 +101,18 @@ def _has_music_backends(config: Config) -> bool:
     return music_config_available(config)
 
 
+def resolve_inclusion(flag: bool | None, *, config_enabled: bool) -> bool:
+    """Resolve a content-inclusion choice from an optional CLI flag and config.
+
+    `flag or config_enabled` made the flag one-way: with the feature enabled in
+    config there was no way to ask for a run without it. None means "not
+    specified", so the config decides; an explicit True or False wins.
+    """
+    if flag is None:
+        return config_enabled
+    return flag
+
+
 def _print_generation_result(
     *,
     dry_run: bool,
@@ -271,15 +283,15 @@ def register_generate_commands(main: click.Group) -> None:
         help="Override video subtitle text",
     )
     @click.option(
-        "--include-live-photos",
-        is_flag=True,
-        default=False,
+        "--include-live-photos/--no-live-photos",
+        "include_live_photos",
+        default=None,
         help="Include Live Photo video clips (3s iPhone clips, merged when burst-captured)",
     )
     @click.option(
-        "--include-photos",
-        is_flag=True,
-        default=False,
+        "--include-photos/--no-photos",
+        "include_photos",
+        default=None,
         help="Include photos as animated Ken Burns clips (blur background, face-aware pan)",
     )
     @click.option(
@@ -364,8 +376,8 @@ def register_generate_commands(main: click.Group) -> None:
         privacy_mode: bool,
         title_override: str | None,
         subtitle_override: str | None,
-        include_live_photos: bool,
-        include_photos: bool,
+        include_live_photos: bool | None,
+        include_photos: bool | None,
         photo_duration: float | None,
         analysis_depth: str | None,
         trip_index: int | None,
@@ -518,11 +530,10 @@ def register_generate_commands(main: click.Group) -> None:
             console.print("[bold]Immich Memories Generator[/bold]")
             console.print()
 
-        # Resolve live photos: CLI flag OR config
-        use_live_photos = include_live_photos or config.analysis.include_live_photos
-
-        # Resolve photo inclusion: CLI flag OR config
-        use_photos = include_photos or config.photos.enabled
+        use_live_photos = resolve_inclusion(
+            include_live_photos, config_enabled=config.analysis.include_live_photos
+        )
+        use_photos = resolve_inclusion(include_photos, config_enabled=config.photos.enabled)
         if photo_duration is not None:
             config.photos.duration = photo_duration
 
