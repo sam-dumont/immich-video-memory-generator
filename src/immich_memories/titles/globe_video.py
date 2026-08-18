@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from immich_memories.processing.encoding_plan import EncodingPlan
+from immich_memories.titles.ffmpeg_pipe import StderrDrain
 
 from .encoding import standalone_title_encoding_plan, title_color_filter, title_encoder_args
 from .globe_renderer import GlobeCameraKeyframe, interpolate_camera
@@ -62,6 +63,7 @@ def create_globe_animation_video(
 
     process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     assert process.stdin is not None
+    stderr_drain = StderrDrain(process).start()
     frame_buffer = np.zeros((height, width, 3), dtype=np.float32)
 
     # Time mapping: hold → animate → hold
@@ -91,10 +93,10 @@ def create_globe_animation_video(
         process.stdin.close()
 
     process.wait()
-    stderr = process.stderr.read() if process.stderr else b""
+    stderr_tail = stderr_drain.stop()
 
     if process.returncode != 0:
-        raise RuntimeError(f"Globe FFmpeg failed: {stderr.decode()[-500:]}")
+        raise RuntimeError(f"Globe FFmpeg failed: {stderr_tail[-500:]}")
 
     logger.info(f"Globe animation generated: {output_path}")
     return output_path

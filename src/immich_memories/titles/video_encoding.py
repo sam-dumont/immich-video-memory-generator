@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from immich_memories.processing.encoding_plan import EncodingPlan
+from immich_memories.titles.ffmpeg_pipe import StderrDrain
 
 from .animations import get_animation_preset, reverse_preset
 from .encoding import standalone_title_encoding_plan, title_color_filter, title_encoder_args
@@ -186,6 +187,7 @@ def create_title_video(
     process = subprocess.Popen(
         cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
+    stderr_drain = StderrDrain(process).start()
     writer_thread = threading.Thread(target=write_frames_to_ffmpeg, args=(process,))
     writer_thread.start()
 
@@ -219,12 +221,12 @@ def create_title_video(
     frame_queue.put(None)
     writer_thread.join()
 
-    stderr = process.stderr.read() if process.stderr else b""
     process.wait()
+    stderr_tail = stderr_drain.stop()
 
     if write_error:
         raise RuntimeError(f"Write error: {write_error[0]}")
     if process.returncode != 0:
-        raise RuntimeError(f"FFmpeg failed: {stderr.decode()}")
+        raise RuntimeError(f"FFmpeg failed: {stderr_tail}")
 
     return output_path

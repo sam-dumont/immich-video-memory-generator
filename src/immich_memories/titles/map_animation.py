@@ -16,6 +16,7 @@ from PIL import Image, ImageDraw
 from staticmap import CircleMarker, StaticMap
 
 from immich_memories.processing.encoding_plan import EncodingPlan
+from immich_memories.titles.ffmpeg_pipe import StderrDrain
 
 from .encoding import standalone_title_encoding_plan, title_color_filter, title_encoder_args
 from .map_renderer import _draw_gradient_band, _overlay_composite, _wrap_text
@@ -435,6 +436,7 @@ def _pipe_frames(
         stderr=subprocess.PIPE,
     )
     assert proc.stdin is not None  # noqa: S101
+    stderr_drain = StderrDrain(proc).start()
 
     cached: list[Image.Image | None] = [None, None]
     z = float(_CITY_ZOOM)
@@ -455,9 +457,9 @@ def _pipe_frames(
 
     proc.stdin.close()
     proc.wait()
-    err = proc.stderr.read() if proc.stderr else b""
+    stderr_tail = stderr_drain.stop()
     if proc.returncode != 0:
-        raise RuntimeError(f"Map fly FFmpeg failed: {err.decode()[-500:]}")
+        raise RuntimeError(f"Map fly FFmpeg failed: {stderr_tail[-500:]}")
 
 
 def _title_alpha(p: float) -> float:

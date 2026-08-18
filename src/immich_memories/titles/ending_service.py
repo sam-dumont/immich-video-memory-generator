@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 from immich_memories.processing.encoding_plan import EncodingPlan
+from immich_memories.titles.ffmpeg_pipe import StderrDrain
 
 from .encoding import title_color_filter, title_encoder_args
 from .styles import TitleStyle
@@ -118,6 +119,7 @@ class EndingService:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        stderr_drain = StderrDrain(process).start()
 
         with contextlib.suppress(BrokenPipeError):
             for i in range(total_frames):
@@ -145,12 +147,12 @@ class EndingService:
         # WHY: Python 3.12's communicate() calls stdin.flush() even after
         # stdin.close(), crashing with ValueError. Verified: FFmpeg succeeds
         # (returncode=0, output exists) but communicate() aborts the pipeline.
-        # Use direct stderr.read() + wait() to avoid the buggy code path.
+        # The background stderr drain plus wait() avoids that code path.
         if process.stdin and not process.stdin.closed:
             process.stdin.close()
 
-        stderr_bytes = process.stderr.read() if process.stderr else b""
         process.wait()
+        stderr_tail = stderr_drain.stop()
 
         if process.returncode != 0:
-            raise RuntimeError(f"FFmpeg failed: {stderr_bytes.decode()[-500:]}")
+            raise RuntimeError(f"FFmpeg failed: {stderr_tail[-500:]}")
