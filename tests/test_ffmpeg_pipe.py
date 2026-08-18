@@ -191,6 +191,53 @@ class TestFailuresCarryStderrTail:
                     fps=10.0,
                 )
 
+    def test_video_encoding_does_not_hang_when_ffmpeg_dies_before_the_queue_fills(
+        self, tmp_path: Path
+    ) -> None:
+        """A dead encoder used to leave the render loop blocked forever on a full queue (#343)."""
+        import threading
+        from unittest.mock import patch
+
+        from immich_memories.titles.video_encoding import create_title_video
+
+        process = self._failing_process(b"Cannot load libcuda")
+        process.stdin.write.side_effect = BrokenPipeError(32, "Broken pipe")
+        outcome: list[BaseException | None] = []
+
+        def run() -> None:
+            try:
+                with (
+                    # WHY: replaces the FFmpeg subprocess with one that dies at start
+                    patch("immich_memories.titles.video_encoding.subprocess.Popen") as popen,
+                    # WHY: replaces the frame renderer, which needs fonts and a real canvas
+                    patch(
+                        "immich_memories.titles.video_encoding._render_frame_with_animation"
+                    ) as render,
+                ):
+                    popen.return_value = process
+                    render.return_value = Image.new("RGB", (32, 18))
+                    create_title_video(
+                        title="t",
+                        subtitle=None,
+                        style=TitleStyle(),
+                        output_path=tmp_path / "title.mp4",
+                        width=32,
+                        height=18,
+                        duration=4.0,  # 40 frames: far more than the 10-slot queue
+                        fps=10.0,
+                    )
+                outcome.append(None)
+            except BaseException as exc:  # noqa: BLE001
+                outcome.append(exc)
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(timeout=15)
+
+        assert not worker.is_alive(), "create_title_video hung after the encoder died"
+        assert isinstance(outcome[0], RuntimeError)
+        assert "libcuda" in str(outcome[0])
+
     def test_ending_service_failure_reports_stderr(self, tmp_path: Path) -> None:
         from unittest.mock import patch
 

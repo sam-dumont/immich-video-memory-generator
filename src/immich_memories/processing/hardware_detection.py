@@ -14,9 +14,15 @@ from immich_memories.processing.hardware import (
     _check_ffmpeg_decoder,
     _check_ffmpeg_encoder,
     _check_ffmpeg_hwaccel,
+    _probe_ffmpeg_encode,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _encoder_works(encoder: str, *, upload: str | None = None) -> bool:
+    """Listed by ffmpeg AND able to encode one frame — listing alone proves nothing (#343)."""
+    return _check_ffmpeg_encoder(encoder) and _probe_ffmpeg_encode(["-c:v", encoder], upload=upload)
 
 
 def _detect_nvidia() -> HWAccelCapabilities | None:
@@ -30,8 +36,8 @@ def _detect_nvidia() -> HWAccelCapabilities | None:
     )
 
     # Check for NVENC encoders
-    caps.supports_h264_encode = _check_ffmpeg_encoder("h264_nvenc")
-    caps.supports_h265_encode = _check_ffmpeg_encoder("hevc_nvenc")
+    caps.supports_h264_encode = _encoder_works("h264_nvenc")
+    caps.supports_h265_encode = _encoder_works("hevc_nvenc")
 
     # Check for NVDEC decoders
     caps.supports_h264_decode = _check_ffmpeg_decoder("h264_cuvid")
@@ -222,8 +228,8 @@ def _detect_vaapi() -> HWAccelCapabilities | None:
     caps = HWAccelCapabilities(backend=HWAccelBackend.VAAPI)
 
     # Check for VAAPI encoders
-    caps.supports_h264_encode = _check_ffmpeg_encoder("h264_vaapi")
-    caps.supports_h265_encode = _check_ffmpeg_encoder("hevc_vaapi")
+    caps.supports_h264_encode = _encoder_works("h264_vaapi", upload="vaapi")
+    caps.supports_h265_encode = _encoder_works("hevc_vaapi", upload="vaapi")
 
     # Check for VAAPI decoders
     caps.supports_h264_decode = _check_ffmpeg_decoder("h264_vaapi") or _check_ffmpeg_hwaccel(
@@ -261,8 +267,8 @@ def _detect_qsv() -> HWAccelCapabilities | None:
     caps = HWAccelCapabilities(backend=HWAccelBackend.QSV)
 
     # Check for QSV encoders
-    caps.supports_h264_encode = _check_ffmpeg_encoder("h264_qsv")
-    caps.supports_h265_encode = _check_ffmpeg_encoder("hevc_qsv")
+    caps.supports_h264_encode = _encoder_works("h264_qsv", upload="qsv")
+    caps.supports_h265_encode = _encoder_works("hevc_qsv", upload="qsv")
 
     # Check for QSV decoders
     caps.supports_h264_decode = _check_ffmpeg_decoder("h264_qsv")

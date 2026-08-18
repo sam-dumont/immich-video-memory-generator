@@ -29,7 +29,7 @@ The pipeline is designed around GPU acceleration and ML-powered features for the
 
 ## Configuration
 
-No configuration is needed. The pipeline auto-detects available hardware and falls back to CPU automatically. To explicitly force CPU encoding (skip GPU probing entirely):
+No configuration is needed. The pipeline auto-detects available hardware and falls back to CPU automatically. A hardware encoder (NVENC, Quick Sync, VAAPI) is only used if it passes a one-frame test encode at startup: FFmpeg builds such as Debian's list those encoders on every machine, so the listing alone is not trusted. On a box without the matching GPU or driver you get a single `Hardware encoder probe failed for …` log line and software encoding. To explicitly force CPU encoding (skip GPU probing entirely):
 
 ```yaml
 hardware:

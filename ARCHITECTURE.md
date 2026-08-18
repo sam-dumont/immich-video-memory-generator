@@ -169,7 +169,6 @@ src/immich_memories/
 │   ├── ffmpeg_runner.py        # FFmpeg execution with progress
 │   ├── hardware.py             # Hardware detection (GPU, encoders)
 │   ├── hardware_detection.py   # Hardware detection backends
-│   ├── _hardware_backends.py   # GPU backend detection
 │   ├── transforms.py           # Video transforms (rotate, scale)
 │   ├── transforms_ffmpeg.py    # FFmpeg transform filters
 │   ├── transforms_smart_crop.py # Smart crop transforms

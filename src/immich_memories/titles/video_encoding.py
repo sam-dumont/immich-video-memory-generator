@@ -9,6 +9,7 @@ import logging
 import queue
 import subprocess
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -119,6 +120,30 @@ def _render_frame_with_animation(
     return renderer.render_frame(title, subtitle, frame_idx, preset)
 
 
+def _offer_frame(frame_queue: queue.Queue, item: bytes | None, writer: threading.Thread) -> bool:
+    """Put with a heartbeat: give up as soon as the writer thread is gone (dead encoder)."""
+    while writer.is_alive():
+        try:
+            frame_queue.put(item, timeout=0.5)
+        except queue.Full:
+            continue
+        return True
+    return False
+
+
+def _pump_frames(
+    total_frames: int,
+    render: Callable[[int], Image.Image],
+    frame_queue: queue.Queue,
+    writer: threading.Thread,
+) -> None:
+    """Render and hand frames to the writer; stop early if the encoder died (#343)."""
+    for i in range(total_frames):
+        if not writer.is_alive() or not _offer_frame(frame_queue, render(i).tobytes(), writer):
+            return
+    _offer_frame(frame_queue, None, writer)
+
+
 def create_title_video(
     title: str,
     subtitle: str | None,
@@ -201,8 +226,8 @@ def create_title_video(
     fade_in_frames = int(0.8 * fps) if fade_from_white else 0
     white_frame = Image.new("RGB", (width, height), (255, 255, 255)) if fade_from_white else None
 
-    for i in range(total_frames):
-        frame = _render_frame_with_animation(
+    def render(i: int) -> Image.Image:
+        return _render_frame_with_animation(
             renderer,
             title,
             subtitle,
@@ -216,16 +241,16 @@ def create_title_video(
             fade_in_frames=fade_in_frames,
             white_frame=white_frame,
         )
-        frame_queue.put(frame.tobytes())
 
-    frame_queue.put(None)
+    _pump_frames(total_frames, render, frame_queue, writer_thread)
     writer_thread.join()
 
     process.wait()
     stderr_tail = stderr_drain.stop()
 
     if write_error:
-        raise RuntimeError(f"Write error: {write_error[0]}")
+        # WHY: a broken pipe means the encoder quit; its stderr says why (e.g. no CUDA).
+        raise RuntimeError(f"Write error: {write_error[0]}; FFmpeg said: {stderr_tail}")
     if process.returncode != 0:
         raise RuntimeError(f"FFmpeg failed: {stderr_tail}")
 

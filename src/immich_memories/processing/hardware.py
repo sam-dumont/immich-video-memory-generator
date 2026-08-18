@@ -92,6 +92,45 @@ def _check_ffmpeg_encoder(encoder: str) -> bool:
     return success and encoder in output
 
 
+# Extra input-side args a hardware encoder needs to accept a software frame in a probe.
+_PROBE_UPLOAD_ARGS: dict[str, list[str]] = {
+    "vaapi": [
+        "-init_hw_device",
+        "vaapi=va",
+        "-filter_hw_device",
+        "va",
+        "-vf",
+        "format=nv12,hwupload",
+    ],
+    "qsv": [
+        "-init_hw_device",
+        "qsv=hw",
+        "-filter_hw_device",
+        "hw",
+        "-vf",
+        "hwupload=extra_hw_frames=8,format=qsv",
+    ],
+}
+
+
+def _probe_ffmpeg_encode(encoder_args: list[str], *, upload: str | None = None) -> bool:
+    """Encode one synthetic frame; the only proof a hardware encoder actually has a device.
+
+    `ffmpeg -encoders` lists NVENC/QSV/VAAPI on any build compiled with them (Debian's is),
+    so a listing check alone selects NVENC on every GPU-less Docker host (#343).
+    """
+    args = [
+        "-hide_banner", "-loglevel", "error", "-nostdin",
+        "-f", "lavfi", "-i", "testsrc=size=64x64:rate=1",
+        *_PROBE_UPLOAD_ARGS.get(upload or "", []),
+        "-frames:v", "1", *encoder_args, "-f", "null", "-",
+    ]  # fmt: skip
+    success, output = _run_ffmpeg_check(args)
+    if not success:
+        logger.info("Hardware encoder probe failed for %s: %s", encoder_args, output.strip()[-200:])
+    return success
+
+
 def _check_ffmpeg_decoder(decoder: str) -> bool:
     success, output = _run_ffmpeg_check(["-hide_banner", "-decoders"])
     return success and decoder in output
@@ -343,7 +382,7 @@ def print_hardware_info(capabilities: HWAccelCapabilities) -> None:
 # existing ``from immich_memories.processing.hardware import ...`` keeps working.
 # ---------------------------------------------------------------------------
 
-from immich_memories.processing._hardware_backends import (  # noqa: E402, F401
+from immich_memories.processing.hardware_detection import (  # noqa: E402, F401
     detect_hardware_acceleration,
 )
 
