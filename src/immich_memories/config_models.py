@@ -52,7 +52,6 @@ class ImmichConfig(BaseModel):
 class DefaultsConfig(BaseModel):
     """Default settings for video generation."""
 
-    output_orientation: Literal["landscape", "portrait", "square", "auto"] = "auto"
     scale_mode: Literal["fit", "fill", "smart_crop", "blur"] = "blur"
     transition: Literal["cut", "crossfade", "smart", "none"] = "smart"
     transition_duration: float = Field(default=0.5, ge=0, le=2.0)
@@ -778,14 +777,6 @@ class TranscriptionConfig(BaseModel):
         default=True,
         description="Use GPU when the installed whisper.cpp build supports it (Metal on macOS)",
     )
-
-
-class ScoringPriorityConfig(BaseModel):
-    """User-facing scoring knobs (Tier 1)."""
-
-    people: Literal["low", "medium", "high"] = "high"
-    quality: Literal["low", "medium", "high"] = "medium"
-    moment: Literal["low", "medium", "high"] = "medium"
 
 
 class PhotoConfig(BaseModel):

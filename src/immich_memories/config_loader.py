@@ -33,7 +33,6 @@ from immich_memories.config_models import (
     NotificationConfig,
     OutputConfig,
     PhotoConfig,
-    ScoringPriorityConfig,
     ServerConfig,
     SpeechConfig,
     TitleScreenConfig,
@@ -64,6 +63,13 @@ _TIER2_SECTIONS = frozenset(
 )
 
 
+# Top-level sections that no longer exist. Old config files keep loading; the key is
+# dropped with a warning instead of tripping the strict top-level model.
+_REMOVED_TOP_LEVEL_SECTIONS = {
+    "scoring_priority": "removed in 0.41 — it was never read by the scorer",
+}
+
+
 def _load_yaml_data(path: Path) -> dict:
     """Load and flatten YAML config data (advanced: → top-level)."""
     if not path.exists():
@@ -75,6 +81,12 @@ def _load_yaml_data(path: Path) -> dict:
         for key, value in advanced.items():
             if key not in data:
                 data[key] = value
+    for key, reason in _REMOVED_TOP_LEVEL_SECTIONS.items():
+        if key in data:
+            data.pop(key)
+            logging.getLogger(__name__).warning(
+                "Ignoring config section '%s' (%s); delete it from %s", key, reason, path
+            )
     return data
 
 
@@ -138,7 +150,6 @@ class Config(BaseSettings):
     title_screens: TitleScreenConfig = Field(default_factory=TitleScreenConfig)
     upload: UploadConfig = Field(default_factory=UploadConfig)
     photos: PhotoConfig = Field(default_factory=PhotoConfig)
-    scoring_priority: ScoringPriorityConfig = Field(default_factory=ScoringPriorityConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     trips: TripsConfig = Field(default_factory=TripsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)

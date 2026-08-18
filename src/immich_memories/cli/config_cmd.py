@@ -52,7 +52,6 @@ def register_config_commands(main: click.Group) -> None:
             table.add_row("Immich URL", cfg.immich.url or "(not set)")
             table.add_row("API Key", "****" if cfg.immich.api_key else "(not set)")
             table.add_row("Output directory", str(cfg.output.output_path))
-            table.add_row("Default orientation", cfg.defaults.output_orientation)
             table.add_row("Default scale mode", cfg.defaults.scale_mode)
 
             console.print(table)

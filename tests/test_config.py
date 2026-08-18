@@ -429,3 +429,19 @@ class TestConfig:
         )
         loaded = Config.from_yaml(config_path)
         assert loaded.analysis.scene_threshold == 99.0
+
+
+class TestRemovedSections:
+    def test_old_scoring_priority_section_is_ignored_with_a_warning(self, tmp_path, caplog):
+        """Config files written before 0.41 keep loading after a section is removed."""
+        from immich_memories.config_loader import Config
+
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "immich:\n  url: http://x\nscoring_priority:\n  people: high\ndefaults:\n  transition: cut\n"
+        )
+        with caplog.at_level("WARNING"):
+            loaded = Config.from_yaml(config_path)
+        assert loaded.immich.url == "http://x"
+        assert loaded.defaults.transition == "cut"
+        assert "scoring_priority" in caplog.text
