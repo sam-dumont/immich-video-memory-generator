@@ -766,3 +766,50 @@ class TestBestSegmentProportionalMax:
         assert best.end_time == 8.0
         assert best.duration <= 15.0
         assert not any(lo < best.end_time < hi for lo, hi in ranges)
+
+
+class TestProtectionToggles:
+    """protect_laughter / protect_speech are documented in the config reference,
+    so they must actually gate what ends up protected."""
+
+    def _events(self):
+        from immich_memories.audio.audio_models import AudioEvent
+
+        return [
+            AudioEvent(event_class="Speech", start_time=1.0, end_time=3.0, confidence=0.9),
+            AudioEvent(event_class="Laughter", start_time=5.0, end_time=6.0, confidence=0.8),
+        ]
+
+    def test_laughter_excluded_when_protect_laughter_is_false(self):
+        from immich_memories.analysis.speech_analysis import non_speech_protected_ranges
+
+        ranges = non_speech_protected_ranges(
+            self._events(), max_duration=10.0, protect_laughter=False
+        )
+
+        assert ranges == []
+
+    def test_laughter_included_by_default(self):
+        from immich_memories.analysis.speech_analysis import non_speech_protected_ranges
+
+        ranges = non_speech_protected_ranges(self._events(), max_duration=10.0)
+
+        assert (5.0, 6.0) in ranges
+
+    def test_speech_excluded_when_protect_speech_is_false(self):
+        from immich_memories.analysis.speech_analysis import protected_ranges_from_speech
+        from immich_memories.speech.models import SpeechRegion
+
+        ranges = protected_ranges_from_speech(
+            [SpeechRegion(1.0, 2.0)], max_duration=10.0, protect_speech=False
+        )
+
+        assert ranges == []
+
+    def test_speech_included_by_default(self):
+        from immich_memories.analysis.speech_analysis import protected_ranges_from_speech
+        from immich_memories.speech.models import SpeechRegion
+
+        ranges = protected_ranges_from_speech([SpeechRegion(1.0, 2.0)], max_duration=10.0)
+
+        assert ranges == [(1.0, 2.0)]

@@ -32,8 +32,12 @@ logger = logging.getLogger(__name__)
 def protected_ranges_from_speech(
     regions: list[SpeechRegion],
     max_duration: float,
+    protect_speech: bool = True,
 ) -> list[tuple[float, float]]:
     """Convert VAD regions into protected ranges, clamped to the analysed window."""
+    if not protect_speech:
+        return []
+
     ranges: list[tuple[float, float]] = []
     for region in regions:
         if region.start >= max_duration:
@@ -45,6 +49,7 @@ def protected_ranges_from_speech(
 def non_speech_protected_ranges(
     events: list[AudioEvent],
     max_duration: float,
+    protect_laughter: bool = True,
 ) -> list[tuple[float, float]]:
     """Protected ranges for the events VAD cannot see.
 
@@ -53,6 +58,9 @@ def non_speech_protected_ranges(
     PANNs-derived ranges or a clip of someone laughing loses all protection
     and a cut lands mid-laugh.
     """
+    if not protect_laughter:
+        return []
+
     return [
         (event.start_time, min(event.end_time, max_duration))
         for event in events
@@ -314,9 +322,15 @@ class SpeechAnalysisService:
 
         duration = video_duration or (len(audio) / VAD_SAMPLE_RATE)
         previous_count = len(result.protected_ranges)
-        non_speech = non_speech_protected_ranges(result.events, duration)
+        content_config = self._audio_content_config
+        non_speech = non_speech_protected_ranges(
+            result.events, duration, protect_laughter=content_config.protect_laughter
+        )
         result.protected_ranges = sorted(
-            protected_ranges_from_speech(regions, duration) + non_speech
+            protected_ranges_from_speech(
+                regions, duration, protect_speech=content_config.protect_speech
+            )
+            + non_speech
         )
         logger.info(
             "VAD: %d speech regions + %d non-speech PANNs ranges -> "
