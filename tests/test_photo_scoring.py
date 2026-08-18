@@ -484,3 +484,43 @@ class TestCacheFirstScoring:
             result = _get_score_cache(Path("/tmp/scores.db"))
 
         assert result is None
+
+
+class TestPhotoScoringTimeout:
+    """A stuck LLM must not hold the photo path for the full read budget.
+
+    The generation path had this exact bug: a scalar httpx timeout gave
+    connecting the same hour as generating, so an unreachable server stalled
+    silently. Photo scoring builds its own request and needs the same split.
+    """
+
+    def test_request_uses_per_phase_timeout(self, tmp_path):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        import httpx
+
+        from immich_memories.config_models import ContentAnalysisConfig, LLMConfig
+        from immich_memories.photos.scoring import _query_photo_llm
+
+        photo = tmp_path / "photo.jpg"
+        photo.write_bytes(b"not-a-real-jpeg")
+        config = SimpleNamespace(
+            llm=LLMConfig(timeout_seconds=3600),
+            content_analysis=ContentAnalysisConfig(),
+        )
+        captured: dict = {}
+
+        def _fake_post(url, **kwargs):
+            captured["timeout"] = kwargs.get("timeout")
+            raise httpx.ConnectError("no server")
+
+        # WHY: replaces the HTTP call to the configured LLM provider
+        with patch("httpx.post", side_effect=_fake_post):
+            _query_photo_llm(photo, config)
+
+        timeout = captured["timeout"]
+        assert isinstance(timeout, httpx.Timeout), f"expected httpx.Timeout, got {timeout!r}"
+        assert timeout.read == 3600
+        assert timeout.connect is not None
+        assert timeout.connect < 60

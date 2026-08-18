@@ -128,6 +128,7 @@ def _query_photo_llm(photo_path: Path, config: object, provider_circuit=None) ->
     try:
         import httpx
 
+        from immich_memories.analysis.llm_query import build_llm_timeout
         from immich_memories.analysis.provider_health import classify_openai_response
 
         llm_config = config.llm  # type: ignore[attr-defined]
@@ -161,7 +162,7 @@ def _query_photo_llm(photo_path: Path, config: object, provider_circuit=None) ->
             f"{llm_config.base_url}/chat/completions",
             json=payload,
             headers=headers,
-            timeout=llm_config.timeout_seconds,
+            timeout=build_llm_timeout(float(llm_config.timeout_seconds)),
         )
         health = classify_openai_response(resp.status_code, resp.json(), llm_config.model)
         if not health.available:

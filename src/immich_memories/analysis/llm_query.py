@@ -14,6 +14,23 @@ from immich_memories.config_models import LLMConfig
 
 logger = logging.getLogger(__name__)
 
+# A stuck server should fail while connecting, not hold the full generation
+# budget. httpx timeouts are per-I/O-operation rather than per-request totals,
+# so a short connect budget cannot starve a legitimately slow local model.
+CONNECT_TIMEOUT_SECONDS = 10.0
+WRITE_TIMEOUT_SECONDS = 30.0
+POOL_TIMEOUT_SECONDS = 10.0
+
+
+def build_llm_timeout(read_timeout: float) -> httpx.Timeout:
+    """Per-phase timeout: long read budget, short connect/write/pool."""
+    return httpx.Timeout(
+        connect=CONNECT_TIMEOUT_SECONDS,
+        read=read_timeout,
+        write=WRITE_TIMEOUT_SECONDS,
+        pool=POOL_TIMEOUT_SECONDS,
+    )
+
 
 async def query_llm(
     prompt: str,

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import httpx
 
+from immich_memories.analysis.llm_query import build_llm_timeout
 from immich_memories.analysis.llm_response_parser import (
     ContentAnalysis,
     ContentAnalyzer,
@@ -29,19 +30,6 @@ logger = logging.getLogger(__name__)
 # base64 JPEG frames uploads in well under these windows even on a slow
 # network. A server that is down or unreachable now fails in seconds instead
 # of silently borrowing the read budget.
-_CONNECT_TIMEOUT_SECONDS = 10.0
-_WRITE_TIMEOUT_SECONDS = 30.0
-_POOL_TIMEOUT_SECONDS = 10.0
-
-
-def _build_timeout(read_timeout: float) -> httpx.Timeout:
-    """Per-phase timeout: long read budget, short connect/write/pool."""
-    return httpx.Timeout(
-        connect=_CONNECT_TIMEOUT_SECONDS,
-        read=read_timeout,
-        write=_WRITE_TIMEOUT_SECONDS,
-        pool=_POOL_TIMEOUT_SECONDS,
-    )
 
 
 class OllamaContentAnalyzer(ContentAnalyzer):
@@ -87,7 +75,7 @@ class OllamaContentAnalyzer(ContentAnalyzer):
     def client(self) -> httpx.Client:
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
-            self._client = httpx.Client(timeout=_build_timeout(self.timeout))
+            self._client = httpx.Client(timeout=build_llm_timeout(self.timeout))
         return self._client
 
     def close(self):
@@ -284,7 +272,7 @@ class OpenAICompatibleContentAnalyzer(ContentAnalyzer):
             headers: dict[str, str] = {"Content-Type": "application/json"}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
-            self._client = httpx.Client(timeout=_build_timeout(self.timeout), headers=headers)
+            self._client = httpx.Client(timeout=build_llm_timeout(self.timeout), headers=headers)
         return self._client
 
     def close(self):
