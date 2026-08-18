@@ -177,30 +177,12 @@ def _choose(page: Page, label: str, option: str) -> None:
     expect(select).to_have_value(option)
 
 
-def test_launch_flow_renders_real_video(
-    page: Page,
-    launch_app_url: str,
-    launch_workspace,
-) -> None:
-    """The default v3 monthly flow must publish and record one real H.264 video."""
+def _drive_to_step4(page: Page, launch_app_url: str) -> None:
+    """Walk the default v3 monthly flow up to the Step 4 'Generate Video' button."""
     page.goto(launch_app_url, wait_until="domcontentloaded", timeout=30_000)
-
     expect(page.get_by_text("Immich Connection — Fake Immich User", exact=True)).to_be_visible(
         timeout=30_000
     )
-    readiness = page.request.get(f"{launch_app_url}/health/ready")
-    assert readiness.status == 200
-    assert readiness.json()["immich"] == {
-        "status": "ready",
-        "reachable": True,
-        "api_version_policy": "auto",
-        "resolved_api_version": "v3",
-    }
-    launch_config = yaml.safe_load(launch_workspace.config_path.read_text())
-    assert launch_config["advanced"]["hardware"]["enabled"] is False
-    assert launch_config["advanced"]["musicgen"]["enabled"] is False
-    assert launch_config["advanced"]["ace_step"]["enabled"] is False
-
     page.get_by_text("Monthly Highlights", exact=True).click()
     _choose(page, "Month", "June")
     include_photos = page.locator(".q-toggle").filter(has_text="Include Photos")
@@ -227,6 +209,29 @@ def test_launch_flow_renders_real_video(
     _choose(page, "Output Format", "MP4 (H.264)")
     _choose(page, "Background music", "None")
     page.get_by_role("button", name="Next: Preview & Export").click()
+
+
+def test_launch_flow_renders_real_video(
+    page: Page,
+    launch_app_url: str,
+    launch_workspace,
+) -> None:
+    """The default v3 monthly flow must publish and record one real H.264 video."""
+    page.goto(launch_app_url, wait_until="domcontentloaded", timeout=30_000)
+    readiness = page.request.get(f"{launch_app_url}/health/ready")
+    assert readiness.status == 200
+    assert readiness.json()["immich"] == {
+        "status": "ready",
+        "reachable": True,
+        "api_version_policy": "auto",
+        "resolved_api_version": "v3",
+    }
+    launch_config = yaml.safe_load(launch_workspace.config_path.read_text())
+    assert launch_config["advanced"]["hardware"]["enabled"] is False
+    assert launch_config["advanced"]["musicgen"]["enabled"] is False
+    assert launch_config["advanced"]["ace_step"]["enabled"] is False
+
+    _drive_to_step4(page, launch_app_url)
     page.get_by_role("button", name="Generate Video").click()
 
     expect(page.get_by_text("Your memory video is ready!", exact=True)).to_be_visible(
@@ -260,3 +265,29 @@ def test_launch_flow_renders_real_video(
     assert len(completed) == 1
     assert Path(completed[0].output_path or "") == output_path
     assert database.list_runs(status="running") == []
+
+
+def test_reload_during_generation_recovers_the_finished_video(
+    page: Page,
+    launch_app_url: str,
+    launch_workspace,
+) -> None:
+    """A page reload mid-render must show the run is still going, then the result (#322)."""
+    before = set(launch_workspace.output_dir.rglob("*.mp4"))
+    _drive_to_step4(page, launch_app_url)
+    page.get_by_role("button", name="Generate Video").click()
+    expect(page.locator(".q-linear-progress").first).to_be_visible(timeout=30_000)
+
+    # WHY: a reload is what a user does when the progress bar seems stuck; it also deletes
+    # the NiceGUI client, so every later UI write from the running coroutine is dropped.
+    page.reload(wait_until="domcontentloaded", timeout=30_000)
+
+    expect(page.get_by_text(re.compile(r"is still running \(run "))).to_be_visible(timeout=30_000)
+    expect(page.get_by_text(re.compile(r"^Saved to: "))).to_be_visible(timeout=600_000)
+
+    outputs = set(launch_workspace.output_dir.rglob("*.mp4")) - before
+    assert len(outputs) == 1
+    completed = RunDatabase(launch_workspace.database_path).list_runs(
+        status="completed", source="manual", order_by_completion=True
+    )
+    assert completed and Path(completed[0].output_path or "") == outputs.pop()

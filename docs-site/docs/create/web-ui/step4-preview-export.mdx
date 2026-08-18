@@ -54,6 +54,20 @@ During assembly, a preview image updates as frames are rendered, so you can watc
 
 <ThemedScreenshot name="step4-complete" alt="Generation complete with video ready" />
 
+### If the page loses the run
+
+The render keeps going on the server even if the browser tab is reloaded, throttled, or
+its connection drops. Reload Step 4 and you get one of:
+
+- **"A generation started at HH:MM is still running (run …)"** — the page re-checks every few
+  seconds and switches to the result on its own.
+- the **Result** header with the finished video, if it completed while the page was away.
+- a warning that the last run failed (or was still marked running hours later — the process died),
+  with a pointer to the server log. Generating again is always allowed.
+
+The server log also says `Run … finished (…) but the browser had disconnected; reload Step 4`
+whenever a completion screen could not be delivered.
+
 ## Re-generating
 
 If the result isn't right, **Back to Generation Options** or go back to Step 2, adjust clip selection or settings, and generate again. The analysis cache means you don't re-analyze anything. **Start New Project** clears the session and returns to Step 1.

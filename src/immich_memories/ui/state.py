@@ -65,6 +65,9 @@ class AppState:
     generation_options: dict[str, Any] = field(default_factory=dict)
     processing: bool = False
     output_path: Path | None = None
+    # WHY: survives a page reload (state is cookie-keyed) so Step 4 can find a run
+    # that finished, or is still running, while the browser page was gone.
+    active_run_id: str | None = None
     generation_warning: str | None = None
     delivery_status: DeliveryStatus = DeliveryStatus.NOT_REQUESTED
 

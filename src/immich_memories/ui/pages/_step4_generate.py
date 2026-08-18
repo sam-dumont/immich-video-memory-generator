@@ -107,8 +107,9 @@ def _write_completion_ui(
     output_container,
     result_path: Path,
     state,
+    run_id: str | None = None,
 ) -> bool:
-    """Render completed-artifact facts unless the NiceGUI client disconnected."""
+    """Render completed-artifact facts; say where the result went if the client is gone."""
 
     def write() -> None:
         run_id_label.set_text(f"Output: {result_path.parent.name}")
@@ -117,7 +118,14 @@ def _write_completion_ui(
         cancel_btn.set_visibility(False)
         _show_output(output_container, result_path, state)
 
-    return run_ui_observer(write, description="generation completion UI")
+    shown = run_ui_observer(write, description="generation completion UI")
+    if not shown:
+        logger.info(
+            "Run %s finished (%s) but the browser had disconnected; reload Step 4 to see the result",
+            run_id,
+            result_path,
+        )
+    return shown
 
 
 def _write_failure_ui(
@@ -353,10 +361,9 @@ async def run_generation(
 
         from immich_memories.tracking import RunTracker, generate_run_id
 
-        run_tracker = RunTracker(
-            generate_run_id(),
-            db_path=params.config.cache.database_path,
-        )
+        run_id = generate_run_id()
+        run_tracker = RunTracker(run_id, db_path=params.config.cache.database_path)
+        state.active_run_id = run_id
         prepared = await execute_ui_generation(
             state,
             params,
@@ -376,6 +383,7 @@ async def run_generation(
             output_container,
             result_path,
             state,
+            run_id=run_id,
         )
 
     except Exception as e:  # WHY: UI graceful degradation

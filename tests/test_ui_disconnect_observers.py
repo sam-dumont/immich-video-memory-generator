@@ -285,6 +285,69 @@ async def test_completion_disconnect_preserves_pending_delivery_truth(
 
 
 @pytest.mark.asyncio
+async def test_completion_disconnect_logs_where_the_finished_run_went(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A skipped completion screen must leave an INFO trail, not silence (#322)."""
+    import logging
+
+    from immich_memories.ui.pages import _step4_generate as step4_generate
+
+    db_path = tmp_path / "runs.db"
+    output_path = tmp_path / "memory.mp4"
+    output_path.write_bytes(b"validated-video")
+    config = Config(cache={"database": str(db_path)})
+    state = AppState(config=config, generation_options={"music_source": "None"})
+    params = GenerationParams(clips=[make_clip("clip-1")], output_path=output_path, config=config)
+    prepared = PreparedGeneration(output_path, _h264_plan(), (), 1, 1)
+
+    async def execute(_state, _params, tracker, _progress, _status):
+        tracker.start_run(source="manual")
+        tracker.complete_artifact(
+            output_path, _probe(), warnings=[], clips_analyzed=1, clips_selected=1
+        )
+        return prepared
+
+    _patch_generation_shell(
+        monkeypatch,
+        step4_generate,
+        params=params,
+        output_path=output_path,
+        execute=execute,
+        run_id="ui-disconnect-logged",
+    )
+    monkeypatch.setattr(
+        step4_generate,
+        "_show_output",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError(_CLIENT_DELETED)),
+    )
+
+    with caplog.at_level(logging.INFO, logger="immich_memories.ui.pages._step4_generate"):
+        await step4_generate.run_generation(
+            state,
+            [make_clip("clip-1")],
+            total_duration=5.0,
+            output_dir=tmp_path,
+            output_path=output_path,
+            filename_input=_Element("memory.mp4"),
+            progress_container=_Container(),
+            output_container=_Container(),
+        )
+
+    skipped = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == step4_generate.logger.name and r.levelno == logging.INFO
+    ]
+    assert len(skipped) == 1, [r.getMessage() for r in caplog.records]
+    assert "ui-disconnect-logged" in skipped[0]
+    assert "reload" in skipped[0].lower()
+    assert str(output_path) in skipped[0]
+
+
+@pytest.mark.asyncio
 async def test_failure_notification_disconnect_preserves_failed_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -285,6 +285,7 @@ src/immich_memories/
 │       ├── _step3_music_preview.py # Music preview controls
 │       ├── step4_export.py         # Export & download
 │       ├── _step4_generate.py      # Generation logic
+│       ├── step4_recovery.py       # Reload recovers a run that outlived the page
 │       ├── _step4_upload.py        # Upload-back to Immich
 │       ├── _step4_music.py         # Music generation/mixing helpers
 │       └── settings_config.py      # Settings page

@@ -50,6 +50,36 @@ def _render_existing_result(state) -> None:
     )
 
 
+def _render_recovered_run(state) -> None:
+    """Tell a reloaded page about a run that outlived the previous page (#322)."""
+    from immich_memories.ui.pages.step4_recovery import recover_active_run
+
+    recovered = recover_active_run(state)
+    if recovered is None or recovered.status == "completed":
+        return  # a completed run is restored into state and shown by _render_existing_result
+    run_id = recovered.run.run_id if recovered.run else state.active_run_id
+    if recovered.status == "running":
+        started = recovered.run.created_at.astimezone().strftime("%H:%M") if recovered.run else "…"
+        im_info_card(
+            f"A generation started at {started} is still running (run {run_id}). "
+            "This page checks every few seconds and shows the video when it finishes.",
+            variant="info",
+        )
+
+        def poll() -> None:
+            current = recover_active_run(state)
+            if current is None or current.status != "running":
+                ui.navigate.reload()
+
+        ui.timer(5.0, poll)
+        return
+    if recovered.status == "stale":
+        message = f"Run {run_id} was still marked running hours later — it did not finish. "
+    else:
+        message = f"The last generation (run {run_id}) {recovered.status}. "
+    im_info_card(message + "Check the server log, then generate again.", variant="warning")
+
+
 def _render_photo_preview(state, photos_count: int) -> None:
     """Render the optional photo pool without inflating the page orchestrator."""
     if not photos_count:
@@ -189,7 +219,8 @@ def render_step4() -> None:
         "w-full"
     )
 
-    # Video result (if already generated) — below generate button, capped height
+    # A run that finished (or is still running) while this page was gone — below the button
+    _render_recovered_run(state)
     _render_existing_result(state)
 
     im_separator()
