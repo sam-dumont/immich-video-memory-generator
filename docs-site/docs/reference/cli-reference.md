@@ -244,7 +244,7 @@ immich-memories generate [OPTIONS]
 | `--include-live-photos` | boolean | false | Include Live Photo video clips (3s iPhone clips, merged when burst-captured) |
 | `--include-photos` | boolean | false | Include photos as animated Ken Burns clips (blur background, face-aware pan) |
 | `--photo-duration` | float | - | Duration per photo clip in seconds (default: 4.0) |
-| `--analysis-depth` | choice | auto | Analysis depth: auto (adaptive current-model cache-miss budget), fast (favorites first), or thorough (every eligible clip) |
+| `--analysis-depth` | choice | - | Analysis depth: auto (full analysis for manageable pools), fast (favorites first), or thorough (every eligible clip) |
 | `--trip-index` | integer | - | Select a specific trip by index (use with --memory-type trip) |
 | `--all-trips` | boolean | false | Generate a video for every detected trip (use with --memory-type trip) |
 | `--years-back` | integer | - | Years to look back for on_this_day (default: all) |
@@ -343,6 +343,7 @@ Run preflight checks to validate all provider connections.
         Checks:
         - Immich server connection and API key
         - LLM availability (Ollama or OpenAI-compatible)
+        - Semantic audio analysis (PANNs or energy fallback)
         - Hardware acceleration
 
 ```bash
@@ -436,6 +437,18 @@ Show aggregate statistics across all runs.
 ```bash
 immich-memories runs stats [OPTIONS]
 ```
+
+### `runs storage`
+
+Report configured output and cache storage without changing it.
+
+```bash
+immich-memories runs storage [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--json` | boolean | false | Machine-readable output |
 
 ## `scheduler`
 

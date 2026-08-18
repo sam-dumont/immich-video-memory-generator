@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import click
+from click.core import UNSET
 
 
 def _get_options_table(cmd: click.Command) -> str:
@@ -25,7 +26,10 @@ def _get_options_table(cmd: click.Command) -> str:
     for param in params:
         names = ", ".join(f"`{d}`" for d in param.opts)
         param_type = param.type.name if hasattr(param.type, "name") else str(param.type)
-        default = param.default if param.default is not None else "-"
+        default = param.default
+        # Click >= 8.3 uses a Sentinel (UNSET) instead of None for "no default"
+        if default is None or default is UNSET:
+            default = "-"
         if isinstance(default, bool):
             default = str(default).lower()
         help_text = (param.help or "").replace("|", "\\|")
