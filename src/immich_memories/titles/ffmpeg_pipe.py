@@ -32,8 +32,8 @@ def drain_stderr_tail(stream, tail: bytearray, *, limit: int = STDERR_TAIL_BYTES
 class StderrDrain:
     """Drains `process.stderr` on a background thread for the process lifetime.
 
-    Usable as a context manager, or with explicit start/stop where the frame
-    loop already owns the function body.
+    Explicit start/stop rather than a context manager, because every caller's
+    frame loop already owns its function body.
     """
 
     def __init__(
@@ -65,12 +65,6 @@ class StderrDrain:
             self._reader.join(timeout=self._join_timeout)
             self._reader = None
         return stderr_text(self.tail)
-
-    def __enter__(self) -> StderrDrain:
-        return self.start()
-
-    def __exit__(self, *_exc: object) -> None:
-        self.stop()
 
 
 def stderr_text(tail: bytearray) -> str:
