@@ -136,3 +136,18 @@ class TestResolveAlbum:
             await service.resolve_album("Nope")
 
         assert "Holidays" in str(exc.value) and "Trip 2025" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_an_album_shared_with_you_resolves_like_any_other(self):
+        """Immich lists shared albums in GET /albums — album mode must not filter them out (#48)."""
+        service = AlbumService(
+            _albums_fn(
+                _album("a-1", "Holidays", 12) | {"shared": False},
+                _album("a-2", "Paris-Roubaix 2026", 174) | {"shared": True},
+            ),
+            AsyncMock(),
+        )
+
+        ref = await service.resolve_album("Paris-Roubaix 2026")
+
+        assert (ref.id, ref.asset_count) == ("a-2", 174)
