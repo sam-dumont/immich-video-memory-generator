@@ -191,6 +191,7 @@ class SubjectCandidate:
     key: str
     category: SubjectCategory
     score: float
+    scale: str = "motion"
 
 
 @dataclass(frozen=True)
@@ -199,7 +200,7 @@ class QuotaOutcome:
 
     kept_keys: list[str]
     dropped: dict[SubjectCategory, int] = field(default_factory=dict)
-    quality_bar: float = 0.0
+    bars: dict[str, float] = field(default_factory=dict)
     bypassed: bool = False
 
 
@@ -224,16 +225,17 @@ def apply_subject_quotas(
     """
     max_animal = quota_for(animal_ratio, expected_clips)
     max_object = quota_for(object_ratio, expected_clips)
+
     by_category: dict[SubjectCategory, list[SubjectCandidate]] = {}
     for candidate in candidates:
         by_category.setdefault(candidate.category, []).append(candidate)
 
-    bar = _quality_bar(by_category, candidates)
+    bars = _quality_bars(candidates)
 
     keep: set[str] = set()
     dropped: dict[SubjectCategory, int] = {}
     for category, members in by_category.items():
-        survivors = _survivors(category, members, bar, max_animal, max_object)
+        survivors = _survivors(category, members, bars, max_animal, max_object)
         keep.update(c.key for c in survivors)
         if len(survivors) < len(members):
             dropped[category] = len(members) - len(survivors)
@@ -244,30 +246,34 @@ def apply_subject_quotas(
         # stands down rather than deleting the memory.
         return QuotaOutcome(
             kept_keys=[c.key for c in candidates],
-            quality_bar=bar,
+            bars=bars,
             bypassed=True,
         )
 
     return QuotaOutcome(
         kept_keys=[c.key for c in candidates if c.key in keep],
         dropped=dropped,
-        quality_bar=bar,
+        bars=bars,
     )
 
 
 def _survivors(
     category: SubjectCategory,
     members: list[SubjectCandidate],
-    bar: float,
+    bars: dict[str, float],
     max_animal: int,
     max_object: int,
 ) -> list[SubjectCandidate]:
     if category is SubjectCategory.ANIMAL:
         return _top(members, max_animal)
+
+    def clears(candidate: SubjectCandidate) -> bool:
+        return candidate.score >= bars.get(candidate.scale, 0.0)
+
     if category is SubjectCategory.OBJECT:
-        return _top([c for c in members if c.score >= bar], max_object)
+        return _top([c for c in members if clears(c)], max_object)
     if category is SubjectCategory.LANDSCAPE:
-        return [c for c in members if c.score >= bar]
+        return [c for c in members if clears(c)]
     return members
 
 
@@ -291,15 +297,27 @@ def _top(members: list[SubjectCandidate], limit: int) -> list[SubjectCandidate]:
     return sorted(members, key=lambda c: -c.score)[:limit]
 
 
-def _quality_bar(
-    by_category: dict[SubjectCategory, list[SubjectCandidate]],
-    candidates: list[SubjectCandidate],
-) -> float:
-    people = by_category.get(SubjectCategory.PEOPLE)
-    reference = people or candidates
-    if not reference:
-        return 0.0
-    return statistics.median(c.score for c in reference)
+def _quality_bars(candidates: list[SubjectCandidate]) -> dict[str, float]:
+    """The median people-clip score, computed separately for each score scale.
+
+    Photos and motion clips are scored by different pipelines and land in
+    different ranges -- on a real June pool, people motion clips sat at a 0.70
+    median while photos sat far below. One pooled median put the bar at 0.43,
+    low enough for a clip of a string trimmer to clear it. Each scale is
+    therefore judged against its own people.
+    """
+    by_scale: dict[str, list[float]] = {}
+    for candidate in candidates:
+        by_scale.setdefault(candidate.scale, []).append(candidate.score)
+
+    people: dict[str, list[float]] = {}
+    for candidate in candidates:
+        if candidate.category is SubjectCategory.PEOPLE:
+            people.setdefault(candidate.scale, []).append(candidate.score)
+
+    return {
+        scale: statistics.median(people.get(scale) or scores) for scale, scores in by_scale.items()
+    }
 
 
 def filter_candidates_by_subject(
@@ -308,6 +326,7 @@ def filter_candidates_by_subject(
     animal_ratio: float,
     object_ratio: float,
     content_budget_seconds: float,
+    photo_asset_ids: set[str] | None = None,
 ) -> list:
     """Apply the subject policy to a pool of ClipWithSegment candidates.
 
@@ -319,6 +338,7 @@ def filter_candidates_by_subject(
         return candidates
 
     expected_clips = _expected_clip_count(candidates, content_budget_seconds)
+    photos = photo_asset_ids or set()
 
     described = [
         SubjectCandidate(
@@ -330,6 +350,7 @@ def filter_candidates_by_subject(
                 description=candidate.clip.llm_description,
             ),
             score=candidate.score,
+            scale="photo" if candidate.clip.asset.id in photos else "motion",
         )
         for candidate in candidates
     ]
@@ -352,9 +373,9 @@ def filter_candidates_by_subject(
             f"{n} {category.value}" for category, n in sorted(outcome.dropped.items(), key=str)
         )
         logger.info(
-            "Subject policy: dropped %s (scenery had to beat %.2f, the median people clip)",
+            "Subject policy: dropped %s (had to beat %s)",
             counts,
-            outcome.quality_bar,
+            ", ".join(f"{scale} {bar:.2f}" for scale, bar in sorted(outcome.bars.items())),
         )
 
     kept = set(outcome.kept_keys)

@@ -114,9 +114,12 @@ Objects are rationed rather than banned. Buying a new car is a memory and a
 lawnmower is not, and the thing separating them is whether the clip is any good — so
 objects must clear the same bar as scenery *and* fit the quota.
 
-That bar is the median people-clip score rather than a fixed number, because photo
-scores and video scores sit on different scales and one threshold would silently
-exclude a whole pool.
+That bar is the median people-clip score rather than a fixed number — and it is
+computed **separately for photos and for motion clips**, because the two are scored
+by different pipelines and land in different ranges. On a real June pool, people
+motion clips sat at a 0.70 median while photos sat at 0.43. Pooling both put the bar
+at 0.43, low enough for a clip of a string trimmer scoring 0.61 to clear it; judged
+against its own scale, it does not.
 
 A clip nobody has described yet is **kept**. On a real library 35–46% of the pool
 has no cached description, and treating that silence as "probably an object" would
