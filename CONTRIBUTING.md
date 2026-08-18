@@ -76,17 +76,31 @@ FFmpeg. They skip gracefully if services aren't available.
 
 ### Integration tests and diff-cover
 
-If CI's diff-cover fails because changed lines aren't covered by unit tests:
+Every PR must have 80% coverage on the lines it changes. Code that can only run
+with real FFmpeg used to be impossible to cover: `tests/*-coverage.xml` is
+gitignored, so integration coverage produced on your machine could never reach
+CI, and the gate would fail no matter what you did.
+
+**CI now handles that for you.** Before checking diff-cover it runs the
+FFmpeg-only integration suites covering the paths you changed — and only those,
+so a PR touching nothing FFmpeg-reachable runs none of them. That job already
+has FFmpeg installed, so this costs no setup time.
+
+To reproduce locally exactly what CI will see:
 
 ```bash
-make test-integration   # Runs real FFmpeg + Immich tests, generates per-suite coverage XMLs
-git add tests/*-coverage.xml tests/integration-junit.xml
-git commit --amend      # Add coverage files to your commit
-git push
+make integration-coverage-for-diff   # runs only the suites your diff touches
+make diff-cover-local                # merges them with unit coverage, same as CI
 ```
 
-CI merges `coverage.xml` (unit, from CI) with the per-suite `tests/*-coverage.xml`
-files (integration, committed locally) when calculating diff-cover at 80% threshold.
+If diff-cover still fails, the uncovered lines are not reachable from an
+integration suite and need unit tests. Subprocess boundaries can be stubbed
+rather than run for real — `tests/test_ffmpeg_pipe.py` shows the pattern: patch
+`subprocess.Popen`, hand back a fake process, and assert on what the code does
+with it.
+
+Do not try to commit coverage XMLs. They are gitignored deliberately, and
+`git add -f` is not acceptable in this repo.
 
 **What integration tests cover that unit tests can't:**
 - FFmpeg filter graph construction and assembly

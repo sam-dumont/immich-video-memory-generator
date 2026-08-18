@@ -434,7 +434,19 @@ diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merg
 		if [ -f "$$f" ]; then COVERAGE_FILES="$$COVERAGE_FILES $$f"; fi; \
 	done; \
 	uvx diff-cover $$COVERAGE_FILES --compare-branch=origin/main --fail-under=80 \
-	|| (echo "" && echo "⚠️  Diff coverage below 80%." && echo "   Run: make test-integration" && echo "   Then: git add tests/*-coverage.xml" && exit 1)
+	|| (echo "" && echo "⚠️  Diff coverage below 80% on changed lines." && \
+		echo "" && \
+		echo "   CI runs the FFmpeg-only integration suites that cover your changed" && \
+		echo "   paths automatically (make integration-coverage-for-diff), so code" && \
+		echo "   reachable only through FFmpeg does not need extra work from you." && \
+		echo "" && \
+		echo "   To reproduce what CI will see:" && \
+		echo "     make integration-coverage-for-diff && make diff-cover-local" && \
+		echo "" && \
+		echo "   If the uncovered lines are NOT reachable from an integration suite," && \
+		echo "   add unit tests. Subprocess boundaries can be stubbed -- see" && \
+		echo "   tests/test_ffmpeg_pipe.py for the pattern." && \
+		exit 1)
 
 # Diff coverage for PRs — merges CI unit coverage with local integration coverage.
 # If coverage is low, run `make test-integration` locally and commit the updated
