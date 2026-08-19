@@ -159,6 +159,19 @@ def _master(track: Path, run_output_dir: Path) -> Path:
     return master_music_track(track, run_output_dir / f"mastered_{track.stem}.wav")
 
 
+def photo_cadence_seconds(assembly_clips: list[AssemblyClip]) -> float | None:
+    """How often a photo cut lands, or None when there is no rhythm to sync to.
+
+    Read off the clips rather than ``config.photos.duration`` because the final
+    budget trim rescales every clip: by the time music is chosen, a photo the
+    config called 4 s may be 3.7 s on screen.
+    """
+    durations = sorted(clip.duration for clip in assembly_clips if clip.is_photo)
+    if len(durations) < 2:
+        return None
+    return durations[len(durations) // 2]
+
+
 def _mood_for_clips(assembly_clips: list[AssemblyClip]) -> str | None:
     """Mood to pick bundled music by, taken from the clips when they carry one."""
     for clip in assembly_clips:
@@ -225,6 +238,7 @@ def auto_generate_music(
                 progress_callback=music_progress,
                 app_config=config,
                 memory_type=memory_type,
+                photo_cadence_seconds=photo_cadence_seconds(assembly_clips),
             )
         )
 

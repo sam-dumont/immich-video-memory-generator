@@ -193,13 +193,23 @@ def pick_style(memory_type: str | None = None, style: str | None = None) -> str:
     return random.choice(sorted(STYLE_PROFILES))
 
 
-def compose_caption(mood_key: str, style_key: str) -> tuple[str, int, str]:
+def compose_caption(
+    mood_key: str, style_key: str, cadence_seconds: float | None = None
+) -> tuple[str, int, str]:
     """Build the caption on ACE-Step's documented order, with its tempo and key.
+
+    A cadence nudges the tempo within the style's own range so a photo lasts a
+    whole number of beats — the cuts are already fixed by the time music is
+    chosen, so the music is what adapts.
 
     Returns (caption, bpm, key_scale).
     """
+    from immich_memories.audio.beat_grid import beat_aligned_bpm
+
     profile, style = MOOD_PROFILES[mood_key], STYLE_PROFILES[style_key]
     bpm = style.bpm_for(profile.energy)
+    if cadence_seconds:
+        bpm = beat_aligned_bpm(bpm, cadence_seconds, style.tempo_range)
     key_scale = f"{_key_root(mood_key, style_key)} {profile.mode}"
     caption = (
         f"{style.genre_for(mood_key)}, {profile.word}, {style.instruments}, "
@@ -255,6 +265,7 @@ def build_ace_caption_structured(
     scene_moods: list[str] | None = None,
     memory_type: str | None = None,
     style: str | None = None,
+    cadence_seconds: float | None = None,
 ) -> ACECaptionResult:
     """Build a structured ACE-Step caption from the mood x style matrix.
 
@@ -264,7 +275,7 @@ def build_ace_caption_structured(
     """
     mood_key = resolve_mood(scene_moods[0] if scene_moods else mood)
     style_key = pick_style(memory_type=memory_type, style=style)
-    caption, bpm, key_scale = compose_caption(mood_key, style_key)
+    caption, bpm, key_scale = compose_caption(mood_key, style_key, cadence_seconds)
 
     if season:
         modifier = _SEASON_TAG_MODIFIERS.get(season.lower(), "")

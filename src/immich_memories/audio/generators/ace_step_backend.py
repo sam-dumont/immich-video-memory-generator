@@ -345,6 +345,7 @@ def _mood_to_structured_prompt(
     mood: str,
     scene_moods: list[str] | None = None,
     memory_type: str | None = None,
+    cadence_seconds: float | None = None,
 ):
     """Convert mood to structured ACE-Step caption with explicit musical params.
 
@@ -353,6 +354,7 @@ def _mood_to_structured_prompt(
     return build_ace_caption_structured(
         mood,
         season=_detect_season(mood),
+        cadence_seconds=cadence_seconds,
         scene_moods=scene_moods,
         memory_type=memory_type,
     )
@@ -579,12 +581,17 @@ class ACEStepBackend(MusicGenerator):
             scene_moods = [s.get("mood", "upbeat") for s in request.scenes]
             primary_mood = scene_moods[0] if scene_moods else "upbeat"
             caption_result = _mood_to_structured_prompt(
-                primary_mood, scene_moods=scene_moods, memory_type=request.memory_type
+                primary_mood,
+                scene_moods=scene_moods,
+                memory_type=request.memory_type,
+                cadence_seconds=request.photo_cadence_seconds,
             )
             duration = sum(s.get("duration", 30) for s in request.scenes)
         else:
             caption_result = _mood_to_structured_prompt(
-                request.prompt, memory_type=request.memory_type
+                request.prompt,
+                memory_type=request.memory_type,
+                cadence_seconds=request.photo_cadence_seconds,
             )
             duration = request.duration_seconds
 
@@ -693,12 +700,17 @@ class ACEStepBackend(MusicGenerator):
             scene_moods = [s.get("mood", "upbeat") for s in request.scenes]
             primary_mood = scene_moods[0] if scene_moods else "upbeat"
             caption_result = _mood_to_structured_prompt(
-                primary_mood, scene_moods=scene_moods, memory_type=request.memory_type
+                primary_mood,
+                scene_moods=scene_moods,
+                memory_type=request.memory_type,
+                cadence_seconds=request.photo_cadence_seconds,
             )
             duration = sum(s.get("duration", 30) for s in request.scenes)
         else:
             caption_result = _mood_to_structured_prompt(
-                request.prompt, memory_type=request.memory_type
+                request.prompt,
+                memory_type=request.memory_type,
+                cadence_seconds=request.photo_cadence_seconds,
             )
             duration = request.duration_seconds
 

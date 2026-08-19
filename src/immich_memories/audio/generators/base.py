@@ -35,6 +35,8 @@ class GenerationRequest:
     variation_index: int = 0
     crossfade_duration: float = 2.0
     memory_type: str | None = None
+    # How often a photo cut lands, so the tempo can be chosen to match it.
+    photo_cadence_seconds: float | None = None
 
     # Output
     output_dir: Path = field(default_factory=lambda: Path(tempfile.gettempdir()) / "musicgen")

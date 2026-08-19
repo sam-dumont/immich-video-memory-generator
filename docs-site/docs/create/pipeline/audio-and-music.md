@@ -88,6 +88,24 @@ production automation; test non-turbo XL only with DCW explicitly disabled in a 
 adapter.
 :::
 
+#### Tempo follows the photo cuts
+
+When a memory contains photos, the tempo asked of ACE-Step is nudged so a photo
+lasts a whole number of beats. Photos hold the screen for a fixed time, so their
+cuts arrive at a steady rate; picking a tempo whose beat divides that rate makes
+the cuts land with the pulse instead of against it.
+
+The nudge stays inside the genre's own tempo range — drum and bass at 70 bpm is
+not a thing — and within 15% of the mood's own tempo, so a run of short photos
+cannot drag a serene track up to dance tempo. Where neither holds, the mood wins
+and nothing changes. At the default 4 s photo duration all ten mood/style
+combinations land on whole beats, the largest shift being 132 → 120 bpm. Videos are never re-timed: they carry speech and laughter the pipeline
+protects, so only photo cadence drives this.
+
+Measured on the 28 bundled tracks, ACE-Step honours a requested tempo to within
+0.4% (median), so asking for an aligned tempo is worth doing — but that residual
+is also why cuts are aligned in *rate*, not yet locked to the beat.
+
 ### MusicGen
 
 Meta's MusicGen handles text-to-music generation and Demucs stem separation via a remote API server. If you're running everything locally with ACE-Step + local Demucs, you don't need MusicGen at all.

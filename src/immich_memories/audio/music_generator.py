@@ -103,6 +103,7 @@ async def generate_music_for_video(
     hemisphere: str = "north",
     app_config: object | None = None,
     memory_type: str | None = None,
+    photo_cadence_seconds: float | None = None,
 ) -> MusicGenerationResult:
     """Generate multiple music versions for a video with per-clip moods.
 
@@ -137,6 +138,7 @@ async def generate_music_for_video(
                 crossfade_duration=crossfade_duration,
                 hemisphere=hemisphere,
                 memory_type=memory_type,
+                photo_cadence_seconds=photo_cadence_seconds,
             )
 
     # Legacy path: direct MusicGen client

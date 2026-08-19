@@ -72,6 +72,7 @@ class MusicPipeline:
         crossfade_duration: float = 2.0,
         hemisphere: str = "north",
         memory_type: str | None = None,
+        photo_cadence_seconds: float | None = None,
     ) -> MusicGenerationResult:
         """Generate music using the first available backend, with fallback."""
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -95,6 +96,7 @@ class MusicPipeline:
                 crossfade_duration=crossfade_duration,
                 output_dir=output_dir,
                 memory_type=memory_type,
+                photo_cadence_seconds=photo_cadence_seconds,
             )
 
             result = await self._try_generate(request, progress_callback, i, num_versions)
