@@ -11,6 +11,7 @@ outputs HEVC with 10-bit color and BT.2020 metadata.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -141,8 +142,17 @@ class PreparedPhoto:
     peak_nits: int = 203  # SDR default; gain-mapped HDR sets actual peak
 
 
-def prepare_photo_source(source_path: Path, work_dir: Path) -> PreparedPhoto:
+def prepare_photo_source(
+    source_path: Path, work_dir: Path, *, max_size: tuple[int, int] | None = None
+) -> PreparedPhoto:
     """Convert any image format to an FFmpeg-compatible source.
+
+    ``max_size`` caps the longest edge before any array work. The renderer holds
+    three float32 copies of the decoded image, so a 24 MP HEIC peaks near 0.9 GB
+    and a 48 MP one exceeds a 4 GB container. Ken Burns never samples more than
+    about twice the output resolution, so anything beyond that is memory spent
+    on detail the encoder discards. Photos already inside the cap are returned
+    untouched rather than re-encoded.
 
     Extracts HDR gain maps when present:
     - Apple HEIC: gain map via pillow-heif auxiliary image
@@ -155,23 +165,61 @@ def prepare_photo_source(source_path: Path, work_dir: Path) -> PreparedPhoto:
     ext = source_path.suffix.lower()
 
     if ext in _HEIF_EXTENSIONS:
-        return _convert_heif(source_path, work_dir)
+        return _convert_heif(source_path, work_dir, max_size=max_size)
 
     # Check for UltraHDR JPEG gain map (Android/Pixel/Samsung)
     if ext in (".jpg", ".jpeg"):
-        result = _try_ultrahdr_extraction(source_path, work_dir)
+        result = _try_ultrahdr_extraction(source_path, work_dir, max_size=max_size)
         if result is not None:
             return result
 
     if ext in _FFMPEG_NATIVE_EXTENSIONS:
-        w, h = _get_image_dimensions(source_path)
-        return PreparedPhoto(path=source_path, width=w, height=h)
+        return _prepare_native(source_path, work_dir, max_size)
 
     # Unknown format — try Pillow as fallback
-    return _convert_via_pillow(source_path, work_dir)
+    return _convert_via_pillow(source_path, work_dir, max_size=max_size)
 
 
-def _try_ultrahdr_extraction(source_path: Path, work_dir: Path) -> PreparedPhoto | None:
+def _prepare_native(
+    source_path: Path, work_dir: Path, max_size: tuple[int, int] | None
+) -> PreparedPhoto:
+    """FFmpeg reads these directly; only re-encode when the cap actually bites."""
+    w, h = _get_image_dimensions(source_path)
+    if max_size is None or (w <= max_size[0] and h <= max_size[1]):
+        return PreparedPhoto(path=source_path, width=w, height=h)
+
+    from PIL import Image
+
+    with Image.open(source_path) as opened:
+        opened.draft("RGB", max_size)
+        capped = opened.convert("RGB")
+    capped.thumbnail(max_size, Image.Resampling.LANCZOS)
+    out_path = work_dir / f"{source_path.stem}_capped.jpg"
+    capped.save(out_path, "JPEG", quality=95)
+    return PreparedPhoto(path=out_path, width=capped.width, height=capped.height)
+
+
+def _downscale_in_place(img, max_size: tuple[int, int] | None):
+    """Cap a decoded image, cheaply where the decoder can help.
+
+    ``draft`` lets the JPEG decoder skip DCT levels, so the full-size bitmap is
+    never materialised; it is a no-op for other formats and for images already
+    within the cap.
+    """
+    if max_size is None:
+        return img
+    from PIL import Image
+
+    with contextlib.suppress(AttributeError, ValueError):
+        img.draft("RGB", max_size)
+    if img.width > max_size[0] or img.height > max_size[1]:
+        img.thumbnail(max_size, Image.Resampling.LANCZOS)
+    return img
+
+
+def _try_ultrahdr_extraction(
+    source_path: Path, work_dir: Path, *, max_size: tuple[int, int] | None = None
+) -> PreparedPhoto | None:
     """Try to extract UltraHDR gain map from JPEG. Returns None if not UltraHDR."""
     try:
         import cv2
@@ -189,7 +237,16 @@ def _try_ultrahdr_extraction(source_path: Path, work_dir: Path) -> PreparedPhoto
 
         primary_pil, gain_map_pil = extract_gain_map(source_path)
         metadata = parse_hdrgm_metadata(source_path)
+
+        # WHY: capped before the float32 arrays below. The gain map is then
+        # resampled onto the primary's new size -- apply_gain_map works
+        # per-pixel and needs the two to agree, not to be full resolution.
+        primary_pil = _downscale_in_place(primary_pil, max_size)
         w, h = primary_pil.size
+        if gain_map_pil.size != (w, h):
+            from PIL import Image as _PILImage
+
+            gain_map_pil = gain_map_pil.resize((w, h), _PILImage.Resampling.LANCZOS)
 
         sdr = np.array(primary_pil, dtype=np.float32) / 255.0
         gm = np.array(gain_map_pil, dtype=np.float32) / 255.0
@@ -227,7 +284,9 @@ def _try_ultrahdr_extraction(source_path: Path, work_dir: Path) -> PreparedPhoto
         return None
 
 
-def _convert_heif(source_path: Path, work_dir: Path) -> PreparedPhoto:
+def _convert_heif(
+    source_path: Path, work_dir: Path, *, max_size: tuple[int, int] | None = None
+) -> PreparedPhoto:
     """Convert HEIC/HEIF/AVIF via pillow-heif.
 
     If an Apple HDR gain map is present, applies it to produce a 16-bit
@@ -248,6 +307,10 @@ def _convert_heif(source_path: Path, work_dir: Path) -> PreparedPhoto:
 
     heif_file = pillow_heif.open_heif(str(source_path))
     img = Image.open(source_path)
+    # WHY: capped here, before the gain-map maths and the float32 copies below.
+    # The gain map is resampled to the primary's size, and the maths is
+    # per-pixel, so it is unaffected by the primary being smaller.
+    img = _downscale_in_place(img, max_size)
     w, h = img.size
 
     # Check for Apple HDR gain map (present on iPhone 12+ photos)
@@ -352,7 +415,9 @@ def _apply_hdr_gain_map(
     return PreparedPhoto(path=out_path, width=w, height=h, has_gain_map=True, peak_nits=peak_nits)
 
 
-def _convert_via_pillow(source_path: Path, work_dir: Path) -> PreparedPhoto:
+def _convert_via_pillow(
+    source_path: Path, work_dir: Path, *, max_size: tuple[int, int] | None = None
+) -> PreparedPhoto:
     """Fallback: convert any Pillow-supported format to JPEG."""
     from PIL import Image
 

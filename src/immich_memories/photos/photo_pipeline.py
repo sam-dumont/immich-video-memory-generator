@@ -458,8 +458,12 @@ def _render_single_photo(
         if not raw_path.exists():
             download_fn(asset.id, raw_path)
 
-        # Prepare (HEIC decode, gain map extraction for HDR)
-        prepared = prepare_photo_source(raw_path, work_dir)
+        # Prepare (HEIC decode, gain map extraction for HDR).
+        # WHY: capped at twice the output before any array work. Ken Burns zooms
+        # by at most ~15%, so it never samples beyond this, and the renderer
+        # holds three float32 copies of whatever it is given -- a 24 MP HEIC
+        # peaks near 0.9 GB and a 48 MP one exceeds a 4 GB container.
+        prepared = prepare_photo_source(raw_path, work_dir, max_size=(target_w * 2, target_h * 2))
 
         # Load image — 16-bit for gain-mapped HDR, 8-bit for SDR
         img = cv2.imread(str(prepared.path), cv2.IMREAD_UNCHANGED)
