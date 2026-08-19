@@ -1189,7 +1189,9 @@ class TestAudioFilterChain:
                 str(out),
             ],
             capture_output=True,
-            timeout=60,
+            # 30 inputs, 30 loudnorm passes and 29 crossfades: minutes on a loaded
+            # shared runner. This test is about duration accuracy, not speed.
+            timeout=300,
         )
         assert result.returncode == 0, f"FFmpeg failed: {result.stderr[-300:]}"
 
