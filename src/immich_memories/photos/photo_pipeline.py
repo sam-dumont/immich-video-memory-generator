@@ -59,6 +59,7 @@ def score_photos(
     app_config: Any = None,
     thumbnail_fn: Any = None,
     provider_circuit: Any = None,
+    thumbnail_cache: Any = None,
 ) -> list[tuple[Asset, float]]:
     """Score photos (metadata + LLM) without rendering.
 
@@ -71,6 +72,11 @@ def score_photos(
     # Phase 1: Fast metadata scoring (no I/O). Keep this complete pool so the
     # final optimizer can use unshortlisted photos when preferred media is sparse.
     metadata_scored = [(a, score_photo(a, config)) for a in assets]
+
+    # A held shutter yields near-identical frames seconds apart, and on a real
+    # June pool 21% of the photos were one. Collapsing bursts here rather than
+    # after scoring means each one dropped is also an LLM call saved.
+    metadata_scored = _drop_burst_duplicates(metadata_scored, config, thumbnail_cache)
 
     # Cap only the expensive semantic-scoring shortlist.
     shortlist_size = llm_shortlist_size(video_clip_count, len(metadata_scored), config.max_ratio)
@@ -233,6 +239,48 @@ def render_photo_clips(
 # shortlist to place a few dozen photos, which ran for hours.
 LLM_SHORTLIST_CEILING = 200
 _LLM_SHORTLIST_HEADROOM = 3
+
+
+def _drop_burst_duplicates(
+    scored: list[tuple[Asset, float]],
+    config: PhotoConfig,
+    thumbnail_cache: Any,
+) -> list[tuple[Asset, float]]:
+    """Keep the best-scored frame of each burst, when thumbnails are available."""
+    if thumbnail_cache is None or len(scored) < 2:
+        return scored
+
+    from immich_memories.analysis.duplicate_hashing import compute_thumbnail_hash
+    from immich_memories.photos.burst_dedup import PhotoCandidate, drop_burst_duplicates
+
+    candidates = []
+    for asset, score in scored:
+        data = thumbnail_cache.get(asset.id, "preview")
+        digest = None
+        if data:
+            # WHY: thumbnails come off disk -- a truncated JPEG costs this photo
+            # its comparison, not the run.
+            try:
+                digest = compute_thumbnail_hash(data) or None
+            except (OSError, TypeError, ValueError):
+                digest = None
+        candidates.append(
+            PhotoCandidate(
+                key=asset.id,
+                taken_at=asset.file_created_at,
+                thumbnail_hash=digest,
+                score=score,
+            )
+        )
+
+    kept = set(
+        drop_burst_duplicates(
+            candidates,
+            window_seconds=config.burst_window_seconds,
+            hash_threshold=config.burst_hash_threshold,
+        )
+    )
+    return [(asset, score) for asset, score in scored if asset.id in kept]
 
 
 def _compute_max_photos(video_count: int, max_ratio: float) -> int:

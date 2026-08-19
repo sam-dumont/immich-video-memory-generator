@@ -64,12 +64,30 @@ photos:
   enabled: true           # Include photos in memories
   max_ratio: 0.50         # Max 50% of clips can be photos
   duration: 4.0           # Seconds per photo clip
+  burst_window_seconds: 300  # Photos this close and near-identical are one burst
+  burst_hash_threshold: 8    # Hash bits two frames may differ by and still be one burst
   moment_gap_seconds: 120 # Window for "same moment as a video" (seconds)
   moment_hash_threshold: 10  # Bits a photo may differ from that video and still match
   score_penalty: 0.2      # Photos score 80% of equivalent videos
 ```
 
 Older configs may still contain `collage_duration`, `animation_mode`, `enable_collage`, `series_gap_seconds` or `zoom_factor`; those keys were removed in 0.41 and are ignored (the zoom amount is randomized per photo, and collages are not wired in).
+
+## One photo per burst
+
+A held shutter produces near-identical frames seconds apart. Before scoring, photos
+within `burst_window_seconds` of each other whose thumbnails are within
+`burst_hash_threshold` bits are treated as one burst, and only the best-scored frame
+survives. On a real June library that removed **64 of 303 photos — 21% of the pool**,
+in groups of up to five.
+
+Both conditions are required. Time alone would collapse a busy minute at a party;
+similarity alone would merge the same kitchen photographed a month apart. A photo with
+no cached thumbnail is always kept — redundancy is measured, never assumed. Set
+`burst_window_seconds: 0` to turn it off.
+
+Because this runs before the LLM shortlist, every photo it removes is also an LLM call
+saved.
 
 ## Photos a video already shows
 

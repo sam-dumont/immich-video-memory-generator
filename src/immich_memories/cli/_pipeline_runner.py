@@ -652,6 +652,7 @@ def _merge_photos_into_pool(
             app_config=config,
             thumbnail_fn=client.get_asset_thumbnail,
             provider_circuit=provider_circuit,
+            thumbnail_cache=thumbnail_cache,
         )
 
     photo_candidates = []

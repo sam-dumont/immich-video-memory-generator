@@ -841,6 +841,21 @@ class PhotoConfig(BaseModel):
         le=10.0,
         description="Duration per single photo clip in seconds",
     )
+    burst_window_seconds: float = Field(
+        default=300.0,
+        ge=0.0,
+        le=3600.0,
+        description=(
+            "Photos this close together and visually near-identical are one burst; "
+            "only the best-scored frame is kept (0 disables burst de-duplication)"
+        ),
+    )
+    burst_hash_threshold: int = Field(
+        default=8,
+        ge=0,
+        le=64,
+        description="Perceptual-hash bits two photos may differ by and still be one burst",
+    )
     moment_gap_seconds: float = Field(
         default=120.0,
         ge=0.0,
