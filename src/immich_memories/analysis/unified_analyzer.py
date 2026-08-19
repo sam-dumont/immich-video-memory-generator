@@ -385,7 +385,7 @@ class UnifiedSegmentAnalyzer:
         if enable_content_analysis:
             self._run_llm_scoring(
                 scored_segments,
-                audio_video,
+                visual_video,
                 enable_audio_content_analysis=audio_available,
             )
 
@@ -745,7 +745,7 @@ class UnifiedSegmentAnalyzer:
     def _run_llm_scoring(
         self,
         scored_segments: list,
-        audio_video: Path,
+        visual_video: Path,
         *,
         enable_audio_content_analysis: bool = True,
     ) -> None:
@@ -753,7 +753,9 @@ class UnifiedSegmentAnalyzer:
 
         Args:
             scored_segments: Segments to score (modified in place).
-            audio_video: Path to video for content analysis.
+            visual_video: Video to decode frames from -- the 480p analysis
+                proxy, not the original. The provider resizes frames to 480px
+                regardless, so decoding 4K here is pure cost.
         """
         if not (self.content_analyzer and self.content_weight > 0):
             logger.info("  -> LLM content analysis DISABLED")
@@ -767,7 +769,7 @@ class UnifiedSegmentAnalyzer:
                     f"  -> Analyzing candidate {i + 1}/{top_n}: {segment.start_time:.1f}s-{segment.end_time:.1f}s"
                 )
                 segment.content_score = self._score_content(
-                    audio_video, segment.start_time, segment.end_time, segment=segment
+                    visual_video, segment.start_time, segment.end_time, segment=segment
                 )
                 segment.total_score = self._compute_total_score(
                     segment,

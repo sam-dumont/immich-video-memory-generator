@@ -830,3 +830,60 @@ class TestLaughterBonus:
 
         assert total(0.25, True) - total(0.25, False) == pytest.approx(0.25)
         assert total(0.0, True) == pytest.approx(total(0.0, False))
+
+
+class TestLLMFramesComeFromTheProxy:
+    def test_content_analysis_reads_the_visual_proxy_not_the_original(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """The LLM only ever looks at frames, and it downsizes them to 480px
+        anyway. Decoding those frames out of the 4K original costs ~22s per clip
+        against ~0.4s from the 480p proxy that analysis already built (measured
+        on a real 4K HEVC clip). The original stays the audio source.
+        """
+        visual = tmp_path / "video_480p.mp4"
+        visual.write_bytes(b"proxy")
+        original = tmp_path / "video.mp4"
+        original.write_bytes(b"original")
+
+        # WHY: the LLM vision provider is an external model/API boundary.
+        content_analyzer = MagicMock()
+        content_analyzer.analyze_segment.return_value = MagicMock(
+            content_score=0.9,
+            description="d",
+            emotion="joy",
+            setting="s",
+            subjects=[],
+            interestingness=0.9,
+            quality=0.9,
+            confidence=1.0,
+        )
+        # WHY: audio analysis shells out to ffmpeg over a real file.
+        audio_analyzer = MagicMock()
+        audio_analyzer.analyze.return_value = MagicMock(
+            audio_score=0.5, has_laughter=False, has_speech=False, protected_ranges=[]
+        )
+        analyzer = UnifiedSegmentAnalyzer(
+            scorer=MagicMock(),
+            content_analyzer=content_analyzer,
+            content_weight=0.3,
+            audio_analyzer=audio_analyzer,
+            audio_content_config=AudioContentConfig(),
+            analysis_config=AnalysisConfig(),
+        )
+        for fn in (
+            "detect_visual_boundaries",
+            "detect_audio_boundaries",
+            "merge_boundaries",
+            "generate_candidate_segments",
+            "generate_fallback_segments",
+        ):
+            monkeypatch.setattr(f"immich_memories.analysis.unified_analyzer.{fn}", lambda *_: [])
+        analyzer._score_segments_visual_only = MagicMock(
+            return_value=[ScoredSegment(start_time=0.0, end_time=5.0, visual_score=0.6)]
+        )
+
+        analyzer.analyze(visual, video_duration=10.0, audio_video_path=original)
+
+        analysed_path = content_analyzer.analyze_segment.call_args.args[0]
+        assert analysed_path == visual, f"LLM frames decoded from {analysed_path}, expected proxy"
