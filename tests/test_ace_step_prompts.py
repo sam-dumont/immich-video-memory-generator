@@ -215,6 +215,15 @@ def test_memory_type_selects_a_style():
     assert spotlight.caption.startswith("acoustic folk")
 
 
+def test_a_style_can_name_a_different_genre_per_mood():
+    """Electronic sub-genres are tempo-defined: drum and bass at 70 bpm is not a thing."""
+    fast = build_ace_caption_structured("energetic", style="electronic")
+    slow = build_ace_caption_structured("calm", style="electronic")
+
+    assert fast.caption.startswith("drum and bass")
+    assert slow.caption.startswith("downtempo electronic")
+
+
 def test_memory_type_does_not_override_the_moods_tempo():
     """A calm trip should still be calm — only the instrumentation changes."""
     calm_trip = build_ace_caption_structured("calm", memory_type="trip")

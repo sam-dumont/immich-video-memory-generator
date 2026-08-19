@@ -10,7 +10,8 @@ sent as explicit API parameters (not buried in the caption text).
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 # Dense caption templates for ACE-Step.
 # Each template uses a descriptive sentence (not just tags) for better LLM guidance.
@@ -192,10 +193,19 @@ class MoodProfile:
 
 @dataclass(frozen=True)
 class StyleProfile:
-    """What a style contributes: the genre anchor and the instruments to render."""
+    """What a style contributes: the genre anchor and the instruments to render.
+
+    A style may name a different genre per mood. Electronic needs this: its
+    sub-genres are defined by tempo, and the guides warn that a genre fighting
+    the BPM confuses the model — drum and bass at 70 bpm is not a thing.
+    """
 
     genre: str
     instruments: str
+    genre_by_mood: Mapping[str, str] = field(default_factory=dict)
+
+    def genre_for(self, mood_key: str) -> str:
+        return self.genre_by_mood.get(mood_key, self.genre)
 
 
 # Mood sets the tempo and feel; style sets the genre and instruments. Every
@@ -213,17 +223,24 @@ STYLE_PROFILES: dict[str, StyleProfile] = {
         "acoustic folk",
         "fingerpicked acoustic guitar, upright bass, brushed drums, glockenspiel",
     ),
-    "orchestral": StyleProfile(
-        "orchestral",
-        "warm string section, French horn, harp, celeste, timpani",
+    "rock": StyleProfile(
+        "indie rock",
+        "electric guitar, live drum kit, electric bass, organ, tambourine",
+    ),
+    "electronic": StyleProfile(
+        "future bass",
+        "analog synth bass, plucky lead synth, crisp electronic drums, sidechained pads",
+        genre_by_mood={
+            "calm": "downtempo electronic",
+            "tender": "chillwave",
+            "nostalgic": "trip hop",
+            "happy": "future bass",
+            "energetic": "drum and bass",
+        },
     ),
     "jazz": StyleProfile(
         "jazz trio",
         "grand piano, double bass, brushed drums, muted trumpet, vibraphone",
-    ),
-    "indie": StyleProfile(
-        "indie rock",
-        "electric guitar, live drum kit, electric bass, organ, tambourine",
     ),
     "funk": StyleProfile(
         "funk soul",
@@ -233,9 +250,8 @@ STYLE_PROFILES: dict[str, StyleProfile] = {
 
 # Memory types that suggest a style; otherwise the style is sampled for variety.
 _MEMORY_TYPE_TO_STYLE: dict[str, str] = {
-    "year_in_review": "orchestral",
     "person_spotlight": "acoustic",
-    "trip": "indie",
+    "trip": "rock",
     "on_this_day": "jazz",
 }
 
@@ -294,7 +310,7 @@ def compose_caption(mood_key: str, style_key: str) -> tuple[str, int]:
     """Build the caption on ACE-Step's documented order, plus its BPM."""
     profile, style = MOOD_PROFILES[mood_key], STYLE_PROFILES[style_key]
     caption = (
-        f"{style.genre}, {profile.word}, {style.instruments}, "
+        f"{style.genre_for(mood_key)}, {profile.word}, {style.instruments}, "
         f"{profile.production}, {profile.bpm} bpm"
     )
     return caption, profile.bpm

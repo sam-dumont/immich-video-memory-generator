@@ -30,7 +30,7 @@ class TestEveryCombinationIsUsable:
     def test_combination_names_its_genre_and_mood(self, mood, style):
         result = build_ace_caption_structured(mood, style=style)
 
-        assert STYLE_PROFILES[style].genre in result.caption
+        assert STYLE_PROFILES[style].genre_for(mood) in result.caption
         assert MOOD_PROFILES[mood].word in result.caption
 
     def test_combination_states_bpm_in_tags_and_field(self, mood, style):
