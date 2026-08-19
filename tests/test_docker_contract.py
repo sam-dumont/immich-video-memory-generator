@@ -72,11 +72,25 @@ def test_docker_build_installs_exactly_the_requested_feature_set() -> None:
 
     assert re.search(r"(?m)^ARG INSTALL_EXTRAS=all\s*$", dockerfile)
     validator = 'python docker/validate_install_extras.py "${INSTALL_EXTRAS}"'
-    wheel_build = 'pip wheel --no-cache-dir --wheel-dir=/wheels "${INSTALL_TARGET}"'
+    wheel_build = re.search(r'(?m)^.*pip wheel[^\n]*"\$\{INSTALL_TARGET\}".*$', dockerfile)
     assert validator in dockerfile
-    assert wheel_build in dockerfile
-    assert dockerfile.index(validator) < dockerfile.index(wheel_build)
+    assert wheel_build, "the validated target must be what pip builds"
+    instruction = wheel_build.group()
+    assert "--wheel-dir=/wheels" in instruction
+    # The target has to be resolved by the validator before pip is handed it.
+    assert instruction.index(validator) < instruction.index("pip wheel")
     assert not re.search(r"pip wheel[^\n]*\|\|", dockerfile)
+
+
+def test_docker_builds_the_bundled_music_package_from_the_tree() -> None:
+    """The music extra resolves against the in-repo package, not a published release."""
+    dockerfile = _logical_instructions(_dockerfile())
+
+    assert "COPY packages/ ./packages/" in dockerfile
+    assert "pip wheel --no-cache-dir --wheel-dir=/wheels ./packages/immich-memories-music" in (
+        dockerfile
+    )
+    assert "--find-links=/wheels" in dockerfile
 
 
 @pytest.mark.parametrize("extra", ["", "definitely-not-a-real-extra"])

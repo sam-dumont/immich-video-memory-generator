@@ -49,6 +49,15 @@ INSTRUMENTS = (
     "organ",
     "vibraphone",
     "marimba",
+    # Electronic sound sources are just as concrete as acoustic ones.
+    "kick",
+    "snare",
+    "pad",
+    "lead",
+    "riser",
+    "break",
+    "stab",
+    "clavinet",
 )
 FIDELITY_TAGS = (
     "hi-fi",

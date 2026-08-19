@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "immich-memories-music"
+version = "0.1.0"
+description = "Bundled royalty-free background music for immich-memories"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Immich Memories Contributors" }]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio",
+]
+
+[project.urls]
+Homepage = "https://github.com/sdumont/immich-video-memory-generator"
+
+[tool.hatch.build.targets.wheel]
+packages = ["immich_memories_music"]

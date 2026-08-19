@@ -557,3 +557,25 @@ class TestOllamaMoodAnalyzerEdgeCases:
         mood = analyzer._parse_mood_response('{"primary_mood": "happy"}')
         assert mood.primary_mood == "happy"
         assert mood.energy_level == "medium"  # default
+
+
+class TestBundledMoodFolders:
+    """A mood folder is only usable if its name is recognised as a tag (#308)."""
+
+    def test_every_mood_the_analyser_can_return_is_matchable_by_folder(self, tmp_path):
+        from immich_memories.audio.mood_analyzer import VALID_MOODS
+        from immich_memories.audio.music_sources import LocalMusicSource
+
+        unmatched = sorted(
+            mood
+            for mood in VALID_MOODS
+            if mood not in LocalMusicSource._extract_tags_from_path(tmp_path / mood / "x.mp3", "x")
+        )
+
+        assert unmatched == []
+
+    def test_opus_tracks_are_discoverable(self, tmp_path):
+        """Bundled music ships as Opus; an unlisted extension is silently ignored (#308)."""
+        from immich_memories.audio.music_sources import LocalMusicSource
+
+        assert ".opus" in LocalMusicSource.SUPPORTED_EXTENSIONS

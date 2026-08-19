@@ -2305,7 +2305,7 @@ class TestResolveMusicFile:
         # report_fn should have been called with music progress
         assert any(c[0] == "music" for c in calls)
 
-    def test_no_path_no_config_returns_none(self, tmp_path):
+    def test_no_path_no_config_and_no_bundle_returns_none(self, tmp_path):
         from immich_memories.generate_music import resolve_music_file
 
         # WHY: music_config_available checks external service configs
@@ -2317,7 +2317,9 @@ class TestResolveMusicFile:
                 assembly_clips=[],
                 run_output_dir=tmp_path,
                 memory_type=None,
+                bundled_library=tmp_path / "no-bundle",
             )
+        # Silent only when there is no bundled music to fall back to (#308).
         assert result is None
 
 

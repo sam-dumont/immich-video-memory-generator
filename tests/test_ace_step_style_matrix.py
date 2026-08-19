@@ -19,9 +19,9 @@ MOODS = sorted(MOOD_PROFILES)
 STYLES = sorted(STYLE_PROFILES)
 
 
-def test_the_matrix_is_the_advertised_size():
+def test_the_matrix_covers_every_mood_with_every_style():
     assert len(MOODS) == 5
-    assert len(STYLES) == 5
+    assert set(STYLES) == {"acoustic", "electronic"}
 
 
 @pytest.mark.parametrize("mood", MOODS)
@@ -42,12 +42,23 @@ class TestEveryCombinationIsUsable:
         assert len(build_ace_caption_structured(mood, style=style).caption) < 512
 
 
-def test_tempo_follows_the_mood_not_the_style():
-    """A calm memory stays calm whichever genre renders it."""
-    calm = {build_ace_caption_structured("calm", style=s).bpm for s in STYLES}
-    energetic = {build_ace_caption_structured("energetic", style=s).bpm for s in STYLES}
+def test_a_calm_memory_stays_calm_within_each_style():
+    """Tempo is now per style, so compare within a style rather than across them."""
+    for style in STYLES:
+        calm = build_ace_caption_structured("calm", style=style).bpm
+        energetic = build_ace_caption_structured("energetic", style=style).bpm
 
-    assert max(calm) < min(energetic)
+        assert calm <= energetic, style
+
+
+def test_electronic_names_a_tempo_appropriate_subgenre():
+    """Its sub-genres are tempo-defined: drum and bass at 70 bpm is not a thing."""
+    assert build_ace_caption_structured("energetic", style="electronic").caption.startswith(
+        "drum and bass"
+    )
+    assert build_ace_caption_structured("calm", style="electronic").caption.startswith(
+        "downtempo electronic"
+    )
 
 
 def test_repeated_memories_of_one_mood_do_not_all_sound_alike():
@@ -58,8 +69,8 @@ def test_repeated_memories_of_one_mood_do_not_all_sound_alike():
 
 
 def test_an_explicit_style_is_reproducible():
-    first = build_ace_caption_structured("happy", style="jazz").caption
-    again = build_ace_caption_structured("happy", style="jazz").caption
+    first = build_ace_caption_structured("happy", style="acoustic").caption
+    again = build_ace_caption_structured("happy", style="acoustic").caption
 
     assert first == again
 

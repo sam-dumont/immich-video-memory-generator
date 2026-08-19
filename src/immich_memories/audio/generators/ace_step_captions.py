@@ -184,10 +184,15 @@ _SEASON_TAG_MODIFIERS = {
 
 @dataclass(frozen=True)
 class MoodProfile:
-    """What a mood contributes: tempo, emotional register, production character."""
+    """What a mood contributes: where it sits on the energy axis, and its colour.
+
+    Energy is a position (0 = still, 1 = driving) rather than a fixed BPM, so each
+    style can place it inside a tempo its own genre actually carries.
+    """
 
     word: str
-    bpm: int
+    energy: float
+    mode: str
     production: str
 
 
@@ -202,34 +207,46 @@ class StyleProfile:
 
     genre: str
     instruments: str
+    tempo_range: tuple[int, int] = (70, 150)
     genre_by_mood: Mapping[str, str] = field(default_factory=dict)
 
     def genre_for(self, mood_key: str) -> str:
         return self.genre_by_mood.get(mood_key, self.genre)
 
+    def bpm_for(self, energy: float) -> int:
+        """Place the mood's energy inside this genre's own tempo band."""
+        low, high = self.tempo_range
+        return int(round(low + (high - low) * energy))
+
 
 # Mood sets the tempo and feel; style sets the genre and instruments. Every
 # combination is a valid caption, so one mood no longer always sounds the same.
 MOOD_PROFILES: dict[str, MoodProfile] = {
-    "happy": MoodProfile("joyful", 120, "hi-fi, polished, wide stereo"),
-    "calm": MoodProfile("serene", 70, "hi-fi, intimate"),
-    "energetic": MoodProfile("driving", 150, "hi-fi, wide stereo"),
-    "nostalgic": MoodProfile("wistful", 75, "analog warmth, tape saturation"),
-    "tender": MoodProfile("tender", 100, "analog warmth, intimate"),
+    "calm": MoodProfile("serene", 0.00, "major", "hi-fi, intimate"),
+    "nostalgic": MoodProfile("wistful", 0.15, "minor", "analog warmth, tape saturation"),
+    "tender": MoodProfile("tender", 0.35, "major", "analog warmth, intimate"),
+    "happy": MoodProfile("joyful", 0.65, "major", "hi-fi, polished, wide stereo"),
+    "energetic": MoodProfile("driving", 1.00, "minor", "hi-fi, wide stereo"),
 }
+
+# Roots rotate across the matrix so neighbouring combinations do not share a key.
+VALID_KEY_ROOTS = ("C", "D", "E", "F", "G", "A", "Bb")
 
 STYLE_PROFILES: dict[str, StyleProfile] = {
     "acoustic": StyleProfile(
-        "acoustic folk",
-        "fingerpicked acoustic guitar, upright bass, brushed drums, glockenspiel",
+        genre="acoustic folk",
+        instruments=("fingerpicked acoustic guitar, upright bass, brushed drums, glockenspiel"),
+        tempo_range=(68, 132),
     ),
-    "rock": StyleProfile(
-        "indie rock",
-        "electric guitar, live drum kit, electric bass, organ, tambourine",
-    ),
+    # Electronic still spans several genres, chosen by tempo, so two styles do not
+    # mean two sounds. Rock, EDM and drum-and-bass styles were cut after a listening
+    # pass: they produced usable tracks only 2-5 times in 10, against 8 and 6 here.
     "electronic": StyleProfile(
-        "future bass",
-        "analog synth bass, plucky lead synth, crisp electronic drums, sidechained pads",
+        genre="future bass",
+        instruments=(
+            "analog synth bass, plucky lead synth, crisp electronic drums, sidechained pads, punchy"
+        ),
+        tempo_range=(72, 150),
         genre_by_mood={
             "calm": "downtempo electronic",
             "tender": "chillwave",
@@ -238,21 +255,12 @@ STYLE_PROFILES: dict[str, StyleProfile] = {
             "energetic": "drum and bass",
         },
     ),
-    "jazz": StyleProfile(
-        "jazz trio",
-        "grand piano, double bass, brushed drums, muted trumpet, vibraphone",
-    ),
-    "funk": StyleProfile(
-        "funk soul",
-        "Wurlitzer electric piano, horn section, electric bass, clavinet, congas",
-    ),
 }
 
 # Memory types that suggest a style; otherwise the style is sampled for variety.
 _MEMORY_TYPE_TO_STYLE: dict[str, str] = {
     "person_spotlight": "acoustic",
-    "trip": "rock",
-    "on_this_day": "jazz",
+    "on_this_day": "electronic",
 }
 
 _MOOD_ALIASES: dict[str, str] = {
@@ -306,14 +314,25 @@ def pick_style(memory_type: str | None = None, style: str | None = None) -> str:
     return random.choice(sorted(STYLE_PROFILES))
 
 
-def compose_caption(mood_key: str, style_key: str) -> tuple[str, int]:
-    """Build the caption on ACE-Step's documented order, plus its BPM."""
+def compose_caption(mood_key: str, style_key: str) -> tuple[str, int, str]:
+    """Build the caption on ACE-Step's documented order, with its tempo and key.
+
+    Returns (caption, bpm, key_scale).
+    """
     profile, style = MOOD_PROFILES[mood_key], STYLE_PROFILES[style_key]
+    bpm = style.bpm_for(profile.energy)
+    key_scale = f"{_key_root(mood_key, style_key)} {profile.mode}"
     caption = (
         f"{style.genre_for(mood_key)}, {profile.word}, {style.instruments}, "
-        f"{profile.production}, {profile.bpm} bpm"
+        f"{profile.production}, {bpm} bpm"
     )
-    return caption, profile.bpm
+    return caption, bpm, key_scale
+
+
+def _key_root(mood_key: str, style_key: str) -> str:
+    """Rotate roots across the matrix so neighbouring cells differ in tonality."""
+    index = sorted(MOOD_PROFILES).index(mood_key) + sorted(STYLE_PROFILES).index(style_key)
+    return VALID_KEY_ROOTS[index % len(VALID_KEY_ROOTS)]
 
 
 @dataclass
@@ -426,7 +445,7 @@ def build_ace_caption_structured(
     """
     mood_key = resolve_mood(scene_moods[0] if scene_moods else mood)
     style_key = pick_style(memory_type=memory_type, style=style)
-    caption, bpm = compose_caption(mood_key, style_key)
+    caption, bpm, key_scale = compose_caption(mood_key, style_key)
 
     if season:
         modifier = _SEASON_TAG_MODIFIERS.get(season.lower(), "")
@@ -437,6 +456,6 @@ def build_ace_caption_structured(
         caption=caption,
         lyrics="[Instrumental]",
         bpm=bpm,
-        key_scale="",
+        key_scale=key_scale,
         time_signature=normalize_time_signature("4"),
     )

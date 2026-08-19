@@ -11,6 +11,32 @@ The music pipeline has three stages:
 2. **Music generation**: The pipeline takes that mood and sends it to the configured music backend. ACE-Step can run directly in the app or through its REST API. MusicGen is the alternative generator when ACE-Step is disabled.
 3. **Audio ducking**: When background music plays over your clips, it automatically gets quieter when someone's talking or when there's an interesting sound in the original audio.
 
+## No GPU? Start here
+
+A plain install produces silent videos unless you supply an MP3 per run: both
+music generators need a GPU or a separate server. The `music` extra ships 28
+royalty-free background tracks that are used automatically when no generator is
+configured, so Docker and NAS installs have music out of the box.
+
+```bash
+pip install "immich-memories[music]"
+```
+
+The Docker image already includes it — it installs every extra.
+
+Tracks cover five moods (calm, energetic, happy, nostalgic, tender) in acoustic
+and electronic styles, roughly 30 seconds each, and are repeated with a crossfade
+to fill longer videos. Selection follows the memory's detected mood, and a mood
+with no bundled folder falls back to another track rather than to silence.
+
+They were generated locally with ACE-Step 1.5 — nothing sampled from or derived
+from third-party recordings, so there is no attribution requirement. The models,
+settings and per-track tempo, key and seed are recorded in `LICENSE-MUSIC` inside
+the package.
+
+Supplying `--music yourfile.mp3` or configuring a generator overrides the bundle;
+`--no-music` still means no music.
+
 ## Music Providers
 
 ### ACE-Step

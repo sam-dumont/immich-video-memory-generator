@@ -195,24 +195,28 @@ def test_structured_caption_carries_bpm_in_both_places():
     assert f"{result.bpm} bpm" in result.caption
 
 
-def test_key_and_meter_are_left_for_the_model_to_infer():
-    assert build_ace_caption_structured("happy").key_scale == ""
+def test_key_is_stated_so_combinations_do_not_share_a_tonality():
+    """Left empty, the model settled on the same tonality for every style."""
+    key = build_ace_caption_structured("happy", style="acoustic").key_scale
+
+    assert key.endswith("major")
+    assert key.split()[0] in ("C", "D", "E", "F", "G", "A", "Bb")
 
 
 def test_caption_leads_with_its_genre_anchor():
     from immich_memories.audio.generators.ace_step_captions import STYLE_PROFILES
 
-    result = build_ace_caption_structured("happy", style="jazz")
+    result = build_ace_caption_structured("happy", style="acoustic")
 
-    assert result.caption.startswith(STYLE_PROFILES["jazz"].genre)
+    assert result.caption.startswith(STYLE_PROFILES["acoustic"].genre)
 
 
 def test_memory_type_selects_a_style():
-    trip = build_ace_caption_structured("happy", memory_type="trip")
     spotlight = build_ace_caption_structured("happy", memory_type="person_spotlight")
+    on_this_day = build_ace_caption_structured("happy", memory_type="on_this_day")
 
-    assert trip.caption.startswith("indie rock")
     assert spotlight.caption.startswith("acoustic folk")
+    assert on_this_day.caption.startswith("future bass")
 
 
 def test_a_style_can_name_a_different_genre_per_mood():
@@ -224,11 +228,12 @@ def test_a_style_can_name_a_different_genre_per_mood():
     assert slow.caption.startswith("downtempo electronic")
 
 
-def test_memory_type_does_not_override_the_moods_tempo():
-    """A calm trip should still be calm — only the instrumentation changes."""
-    calm_trip = build_ace_caption_structured("calm", memory_type="trip")
+def test_memory_type_does_not_override_the_moods_energy():
+    """A calm spotlight is still calm: it sits low in its style's tempo band."""
+    calm = build_ace_caption_structured("calm", memory_type="person_spotlight")
+    energetic = build_ace_caption_structured("energetic", memory_type="person_spotlight")
 
-    assert calm_trip.bpm == build_ace_caption_structured("calm").bpm
+    assert calm.bpm < energetic.bpm
 
 
 def test_unknown_memory_type_still_produces_a_caption():

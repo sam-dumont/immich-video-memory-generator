@@ -52,6 +52,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Bundled royalty-free music, shipped separately so a plain install stays small.
+music = [
+    "immich-memories-music>=0.1.0",
+]
 face = [
     "face-recognition>=1.3",
     "dlib>=19.24",
@@ -117,6 +121,7 @@ gpu = [
 # All cross-platform optional features
 all = [
     "immich-memories[face]",
+    "immich-memories[music]",
     "immich-memories[audio]",
     "immich-memories[audio-ml]",
     "immich-memories[auth]",
@@ -128,6 +133,7 @@ all = [
 # All features for macOS (includes Apple Vision framework)
 all-mac = [
     "immich-memories[face]",
+    "immich-memories[music]",
     "immich-memories[audio]",
     "immich-memories[audio-ml]",
     "immich-memories[demucs]",
@@ -171,6 +177,12 @@ Documentation = "https://sam-dumont.github.io/immich-video-memory-generator/"
 Repository = "https://github.com/sam-dumont/immich-video-memory-generator"
 Issues = "https://github.com/sam-dumont/immich-video-memory-generator/issues"
 Changelog = "https://github.com/sam-dumont/immich-video-memory-generator/releases"
+
+# WHY: the bundled-music package lives in this repo. Resolving it from the tree
+# keeps `make dev`, CI and the Docker build working without waiting on a release
+# to PyPI; published wheels resolve it from the index instead.
+[tool.uv.sources]
+immich-memories-music = { path = "packages/immich-memories-music" }
 
 [tool.hatch.version]
 source = "vcs"

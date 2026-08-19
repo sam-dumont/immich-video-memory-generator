@@ -1,0 +1,58 @@
+All music in this directory was generated locally with ACE-Step 1.5.
+Nothing here is sampled, trained on, or derived from third-party recordings, so
+there is no licence to track and no attribution required. It is released under
+the same MIT licence as the rest of the project.
+
+Generated with:
+  model            acestep-v15-xl-turbo (4B, distilled)
+  inference steps  8
+  timestep shift   3.0
+  guidance         disabled (turbo bakes it into distillation)
+  language model   disabled (thinking mode off)
+  sampler          ode
+  post-processing  silence-trimmed, peak normalised to -1 dBFS, Opus 128 kbit/s
+
+Prompts follow ACE-Step's documented caption formula — genre first, then mood,
+instruments, production tags and BPM — built by
+src/immich_memories/audio/generators/ace_step_captions.py. Each track records the
+tempo, key and seed that produced it, so any of them can be regenerated exactly.
+
+Tracks are grouped by mood. LocalMusicSource reads the folder name as the mood tag.
+
+calm/
+  calm_acoustic_1.opus                 68 bpm  C major   seed 101  [acoustic]
+  calm_acoustic_s411.opus              68 bpm  C major   seed 411  [acoustic]
+  calm_acoustic_s522.opus              68 bpm  C major   seed 522  [acoustic]
+  calm_electronic_s411.opus            72 bpm  D major   seed 411  [electronic]
+  calm_electronic_s522.opus            72 bpm  D major   seed 522  [electronic]
+
+energetic/
+  energetic_acoustic_1.opus           132 bpm  D minor   seed 101  [acoustic]
+  energetic_acoustic_2.opus           132 bpm  D minor   seed 202  [acoustic]
+  energetic_acoustic_s522.opus        132 bpm  D minor   seed 522  [acoustic]
+  energetic_electronic_2.opus         150 bpm  G minor   seed 202  [electronic]
+  energetic_electronic_s411.opus      150 bpm  E minor   seed 411  [electronic]
+
+happy/
+  happy_acoustic_1.opus               110 bpm  E major   seed 101  [acoustic]
+  happy_acoustic_2.opus               110 bpm  E major   seed 202  [acoustic]
+  happy_acoustic_s411.opus            110 bpm  E major   seed 411  [acoustic]
+  happy_electronic_1.opus             123 bpm  A major   seed 101  [electronic]
+  happy_electronic_2.opus             123 bpm  A major   seed 202  [electronic]
+  happy_electronic_s411.opus          123 bpm  F major   seed 411  [electronic]
+
+nostalgic/
+  nostalgic_acoustic_1.opus            78 bpm  F minor   seed 101  [acoustic]
+  nostalgic_acoustic_s411.opus         78 bpm  F minor   seed 411  [acoustic]
+  nostalgic_acoustic_s522.opus         78 bpm  F minor   seed 522  [acoustic]
+  nostalgic_electronic_2.opus          84 bpm  Bb minor  seed 202  [electronic]
+  nostalgic_electronic_s411.opus       84 bpm  G minor   seed 411  [electronic]
+  nostalgic_electronic_s522.opus       84 bpm  G minor   seed 522  [electronic]
+
+tender/
+  tender_acoustic_1.opus               90 bpm  G major   seed 101  [acoustic]
+  tender_acoustic_2.opus               90 bpm  G major   seed 202  [acoustic]
+  tender_acoustic_s411.opus            90 bpm  G major   seed 411  [acoustic]
+  tender_electronic_1.opus             99 bpm  C major   seed 101  [electronic]
+  tender_electronic_2.opus             99 bpm  C major   seed 202  [electronic]
+  tender_electronic_s411.opus          99 bpm  A major   seed 411  [electronic]

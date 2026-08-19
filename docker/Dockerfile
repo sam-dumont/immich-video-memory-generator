@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Python dependencies
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
+COPY packages/ ./packages/
 COPY docker/validate_install_extras.py ./docker/validate_install_extras.py
 
 # hatch-vcs needs git history to detect version, which isn't available in Docker.
@@ -28,8 +29,12 @@ ARG INSTALL_EXTRAS=all
 RUN if [ -z "${APP_VERSION}" ]; then echo "APP_VERSION build argument is required" >&2; exit 1; fi
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
 
+# The bundled-music package is built from the tree so the image does not depend
+# on it being published yet; pip then resolves the `music` extra against it.
+RUN pip wheel --no-cache-dir --wheel-dir=/wheels ./packages/immich-memories-music
+
 RUN INSTALL_TARGET="$(python docker/validate_install_extras.py "${INSTALL_EXTRAS}")" && \
-    pip wheel --no-cache-dir --wheel-dir=/wheels "${INSTALL_TARGET}"
+    pip wheel --no-cache-dir --wheel-dir=/wheels --find-links=/wheels "${INSTALL_TARGET}"
 
 
 # Stage 2: Runtime image

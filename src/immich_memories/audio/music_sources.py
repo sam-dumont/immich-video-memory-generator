@@ -120,7 +120,7 @@ class LocalMusicSource(MusicSource):
     Scans a directory for music files and provides search functionality.
     """
 
-    SUPPORTED_EXTENSIONS = {".mp3", ".m4a", ".wav", ".flac", ".ogg", ".aac"}
+    SUPPORTED_EXTENSIONS = {".mp3", ".m4a", ".wav", ".flac", ".ogg", ".aac", ".opus"}
 
     def __init__(self, music_dir: Path):
         """Initialize with a local music directory.
@@ -147,13 +147,16 @@ class LocalMusicSource(MusicSource):
 
     @staticmethod
     def _extract_tags_from_path(path: Path, title: str) -> list[str]:
-        """Infer mood tags from parent directory name and title."""
+        """Infer mood tags from parent directory name and title.
+
+        Uses the analyser's own vocabulary so any mood it can return is also a
+        usable folder name — bundled music ships one folder per mood.
+        """
+        from immich_memories.audio.mood_analyzer import VALID_MOODS
+
         parent_name = path.parent.name.lower()
-        return [
-            mood
-            for mood in ("happy", "sad", "calm", "energetic", "romantic")
-            if mood in parent_name or mood in title.lower()
-        ]
+        title_lower = title.lower()
+        return sorted(mood for mood in VALID_MOODS if mood in parent_name or mood in title_lower)
 
     def _load_track_metadata(self, path: Path) -> tuple[float, str, str]:
         """Load duration, title, artist — falls back to filename on error."""

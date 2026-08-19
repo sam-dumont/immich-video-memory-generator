@@ -1778,6 +1778,7 @@ all = [
     { name = "dlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "face-recognition", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "freetype-py", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "immich-memories-music", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "kaldi-native-fbank", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "mutagen", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "onnxruntime", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
@@ -1791,6 +1792,7 @@ all-mac = [
     { name = "dlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "face-recognition", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "freetype-py", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "immich-memories-music", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "kaldi-native-fbank", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "mutagen", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "onnxruntime", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
@@ -1852,6 +1854,9 @@ mac = [
     { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'" },
     { name = "pyobjc-framework-vision", marker = "sys_platform == 'darwin'" },
 ]
+music = [
+    { name = "immich-memories-music", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
+]
 speech = [
     { name = "kaldi-native-fbank", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "onnxruntime", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32'" },
@@ -1886,6 +1891,9 @@ requires-dist = [
     { name = "grimp", marker = "extra == 'dev'", specifier = ">=3.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "imagehash", specifier = ">=4.3" },
+    { name = "immich-memories-music", marker = "extra == 'all'", directory = "packages/immich-memories-music" },
+    { name = "immich-memories-music", marker = "extra == 'all-mac'", directory = "packages/immich-memories-music" },
+    { name = "immich-memories-music", marker = "extra == 'music'", directory = "packages/immich-memories-music" },
     { name = "import-linter", marker = "extra == 'dev'", specifier = ">=2.0" },
     { name = "kaldi-native-fbank", marker = "extra == 'all'", specifier = ">=1.20" },
     { name = "kaldi-native-fbank", marker = "extra == 'all-mac'", specifier = ">=1.20" },
@@ -1946,7 +1954,12 @@ requires-dist = [
     { name = "videohash", specifier = ">=3.0" },
     { name = "watchdog", specifier = ">=3.0" },
 ]
-provides-extras = ["all", "all-mac", "audio", "audio-ml", "auth", "demucs", "dev", "face", "gpu", "mac", "speech", "transcribe"]
+provides-extras = ["all", "all-mac", "audio", "audio-ml", "auth", "demucs", "dev", "face", "gpu", "mac", "music", "speech", "transcribe"]
+
+[[package]]
+name = "immich-memories-music"
+version = "0.1.0"
+source = { directory = "packages/immich-memories-music" }
 
 [[package]]
 name = "import-linter"
