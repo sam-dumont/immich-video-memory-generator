@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import re
+import stat
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -14,6 +16,29 @@ logger = logging.getLogger(__name__)
 # Control characters for sanitizing filenames
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 _CREDENTIAL_FIELD_NAMES = frozenset({"api_key", "password", "client_secret"})
+
+
+def write_secret_file(path: Path, text: str) -> None:
+    """Write a file that only its owner can read, from the moment it exists.
+
+    `open("w")`/`write_text` create with the process umask -- 0644 on a normal
+    system -- so narrowing the file afterwards with chmod leaves the secret
+    world-readable in between. On a shared box or a NAS that window is the whole
+    exposure, and it is invisible after the fact because the file looks correct
+    by the time anyone inspects it. Creating at 0600 and renaming into place also
+    means a crash mid-write cannot leave a truncated secret behind.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        raise
 
 
 def configured_secret_values(config: BaseModel) -> tuple[str, ...]:

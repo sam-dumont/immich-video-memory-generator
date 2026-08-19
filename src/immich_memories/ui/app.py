@@ -24,7 +24,11 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 from immich_memories import __version__
 from immich_memories.automation.in_process_scheduler import automation_scheduler
 from immich_memories.config import get_config, init_config_dir
-from immich_memories.security import configured_secret_values, sanitize_error_message
+from immich_memories.security import (
+    configured_secret_values,
+    sanitize_error_message,
+    write_secret_file,
+)
 from immich_memories.ui.auth import (
     clear_session,
     is_auth_enabled,
@@ -54,10 +58,8 @@ def _get_storage_secret() -> str:
     secret_path = Path.home() / ".immich-memories" / ".storage_secret"
     if secret_path.exists():
         return secret_path.read_text().strip()
-    secret_path.parent.mkdir(parents=True, exist_ok=True)
     secret = secrets.token_hex(32)
-    secret_path.write_text(secret)
-    secret_path.chmod(0o600)
+    write_secret_file(secret_path, secret)
     return secret
 
 

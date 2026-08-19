@@ -43,6 +43,7 @@ from immich_memories.config_models import (
 from immich_memories.config_models_auth import AuthConfig
 from immich_memories.config_presets import PresetName, apply_preset
 from immich_memories.scheduling.models import SchedulerConfig
+from immich_memories.security import write_secret_file
 
 # Tier 2 sections — grouped under `advanced:` in YAML, flat on Config at runtime.
 _TIER2_SECTIONS = frozenset(
@@ -209,11 +210,7 @@ class Config(BaseSettings):
         if advanced:
             data["advanced"] = advanced
 
-        with path.open("w") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-        # Restrict config file permissions (contains API keys)
-        with contextlib.suppress(OSError):
-            path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0o600 - owner read/write only
+        write_secret_file(path, yaml.dump(data, default_flow_style=False, sort_keys=False))
 
     @classmethod
     def get_default_path(cls) -> Path:
