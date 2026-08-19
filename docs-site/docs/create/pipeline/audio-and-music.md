@@ -18,17 +18,11 @@ music generators need a GPU or a separate server. The `music` extra ships 28
 royalty-free background tracks that are used automatically when no generator is
 configured, so Docker and NAS installs have music out of the box.
 
-The Docker image already includes it.
-
-Installing it yourself needs the package from this repository, since it is not
-published to PyPI:
-
 ```bash
-pip install "immich-memories-music @ git+https://github.com/sam-dumont/immich-video-memory-generator.git#subdirectory=packages/immich-memories-music"
+pip install "immich-memories[music]"
 ```
 
-It is deliberately left out of the `all` extra so that
-`pip install "immich-memories[all]"` stays resolvable from PyPI.
+The Docker image and the `all` extra already include it.
 
 Tracks cover five moods (calm, energetic, happy, nostalgic, tender) in acoustic
 and electronic styles, roughly 30 seconds each, and are repeated with a crossfade

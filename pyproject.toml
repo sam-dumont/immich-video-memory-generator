@@ -53,10 +53,8 @@ dependencies = [
 
 [project.optional-dependencies]
 # Bundled royalty-free music, shipped as its own distribution so a plain install
-# stays small. Deliberately NOT part of `all`: that package is not on PyPI, and an
-# umbrella extra that names an unpublished dependency makes `pip install
-# immich-memories[all]` unresolvable. The Docker image installs it explicitly from
-# the tree. Fold it back into `all` once it is published.
+# stays small. Published by the release workflow before the main wheel, so `all`
+# can require it.
 music = [
     "immich-memories-music>=0.1.0",
 ]
@@ -125,6 +123,7 @@ gpu = [
 # All cross-platform optional features
 all = [
     "immich-memories[face]",
+    "immich-memories[music]",
     "immich-memories[audio]",
     "immich-memories[audio-ml]",
     "immich-memories[auth]",
@@ -136,6 +135,7 @@ all = [
 # All features for macOS (includes Apple Vision framework)
 all-mac = [
     "immich-memories[face]",
+    "immich-memories[music]",
     "immich-memories[audio]",
     "immich-memories[audio-ml]",
     "immich-memories[demucs]",

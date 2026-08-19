@@ -359,21 +359,41 @@ def test_docker_installs_bundled_music_even_though_all_omits_it() -> None:
 
 
 def test_all_extra_stays_installable_from_an_index() -> None:
-    """Every dependency of `all` must be resolvable by pip from PyPI."""
+    """Every dependency of `all` must be resolvable by pip from PyPI.
+
+    `tool.uv.sources` is a uv-local mechanism that does not travel in wheel
+    metadata, so an umbrella extra naming a package that exists only in this tree
+    makes `pip install immich-memories[all]` unresolvable for everyone else.
+    """
     import tomllib
 
     pyproject = tomllib.loads(_PYPROJECT.read_text())
     extras = pyproject["project"]["optional-dependencies"]
-    local_only = {
+    local_sources = {
         name
         for name, spec in pyproject.get("tool", {}).get("uv", {}).get("sources", {}).items()
         if "path" in spec
     }
+    # Packages this repository publishes itself. The release workflow puts them on
+    # PyPI before the main wheel, so the local source is a dev convenience rather
+    # than the only way to get them.
+    published_by_us = {"immich-memories-music"}
 
     for umbrella in ("all", "all-mac"):
         for requirement in extras[umbrella]:
             package = requirement.split("[")[0].split(">")[0].split("=")[0].strip()
 
-            assert package not in local_only, (
+            assert package not in (local_sources - published_by_us), (
                 f"{umbrella} requires {package}, which resolves only from a local path"
             )
+
+
+def test_anything_we_publish_ourselves_is_published_before_the_main_wheel() -> None:
+    """Otherwise the wheel lands on PyPI naming a dependency that is not there yet."""
+    import yaml
+
+    workflow = yaml.safe_load((_PYPROJECT.parent / ".github/workflows/release.yml").read_text())
+    jobs = workflow["jobs"]
+
+    assert "pypi-publish-music" in jobs
+    assert "pypi-publish-music" in jobs["pypi-publish"]["needs"]
