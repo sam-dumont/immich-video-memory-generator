@@ -291,15 +291,24 @@ class TestTripCLI:
     """CLI integration for trip memory type."""
 
     def test_trip_in_memory_type_choices(self):
-        """Trip should be accepted as a valid --memory-type value."""
-        from click.testing import CliRunner
+        """Trip should be accepted as a valid --memory-type value.
 
+        Asserted against the option itself rather than by running the command.
+        The previous version passed --year 2024, which cleared validation and
+        started a real generation against whatever Immich the developer had
+        configured -- 1-2.5 minutes, and enough to blow the `make ci` and
+        pre-commit timeouts. Its comment claimed --dry-run was doing the
+        protecting; the flag was never in the invocation.
+        """
         from immich_memories.cli import main
 
-        # Use --dry-run so it doesn't actually try to connect to Immich
-        result = CliRunner().invoke(main, ["generate", "--memory-type", "trip", "--year", "2024"])
-        # Should NOT fail with "Invalid value for '--memory-type'"
-        assert "Invalid value" not in (result.output or "")
+        memory_type = next(
+            param
+            for param in main.commands["generate"].params
+            if "--memory-type" in getattr(param, "opts", [])
+        )
+
+        assert "trip" in memory_type.type.choices
 
     def test_trip_index_option_exists(self):
         """--trip-index should be a valid option on the generate command."""
@@ -319,18 +328,26 @@ class TestTripCLI:
         result = CliRunner().invoke(main, ["generate", "--help"])
         assert "--all-trips" in result.output
 
-    def test_trip_requires_year(self):
-        """--memory-type trip requires --year."""
+    def test_trip_requires_year(self, monkeypatch):
+        """--memory-type trip requires --year.
+
+        Immich is configured through the environment so the year check is what
+        fires, on any machine. Without that the assertion had to accept either
+        "--year" or "not configured" depending on whether the developer had a
+        config file, which meant it verified a different thing in CI than it did
+        locally. The credentials are fake and the run exits before any request.
+        """
         from click.testing import CliRunner
 
         from immich_memories.cli import main
 
+        monkeypatch.setenv("IMMICH_MEMORIES_IMMICH__URL", "http://immich.invalid")
+        monkeypatch.setenv("IMMICH_MEMORIES_IMMICH__API_KEY", "not-a-real-key")
+
         result = CliRunner().invoke(main, ["generate", "--memory-type", "trip"])
+
         assert result.exit_code != 0
-        # In CI (no Immich config), "not configured" fires before year validation.
-        # In dev, the year check triggers. Either way, the command must fail.
-        output = result.output or ""
-        assert "--year" in output or "not configured" in output.lower()
+        assert "--year" in (result.output or "")
 
 
 class TestFormatTripsTable:
