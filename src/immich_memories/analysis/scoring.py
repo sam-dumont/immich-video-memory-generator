@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import platform
 import subprocess
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -754,47 +753,6 @@ class SceneScorer:
             logger.debug(f"Content analysis failed: {e}")
             return 0.5
 
-    def find_best_moments(
-        self,
-        video_path: str | Path,
-        scenes: list[Scene],
-        target_duration: float = 5.0,
-        min_duration: float = 2.0,
-        max_duration: float = 10.0,
-    ) -> list[MomentScore]:
-        """Find the best moments across all scenes, sorted by score."""
-        video_path = Path(video_path)
-        moments = []
-
-        for scene in scenes:
-            score = self.score_scene(video_path, scene)
-
-            if scene.duration > max_duration:
-                best_segment = self._find_best_segment(
-                    video_path,
-                    scene,
-                    target_duration,
-                    min_duration,
-                )
-                if best_segment:
-                    moments.append(best_segment)
-                else:
-                    adjusted = MomentScore(
-                        start_time=scene.start_time,
-                        end_time=min(scene.start_time + target_duration, scene.end_time),
-                        total_score=score.total_score,
-                        face_score=score.face_score,
-                        motion_score=score.motion_score,
-                        audio_score=score.audio_score,
-                        stability_score=score.stability_score,
-                    )
-                    moments.append(adjusted)
-            elif scene.duration >= min_duration:
-                moments.append(score)
-
-        moments.sort(key=lambda m: m.total_score, reverse=True)
-        return moments
-
     def _find_best_segment(
         self,
         video_path: Path,
@@ -841,62 +799,6 @@ class SceneScorer:
         # Deterministic tiebreaker based on moment position
         random_factor = (hash((moment.start_time, moment.end_time)) % 1000) * 0.000001
         return (primary, variance, midpoint_distance, random_factor)
-
-    def sample_and_score_video(
-        self,
-        video_path: str | Path,
-        segment_duration: float = 3.0,
-        overlap: float = 0.5,
-        sample_frames: int = 5,
-        progress_callback: Callable[[int, int], None] | None = None,
-        use_scene_detection: bool | None = None,
-    ) -> list[MomentScore]:
-        """Sample video and score segments, sorted by score (best first)."""
-        video_path = Path(video_path)
-        if not video_path.exists():
-            raise FileNotFoundError(f"Video not found: {video_path}")
-
-        a_config = self._analysis_config
-
-        should_use_scene_detection = (
-            use_scene_detection if use_scene_detection is not None else a_config.use_scene_detection
-        )
-
-        video_duration = get_video_info(video_path).get("duration", 0)
-
-        if video_duration <= 0:
-            return []
-
-        # Generate segments - delegate to scoring_segments module
-        segments = self._get_segments(
-            video_path,
-            should_use_scene_detection,
-            a_config,
-            segment_duration,
-            overlap,
-        )
-
-        if not segments:
-            return []
-
-        self._log_duration_info(video_duration)
-
-        # Score each segment
-        moments = []
-        for i, segment in enumerate(segments):
-            s = self.score_scene(
-                video_path,
-                segment,
-                sample_frames=sample_frames,
-                source_duration=video_duration,
-            )
-            moments.append(s)
-            if progress_callback:
-                progress_callback(i + 1, len(segments))
-        del segments
-
-        moments.sort(key=lambda m: self._compute_sort_key(m, video_duration))
-        return moments
 
     def _get_segments(
         self,

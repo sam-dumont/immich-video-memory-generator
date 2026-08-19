@@ -19,7 +19,6 @@ from immich_memories.analysis.duplicates import (
     VideoHash,
     _union_find_groups,
     find_duplicate_groups,
-    rank_videos_by_quality,
 )
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
 from tests.conftest import make_clip
@@ -279,32 +278,3 @@ class TestFindDuplicateGroups:
         ids_in_groups = [v.asset.id for g in groups for v in g.videos]
         assert "v1" in ids_in_groups
         assert "v2" in ids_in_groups
-
-
-class TestRankVideosByQuality:
-    """Tests for rank_videos_by_quality."""
-
-    def test_sorts_by_resolution(self):
-        """Higher resolution ranks first."""
-        low = make_clip("low", width=1280, height=720)
-        high = make_clip("high", width=1920, height=1080)
-        ranked = rank_videos_by_quality([low, high])
-        assert ranked[0].asset.id == "high"
-
-    def test_same_resolution_sorts_by_bitrate(self):
-        """Same resolution sorts by bitrate."""
-        low_br = make_clip("low", bitrate=5_000_000)
-        high_br = make_clip("high", bitrate=20_000_000)
-        ranked = rank_videos_by_quality([low_br, high_br])
-        assert ranked[0].asset.id == "high"
-
-    def test_empty_list(self):
-        """Empty input returns empty list."""
-        assert not rank_videos_by_quality([])
-
-    def test_single_video(self):
-        """Single video returns that video."""
-        clip = make_clip("only")
-        result = rank_videos_by_quality([clip])
-        assert len(result) == 1
-        assert result[0].asset.id == "only"

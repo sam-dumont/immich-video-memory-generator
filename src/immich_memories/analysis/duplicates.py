@@ -282,24 +282,3 @@ def compute_stability_score(video_path: str | Path, sample_count: int = 30) -> f
     # Normalize using empirical values (0-50 typical variance range)
     stability = max(0, 1 - (variance / 50))
     return float(stability)
-
-
-def rank_videos_by_quality(videos: list[VideoClipInfo]) -> list[VideoClipInfo]:
-    """Rank videos by quality (best first).
-
-    Args:
-        videos: List of video clip info objects.
-
-    Returns:
-        Sorted list with best quality first.
-    """
-
-    def quality_key(video: VideoClipInfo) -> tuple:
-        """Generate sort key for quality ranking."""
-        resolution = video.width * video.height if video.width and video.height else 0
-        bitrate = video.bitrate
-        duration = video.duration_seconds or 0
-
-        return (resolution, bitrate, duration)
-
-    return sorted(videos, key=quality_key, reverse=True)

@@ -34,15 +34,6 @@ def _period_key(dt: datetime, span_days: int) -> str:
 _MAX_PHOTOS_PER_DAY = 2
 
 
-def limit_photos_per_day(
-    clips: list[ClipWithSegment],
-    max_per_day: int = _MAX_PHOTOS_PER_DAY,
-) -> list[ClipWithSegment]:
-    """Return the preferred pool with at most max_per_day photos per day."""
-    preferred, _overflow = _partition_photos_per_day(clips, max_per_day)
-    return preferred
-
-
 def _partition_photos_per_day(
     clips: list[ClipWithSegment],
     max_per_day: int = _MAX_PHOTOS_PER_DAY,
@@ -436,48 +427,6 @@ class ClipRefiner:
     def __init__(self, config: PipelineConfig, scaler: ClipScaler):
         self.config = config
         self.scaler = scaler
-
-    def _detect_density_hotspots(
-        self,
-        favorites_by_week: dict[str, int],
-    ) -> dict[str, float]:
-        """Detect weeks with unusually high favorites density.
-
-        Returns boost multiplier for each week based on relative favorites concentration.
-        """
-        if not favorites_by_week:
-            return {}
-
-        total_favorites = sum(favorites_by_week.values())
-        num_weeks = len(favorites_by_week)
-
-        if 0 in (total_favorites, num_weeks):
-            return {}
-
-        avg_favorites = total_favorites / num_weeks
-
-        boosts = {}
-        for week, fav_count in favorites_by_week.items():
-            if fav_count == 0:
-                boosts[week] = 1.0
-                continue
-
-            ratio = fav_count / max(avg_favorites, 0.5)
-
-            if ratio >= 4.0:
-                boosts[week] = 3.0
-            elif ratio >= 2.5:
-                boosts[week] = 2.0
-            elif ratio >= 1.5:
-                boosts[week] = 1.5
-            else:
-                boosts[week] = 1.0
-
-        hotspots = [(w, b) for w, b in boosts.items() if b > 1.0]
-        if hotspots:
-            logger.info(f"Detected {len(hotspots)} density hotspots: {hotspots[:5]}...")
-
-        return boosts
 
     def _classify_favorites_by_week(
         self,

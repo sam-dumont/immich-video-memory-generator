@@ -396,10 +396,6 @@ class ClipAnalyzer:
         finally:
             logger.debug("Pipeline resources cleaned up")
 
-    def _cleanup_pipeline_resources(self) -> None:
-        """Compatibility wrapper for the explicit batch teardown."""
-        self.close()
-
     def _run_unified_analysis(
         self,
         clip: VideoClipInfo,

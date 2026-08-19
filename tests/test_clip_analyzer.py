@@ -620,51 +620,6 @@ class TestAnalyzeClipZeroScore:
 # ---------------------------------------------------------------------------
 
 
-class TestCleanupPipelineResources:
-    def test_cleans_up_content_analyzer(self):
-        analyzer, _, _, _ = _make_analyzer()
-        mock_content = MagicMock()
-        mock_content.close = MagicMock()
-        analyzer._cached_content_analyzer = mock_content
-
-        analyzer._cleanup_pipeline_resources()
-
-        mock_content.close.assert_called_once()
-        assert analyzer._cached_content_analyzer is None
-
-    def test_cleans_up_audio_analyzer(self):
-        analyzer, _, _, _ = _make_analyzer()
-        mock_audio = MagicMock()
-        mock_audio.cleanup = MagicMock()
-        analyzer._cached_audio_analyzer = mock_audio
-
-        analyzer._cleanup_pipeline_resources()
-
-        mock_audio.cleanup.assert_called_once()
-        assert analyzer._cached_audio_analyzer is None
-
-    def test_cleanup_both_at_once(self):
-        analyzer, _, _, _ = _make_analyzer()
-        mock_content = MagicMock()
-        mock_audio = MagicMock()
-        analyzer._cached_content_analyzer = mock_content
-        analyzer._cached_audio_analyzer = mock_audio
-
-        analyzer._cleanup_pipeline_resources()
-
-        assert analyzer._cached_content_analyzer is None
-        assert analyzer._cached_audio_analyzer is None
-
-    def test_cleanup_when_nothing_cached(self):
-        """Should not raise even when no analyzers are cached."""
-        analyzer, _, _, _ = _make_analyzer()
-
-        analyzer._cleanup_pipeline_resources()
-
-        assert analyzer._cached_content_analyzer is None
-        assert analyzer._cached_audio_analyzer is None
-
-
 # ---------------------------------------------------------------------------
 # _run_analysis_with_fallback
 # ---------------------------------------------------------------------------

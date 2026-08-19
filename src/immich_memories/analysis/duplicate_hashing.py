@@ -107,22 +107,6 @@ def _compute_frame_hash(frame: np.ndarray, hash_size: int = 8) -> str:
     return format(hash_int, "x").zfill(hash_size * hash_size // 4)
 
 
-def compute_image_hash(image_path: str | Path, hash_size: int = 8) -> str:
-    """Compute perceptual hash for an image.
-
-    Args:
-        image_path: Path to the image file.
-        hash_size: Size of the hash.
-
-    Returns:
-        Hexadecimal hash string.
-    """
-    img = cv2.imread(str(image_path))
-    if img is None:
-        return ""
-    return _compute_frame_hash(img, hash_size)
-
-
 def hamming_distance(hash1: str, hash2: str) -> int:
     """Calculate Hamming distance between two hashes.
 

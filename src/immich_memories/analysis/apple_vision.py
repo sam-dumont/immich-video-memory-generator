@@ -361,23 +361,6 @@ def detect_faces_vision(
     return [f for f in faces if f.area >= min_area]
 
 
-def get_face_positions_vision(
-    image: np.ndarray,
-    min_size: tuple[int, int] = (30, 30),
-) -> list[tuple[float, float]]:
-    """Get face center positions using Vision framework.
-
-    Args:
-        image: BGR image from OpenCV.
-        min_size: Minimum face size in pixels.
-
-    Returns:
-        List of (x, y) normalized center positions (top-left origin).
-    """
-    faces = detect_faces_vision(image, min_size)
-    return [face.center for face in faces]
-
-
 def create_face_detector() -> object:
     """Create the best available face detector for the platform.
 
