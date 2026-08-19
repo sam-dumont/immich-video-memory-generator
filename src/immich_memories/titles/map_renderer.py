@@ -12,7 +12,7 @@ import math
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from staticmap import CircleMarker, StaticMap  # type: ignore[import-untyped]
+from staticmap import CircleMarker, StaticMap
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +204,7 @@ def _draw_pin_labels(
 
 def _geo_to_pixel(lat: float, lon: float, sm: StaticMap) -> tuple[int, int]:
     """Convert (lat, lon) to pixel coordinates using staticmap internals."""
-    from staticmap.staticmap import _lat_to_y, _lon_to_x  # type: ignore[import-untyped]
+    from staticmap.staticmap import _lat_to_y, _lon_to_x
 
     x_tile = _lon_to_x(lon, sm.zoom)
     y_tile = _lat_to_y(lat, sm.zoom)

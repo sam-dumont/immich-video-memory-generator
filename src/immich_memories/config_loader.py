@@ -101,7 +101,7 @@ class _YamlSettingsSource(PydanticBaseSettingsSource):
     IMMICH_MEMORIES_FOO__BAR=x always overrides foo.bar in config.yaml.
     """
 
-    def get_field_value(self, field, field_name):  # type: ignore[override]  # noqa: ANN001
+    def get_field_value(self, field, field_name):  # noqa: ANN001
         val = _yaml_source_data.get(field_name)
         return val, field_name, val is not None
 

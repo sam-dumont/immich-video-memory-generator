@@ -319,11 +319,23 @@ known-first-party = ["immich_memories"]
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = false
-warn_unused_ignores = false
+warn_unused_ignores = true
 disallow_untyped_defs = false
 check_untyped_defs = true
 strict = false
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# WHY: these modules import optional ML packages, so whether each ignore is
+# needed depends on whether MLX, ACE-Step, torchcodec and demucs happen to be
+# installed. Measured both ways: two ignores are unused with them present and
+# required without, one is the other way round. warn_unused_ignores cannot be
+# correct in both environments at once, so it is off for these two files.
+module = [
+    "immich_memories.audio.generators.ace_step_backend",
+    "immich_memories.audio.generators.demucs_local",
+]
+warn_unused_ignores = false
 
 [[tool.mypy.overrides]]
 module = [

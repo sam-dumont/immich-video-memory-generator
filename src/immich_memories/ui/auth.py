@@ -159,7 +159,7 @@ _SESSION_KEYS = ("authenticated", "username", "email", "auth_provider", "authent
 def clear_session(session: MutableMapping[str, object]) -> None:
     """Remove all authentication-related keys from the session."""
     for key in _SESSION_KEYS:
-        session.pop(key, None)  # type: ignore[arg-type]
+        session.pop(key, None)
 
 
 def is_auth_enabled(auth_config: AuthConfig) -> bool:

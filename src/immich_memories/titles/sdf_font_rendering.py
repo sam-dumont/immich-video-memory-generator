@@ -22,7 +22,7 @@ try:
     TAICHI_AVAILABLE = True
 except ImportError:
     TAICHI_AVAILABLE = False
-    ti = None  # type: ignore
+    ti = None
 
 
 # =============================================================================

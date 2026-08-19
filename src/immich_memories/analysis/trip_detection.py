@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from geopy.geocoders import Nominatim  # type: ignore[import-untyped]
+from geopy.geocoders import Nominatim
 
 from immich_memories.api.models import Asset
 
@@ -177,7 +177,7 @@ def _cluster_centroid(cluster: list[Asset]) -> tuple[float, float]:
     """Average lat/lon of a photo cluster."""
     lats = [a.exif_info.latitude for a in cluster if a.exif_info and a.exif_info.latitude]
     lons = [a.exif_info.longitude for a in cluster if a.exif_info and a.exif_info.longitude]
-    return sum(lats) / len(lats), sum(lons) / len(lons)  # type: ignore[arg-type]
+    return sum(lats) / len(lats), sum(lons) / len(lons)
 
 
 def _cluster_city(cluster: list[Asset]) -> str:

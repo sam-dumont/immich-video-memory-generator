@@ -104,8 +104,8 @@ def parse_title_response(raw: str) -> TitleSuggestion | None:
     return TitleSuggestion(
         title=title,
         subtitle=subtitle,
-        trip_type=trip_type,  # type: ignore[arg-type]
-        map_mode=map_mode,  # type: ignore[arg-type]
+        trip_type=trip_type,
+        map_mode=map_mode,
         map_mode_reason=reason,
     )
 

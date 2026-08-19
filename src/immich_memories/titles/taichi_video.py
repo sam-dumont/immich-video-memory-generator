@@ -40,12 +40,12 @@ def _pipe_writer(
             data = q.get()
             if data is None:
                 break
-            proc.stdin.write(data)  # type: ignore[union-attr]
+            proc.stdin.write(data)
     except Exception as exc:
         errors.append(exc)
     finally:
         with contextlib.suppress(Exception):
-            proc.stdin.close()  # type: ignore[union-attr]
+            proc.stdin.close()
         done.set()
 
 

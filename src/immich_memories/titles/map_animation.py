@@ -61,7 +61,7 @@ _tile_cache: dict[str, bytes] = {}
 class _CachedStaticMap(StaticMap):
     """StaticMap with shared cross-instance tile cache."""
 
-    def get(self, url: str, **kwargs):  # type: ignore[override]
+    def get(self, url: str, **kwargs):
         """Return cached tile bytes or fetch + cache."""
         if url in _tile_cache:
             return 200, _tile_cache[url]

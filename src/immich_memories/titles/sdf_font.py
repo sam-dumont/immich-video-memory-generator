@@ -33,7 +33,7 @@ try:
     FREETYPE_AVAILABLE = True
 except ImportError:
     FREETYPE_AVAILABLE = False
-    freetype = None  # type: ignore
+    freetype = None
 
 try:
     import taichi as ti
@@ -41,7 +41,7 @@ try:
     TAICHI_AVAILABLE = True
 except ImportError:
     TAICHI_AVAILABLE = False
-    ti = None  # type: ignore
+    ti = None
 
 
 # =============================================================================

@@ -7,19 +7,6 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  # ~1s — Type checking
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.19.1
-    hooks:
-      - id: mypy
-        additional_dependencies:
-          - types-pyyaml
-          - pydantic
-          - pydantic-settings
-        args: [--ignore-missing-imports]
-        pass_filenames: false
-        entry: mypy src/
-
   # ~0.1s — Secrets detection
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.24.3
@@ -34,10 +21,22 @@ repos:
 
 
   # Local hooks using Makefile targets
+  # NOTE: mypy moved from mirrors-mypy to a local hook. That repo runs mypy in an
+  # isolated env with three dependencies and --ignore-missing-imports, which is a
+  # third opinion disagreeing with `make typecheck` and CI: the flag makes import
+  # ignores redundant, so warn_unused_ignores reports them as unused here and as
+  # required everywhere else.
   # NOTE: refurb moved from upstream repo to local hook below (uses make refurb
   # to avoid src/ layout duplicate module detection issue)
   - repo: local
     hooks:
+      - id: mypy
+        name: mypy
+        entry: make typecheck
+        language: system
+        pass_filenames: false
+        types: [python]
+
       - id: file-length
         name: File length gate (max 800 lines)
         entry: make file-length

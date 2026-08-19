@@ -85,7 +85,7 @@ def get_end_session_url(auth_config: AuthConfig) -> str | None:
 
     try:
         metadata = _oauth_instance.oidc.server_metadata
-        return metadata.get("end_session_endpoint")  # type: ignore[no-any-return]
+        return metadata.get("end_session_endpoint")
     except (AttributeError, TypeError):
         return None
 

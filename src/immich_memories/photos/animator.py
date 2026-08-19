@@ -421,7 +421,7 @@ def _convert_via_pillow(
     """Fallback: convert any Pillow-supported format to JPEG."""
     from PIL import Image
 
-    img: PILImage.Image = Image.open(source_path)  # type: ignore[assignment]
+    img: PILImage.Image = Image.open(source_path)
     if img.mode == "RGBA":
         img = img.convert("RGB")
     w, h = img.size

@@ -61,7 +61,7 @@ async def _query_ollama(
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(f"{base_url}/api/generate", json=payload)
         resp.raise_for_status()
-        return resp.json()["response"]  # type: ignore[no-any-return]
+        return resp.json()["response"]
 
 
 async def _query_openai(
@@ -88,7 +88,7 @@ async def _query_openai(
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
             if content is not None:
-                return content  # type: ignore[no-any-return]
+                return content
             logger.debug("LLM null content (attempt %d/3)", attempt + 1)
     msg = "LLM returned null content after 3 retries"
     raise ValueError(msg)

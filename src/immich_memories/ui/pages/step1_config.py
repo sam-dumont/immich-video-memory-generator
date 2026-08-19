@@ -196,7 +196,7 @@ def _make_date_range_updater(
             date_range_label.set_text(f"Invalid date range: {e}")
             date_range_label.style("color: var(--im-error); background: rgba(239,68,68,0.1)")
 
-    return update  # type: ignore[return-value]
+    return update
 
 
 def _render_person_filter(state, update_fn, duration_input_ref: list) -> None:

@@ -677,7 +677,7 @@ async def _oidc_authorize(request: Request) -> RedirectResponse:
 
     oauth = create_oidc_client(config.auth)
     redirect_uri = str(request.url_for("_oidc_callback"))
-    return await oauth.oidc.authorize_redirect(request, redirect_uri)  # type: ignore[return-value]
+    return await oauth.oidc.authorize_redirect(request, redirect_uri)
 
 
 async def _oidc_callback(request: Request) -> Response:

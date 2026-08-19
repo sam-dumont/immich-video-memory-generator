@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from croniter import croniter  # type: ignore[import-untyped]
+from croniter import croniter
 
 from immich_memories.scheduling.models import ScheduleEntry, SchedulerConfig
 

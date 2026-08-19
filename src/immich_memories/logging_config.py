@@ -45,7 +45,7 @@ class RunIdFilter(logging.Filter):
     """Inject run_id from contextvars into every log record."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.run_id = _current_run_id.get() or "-"  # type: ignore[attr-defined]
+        record.run_id = _current_run_id.get() or "-"
         return True
 
 
@@ -127,7 +127,7 @@ def install_live_handler(display: _LogSink) -> list[logging.Handler]:
     # built-in StreamHandler(stderr) that fires when the root logger has
     # no handlers at WARNING+ level. Our LiveDisplayLogHandler handles
     # everything, but lastResort doesn't know that.
-    logging.lastResort = None  # type: ignore[assignment]
+    logging.lastResort = None
 
     return original_handlers
 
