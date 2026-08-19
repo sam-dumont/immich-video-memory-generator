@@ -18,6 +18,12 @@ from pathlib import Path
 TESTS_DIR = Path("tests")
 MAX_PATCHES_PER_METHOD = 3
 EXIT_FAILURE = 1
+
+# Ratchets. These are the counts that existed when each check was made
+# enforceable; they may fall and must not rise. Raising one accepts new
+# untested mocking rather than fixing it, so do it in a commit that says so.
+MAX_MOCK_ONLY_TESTS = 41
+MAX_PATCHES_WITHOUT_WHY = 926
 EXIT_SUCCESS = 0
 
 
@@ -105,16 +111,51 @@ def check_excessive_patches(test_files: list[Path]) -> list[str]:
 
 
 def check_patch_without_why(test_files: list[Path]) -> list[str]:
-    """Flag @patch decorators without a # WHY: comment on the preceding line."""
+    """Flag patches with no # WHY: above them, decorator or context manager.
+
+    The context-manager form is the one people actually reach for -- it
+    outnumbers the decorator across this suite -- and it used to be invisible
+    here, so "every mock must say why" was enforced on a minority of mocks.
+    """
     issues = []
     for f in test_files:
         lines = f.read_text().splitlines()
         for i, line in enumerate(lines):
-            if line.strip().startswith("@patch"):
-                prev = lines[i - 1].strip() if i > 0 else ""
-                if not prev.startswith("# WHY:") and not prev.startswith("@patch"):
-                    issues.append(f"  {f}:{i + 1}")
+            stripped = line.strip()
+            is_decorator = stripped.startswith("@patch")
+            # `with patch(...)`, and the multi-mock `with (\n patch(...)` form
+            is_context = stripped.startswith(("with patch(", "with (")) or (
+                stripped.startswith("patch(") and _inside_with_block(lines, i)
+            )
+            if not (is_decorator or is_context):
+                continue
+            if _explained_above(lines, i):
+                continue
+            issues.append(f"  {f}:{i + 1}")
     return issues
+
+
+def _explained_above(lines: list[str], index: int) -> bool:
+    """A WHY anywhere in the contiguous block above explains the whole group."""
+    for j in range(index - 1, -1, -1):
+        prev = lines[j].strip()
+        if prev.startswith("# WHY:"):
+            return True
+        if prev.startswith(("@patch", "patch(", "with patch(", "with (")) or not prev:
+            continue
+        return False
+    return False
+
+
+def _inside_with_block(lines: list[str], index: int) -> bool:
+    """True when a bare patch(...) line belongs to an open `with (` group."""
+    for j in range(index - 1, max(-1, index - 6), -1):
+        prev = lines[j].strip()
+        if prev.startswith("with ("):
+            return True
+        if not prev.startswith(("patch(", "#")) and prev:
+            return False
+    return False
 
 
 def main() -> int:
@@ -136,8 +177,13 @@ def main() -> int:
     # Check 2: Mock-only assertions
     mock_only = check_mock_only_assertions(test_files)
     if mock_only:
-        print("WARN: Test methods with only mock assertions (no real asserts):")
+        over = len(mock_only) > MAX_MOCK_ONLY_TESTS
+        print(
+            f"{'FAIL' if over else 'WARN'}: {len(mock_only)} test methods assert only "
+            f"on mocks (ceiling {MAX_MOCK_ONLY_TESTS}):"
+        )
         print("\n".join(mock_only))
+        has_issues = has_issues or over
         print()
 
     # Check 3: Excessive patches
@@ -148,18 +194,24 @@ def main() -> int:
         has_issues = True
         print()
 
-    # Check 4: @patch without WHY comment
+    # Check 4: patches without a WHY comment
     missing_why = check_patch_without_why(test_files)
     if missing_why:
-        print("WARN: @patch decorators without # WHY: comment on preceding line:")
+        over = len(missing_why) > MAX_PATCHES_WITHOUT_WHY
+        print(
+            f"{'FAIL' if over else 'WARN'}: {len(missing_why)} patches have no "
+            f"# WHY: above them (ceiling {MAX_PATCHES_WITHOUT_WHY}):"
+        )
         print("\n".join(missing_why))
+        has_issues = has_issues or over
         print()
 
     if not ratio_issues and not mock_only and not excessive and not missing_why:
         print("Test critique: all clean.")
 
-    # Only fail on excessive patches (the worst smell).
-    # Ratio and mock-only are warnings for now.
+    # Excessive patching fails outright; mock-only and missing-WHY fail once
+    # they exceed the frozen backlog. The mock/assert ratio stays advisory --
+    # a high ratio is a smell, not a defect, and there is no honest threshold.
     return EXIT_FAILURE if has_issues else EXIT_SUCCESS
 
 
