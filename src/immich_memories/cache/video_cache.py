@@ -5,16 +5,19 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import subprocess
 import threading
 import time
 from collections.abc import Callable, Container
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
 
 from immich_memories.api.immich import ImmichAPIError
+from immich_memories.processing.hardware import HWAccelCapabilities
 from immich_memories.processing.probe_cache import ProbeCache, ProbeError
 from immich_memories.security import sanitize_error_message
 
@@ -52,6 +55,98 @@ class _ManifestEntry:
     path: Path
     size: int
     mtime: float
+
+
+@lru_cache(maxsize=1)
+def _detected_capabilities() -> HWAccelCapabilities:
+    from immich_memories.processing.hardware_detection import detect_hardware_acceleration
+
+    return detect_hardware_acceleration()
+
+
+def analysis_decode_hwaccel_args(codec: str) -> list[str]:
+    """Decode-side acceleration for the analysis downscale, empty if unavailable.
+
+    `for_software_filters` matters here: the downscale filters on the CPU, so
+    frames have to come back in system memory.
+    """
+    from immich_memories.processing.hardware import get_ffmpeg_hwaccel_args
+
+    capabilities = _detected_capabilities()
+    if not capabilities.has_decoding:
+        return []
+    return get_ffmpeg_hwaccel_args(
+        capabilities,
+        operation="decode",
+        codec="h265" if codec in ("hevc", "h265") else "h264",
+        for_software_filters=True,
+    )
+
+
+def _run_downscale_attempt(
+    source: Path,
+    dest: Path,
+    target_height: int,
+    stream_map: str,
+    hwaccel_args: list[str],
+    timeout: int,
+) -> bool:
+    cmd = [
+        "ffmpeg",
+        "-y",
+        *hwaccel_args,
+        "-i",
+        str(source),
+        "-map",
+        stream_map,
+        "-vf",
+        f"scale=-2:{target_height}",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "28",
+        "-movflags",
+        "+faststart",
+        "-an",
+        str(dest),
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: S603
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.debug("Downscale attempt failed: %s", exc)
+        return False
+    if result.returncode == 0 and dest.exists() and dest.stat().st_size > 1024:
+        return True
+    if hwaccel_args:
+        logger.debug("Hardware-accelerated downscale failed: %s", result.stderr[-300:])
+    dest.unlink(missing_ok=True)
+    return False
+
+
+def downscale_for_analysis(
+    source: Path,
+    dest: Path,
+    target_height: int,
+    *,
+    stream_map: str,
+    hwaccel_args: list[str] | None = None,
+    timeout: int = 120,
+) -> bool:
+    """Encode the reduced-resolution copy analysis runs on.
+
+    Retries in software when a hardware decode attempt fails. ffmpeg advertising
+    a backend is not proof this machine can use it -- a VAAPI node can exist with
+    no working driver, a CUDA build with no GPU -- and giving up would push the
+    whole analysis onto the full-resolution original, which is the cost the
+    acceleration exists to avoid.
+    """
+    if hwaccel_args and _run_downscale_attempt(
+        source, dest, target_height, stream_map, hwaccel_args, timeout
+    ):
+        return True
+    return _run_downscale_attempt(source, dest, target_height, stream_map, [], timeout)
 
 
 class CacheBatch:
@@ -122,6 +217,7 @@ class CacheBatch:
         asset: Asset,
         target_height: int = 480,
         enable_downscaling: bool = True,
+        gpu_decode: bool = True,
     ) -> tuple[Path, Path]:
         """Download and optionally downscale within this batch lifecycle."""
         return self._run_operation(
@@ -131,6 +227,7 @@ class CacheBatch:
                 target_height=target_height,
                 enable_downscaling=enable_downscaling,
                 batch=self,
+                gpu_decode=gpu_decode,
             )
         )
 
@@ -339,6 +436,7 @@ class VideoDownloadCache:
         asset: Asset,
         target_height: int = 480,
         enable_downscaling: bool = True,
+        gpu_decode: bool = True,
     ) -> tuple[Path, Path]:
         """Download and optionally create a downscaled copy for analysis.
 
@@ -354,6 +452,7 @@ class VideoDownloadCache:
                 asset,
                 target_height=target_height,
                 enable_downscaling=enable_downscaling,
+                gpu_decode=gpu_decode,
             )
 
     def _get_analysis_video(
@@ -363,6 +462,7 @@ class VideoDownloadCache:
         target_height: int,
         enable_downscaling: bool,
         batch: CacheBatch,
+        gpu_decode: bool = True,
     ) -> tuple[Path, Path]:
         """Batch-aware implementation for an analysis source video."""
         original = self._download_or_get(client, asset, batch)
@@ -384,49 +484,32 @@ class VideoDownloadCache:
         # Try to create downscaled version
         downscaled = sub_path / f"{video_id}_480p{original.suffix}"
         try:
-            import subprocess
-
             from immich_memories.processing.clip_probing import get_main_video_stream_map
 
             stream_map = get_main_video_stream_map(original)
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-i",
-                str(original),
-                "-map",
-                stream_map,
-                "-vf",
-                f"scale=-2:{target_height}",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-crf",
-                "28",
-                "-movflags",
-                "+faststart",
-                "-an",
-                str(downscaled),
-            ]
-            result = subprocess.run(  # noqa: S603
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            if result.returncode == 0 and downscaled.exists() and downscaled.stat().st_size > 1024:
+            hwaccel_args = self._downscale_hwaccel_args(original) if gpu_decode else []
+            if downscale_for_analysis(
+                original,
+                downscaled,
+                target_height,
+                stream_map=stream_map,
+                hwaccel_args=hwaccel_args,
+            ):
                 batch._record_manifest_entry(downscaled)
                 return downscaled, original
-            if downscaled.exists():
-                downscaled.unlink()  # Remove corrupted file
-                logger.warning("Downscaled file too small/corrupt for %s, using original", asset.id)
+            logger.warning("Downscale produced nothing usable for %s, using original", asset.id)
         except (OSError, subprocess.SubprocessError) as e:
             logger.debug("Downscaling failed for %s: %s, using original", asset.id, e)
-            if downscaled.exists():
-                downscaled.unlink()
+            downscaled.unlink(missing_ok=True)
 
         return original, original
+
+    def _downscale_hwaccel_args(self, source: Path) -> list[str]:
+        try:
+            codec = self._probe_cache.get(source).codec
+        except (ProbeError, OSError, ValueError):
+            return []
+        return analysis_decode_hwaccel_args(codec)
 
     def _scan_manifest(self) -> dict[Path, _ManifestEntry]:
         """Scan once, dropping expired files and abandoned partial downloads."""

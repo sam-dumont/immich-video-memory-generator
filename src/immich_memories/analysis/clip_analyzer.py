@@ -272,6 +272,7 @@ class ClipAnalyzer:
                 clip.asset,
                 target_height=config.analysis.analysis_resolution,
                 enable_downscaling=config.analysis.enable_downscaling,
+                gpu_decode=config.hardware.gpu_decode,
             )
         else:
             safe_name = sanitize_filename(clip.asset.original_file_name or "video.mp4")

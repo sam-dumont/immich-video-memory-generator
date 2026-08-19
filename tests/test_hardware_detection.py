@@ -450,3 +450,43 @@ class TestGetOpencvBackend:
     def test_no_cuda(self):
         caps = HWAccelCapabilities()
         assert get_opencv_backend(caps) == "cpu"
+
+
+class TestHwaccelArgsForSoftwareFilters:
+    """`-hwaccel cuda -hwaccel_output_format cuda` leaves decoded frames in GPU
+    memory, where a CPU filter like `scale=-2:480` cannot reach them and ffmpeg
+    fails outright. Callers that filter on the CPU need the decode acceleration
+    without the output-format pin.
+    """
+
+    def test_nvidia_keeps_frames_in_system_memory_when_asked(self):
+        caps = HWAccelCapabilities(
+            backend=HWAccelBackend.NVIDIA,
+            supports_h264_decode=True,
+            supports_h265_decode=True,
+        )
+
+        args = get_ffmpeg_hwaccel_args(caps, operation="decode", for_software_filters=True)
+
+        assert "-hwaccel" in args, "hardware decode should still be requested"
+        assert "cuda" in args
+        assert "-hwaccel_output_format" not in args
+
+    def test_nvidia_default_still_pins_frames_on_the_gpu(self):
+        caps = HWAccelCapabilities(
+            backend=HWAccelBackend.NVIDIA,
+            supports_h264_decode=True,
+            supports_h265_decode=True,
+        )
+
+        args = get_ffmpeg_hwaccel_args(caps, operation="decode")
+
+        assert "-hwaccel_output_format" in args
+
+    def test_apple_is_unaffected_because_it_already_decodes_to_system_memory(self):
+        caps = HWAccelCapabilities(backend=HWAccelBackend.APPLE)
+
+        plain = get_ffmpeg_hwaccel_args(caps, operation="decode")
+        for_filters = get_ffmpeg_hwaccel_args(caps, operation="decode", for_software_filters=True)
+
+        assert plain == for_filters == ["-hwaccel", "videotoolbox"]

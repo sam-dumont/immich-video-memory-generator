@@ -151,6 +151,8 @@ def get_ffmpeg_hwaccel_args(
     capabilities: HWAccelCapabilities,
     operation: Literal["decode", "encode", "both"] = "both",
     codec: str = "h264",
+    *,
+    for_software_filters: bool = False,
 ) -> list[str]:
     """Get FFmpeg arguments for hardware acceleration.
 
@@ -158,33 +160,45 @@ def get_ffmpeg_hwaccel_args(
         capabilities: Detected hardware capabilities.
         operation: Which operation to accelerate.
         codec: Video codec to use.
+        for_software_filters: Keep decoded frames in system memory. CUDA
+            otherwise hands them back in GPU memory, where a CPU filter such
+            as `scale` cannot reach them and ffmpeg fails. Only NVIDIA is
+            affected; the other backends already decode to system memory.
 
     Returns:
         List of FFmpeg arguments.
     """
-    args: list[str] = []
+    if capabilities.backend == HWAccelBackend.NONE or operation not in ("decode", "both"):
+        return []
+    return _decode_hwaccel_args(capabilities, codec, for_software_filters=for_software_filters)
 
-    if capabilities.backend == HWAccelBackend.NONE:
-        return args
 
-    # Hardware decode arguments (input side)
-    if operation in ("decode", "both"):
-        if capabilities.backend == HWAccelBackend.NVIDIA:
-            if (codec == "h264" and capabilities.supports_h264_decode) or (
-                codec == "h265" and capabilities.supports_h265_decode
-            ):
-                args.extend(["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"])
+def _decode_hwaccel_args(
+    capabilities: HWAccelCapabilities,
+    codec: str,
+    *,
+    for_software_filters: bool,
+) -> list[str]:
+    if capabilities.backend == HWAccelBackend.NVIDIA:
+        if (codec == "h264" and capabilities.supports_h264_decode) or (
+            codec == "h265" and capabilities.supports_h265_decode
+        ):
+            args = ["-hwaccel", "cuda"]
+            if not for_software_filters:
+                args.extend(["-hwaccel_output_format", "cuda"])
+            return args
+        return []
 
-        elif capabilities.backend == HWAccelBackend.APPLE:
-            args.extend(["-hwaccel", "videotoolbox"])
+    if capabilities.backend == HWAccelBackend.APPLE:
+        return ["-hwaccel", "videotoolbox"]
 
-        elif capabilities.backend == HWAccelBackend.VAAPI:
-            args.extend(["-hwaccel", "vaapi", "-hwaccel_device", "/dev/dri/renderD128"])
+    if capabilities.backend == HWAccelBackend.VAAPI:
+        return ["-hwaccel", "vaapi", "-hwaccel_device", "/dev/dri/renderD128"]
 
-        elif capabilities.backend == HWAccelBackend.QSV:
-            args.extend(["-hwaccel", "qsv"])
+    if capabilities.backend == HWAccelBackend.QSV:
+        return ["-hwaccel", "qsv"]
 
-    return args
+    return []
 
 
 def get_ffmpeg_encoder(
