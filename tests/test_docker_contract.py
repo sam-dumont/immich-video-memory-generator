@@ -17,6 +17,9 @@ from packaging.requirements import Requirement
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+_PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
+
+
 def _dockerfile() -> str:
     return (REPO_ROOT / "docker" / "Dockerfile").read_text()
 
@@ -342,3 +345,35 @@ def test_image_runs_as_uid_1000() -> None:
     assert re.search(r"groupadd\s+(-r\s+)?-g\s+1000\s+immich", dockerfile), "group must be GID 1000"
     assert re.search(r"useradd\s+[^&]*-u\s+1000\s+", dockerfile), "user must be UID 1000"
     assert "useradd -r" not in dockerfile
+
+
+def test_docker_installs_bundled_music_even_though_all_omits_it() -> None:
+    """`all` cannot name the music package: it is not on PyPI, so an umbrella
+    extra that requires it makes `pip install immich-memories[all]` unresolvable.
+    The image therefore installs it explicitly from the tree."""
+    dockerfile = _logical_instructions(_dockerfile())
+
+    assert "./packages/immich-memories-music" in dockerfile
+    install = re.search(r"(?m)^.*pip install[^\n]*/wheels[^\n]*$", dockerfile)
+    assert install, "the image must install the wheels it built"
+
+
+def test_all_extra_stays_installable_from_an_index() -> None:
+    """Every dependency of `all` must be resolvable by pip from PyPI."""
+    import tomllib
+
+    pyproject = tomllib.loads(_PYPROJECT.read_text())
+    extras = pyproject["project"]["optional-dependencies"]
+    local_only = {
+        name
+        for name, spec in pyproject.get("tool", {}).get("uv", {}).get("sources", {}).items()
+        if "path" in spec
+    }
+
+    for umbrella in ("all", "all-mac"):
+        for requirement in extras[umbrella]:
+            package = requirement.split("[")[0].split(">")[0].split("=")[0].strip()
+
+            assert package not in local_only, (
+                f"{umbrella} requires {package}, which resolves only from a local path"
+            )
