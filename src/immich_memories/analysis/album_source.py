@@ -122,3 +122,34 @@ def fetch_album_media(
     )
     media.truncated = truncated
     return media
+
+
+def album_media_as_clips(media: AlbumMedia) -> tuple[list[VideoClipInfo], list[Asset]]:
+    """Flatten an album's media into the clip and photo pools the wizard uses.
+
+    Videos and merged Live Photo clips are one pool, ordered by capture time, so
+    the album plays back in the order it was lived rather than by media type.
+    """
+    from immich_memories.generate import assets_to_clips
+
+    clips = assets_to_clips(media.videos) + media.live_photo_clips
+    clips.sort(key=lambda clip: clip.asset.file_created_at)
+    return clips, media.photos.copy()
+
+
+# An album is one curated event, so the pool is mostly keepers: a few seconds
+# each reads as a highlight reel rather than a slideshow.
+_SECONDS_PER_ITEM = 4.0
+_MIN_TARGET_MINUTES = 0.5
+_MAX_TARGET_MINUTES = 10.0
+
+
+def album_target_minutes(clips: list[VideoClipInfo], photos: list[Asset]) -> float:
+    """Target length for an album memory, scaled to how much is in the album.
+
+    Albums are the one memory type with no preset behind them, so nothing else
+    supplies a target: without this the wizard keeps whatever the last-clicked
+    preset left in state.
+    """
+    items = len(clips) + len(photos)
+    return min(_MAX_TARGET_MINUTES, max(_MIN_TARGET_MINUTES, items * _SECONDS_PER_ITEM / 60))

@@ -10,6 +10,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from immich_memories.memory_types.registry import MemoryType
 from immich_memories.titles.llm_titles import generate_title_with_llm
 
 if TYPE_CHECKING:
@@ -56,6 +57,7 @@ def generate_template_title(
     start_date: str,
     end_date: str,
     person_names: list[str] | None = None,
+    album_name: str | None = None,
 ) -> tuple[str, str | None]:
     """Generate a template-based title from memory type and date range.
 
@@ -66,6 +68,10 @@ def generate_template_title(
     start = date_cls.fromisoformat(start_date)
     end = date_cls.fromisoformat(end_date)
     year = start.year
+
+    if memory_type == "album" and album_name:
+        # Someone already named this album by hand; no template beats that.
+        return album_name, f"{_MONTH_NAMES[start.month]} {year}"
 
     if memory_type in ("year_in_review", "year"):
         return f"Year in Review {year}", None
@@ -244,9 +250,16 @@ async def generate_title_after_pipeline(state: AppState) -> None:
         start_date=str(start_date),
         end_date=str(end_date),
         person_names=person_names,
+        album_name=state.album_name,
     )
     state.title_suggestion_title = template_title
     state.title_suggestion_subtitle = template_subtitle
+
+    if state.memory_type == MemoryType.ALBUM and state.album_name:
+        # Matches the CLI, where the album name is a title_override: a name the
+        # user typed themselves outranks anything the LLM would invent. Step 3
+        # still lets them edit it.
+        return
 
     # Step 2: Try LLM (overwrites template on success)
     llm_cfg = config.title_llm if config.title_llm and config.title_llm.model else config.llm

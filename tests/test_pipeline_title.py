@@ -402,3 +402,31 @@ class TestGenerateTitleAfterPipeline:
 
         assert state.title_suggestion_trip_type == "multi_base"
         assert state.title_suggestion_map_mode == "excursions"
+
+
+class TestAlbumTitle:
+    """An album already carries a human-chosen name; a date template throws it away."""
+
+    def test_album_name_becomes_the_title(self):
+        from immich_memories.ui.pages.pipeline_title import generate_template_title
+
+        title, subtitle = generate_template_title(
+            memory_type="album",
+            start_date="2025-06-01",
+            end_date="2025-06-03",
+            album_name="Sophie's 18th",
+        )
+
+        assert title == "Sophie's 18th"
+        assert subtitle == "June 2025"
+
+    def test_album_without_a_name_falls_back_to_the_date_template(self):
+        from immich_memories.ui.pages.pipeline_title import generate_template_title
+
+        title, _ = generate_template_title(
+            memory_type="album",
+            start_date="2025-06-01",
+            end_date="2025-06-03",
+        )
+
+        assert "2025" in title

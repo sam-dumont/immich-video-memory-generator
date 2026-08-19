@@ -111,6 +111,9 @@ class AppState:
 
     # Memory type preset (selected in Step 1)
     memory_type: str | None = None
+    # Album mode: the album is the whole pool, so no date range is involved.
+    album_id: str | None = None
+    album_name: str | None = None
     memory_preset_params: dict[str, Any] = field(default_factory=dict)
 
     # LLM-generated title (shown in Step 3, used in Step 4)
@@ -142,6 +145,17 @@ class AppState:
     # Caches (initialized at runtime)
     thumbnail_cache: ThumbnailCache | None = None
     analysis_cache: Any = None  # AnalysisCache
+
+    @property
+    def scope_is_selected(self) -> bool:
+        """Whether step 1 has enough to go find media with.
+
+        Album mode is the exception to "a memory is a date range": the album is
+        the pool, so it carries no range and must be checked on its own.
+        """
+        if self.memory_type == "album":
+            return self.album_id is not None
+        return self.date_range is not None
 
     def reset_clips(self) -> None:
         """Reset clip-related state when changing configuration."""

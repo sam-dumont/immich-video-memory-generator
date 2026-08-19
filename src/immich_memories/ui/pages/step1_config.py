@@ -11,6 +11,7 @@ from nicegui import ui
 
 from immich_memories.api.immich import ImmichAPIError, SyncImmichClient
 from immich_memories.config import Config, set_config
+from immich_memories.memory_types.registry import MemoryType
 from immich_memories.security import sanitize_error_message
 from immich_memories.timeperiod import (
     birthday_year,
@@ -333,8 +334,13 @@ def _render_navigation(state) -> None:
     im_separator()
 
     def go_to_step2():
-        if not state.date_range:
-            ui.notify("Please select a valid time period", type="warning")
+        if not state.scope_is_selected:
+            missing = (
+                "Please pick an album"
+                if state.memory_type == MemoryType.ALBUM
+                else "Please select a valid time period"
+            )
+            ui.notify(missing, type="warning")
             return
         state.step = 2
         state.reset_clips()

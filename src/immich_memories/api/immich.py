@@ -441,6 +441,9 @@ class ImmichClient:
             album_id, asset_type=asset_type, limit=limit, progress_callback=progress_callback
         )
 
+    async def list_albums(self) -> list[AlbumRef]:
+        return await self.albums.list_albums()
+
     async def resolve_album(self, name_or_id: str) -> AlbumRef:
         return await self.albums.resolve_album(name_or_id)
 

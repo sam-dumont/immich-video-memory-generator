@@ -41,6 +41,39 @@ def _ui_phase(
 MIN_CLIP_DURATION = 1.5
 
 
+def _fetch_album(state) -> tuple[list[VideoClipInfo], list]:
+    """Read the chosen album as clip and photo pools.
+
+    Album mode replaces date-range discovery entirely: the album is the pool.
+    """
+    from immich_memories.analysis.album_source import (
+        album_media_as_clips,
+        album_target_minutes,
+        fetch_album_media,
+    )
+    from immich_memories.api.immich import SyncImmichClient
+
+    with SyncImmichClient(
+        base_url=state.immich_url,
+        api_key=state.immich_api_key,
+        api_version=state.immich_api_version,
+    ) as client:
+        album = client.resolve_album(state.album_id)
+        media = fetch_album_media(
+            client,
+            album,
+            config=state.config,
+            use_live_photos=state.include_live_photos,
+            use_photos=state.include_photos,
+        )
+    if media.date_range is not None:
+        state.date_range = media.date_range
+    clips, photos = album_media_as_clips(media)
+    if state.duration_mode == "auto":
+        state.target_duration = album_target_minutes(clips, photos)
+    return clips, photos
+
+
 def _fetch_assets(state) -> list:
     """Blocking: fetch video assets from Immich API."""
     date_range = state.date_range
@@ -140,6 +173,63 @@ def _set_initial_selection(clips: list[VideoClipInfo], state) -> None:
     state.selected_clip_ids = {c.asset.id for c in clips}
 
 
+async def _finish_load(state, clips, photo_assets, status_label, progress_bar) -> None:
+    """Shared tail of both loading paths: commit the pools, then fetch thumbnails."""
+    state.clips = clips
+    _set_initial_selection(clips, state)
+    state.photo_assets = photo_assets
+    state.selected_photo_ids = {a.id for a in photo_assets}
+
+    total = f"Found {len(clips)} videos"
+    if photo_assets:
+        total += f" and {len(photo_assets)} photos"
+    where = f" in {state.album_name}" if state.album_name else ""
+    _set_phase_status(
+        status_label,
+        _ui_phase(OperationalPhase.DOWNLOAD, f"{total}{where}. Loading thumbnails..."),
+    )
+    if progress_bar is not None:
+        progress_bar.value = 0.1
+    await _load_thumbnails_and_metadata_async(clips, status_label, progress_bar)
+    _hydrate_and_report_cached_analysis(state, clips, status_label)
+    if photo_assets:
+        await _load_photo_thumbnails_async(photo_assets, status_label)
+
+
+async def _collect_date_range_media(state, status_label, progress_bar):
+    """Discover the clip and photo pools for a date-range memory."""
+    date_range = state.date_range
+    if date_range is None:
+        raise ValueError("No date range configured")
+
+    assets = _filter_near_home(await io_bound_result(_fetch_assets, state), state)
+    _set_phase_status(
+        status_label,
+        _ui_phase(
+            OperationalPhase.DISCOVERY,
+            f"Found {len(assets)} assets. Filtering...",
+            current=len(assets),
+            total=len(assets),
+        ),
+    )
+    progress_bar.value = 0.05
+
+    clips, _ = _build_clips(assets)
+    if state.include_live_photos:
+        status_label.set_text("Fetching Live Photos...")
+        live_clips, live_video_ids = await io_bound_result(_fetch_live_photos, state, date_range)
+        clips = _merge_live_photos(clips, live_clips, live_video_ids)
+
+    photo_assets = []
+    if state.include_photos:
+        status_label.set_text("Fetching photos...")
+        photo_assets = await io_bound_result(_fetch_photos, state, date_range)
+        logger.info(f"Found {len(photo_assets)} photos")
+
+    clips.sort(key=lambda c: c.asset.file_created_at)
+    return clips, photo_assets
+
+
 def _load_clips() -> None:
     """Load clips from Immich API - triggers async loading."""
     state = get_app_state()
@@ -166,59 +256,13 @@ def _load_clips() -> None:
             )
             progress_bar.value = 0.02
 
-            date_range = state.date_range
-            if date_range is None:
-                raise ValueError("No date range configured")
-
-            assets = await io_bound_result(_fetch_assets, state)
-            assets = _filter_near_home(assets, state)
-
-            _set_phase_status(
-                status_label,
-                _ui_phase(
-                    OperationalPhase.DISCOVERY,
-                    f"Found {len(assets)} assets. Filtering...",
-                    current=len(assets),
-                    total=len(assets),
-                ),
-            )
-            progress_bar.value = 0.05
-
-            clips, _ = _build_clips(assets)
-
-            if state.include_live_photos:
-                status_label.set_text("Fetching Live Photos...")
-                live_clips, live_video_ids = await io_bound_result(
-                    _fetch_live_photos, state, date_range
+            if state.album_id:
+                clips, photo_assets = await io_bound_result(_fetch_album, state)
+            else:
+                clips, photo_assets = await _collect_date_range_media(
+                    state, status_label, progress_bar
                 )
-                clips = _merge_live_photos(clips, live_clips, live_video_ids)
-
-            if state.include_photos:
-                status_label.set_text("Fetching photos...")
-                photo_assets = await io_bound_result(_fetch_photos, state, date_range)
-                state.photo_assets = photo_assets
-                state.selected_photo_ids = {a.id for a in photo_assets}
-                if photo_assets:
-                    logger.info(f"Found {len(photo_assets)} photos")
-
-            clips.sort(key=lambda c: c.asset.file_created_at)
-            state.clips = clips
-            _set_initial_selection(clips, state)
-
-            photo_count = len(state.photo_assets) if state.include_photos else 0
-            total_msg = f"Found {len(clips)} videos"
-            if photo_count:
-                total_msg += f" and {photo_count} photos"
-            _set_phase_status(
-                status_label,
-                _ui_phase(OperationalPhase.DOWNLOAD, f"{total_msg}. Loading thumbnails..."),
-            )
-            progress_bar.value = 0.1
-            await _load_thumbnails_and_metadata_async(clips, status_label, progress_bar)
-            _hydrate_and_report_cached_analysis(state, clips, status_label)
-
-            if state.include_photos and state.photo_assets:
-                await _load_photo_thumbnails_async(state.photo_assets, status_label)
+            await _finish_load(state, clips, photo_assets, status_label, progress_bar)
 
             loading_dialog.close()
             ui.navigate.to("/step2")

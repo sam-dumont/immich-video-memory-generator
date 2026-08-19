@@ -72,7 +72,7 @@ def _render_step2_header(state) -> bool:
     Returns True if rendering should stop (early return in caller).
     """
     # Guard: redirect to step 1 if state was lost
-    if not state.date_range or not state.immich_url:
+    if not state.scope_is_selected or not state.immich_url:
         im_info_card(
             "Session expired \u2014 please reconfigure. "
             "The server restarted and lost your settings.",

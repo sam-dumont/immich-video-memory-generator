@@ -19,7 +19,7 @@ The rest of the page (Memory Type, Options, Next) only appears after a successfu
 
 ## Memory Type
 
-Pick one of the 8 cards: **Year in Review**, **Season**, **Person Spotlight**, **Multi-Person**, **Monthly Highlights**, **On This Day**, **Trip**, or **Custom**.
+Pick one of the 9 cards: **Year in Review**, **Season**, **Person Spotlight**, **Multi-Person**, **Monthly Highlights**, **On This Day**, **Trip**, **Album**, or **Custom**.
 
 <ThemedScreenshot name="step1-preset-cards" alt="Memory type preset cards" />
 
@@ -34,6 +34,7 @@ Each preset sets the date range and a default target duration, then shows the pa
 | Monthly Highlights | Year, Month | 1 min |
 | On This Day | none (uses today's date across previous years) | 45 s |
 | Trip | Year, then "Select a trip" from the trips detected in your GPS data | auto: 30 s + 10 s per active day, bounded 60–300 s |
+| Album | "Select an album" from your Immich albums | auto: 4 s per item in the album, bounded 30 s–10 min |
 | Custom | date range tabs and person filter (below) | ~1 min per month of range |
 
 The presets also drive the output filename and title screen. A Multi-Person preset with Alice and Bob for March 2025 produces `alice_bob_march_2025_memories.mp4` with "Alice & Bob" as the title subtitle.

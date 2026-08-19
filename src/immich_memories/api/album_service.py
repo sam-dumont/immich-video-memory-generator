@@ -139,6 +139,17 @@ class AlbumService:
     async def get_albums(self) -> list[dict]:
         return await self._request("GET", "/albums")
 
+    async def list_albums(self) -> list[AlbumRef]:
+        """Albums that could make a memory, largest first.
+
+        Empty albums are dropped: they cannot produce anything, so offering them
+        in a picker only invites a dead end.
+        """
+        albums = await self.get_albums()
+        refs = [_album_ref(a) for a in albums if (a.get("assetCount") or 0) > 0]
+        refs.sort(key=lambda ref: ref.asset_count, reverse=True)
+        return refs
+
     async def resolve_album(self, name_or_id: str) -> AlbumRef:
         """Resolve an album reference to its ID, name and asset count.
 

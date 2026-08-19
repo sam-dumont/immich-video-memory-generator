@@ -277,6 +277,9 @@ class SyncImmichClient:
             )
         )
 
+    def list_albums(self) -> list[AlbumRef]:
+        return self._run(self._async_client.list_albums())
+
     def resolve_album(self, name_or_id: str) -> AlbumRef:
         return self._run(self._async_client.resolve_album(name_or_id))
 

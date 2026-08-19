@@ -11,6 +11,21 @@ date.
 This is the right mode when you have already curated the moments: a birthday, a wedding,
 a single trip, a school year.
 
+## Web UI
+
+Pick **Album** on step 1 and choose from the dropdown. It lists every album that
+has assets in it, largest first, with the item count beside each name — real
+libraries carry several albums with the same name, so the count tells them apart
+and the selection is stored by ID rather than by name.
+
+No date range is chosen: the album's own assets define the span, and the target
+duration is scaled to how much is in the album (roughly 4 seconds an item,
+capped at 10 minutes). Turn off **Auto** on step 2 to set your own.
+
+The title defaults to the album's name, same as the CLI — the LLM title
+suggestion is skipped, since a name you typed yourself beats one it invents.
+Edit it on step 3 if you want something else.
+
 ## CLI
 
 ```bash

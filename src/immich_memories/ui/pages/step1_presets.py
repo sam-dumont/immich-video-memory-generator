@@ -25,6 +25,7 @@ _PRESET_CARDS: list[tuple[str, str, str, str]] = [
     (MemoryType.MONTHLY_HIGHLIGHTS, "event_note", "Monthly Highlights", "One month, distilled"),
     (MemoryType.ON_THIS_DAY, "history", "On This Day", "This day through the years"),
     (MemoryType.TRIP, "flight_takeoff", "Trip", "Auto-detect trips from GPS data"),
+    (MemoryType.ALBUM, "photo_album", "Album", "Everything from one Immich album"),
     ("custom", "tune", "Custom", "Full control over date range"),
 ]
 
@@ -78,6 +79,10 @@ def render_preset_selector(on_custom_selected=None) -> None:
     def select_preset(key: str) -> None:
         state.memory_type = key
         state.memory_preset_params = {}
+        if key != MemoryType.ALBUM:
+            # A left-over album would otherwise satisfy the step 1 scope check.
+            state.album_id = None
+            state.album_name = None
         params_container.clear()
         _fill_params(key)
         _build_preset_grid(grid_container, state, select_preset)
@@ -122,6 +127,8 @@ def _render_params(key: str) -> None:
             _apply_preset_to_state(memory_type)
         elif memory_type == MemoryType.TRIP:
             _render_trip_params()
+        elif memory_type == MemoryType.ALBUM:
+            _render_album_picker()
 
 
 def _year_options_with_all() -> list:
@@ -327,6 +334,82 @@ def _render_monthly_params() -> None:
     state.memory_preset_params.setdefault("year", current_year)
     state.memory_preset_params.setdefault("month", current_month)
     _apply_preset_to_state(MemoryType.MONTHLY_HIGHLIGHTS)
+
+
+def _render_album_picker() -> None:
+    """Album dropdown. The album is the whole pool, so no date range is chosen."""
+    state = get_app_state()
+    album_container = ui.column().classes("w-full mt-2")
+
+    def _select(album_id: str | None, albums: dict[str, str]) -> None:
+        if not album_id:
+            return
+        state.album_id = album_id
+        state.album_name = albums.get(album_id)
+        # Album mode discovers its own span from the assets, so nothing to set here.
+        state.date_range = None
+        state.duration_mode = "auto"
+
+    async def _load_albums() -> None:
+        album_container.clear()
+        if not state.immich_url or not state.immich_api_key:
+            with album_container:
+                ui.label("Connect to Immich first to choose an album.").style(
+                    "color: var(--im-text-secondary)"
+                ).classes("text-sm italic")
+            return
+
+        with album_container, ui.row().classes("items-center gap-2"):
+            ui.spinner(size="sm")
+            ui.label("Loading albums...").style("color: var(--im-text-secondary)").classes(
+                "text-sm"
+            )
+
+        try:
+            from immich_memories.api.immich import SyncImmichClient
+
+            def fetch() -> list:
+                with SyncImmichClient(
+                    base_url=state.immich_url,
+                    api_key=state.immich_api_key,
+                    api_version=state.immich_api_version,
+                ) as client:
+                    return client.list_albums()
+
+            albums = await io_bound_result(fetch)
+        except Exception as exc:  # WHY: UI graceful degradation
+            logger.warning("Album listing failed: %s", exc)
+            album_container.clear()
+            with album_container:
+                ui.label(f"Could not list albums: {exc}").style("color: var(--im-error)").classes(
+                    "text-sm"
+                )
+            return
+
+        album_container.clear()
+        if not albums:
+            with album_container:
+                ui.label("No albums with any assets in them yet.").style(
+                    "color: var(--im-text-secondary)"
+                ).classes("text-sm italic")
+            return
+
+        # Names repeat in real libraries (iOS syncs several "Recents"), so the
+        # count disambiguates and the id is what actually gets stored.
+        options = {a.id: f"{a.name} ({a.asset_count} items)" for a in albums}
+        names = {a.id: a.name for a in albums}
+        current = state.album_id if state.album_id in options else None
+
+        with album_container:
+            ui.select(
+                options=options,
+                label="Album",
+                value=current,
+                with_input=True,
+                on_change=lambda e: _select(e.value, names),
+            ).classes("w-full")
+
+    ui.timer(0.1, _load_albums, once=True)
 
 
 def _render_trip_params() -> None:
