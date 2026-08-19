@@ -10,15 +10,39 @@ import logging
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from subprocess import SubprocessError
 
 from immich_memories.audio.mixer import (
     DuckingConfig,
     MixConfig,
     _db_to_linear,
+    get_audio_duration,
     get_video_duration,
+    loop_audio_to_duration,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def stems_covering(stems: list[Path], video_duration: float) -> list[Path]:
+    """Loop any stem shorter than the video.
+
+    Without this the stems were trimmed to the video length and simply ran out:
+    the music stopped partway and the rest of the video played silent.
+    """
+    covered: list[Path] = []
+    for stem in stems:
+        try:
+            duration = get_audio_duration(stem)
+        except (OSError, ValueError, SubprocessError):
+            covered.append(stem)
+            continue
+        if duration >= video_duration:
+            covered.append(stem)
+            continue
+        looped = stem.parent / f"{stem.stem}_looped.mp3"
+        covered.append(loop_audio_to_duration(stem, video_duration, looped))
+    return covered
 
 
 def mix_audio_with_stem_ducking(
@@ -50,6 +74,9 @@ def mix_audio_with_stem_ducking(
 
     ducking = config.ducking
     video_duration = get_video_duration(video_path)
+    vocals_path, accompaniment_path = stems_covering(
+        [vocals_path, accompaniment_path], video_duration
+    )
 
     filter_parts = []
 
@@ -197,6 +224,9 @@ def mix_audio_with_4stem_ducking(
 
     ducking = config.ducking
     video_duration = get_video_duration(video_path)
+    drums_path, bass_path, vocals_path, other_path = stems_covering(
+        [drums_path, bass_path, vocals_path, other_path], video_duration
+    )
 
     filter_parts: list[str] = []
 
