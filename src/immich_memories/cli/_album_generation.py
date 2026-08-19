@@ -67,6 +67,7 @@ def handle_album_generation(
     from immich_memories.api.album_service import AlbumNotFoundError, AmbiguousAlbumError
     from immich_memories.cli._pipeline_runner import run_pipeline_and_generate
     from immich_memories.cli._trip_generation import resolve_music_arg
+    from immich_memories.memory_types.registry import MemoryType
     from immich_memories.processing.encoding_plan import resolve_output_selection
 
     task = progress.add_task(f"Resolving album: {album_ref}...", total=None)
@@ -132,7 +133,7 @@ def handle_album_generation(
         # The album's own name is the best title we have; an explicit --title still wins.
         title_override=title_override or resolved.name,
         subtitle_override=subtitle_override,
-        memory_type="album",
+        memory_type=MemoryType.ALBUM,
         person_names=person_names,
         date_range=media.date_range,
         upload_to_immich=upload_to_immich,

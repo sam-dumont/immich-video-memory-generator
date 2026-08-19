@@ -133,7 +133,10 @@ def resolve_music_file(
     if not music_path and music_config_available(config):
         if report_fn:
             report_fn("music", 0.85, "Generating AI music...")
-        return auto_generate_music(config, assembly_clips, run_output_dir, memory_type, report_fn)
+        generated = auto_generate_music(
+            config, assembly_clips, run_output_dir, memory_type, report_fn
+        )
+        return _master(generated, run_output_dir) if generated else generated
 
     if music_path is not None:
         # An explicit track that is missing is a user error; substituting bundled
@@ -144,7 +147,16 @@ def resolve_music_file(
     # the Docker/NAS path gets by default.
     from immich_memories.audio.bundled_music import bundled_track_for_mood
 
-    return bundled_track_for_mood(_mood_for_clips(assembly_clips), library=bundled_library)
+    bundled = bundled_track_for_mood(_mood_for_clips(assembly_clips), library=bundled_library)
+    return _master(bundled, run_output_dir) if bundled else bundled
+
+
+def _master(track: Path, run_output_dir: Path) -> Path:
+    """Master music we produced. A track the user chose is left as they made it."""
+    from immich_memories.audio.mastering import master_music_track
+
+    run_output_dir.mkdir(parents=True, exist_ok=True)
+    return master_music_track(track, run_output_dir / f"mastered_{track.stem}.wav")
 
 
 def _mood_for_clips(assembly_clips: list[AssemblyClip]) -> str | None:

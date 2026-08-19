@@ -25,9 +25,6 @@ from pathlib import Path
 from typing import Any
 
 from immich_memories.audio.generators.ace_step_captions import (
-    ACE_CAPTION_TEMPLATES as ACE_CAPTION_TEMPLATES,  # noqa: PLC0414 — re-exported
-)
-from immich_memories.audio.generators.ace_step_captions import (
     build_ace_caption,
     build_ace_caption_structured,
 )

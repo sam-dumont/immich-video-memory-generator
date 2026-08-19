@@ -6,6 +6,8 @@ silence, because ACE-Step and MusicGen both need a GPU or a separate server.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from immich_memories.audio.bundled_music import bundled_track_for_mood
@@ -98,3 +100,56 @@ def test_a_missing_explicit_track_is_not_silently_replaced(library, tmp_path):
     )
 
     assert chosen is None
+
+
+def test_bundled_music_is_mastered_before_use(library, tmp_path):
+    """Bundled and generated tracks get the tilt and loudness target; user files do not."""
+    from immich_memories.generate_music import resolve_music_file
+
+    seen: list[Path] = []
+
+    # WHY: replaces the FFmpeg mastering pass; the routing is what is under test.
+    def _fake_master(source: Path, destination: Path) -> Path:
+        seen.append(source)
+        return destination
+
+    import immich_memories.audio.mastering as mastering
+
+    original = mastering.master_music_track
+    mastering.master_music_track = _fake_master
+    try:
+        config = Config()
+        config.ace_step.enabled = False
+        config.musicgen.enabled = False
+        resolve_music_file(
+            config=config,
+            music_path=None,
+            no_music=False,
+            assembly_clips=[],
+            run_output_dir=tmp_path,
+            memory_type=None,
+            bundled_library=library,
+        )
+    finally:
+        mastering.master_music_track = original
+
+    assert seen, "bundled music should be mastered"
+
+
+def test_a_user_supplied_track_is_left_alone(library, tmp_path):
+    from immich_memories.generate_music import resolve_music_file
+
+    theirs = tmp_path / "mine.mp3"
+    theirs.write_bytes(b"")
+
+    chosen = resolve_music_file(
+        config=Config(),
+        music_path=theirs,
+        no_music=False,
+        assembly_clips=[],
+        run_output_dir=tmp_path,
+        memory_type=None,
+        bundled_library=library,
+    )
+
+    assert chosen == theirs

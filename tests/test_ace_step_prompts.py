@@ -2,8 +2,9 @@
 
 from pathlib import Path
 
+import pytest
+
 from immich_memories.audio.generators.ace_step_backend import (
-    ACE_CAPTION_TEMPLATES,
     build_ace_caption,
 )
 from immich_memories.audio.generators.ace_step_captions import (
@@ -50,12 +51,21 @@ def test_build_ace_caption_unknown_mood_uses_default():
     assert len(tags) > 10
 
 
-def test_caption_templates_have_required_fields():
-    for name, template in ACE_CAPTION_TEMPLATES.items():
-        assert "caption" in template, f"Template '{name}' missing 'caption'"
-        assert "bpm" in template, f"Template '{name}' missing bpm"
-        assert "key" in template, f"Template '{name}' missing key"
-        assert "time_signature" in template, f"Template '{name}' missing time_signature"
+def test_every_matrix_cell_yields_a_complete_caption():
+    """Replaces the old per-template shape check: the matrix is the source now."""
+    from immich_memories.audio.generators.ace_step_captions import (
+        MOOD_PROFILES,
+        STYLE_PROFILES,
+    )
+
+    for mood in MOOD_PROFILES:
+        for style in STYLE_PROFILES:
+            result = build_ace_caption_structured(mood, style=style)
+
+            assert result.caption
+            assert result.bpm > 0
+            assert result.key_scale
+            assert result.time_signature
 
 
 class TestACEStepAPIPayload:
@@ -113,67 +123,35 @@ class TestACEStepAPIPayload:
 
 
 class TestMoodVariety:
-    """Template matching should not be biased by generic booster words."""
+    """Mood resolution must not be hijacked by generic booster words.
 
-    def test_romantic_not_overridden_by_upbeat(self):
-        """'upbeat romantic' should match acoustic, not upbeat_pop."""
-        from immich_memories.audio.generators.ace_step_captions import _match_template
+    _transform_mood prepends words like "upbeat" and "warm" to every mood, so a
+    naive first-match would send every memory to the same profile.
+    """
 
-        # _transform_mood turns "romantic" into "upbeat romantic"
-        result = _match_template("upbeat romantic")
-        assert result == "acoustic", f"Expected 'acoustic' for 'upbeat romantic', got '{result}'"
+    @pytest.mark.parametrize(
+        ("phrase", "expected"),
+        [
+            ("upbeat romantic", "tender"),
+            ("upbeat warm groovy nostalgic", "nostalgic"),
+            ("upbeat playful", "happy"),
+            ("upbeat warm calm", "calm"),
+            ("upbeat", "happy"),
+        ],
+    )
+    def test_specific_mood_words_win_over_boosters(self, phrase, expected):
+        from immich_memories.audio.generators.ace_step_captions import resolve_mood
 
-    def test_nostalgic_not_overridden_by_upbeat(self):
-        """'upbeat warm groovy nostalgic' should match lofi, not upbeat_pop."""
-        from immich_memories.audio.generators.ace_step_captions import _match_template
+        assert resolve_mood(phrase) == expected
 
-        result = _match_template("upbeat warm groovy nostalgic")
-        assert result == "lofi", f"Expected 'lofi' for nostalgic, got '{result}'"
-
-    def test_playful_not_overridden_by_upbeat(self):
-        """'upbeat playful' should match indie_electronic, not upbeat_pop."""
-        from immich_memories.audio.generators.ace_step_captions import _match_template
-
-        result = _match_template("upbeat playful")
-        assert result == "indie_electronic", (
-            f"Expected 'indie_electronic' for playful, got '{result}'"
+    def test_scene_moods_drive_the_profile(self):
+        from immich_memories.audio.generators.ace_step_captions import (
+            build_ace_caption_structured,
         )
 
-    def test_dramatic_not_overridden_by_upbeat(self):
-        """'upbeat dramatic' should match cinematic, not upbeat_pop."""
-        from immich_memories.audio.generators.ace_step_captions import _match_template
+        result = build_ace_caption_structured("happy", scene_moods=["calm", "calm"])
 
-        result = _match_template("upbeat dramatic")
-        assert result == "cinematic", f"Expected 'cinematic' for dramatic, got '{result}'"
-
-    def test_calm_transformed_matches_lofi_or_ambient(self):
-        """'upbeat warm groovy calm' should match lofi or ambient, not upbeat_pop."""
-        from immich_memories.audio.generators.ace_step_captions import _match_template
-
-        result = _match_template("upbeat warm groovy calm")
-        assert result in ("lofi", "ambient"), (
-            f"Expected 'lofi' or 'ambient' for calm, got '{result}'"
-        )
-
-    def test_pure_upbeat_still_matches_upbeat_pop(self):
-        """Just 'upbeat' alone should match upbeat_pop (no more specific word)."""
-        from immich_memories.audio.generators.ace_step_captions import _match_template
-
-        result = _match_template("upbeat")
-        assert result == "upbeat_pop"
-
-    def test_scene_voting_variety(self):
-        """A mix of moods should not collapse to upbeat_pop."""
-        from immich_memories.audio.generators.ace_step_captions import _pick_template_for_scenes
-
-        scene_moods = [
-            "upbeat romantic",
-            "upbeat romantic",
-            "upbeat dramatic",
-        ]
-        # Should pick acoustic (2 votes for romantic) or cinematic (1 vote)
-        result = _pick_template_for_scenes(scene_moods)
-        assert result == "acoustic", f"Expected 'acoustic' for 2x romantic, got '{result}'"
+        assert "serene" in result.caption
 
 
 # =============================================================================

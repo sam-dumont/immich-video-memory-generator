@@ -39,139 +39,6 @@ def normalize_time_signature(written: str) -> str:
 
 
 # "instrumental, no vocals" is reinforced in every caption to prevent singing.
-ACE_CAPTION_TEMPLATES: dict[str, dict[str, str | int]] = {
-    "lofi": {
-        "caption": (
-            "lo-fi jazz, wistful, Rhodes electric piano, double bass, brushed "
-            "drums, muted trumpet, lo-fi, dusty, vinyl crackle, 75 bpm"
-        ),
-        "key": "D minor",
-        "bpm": 75,
-        "time_signature": "4/4",
-    },
-    "upbeat_pop": {
-        "caption": (
-            "acoustic pop, joyful, fingerpicked acoustic guitar, live drum kit, "
-            "upright bass, glockenspiel, handclaps, hi-fi, polished, wide stereo, "
-            "120 bpm"
-        ),
-        "key": "C major",
-        "bpm": 120,
-        "time_signature": "4/4",
-    },
-    "indie_electronic": {
-        "caption": (
-            "indie electronic, dreamy, analog synth, electric bass, programmed "
-            "beat, electric piano, soft pad, polished, wide stereo, 110 bpm"
-        ),
-        "key": "A minor",
-        "bpm": 110,
-        "time_signature": "4/4",
-    },
-    "tropical": {
-        "caption": (
-            "tropical house, sunny, steel drums, nylon guitar, electric bass, "
-            "shaker, marimba, hi-fi, polished, wide stereo, 112 bpm"
-        ),
-        "key": "F major",
-        "bpm": 112,
-        "time_signature": "4/4",
-    },
-    "cinematic": {
-        "caption": (
-            "orchestral, uplifting, warm string section, French horn, timpani, "
-            "harp, celeste, hi-fi, cinematic, 90 bpm"
-        ),
-        "key": "E minor",
-        "bpm": 90,
-        "time_signature": "4/4",
-    },
-    "acoustic": {
-        "caption": (
-            "acoustic folk, tender, nylon guitar, upright bass, cello, brushed "
-            "drums, glockenspiel, analog warmth, intimate, 100 bpm"
-        ),
-        "key": "G major",
-        "bpm": 100,
-        "time_signature": "4/4",
-    },
-    "future_bass": {
-        "caption": (
-            "indie rock, driving, live drum kit, electric bass, electric guitar, "
-            "organ, tambourine, hi-fi, wide stereo, 150 bpm"
-        ),
-        "key": "Bb major",
-        "bpm": 150,
-        "time_signature": "4/4",
-    },
-    "jazz": {
-        "caption": (
-            "jazz trio, relaxed, grand piano, upright bass, brushed drums, muted "
-            "trumpet, vibraphone, analog warmth, intimate, 95 bpm"
-        ),
-        "key": "F major",
-        "bpm": 95,
-        "time_signature": "4/4",
-    },
-    "ambient": {
-        "caption": (
-            "ambient, serene, felt piano, cello, harp, soft strings, hi-fi, intimate, 70 bpm"
-        ),
-        "key": "C major",
-        "bpm": 70,
-        "time_signature": "4/4",
-    },
-    "holiday": {
-        "caption": (
-            "orchestral, festive, celeste, sleigh bells, warm strings, French horn, "
-            "harp, hi-fi, cinematic, 110 bpm"
-        ),
-        "key": "G major",
-        "bpm": 110,
-        "time_signature": "4/4",
-    },
-}
-
-# Maps mood keywords to caption template names
-_MOOD_TO_TEMPLATE = {
-    "happy": "upbeat_pop",
-    "energetic": "future_bass",
-    "calm": "ambient",
-    "nostalgic": "lofi",
-    "romantic": "acoustic",
-    "playful": "indie_electronic",
-    "dramatic": "cinematic",
-    "upbeat": "upbeat_pop",
-    "peaceful": "ambient",
-    "inspiring": "cinematic",
-    "groovy": "lofi",
-    "warm": "acoustic",
-    "fun": "tropical",
-    "sunny": "tropical",
-    "dreamy": "indie_electronic",
-    "jazzy": "jazz",
-    "holiday": "holiday",
-    "festive": "holiday",
-    "cozy": "lofi",
-    "mysterious": "ambient",
-    "tender": "acoustic",
-    "melancholic": "lofi",
-    "exciting": "future_bass",
-    "uplifting": "cinematic",
-}
-
-# Maps memory type presets to preferred music templates.
-# Memory type takes priority over mood when provided.
-_MEMORY_TYPE_TO_TEMPLATE: dict[str, str] = {
-    "trip": "tropical",
-    "season": "indie_electronic",
-    "person_spotlight": "acoustic",
-    "on_this_day": "lofi",
-    "monthly_highlights": "upbeat_pop",
-    "multi_person": "upbeat_pop",
-    "year_in_review": "cinematic",
-}
-
 # Seasonal modifiers appended to tags
 _SEASON_TAG_MODIFIERS = {
     "winter": "cozy, warm tones, intimate",
@@ -288,16 +155,28 @@ _MOOD_ALIASES: dict[str, str] = {
 }
 
 
+# _transform_mood prepends these to every mood, so they must not win a match:
+# "upbeat romantic" is romantic, not upbeat.
+_BOOSTER_WORDS = frozenset({"upbeat", "warm", "groovy", "hopeful"})
+
+
 def resolve_mood(mood: str) -> str:
-    """Map any mood phrase onto one of the five profiles."""
+    """Map any mood phrase onto one of the five profiles.
+
+    Specific mood words are matched before the generic boosters that get
+    prepended upstream, which would otherwise send everything to one profile.
+    """
     words = [w.strip(",.! ") for w in mood.lower().split() if w.strip(",.! ")]
-    for word in words:
-        if word in MOOD_PROFILES:
-            return word
-    for word in words:
-        alias = _MOOD_ALIASES.get(word)
-        if alias in MOOD_PROFILES:
-            return alias
+    specific = [w for w in words if w not in _BOOSTER_WORDS]
+
+    for group in (specific, words):
+        for word in group:
+            if word in MOOD_PROFILES:
+                return word
+        for word in group:
+            alias = _MOOD_ALIASES.get(word)
+            if alias in MOOD_PROFILES:
+                return alias
     return "happy"
 
 
@@ -368,66 +247,6 @@ def build_ace_caption(mood: str, season: str | None = None) -> tuple[str, str]:
     # Include key in caption string for backwards compat (lib mode)
     tags = f"{result.caption}. Key of {result.key_scale}"
     return tags, result.lyrics
-
-
-def _match_template(mood: str) -> str:
-    """Match a single mood word to a template name.
-
-    Prioritizes specific mood words over generic booster words that
-    _transform_mood() prepends. For example, "upbeat romantic" should
-    match "romantic" → acoustic, not "upbeat" → upbeat_pop.
-
-    Args:
-        mood: Single mood string (e.g. "happy", "nostalgic", "upbeat romantic")
-
-    Returns:
-        Template name from ACE_CAPTION_TEMPLATES.
-    """
-    # Generic words that _transform_mood prepends to everything.
-    # These should only match if no more specific word is found.
-    _BOOSTER_WORDS = {"upbeat", "warm", "groovy", "hopeful"}
-
-    mood_words = [w.strip(",. ") for w in mood.lower().split() if w.strip(",. ")]
-
-    # First pass: check specific (non-booster) words
-    for word in mood_words:
-        if word not in _BOOSTER_WORDS and word in _MOOD_TO_TEMPLATE:
-            return _MOOD_TO_TEMPLATE[word]
-
-    # Second pass: fall back to booster words
-    for word in mood_words:
-        if word in _MOOD_TO_TEMPLATE:
-            return _MOOD_TO_TEMPLATE[word]
-
-    return "upbeat_pop"
-
-
-def _pick_template_for_scenes(scene_moods: list[str]) -> str:
-    """Pick the best template by voting across scene moods.
-
-    Each scene's mood votes for a template. The template with the most
-    votes wins, with random tiebreaking for variety.
-
-    Args:
-        scene_moods: List of mood strings from individual scenes.
-
-    Returns:
-        Template name from ACE_CAPTION_TEMPLATES.
-    """
-    import random
-    from collections import Counter
-
-    if not scene_moods:
-        return "upbeat_pop"
-
-    votes: list[str] = [_match_template(mood) for mood in scene_moods]
-    counts = Counter(votes)
-
-    # Get all templates tied for the most votes
-    max_count = counts.most_common(1)[0][1]
-    top_templates = [tpl for tpl, count in counts.items() if count == max_count]
-
-    return random.choice(top_templates)
 
 
 def build_ace_caption_structured(
