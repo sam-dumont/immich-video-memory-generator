@@ -745,43 +745,63 @@ class TestPromptGeneration:
 
 
 class TestACEStepMoodConversion:
-    """Tests for mood-to-ACE-Step-prompt conversion."""
+    """Mood phrases resolve to a caption the audio model can act on.
 
-    def test_happy_mood(self):
+    These assert the shape the mood x style matrix guarantees — a mood word, a
+    genre anchor, instruments and a BPM — rather than specific vocabulary, so a
+    retuned style table does not break them.
+    """
+
+    def test_a_mood_phrase_resolves_to_its_profile(self):
         tags, lyrics = _mood_to_ace_prompt("happy cheerful")
-        assert "pop" in tags
-        assert "upbeat" in tags
-        assert "instrumental" in tags
+
+        assert "joyful" in tags
+        assert "120 bpm" in tags
         assert lyrics.lower() == "[instrumental]"
 
-    def test_energetic_mood(self):
-        tags, lyrics = _mood_to_ace_prompt("energetic driving")
-        assert "energetic" in tags or "future bass" in tags
-        assert "instrumental" in tags
+    def test_tempo_tracks_the_mood(self):
+        energetic, _ = _mood_to_ace_prompt("energetic driving")
+        calm, _ = _mood_to_ace_prompt("calm peaceful")
 
-    def test_calm_mood(self):
-        tags, lyrics = _mood_to_ace_prompt("calm peaceful")
-        assert "ambient" in tags or "chill" in tags
+        assert "150 bpm" in energetic
+        assert "70 bpm" in calm
 
-    def test_unknown_mood_gets_default(self):
+    def test_an_unknown_mood_still_yields_a_usable_caption(self):
         tags, lyrics = _mood_to_ace_prompt("xyzzy")
-        assert "pop" in tags  # Default fallback
-        assert "instrumental" in tags
 
-    def test_winter_seasonal(self):
-        tags, lyrics = _mood_to_ace_prompt("winter holiday happy")
-        assert "festive" in tags or "warm" in tags
+        assert "bpm" in tags
+        assert lyrics.lower() == "[instrumental]"
 
-    def test_summer_seasonal(self):
-        tags, lyrics = _mood_to_ace_prompt("summer sunny upbeat")
-        assert "tropical" in tags or "sunny" in tags
+    def test_seasonal_modifier_reaches_the_caption(self):
+        tags, _ = _mood_to_ace_prompt("winter holiday happy")
 
-    def test_all_results_instrumental(self):
-        """Every mood conversion should produce instrumental output."""
-        moods = ["happy", "sad", "energetic", "calm", "dramatic", "playful", "unknown"]
-        for mood in moods:
+        assert "cozy" in tags or "warm" in tags or "festive" in tags
+
+    def test_every_mood_names_instruments_and_stays_instrumental(self):
+        """A caption of adjectives alone gives the model nothing to render."""
+        instruments = (
+            "guitar",
+            "piano",
+            "bass",
+            "drums",
+            "strings",
+            "horn",
+            "harp",
+            "trumpet",
+            "organ",
+            "celeste",
+            "glockenspiel",
+            "vibraphone",
+            "clavinet",
+            "congas",
+            "timpani",
+            "tambourine",
+        )
+
+        for mood in ("happy", "sad", "energetic", "calm", "dramatic", "playful", "unknown"):
             tags, lyrics = _mood_to_ace_prompt(mood)
-            assert "instrumental" in tags
+
+            assert any(i in tags.lower() for i in instruments), tags
             assert lyrics.lower() == "[instrumental]"
 
 

@@ -40,33 +40,41 @@ from immich_memories.audio.generators.base import (
 logger = logging.getLogger(__name__)
 
 # WHY: ACE-Step's MLX VAE decode grows the MLX buffer cache by ~0.8 GiB per
-# second of audio inside one decode chunk, and on >64 GB Macs upstream picks an
-# 82 s chunk (2048 latent frames). MLX only trims that cache near its default
-# limit (~recommendedMaxWorkingSetSize, ~120 GiB on a 128 GB machine), so a
-# 216 s track pushed the host process past 100 GiB and macOS killed it. A small
-# chunk plus a hard cache limit keeps the same request around 50 GiB (measured:
-# 108 GB -> 53 GB peak footprint). Peak *active* memory stays a few GiB either
-# way, so the limit costs ~20% on VAE decode and nothing elsewhere.
-_MLX_VAE_CHUNK_FRAMES = 256  # 25 latent frames/s -> ~10 s of audio per decode
+# second of audio inside one decode chunk. MLX only trims that cache near its
+# default limit (~120 GiB on a 128 GB machine), so a long track pushed the host
+# process past 100 GiB and macOS killed it. A hard cache limit is what fixes
+# that: measured with it in place, a 300 s render peaks at 38 GiB of MLX memory
+# and 13 GiB RSS at ACE-Step's own chunk size.
+#
+# Do NOT also clamp the decode chunk. ACE-Step sizes it from unified memory
+# (256 at <=16 GB, 512 at <=36 GB, 1024 at <=64 GB, else 2048) and the chunk sets
+# how much temporal context each decode window sees — stride is chunk - 2*overlap.
+# Forcing the 16 GB value on a large Mac cut the window from ~82 s to ~10 s and
+# multiplied the blended boundaries, which audibly muddied the output.
 _MLX_CACHE_LIMIT_BYTES = 4 * 1024**3
 
 
-def _bound_mlx_memory() -> int:
+def _bound_mlx_memory() -> int | None:
     """Cap MLX allocator growth before ACE-Step constructs its handlers.
 
-    Must run before ``AceStepHandler()``: ACE-Step reads the chunk override
-    into a process-wide cached GPU config on first handler construction.
-    Returns the VAE chunk size in latent frames that ACE-Step should use.
+    Must run before ``AceStepHandler()``: ACE-Step reads the chunk override into a
+    process-wide cached GPU config on first handler construction.
+
+    Returns an explicit ``ACESTEP_MLX_VAE_CHUNK`` override when one is set, or
+    None to leave the decode chunk to ACE-Step's own memory-based sizing.
     """
-    os.environ.setdefault("ACESTEP_MLX_VAE_CHUNK", str(_MLX_VAE_CHUNK_FRAMES))
     with suppress(ImportError):
         import mlx.core as mx  # type: ignore[import-not-found]
 
         mx.set_cache_limit(_MLX_CACHE_LIMIT_BYTES)
+
+    override = os.environ.get("ACESTEP_MLX_VAE_CHUNK")
+    if override is None:
+        return None
     try:
-        return max(192, int(os.environ["ACESTEP_MLX_VAE_CHUNK"]))
+        return max(192, int(override))
     except ValueError:
-        return _MLX_VAE_CHUNK_FRAMES
+        return None
 
 
 def _cast_mlx_decoder_to_bf16(handler: Any) -> None:
@@ -603,8 +611,10 @@ class ACEStepBackend(MusicGenerator):
             lyrics="[Instrumental]",
             instrumental=True,
             bpm=caption_result.bpm,
-            keyscale=caption_result.key_scale,
-            timesignature=caption_result.time_signature,
+            # WHY: ACE-Step's guides recommend leaving key and meter for the model to
+            # infer, and only pinning BPM (which the caption also states in tags).
+            keyscale="",
+            timesignature="",
             duration=float(duration),
             inference_steps=infer_step,
             guidance_scale=1.0 if is_turbo else 7.0,

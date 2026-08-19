@@ -534,8 +534,13 @@ class ACEStepConfig(BaseModel):
         description="Language model size: '0.6B', '1.7B', or '4B'",
     )
     use_lm: bool = Field(
-        default=True,
-        description="Use language model for 'thinking mode' (disable to save memory/time)",
+        default=False,
+        description=(
+            "Use the 5Hz language model's 'thinking mode'. Off by default: it rewrites "
+            "the caption and invents its own genre metadata, which drifts instrumental "
+            "prompts off-brief, and it dominates generation time (~45s -> ~17s per "
+            "60s track when disabled). Enable for prompt-following on complex briefs."
+        ),
     )
     num_versions: int = Field(
         default=3,

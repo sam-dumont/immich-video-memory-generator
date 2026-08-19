@@ -9,18 +9,40 @@ sent as explicit API parameters (not buried in the caption text).
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 
 # Dense caption templates for ACE-Step.
 # Each template uses a descriptive sentence (not just tags) for better LLM guidance.
 # BPM, key, and time_signature are sent as separate API params.
+# WHY: ACE-Step's metadata vocabulary is a bare beat count (2 for 2/4, 3 for 3/4,
+# 4 for 4/4, 6 for 6/8) — acestep.constants.VALID_TIME_SIGNATURES. Its constrained
+# decoder injects whatever it is given straight into the LM's chain-of-thought
+# metadata stream with no validation, so "4/4" lands as out-of-vocabulary tokens in
+# the hints that condition the DiT. The tables below stay human-readable and are
+# translated on the way out.
+VALID_TIME_SIGNATURES = ("2", "3", "4", "6")
+_TIME_SIGNATURE_BEATS = {"2/4": "2", "3/4": "3", "4/4": "4", "6/8": "6"}
+
+
+def normalize_time_signature(written: str) -> str:
+    """Translate a written time signature to ACE-Step's beat-count value.
+
+    Returns an empty string for anything ACE-Step does not accept, which asks it
+    to infer the meter instead of conditioning on a value it never saw in training.
+    """
+    value = written.strip()
+    if value in VALID_TIME_SIGNATURES:
+        return value
+    return _TIME_SIGNATURE_BEATS.get(value, "")
+
+
 # "instrumental, no vocals" is reinforced in every caption to prevent singing.
 ACE_CAPTION_TEMPLATES: dict[str, dict[str, str | int]] = {
     "lofi": {
         "caption": (
-            "A mellow lo-fi hip hop instrumental with dusty drum machine grooves, "
-            "warm Rhodes electric piano chords, and smooth sub bass. "
-            "Vinyl crackle texture, jazzy and relaxed. Instrumental, no vocals, no singing"
+            "lo-fi jazz, wistful, Rhodes electric piano, double bass, brushed "
+            "drums, muted trumpet, lo-fi, dusty, vinyl crackle, 75 bpm"
         ),
         "key": "D minor",
         "bpm": 75,
@@ -28,9 +50,9 @@ ACE_CAPTION_TEMPLATES: dict[str, dict[str, str | int]] = {
     },
     "upbeat_pop": {
         "caption": (
-            "A bright, upbeat pop instrumental with punchy drums, synth bass, "
-            "and shimmering synth pads. Feel-good energy with handclaps "
-            "and electric guitar accents. Instrumental, no vocals, no singing"
+            "acoustic pop, joyful, fingerpicked acoustic guitar, live drum kit, "
+            "upright bass, glockenspiel, handclaps, hi-fi, polished, wide stereo, "
+            "120 bpm"
         ),
         "key": "C major",
         "bpm": 120,
@@ -38,9 +60,8 @@ ACE_CAPTION_TEMPLATES: dict[str, dict[str, str | int]] = {
     },
     "indie_electronic": {
         "caption": (
-            "Dreamy indie electronic instrumental with analog synths, "
-            "a driving programmed beat, and arpeggiated melodies over warm pads. "
-            "Atmospheric and hypnotic. Instrumental, no vocals, no singing"
+            "indie electronic, dreamy, analog synth, electric bass, programmed "
+            "beat, electric piano, soft pad, polished, wide stereo, 110 bpm"
         ),
         "key": "A minor",
         "bpm": 110,
@@ -48,9 +69,8 @@ ACE_CAPTION_TEMPLATES: dict[str, dict[str, str | int]] = {
     },
     "tropical": {
         "caption": (
-            "A warm, sunny electronic pop instrumental with plucked guitar loops, "
-            "soft synth chords, light claps, and a groovy bass line. "
-            "Relaxed summer feel with airy pads. Instrumental, no vocals, no singing"
+            "tropical house, sunny, steel drums, nylon guitar, electric bass, "
+            "shaker, marimba, hi-fi, polished, wide stereo, 112 bpm"
         ),
         "key": "F major",
         "bpm": 112,
@@ -58,9 +78,8 @@ ACE_CAPTION_TEMPLATES: dict[str, dict[str, str | int]] = {
     },
     "cinematic": {
         "caption": (
-            "Epic cinematic orchestral instrumental with sweeping strings, "
-            "powerful brass, timpani hits, and emotional piano melodies. "
-            "Grand and dynamic. Instrumental, no vocals, no singing"
+            "orchestral, uplifting, warm string section, French horn, timpani, "
+            "harp, celeste, hi-fi, cinematic, 90 bpm"
         ),
         "key": "E minor",
         "bpm": 90,
@@ -68,9 +87,8 @@ ACE_CAPTION_TEMPLATES: dict[str, dict[str, str | int]] = {
     },
     "acoustic": {
         "caption": (
-            "Gentle acoustic folk instrumental with fingerpicked guitar, "
-            "soft brushed percussion, upright bass, and light piano. "
-            "Warm and heartfelt. Instrumental, no vocals, no singing"
+            "acoustic folk, tender, nylon guitar, upright bass, cello, brushed "
+            "drums, glockenspiel, analog warmth, intimate, 100 bpm"
         ),
         "key": "G major",
         "bpm": 100,
@@ -78,9 +96,8 @@ ACE_CAPTION_TEMPLATES: dict[str, dict[str, str | int]] = {
     },
     "future_bass": {
         "caption": (
-            "Energetic future bass instrumental with massive supersaw synths, "
-            "heavy sidechained bass drops, and snappy drums. "
-            "Euphoric and bouncy with bright lead melodies. Instrumental, no vocals, no singing"
+            "indie rock, driving, live drum kit, electric bass, electric guitar, "
+            "organ, tambourine, hi-fi, wide stereo, 150 bpm"
         ),
         "key": "Bb major",
         "bpm": 150,
@@ -88,9 +105,8 @@ ACE_CAPTION_TEMPLATES: dict[str, dict[str, str | int]] = {
     },
     "jazz": {
         "caption": (
-            "Smooth jazz instrumental with walking upright bass, brushed drums, "
-            "mellow jazz guitar, tenor saxophone solos, and Rhodes piano. "
-            "Sophisticated and laid-back. Instrumental, no vocals, no singing"
+            "jazz trio, relaxed, grand piano, upright bass, brushed drums, muted "
+            "trumpet, vibraphone, analog warmth, intimate, 95 bpm"
         ),
         "key": "F major",
         "bpm": 95,
@@ -98,9 +114,7 @@ ACE_CAPTION_TEMPLATES: dict[str, dict[str, str | int]] = {
     },
     "ambient": {
         "caption": (
-            "Lush ambient instrumental with ethereal reverb pads, "
-            "granular textures, soft piano notes, and subtle wind chimes. "
-            "Spacious and calming. Instrumental, no vocals, no singing"
+            "ambient, serene, felt piano, cello, harp, soft strings, hi-fi, intimate, 70 bpm"
         ),
         "key": "C major",
         "bpm": 70,
@@ -108,9 +122,8 @@ ACE_CAPTION_TEMPLATES: dict[str, dict[str, str | int]] = {
     },
     "holiday": {
         "caption": (
-            "Festive holiday instrumental with sleigh bells, glockenspiel, "
-            "warm orchestral strings, gentle brass, and soft piano. "
-            "Joyful and celebratory. Instrumental, no vocals, no singing"
+            "orchestral, festive, celeste, sleigh bells, warm strings, French horn, "
+            "harp, hi-fi, cinematic, 110 bpm"
         ),
         "key": "G major",
         "bpm": 110,
@@ -166,6 +179,125 @@ _SEASON_TAG_MODIFIERS = {
     "autumn": "warm, golden, mellow",
     "holiday": "festive, joyful, celebratory",
 }
+
+
+@dataclass(frozen=True)
+class MoodProfile:
+    """What a mood contributes: tempo, emotional register, production character."""
+
+    word: str
+    bpm: int
+    production: str
+
+
+@dataclass(frozen=True)
+class StyleProfile:
+    """What a style contributes: the genre anchor and the instruments to render."""
+
+    genre: str
+    instruments: str
+
+
+# Mood sets the tempo and feel; style sets the genre and instruments. Every
+# combination is a valid caption, so one mood no longer always sounds the same.
+MOOD_PROFILES: dict[str, MoodProfile] = {
+    "happy": MoodProfile("joyful", 120, "hi-fi, polished, wide stereo"),
+    "calm": MoodProfile("serene", 70, "hi-fi, intimate"),
+    "energetic": MoodProfile("driving", 150, "hi-fi, wide stereo"),
+    "nostalgic": MoodProfile("wistful", 75, "analog warmth, tape saturation"),
+    "tender": MoodProfile("tender", 100, "analog warmth, intimate"),
+}
+
+STYLE_PROFILES: dict[str, StyleProfile] = {
+    "acoustic": StyleProfile(
+        "acoustic folk",
+        "fingerpicked acoustic guitar, upright bass, brushed drums, glockenspiel",
+    ),
+    "orchestral": StyleProfile(
+        "orchestral",
+        "warm string section, French horn, harp, celeste, timpani",
+    ),
+    "jazz": StyleProfile(
+        "jazz trio",
+        "grand piano, double bass, brushed drums, muted trumpet, vibraphone",
+    ),
+    "indie": StyleProfile(
+        "indie rock",
+        "electric guitar, live drum kit, electric bass, organ, tambourine",
+    ),
+    "funk": StyleProfile(
+        "funk soul",
+        "Wurlitzer electric piano, horn section, electric bass, clavinet, congas",
+    ),
+}
+
+# Memory types that suggest a style; otherwise the style is sampled for variety.
+_MEMORY_TYPE_TO_STYLE: dict[str, str] = {
+    "year_in_review": "orchestral",
+    "person_spotlight": "acoustic",
+    "trip": "indie",
+    "on_this_day": "jazz",
+}
+
+_MOOD_ALIASES: dict[str, str] = {
+    "upbeat": "happy",
+    "fun": "happy",
+    "sunny": "happy",
+    "playful": "happy",
+    "exciting": "energetic",
+    "uplifting": "energetic",
+    "inspiring": "energetic",
+    "peaceful": "calm",
+    "mysterious": "calm",
+    "dreamy": "calm",
+    "cozy": "calm",
+    "melancholic": "nostalgic",
+    "sad": "nostalgic",
+    "groovy": "nostalgic",
+    "jazzy": "nostalgic",
+    "dramatic": "orchestral_mood",
+    "romantic": "tender",
+    "warm": "tender",
+    "holiday": "tender",
+    "festive": "happy",
+    "hopeful": "tender",
+}
+
+
+def resolve_mood(mood: str) -> str:
+    """Map any mood phrase onto one of the five profiles."""
+    words = [w.strip(",.! ") for w in mood.lower().split() if w.strip(",.! ")]
+    for word in words:
+        if word in MOOD_PROFILES:
+            return word
+    for word in words:
+        alias = _MOOD_ALIASES.get(word)
+        if alias in MOOD_PROFILES:
+            return alias
+    return "happy"
+
+
+def pick_style(memory_type: str | None = None, style: str | None = None) -> str:
+    """Choose the style for this generation.
+
+    An explicit style wins, then a memory type with a natural fit; otherwise one
+    is sampled so repeated memories of the same mood do not all sound alike.
+    """
+    if style in STYLE_PROFILES:
+        return style
+    if memory_type and memory_type in _MEMORY_TYPE_TO_STYLE:
+        return _MEMORY_TYPE_TO_STYLE[memory_type]
+    return random.choice(sorted(STYLE_PROFILES))
+
+
+def compose_caption(mood_key: str, style_key: str) -> tuple[str, int]:
+    """Build the caption on ACE-Step's documented order, plus its BPM."""
+    profile, style = MOOD_PROFILES[mood_key], STYLE_PROFILES[style_key]
+    caption = (
+        f"{style.genre}, {profile.word}, {style.instruments}, "
+        f"{profile.production}, {profile.bpm} bpm"
+    )
+    return caption, profile.bpm
 
 
 @dataclass
@@ -268,45 +400,27 @@ def build_ace_caption_structured(
     season: str | None = None,
     scene_moods: list[str] | None = None,
     memory_type: str | None = None,
+    style: str | None = None,
 ) -> ACECaptionResult:
-    """Build structured ACE-Step caption with explicit musical parameters.
+    """Build a structured ACE-Step caption from the mood x style matrix.
 
-    Returns an ACECaptionResult with caption text, lyrics, and separate
-    bpm/key_scale/time_signature fields for the API.
-
-    Args:
-        mood: Mood string (e.g. "happy", "nostalgic")
-        season: Optional season modifier ("winter", "summer", etc.)
-        scene_moods: Optional list of per-scene mood strings for voting.
-        memory_type: Optional memory type preset for template selection.
-            Takes priority over mood when a known mapping exists.
-
-    Returns:
-        ACECaptionResult with all fields populated.
+    Mood decides tempo and emotional register; style decides genre and
+    instruments. Without an explicit style one is sampled, so repeated memories
+    of the same mood do not all come back sounding the same.
     """
-    # Memory type takes priority for template selection
-    if memory_type and memory_type in _MEMORY_TYPE_TO_TEMPLATE:
-        template_name = _MEMORY_TYPE_TO_TEMPLATE[memory_type]
-    elif scene_moods:
-        template_name = _pick_template_for_scenes(scene_moods)
-    else:
-        template_name = _match_template(mood)
+    mood_key = resolve_mood(scene_moods[0] if scene_moods else mood)
+    style_key = pick_style(memory_type=memory_type, style=style)
+    caption, bpm = compose_caption(mood_key, style_key)
 
-    template = ACE_CAPTION_TEMPLATES[template_name]
-
-    # Use the descriptive caption directly from the template
-    caption = str(template["caption"])
-
-    # Add seasonal modifier if not already implied by the template
     if season:
         modifier = _SEASON_TAG_MODIFIERS.get(season.lower(), "")
         if modifier:
-            caption = f"{caption}. {modifier}"
+            caption = f"{caption}, {modifier}"
 
     return ACECaptionResult(
         caption=caption,
         lyrics="[Instrumental]",
-        bpm=int(template["bpm"]),
-        key_scale=str(template["key"]),
-        time_signature=str(template["time_signature"]),
+        bpm=bpm,
+        key_scale="",
+        time_signature=normalize_time_signature("4"),
     )

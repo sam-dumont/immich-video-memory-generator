@@ -143,10 +143,28 @@ ace_step:
   mode: "lib"
   model_variant: "acestep-v15-xl-turbo"
   lm_model_size: "4B"
+  use_lm: false            # See "Thinking mode" below
 
 musicgen:
   enabled: false           # Not needed: local Demucs handles stems
 ```
+
+### Thinking mode (`use_lm`)
+
+Off by default. When on, ACE-Step's 5Hz language model rewrites your caption and
+invents its own genre metadata before the audio model ever sees the prompt, which
+pulls instrumental briefs off-target. It also dominates generation time — a 60 s
+track took ~45 s with it on and ~17 s with it off.
+
+Turn it on only if you want the model to elaborate a vague brief. The music
+prompts this project ships are already written the way ACE-Step's own guides
+recommend (genre first, then mood, instruments, production tags and BPM), so
+they do not need rewriting.
+
+:::note Upgrading
+`use_lm` previously defaulted to `true`. If your `config.yaml` sets it
+explicitly, set it to `false` to pick up the improved output.
+:::
 
 Install the tested ACE-Step 1.5 release into the same Python 3.12 environment as
 `immich-memories`. ACE-Step's full UI dependency set currently conflicts with the app's Starlette

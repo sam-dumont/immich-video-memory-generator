@@ -227,7 +227,7 @@ ace_step:
   api_key: ""                    # Bearer token for a protected ACE-Step server (api mode)
   model_variant: "turbo"         # Default 2B; use acestep-v15-xl-turbo for the 4B production profile
   lm_model_size: "1.7B"          # Default planner; use 4B with the XL production profile
-  use_lm: true
+  use_lm: false
   num_versions: 3                # 1-5
   hemisphere: "north"
   timeout_seconds: 3600          # 60-18000

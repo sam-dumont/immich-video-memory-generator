@@ -378,10 +378,12 @@ class TestACEStepBackendV15Library:
         return {"mlx": mlx_package, "mlx.core": mlx_core, "mlx.utils": mlx_utils}
 
     def test_v15_library_bounds_mlx_memory_before_handler_init(self, tmp_path):
-        """VAE chunk + MLX cache limit must be in place before ACE-Step builds handlers.
+        """The MLX cache limit must be in place before ACE-Step builds handlers.
 
-        ACE-Step caches its GPU config on first handler construction, so a
-        chunk override applied afterwards is ignored.
+        ACE-Step caches its GPU config on first handler construction, so limits
+        applied afterwards are ignored. The decode chunk is deliberately left
+        alone: ACE-Step sizes it from unified memory, and clamping it to the
+        small-machine value audibly smeared the output.
         """
         captured = {}
         modules, _ = self._fake_v15_modules(tmp_path, captured)
@@ -414,10 +416,10 @@ class TestACEStepBackendV15Library:
             handler = backend._pipeline.dit_handler
 
         seen = captured["env_at_handler_init"]
-        assert seen["chunk"] == "256"
+        assert seen["chunk"] is None, "ACE-Step must choose the decode chunk itself"
         assert seen["tqdm"] == "1"
         assert seen["cache_limits"] == [4 * 1024**3]
-        assert handler.mlx_vae_chunk_size == 256
+        assert handler.mlx_vae_chunk_size == 2048
 
     @pytest.mark.parametrize("upstream_fails", [False, True])
     def test_v15_library_releases_mlx_cache_after_generation(self, tmp_path, upstream_fails):
@@ -526,14 +528,23 @@ class TestACEStepBackendV15Library:
         assert params["weight"].dtype == "bfloat16"
         assert params["step"] == 3  # non-array leaves untouched
 
-    def test_invalid_vae_chunk_override_falls_back_to_default(self, tmp_path):
+    def test_invalid_vae_chunk_override_defers_to_ace_step(self, tmp_path):
         from immich_memories.audio.generators.ace_step_backend import _bound_mlx_memory
 
         with (
             patch.dict(sys.modules, self._fake_mlx_modules({})),
             patch.dict(os.environ, {"ACESTEP_MLX_VAE_CHUNK": "not-a-number"}),
         ):
-            assert _bound_mlx_memory() == 256
+            assert _bound_mlx_memory() is None
+
+    def test_explicit_vae_chunk_override_is_honoured(self, tmp_path):
+        from immich_memories.audio.generators.ace_step_backend import _bound_mlx_memory
+
+        with (
+            patch.dict(sys.modules, self._fake_mlx_modules({})),
+            patch.dict(os.environ, {"ACESTEP_MLX_VAE_CHUNK": "512"}),
+        ):
+            assert _bound_mlx_memory() == 512
 
     @pytest.mark.parametrize(
         ("variant", "expected_model", "expected_steps", "expected_shift"),
