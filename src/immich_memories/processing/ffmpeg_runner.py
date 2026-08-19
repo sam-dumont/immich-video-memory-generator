@@ -7,7 +7,7 @@ import logging
 import re
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from threading import Thread
 from typing import IO
@@ -21,6 +21,7 @@ __all__ = [
     "_parse_ffmpeg_progress",
     "_run_ffmpeg_with_progress",
     "drain_stderr_tail",
+    "write_frames_to_ffmpeg",
 ]
 
 FFMPEG_STDERR_TAIL_BYTES = 64 * 1024
@@ -44,6 +45,50 @@ def drain_stderr_tail(
         tail.extend(chunk)
         if len(tail) > limit:
             del tail[:-limit]
+
+
+def write_frames_to_ffmpeg(
+    cmd: list[str],
+    frames: Iterable[bytes],
+    *,
+    wait_timeout: float,
+    stderr_limit: int = FFMPEG_STDERR_TAIL_BYTES,
+) -> tuple[int, str]:
+    """Feed frames to FFmpeg's stdin while draining its stderr, and report both.
+
+    Every caller that pipes frames in has to do this the same way, and getting
+    it wrong hangs the render rather than failing it: FFmpeg writes progress to
+    stderr from its transcode loop, stops reading stdin once that 64 KB pipe is
+    full, and the writer blocks forever at 0% CPU. Reading stderr after wait()
+    is too late by definition.
+
+    Returns the exit code and the tail of stderr. stdin is closed and the reader
+    joined even when the frame iterator raises, so a failure part-way through
+    cannot leak the process.
+    """
+    process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    assert process.stdin is not None
+    assert process.stderr is not None
+
+    tail = bytearray()
+    reader = Thread(
+        target=drain_stderr_tail,
+        args=(process.stderr, tail),
+        kwargs={"limit": stderr_limit},
+        daemon=True,
+    )
+    reader.start()
+
+    try:
+        for frame in frames:
+            process.stdin.write(frame)
+    finally:
+        with contextlib.suppress(OSError):
+            process.stdin.close()
+        process.wait(timeout=wait_timeout)
+        reader.join(timeout=10)
+
+    return process.returncode, bytes(tail).decode(errors="replace").strip()
 
 
 @dataclass

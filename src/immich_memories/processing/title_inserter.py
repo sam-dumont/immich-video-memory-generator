@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -16,6 +16,7 @@ from immich_memories.processing.assembly_config import (
 )
 from immich_memories.processing.encoding_plan import HdrTransfer
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
+from immich_memories.processing.ffmpeg_runner import write_frames_to_ffmpeg
 from immich_memories.processing.hdr_utilities import _get_colorspace_filter
 from immich_memories.processing.scaling_utilities import aggregate_mood_from_clips
 
@@ -118,25 +119,26 @@ class TitleInserter:
             str(output_path),
         ]  # fmt: skip
 
-        try:
-            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-            frame_count = 0
+        frame_count = 0
+
+        def _frames() -> Iterator[bytes]:
+            nonlocal frame_count
             max_frames = fps * 1  # 1 second
             for frame in decoder:
                 if frame_count >= max_frames:
                     break
-                proc.stdin.write(frame.data)  # type: ignore[union-attr]
+                yield frame.data
                 frame_count += 1
-            proc.stdin.close()  # type: ignore[union-attr]
-            proc.wait(timeout=30)
-            if proc.returncode == 0 and output_path.exists():
+
+        try:
+            returncode, stderr = write_frames_to_ffmpeg(cmd, _frames(), wait_timeout=30)
+            if returncode == 0 and output_path.exists():
                 logger.info(
                     f"Pre-rendered first clip ({frame_count} frames, "
                     f"{target_w}x{target_h}): {output_path}"
                 )
                 return output_path
-            stderr = proc.stderr.read().decode()[-200:] if proc.stderr else ""
-            logger.warning(f"Pre-render encode failed: {stderr}")
+            logger.warning(f"Pre-render encode failed: {stderr[-200:]}")
         except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.warning("Failed to pre-render first clip: %s", e, exc_info=True)
         return None

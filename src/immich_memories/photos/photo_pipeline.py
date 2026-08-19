@@ -12,6 +12,7 @@ import logging
 import operator
 import random
 import subprocess
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,7 @@ from immich_memories.photos.renderer import (
 )
 from immich_memories.photos.scoring import score_photo
 from immich_memories.processing.assembly_config import AssemblyClip
+from immich_memories.processing.ffmpeg_runner import write_frames_to_ffmpeg
 
 logger = logging.getLogger(__name__)
 
@@ -583,7 +585,15 @@ def _stream_render_to_mp4(
             logger.warning("zscale not available — rendering photo as SDR")
             vf = "format=yuv420p"
 
-    proc = subprocess.Popen(
+    def _frames() -> Iterator[bytes]:
+        use_16bit = pix_fmt == "rgb48le"
+        for frame in render_ken_burns_streaming(img, target_w, target_h, params):
+            if use_16bit:
+                yield (np.clip(frame * 65535, 0, 65535).astype(np.uint16)).tobytes()
+            else:
+                yield (np.clip(frame * 255, 0, 255).astype(np.uint8)).tobytes()
+
+    returncode, stderr_text = write_frames_to_ffmpeg(
         [
             "ffmpeg",
             "-y",
@@ -613,26 +623,12 @@ def _stream_render_to_mp4(
             "-shortest",
             str(output_path),
         ],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
+        _frames(),
+        wait_timeout=300,
     )
 
-    assert proc.stdin is not None
-    use_16bit = pix_fmt == "rgb48le"
-    for frame in render_ken_burns_streaming(img, target_w, target_h, params):
-        if use_16bit:
-            frame_bytes = (np.clip(frame * 65535, 0, 65535).astype(np.uint16)).tobytes()
-        else:
-            frame_bytes = (np.clip(frame * 255, 0, 255).astype(np.uint8)).tobytes()
-        proc.stdin.write(frame_bytes)
-
-    proc.stdin.close()
-    proc.wait(timeout=300)
-
-    if proc.returncode != 0:
-        stderr_text = proc.stderr.read().decode(errors="replace") if proc.stderr else ""
-        raise RuntimeError(f"Photo FFmpeg encoding failed (exit {proc.returncode}): {stderr_text}")
+    if returncode != 0:
+        raise RuntimeError(f"Photo FFmpeg encoding failed (exit {returncode}): {stderr_text}")
 
 
 def _get_photo_encoder_args() -> list[str]:
