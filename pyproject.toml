@@ -434,13 +434,6 @@ disable_error_code = ["attr-defined", "call-overload", "union-attr", "assignment
 # API client with dynamic JSON responses
 [[tool.mypy.overrides]]
 module = [
-    "immich_memories.api.immich",
-]
-disable_error_code = ["attr-defined", "arg-type", "return-value"]
-
-# Streamlit UI with dynamic session state
-[[tool.mypy.overrides]]
-module = [
     "immich_memories.ui.components",
     "immich_memories.ui.app",
     "immich_memories.ui.pages._step4_music",
@@ -451,14 +444,6 @@ module = [
 disable_error_code = ["assignment", "misc", "arg-type", "import-untyped", "attr-defined", "func-returns-value"]
 
 # Audio mood analyzer with dynamic LLM outputs
-[[tool.mypy.overrides]]
-module = [
-    "immich_memories.audio.mood_analyzer",
-    "immich_memories.audio.mood_analyzer_backends",
-]
-disable_error_code = ["dict-item"]
-
-# Audio content analyzer with PANNs
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.audio.content_analyzer",
@@ -474,21 +459,6 @@ module = [
 disable_error_code = ["valid-type", "misc", "call-arg"]
 
 # Audio mixer with optional path types
-[[tool.mypy.overrides]]
-module = ["immich_memories.audio.mixer_class"]
-disable_error_code = ["assignment"]
-
-# Local Demucs backend imports its optional package lazily at runtime.
-[[tool.mypy.overrides]]
-module = ["immich_memories.audio.generators.demucs_local"]
-disable_error_code = ["import-not-found"]
-
-# Video cache with Immich client compatibility
-[[tool.mypy.overrides]]
-module = ["immich_memories.cache.video_cache"]
-disable_error_code = ["attr-defined"]
-
-# Taichi GPU renderers (uses Taichi-specific type annotations, absorbed particle/text mixins)
 [[tool.mypy.overrides]]
 module = [
     "immich_memories.titles.renderer_taichi",
@@ -519,11 +489,6 @@ module = ["immich_memories.titles.rendering_service"]
 disable_error_code = ["assignment", "misc", "attr-defined", "arg-type"]
 
 # Speech/audio-content analysis service (dynamic AudioContentAnalyzer typing)
-[[tool.mypy.overrides]]
-module = ["immich_memories.analysis.speech_analysis"]
-disable_error_code = ["var-annotated", "assignment", "attr-defined"]
-
-# Title generator with optional Taichi imports
 [[tool.mypy.overrides]]
 module = ["immich_memories.titles.generator"]
 disable_error_code = ["assignment", "misc"]

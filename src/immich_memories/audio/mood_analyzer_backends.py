@@ -187,7 +187,9 @@ class OpenAICompatibleMoodAnalyzer(MoodAnalyzer):
     ) -> VideoMood:
         """Analyze frames using OpenAI Vision."""
         # Build content with images
-        content = [{"type": "text", "text": MOOD_ANALYSIS_PROMPT}]
+        # Vision message parts: a text part, then one image_url part per frame,
+        # so the values are not all strings.
+        content: list[dict[str, object]] = [{"type": "text", "text": MOOD_ANALYSIS_PROMPT}]
 
         for path in frame_paths[:4]:  # Limit to 4 images
             with path.open("rb") as f:

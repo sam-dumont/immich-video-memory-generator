@@ -72,6 +72,7 @@ class AudioMixer:
         video_duration = get_video_duration(video_path)
 
         # Get or select music
+        selected_music: Path | None
         if music_path and music_path.exists():
             selected_music = music_path
         elif auto_select:

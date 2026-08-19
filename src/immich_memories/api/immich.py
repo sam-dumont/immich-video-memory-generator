@@ -312,6 +312,10 @@ class ImmichClient:
     async def get_current_user(self) -> UserInfo:
         """Get current user information."""
         data = await self._request("GET", "/users/me")
+        if not isinstance(data, dict):
+            raise ImmichAPIError(
+                f"Unexpected API response format: expected object, got {type(data).__name__}"
+            )
         try:
             return UserInfo(**data)
         except ValidationError as e:

@@ -11,7 +11,7 @@ import logging
 import operator
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 
@@ -103,6 +103,18 @@ def transcription_window(audio_len_seconds: float, start: float, end: float) -> 
     return (hi - TRANSCRIPTION_WINDOW_SECONDS, hi)
 
 
+class AudioAnalyzer(Protocol):
+    """What this module needs from a PANNs analyzer.
+
+    Stated as a Protocol rather than importing the concrete class: PANNs is an
+    optional dependency, so the type has to be describable without it. The
+    parameter used to be `object`, which is honest about the import and useless
+    about the contract -- calling .analyze on it needed the error suppressed.
+    """
+
+    def analyze(self, video_path: Path, duration: float | None = ...) -> AudioAnalysisResult: ...
+
+
 class SpeechAnalysisService:
     """Audio-content (PANNs) and VAD speech-boundary analysis.
 
@@ -116,7 +128,7 @@ class SpeechAnalysisService:
         audio_content_config: AudioContentConfig,
         speech_config: SpeechConfig | None = None,
         audio_content_enabled: bool = False,
-        audio_analyzer: object | None = None,
+        audio_analyzer: AudioAnalyzer | None = None,
         transcription_config: TranscriptionConfig | None = None,
         transcriber: Transcriber | None = None,
     ):

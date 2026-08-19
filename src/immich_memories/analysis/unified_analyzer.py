@@ -35,7 +35,7 @@ from immich_memories.analysis.segment_generation import (
     score_segment_audio,
 )
 from immich_memories.analysis.segment_transcription import transcribe_top_segments
-from immich_memories.analysis.speech_analysis import SpeechAnalysisService
+from immich_memories.analysis.speech_analysis import AudioAnalyzer, SpeechAnalysisService
 
 if TYPE_CHECKING:
     from immich_memories.analysis.content_analyzer import ContentAnalyzer
@@ -98,7 +98,7 @@ class UnifiedSegmentAnalyzer:
         max_optimal_duration: float = 10.0,
         target_extraction_ratio: float = 0.15,
         duration_weight: float = 0.15,
-        audio_analyzer: object | None = None,
+        audio_analyzer: AudioAnalyzer | None = None,
         *,
         audio_content_config: AudioContentConfig,
         analysis_config: AnalysisConfig,
