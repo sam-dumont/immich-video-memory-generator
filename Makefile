@@ -94,14 +94,17 @@ install-acestep:  ## Install the tested ACE-Step 1.5 inference stack (music gene
 	  'vector-quantize-pytorch>=1.27.15'
 	@uv run python -c "from immich_memories.audio.generators.ace_step_backend import ACEStepBackend; import torch, torchvision.ops as o; o.nms(torch.zeros((0,4)), torch.zeros((0,)), 0.5); print('ACE-Step stack OK')"
 
-# Install dev tools only (no GPU/CUDA/audio-ml/face deps — for CI quality gates)
+# Install dev tools only (no GPU/CUDA/audio-ml/face deps — for CI quality gates).
+# --locked: CI must install exactly what uv.lock pins, since that is what
+# `make pip-audit` audits. Without it a fresh resolve can install something
+# the audit never saw.
 dev-ci:
-	uv sync --extra dev
+	uv sync --extra dev --locked
 
 # Install dev + GPU + speech extras for CI test jobs (taichi/freetype/onnxruntime,
 # no torch/nvidia -- FireRedVAD is the only speech engine and needs neither)
 dev-test:
-	uv sync --extra dev --extra gpu --extra speech
+	uv sync --extra dev --extra gpu --extra speech --locked
 
 # Install with macOS-specific extras (Apple Vision, Metal GPU, etc.)
 dev-mac:
@@ -438,11 +441,21 @@ diff-cover:
 	uvx diff-cover coverage.xml --compare-branch=origin/main --fail-under=80
 
 # Dependency vulnerability audit
+# Fails closed: a truncated export or a crashed pip-audit must not read as a clean audit.
 pip-audit:  ## Check dependencies for known vulnerabilities (warns on unfixable, fails on fixable)
-	uv export --frozen --extra dev --no-emit-project --no-hashes \
-		| grep -v -e '^audioop-lts==' > /tmp/pip-audit-reqs.txt
-	uvx pip-audit -r /tmp/pip-audit-reqs.txt --strict 2>&1 | python3 scripts/pip_audit_smart.py; \
-		EXIT=$$?; rm -f /tmp/pip-audit-reqs.txt; exit $$EXIT
+	@set -eu; \
+	REQS=$$(mktemp "$${TMPDIR:-/tmp}/pip-audit-reqs.XXXXXX"); \
+	OUT=$$(mktemp "$${TMPDIR:-/tmp}/pip-audit-out.XXXXXX"); \
+	trap 'rm -f "$$REQS" "$$OUT"' EXIT; \
+	uv export --frozen --extra dev --no-emit-project --no-hashes > "$$REQS"; \
+	COUNT=$$(grep -c '==' "$$REQS" || true); \
+	if [ "$$COUNT" -lt 50 ]; then \
+		echo "uv export produced $$COUNT pinned packages - too few to be the real dependency set, refusing to report a clean audit"; \
+		exit 2; \
+	fi; \
+	echo "auditing $$COUNT pinned packages"; \
+	set +e; uvx pip-audit -r "$$REQS" --strict > "$$OUT" 2>&1; AUDIT_EXIT=$$?; set -e; \
+	python3 scripts/pip_audit_smart.py --audit-exit "$$AUDIT_EXIT" < "$$OUT"
 
 diff-cover-local:  ## Check diff-cover locally before pushing (runs tests + merges integration coverage)
 	@echo "Running unit tests with coverage..."
