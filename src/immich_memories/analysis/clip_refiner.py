@@ -119,9 +119,14 @@ def enforce_photo_cap(
     photos.sort(key=lambda c: c.score, reverse=True)
     kept_photos = photos[:max_photos]
 
+    # WHY not "final": duration backfill runs after this and adds more clips, so
+    # the count here is the pool mid-refinement. A real run logged "2 photos
+    # (50% of 4 final clips)" and delivered a 13-clip video with 7 photos in it,
+    # which reads as the cap having been ignored rather than simply not final.
     logger.info(
         f"Photo cap: {len(photos)} → {len(kept_photos)} photos "
-        f"({max_ratio:.0%} of {len(videos) + len(kept_photos)} final clips)"
+        f"(at most {max_ratio:.0%} alongside {len(videos)} videos; "
+        f"backfill may add more)"
     )
 
     return videos + kept_photos
