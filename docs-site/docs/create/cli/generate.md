@@ -51,7 +51,14 @@ immich-memories generate [OPTIONS]
 | `--output` | `-O` | path | auto | Output file path |
 | `--title` | — | string | — | Override title screen text |
 | `--subtitle` | — | string | — | Override subtitle text |
-| `--add-date` | — | flag | — | Add date overlay to clips |
+| `--add-date` | — | flag | — | Caption each clip with its capture date |
+
+`--add-date` writes the clip's own capture date in the bottom-right corner, as
+`5 Jan 2026` — spelled out rather than formatted by locale, so the caption reads
+the same wherever it runs. Size and inset scale with the frame, so a 4K memory
+and a 720p one look alike. Title cards and clips without a date are left alone.
+On HDR output the caption is drawn at HLG graphics white rather than full white,
+which would otherwise glare above the picture's own diffuse white.
 
 When `--resolution` is omitted, the command uses `output.resolution` from the config (1080p by
 default). Pass `--resolution auto` explicitly when you want the source clips to choose the output

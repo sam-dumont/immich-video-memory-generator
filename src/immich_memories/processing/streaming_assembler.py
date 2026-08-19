@@ -38,6 +38,8 @@ from immich_memories.processing.streaming_audio import (
 if TYPE_CHECKING:
     from immich_memories.processing.probe_cache import ProbeCache
 
+from immich_memories.processing.clip_caption import caption_filter, caption_for
+
 logger = logging.getLogger(__name__)
 
 
@@ -90,6 +92,7 @@ class FrameDecoder:
         sdr_to_hdr_filter: str = "",
         input_seek: float = 0.0,
         audio_output: Path | None = None,
+        overlay_text: str = "",
     ) -> None:
         self._clip_path = clip_path
         self._input_seek = input_seek
@@ -109,6 +112,7 @@ class FrameDecoder:
         # Without this, SDR full-range data piped as yuv420p10le gets
         # interpreted as TV-range HLG = red/wrong tint.
         self._sdr_to_hdr_filter = sdr_to_hdr_filter
+        self._overlay_text = overlay_text
 
     def _build_vf(self) -> str:
         """Build the -vf filter chain matching filter_builder.build_clip_video_filter."""
@@ -176,6 +180,18 @@ class FrameDecoder:
         ):
             if color_filter:
                 parts.append(color_filter.removeprefix(","))
+
+        # Drawn last so the text is never scaled, padded or blurred with the
+        # source, and lands in target-frame coordinates.
+        if self._overlay_text:
+            parts.append(
+                caption_filter(
+                    self._overlay_text,
+                    self._width,
+                    self._height,
+                    is_hdr=self._pix_fmt != "rgb24",
+                )
+            )
 
         # Square pixels
         parts.append("setsar=1")
@@ -534,6 +550,7 @@ def _make_decoder(
     fps: int,
     ctx: Any | None = None,
     privacy_mode: bool = False,
+    date_overlay: bool = False,
     scale_mode: str = "black",
     hdr_type: str | None = None,
     audio_work_dir: Path | None = None,
@@ -590,6 +607,7 @@ def _make_decoder(
         sdr_to_hdr_filter=sdr_to_hdr_filter,
         input_seek=getattr(clip, "input_seek", 0.0),
         audio_output=audio_output,
+        overlay_text=caption_for(clip) if date_overlay and not is_title else "",
     )
 
 
@@ -627,6 +645,7 @@ def assemble_streaming(
     encoding_plan: EncodingPlan | None = None,
     ctx: Any | None = None,
     privacy_mode: bool = False,
+    date_overlay: bool = False,
     scale_mode: str = "blur",
     progress_callback: Callable[[int, int], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
@@ -670,6 +689,7 @@ def assemble_streaming(
             fallback_plan,
             ctx,
             privacy_mode,
+            date_overlay,
             scale_mode,
             progress_callback,
             frame_preview_callback,
@@ -701,6 +721,7 @@ def assemble_streaming(
             fps,
             ctx,
             privacy_mode,
+            date_overlay,
             scale_mode,
             hdr_type,
             progress_callback,
@@ -758,6 +779,7 @@ def _encode_clip_sequence(
     fps: int,
     ctx: Any | None,
     privacy_mode: bool,
+    date_overlay: bool,
     scale_mode: str,
     hdr_type: str | None,
     progress_callback: Callable[[int, int], None] | None,
@@ -781,6 +803,7 @@ def _encode_clip_sequence(
                 fps,
                 ctx,
                 privacy_mode,
+                date_overlay,
                 scale_mode,
                 hdr_type,
                 audio_work_dir=audio_work_dir,
@@ -815,6 +838,7 @@ def _encode_clip_sequence(
                 fps,
                 ctx,
                 privacy_mode,
+                date_overlay,
                 scale_mode,
                 hdr_type,
                 audio_work_dir=audio_work_dir,
@@ -864,6 +888,7 @@ def streaming_assemble_full(
     ctx: Any | None = None,
     normalize_audio: bool = True,
     privacy_mode: bool = False,
+    date_overlay: bool = False,
     scale_mode: str = "blur",
     progress_callback: Callable[[float, str], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
@@ -913,6 +938,7 @@ def streaming_assemble_full(
             encoding_plan=plan,
             ctx=ctx,
             privacy_mode=privacy_mode,
+            date_overlay=date_overlay,
             scale_mode=scale_mode,
             progress_callback=_frame_progress,
             frame_preview_callback=frame_preview_callback,

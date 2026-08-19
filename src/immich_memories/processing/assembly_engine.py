@@ -256,6 +256,7 @@ class AssemblyEngine:
             ctx=ctx,
             normalize_audio=self.settings.normalize_clip_audio,
             privacy_mode=self.settings.privacy_mode,
+            date_overlay=self.settings.add_date_overlay,
             scale_mode=self.settings.scale_mode,
             progress_callback=progress_callback,
             frame_preview_callback=frame_preview_callback,
