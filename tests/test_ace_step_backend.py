@@ -531,6 +531,7 @@ class TestACEStepBackendV15Library:
     def test_invalid_vae_chunk_override_defers_to_ace_step(self, tmp_path):
         from immich_memories.audio.generators.ace_step_backend import _bound_mlx_memory
 
+        # WHY: replaces MLX, absent off Apple Silicon, and the process environment.
         with (
             patch.dict(sys.modules, self._fake_mlx_modules({})),
             patch.dict(os.environ, {"ACESTEP_MLX_VAE_CHUNK": "not-a-number"}),
@@ -540,6 +541,7 @@ class TestACEStepBackendV15Library:
     def test_explicit_vae_chunk_override_is_honoured(self, tmp_path):
         from immich_memories.audio.generators.ace_step_backend import _bound_mlx_memory
 
+        # WHY: replaces MLX, absent off Apple Silicon, and the process environment.
         with (
             patch.dict(sys.modules, self._fake_mlx_modules({})),
             patch.dict(os.environ, {"ACESTEP_MLX_VAE_CHUNK": "512"}),

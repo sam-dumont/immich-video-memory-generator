@@ -392,6 +392,11 @@ module = [
 ignore_missing_imports = true
 
 # scipy lacks type stubs
+# Optional: only installed with the `music` extra, so CI's dev-only env lacks it.
+[[tool.mypy.overrides]]
+module = ["immich_memories_music", "immich_memories_music.*"]
+ignore_missing_imports = true
+
 [[tool.mypy.overrides]]
 module = ["scipy", "scipy.*"]
 ignore_missing_imports = true
