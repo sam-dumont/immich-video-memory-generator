@@ -876,9 +876,17 @@ class TestPhotoPlaceCaption:
         asset = _make_asset(id="place-001", exifInfo=exif, originalFileName="IMG_1.jpg")
 
         def download(asset_id, path):
-            cv2.imwrite(str(path), np.full((240, 320, 3), 128, dtype=np.uint8))
+            cv2.imwrite(str(path), np.full((120, 160, 3), 128, dtype=np.uint8))
 
-        clip = _render_single_photo(asset, PhotoConfig(), 640, 360, tmp_path, download)
+        # WHY the tiny frame and the shortest legal duration: this asserts
+        # which function supplies location_name, but reaches it through a real
+        # Ken Burns render so the test survives a refactor of the call site. At
+        # the 4s default that is 120 encoded frames to check one string -- 5.8s
+        # on CI, heavy enough that this test was the one in flight when a runner
+        # was OOM-killed. 30 frames at 320x180 prove the same thing.
+        config = PhotoConfig(duration=1.0)
+
+        clip = _render_single_photo(asset, config, 320, 180, tmp_path, download)
 
         assert clip is not None
         assert clip.location_name == clip_location_name(exif) == "Ghent, Belgium"
