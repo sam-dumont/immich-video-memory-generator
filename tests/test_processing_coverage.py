@@ -853,6 +853,37 @@ class TestRenderSinglePhoto:
         assert result is None
 
 
+class TestPhotoPlaceCaption:
+    """A photo and a video must caption a place the same way.
+
+    `--add-place` renders "City, Country" for a video, via clip_location_name.
+    The photo path attached the bare city, so one memory containing both showed
+    "Ghent, Belgium" under a video and "Ghent" under the photo beside it.
+    """
+
+    def test_a_photo_captions_a_place_like_a_video_does(self, tmp_path):
+        import cv2
+        import numpy as np
+
+        from immich_memories.api.models import ExifInfo
+        from immich_memories.config_models import PhotoConfig
+        from immich_memories.generate_privacy import clip_location_name
+        from immich_memories.photos.photo_pipeline import _render_single_photo
+
+        exif = ExifInfo(city="Ghent", country="Belgium")
+        # WHY .jpg: the download path takes its suffix from the filename, and
+        # the fixture default (.HEIC) is not something cv2 can write.
+        asset = _make_asset(id="place-001", exifInfo=exif, originalFileName="IMG_1.jpg")
+
+        def download(asset_id, path):
+            cv2.imwrite(str(path), np.full((240, 320, 3), 128, dtype=np.uint8))
+
+        clip = _render_single_photo(asset, PhotoConfig(), 640, 360, tmp_path, download)
+
+        assert clip is not None
+        assert clip.location_name == clip_location_name(exif) == "Ghent, Belgium"
+
+
 class TestStreamRenderToMp4:
     """Lines 377-540: FFmpeg streaming render (SDR and HDR paths)."""
 

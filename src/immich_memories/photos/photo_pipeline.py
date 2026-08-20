@@ -29,6 +29,7 @@ from immich_memories.analysis.unified_budget import (
 from immich_memories.api.immich import ImmichAPIError
 from immich_memories.api.models import Asset
 from immich_memories.config_models import PhotoConfig
+from immich_memories.generate_privacy import clip_location_name
 from immich_memories.photos.animator import prepare_photo_source
 from immich_memories.photos.renderer import (
     KenBurnsParams,
@@ -570,7 +571,7 @@ def _render_single_photo(
             is_photo=True,
             latitude=asset.exif_info.latitude if asset.exif_info else None,
             longitude=asset.exif_info.longitude if asset.exif_info else None,
-            location_name=asset.exif_info.city if asset.exif_info else None,
+            location_name=clip_location_name(asset.exif_info),
         )
 
     except (ImmichAPIError, OSError, subprocess.SubprocessError, ValueError) as e:
