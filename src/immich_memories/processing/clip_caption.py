@@ -18,6 +18,12 @@ _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
 _FONT_RATIO = 0.028
 _MARGIN_RATIO = 0.04
 
+# Vertical renders go to Reels, Shorts and Stories, which paint captions, the
+# handle and an action rail over roughly the bottom sixth of the frame. A
+# short-side inset puts the date underneath all of it, so portrait insets off
+# the height instead.
+_VERTICAL_BOTTOM_RATIO = 0.16
+
 # 0xBF is 75% of full range: HLG graphics white. Measured, plain white@0.85
 # draws at 872/1023 in a 10-bit pipe, which glares above the picture's own
 # diffuse white; this lands at 721.
@@ -42,16 +48,18 @@ def caption_filter(text: str, width: int, height: int, *, is_hdr: bool = False) 
 
     Sized and inset off the short side so the caption holds its proportions
     across output resolutions, with a drop shadow that keeps it legible over a
-    bright sky.
+    bright sky. Vertical output insets further from the bottom, where the
+    platforms draw their own UI.
     """
     short_side = min(width, height)
     font_size = max(12, round(short_side * _FONT_RATIO))
     margin = round(short_side * _MARGIN_RATIO)
+    bottom = round(height * _VERTICAL_BOTTOM_RATIO) if height > width else margin
     colour = _HDR_COLOUR if is_hdr else _SDR_COLOUR
     return (
         f"drawtext=text='{text}'"
         f":fontsize={font_size}"
         f":fontcolor={colour}"
         f":shadowcolor=black@0.6:shadowx=2:shadowy=2"
-        f":x=w-tw-{margin}:y=h-th-{margin}"
+        f":x=w-tw-{margin}:y=h-th-{bottom}"
     )

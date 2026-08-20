@@ -42,8 +42,8 @@ def grey_clip(tmp_path_factory) -> Path:
     return out
 
 
-def _first_frame(clip: Path, **kwargs) -> np.ndarray:
-    decoder = FrameDecoder(clip, width=640, height=360, fps=10, **kwargs)
+def _first_frame(clip: Path, width: int = 640, height: int = 360, **kwargs) -> np.ndarray:
+    decoder = FrameDecoder(clip, width=width, height=height, fps=10, **kwargs)
     return next(iter(decoder)).copy()
 
 
@@ -67,3 +67,41 @@ def test_the_caption_lands_in_the_bottom_corner(grey_clip: Path) -> None:
     assert cols.min() > 640 * 0.5, "caption is not on the right"
     assert rows.max() < 360, "caption runs off the bottom edge"
     assert cols.max() < 640, "caption runs off the right edge"
+
+
+@pytest.fixture(scope="module")
+def grey_portrait(tmp_path_factory) -> Path:
+    """A 9:16 clip, the shape Reels/Shorts/Stories actually receive."""
+    out = tmp_path_factory.mktemp("overlay9x16") / "grey.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=gray:size=360x640:rate=10:duration=1",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(out),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return out
+
+
+def test_a_vertical_caption_sits_above_the_platform_chrome(grey_portrait: Path) -> None:
+    plain = _first_frame(grey_portrait, width=360, height=640)
+    captioned = _first_frame(grey_portrait, width=360, height=640, overlay_text="5 Jan 2026")
+
+    changed = np.argwhere(np.any(plain != captioned, axis=-1))
+    assert changed.size, "overlay changed nothing"
+
+    lowest = changed[:, 0].max()
+    chrome_top = 640 * (1 - 0.15)
+    assert lowest < chrome_top, (
+        f"caption reaches row {lowest}; the platform UI starts around {chrome_top:.0f}"
+    )

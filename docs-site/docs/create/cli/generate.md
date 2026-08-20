@@ -60,6 +60,11 @@ and a 720p one look alike. Title cards and clips without a date are left alone.
 On HDR output the caption is drawn at HLG graphics white rather than full white,
 which would otherwise glare above the picture's own diffuse white.
 
+With `--orientation portrait` the caption is inset further from the bottom —
+about a sixth of the frame height — to clear the captions, handle and action
+rail that Reels, Shorts and Stories draw over the lower part of a 9:16 video.
+Landscape output keeps the tighter inset, having no chrome to dodge.
+
 When `--resolution` is omitted, the command uses `output.resolution` from the config (1080p by
 default). Pass `--resolution auto` explicitly when you want the source clips to choose the output
 tier. `--quality` changes the effective CRF preset; an explicit `output.crf` in config remains the
