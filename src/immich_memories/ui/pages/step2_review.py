@@ -99,7 +99,10 @@ def _render_step2_header(state) -> bool:
         from immich_memories.config import get_config
 
         _cfg = get_config()
-        state.thumbnail_cache = ThumbnailCache(cache_dir=_cfg.cache.cache_path / "thumbnails")
+        state.thumbnail_cache = ThumbnailCache(
+            cache_dir=_cfg.cache.cache_path / "thumbnails",
+            max_size_mb=_cfg.cache.thumbnail_cache_max_size_mb,
+        )
 
     # Load clips if not already loaded
     if not state.clips:

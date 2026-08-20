@@ -351,6 +351,17 @@ class CacheConfig(BaseModel):
         default=7, ge=1, le=365, description="Maximum age of cached video files in days"
     )
 
+    # Derived-media caches. These had no limit at all: on a real library that was
+    # 5.2 GB of previews and 3.5 GB of thumbnails, while the cache page reported
+    # thumbnails as capped at 500 MB. 500 is kept because it is the number users
+    # have already been shown -- it is now true.
+    thumbnail_cache_max_size_mb: float = Field(
+        default=500.0, ge=50, le=100_000, description="Maximum thumbnail cache size in MB"
+    )
+    preview_cache_max_size_mb: float = Field(
+        default=2000.0, ge=100, le=100_000, description="Maximum clip preview cache size in MB"
+    )
+
     @property
     def cache_path(self) -> Path:
         """Get the expanded cache directory path."""

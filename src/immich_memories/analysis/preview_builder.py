@@ -10,6 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.cache.disk_budget import evict_to_budget
 from immich_memories.processing.hardware import fast_encoder_args
 from immich_memories.security import sanitize_filename
 
@@ -25,18 +26,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Previews are now ~10 MB rather than ~72 MB, and they are reused across runs
-# instead of being rebuilt. A cap of 20 would evict a library's previews on
-# every pass and put the re-encode straight back. Real cache eviction is a
-# separate concern (see the cache page).
-_MAX_PREVIEWS = 200
+def _evict_oldest_previews(preview_dir: Path, max_size_mb: float) -> None:
+    """Bound the pipeline preview directory by size rather than file count.
 
-
-def _evict_oldest_previews(preview_dir: Path) -> None:
-    existing = sorted(preview_dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime)
-    for stale in existing[:-_MAX_PREVIEWS]:
-        with contextlib.suppress(OSError):
-            stale.unlink()
+    A count cap cannot answer "how much disk will this cost", which is the
+    question the cache page has to answer; a preview's size varies with the clip
+    it came from.
+    """
+    evict_to_budget(preview_dir, max_bytes=int(max_size_mb * 1_000_000), pattern="*.mp4")
 
 
 class PreviewBuilder:
@@ -276,7 +273,7 @@ class PreviewBuilder:
 
         preview_dir = self._cache_config.cache_path / "previews"
         preview_dir.mkdir(parents=True, exist_ok=True)
-        _evict_oldest_previews(preview_dir)
+        _evict_oldest_previews(preview_dir, self._cache_config.preview_cache_max_size_mb)
 
         # Named after the asset because find_cached_preview looks previews up by
         # it. The previous `preview_<ms-timestamp>.mp4` could never be matched,

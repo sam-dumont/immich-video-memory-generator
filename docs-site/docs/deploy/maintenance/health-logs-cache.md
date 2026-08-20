@@ -107,7 +107,20 @@ cache:
   video_cache_enabled: true
   video_cache_max_size_gb: 10.0     # Max disk usage for downloaded videos
   video_cache_max_age_days: 7       # Evict videos older than this
+  thumbnail_cache_max_size_mb: 500  # Max disk for Immich thumbnails
+  preview_cache_max_size_mb: 2000   # Max disk for clip previews
 ```
+
+### Thumbnails and previews
+
+Thumbnails (`thumbnails/`) and clip previews (`preview-cache/`, `previews/`) are
+derived from your library rather than downloaded from it, so they are cheap to
+rebuild and get smaller budgets than the video cache. Each is evicted
+least-recently-used once it goes over its limit.
+
+Before these limits existed neither directory had a cap or an expiry, so both
+grew for as long as the app ran — on one real library, 5.2 GB of previews and
+3.5 GB of thumbnails.
 
 The `max_age_days` at the top level controls the analysis database cache (SQLite), not the video file cache. The `video_cache_*` fields control the file-based video cache.
 

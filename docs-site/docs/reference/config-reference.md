@@ -459,9 +459,13 @@ cache:
   video_cache_enabled: true      # Cache downloaded videos locally
   video_cache_max_size_gb: 10.0  # Max disk usage for video cache (1-500 GB)
   video_cache_max_age_days: 7    # Auto-delete cached videos older than this (1-365)
+  thumbnail_cache_max_size_mb: 500.0   # Max disk for Immich thumbnails (50 MB-100 GB)
+  preview_cache_max_size_mb: 2000.0    # Max disk for clip previews (100 MB-100 GB)
 ```
 
 The video cache defaults to 10 GB. If you're tight on disk, lower `video_cache_max_size_gb` or disable it entirely with `video_cache_enabled: false`.
+
+Thumbnails and clip previews are derived from your library and are cheap to rebuild, so they get their own smaller budgets. Each is evicted least-recently-used once it exceeds its limit — a file you keep opening keeps earning its place.
 
 ## Server (UI)
 

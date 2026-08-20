@@ -6,14 +6,23 @@ import contextlib
 import logging
 from pathlib import Path
 
+from immich_memories.cache.disk_budget import evict_to_budget
+
 logger = logging.getLogger(__name__)
 
 
 class ThumbnailCache:
     """Simple file-based cache for Immich thumbnails."""
 
-    def __init__(self, cache_dir: Path) -> None:
+    # Scanning the tree on every put would make each thumbnail O(cache size).
+    # Checking every so often bounds the overshoot to roughly this many files'
+    # worth of data, which at thumbnail sizes is a few MB.
+    _PUTS_BETWEEN_BUDGET_CHECKS = 200
+
+    def __init__(self, cache_dir: Path, max_size_mb: float = 500.0) -> None:
         self.cache_dir = cache_dir
+        self.max_size_mb = max_size_mb
+        self._puts_since_check = 0
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _path(self, asset_id: str, size: str) -> Path:
@@ -41,7 +50,19 @@ class ThumbnailCache:
         path = self._path(asset_id, size)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
+        self._puts_since_check += 1
+        if self._puts_since_check >= self._PUTS_BETWEEN_BUDGET_CHECKS:
+            self.enforce_budget()
         return path
+
+    def enforce_budget(self) -> int:
+        """Drop the least recently used thumbnails until the cache fits."""
+        self._puts_since_check = 0
+        return evict_to_budget(
+            self.cache_dir,
+            max_bytes=int(self.max_size_mb * 1_000_000),
+            pattern="*.jpg",
+        )
 
     def clear(self) -> int:
         """Remove all cached thumbnails. Returns count of removed files."""
@@ -59,7 +80,7 @@ class ThumbnailCache:
         return count
 
     def get_stats(self) -> dict:
-        max_size_mb = 500.0  # Default max thumbnail cache size
+        max_size_mb = self.max_size_mb
         if not self.cache_dir.exists():
             return {"file_count": 0, "total_size_bytes": 0, "max_size_mb": max_size_mb}
 

@@ -86,7 +86,10 @@ def render_cache_management() -> None:
                 _cfg = get_config()
                 analysis = VideoAnalysisCache(db_path=_cfg.cache.database_path)
                 video = VideoDownloadCache(cache_dir=_cfg.cache.video_cache_path)
-                thumbnail = ThumbnailCache(cache_dir=_cfg.cache.cache_path / "thumbnails")
+                thumbnail = ThumbnailCache(
+                    cache_dir=_cfg.cache.cache_path / "thumbnails",
+                    max_size_mb=_cfg.cache.thumbnail_cache_max_size_mb,
+                )
                 return {
                     "analysis": analysis.get_stats(),
                     "video": video.get_stats(),
@@ -147,7 +150,10 @@ def render_cache_management() -> None:
 
                     _cfg = get_config()
                     count = await io_bound_result(
-                        ThumbnailCache(cache_dir=_cfg.cache.cache_path / "thumbnails").clear
+                        ThumbnailCache(
+                            cache_dir=_cfg.cache.cache_path / "thumbnails",
+                            max_size_mb=_cfg.cache.thumbnail_cache_max_size_mb,
+                        ).clear
                     )
                     ui.notify(f"Cleared {count} cached thumbnails", type="positive")
                     await refresh_stats()
@@ -181,7 +187,10 @@ def render_cache_management() -> None:
                         _cfg = get_config()
                         a = VideoAnalysisCache(db_path=_cfg.cache.database_path).clear_all()
                         v = VideoDownloadCache(cache_dir=_cfg.cache.video_cache_path).clear()
-                        t = ThumbnailCache(cache_dir=_cfg.cache.cache_path / "thumbnails").clear()
+                        t = ThumbnailCache(
+                            cache_dir=_cfg.cache.cache_path / "thumbnails",
+                            max_size_mb=_cfg.cache.thumbnail_cache_max_size_mb,
+                        ).clear()
                         p = _clear_preview_cache()
                         return a + v + t + p
 

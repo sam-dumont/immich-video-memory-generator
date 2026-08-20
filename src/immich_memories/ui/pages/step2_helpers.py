@@ -7,6 +7,7 @@ from pathlib import Path
 
 from nicegui import ui
 
+from immich_memories.cache.disk_budget import evict_to_budget
 from immich_memories.ui.state import get_app_state
 
 logger = logging.getLogger(__name__)
@@ -159,6 +160,14 @@ def _download_immich_preview(asset_id: str, *, config=None) -> Path | None:
             video_bytes: bytes = client.get_video_playback(asset_id)
         if video_bytes and len(video_bytes) > 10_000:
             preview_path.write_bytes(video_bytes)
+            # This directory had no cap and no TTL; it reached 5.2 GB on a
+            # real library. Enforced on write because that is the only
+            # moment it grows.
+            evict_to_budget(
+                preview_dir,
+                max_bytes=int(config.cache.preview_cache_max_size_mb * 1_000_000),
+                pattern="*.mp4",
+            )
             return preview_path
         logger.warning(f"Immich preview too small for {asset_id}: {len(video_bytes)} bytes")
     except Exception as e:  # WHY: UI graceful degradation

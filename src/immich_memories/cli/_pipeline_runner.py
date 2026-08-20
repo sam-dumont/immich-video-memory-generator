@@ -358,7 +358,10 @@ def run_pipeline_and_generate(
     )
 
     analysis_cache = VideoAnalysisCache(db_path=config.cache.database_path)
-    thumbnail_cache = ThumbnailCache(cache_dir=config.cache.cache_path / "thumbnails")
+    thumbnail_cache = ThumbnailCache(
+        cache_dir=config.cache.cache_path / "thumbnails",
+        max_size_mb=config.cache.thumbnail_cache_max_size_mb,
+    )
     pipeline = SmartPipeline(
         client=client,
         analysis_cache=analysis_cache,
