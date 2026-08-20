@@ -107,6 +107,7 @@ def _detect_thumbnail_duplicates(
             clips=clips,
             thumbnail_cache=thumbnail_cache,
             duplicate_hash_threshold=get_config().analysis.duplicate_hash_threshold,
+            hash_cache=state.thumbnail_hashes,
         )
 
         for cluster in clusters:

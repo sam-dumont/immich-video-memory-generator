@@ -148,6 +148,10 @@ class AppState:
 
     # Caches (initialized at runtime)
     thumbnail_cache: ThumbnailCache | None = None
+    # Perceptual hashes keyed by asset id. Duplicate detection re-runs on
+    # every Step 2 render, and a thumbnail's hash cannot change while the
+    # file does not.
+    thumbnail_hashes: dict[str, str] = field(default_factory=dict)
     analysis_cache: Any = None  # AnalysisCache
 
     @property
@@ -178,6 +182,7 @@ class AppState:
         self.cancel_requested = False
         self.scored_photos = []
         self.photo_budget_result = None
+        self.thumbnail_hashes = {}
         self.discard_music_preview()
 
     def discard_music_preview(self) -> None:

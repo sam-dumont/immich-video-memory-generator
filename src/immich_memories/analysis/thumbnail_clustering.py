@@ -34,6 +34,8 @@ def _compute_thumbnail_hashes(
     clips: list[VideoClipInfo],
     thumbnail_cache: ThumbnailCache,
     progress_callback: Callable[[int, int], None] | None = None,
+    *,
+    known: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Compute perceptual hashes for all clip thumbnails.
 
@@ -41,6 +43,11 @@ def _compute_thumbnail_hashes(
         clips: List of video clip info objects.
         thumbnail_cache: Cache containing thumbnails.
         progress_callback: Optional callback(current, total) for progress.
+        known: Hashes already computed for these assets. A thumbnail's hash
+            cannot change while the file does not, so anything listed here is
+            reused rather than decoded again -- Step 2 re-runs duplicate
+            detection on every render, and each clip costs a read plus a JPEG
+            decode.
 
     Returns:
         Mapping of asset ID to hex hash string.
@@ -52,13 +59,19 @@ def _compute_thumbnail_hashes(
         if progress_callback:
             progress_callback(i + 1, total)
 
-        thumbnail_bytes = thumbnail_cache.get(clip.asset.id, "preview")
+        asset_id = clip.asset.id
+        cached = (known or {}).get(asset_id)
+        if cached:
+            hashes[asset_id] = cached
+            continue
+
+        thumbnail_bytes = thumbnail_cache.get(asset_id, "preview")
         if thumbnail_bytes is None:
             continue
 
         hash_value = compute_thumbnail_hash(thumbnail_bytes)
         if hash_value:
-            hashes[clip.asset.id] = hash_value
+            hashes[asset_id] = hash_value
 
     return hashes
 
@@ -181,6 +194,7 @@ def cluster_thumbnails(
     progress_callback: Callable[[int, int], None] | None = None,
     *,
     duplicate_hash_threshold: int,
+    hash_cache: dict[str, str] | None = None,
 ) -> list[ThumbnailCluster]:
     """Cluster clips by thumbnail similarity.
 
@@ -202,7 +216,9 @@ def cluster_thumbnails(
     if threshold is None:
         threshold = duplicate_hash_threshold
 
-    hashes = _compute_thumbnail_hashes(clips, thumbnail_cache, progress_callback)
+    hashes = _compute_thumbnail_hashes(clips, thumbnail_cache, progress_callback, known=hash_cache)
+    if hash_cache is not None:
+        hash_cache.update(hashes)
 
     similar_pairs = _build_similarity_pairs(hashes, clips, threshold)
 
