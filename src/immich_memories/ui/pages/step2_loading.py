@@ -340,29 +340,29 @@ async def _fetch_thumbnails_batched(
     # One client for the whole fetch rather than one per batch of ten: each
     # carries an httpx connection pool and a private event loop, and 500
     # thumbnails meant fifty of them, all discarded after ten requests.
-    with SyncImmichClient(
-        base_url=state.immich_url,
-        api_key=state.immich_api_key,
-        api_version=state.immich_api_version,
-    ) as client:
-        for i in range(0, len(need_thumbs), batch_size):
-            batch = need_thumbs[i : i + batch_size]
+    for i in range(0, len(need_thumbs), batch_size):
+        batch = need_thumbs[i : i + batch_size]
 
-            def fetch_thumb_batch(clips_batch=batch, client=client):
+        def fetch_thumb_batch(clips_batch=batch):
+            with SyncImmichClient(
+                base_url=state.immich_url,
+                api_key=state.immich_api_key,
+                api_version=state.immich_api_version,
+            ) as client:
                 for clip in clips_batch:
                     with contextlib.suppress(Exception):
                         thumb = client.get_asset_thumbnail(clip.asset.id, size="preview")
                         if thumb:
                             thumbnail_cache.put(clip.asset.id, "preview", thumb)
 
-            await run.io_bound(fetch_thumb_batch)
-            done += len(batch)
-            frac = done / total_work
-            status_label.set_text(
-                f"Thumbnails: {min(i + batch_size, len(need_thumbs))}/{len(need_thumbs)}"
-            )
-            if progress_bar:
-                progress_bar.value = 0.1 + frac * 0.85
+        await run.io_bound(fetch_thumb_batch)
+        done += len(batch)
+        frac = done / total_work
+        status_label.set_text(
+            f"Thumbnails: {min(i + batch_size, len(need_thumbs))}/{len(need_thumbs)}"
+        )
+        if progress_bar:
+            progress_bar.value = 0.1 + frac * 0.85
     return done
 
 
