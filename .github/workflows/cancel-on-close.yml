@@ -1,0 +1,46 @@
+name: Cancel superseded runs
+
+# WHY: `pull_request` runs keep going after the PR closes, so a batch of merges
+# leaves a tail of runs for branches nobody is waiting on. This repo is public,
+# where GitHub allows 5 concurrent macOS jobs and 20 overall, and that tail
+# starves whatever is still open — eleven of twelve queued runs once belonged to
+# already-merged PRs while the single open one sat behind them.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+
+concurrency:
+  group: cancel-on-close-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  cancel:
+    name: Cancel this branch's leftover runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel queued and running workflows for the closed branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # WHY env rather than inline: a head ref is attacker-controlled on a
+          # fork, and interpolating it into the script would be an injection.
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          THIS_RUN: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          for state in queued in_progress; do
+            gh api --paginate \
+              -X GET "repos/$REPO/actions/runs" \
+              -f branch="$BRANCH" -f status="$state" \
+              --jq '.workflow_runs[].id' \
+            | while read -r id; do
+                if [ "$id" = "$THIS_RUN" ]; then continue; fi
+                echo "cancelling $state run $id on $BRANCH"
+                gh api -X POST "repos/$REPO/actions/runs/$id/cancel" >/dev/null || true
+              done
+          done
