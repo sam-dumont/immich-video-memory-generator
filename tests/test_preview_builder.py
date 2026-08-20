@@ -266,3 +266,85 @@ class TestRunLegacyAnalysis:
 
         assert end <= 10.0
         assert start >= 0.0
+
+
+@pytest.fixture(scope="module")
+def tiny_video(tmp_path_factory) -> Path:
+    import subprocess
+
+    path = tmp_path_factory.mktemp("preview_src") / "clip.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=640x360:rate=10:duration=8",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        timeout=60,
+    )
+    return path
+
+
+class TestPreviewCacheActuallyHits:
+    """A preview has to be findable again by the asset it was built for.
+
+    The writer named files `preview_<ms-timestamp>.mp4` while the reader globbed
+    `*<asset_id[:8]}*`, so the lookup could never match its own output: every
+    analysed clip re-encoded a preview it already had, from the 4K original.
+    """
+
+    def test_a_written_preview_is_found_again_for_the_same_asset(
+        self, tiny_video: Path, tmp_path: Path
+    ):
+        cache_config = CacheConfig(directory=str(tmp_path / "cache"))
+        builder = _make_builder(cache_config)
+
+        written = builder.extract_preview_segment(
+            tiny_video, 1.0, 4.0, asset_id="abcd1234-5678-90ab-cdef-1234567890ab"
+        )
+        assert written and Path(written).exists()
+
+        found = builder.find_cached_preview("abcd1234-5678-90ab-cdef-1234567890ab", 1.0, 4.0)
+
+        assert found == written, "the preview cache cannot find its own output"
+
+    def test_a_different_asset_does_not_match(self, tiny_video: Path, tmp_path: Path):
+        """Naming by asset must not turn the cache into a single shared file."""
+        cache_config = CacheConfig(directory=str(tmp_path / "cache"))
+        builder = _make_builder(cache_config)
+        builder.extract_preview_segment(tiny_video, 1.0, 4.0, asset_id="aaaaaaaa-1111")
+
+        assert builder.find_cached_preview("bbbbbbbb-2222", 1.0, 4.0) is None
+
+
+class TestPreviewSourceResolution:
+    def test_preview_is_built_from_the_analysis_proxy_not_the_original(self, tmp_path: Path):
+        """The preview is a UI thumbnail; encoding it from the 4K original cost
+        3.4s and 72MB per clip against 0.4s and 10MB from the 480p proxy."""
+        builder = _make_builder(CacheConfig(directory=str(tmp_path / "cache")))
+        original = tmp_path / "original.mov"
+        analysis = tmp_path / "analysis_480p.mp4"
+        original.write_bytes(b"x")
+        analysis.write_bytes(b"y")
+        clip = MagicMock()
+        clip.asset.id = "asset-1"
+
+        with patch.object(
+            builder, "extract_preview_segment", return_value=str(analysis)
+        ) as extract:
+            builder.extract_and_log_preview(clip, original, analysis, 1.0, 4.0)
+
+        assert extract.call_args.args[0] == analysis

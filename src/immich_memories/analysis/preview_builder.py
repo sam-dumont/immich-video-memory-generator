@@ -25,6 +25,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Previews are now ~10 MB rather than ~72 MB, and they are reused across runs
+# instead of being rebuilt. A cap of 20 would evict a library's previews on
+# every pass and put the re-encode straight back. Real cache eviction is a
+# separate concern (see the cache page).
+_MAX_PREVIEWS = 200
+
+
+def _evict_oldest_previews(preview_dir: Path) -> None:
+    existing = sorted(preview_dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime)
+    for stale in existing[:-_MAX_PREVIEWS]:
+        with contextlib.suppress(OSError):
+            stale.unlink()
+
+
 class PreviewBuilder:
     """Extracts preview segments and runs legacy analysis."""
 
@@ -229,7 +243,10 @@ class PreviewBuilder:
     ) -> str | None:
         """Extract preview segment for UI display."""
         try:
-            preview_source = original_video or analysis_video
+            # The preview is a UI thumbnail and the proxy is already built:
+            # encoding it from the 4K original cost 3.4s and 72MB per clip
+            # against 0.4s and 10MB from the 480p proxy.
+            preview_source = analysis_video or original_video
             logger.info(f"Extracting preview for {clip.asset.id}: {start:.1f}s - {end:.1f}s")
             preview_path = self.extract_preview_segment(
                 preview_source, start, end, asset_id=clip.asset.id
@@ -259,16 +276,15 @@ class PreviewBuilder:
 
         preview_dir = self._cache_config.cache_path / "previews"
         preview_dir.mkdir(parents=True, exist_ok=True)
+        _evict_oldest_previews(preview_dir)
 
-        MAX_PREVIEWS = 20
-        existing_previews = sorted(preview_dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime)
-        if len(existing_previews) > MAX_PREVIEWS:
-            for old_preview in existing_previews[:-MAX_PREVIEWS]:
-                with contextlib.suppress(Exception):
-                    old_preview.unlink()
-
-        timestamp = int(time.time() * 1000)
-        preview_path = str(preview_dir / f"preview_{timestamp}.mp4")
+        # Named after the asset because find_cached_preview looks previews up by
+        # it. The previous `preview_<ms-timestamp>.mp4` could never be matched,
+        # so every clip re-encoded a preview it already had. Re-analysing an
+        # asset overwrites its preview, which is what the reader wants: one
+        # current preview per asset.
+        stem = asset_id or f"preview_{int(time.time() * 1000)}"
+        preview_path = str(preview_dir / f"{stem}.mp4")
 
         try:
             result = subprocess.run(
