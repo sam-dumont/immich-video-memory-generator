@@ -272,9 +272,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ["3.11", "3.12", "3.13"]
+      # WHY the event-dependent matrix: this repo is public, so hosted runners
+      # are free but capped, and macOS is capped at 5 concurrent jobs. Three
+      # macOS cells per pull request meant ~30 jobs queueing for 5 slots once a
+      # handful of PRs were open; runs sat for hours and GitHub reclaimed them
+      # mid-job ("runner has received a shutdown signal", then Error 137).
+      # Ubuntu keeps every Python; macOS keeps one per PR and the full grid on
+      # main, where runs are serialised anyway.
+      matrix: ${{ fromJSON(github.event_name == 'pull_request'
+        && '{"include":[{"os":"ubuntu-latest","python-version":"3.11"},{"os":"ubuntu-latest","python-version":"3.12"},{"os":"ubuntu-latest","python-version":"3.13"},{"os":"macos-latest","python-version":"3.13"}]}'
+        || '{"include":[{"os":"ubuntu-latest","python-version":"3.11"},{"os":"ubuntu-latest","python-version":"3.12"},{"os":"ubuntu-latest","python-version":"3.13"},{"os":"macos-latest","python-version":"3.11"},{"os":"macos-latest","python-version":"3.12"},{"os":"macos-latest","python-version":"3.13"}]}') }}
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2
