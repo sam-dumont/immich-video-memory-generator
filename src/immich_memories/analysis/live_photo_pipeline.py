@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from immich_memories.api.immich import ImmichAPIError
 from immich_memories.api.models import VideoClipInfo
 
 if TYPE_CHECKING:
@@ -169,7 +170,10 @@ def fetch_live_photo_clips(
             person_ids=person_ids,
             merge_window_seconds=merge_window,
         )
-    except (OSError, RuntimeError, ValueError) as e:
+    except (OSError, RuntimeError, ValueError, ImmichAPIError) as e:
+        # ImmichAPIError inherits from Exception alone, so the error this call
+        # actually raises -- a 404 for an asset mid-import or just deleted --
+        # was the one error this guard could not catch.
         logger.warning("Failed to fetch live photos: %s", e, exc_info=True)
         return [], set()
 
