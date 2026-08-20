@@ -1,0 +1,83 @@
+# One short render per capability, so a release can be eyeballed end to end
+# rather than trusted to unit tests alone. The runner reads this file; nothing
+# is hard-coded in the script, so add or reorder rows freely.
+#
+# Deliberately ONE music-generation row. ACE-Step dominates the runtime of the
+# whole matrix and every other row exercises the pipeline just as well without
+# it.
+#
+# `args` are appended to `immich-memories generate` verbatim, after `common`.
+# A row may add `config:` to pin extra settings for itself alone.
+
+# Pinned for every row, over a copy of your own config, so the sweep varies what
+# the rows say it varies and reproduces on another machine.
+#
+# WHY this exists: the first sweep inherited a local config and rendered all 13
+# rows at 4K -- never touching 1080p, the shipped default and what a NAS runs --
+# while two rows asserted flags that config already set, so they re-rendered the
+# baseline under a different name and reported "ok" in 218s.
+#
+# Both music backends ship disabled, so pinning them off makes `--music auto`
+# mean the bundled track. The one row that generates music turns ACE-Step back
+# on for itself.
+baseline_config:
+  output.resolution: 1080p
+  analysis.include_live_photos: true
+  ace_step.enabled: false
+  musicgen.enabled: false
+
+# Keep the pool small: the point is to see each capability, not to wait.
+# `--month` is silently ignored without a memory type -- it narrows a yearly
+# type rather than standing alone, so without this the pool is the whole year.
+# Photos are on by config, and they outnumber videos ~2:1, so every row would
+# be a slideshow. Rows that are about photos opt back in.
+common: ["--memory-type", "monthly_highlights", "--year", "2025", "--month", "8",
+         "--duration", "25", "--no-photos"]
+
+rows:
+  - name: 01-landscape-video-cuts
+    why: Baseline. Videos only, hard cuts, no music - the simplest path through.
+    args: ["--orientation", "landscape", "--transition", "cut", "--no-music"]
+
+  - name: 02-landscape-photos-crossfade
+    why: Photos interleaved with video, crossfaded. Ken Burns and the photo budget.
+    args: ["--orientation", "landscape", "--include-photos", "--transition", "crossfade", "--no-music"]
+
+  - name: 03-landscape-date-caption
+    why: Date caption in landscape, inset off the short side, bottom right.
+    args: ["--orientation", "landscape", "--add-date", "--no-music"]
+
+  - name: 04-landscape-date-place-caption
+    why: Both captions on one line, "City, Country - D Mon YYYY", in landscape.
+    args: ["--orientation", "landscape", "--add-date", "--add-place", "--no-music"]
+
+  - name: 05-portrait-date-place-caption
+    why: The 9:16 case. The caption must clear the platform chrome along the bottom.
+    args: ["--orientation", "portrait", "--include-photos", "--add-date", "--add-place", "--no-music"]
+
+  - name: 06-square
+    why: Square output, the third orientation.
+    args: ["--orientation", "square", "--no-music"]
+
+  - name: 08-4k
+    why: 4K path. Watch HDR sources for the red cast partial metadata causes.
+    args: ["--resolution", "4k", "--no-music"]
+
+  - name: 09-privacy-mode
+    why: Frosted blur plus muted speech - the demo and screenshot path.
+    args: ["--privacy-mode", "--no-music"]
+
+  - name: 10-from-album
+    why: An album as the whole pool, titled after the album, no date range.
+    # --from-album cannot be combined with a time period, so this row drops it.
+    skip_common: true
+    args: ["--duration", "25", "--from-album", "{album}", "--no-music"]
+
+  - name: 11-bundled-music
+    why: The Docker/NAS default - a bundled track, mastered and looped to length.
+    args: ["--music", "auto"]
+
+  - name: 13-generated-music
+    config: {ace_step.enabled: true}
+    why: The ONLY ACE-Step run. Tempo should follow the photo cadence (#312).
+    args: ["--include-photos", "--music", "auto"]

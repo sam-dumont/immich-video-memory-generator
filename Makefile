@@ -2,7 +2,7 @@
 # Uses uv for fast Python package management
 export PYTHONUNBUFFERED=1
 
-.PHONY: help install dev dev-ci dev-test run preflight docs-cli-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams
+.PHONY: help install dev dev-ci dev-test run preflight docs-cli-check test test-extras test-cov test-cov-xml test-integration test-integration-auth test-integration-photos test-integration-audio test-integration-audio-mixing test-integration-titles test-fast benchmark benchmark-perf benchmark-steps benchmark-assembly benchmark-titles benchmark-titles-json benchmark-pipeline benchmark-json benchmark-submit lint format typecheck check launch-check clean clean-cache clean-all build build-check docker docker-run docker-shell file-length complexity cognitive-complexity security-lint bandit-ci semgrep dead-code duplication refurb dep-check arch-check diff-cover diff-cover-ci integration-coverage-for-diff ci critique ensure-dev commitlint pip-audit docs-install docs-dev docs-build docs-check docs-cli demo-video playwright-install e2e e2e-full screenshots diagrams capability-matrix
 
 # Default target
 help:
@@ -196,6 +196,9 @@ test-integration-live-photos:  ## Run ONLY live photo merge tests (~30s, needs I
 	uv run pytest tests/integration/live_photos/ -v -s -m integration --log-cli-level=INFO --tb=short \
 		--cov=src/immich_memories --cov-branch --cov-report=xml:tests/live-photos-coverage.xml --cov-fail-under=0 \
 		--junitxml=tests/live-photos-junit.xml
+
+capability-matrix:  ## Render one video per capability against your library (local only, ~30min)
+	uv run python scripts/capability_matrix.py --album "$(ALBUM)" $(if $(ONLY),--only $(ONLY),)
 
 test-integration-photos:  ## Run ONLY photo animation tests (~20s, FFmpeg only)
 	uv run pytest tests/integration/photos/ -v -s -m integration --log-cli-level=INFO --tb=short \
