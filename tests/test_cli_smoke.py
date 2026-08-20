@@ -598,6 +598,49 @@ class TestAutoRunOutput:
         assert "server unavailable" in result.stderr
         check.assert_called_once()
 
+    def test_auto_suggest_says_when_a_candidate_is_backing_off(self, tmp_path: Path) -> None:
+        """Silently omitting a suppressed candidate reads as "nothing to do".
+
+        The operator needs to tell "no candidates" apart from "the candidate you
+        expect keeps failing and is waiting", or a stuck memory looks like an
+        idle library.
+        """
+        from immich_memories.automation.models import AutoOutcome
+        from immich_memories.automation.state_store import AutomationStateStore
+        from immich_memories.preflight import CheckStatus
+
+        config = Config(
+            immich={"url": "http://immich.test:2283", "api_key": "test-key"},
+            cache={"database": str(tmp_path / "runs.db")},
+        )
+        store = AutomationStateStore(tmp_path / "runs.db")
+        for _ in range(2):
+            attempt = store.start_attempt(reason="daily wake")
+            store.finish_attempt(
+                attempt.id, AutoOutcome.FAILED, reason="exit 1", memory_key="monthly:2026-06"
+            )
+
+        client = MagicMock()
+        client.__enter__ = MagicMock(return_value=client)
+        client.__exit__ = MagicMock(return_value=False)
+        client.get_time_buckets.return_value = []
+        client.get_all_people.return_value = []
+
+        # WHY: external Immich server and its preflight check
+        with (
+            # WHY: external Immich server
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=client),
+            # WHY: external Immich server (preflight check)
+            patch(
+                "immich_memories.preflight.check_immich",
+                return_value=MagicMock(status=CheckStatus.OK),
+            ),
+        ):
+            result = _invoke(["auto", "suggest"], config=config)
+
+        assert "Backing off monthly:2026-06" in result.output
+        assert "failed 2x" in result.output
+
 
 class TestPreflightCommand:
     """Test preflight command with real checks (no mocks)."""

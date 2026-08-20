@@ -1702,3 +1702,68 @@ class TestSuggestOutput:
         rendered = console.export_text()
         assert "Category" in rendered
         assert "monthly_review" in rendered
+
+
+class TestFailedCandidateBackoff:
+    """A candidate that keeps failing must stop winning the nightly slot.
+
+    Every failure was already recorded against its memory key; nothing read it
+    back, so the same monthly candidate went out nine nights in a row in a real
+    log, burning the run each time and producing nothing.
+    """
+
+    @staticmethod
+    def _suggest_with_failures(config: Config, failures: int) -> list:
+        from immich_memories.automation.models import AutoOutcome
+        from immich_memories.preflight import CheckStatus
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get_time_buckets.return_value = [
+            _make_time_bucket(2026, 7, 150),
+            _make_time_bucket(2026, 6, 200),
+        ]
+        mock_client.get_all_people.return_value = []
+
+        runner = AutoRunner(config)
+        first = runner.suggest(limit=10) if failures == 0 else None
+
+        # WHY: Immich server, its preflight check, and the clock
+        with (
+            # WHY: external Immich server
+            patch("immich_memories.api.immich.SyncImmichClient", return_value=mock_client),
+            # WHY: external Immich server (preflight check)
+            patch(
+                "immich_memories.preflight.check_immich",
+                return_value=MagicMock(status=CheckStatus.OK),
+            ),
+            # WHY: pins today so the month fixtures stay in range
+            patch("immich_memories.automation.runner.date") as mock_date,
+        ):
+            mock_date.today.return_value = date(2026, 8, 11)
+            runner = AutoRunner(config)
+            baseline = runner.suggest(limit=10)
+            assert baseline, "fixture must produce candidates before we suppress any"
+            target = baseline[0].memory_key
+
+            for _ in range(failures):
+                attempt = runner.state.start_attempt(reason="daily wake")
+                runner.state.finish_attempt(
+                    attempt.id, AutoOutcome.FAILED, reason="exit 1", memory_key=target
+                )
+
+            after = AutoRunner(config).suggest(limit=10)
+        del first
+        return [target, after]
+
+    def test_a_twice_failed_candidate_is_not_suggested_again(self, config: Config) -> None:
+        target, after = self._suggest_with_failures(config, failures=2)
+
+        assert target not in {c.memory_key for c in after}
+
+    def test_one_failure_does_not_suppress(self, config: Config) -> None:
+        """Transient failures must not cost a candidate its place."""
+        target, after = self._suggest_with_failures(config, failures=1)
+
+        assert target in {c.memory_key for c in after}

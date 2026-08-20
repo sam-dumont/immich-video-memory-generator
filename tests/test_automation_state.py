@@ -123,3 +123,60 @@ def test_finish_attempt_reports_unknown_id_separately(tmp_path: Path) -> None:
 
     with pytest.raises(KeyError, match="Unknown automation attempt: missing"):
         store.finish_attempt("missing", AutoOutcome.FAILED, reason="not found")
+
+
+class TestConsecutiveFailuresByKey:
+    """The nightly runner has to know which candidates keep failing.
+
+    Every failure is already recorded with its memory_key, but nothing reads it
+    back, so a candidate that cannot succeed is picked again every night -- the
+    same one went out nine nights in a row in a real log.
+    """
+
+    @staticmethod
+    def _attempt(store, key: str, outcome: AutoOutcome) -> None:
+        attempt = store.start_attempt(reason="daily wake")
+        store.finish_attempt(attempt.id, outcome, reason="test", memory_key=key)
+
+    def test_counts_failures_per_key(self, tmp_path: Path) -> None:
+        store = AutomationStateStore(tmp_path / "cache.db")
+        self._attempt(store, "monthly:2026-06", AutoOutcome.FAILED)
+        self._attempt(store, "monthly:2026-06", AutoOutcome.FAILED)
+        self._attempt(store, "trip:alps", AutoOutcome.FAILED)
+
+        failures = store.consecutive_failures_by_key()
+
+        assert failures["monthly:2026-06"].count == 2
+        assert failures["trip:alps"].count == 1
+
+    def test_a_success_clears_the_streak(self, tmp_path: Path) -> None:
+        """Backoff must not punish a key that has since worked."""
+        store = AutomationStateStore(tmp_path / "cache.db")
+        self._attempt(store, "monthly:2026-06", AutoOutcome.FAILED)
+        self._attempt(store, "monthly:2026-06", AutoOutcome.FAILED)
+        self._attempt(store, "monthly:2026-06", AutoOutcome.COMPLETED)
+
+        assert "monthly:2026-06" not in store.consecutive_failures_by_key()
+
+    def test_a_failure_after_a_success_starts_a_new_streak(self, tmp_path: Path) -> None:
+        store = AutomationStateStore(tmp_path / "cache.db")
+        self._attempt(store, "monthly:2026-06", AutoOutcome.FAILED)
+        self._attempt(store, "monthly:2026-06", AutoOutcome.COMPLETED)
+        self._attempt(store, "monthly:2026-06", AutoOutcome.FAILED)
+
+        assert store.consecutive_failures_by_key()["monthly:2026-06"].count == 1
+
+    def test_skipped_attempts_are_not_failures(self, tmp_path: Path) -> None:
+        """A cooldown skip says nothing about whether the candidate can render."""
+        store = AutomationStateStore(tmp_path / "cache.db")
+        self._attempt(store, "monthly:2026-06", AutoOutcome.SKIPPED)
+
+        assert "monthly:2026-06" not in store.consecutive_failures_by_key()
+
+    def test_reports_when_the_last_failure_happened(self, tmp_path: Path) -> None:
+        store = AutomationStateStore(tmp_path / "cache.db")
+        self._attempt(store, "monthly:2026-06", AutoOutcome.FAILED)
+
+        entry = store.consecutive_failures_by_key()["monthly:2026-06"]
+
+        assert entry.last_failed_at is not None

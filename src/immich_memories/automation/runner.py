@@ -14,6 +14,7 @@ from typing import Any
 from immich_memories.automation.candidate_scorer import score_and_rank
 from immich_memories.automation.candidates import MemoryCandidate
 from immich_memories.automation.delivery_retry import PendingDeliveryRetry
+from immich_memories.automation.failure_backoff import drop_backed_off
 from immich_memories.automation.models import (
     AutoAction,
     AutomationAttempt,
@@ -737,6 +738,7 @@ class AutoRunner:
         from immich_memories.api.immich import SyncImmichClient
 
         self.last_variety_decision = VarietyDecision(eligible=[], rejected=[])
+        self.last_backoff_skips: dict[str, str] = {}
         self.last_recent_categories = ()
         self.last_suggest_status = SuggestStatus()
         immich_result = self._prepared_immich_preflight
@@ -804,6 +806,10 @@ class AutoRunner:
             today,
             person_asset_counts,
             gps_assets,
+        )
+
+        all_candidates, self.last_backoff_skips = drop_backed_off(
+            all_candidates, self.state.consecutive_failures_by_key(), datetime.now(tz=UTC)
         )
 
         self.last_variety_decision = apply_variety_rules(

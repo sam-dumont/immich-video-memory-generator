@@ -6,6 +6,7 @@ import logging
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -15,6 +16,14 @@ from immich_memories.cache.database import VideoAnalysisCache
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class FailureStreak:
+    """How many times a memory key has failed since it last succeeded."""
+
+    count: int
+    last_failed_at: datetime | None
 
 
 class AttemptAlreadyFinishedError(RuntimeError):
@@ -209,3 +218,38 @@ class AutomationStateStore:
                 """
             ).fetchone()
         return _row_to_attempt(row) if row else None
+
+    def consecutive_failures_by_key(self) -> dict[str, FailureStreak]:
+        """Failures per memory key since that key last completed.
+
+        Read by candidate selection so a memory that cannot render stops being
+        chosen every night. Only terminal failures count -- a SKIPPED attempt
+        means the runner declined the candidate, which says nothing about
+        whether it would have rendered.
+        """
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT memory_key, outcome, finished_at
+                FROM automation_attempts
+                WHERE memory_key IS NOT NULL
+                  AND outcome IN (?, ?)
+                ORDER BY started_at ASC, rowid ASC
+                """,
+                (AutoOutcome.FAILED.value, AutoOutcome.COMPLETED.value),
+            ).fetchall()
+
+        streaks: dict[str, FailureStreak] = {}
+        for row in rows:
+            key = row["memory_key"]
+            if row["outcome"] == AutoOutcome.COMPLETED.value:
+                streaks.pop(key, None)
+                continue
+            previous = streaks.get(key)
+            streaks[key] = FailureStreak(
+                count=(previous.count if previous else 0) + 1,
+                last_failed_at=(
+                    datetime.fromisoformat(row["finished_at"]) if row["finished_at"] else None
+                ),
+            )
+        return streaks

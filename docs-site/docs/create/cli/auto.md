@@ -92,6 +92,25 @@ immich-memories auto suggest [OPTIONS]
 
 Connects to Immich, fetches library stats + people + GPS assets, runs all detectors, scores and ranks. Takes about 30 seconds (GPS fetch for trip detection is the slow part).
 
+### Candidates that keep failing
+
+A candidate that fails twice in a row is held back for a while instead of being
+proposed again the next night, so one memory that cannot render stops consuming
+every nightly run. The wait grows with the streak — 24 hours after two failures,
+3 days after three, capped at 7 days — and always expires, so a memory broken by
+something temporary (a server that was down, an asset that gets re-uploaded)
+comes back on its own.
+
+A single failure never counts against a candidate, and a successful run clears
+the streak immediately.
+
+`auto suggest` says when this is happening, so a held-back candidate is not
+mistaken for an empty library:
+
+```
+Backing off monthly_highlights:2026-06 — failed 3x, retrying after 3d
+```
+
 ### Detectors
 
 | Detector | What it finds | Score range |
