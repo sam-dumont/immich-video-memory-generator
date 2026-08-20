@@ -7,21 +7,50 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from immich_memories.generate_clips import MIN_CLIP_DURATION
+from immich_memories.processing.output_contract import publish_validated_output
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from immich_memories.generate import GenerationParams
     from immich_memories.processing.assembly_config import AssemblyClip
+    from immich_memories.processing.encoding_plan import EncodingPlan
 
 logger = logging.getLogger(__name__)
 
 
-def validate_final_duration(params: GenerationParams, actual_duration: float) -> None:
-    """Reject a completed artifact that violates the requested final runtime."""
+# Crossfades and frame rounding move the final runtime by a fraction of a second
+# per clip, so a fixed one-second budget is a tighter bound on a 150s memory made
+# of 30 clips than on a 20s one. Past a point an overshoot is a planning bug
+# rather than jitter, and only then is discarding a finished render the right
+# answer.
+_DURATION_JITTER_FLOOR = 1.0
+_DURATION_JITTER_RATIO = 0.02
+# A floor on the hard limit too, so short memories keep a band where an
+# overshoot is reported rather than thrown away.
+_DURATION_HARD_FLOOR = 3.0
+_DURATION_HARD_RATIO = 0.05
+
+
+def _duration_limits(target: float) -> tuple[float, float]:
+    """Return the tolerated limit and the limit past which we refuse the render."""
+    tolerated = target + max(_DURATION_JITTER_FLOOR, target * _DURATION_JITTER_RATIO)
+    return tolerated, target + max(_DURATION_HARD_FLOOR, target * _DURATION_HARD_RATIO)
+
+
+def validate_final_duration(params: GenerationParams, actual_duration: float) -> str | None:
+    """Check a render against its runtime budget.
+
+    Returns a warning for an overshoot worth reporting, or None. Raises only
+    when the artifact is far enough over that it indicates a planning fault --
+    a finished render is expensive, and throwing one away for jitter costs the
+    whole run.
+    """
     target = params.target_duration_seconds
     if target is None:
-        return
+        return None
 
-    limit = target + 1.0
+    budget = target
     plan = params.timeline_plan
     if (
         plan is not None
@@ -29,14 +58,21 @@ def validate_final_duration(params: GenerationParams, actual_duration: float) ->
         and plan.eligible_dividers > 0
         and plan.soft_max_duration is not None
     ):
-        limit = plan.soft_max_duration + 1.0
+        budget = plan.soft_max_duration
 
-    if actual_duration > limit:
+    tolerated, hard_limit = _duration_limits(budget)
+    if actual_duration > hard_limit:
         from immich_memories.generate import GenerationError
 
         raise GenerationError(
-            f"Final artifact exceeds duration budget: {actual_duration:.1f}s > {limit:.1f}s"
+            f"Final artifact exceeds duration budget: {actual_duration:.1f}s > {hard_limit:.1f}s"
         )
+    if actual_duration > tolerated:
+        return (
+            f"Final artifact ran {actual_duration:.1f}s against a {budget:.1f}s budget "
+            f"({actual_duration - budget:.1f}s over)"
+        )
+    return None
 
 
 def _sample_for_minimum_duration(
@@ -91,3 +127,19 @@ def apply_final_content_budget(
         len(assembly_clips),
     )
     return [replace(clip, duration=clip.duration * ratio) for clip in assembly_clips]
+
+
+def publish_and_check_duration(
+    params: GenerationParams,
+    staged_path: Path,
+    final_path: Path,
+    plan: EncodingPlan,
+) -> tuple[dict[str, object], str | None]:
+    """Publish the rendered artifact and check its runtime against the budget.
+
+    Checked here rather than after the music phase: the runtime is already final
+    (music remuxes audio with `-c:v copy`), and rejecting later means discarding
+    a render that has also paid for ACE-Step, Demucs and the mix.
+    """
+    probe = publish_validated_output(staged_path, final_path, plan)
+    return probe.render_metrics(plan), validate_final_duration(params, probe.duration_seconds)

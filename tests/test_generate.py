@@ -18,11 +18,13 @@ from immich_memories.generate import (
     _build_assembly_settings,
     _report,
     _total_clip_duration,
-    _validate_final_duration,
     assets_to_clips,
 )
 from immich_memories.generate_music import music_config_available
 from immich_memories.generate_privacy import clip_location_name
+from immich_memories.generate_timeline import (
+    validate_final_duration as _validate_final_duration,
+)
 from tests.conftest import make_asset, make_clip
 
 
@@ -145,7 +147,7 @@ class TestGenerationError:
             raise GenerationError("test error")
 
 
-def test_generation_rejects_artifact_more_than_one_second_over_target(tmp_path: Path) -> None:
+def test_generation_rejects_artifact_far_enough_over_target(tmp_path: Path) -> None:
     params = GenerationParams(
         clips=[make_clip("clip-1")],
         output_path=tmp_path / "memory.mp4",
@@ -154,10 +156,10 @@ def test_generation_rejects_artifact_more_than_one_second_over_target(tmp_path: 
     )
 
     with pytest.raises(GenerationError, match="duration budget"):
-        _validate_final_duration(params, 61.1)
+        _validate_final_duration(params, 64.0)
 
 
-def test_generation_accepts_one_second_duration_tolerance(tmp_path: Path) -> None:
+def test_generation_accepts_a_render_inside_the_jitter_tolerance(tmp_path: Path) -> None:
     params = GenerationParams(
         clips=[make_clip("clip-1")],
         output_path=tmp_path / "memory.mp4",
@@ -215,8 +217,8 @@ def test_generation_rejects_finalized_month_plan_above_soft_tolerance(tmp_path: 
         ),
     )
 
-    with pytest.raises(GenerationError, match=r"71\.1s > 71\.0s"):
-        _validate_final_duration(params, 71.1)
+    with pytest.raises(GenerationError, match=r"74\.0s > 73\.5s"):
+        _validate_final_duration(params, 74.0)
 
 
 def test_generation_without_dividers_keeps_normal_duration_limit(tmp_path: Path) -> None:
@@ -241,7 +243,7 @@ def test_generation_without_dividers_keeps_normal_duration_limit(tmp_path: Path)
         ),
     )
 
-    with pytest.raises(GenerationError, match=r"65\.0s > 61\.0s"):
+    with pytest.raises(GenerationError, match=r"65\.0s > 63\.0s"):
         _validate_final_duration(params, 65.0)
 
 
@@ -1016,3 +1018,48 @@ class TestApplyMusicFileAtomic:
 
         mix.assert_not_called()
         assert video.read_bytes() == b"original video"
+
+
+class TestDurationBudgetTolerance:
+    """A 0.7s overshoot on a 150s memory is not a defect.
+
+    The budget was a hard fail at target + 1.0s, checked after music. One real
+    run rendered ~30 clips, generated music, mixed it, then failed at 151.7s
+    against 151.0s and threw the finished file away. 0.5% is below the jitter
+    that crossfades and frame rounding produce across that many clips.
+    """
+
+    @staticmethod
+    def _params(tmp_path: Path, target: float) -> GenerationParams:
+        return GenerationParams(
+            clips=[make_clip("clip-1")],
+            output_path=tmp_path / "memory.mp4",
+            config=Config(),
+            target_duration_seconds=target,
+        )
+
+    def test_a_sub_percent_overshoot_is_accepted(self, tmp_path: Path) -> None:
+        """The exact case from the log: 151.7s rendered, limit was 151.0s."""
+        assert _validate_final_duration(self._params(tmp_path, 150.0), 151.7) is None
+
+    def test_tolerance_scales_with_the_target(self, tmp_path: Path) -> None:
+        """2% of 150s is 3s; the same 3s on a 20s memory is not tolerable."""
+        assert _validate_final_duration(self._params(tmp_path, 150.0), 152.5) is None
+
+        assert _validate_final_duration(self._params(tmp_path, 20.0), 22.5) is not None
+
+    def test_a_short_memory_keeps_the_one_second_floor(self, tmp_path: Path) -> None:
+        """2% of 10s is 0.2s, which is below frame rounding."""
+        assert _validate_final_duration(self._params(tmp_path, 10.0), 10.9) is None
+
+    def test_a_moderate_overshoot_warns_instead_of_failing(self, tmp_path: Path) -> None:
+        """Worth telling the operator, not worth discarding a finished render."""
+        warning = _validate_final_duration(self._params(tmp_path, 100.0), 103.0)
+
+        assert warning is not None
+        assert "103.0" in warning
+
+    def test_a_large_overshoot_still_fails(self, tmp_path: Path) -> None:
+        """Past a point it is a planning bug, not jitter."""
+        with pytest.raises(GenerationError, match="duration budget"):
+            _validate_final_duration(self._params(tmp_path, 100.0), 130.0)

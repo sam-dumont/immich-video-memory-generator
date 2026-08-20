@@ -52,13 +52,11 @@ from immich_memories.generate_settings import (
 from immich_memories.generate_timeline import (
     apply_final_content_budget as _apply_final_content_budget,
 )
-from immich_memories.generate_timeline import (
-    validate_final_duration as _validate_final_duration,
-)
+from immich_memories.generate_timeline import publish_and_check_duration
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
 from immich_memories.processing.clip_validation import validate_clips
 from immich_memories.processing.output_canvas import OutputCanvas
-from immich_memories.processing.output_contract import publish_output_metrics, validate_output
+from immich_memories.processing.output_contract import validate_output
 from immich_memories.security import configured_secret_values, sanitize_error_message
 
 if TYPE_CHECKING:
@@ -891,7 +889,9 @@ def _generate_memory_inner(
             frame_preview_callback=params.frame_preview_callback,
         )
         plan = settings.encoding_plan
-        metrics = publish_output_metrics(staged_result_path, result_output_path, plan)
+        metrics, duration_warning = publish_and_check_duration(
+            params, staged_result_path, result_output_path, plan
+        )
         result_path = result_output_path
         run_tracker.complete_phase(items_processed=len(assembly_clips), extra_metrics=metrics)
         operational.emit(
@@ -926,8 +926,7 @@ def _generate_memory_inner(
         _phase_times["music"] = _time.monotonic() - _t
 
         final_probe = validate_output(result_path, settings.encoding_plan)
-        _validate_final_duration(params, final_probe.duration_seconds)
-        artifact_warnings = [music_result.warning] if music_result.warning else []
+        artifact_warnings = [w for w in (duration_warning, music_result.warning) if w]
         run_tracker.complete_artifact(
             result_path,
             final_probe,

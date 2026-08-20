@@ -249,12 +249,3 @@ def publish_validated_output(
     os.replace(staged_path, final_path)
     _fsync_directory(final_path.parent)
     return probe
-
-
-def publish_output_metrics(
-    staged_path: Path,
-    final_path: Path,
-    plan: EncodingPlan,
-) -> dict[str, object]:
-    """Publish a validated artifact and describe the effective render contract."""
-    return publish_validated_output(staged_path, final_path, plan).render_metrics(plan)
