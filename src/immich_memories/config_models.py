@@ -905,6 +905,12 @@ class AutomationConfig(BaseModel):
         description="Local wall-clock time (HH:MM) for the in-process daily run",
     )
     cooldown_hours: int = Field(default=24, ge=1, le=168)
+    max_delivery_attempts: int = Field(
+        default=5,
+        ge=1,
+        le=50,
+        description="Give up on an Immich upload after this many failed attempts",
+    )
     upload_to_immich: bool = Field(default=False)
     album_name: str | None = Field(default=None)
     detect_monthly: bool = Field(default=True)

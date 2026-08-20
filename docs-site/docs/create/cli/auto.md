@@ -92,6 +92,18 @@ immich-memories auto suggest [OPTIONS]
 
 Connects to Immich, fetches library stats + people + GPS assets, runs all detectors, scores and ranks. Takes about 30 seconds (GPS fetch for trip detection is the slow part).
 
+### Uploads that keep failing
+
+A pending Immich upload is retried before anything else on each wake, and that
+retry ends the invocation. An upload that can never succeed — an API key without
+upload scope, an album that no longer accepts writes — would therefore consume
+every night and generate nothing.
+
+After `max_delivery_attempts` failures (default 5) the upload is abandoned: the
+run is marked `abandoned` rather than `pending`, a notification is sent with the
+original error, and the next wake goes back to making memories. The video itself
+is untouched and still on disk — only its delivery gave up.
+
 ### Candidates that keep failing
 
 A candidate that fails twice in a row is held back for a while instead of being
@@ -263,6 +275,7 @@ Under `advanced:` in `config.yaml`:
 advanced:
   automation:
     cooldown_hours: 24              # min hours between auto-run starts (daily timer + 24 = once a day)
+    max_delivery_attempts: 5        # give up on an upload after this many failures
     upload_to_immich: false         # auto-upload generated videos
     album_name: null                # album for uploads
     detect_monthly: true
