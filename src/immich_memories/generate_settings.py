@@ -114,6 +114,7 @@ def _build_assembly_settings(
         title_screens=title_screen_settings,
         scale_mode=effective_scale_mode,
         add_date_overlay=params.add_date_overlay,
+        add_place_overlay=params.add_place_overlay,
         debug_preserve_intermediates=params.debug_preserve_intermediates,
         privacy_mode=params.privacy_mode,
     )

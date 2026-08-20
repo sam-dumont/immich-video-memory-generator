@@ -551,6 +551,7 @@ def _make_decoder(
     ctx: Any | None = None,
     privacy_mode: bool = False,
     date_overlay: bool = False,
+    place_overlay: bool = False,
     scale_mode: str = "black",
     hdr_type: str | None = None,
     audio_work_dir: Path | None = None,
@@ -607,7 +608,11 @@ def _make_decoder(
         sdr_to_hdr_filter=sdr_to_hdr_filter,
         input_seek=getattr(clip, "input_seek", 0.0),
         audio_output=audio_output,
-        overlay_text=caption_for(clip) if date_overlay and not is_title else "",
+        overlay_text=(
+            caption_for(clip, place=place_overlay)
+            if (date_overlay or place_overlay) and not is_title
+            else ""
+        ),
     )
 
 
@@ -646,6 +651,7 @@ def assemble_streaming(
     ctx: Any | None = None,
     privacy_mode: bool = False,
     date_overlay: bool = False,
+    place_overlay: bool = False,
     scale_mode: str = "blur",
     progress_callback: Callable[[int, int], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
@@ -690,6 +696,7 @@ def assemble_streaming(
             ctx,
             privacy_mode,
             date_overlay,
+            place_overlay,
             scale_mode,
             progress_callback,
             frame_preview_callback,
@@ -722,6 +729,7 @@ def assemble_streaming(
             ctx,
             privacy_mode,
             date_overlay,
+            place_overlay,
             scale_mode,
             hdr_type,
             progress_callback,
@@ -780,6 +788,7 @@ def _encode_clip_sequence(
     ctx: Any | None,
     privacy_mode: bool,
     date_overlay: bool,
+    place_overlay: bool,
     scale_mode: str,
     hdr_type: str | None,
     progress_callback: Callable[[int, int], None] | None,
@@ -804,6 +813,7 @@ def _encode_clip_sequence(
                 ctx,
                 privacy_mode,
                 date_overlay,
+                place_overlay,
                 scale_mode,
                 hdr_type,
                 audio_work_dir=audio_work_dir,
@@ -839,6 +849,7 @@ def _encode_clip_sequence(
                 ctx,
                 privacy_mode,
                 date_overlay,
+                place_overlay,
                 scale_mode,
                 hdr_type,
                 audio_work_dir=audio_work_dir,
@@ -889,6 +900,7 @@ def streaming_assemble_full(
     normalize_audio: bool = True,
     privacy_mode: bool = False,
     date_overlay: bool = False,
+    place_overlay: bool = False,
     scale_mode: str = "blur",
     progress_callback: Callable[[float, str], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
@@ -939,6 +951,7 @@ def streaming_assemble_full(
             ctx=ctx,
             privacy_mode=privacy_mode,
             date_overlay=date_overlay,
+            place_overlay=place_overlay,
             scale_mode=scale_mode,
             progress_callback=_frame_progress,
             frame_preview_callback=frame_preview_callback,

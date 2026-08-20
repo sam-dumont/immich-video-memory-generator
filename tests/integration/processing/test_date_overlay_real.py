@@ -105,3 +105,38 @@ def test_a_vertical_caption_sits_above_the_platform_chrome(grey_portrait: Path) 
     assert lowest < chrome_top, (
         f"caption reaches row {lowest}; the platform UI starts around {chrome_top:.0f}"
     )
+
+
+def test_a_place_with_an_apostrophe_reaches_the_screen(tmp_path: Path) -> None:
+    """Measured: drawtext silently drops an ASCII apostrophe however it is
+    escaped, so "L'Aquila" rendered as "LAquila". Compared against a
+    `textfile=` render, which needs no escaping at all and is therefore the
+    ground truth."""
+    from immich_memories.processing.clip_caption import caption_filter
+
+    base = [
+        "ffmpeg",
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=gray:size=640x360:rate=1:duration=1",
+        "-frames:v",
+        "1",
+    ]
+    escaped = caption_filter("L'Aquila", 640, 360)
+    reference = tmp_path / "ref.txt"
+    reference.write_text("L’Aquila")
+    tail = escaped.split(":fontsize=", 1)[1]
+
+    ours, theirs = tmp_path / "ours.png", tmp_path / "theirs.png"
+    subprocess.run([*base, "-vf", escaped, str(ours)], check=True, capture_output=True)
+    subprocess.run(
+        [*base, "-vf", f"drawtext=textfile={reference}:fontsize={tail}", str(theirs)],
+        check=True,
+        capture_output=True,
+    )
+
+    assert ours.read_bytes() == theirs.read_bytes()

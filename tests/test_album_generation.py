@@ -102,6 +102,7 @@ def _run_album(monkeypatch, videos, images, **overrides):
         "scale_mode": None,
         "output_format": None,
         "add_date": False,
+        "add_place": False,
         "keep_intermediates": False,
         "privacy_mode": False,
         "title_override": None,

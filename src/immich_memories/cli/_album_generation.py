@@ -46,6 +46,7 @@ def handle_album_generation(
     scale_mode: str | None,
     output_format: str | None,
     add_date: bool,
+    add_place: bool,
     keep_intermediates: bool,
     privacy_mode: bool,
     title_override: str | None,
@@ -128,6 +129,7 @@ def handle_album_generation(
         scale_mode=scale_mode or config.defaults.scale_mode,
         output_format=output_format,
         add_date_overlay=add_date,
+        add_place_overlay=add_place,
         debug_preserve_intermediates=keep_intermediates,
         privacy_mode=privacy_mode,
         # The album's own name is the best title we have; an explicit --title still wins.

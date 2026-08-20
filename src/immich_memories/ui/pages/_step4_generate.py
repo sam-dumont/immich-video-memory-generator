@@ -423,8 +423,8 @@ async def finalize_ui_generation(
     status_label,
 ):
     """Finish UI-managed post-processing on the caller-owned run."""
-    from immich_memories.generate import emit_operational_phase
     from immich_memories.generate_music import MusicPhaseResult
+    from immich_memories.generate_progress import emit_operational_phase
     from immich_memories.operations.phases import OperationalPhase
 
     music_result = MusicPhaseResult(applied=False)

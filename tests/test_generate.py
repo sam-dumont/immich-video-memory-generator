@@ -884,7 +884,7 @@ class TestPhaseAllocation:
 
     def test_pipeline_progress_scales_assembly(self):
         """Assembly callback should map 0.0-1.0 into the assembly phase range."""
-        from immich_memories.generate import _PipelineProgress
+        from immich_memories.generate_progress import _PipelineProgress
 
         calls: list[tuple[str, float, str]] = []
 
@@ -913,7 +913,7 @@ class TestPhaseAllocation:
 
     def test_pipeline_progress_phases_are_monotonic(self):
         """Reporting across phases produces monotonically increasing values."""
-        from immich_memories.generate import _PipelineProgress
+        from immich_memories.generate_progress import _PipelineProgress
 
         calls: list[float] = []
 
@@ -943,7 +943,7 @@ class TestPhaseAllocation:
 
     def test_assembly_callback_none_without_progress(self):
         """If no progress_callback on params, assembly callback should be None."""
-        from immich_memories.generate import _PipelineProgress
+        from immich_memories.generate_progress import _PipelineProgress
 
         params = GenerationParams(
             clips=[],

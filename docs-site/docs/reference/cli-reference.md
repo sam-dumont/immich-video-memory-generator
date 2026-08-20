@@ -239,7 +239,8 @@ immich-memories generate [OPTIONS]
 | `--dry-run` | boolean | false | Show what would be done without generating |
 | `--upload-to-immich` | boolean | false | Upload generated video back to Immich |
 | `--album` | text | - | Immich album name for uploaded video |
-| `--add-date` | boolean | false | Add date overlay to clips |
+| `--add-date` | boolean | false | Caption each clip with its date |
+| `--add-place` | boolean | false | Caption each clip with its place |
 | `--keep-intermediates` | boolean | false | Keep intermediate files for debugging |
 | `--privacy-mode` | boolean | false | Blur faces and mute speech |
 | `--title` | text | - | Override video title text |

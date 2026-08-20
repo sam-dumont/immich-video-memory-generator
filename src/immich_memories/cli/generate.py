@@ -138,6 +138,7 @@ def _build_params_table(
     output_format: str | None,
     output_path: Path,
     add_date: bool,
+    add_place: bool,
     keep_intermediates: bool,
     privacy_mode: bool,
     title_override: str | None,
@@ -165,6 +166,8 @@ def _build_params_table(
     table.add_row("Output", str(output_path))
     if add_date:
         table.add_row("Date Overlay", "Enabled")
+    if add_place:
+        table.add_row("Place Overlay", "Enabled")
     if keep_intermediates:
         table.add_row("Keep Intermediates", "Enabled")
     if privacy_mode:
@@ -360,7 +363,10 @@ def register_generate_commands(main: click.Group) -> None:
         help="Upload generated video back to Immich",
     )
     @click.option("--album", type=str, default=None, help="Immich album name for uploaded video")
-    @click.option("--add-date", is_flag=True, default=False, help="Add date overlay to clips")
+    @click.option("--add-date", is_flag=True, default=False, help="Caption each clip with its date")
+    @click.option(
+        "--add-place", is_flag=True, default=False, help="Caption each clip with its place"
+    )
     @click.option(
         "--keep-intermediates",
         is_flag=True,
@@ -473,6 +479,7 @@ def register_generate_commands(main: click.Group) -> None:
         album: str | None,
         from_album: str | None,
         add_date: bool,
+        add_place: bool,
         keep_intermediates: bool,
         privacy_mode: bool,
         title_override: str | None,
@@ -661,6 +668,7 @@ def register_generate_commands(main: click.Group) -> None:
             output_format=output_format,
             output_path=output_path,
             add_date=add_date,
+            add_place=add_place,
             keep_intermediates=keep_intermediates,
             privacy_mode=privacy_mode,
             title_override=title_override,
@@ -724,6 +732,7 @@ def register_generate_commands(main: click.Group) -> None:
                             scale_mode=scale_mode,
                             output_format=output_format,
                             add_date=add_date,
+                            add_place=add_place,
                             keep_intermediates=keep_intermediates,
                             privacy_mode=privacy_mode,
                             title_override=title_override,
@@ -765,6 +774,7 @@ def register_generate_commands(main: click.Group) -> None:
                             scale_mode=scale_mode,
                             output_format=output_format,
                             add_date=add_date,
+                            add_place=add_place,
                             keep_intermediates=keep_intermediates,
                             privacy_mode=privacy_mode,
                             title_override=title_override,
@@ -890,6 +900,7 @@ def register_generate_commands(main: click.Group) -> None:
                         scale_mode=effective_scale_mode,
                         output_format=output_format,
                         add_date_overlay=add_date,
+                        add_place_overlay=add_place,
                         debug_preserve_intermediates=keep_intermediates,
                         privacy_mode=privacy_mode,
                         title_override=title_override,
