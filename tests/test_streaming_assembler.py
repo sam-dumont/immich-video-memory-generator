@@ -1140,31 +1140,18 @@ class TestAudioFilterChain:
         fade_dur = 0.5
         frame_dur = int(clip_dur * fps) / fps
 
-        # Create short WAV files.
-        # WHY timeout=30 for a 2s sine: this spawns 30 processes in a row, and
-        # a loaded CI runner has taken >5s just to start one of them. The
-        # generous budget only fires on a genuinely wedged process.
-        wavs: list[Path] = []
+        # One ffmpeg process with thirty inputs and thirty outputs, not thirty
+        # processes. The clips need distinct tones, but they do not need
+        # separate spawns, and the spawns were the problem: on a throttled CI
+        # runner a single one of them exceeded even a 30s budget, which is what
+        # kept reclaiming this job. Byte-identical output to the per-clip loop.
+        wavs = [tmp_path / f"clip_{i}.wav" for i in range(n_clips)]
+        command = ["ffmpeg", "-y"]
         for i in range(n_clips):
-            wav = tmp_path / f"clip_{i}.wav"
-            subprocess.run(  # noqa: S603, S607
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    f"sine=frequency={300 + i * 40}:duration={clip_dur}",
-                    "-ar",
-                    "48000",
-                    "-ac",
-                    "2",
-                    str(wav),
-                ],
-                capture_output=True,
-                timeout=30,
-            )
-            wavs.append(wav)
+            command += ["-f", "lavfi", "-i", f"sine=frequency={300 + i * 40}:duration={clip_dur}"]
+        for i, wav in enumerate(wavs):
+            command += ["-map", f"{i}:a", "-ar", "48000", "-ac", "2", str(wav)]
+        subprocess.run(command, capture_output=True, timeout=120, check=True)  # noqa: S603, S607
 
         clips = [AssemblyClip(path=wavs[i], duration=clip_dur) for i in range(n_clips)]
         transitions = ["fade"] * (n_clips - 1)
