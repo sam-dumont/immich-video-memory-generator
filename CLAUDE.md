@@ -28,6 +28,9 @@ make dev
 # Run tests
 make test
 
+# Run only what the torch-family extras unlock (face/audio-ml/demucs)
+make test-extras
+
 # Lint (ruff check)
 make lint
 
@@ -172,6 +175,7 @@ locally, CI will pass too. Use conventional commit message format (see above).
 | Tier | Runs in | Command | What it tests | Needs |
 |------|---------|---------|---------------|-------|
 | Unit | CI + local | `make test` | Pure logic, scoring math, config, helpers | Nothing external |
+| Extras | CI + local | `make test-extras` | Only paths the torch family unlocks (`-m extras`) | torch/demucs/face |
 | Integration | Local only | `make test-integration` | Real FFmpeg assembly, real Immich reads, real pipeline | FFmpeg + Immich |
 | Integration | GPU runner | `make test-integration` | Real FFmpeg assembly, Immich reads, pipeline | FFmpeg + Immich |
 

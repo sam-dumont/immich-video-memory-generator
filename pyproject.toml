@@ -616,6 +616,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "integration: requires FFmpeg (deselect with '-m not integration')",
+    "extras: needs the torch-family optional dependencies (face/audio-ml/demucs)",
     "e2e: Playwright E2E browser tests (deselect with '-m not e2e')",
     "slow: long-running tests (full generation pipeline, ~10min)",
     "perf: performance benchmarks (run with: make benchmark-perf)",

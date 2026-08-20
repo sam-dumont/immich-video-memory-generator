@@ -20,6 +20,10 @@ from immich_memories.audio.generators.demucs_local import (
     _save_audio,
 )
 
+# Selected by the Test Extras CI job; these bodies only execute when the
+# torch family is installed, which is the whole point of that job.
+pytestmark = pytest.mark.extras
+
 
 class TestDemucsImportability:
     """Test demucs package detection."""

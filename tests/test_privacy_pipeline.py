@@ -24,6 +24,11 @@ def _has_torch_and_torchcodec() -> bool:
         return False
 
 
+# Selected by the Test Extras CI job; these bodies only execute when the
+# torch family is installed, which is the whole point of that job.
+pytestmark = pytest.mark.extras
+
+
 # ---------------------------------------------------------------------------
 # _validate_torchcodec — real version check (skipped when torch not installed)
 # ---------------------------------------------------------------------------

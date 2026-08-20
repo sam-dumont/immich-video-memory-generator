@@ -380,6 +380,7 @@ jobs:
     name: Test Extras (${{ matrix.os }})
     needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -427,7 +428,7 @@ jobs:
           done
           uv sync $ARGS
 
-      - run: make test
+      - run: make test-extras
 
   # Integration tests run LOCALLY via pre-commit hook (not in CI — too slow).
   # Triggered by changes to src/immich_memories/(processing|titles)/ or tests/integration/.
