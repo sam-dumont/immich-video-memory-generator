@@ -543,7 +543,7 @@ jobs:
           uv run playwright install --with-deps chromium
           cd docs-site && npm ci
       - name: Run launch readiness gate
-        run: make launch-check
+        run: make launch-check-ci
       - name: Upload launch diagnostics
         if: failure()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5

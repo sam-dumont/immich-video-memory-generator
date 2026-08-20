@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import tomllib
 from pathlib import Path
@@ -124,9 +125,10 @@ launch-check: check build build-check docs-check e2e
     }
 
 
-def test_launch_check_consumes_the_preinstalled_ci_environment() -> None:
+@pytest.mark.parametrize("target", ["launch-check", "launch-check-ci"])
+def test_launch_check_consumes_the_preinstalled_ci_environment(target: str) -> None:
     """The launch job must not replace dev-test with every heavyweight extra."""
-    commands = _make_dry_run("launch-check")
+    commands = _make_dry_run(target)
 
     assert "uv sync --all-extras" not in commands
     assert "Using preinstalled launch-check dependencies" in commands
@@ -142,14 +144,18 @@ def test_ci_runs_the_hermetic_launch_check_with_runtime_dependencies() -> None:
     assert launch_job["timeout-minutes"] == 30
     assert "ffmpeg" in commands
     assert "playwright install --with-deps chromium" in commands
-    assert "make launch-check" in commands
+    # Exact target: "make launch-check" is a substring of "make launch-check-ci",
+    # so a loose check would pass whichever one CI pointed at.
+    assert re.search(r"^\s*make launch-check-ci\s*$", commands, re.M)
     assert all("IMMICH_API_KEY" not in str(step) for step in steps)
 
     lfs_pull_index = next(
         index for index, step in enumerate(steps) if "git lfs pull" in str(step.get("run", ""))
     )
     launch_index = next(
-        index for index, step in enumerate(steps) if "make launch-check" in str(step.get("run", ""))
+        index
+        for index, step in enumerate(steps)
+        if "make launch-check-ci" in str(step.get("run", ""))
     )
     assert lfs_pull_index < launch_index
 
@@ -211,3 +217,29 @@ def test_ci_summary_gate_enforces_event_sensitive_launch_result_matrix(
     result = _ci_success_result(event_name, setup_result, launch_result)
 
     assert result.returncode == expected_returncode, result.stdout + result.stderr
+
+
+def test_ci_launch_gate_does_not_rerun_what_has_its_own_job() -> None:
+    """The launch job must contribute the e2e gate, not repeat the whole pipeline.
+
+    `make launch-check` chains check + build + build-check + docs-check + e2e,
+    and CI already runs every one of those as a dedicated parallel job — lint,
+    typecheck, file-length, complexity, a six-cell test matrix, Build Package
+    (which runs build and build-check) and docs. Re-running them made this the
+    longest job in CI, and under runner starvation it was killed at ~80% of the
+    test suite, before ever reaching the browser render it exists for.
+    """
+    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
+    target = next(
+        command
+        for step in workflow["jobs"]["launch-check"]["steps"]
+        for command in [str(step.get("run", ""))]
+        if "launch-check" in command
+    ).split()[-1]
+
+    prerequisites = _make_target_prerequisites(target)
+
+    assert "e2e" in prerequisites, "the launch gate must still run the hermetic render"
+    assert not prerequisites & {"check", "test", "docs-check", "build"}, (
+        f"{target} repeats work that already has its own CI job: {sorted(prerequisites)}"
+    )

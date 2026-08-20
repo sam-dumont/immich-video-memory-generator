@@ -531,6 +531,16 @@ launch-check: ENSURE_DEV_COMMAND = echo "Using preinstalled launch-check depende
 launch-check: check build build-check docs-check e2e
 	@echo "Launch readiness checks passed!"
 
+# The same gate for pull-request CI, minus everything that already has its own
+# parallel job there (lint, typecheck, file-length, complexity, the test matrix,
+# Build Package, docs). Repeating them made this the longest job in CI and, under
+# runner starvation, it was killed around 80% of the test suite -- before ever
+# reaching the hermetic browser render it exists to run. Operators keep
+# `launch-check`, which has no parallel jobs to lean on.
+launch-check-ci: ENSURE_DEV_COMMAND = echo "Using preinstalled launch-check dependencies"
+launch-check-ci: ensure-dev e2e
+	@echo "Hermetic launch check passed!"
+
 # Full CI-equivalent pipeline (locally)
 ci: ensure-dev lint format-check typecheck file-length complexity cognitive-complexity dead-code security-lint semgrep refurb dep-check arch-check duplication critique docs-cli-check test
 	@echo "Full CI pipeline passed!"
