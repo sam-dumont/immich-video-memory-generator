@@ -226,6 +226,7 @@ immich-memories generate [OPTIONS]
 | `--month` | integer | - | Month 1-12 (with --year, generates that month; selects trip by month) |
 | `--hemisphere` | choice: `north` \| `south` | north | Hemisphere for season calculation |
 | `--duration`, `-d` | integer | - | Target duration in seconds (default: from memory type preset) |
+| `--short-form` | choice: `15` \| `30` \| `60` \| `90` | - | Short-form preset: sets the duration and makes the video vertical |
 | `--orientation`, `-o` | choice: `landscape` \| `portrait` \| `square` | landscape | Output orientation |
 | `--scale-mode`, `-s` | choice: `fit` \| `fill` \| `smart_crop` \| `blur` | - | Scale mode (default: from config or smart_crop) |
 | `--transition`, `-t` | choice: `smart` \| `cut` \| `crossfade` \| `none` | smart | Transition style (default: smart — mix of fades & cuts) |
