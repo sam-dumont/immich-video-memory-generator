@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 # Control characters for sanitizing filenames
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
-_CREDENTIAL_FIELD_NAMES = frozenset({"api_key", "password", "client_secret"})
+# Field names that hold a secret, wherever they appear in the config tree.
+CREDENTIAL_FIELD_NAMES = frozenset({"api_key", "password", "client_secret"})
 
 
 def write_secret_file(path: Path, text: str) -> None:
@@ -50,7 +51,7 @@ def configured_secret_values(config: BaseModel) -> tuple[str, ...]:
         if isinstance(value, BaseModel):
             for field_name in type(value).model_fields:
                 field_value = getattr(value, field_name)
-                if field_name in _CREDENTIAL_FIELD_NAMES:
+                if field_name in CREDENTIAL_FIELD_NAMES:
                     if isinstance(field_value, str) and field_value:
                         secrets.add(field_value)
                 else:

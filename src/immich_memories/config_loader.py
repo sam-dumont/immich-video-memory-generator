@@ -14,7 +14,7 @@ import stat
 from pathlib import Path
 
 import yaml
-from pydantic import Field, model_validator
+from pydantic import Field, PrivateAttr, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from immich_memories.config_models import (
@@ -43,7 +43,7 @@ from immich_memories.config_models import (
 from immich_memories.config_models_auth import AuthConfig
 from immich_memories.config_presets import PresetName, apply_preset
 from immich_memories.scheduling.models import SchedulerConfig
-from immich_memories.security import write_secret_file
+from immich_memories.security import CREDENTIAL_FIELD_NAMES, write_secret_file
 
 # Tier 2 sections — grouped under `advanced:` in YAML, flat on Config at runtime.
 _TIER2_SECTIONS = frozenset(
@@ -110,6 +110,64 @@ class _YamlSettingsSource(PydanticBaseSettingsSource):
         return _yaml_source_data.copy()
 
 
+# Environment variables the loader reads for a credential beyond the mechanical
+# IMMICH_MEMORIES_<SECTION>__<FIELD> form (see _apply_env_overrides).
+_CREDENTIAL_ENV_ALIASES: dict[str, tuple[str, ...]] = {
+    "immich.api_key": ("IMMICH_API_KEY",),
+    "llm.api_key": ("OPENAI_API_KEY",),
+    "musicgen.api_key": ("MUSICGEN_API_KEY",),
+    "ace_step.api_key": ("ACE_STEP_API_KEY",),
+    "auth.password": ("IMMICH_MEMORIES_AUTH_PASSWORD",),
+}
+
+
+def _feeder_env_vars(path: str) -> tuple[str, ...]:
+    section, _, field = path.partition(".")
+    settings_name = f"IMMICH_MEMORIES_{section.upper()}__{field.upper()}"
+    return (*_CREDENTIAL_ENV_ALIASES.get(path, ()), settings_name)
+
+
+def _credential_templates(data: dict) -> dict[str, str]:
+    """Record the `${VAR}` forms written in the file before expansion loses them."""
+    templates: dict[str, str] = {}
+    for section, values in data.items():
+        if not isinstance(values, dict):
+            continue
+        for field, value in values.items():
+            if field in CREDENTIAL_FIELD_NAMES and isinstance(value, str) and "$" in value:
+                templates[f"{section}.{field}"] = value
+    return templates
+
+
+def _text_to_persist(path: str, value: str, templates: dict[str, str]) -> str | None:
+    """What to write for a credential, or None to write the value verbatim."""
+    if not value:
+        return None
+    if template := templates.get(path):
+        return template
+    for name in _feeder_env_vars(path):
+        if os.environ.get(name) == value:
+            return f"${{{name}}}"
+    return None
+
+
+def _keep_env_secrets_out(data: dict, templates: dict[str, str]) -> None:
+    """Replace env-provided credentials with the reference that supplied them.
+
+    A key the user deliberately kept in the environment must not be written to
+    disk by pressing Save -- the file outlives the container that had the env
+    var, and it is the one artifact most likely to be copied or backed up.
+    """
+    for section, values in data.items():
+        if not isinstance(values, dict):
+            continue
+        for field, value in values.items():
+            if field not in CREDENTIAL_FIELD_NAMES or not isinstance(value, str):
+                continue
+            if replacement := _text_to_persist(f"{section}.{field}", value, templates):
+                values[field] = replacement
+
+
 class Config(BaseSettings):
     """Main configuration for Immich Memories.
 
@@ -164,6 +222,10 @@ class Config(BaseSettings):
     automation: AutomationConfig = Field(default_factory=AutomationConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
 
+    # `${VAR}` forms as written in config.yaml, so Save can put them back
+    # instead of the secrets they expanded to.
+    _credential_templates: dict[str, str] = PrivateAttr(default_factory=dict)
+
     @model_validator(mode="after")
     def _apply_preset(self) -> Config:
         apply_preset(self)
@@ -180,7 +242,9 @@ class Config(BaseSettings):
         global _yaml_source_data
         _yaml_source_data = _load_yaml_data(path)
         try:
-            return cls()
+            config = cls()
+            config._credential_templates = _credential_templates(_yaml_source_data)
+            return config
         finally:
             _yaml_source_data = {}
 
@@ -201,6 +265,7 @@ class Config(BaseSettings):
         """Save configuration to a YAML file (tiered format)."""
         path.parent.mkdir(parents=True, exist_ok=True)
         data = self.model_dump()
+        _keep_env_secrets_out(data, self._credential_templates)
 
         # Group tier 2 sections under advanced:
         advanced: dict = {}
