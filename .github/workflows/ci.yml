@@ -36,174 +36,73 @@ jobs:
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
 
-  # ── Tier 1: Cheap quality gates (all parallel, ~10s each) ─────────────────
-  commitlint:
-    name: Commit Messages
-    runs-on: ubuntu-latest
-    if: github.repository == 'sam-dumont/immich-video-memory-generator' && github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          fetch-depth: 0
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          enable-cache: true
-          prune-cache: false
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: COMMIT_RANGE="origin/${{ github.base_ref }}..HEAD" make commitlint
-
-  lint:
-    name: Lint + Format
+  # ── Tier 1: Quality gates ─────────────────────────────────────────────────
+  # One job, not thirteen. Each gate takes 10-35s but held its own runner slot,
+  # and the account gets 20 concurrent jobs: with several PRs in flight, ~65
+  # slots were occupied by half-minute jobs while the test matrix queued behind
+  # them and got reclaimed mid-run. Sequenced here they cost the same four
+  # minutes of work and one slot, and `make dev-ci` runs once instead of
+  # thirteen times.
+  #
+  # Every gate runs even after one fails (`!cancelled()`), so a red build still
+  # reports all of them at once, the way thirteen parallel jobs did.
+  quality:
+    name: Quality Gates
     needs: [setup]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0  # commitlint needs the base branch
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: true
           prune-cache: false
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - run: make dev-ci
+
       - name: Ruff check
+        if: '!cancelled()'
         run: make lint
       - name: Ruff format check
+        if: '!cancelled()'
         run: make format-check
       - name: CLI reference drift
+        if: '!cancelled()'
         run: make docs-cli-check
-
-  typecheck:
-    name: Type Check (mypy)
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          enable-cache: true
-          prune-cache: false
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make typecheck
-
-  dead-code:
-    name: Dead Code (Vulture)
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          enable-cache: true
-          prune-cache: false
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make dead-code
-
-  complexity:
-    name: Cyclomatic Complexity (Xenon)
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          enable-cache: true
-          prune-cache: false
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make complexity
-
-  cognitive-complexity:
-    name: Cognitive Complexity
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          enable-cache: true
-          prune-cache: false
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make cognitive-complexity
-
-  file-length:
-    name: File Length (≤800 lines)
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          enable-cache: true
-          prune-cache: false
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make file-length
-
-  refurb:
-    name: Modernization (refurb)
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          enable-cache: true
-          prune-cache: false
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make refurb
-
-  dep-check:
-    name: Dependency Hygiene (deptry)
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          enable-cache: true
-          prune-cache: false
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make dep-check
-
-  arch-check:
-    name: Architecture (import-linter)
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          enable-cache: true
-          prune-cache: false
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make arch-check
-
-  duplication:
-    name: Code Duplication (≤5%)
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - run: make duplication
-
-  critique:
-    name: AI Smell Audit
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          enable-cache: true
-          prune-cache: false
-      - run: uv python install ${{ env.PYTHON_VERSION }}
-      - run: make dev-ci
-      - run: make critique
+      - name: Type Check (mypy)
+        if: '!cancelled()'
+        run: make typecheck
+      - name: Dead Code (Vulture)
+        if: '!cancelled()'
+        run: make dead-code
+      - name: Cyclomatic Complexity (Xenon)
+        if: '!cancelled()'
+        run: make complexity
+      - name: Cognitive Complexity
+        if: '!cancelled()'
+        run: make cognitive-complexity
+      - name: File Length (≤800 lines)
+        if: '!cancelled()'
+        run: make file-length
+      - name: Modernization (refurb)
+        if: '!cancelled()'
+        run: make refurb
+      - name: Dependency Hygiene (deptry)
+        if: '!cancelled()'
+        run: make dep-check
+      - name: Architecture (import-linter)
+        if: '!cancelled()'
+        run: make arch-check
+      - name: Code Duplication (≤5%)
+        if: '!cancelled()'
+        run: make duplication
+      - name: AI Smell Audit
+        if: '!cancelled()'
+        run: make critique
+      - name: Commit Messages
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        run: COMMIT_RANGE="origin/${{ github.base_ref }}..HEAD" make commitlint
 
   # ── Tier 1: Security (parallel with quality gates) ────────────────────────
   security:
@@ -265,7 +164,7 @@ jobs:
   # ── Tier 2: Tests (after all quality gates pass) ──────────────────────────
   test:
     name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
-    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique]
+    needs: [quality, security]
     permissions:
       contents: read
       pull-requests: write
@@ -385,7 +284,7 @@ jobs:
 
   test-extras:
     name: Test Extras (${{ matrix.os }})
-    needs: [lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique]
+    needs: [quality, security]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -567,7 +466,7 @@ jobs:
   # ── Summary gate ──────────────────────────────────────────────────────────
   ci-success:
     name: CI Success
-    needs: [setup, lint, typecheck, security, dead-code, complexity, cognitive-complexity, file-length, refurb, dep-check, arch-check, duplication, critique, test, test-extras, build, docker, docs, launch-check]
+    needs: [setup, quality, security, test, test-extras, build, docker, docs, launch-check]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -582,18 +481,8 @@ jobs:
             exit 1
           fi
           results=(
-            "${{ needs.lint.result }}"
-            "${{ needs.typecheck.result }}"
+            "${{ needs.quality.result }}"
             "${{ needs.security.result }}"
-            "${{ needs.dead-code.result }}"
-            "${{ needs.complexity.result }}"
-            "${{ needs.cognitive-complexity.result }}"
-            "${{ needs.file-length.result }}"
-            "${{ needs.refurb.result }}"
-            "${{ needs.dep-check.result }}"
-            "${{ needs.arch-check.result }}"
-            "${{ needs.duplication.result }}"
-            "${{ needs.critique.result }}"
             "${{ needs.test.result }}"
             "${{ needs.test-extras.result }}"
             "${{ needs.build.result }}"
