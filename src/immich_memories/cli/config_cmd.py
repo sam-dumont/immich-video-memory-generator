@@ -3,12 +3,39 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import click
 from rich.table import Table
 
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
 from immich_memories.config import Config
+
+
+def _config_write_path(ctx: click.Context) -> Path:
+    """Where `config` saves: the file it was told to use.
+
+    The values being edited came from --config when it was given, so the write
+    has to go back to the same file. Saving to the default path regardless meant
+    `--config other.yaml config` silently replaced ~/.immich-memories/config.yaml
+    with the other file's contents.
+    """
+    return ctx.obj.get("config_path") or Config.get_default_path()
+
+
+def _prompt_for_api_key(existing: str) -> str:
+    """Ask for an API key without ever showing the one already configured.
+
+    `hide_input` hides what is typed, not the default, so Click renders
+    `API key [sk-live-...]:` -- and that key has full library access, so the line
+    reaches the terminal, scrollback and any recording. Nothing is shown; an
+    empty answer keeps the existing key, and the notice keeps an empty prompt
+    from looking like an empty setting.
+    """
+    if existing:
+        console.print("[dim]An API key is already configured — press enter to keep it.[/dim]")
+    entered = click.prompt("API key", default="", hide_input=True, show_default=False)
+    return entered or existing
 
 
 def register_config_commands(main: click.Group) -> None:
@@ -29,7 +56,7 @@ def register_config_commands(main: click.Group) -> None:
     ) -> None:
         """Configure Immich connection settings."""
         cfg = ctx.obj["config"]
-        config_path = Config.get_default_path()
+        config_path = _config_write_path(ctx)
 
         if action == "test":
             from immich_memories.preflight import CheckStatus, check_immich
@@ -75,11 +102,7 @@ def register_config_commands(main: click.Group) -> None:
                 "Immich server URL",
                 default=cfg.immich.url or "https://photos.example.com",
             )
-            new_api_key = click.prompt(
-                "API key",
-                default=cfg.immich.api_key or "",
-                hide_input=True,
-            )
+            new_api_key = _prompt_for_api_key(cfg.immich.api_key)
 
             cfg.immich.url = new_url
             cfg.immich.api_key = new_api_key
