@@ -398,12 +398,13 @@ def _then_and_now(
         memory_type=MemoryType.THEN_AND_NOW,
         name=f"{then_year} and {year}",
         description=f"{then_year} beside {year}",
+        # Most recent first, matching the other multi-range types.
         date_ranges=[
+            DateRange(start=datetime(year, 1, 1, 0, 0, 0), end=datetime(year, 12, 31, 23, 59, 59)),
             DateRange(
                 start=datetime(then_year, 1, 1, 0, 0, 0),
                 end=datetime(then_year, 12, 31, 23, 59, 59),
             ),
-            DateRange(start=datetime(year, 1, 1, 0, 0, 0), end=datetime(year, 12, 31, 23, 59, 59)),
         ],
         person_filter=person_filter,
         scoring=ScoringProfile(face_weight=0.4, content_weight=0.3),

@@ -268,6 +268,9 @@ def _multi_year_ranges(
         # a narrow window in a year long past is often empty.
         now_year = year or date.today().year
         then_year = now_year - (years_back or 10)
-        return [calendar_year(then_year), calendar_year(now_year)]
+        # Most recent first, like the other multi-range types: the caller derives
+        # its display span as start=ranges[-1].start, end=ranges[0].end, which
+        # inverts on an ascending list.
+        return [calendar_year(now_year), calendar_year(then_year)]
 
     return None

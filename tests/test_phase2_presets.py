@@ -33,9 +33,9 @@ def test_then_and_now_produces_two_periods() -> None:
     preset = create_preset(MemoryType.THEN_AND_NOW, year=2025, years_back=10)
 
     assert len(preset.date_ranges) == 2
-    then, now = preset.date_ranges
-    assert then.start.year == 2015
+    now, then = preset.date_ranges  # most recent first, like the other multi-range types
     assert now.start.year == 2025
+    assert then.start.year == 2015
 
 
 def test_then_and_now_refuses_a_gap_of_zero() -> None:
@@ -86,7 +86,7 @@ class TestDateResolution:
             years_back=10,
         )
 
-        assert [r.start.year for r in result] == [2015, 2025]
+        assert [r.start.year for r in result] == [2025, 2015]
 
     def test_a_moving_holiday_resolves_per_year(self) -> None:
         from immich_memories.cli._date_resolution import resolve_date_range
@@ -103,3 +103,22 @@ class TestDateResolution:
         )
 
         assert [(r.start.month, r.start.day) for r in result] == [(4, 18), (3, 29)]
+
+
+def test_multi_range_types_are_ordered_most_recent_first() -> None:
+    """The CLI derives its display span as `start=ranges[-1].start, end=ranges[0].end`.
+
+    That only works on a descending list. Then-and-now returned [then, now] and
+    the run recorded a span of 2025-01-01 to 2017-12-31 — start after end.
+    """
+    from immich_memories.cli._date_resolution import resolve_date_range
+    from immich_memories.timeperiod import DateRange
+
+    for kwargs in (
+        {"memory_type": "then_and_now", "years_back": 8},
+        {"memory_type": "holiday", "holiday": "christmas", "years_back": 3},
+    ):
+        ranges = resolve_date_range(2025, None, None, None, None, **kwargs)
+        span = DateRange(start=ranges[-1].start, end=ranges[0].end)
+
+        assert span.start < span.end, f"{kwargs['memory_type']} derived an inverted span"
