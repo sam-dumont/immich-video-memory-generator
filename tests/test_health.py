@@ -714,6 +714,18 @@ class TestHealthIsCheapUnderRepeatedProbes:
 
         app_module._health_snapshot_cache = None
 
+    @staticmethod
+    def _configured_config():
+        """A configured Immich, owned by the test.
+
+        The dependency probe only runs when a URL and key are present, so
+        without this the assertions passed on a developer machine with a real
+        config and never probed at all in CI.
+        """
+        from immich_memories.config_loader import Config
+
+        return Config(immich={"url": "http://immich.test:2283", "api_key": "test-key"})
+
     @pytest.mark.asyncio
     async def test_a_burst_of_probes_does_the_work_once(self):
         from immich_memories.ui import app as app_module
@@ -727,6 +739,8 @@ class TestHealthIsCheapUnderRepeatedProbes:
 
         # WHY: the Immich server and the SQLite stores behind the snapshot
         with (
+            # WHY: the probe only runs for a configured Immich
+            patch("immich_memories.ui.app.get_config", self._configured_config),
             # WHY: external Immich server
             patch("immich_memories.ui.app._check_immich_dependency", counted_dependency),
             # WHY: reads four SQLite databases
@@ -753,6 +767,8 @@ class TestHealthIsCheapUnderRepeatedProbes:
 
         # WHY: the Immich server and the SQLite stores behind the snapshot
         with (
+            # WHY: the probe only runs for a configured Immich
+            patch("immich_memories.ui.app.get_config", self._configured_config),
             # WHY: external Immich server
             patch("immich_memories.ui.app._check_immich_dependency", counted_dependency),
             # WHY: reads four SQLite databases
@@ -790,6 +806,8 @@ class TestHealthIsCheapUnderRepeatedProbes:
 
         # WHY: stands in for the Immich server and for a slow SQLite read
         with (
+            # WHY: the probe only runs for a configured Immich
+            patch("immich_memories.ui.app.get_config", self._configured_config),
             # WHY: external Immich server
             patch("immich_memories.ui.app._check_immich_dependency", ready_dependency),
             # WHY: a real contended SQLite read, without needing contention
