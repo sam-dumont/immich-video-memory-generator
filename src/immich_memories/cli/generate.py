@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import click
-from rich.table import Table
 
 from immich_memories.cli._date_resolution import (
     default_duration_for_type,
     duration_from_date_range,
     infer_memory_type,
     resolve_date_range,
+)
+from immich_memories.cli._generate_display import (
+    _build_params_table,
+    _print_generation_result,
 )
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
 from immich_memories.cli._pipeline_runner import (
@@ -27,7 +31,7 @@ from immich_memories.processing.encoding_plan import resolve_output_selection
 from immich_memories.timeperiod import DateRange, parse_date
 
 if TYPE_CHECKING:
-    from immich_memories.config_loader import Config
+    pass
 
 
 def _resolve_generation_scope(
@@ -109,93 +113,36 @@ def _reject_album_scope_conflicts(
         raise click.UsageError(f"--from-album selects its own assets; drop {', '.join(used)}")
 
 
-def _add_scope_rows(table: Table, *, album_ref: str | None, date_range: DateRange) -> None:
-    """Describe what the memory is drawn from: an album, or a span of time."""
-    if album_ref:
-        table.add_row("Album", album_ref)
-        return
-    table.add_row("Time Period", date_range.description)
-    table.add_row("Duration", f"{date_range.days} days")
+SHORT_FORM_SECONDS = ("15", "30", "60", "90")
 
 
-def _format_target_duration(duration: float | None) -> str:
-    if duration is None:
-        return "auto"
-    return f"{duration / 60:.1f} min" if duration >= 60 else f"{duration:.0f}s"
+@dataclass(frozen=True, slots=True)
+class ShortForm:
+    """What a short-form preset resolves to."""
+
+    duration: float | None
+    orientation: str
 
 
-def _build_params_table(
+def resolve_short_form(
+    short_form: str | None,
     *,
-    config: Config,
-    memory_type: str | None,
-    date_range: DateRange,
-    person_names: list[str],
     duration: float | None,
-    album_ref: str | None = None,
     orientation: str,
-    scale_mode: str | None,
-    transition: str,
-    resolution: str,
-    output_format: str | None,
-    output_path: Path,
-    add_date: bool,
-    add_place: bool,
-    keep_intermediates: bool,
-    privacy_mode: bool,
-    title_override: str | None,
-    subtitle_override: str | None,
-    use_live_photos: bool,
-    music: str | None,
-    music_volume: float,
-    no_music: bool = False,
-) -> Table:
-    """Build a Rich table displaying generation parameters."""
-    table = Table(title="Generation Parameters")
-    table.add_column("Setting", style="cyan")
-    table.add_column("Value", style="green")
+    orientation_was_given: bool = False,
+) -> ShortForm:
+    """Apply a short-form preset without overruling anything asked for explicitly.
 
-    if memory_type:
-        table.add_row("Memory Type", memory_type)
-    _add_scope_rows(table, album_ref=album_ref, date_range=date_range)
-    table.add_row("Person", ", ".join(person_names) if person_names else "All people")
-    table.add_row("Target Duration", _format_target_duration(duration))
-    table.add_row("Orientation", orientation)
-    table.add_row("Scale Mode", scale_mode or config.defaults.scale_mode)
-    table.add_row("Transition", transition)
-    table.add_row("Resolution", resolution)
-    table.add_row("Format", output_format or config.output.codec)
-    table.add_row("Output", str(output_path))
-    if add_date:
-        table.add_row("Date Overlay", "Enabled")
-    if add_place:
-        table.add_row("Place Overlay", "Enabled")
-    if keep_intermediates:
-        table.add_row("Keep Intermediates", "Enabled")
-    if privacy_mode:
-        table.add_row("Privacy Mode", "Enabled (blur faces, mute speech)")
-    if title_override:
-        table.add_row("Title Override", title_override)
-    if subtitle_override:
-        table.add_row("Subtitle Override", subtitle_override)
-    if use_live_photos:
-        table.add_row("Live Photos", "Enabled")
-    if no_music:
-        table.add_row("Music", "Disabled")
-    elif music and music != "auto":
-        table.add_row("Music", music)
-        table.add_row("Music Volume", f"{int(music_volume * 100)}%")
-    elif music == "auto" or _has_music_backends(config):
-        table.add_row("Music", "Auto (AI-generated)")
-        table.add_row("Music Volume", f"{int(music_volume * 100)}%")
-
-    return table
-
-
-def _has_music_backends(config: Config) -> bool:
-    """Check if any music generation backend is enabled in config."""
-    from immich_memories.generate_music import music_config_available
-
-    return music_config_available(config)
+    The preset is vertical because that is the shape Reels, Shorts and TikTok
+    take, but square short-form is real, so an orientation the user actually
+    typed wins. Same for a duration: the preset fills a gap, it does not argue.
+    """
+    if short_form is None:
+        return ShortForm(duration=duration, orientation=orientation)
+    return ShortForm(
+        duration=duration if duration is not None else int(short_form),
+        orientation=orientation if orientation_was_given else "portrait",
+    )
 
 
 def resolve_inclusion(flag: bool | None, *, config_enabled: bool) -> bool:
@@ -208,22 +155,6 @@ def resolve_inclusion(flag: bool | None, *, config_enabled: bool) -> bool:
     if flag is None:
         return config_enabled
     return flag
-
-
-def _print_generation_result(
-    *,
-    dry_run: bool,
-    result_path: Path,
-    should_upload: bool,
-    album_name: str | None,
-) -> None:
-    """Report a plan without claiming an artifact or upload exists."""
-    if dry_run:
-        print_success("Dry-run planning complete; no video was created")
-        return
-    print_success(f"Video saved to: {result_path}")
-    if should_upload:
-        print_success(f"Uploaded to Immich (album: {album_name or 'none'})")
 
 
 def register_generate_commands(main: click.Group) -> None:
@@ -292,6 +223,12 @@ def register_generate_commands(main: click.Group) -> None:
         type=int,
         default=None,
         help="Target duration in seconds (default: from memory type preset)",
+    )
+    @click.option(
+        "--short-form",
+        type=click.Choice(SHORT_FORM_SECONDS),
+        default=None,
+        help="Short-form preset: sets the duration and makes the video vertical",
     )
     @click.option(
         "--orientation",
@@ -464,7 +401,8 @@ def register_generate_commands(main: click.Group) -> None:
         season: str | None,
         month: int | None,
         hemisphere: str,
-        duration: float,
+        duration: float | None,
+        short_form: str | None,
         orientation: str,
         scale_mode: str | None,
         transition: str,
@@ -660,6 +598,15 @@ def register_generate_commands(main: click.Group) -> None:
         # Infer memory type from context when not explicitly set
         if memory_type is None and person_names:
             memory_type = "person_spotlight" if len(person_names) == 1 else "multi_person"
+
+        short = resolve_short_form(
+            short_form,
+            duration=duration,
+            orientation=orientation,
+            orientation_was_given=ctx.get_parameter_source("orientation")
+            is not click.core.ParameterSource.DEFAULT,
+        )
+        duration, orientation = short.duration, short.orientation
 
         # Resolve duration: CLI --duration > memory type default > date-range scaling
         # Album mode defers to the pipeline, which sizes it from the album's media.

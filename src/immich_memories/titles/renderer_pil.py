@@ -19,6 +19,8 @@ from pathlib import Path
 
 import numpy as np
 
+from immich_memories.titles.safe_zones import safe_margin_ratio
+
 from .animations import (
     AnimationPreset,
     compute_staggered_animation,
@@ -326,7 +328,7 @@ class TitleRenderer:
         if opacity <= 0:
             return frame
 
-        safe_margin_percent = 0.10
+        safe_margin_percent = safe_margin_ratio(self.settings.width, self.settings.height)
         safe_margin_x = int(self.settings.width * safe_margin_percent)
         max_text_width = self.settings.width - (2 * safe_margin_x)
 

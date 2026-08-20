@@ -1135,7 +1135,7 @@ class TestGenerateBuildParamsTable:
 
     def test_basic_table(self):
         """Table includes expected settings."""
-        from immich_memories.cli.generate import _build_params_table
+        from immich_memories.cli._generate_display import _build_params_table
         from immich_memories.timeperiod import DateRange
 
         config = Config()
@@ -1169,7 +1169,7 @@ class TestGenerateBuildParamsTable:
 
     def test_table_with_all_options(self):
         """Table renders special rows for enabled options."""
-        from immich_memories.cli.generate import _build_params_table
+        from immich_memories.cli._generate_display import _build_params_table
         from immich_memories.timeperiod import DateRange
 
         config = Config()

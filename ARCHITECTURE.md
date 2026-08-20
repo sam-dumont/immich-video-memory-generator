@@ -256,6 +256,7 @@ src/immich_memories/
 │   ├── _trip_generation.py     # Trip detection, selection, per-trip generation
 │   ├── _trip_display.py        # Trip table formatting & selection logic
 │   ├── _date_resolution.py     # Date range resolution for memory types
+│   ├── _generate_display.py    # Params table + result printing for `generate`
 │   ├── _live_display.py        # Rich Live interactive progress display
 │   └── _progress.py            # Progress tracking helpers
 │

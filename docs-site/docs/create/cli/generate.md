@@ -42,6 +42,7 @@ immich-memories generate [OPTIONS]
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
 | `--duration` | `-d` | int | — | Target duration in seconds |
+| `--short-form` | — | choice | — | `15`, `30`, `60`, or `90` — sets the duration and goes vertical |
 | `--orientation` | `-o` | choice | `landscape` | `landscape`, `portrait`, or `square` |
 | `--resolution` | `-r` | choice | config value; `auto` matches source clips | `auto`, `4k`, `1080p`, or `720p` |
 | `--scale-mode` | `-s` | choice | config/`blur` | `fit`, `fill`, `smart_crop`, or `blur` |
@@ -70,6 +71,25 @@ Place names bring characters FFmpeg's text renderer treats as syntax. A colon
 would break the filter outright, and an ASCII apostrophe is silently *dropped* —
 `L'Aquila` rendered as `LAquila` — so apostrophes are written as the typographic
 `’`, which is the correct mark anyway.
+
+### Short-form
+
+`--short-form 30` is the vertical formats in one flag: it sets the duration and
+makes the output portrait, which is what Reels, Shorts and TikTok take.
+
+```bash
+immich-memories generate --year 2025 --month 8 --short-form 30
+```
+
+The preset fills gaps rather than overruling you. An explicit `--duration` wins,
+and so does an explicit `--orientation` — square short-form is a real format, so
+`--short-form 30 --orientation square` gives you 30 seconds in a square frame.
+
+Titles keep more clearance on a vertical render: 16% of the width on each side
+instead of 10%. A title is centred, and the column of action buttons those apps
+draw down the right-hand side sits across the middle of the frame — exactly
+where a centred title lands. The text shrinks to fit rather than sliding, so it
+stays centred and out from under the buttons.
 
 With `--orientation portrait` the caption is inset further from the bottom —
 about a sixth of the frame height — to clear the captions, handle and action

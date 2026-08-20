@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from immich_memories.titles.safe_zones import safe_text_width
+
 if TYPE_CHECKING:
     from .sdf_font import SDFFontAtlas
 
@@ -833,7 +835,7 @@ class TaichiTitleRenderer:
         scale = font_size / self._sdf_atlas.font_size
         glyph_data, text_width, text_height = layout_text(text, self._sdf_atlas, 0, 0, scale)
 
-        safe_width = self.config.width * 0.8
+        safe_width = safe_text_width(self.config.width, self.config.height)
         if text_width > safe_width:
             width_scale = safe_width / text_width
             scale = scale * width_scale
@@ -883,7 +885,7 @@ class TaichiTitleRenderer:
         except (OSError, ValueError):
             font = ImageFont.load_default()
 
-        safe_width = w * 0.88
+        safe_width = safe_text_width(w, h)
         bbox = draw.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
 
