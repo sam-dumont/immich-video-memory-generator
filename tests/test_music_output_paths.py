@@ -1530,9 +1530,13 @@ def test_optional_music_logs_never_include_raw_backend_secret(
             encoding_plan=_h264_output_plan(),
         )
 
-    assert result.warning == "Optional music failed: backend rejected ***"
+    # A generator failure no longer ends the phase — it falls through to a
+    # bundled track (#422) — so the sanitized backend warning lands in the log
+    # rather than in the phase result. The property under test is that the raw
+    # secret reaches neither, whatever the phase ends on.
     assert "Optional music failed: backend rejected ***" in caplog.text
     assert "top-secret" not in caplog.text
+    assert result.warning is None or "top-secret" not in result.warning
 
 
 def test_music_phase_passes_exact_encoding_plan_to_publication(tmp_path: Path) -> None:
