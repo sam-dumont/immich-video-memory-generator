@@ -26,6 +26,7 @@ from immich_memories.analysis.unified_budget import (
     estimate_title_overhead,
     select_within_budget,
 )
+from immich_memories.api.immich import ImmichAPIError
 from immich_memories.api.models import Asset
 from immich_memories.config_models import PhotoConfig
 from immich_memories.photos.animator import prepare_photo_source
@@ -442,7 +443,7 @@ def _llm_score_photo(
         try:
             thumb_bytes = thumbnail_fn(asset.id, size="preview")
             thumb_path.write_bytes(thumb_bytes)
-        except (OSError, RuntimeError, ValueError):
+        except (ImmichAPIError, OSError, RuntimeError, ValueError):
             thumbnail_fn = None  # Fall back to full download
 
     if thumb_path.exists():
@@ -463,7 +464,7 @@ def _llm_score_photo(
     if not raw_path.exists():
         try:
             download_fn(asset.id, raw_path)
-        except (OSError, RuntimeError, ValueError):
+        except (ImmichAPIError, OSError, RuntimeError, ValueError):
             return None
 
     try:
@@ -572,7 +573,7 @@ def _render_single_photo(
             location_name=asset.exif_info.city if asset.exif_info else None,
         )
 
-    except (OSError, subprocess.SubprocessError, ValueError) as e:
+    except (ImmichAPIError, OSError, subprocess.SubprocessError, ValueError) as e:
         logger.warning(f"Failed to render photo {asset.id}: {e}")
         return None
 

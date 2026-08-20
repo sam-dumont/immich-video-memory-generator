@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any
 
 from immich_memories.analysis.duplicate_hashing import compute_thumbnail_hash, hamming_distance
+from immich_memories.api.immich import ImmichAPIError
 from immich_memories.api.models import Asset, VideoClipInfo
 from immich_memories.config_models import PhotoConfig
 
@@ -195,7 +196,7 @@ def _thumbnail_hash_resolver(
         if data is None and thumbnail_fn is not None:
             try:
                 data = thumbnail_fn(asset_id, size="preview")
-            except (OSError, RuntimeError, ValueError):
+            except (ImmichAPIError, OSError, RuntimeError, ValueError):
                 return None
             if data and thumbnail_cache is not None:
                 thumbnail_cache.put(asset_id, "preview", data)
