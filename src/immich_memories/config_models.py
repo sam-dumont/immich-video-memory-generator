@@ -6,6 +6,7 @@ cache, LLM, audio, music generation, content analysis, title screen, and upload.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -16,16 +17,48 @@ from pydantic import BaseModel, Field, field_serializer, field_validator, model_
 from immich_memories.api.compatibility import ApiVersionPolicy
 from immich_memories.processing.encoding_plan import HdrMode
 
+logger = logging.getLogger(__name__)
+
+_ENV_REFERENCE = re.compile(r"\$\{([^}]+)\}")
+# Only reported, never expanded. `$USER` is set on every login shell, so a
+# password like `S3cret$USER!` used to become `S3cretsam!` -- and the user sees
+# "wrong password" with no path to the cause.
+_BARE_ENV_REFERENCE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)")
+
 
 def expand_env_vars(value: str) -> str:
-    """Expand environment variables in a string (${VAR} or $VAR format)."""
-    pattern = re.compile(r"\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
+    """Expand `${VAR}` references in a config value.
+
+    Only the delimited form expands. A bare `$NAME` is left exactly as written,
+    because these fields hold passwords and API keys, and a `$` in a secret is
+    ordinary: silently turning part of a credential into the value of an
+    environment variable is worse than not expanding it, since the failure
+    surfaces as a rejected login rather than as a config error.
+    """
 
     def replacer(match: re.Match[str]) -> str:
-        var_name = match.group(1) or match.group(2)
-        return os.environ.get(var_name, match.group(0))
+        return os.environ.get(match.group(1), match.group(0))
 
-    return pattern.sub(replacer, value)
+    expanded = _ENV_REFERENCE.sub(replacer, value)
+    _warn_about_bare_references(expanded)
+    return expanded
+
+
+def _warn_about_bare_references(value: str) -> None:
+    """Tell anyone relying on the old bare `$NAME` form why it stopped working.
+
+    Dropping a documented form silently would trade one quiet surprise for
+    another, so a bare reference that names a variable which actually exists is
+    reported. A `$` that matches nothing stays silent -- that is just a password.
+    """
+    for match in _BARE_ENV_REFERENCE.finditer(value):
+        if match.group(1) in os.environ:
+            logger.warning(
+                "Config value contains %s, which is no longer expanded; "
+                "write ${%s} if you meant the environment variable.",
+                match.group(0),
+                match.group(1),
+            )
 
 
 class ImmichConfig(BaseModel):
