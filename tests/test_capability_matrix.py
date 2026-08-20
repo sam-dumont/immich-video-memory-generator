@@ -88,3 +88,64 @@ def test_distinct_renders_are_not_reported(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(cm, "_frame_signature", lambda p: p.name)
 
     assert cm._duplicate_groups([Path("a.mp4"), Path("b.mp4")]) == []
+
+
+def test_a_low_power_row_runs_on_the_efficiency_cores(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Measured 1.36s -> 5.78s on a real encode, so this is a limit, not a hint."""
+    import capability_matrix as cm
+
+    monkeypatch.setattr(cm.shutil, "which", lambda tool: f"/usr/sbin/{tool}")
+
+    assert cm._low_power_prefix() == ["taskpolicy", "-b"]
+
+
+def test_a_low_power_row_still_runs_where_taskpolicy_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Linux has no taskpolicy; the row should render anyway rather than fail."""
+    import capability_matrix as cm
+
+    monkeypatch.setattr(cm.shutil, "which", lambda _tool: None)
+
+    assert cm._low_power_prefix() == []
+
+
+def test_a_top_level_scalar_can_be_pinned(tmp_path: Path) -> None:
+    """`preset: fast` is a bare key, not a section, so the dotted walk must not apply."""
+    source = _write(tmp_path, {"immich": {"url": "http://x"}})
+
+    dest = _pinned_config(source, tmp_path / "out.yaml", {"preset": "fast"})
+
+    assert _load_yaml_data(dest)["preset"] == "fast"
+
+
+def test_a_preset_row_lets_the_preset_own_its_keys(tmp_path: Path) -> None:
+    """`apply_preset` skips any field the user set, so a local key silently wins.
+
+    Sam's config sets `codec` and `animated_background`, two of the five knobs
+    the fast preset exists to change. Left in place the row would render a
+    partial preset and call it "the NAS profile" -- machine-specific again.
+    """
+    source = _write(
+        tmp_path,
+        {
+            "immich": {"url": "http://x"},
+            "output": {"codec": "hevc", "directory": "~/Videos"},
+            "title_screens": {"animated_background": True},
+        },
+    )
+
+    dest = _pinned_config(source, tmp_path / "out.yaml", {"preset": "fast"})
+
+    loaded = _load_yaml_data(dest)
+    assert "codec" not in loaded["output"], "the preset must be free to set codec"
+    assert "animated_background" not in loaded.get("title_screens", {})
+    assert loaded["output"]["directory"] == "~/Videos", "unrelated keys must survive"
+
+
+def test_an_explicit_pin_still_beats_the_preset(tmp_path: Path) -> None:
+    source = _write(tmp_path, {"immich": {"url": "http://x"}, "output": {"codec": "hevc"}})
+
+    dest = _pinned_config(source, tmp_path / "out.yaml", {"preset": "fast", "output.codec": "av1"})
+
+    assert _load_yaml_data(dest)["output"]["codec"] == "av1"

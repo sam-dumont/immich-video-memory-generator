@@ -14,6 +14,7 @@ contain real footage.
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 import time
@@ -24,6 +25,7 @@ from pathlib import Path
 import yaml
 
 from immich_memories.config_loader import _TIER2_SECTIONS, Config
+from immich_memories.config_presets import PRESETS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = Path(__file__).with_suffix(".yaml")
@@ -65,8 +67,23 @@ def _pinned_config(source: Path | None, dest: Path, pins: dict) -> Path:
         )
     data = yaml.safe_load(source.read_text()) or {}
 
+    # WHY: `apply_preset` fills only fields the user has NOT set, so any key the
+    # local config happens to carry silently outranks the preset -- and the row
+    # renders a partial profile while claiming to show the whole one. Clearing
+    # the keys the preset owns hands them back to it. Explicit pins are applied
+    # after, so a row can still override one.
+    if "preset" in pins:
+        for section_name, values in PRESETS[pins["preset"]].items():
+            section = data.get(section_name)
+            if isinstance(section, dict):
+                for field in values:
+                    section.pop(field, None)
+
     for dotted, value in pins.items():
         section, _, leaf = dotted.partition(".")
+        if not leaf:
+            data[section] = value
+            continue
         if section in data:
             target = data[section]
         elif section in data.get("advanced", {}):
@@ -79,6 +96,20 @@ def _pinned_config(source: Path | None, dest: Path, pins: dict) -> Path:
 
     dest.write_text(yaml.safe_dump(data, sort_keys=False))
     return dest
+
+
+def _low_power_prefix() -> list[str]:
+    """Run a row on the efficiency cores, to stand in for a NAS.
+
+    macOS has no taskset and thread affinity is a hint the scheduler may ignore,
+    so a core count cannot be pinned. Background QoS can be, and it is honoured:
+    the same 1080p encode takes 1.36s unrestricted and 5.78s under it, because
+    the process tree is kept off the performance cores. Children inherit it, so
+    ffmpeg is covered without touching its -threads flags.
+
+    Absent elsewhere; the row then renders at full speed rather than not at all.
+    """
+    return ["taskpolicy", "-b"] if shutil.which("taskpolicy") else []
 
 
 def _first_real_error(proc: subprocess.CompletedProcess[str]) -> str:
@@ -155,6 +186,7 @@ def _run(
     root = ["--config", str(_pinned_config(config, out_dir / f"{name}.yaml", pins))]
 
     cmd = [
+        *(_low_power_prefix() if row.get("low_power") else []),
         "uv",
         "run",
         "immich-memories",

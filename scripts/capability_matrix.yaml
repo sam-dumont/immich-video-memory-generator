@@ -81,3 +81,18 @@ rows:
     config: {ace_step.enabled: true}
     why: The ONLY ACE-Step run. Tempo should follow the photo cadence (#312).
     args: ["--include-photos", "--music", "auto"]
+
+  - name: 14-fast-preset-low-power
+    why: The CPU-only NAS profile, on the efficiency cores. Slow on purpose.
+    # `preset: fast` is config rather than a flag: 1080p h264 medium, no speech
+    # analysis, static title backgrounds, the fast encoder preset, fewer photos,
+    # and analysis_depth auto resolving to favourites-first.
+    #
+    # `low_power` drops the process tree to background QoS, which macOS honours
+    # by keeping it off the performance cores -- 4.2x slower on a measured 1080p
+    # encode. There is no taskset on macOS and thread affinity is only a hint, so
+    # a core count cannot be pinned; slow cores stand in for few cores. Expect
+    # this row to take several times any other.
+    low_power: true
+    config: {preset: fast}
+    args: ["--include-photos", "--add-date", "--no-music"]
