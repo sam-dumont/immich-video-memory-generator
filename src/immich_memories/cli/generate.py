@@ -44,6 +44,7 @@ def _resolve_generation_scope(
     hemisphere: str,
     years_back: int | None,
     on_this_day_target: date | None,
+    holiday: str | None = None,
 ) -> tuple[DateRange, list[DateRange]]:
     """Resolve what a memory covers: date range(s), or an album that defines its own.
 
@@ -69,6 +70,7 @@ def _resolve_generation_scope(
         hemisphere=hemisphere,
         years_back=years_back,
         on_this_day_target=on_this_day_target,
+        holiday=holiday,
     )
 
     # Normalize to single DateRange for display (multi-range for on_this_day)
@@ -263,10 +265,18 @@ def register_generate_commands(main: click.Group) -> None:
                 "monthly_highlights",
                 "on_this_day",
                 "trip",
+                "holiday",
+                "then_and_now",
             ]
         ),
         default=None,
         help="Memory type preset",
+    )
+    @click.option(
+        "--holiday",
+        type=str,
+        default=None,
+        help="Holiday name or MM-DD (use with --memory-type holiday)",
     )
     @click.option(
         "--season",
@@ -432,7 +442,7 @@ def register_generate_commands(main: click.Group) -> None:
         "--years-back",
         type=int,
         default=None,
-        help="Years to look back for on_this_day (default: all)",
+        help="Years to look back for on_this_day, holiday or then_and_now",
     )
     @click.option(
         "--near-date",
@@ -461,6 +471,7 @@ def register_generate_commands(main: click.Group) -> None:
         birthday: str | None,
         person: tuple[str, ...],
         memory_type: str | None,
+        holiday: str | None,
         season: str | None,
         month: int | None,
         hemisphere: str,
@@ -599,8 +610,12 @@ def register_generate_commands(main: click.Group) -> None:
             print_error("--near-date requires --memory-type trip")
             sys.exit(1)
 
-        if years_back is not None and memory_type != "on_this_day":
-            print_error("--years-back requires --memory-type on_this_day")
+        if years_back is not None and memory_type not in (
+            "on_this_day",
+            "holiday",
+            "then_and_now",
+        ):
+            print_error("--years-back requires --memory-type on_this_day, holiday or then_and_now")
             sys.exit(1)
 
         date_range, date_ranges = _resolve_generation_scope(
@@ -616,6 +631,7 @@ def register_generate_commands(main: click.Group) -> None:
             hemisphere=hemisphere,
             years_back=years_back,
             on_this_day_target=exact_on_this_day,
+            holiday=holiday,
         )
 
         # Determine output path

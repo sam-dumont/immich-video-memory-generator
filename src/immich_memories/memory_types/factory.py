@@ -7,13 +7,15 @@ Adding a new memory type = adding a new factory function with @register_preset.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date
+from datetime import date, datetime
 
 from immich_memories.memory_types.date_builders import (
+    build_holiday,
     build_month,
     build_on_this_day,
     build_season,
     build_trip,
+    resolve_holiday,
 )
 from immich_memories.memory_types.presets import (
     MemoryPreset,
@@ -21,7 +23,7 @@ from immich_memories.memory_types.presets import (
     ScoringProfile,
 )
 from immich_memories.memory_types.registry import MemoryType
-from immich_memories.timeperiod import birthday_year, calendar_year
+from immich_memories.timeperiod import DateRange, birthday_year, calendar_year
 
 # Registry: maps MemoryType -> factory callable
 _REGISTRY: dict[MemoryType, Callable[..., MemoryPreset]] = {}
@@ -308,4 +310,104 @@ def _trip(
         title_template="{location}",
         subtitle_template="{start_date} - {end_date}",
         default_duration_seconds=duration,
+    )
+
+
+_HOLIDAY_LABELS = {
+    "new_year": "New Year",
+    "valentines": "Valentine's Day",
+    "easter": "Easter",
+    "mothers_day": "Mother's Day",
+    "fathers_day": "Father's Day",
+    "halloween": "Halloween",
+    "thanksgiving": "Thanksgiving",
+    "christmas_eve": "Christmas Eve",
+    "christmas": "Christmas",
+    "new_years_eve": "New Year's Eve",
+}
+
+
+def _holiday_label(holiday: str, year: int) -> str:
+    """A printable name, falling back to the date for a household's own occasion."""
+    key = holiday.strip().lower().replace("-", "_").replace(" ", "_")
+    if key in _HOLIDAY_LABELS:
+        return _HOLIDAY_LABELS[key]
+    resolved = resolve_holiday(holiday, year)
+    return resolved.strftime("%-d %B")
+
+
+@register_preset(
+    MemoryType.HOLIDAY,
+    name="Holiday",
+    description="The same holiday, across the years",
+)
+def _holiday(
+    holiday: str = "christmas",
+    year: int | None = None,
+    years_back: int = 5,
+    window_days: int = 2,
+    person_names: list[str] | None = None,
+    **kwargs,  # noqa: ARG001
+) -> MemoryPreset:
+    """A holiday is the date a library reliably has every year, so it spans them."""
+    year = year or date.today().year
+    label = _holiday_label(holiday, year)
+    person_filter = PersonFilter()
+    if person_names:
+        person_filter = PersonFilter(mode="single", person_names=person_names[:1])
+
+    return MemoryPreset(
+        memory_type=MemoryType.HOLIDAY,
+        name=f"{label} Through the Years",
+        description=f"{label} across {years_back} years",
+        date_ranges=build_holiday(holiday, year, years_back, window_days),
+        person_filter=person_filter,
+        scoring=ScoringProfile(face_weight=0.3, content_weight=0.3),
+        title_template="{holiday}",
+        subtitle_template="Through the Years",
+        default_duration_seconds=60,
+    )
+
+
+@register_preset(
+    MemoryType.THEN_AND_NOW,
+    name="Then and Now",
+    description="An early year beside the present one",
+)
+def _then_and_now(
+    year: int | None = None,
+    years_back: int = 10,
+    person_names: list[str] | None = None,
+    **kwargs,  # noqa: ARG001
+) -> MemoryPreset:
+    """Two windows, far apart on purpose.
+
+    The contrast is the whole point, so the gap is required: a then-and-now with
+    no distance between the two is just a now.
+    """
+    if years_back <= 0:
+        raise ValueError("years_back must be at least 1 for a then-and-now memory")
+
+    year = year or date.today().year
+    then_year = year - years_back
+    person_filter = PersonFilter()
+    if person_names:
+        person_filter = PersonFilter(mode="single", person_names=person_names[:1])
+
+    return MemoryPreset(
+        memory_type=MemoryType.THEN_AND_NOW,
+        name=f"{then_year} and {year}",
+        description=f"{then_year} beside {year}",
+        date_ranges=[
+            DateRange(
+                start=datetime(then_year, 1, 1, 0, 0, 0),
+                end=datetime(then_year, 12, 31, 23, 59, 59),
+            ),
+            DateRange(start=datetime(year, 1, 1, 0, 0, 0), end=datetime(year, 12, 31, 23, 59, 59)),
+        ],
+        person_filter=person_filter,
+        scoring=ScoringProfile(face_weight=0.4, content_weight=0.3),
+        title_template="{then_year} & {now_year}",
+        subtitle_template="Then and Now",
+        default_duration_seconds=45,
     )

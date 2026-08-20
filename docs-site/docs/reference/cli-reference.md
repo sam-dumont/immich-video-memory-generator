@@ -221,7 +221,8 @@ immich-memories generate [OPTIONS]
 | `--birthday`, `-b` | text | - | Use birthday-based year (auto-detects from Immich, or specify MM/DD) |
 | `--from-album` | text | - | Generate from an Immich album (name or ID) instead of a date range |
 | `--person`, `-p` | text | - | Person name (repeatable) |
-| `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `trip` | - | Memory type preset |
+| `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `trip` \| `holiday` \| `then_and_now` | - | Memory type preset |
+| `--holiday` | text | - | Holiday name or MM-DD (use with --memory-type holiday) |
 | `--season` | choice: `spring` \| `summer` \| `fall` \| `autumn` \| `winter` | - | Season (use with --memory-type season) |
 | `--month` | integer | - | Month 1-12 (with --year, generates that month; selects trip by month) |
 | `--hemisphere` | choice: `north` \| `south` | north | Hemisphere for season calculation |
@@ -251,7 +252,7 @@ immich-memories generate [OPTIONS]
 | `--analysis-depth` | choice: `auto` \| `fast` \| `thorough` | - | Analysis depth: auto (full analysis for manageable pools), fast (favorites first), or thorough (every eligible clip) |
 | `--trip-index` | integer | - | Select a specific trip by index (use with --memory-type trip) |
 | `--all-trips` | boolean | false | Generate a video for every detected trip (use with --memory-type trip) |
-| `--years-back` | integer | - | Years to look back for on_this_day (default: all) |
+| `--years-back` | integer | - | Years to look back for on_this_day, holiday or then_and_now |
 | `--near-date` | text | - | Select trip closest to this date (YYYY-MM-DD, use with --memory-type trip) |
 | `--quiet` | boolean | false | Suppress interactive progress, emit log lines |
 

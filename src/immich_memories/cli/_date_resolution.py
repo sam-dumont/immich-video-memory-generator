@@ -97,6 +97,7 @@ def resolve_date_range(
     hemisphere: str = "north",
     years_back: int | None = None,
     on_this_day_target: date | None = None,
+    holiday: str | None = None,
 ) -> DateRange | list[DateRange]:
     """Resolve date range from command line options.
 
@@ -113,6 +114,7 @@ def resolve_date_range(
             hemisphere,
             years_back,
             on_this_day_target,
+            holiday,
         )
         manual_range = _resolve_manual_dates(start, end, period)
         if manual_range:
@@ -154,13 +156,10 @@ def _resolve_memory_type_dates(
     hemisphere: str,
     years_back: int | None = None,
     on_this_day_target: date | None = None,
+    holiday: str | None = None,
 ) -> DateRange | list[DateRange]:
     """Resolve date ranges from memory type preset."""
-    from immich_memories.memory_types.date_builders import (
-        build_month,
-        build_on_this_day,
-        build_season,
-    )
+    from immich_memories.memory_types.date_builders import build_month, build_season
 
     if memory_type == "season":
         if not season:
@@ -176,11 +175,9 @@ def _resolve_memory_type_dates(
             raise click.UsageError("--year is required with --memory-type monthly_highlights")
         return build_month(month, year)
 
-    if memory_type == "on_this_day":
-        return build_on_this_day(
-            on_this_day_target or date.today(),
-            years_back=years_back,
-        )
+    spanning = _multi_year_ranges(memory_type, year, years_back, on_this_day_target, holiday)
+    if spanning is not None:
+        return spanning
 
     # Types that use calendar year: year_in_review, person_spotlight, multi_person
     if not year:
@@ -232,4 +229,37 @@ def default_duration_for_type(
     # Everything else: scale by date range
     if date_range is not None:
         return duration_from_date_range(date_range)
+    return None
+
+
+def _multi_year_ranges(
+    memory_type: str,
+    year: int | None,
+    years_back: int | None,
+    on_this_day_target: date | None,
+    holiday: str | None,
+) -> list[DateRange] | None:
+    """Ranges for the types that span several years, or None for the rest.
+
+    Kept apart from the single-range types so the dispatcher stays flat: these
+    three each need their own defaults, and inlining them pushed the caller's
+    cognitive complexity past the gate.
+    """
+    from immich_memories.memory_types.date_builders import build_holiday, build_on_this_day
+
+    if memory_type == "on_this_day":
+        return build_on_this_day(on_this_day_target or date.today(), years_back=years_back)
+
+    if memory_type == "holiday":
+        if not holiday:
+            raise click.UsageError("--holiday is required with --memory-type holiday")
+        return build_holiday(holiday, year or date.today().year, years_back=years_back or 5)
+
+    if memory_type == "then_and_now":
+        # WHY two whole years rather than a window: the contrast is the point, and
+        # a narrow window in a year long past is often empty.
+        now_year = year or date.today().year
+        then_year = now_year - (years_back or 10)
+        return [calendar_year(then_year), calendar_year(now_year)]
+
     return None
