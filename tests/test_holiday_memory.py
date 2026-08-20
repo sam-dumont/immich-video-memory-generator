@@ -63,3 +63,28 @@ def test_a_moving_holiday_moves_between_years() -> None:
     ranges = build_holiday("easter", 2025, years_back=2, window_days=0)
 
     assert [r.start.date() for r in ranges] == [date(2025, 4, 20), date(2024, 3, 31)]
+
+
+def test_a_holiday_that_has_not_happened_yet_is_skipped() -> None:
+    """Found by rendering: in August, `--years-back 4` included Christmas of the
+    current year — a window that cannot contain a photo.
+
+    An explicit --year is honoured as given; it is only the default that has to
+    know what today is.
+    """
+    ranges = build_holiday("christmas", 2026, years_back=3, window_days=1, today=date(2026, 8, 21))
+
+    assert [r.start.year for r in ranges] == [2025, 2024, 2023]
+
+
+def test_a_holiday_already_past_this_year_is_included() -> None:
+    ranges = build_holiday("easter", 2026, years_back=2, window_days=0, today=date(2026, 8, 21))
+
+    assert [r.start.year for r in ranges] == [2026, 2025]
+
+
+def test_an_explicit_year_is_still_honoured() -> None:
+    """Asking for Christmas 2026 in August is a choice, not a mistake."""
+    ranges = build_holiday("christmas", 2026, years_back=1, window_days=1)
+
+    assert [r.start.year for r in ranges] == [2026]

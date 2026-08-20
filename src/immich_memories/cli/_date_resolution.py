@@ -253,7 +253,15 @@ def _multi_year_ranges(
     if memory_type == "holiday":
         if not holiday:
             raise click.UsageError("--holiday is required with --memory-type holiday")
-        return build_holiday(holiday, year or date.today().year, years_back=years_back or 5)
+        # WHY today= only when the year was defaulted: asking for Christmas in
+        # August would otherwise spend one of the requested years on a window
+        # that has not happened. An explicit --year is a choice.
+        return build_holiday(
+            holiday,
+            year or date.today().year,
+            years_back=years_back or 5,
+            today=None if year else date.today(),
+        )
 
     if memory_type == "then_and_now":
         # WHY two whole years rather than a window: the contrast is the point, and

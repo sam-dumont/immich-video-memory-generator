@@ -256,15 +256,25 @@ def build_holiday(
     year: int,
     years_back: int = 5,
     window_days: int = 2,
+    today: date | None = None,
 ) -> list[DateRange]:
     """One window per year around a holiday, most recent first.
 
     A holiday is the date a library is most likely to have every single year, so
     it is worth spanning years the way On This Day does rather than covering one
     occasion.
+
+    ``today`` only affects the starting year, and only when it makes the first
+    window impossible: asking for Christmas in August would otherwise include a
+    Christmas that has not happened, spending one of the requested years on a
+    window no photo can fall in. An explicit ``year`` from the caller is a
+    choice and is left alone.
     """
     if years_back <= 0:
         return []
+
+    if today is not None and resolve_holiday(holiday, year) > today:
+        year -= 1
 
     ranges: list[DateRange] = []
     for offset in range(years_back):
