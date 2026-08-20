@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from datetime import datetime
@@ -31,6 +32,19 @@ def _config_with_every_secret_class() -> Config:
         },
         notifications={"urls": ["https://notify.test/notification-log-secret"]},
     )
+
+
+@pytest.fixture(autouse=True)
+def _fresh_health_snapshot():
+    """The snapshot cache is process-global, as it must be to serve probes.
+
+    Tests would otherwise read each other's snapshots, so each starts cold.
+    """
+    from immich_memories.ui import app as app_module
+
+    app_module._health_snapshot_cache = None
+    yield
+    app_module._health_snapshot_cache = None
 
 
 class TestHealthEndpoint:
@@ -682,3 +696,115 @@ class TestHealthDisclosure:
 
         assert response.json()["last_automation_attempt"] == {"memory_key": "year_in_review:2024"}
         assert response.json()["last_successful_run"] == "run-123"
+
+
+class TestHealthIsCheapUnderRepeatedProbes:
+    """`/health` and `/health/ready` are unauthenticated and did real work per hit.
+
+    Each request opened ~12 SQLite connections (measured), including migration
+    transactions, synchronously on the event loop, and made a network round trip
+    to Immich with a 5s budget. Anything that can reach the port could make the
+    app do that as fast as it liked, and every one of those connections waits on
+    the write lock while a pipeline run holds it -- freezing the UI for everyone.
+    """
+
+    @staticmethod
+    def _reset_cache() -> None:
+        from immich_memories.ui import app as app_module
+
+        app_module._health_snapshot_cache = None
+
+    @pytest.mark.asyncio
+    async def test_a_burst_of_probes_does_the_work_once(self):
+        from immich_memories.ui import app as app_module
+
+        self._reset_cache()
+        calls = []
+
+        async def counted_dependency(config):  # noqa: ARG001
+            calls.append(1)
+            return app_module._ImmichDependency(status="ready", reachable=True)
+
+        # WHY: the Immich server and the SQLite stores behind the snapshot
+        with (
+            # WHY: external Immich server
+            patch("immich_memories.ui.app._check_immich_dependency", counted_dependency),
+            # WHY: reads four SQLite databases
+            patch("immich_memories.ui.app._operational_detail", return_value=(None, None)),
+        ):
+            for _ in range(5):
+                await app_module._health_handler(MagicMock())
+
+        assert len(calls) == 1, f"{len(calls)} dependency probes for 5 requests"
+
+    @pytest.mark.asyncio
+    async def test_the_snapshot_goes_stale_so_readiness_stays_truthful(self, monkeypatch):
+        """A cache that never expires would report a dead Immich as ready."""
+        from immich_memories.ui import app as app_module
+
+        self._reset_cache()
+        calls = []
+        clock = {"now": 1000.0}
+        monkeypatch.setattr(app_module.time, "monotonic", lambda: clock["now"])
+
+        async def counted_dependency(config):  # noqa: ARG001
+            calls.append(1)
+            return app_module._ImmichDependency(status="ready", reachable=True)
+
+        # WHY: the Immich server and the SQLite stores behind the snapshot
+        with (
+            # WHY: external Immich server
+            patch("immich_memories.ui.app._check_immich_dependency", counted_dependency),
+            # WHY: reads four SQLite databases
+            patch("immich_memories.ui.app._operational_detail", return_value=(None, None)),
+        ):
+            await app_module._health_handler(MagicMock())
+            clock["now"] += 60.0
+            await app_module._health_handler(MagicMock())
+
+        assert len(calls) == 2, "the snapshot never refreshed"
+
+    @pytest.mark.asyncio
+    async def test_the_database_work_does_not_block_the_event_loop(self):
+        """The SQLite reads are synchronous; on the loop they stall every session."""
+        import asyncio
+        import time as time_module
+
+        from immich_memories.ui import app as app_module
+
+        self._reset_cache()
+        ticks = 0
+
+        async def tick() -> None:
+            nonlocal ticks
+            for _ in range(40):
+                await asyncio.sleep(0.005)
+                ticks += 1
+
+        def slow_blocking_detail(config, secrets):  # noqa: ARG001
+            time_module.sleep(0.2)
+            return None, None
+
+        async def ready_dependency(config):  # noqa: ARG001
+            return app_module._ImmichDependency(status="ready", reachable=True)
+
+        # WHY: stands in for the Immich server and for a slow SQLite read
+        with (
+            # WHY: external Immich server
+            patch("immich_memories.ui.app._check_immich_dependency", ready_dependency),
+            # WHY: a real contended SQLite read, without needing contention
+            patch("immich_memories.ui.app._operational_detail", slow_blocking_detail),
+        ):
+            ticker = asyncio.create_task(tick())
+            await asyncio.sleep(0.01)
+            before = ticks
+            await app_module._health_handler(MagicMock())
+            # Sampled here, not after awaiting the ticker: once the handler
+            # returns the ticker finishes either way, which would make this
+            # pass whether or not the loop was ever blocked.
+            during = ticks - before
+            ticker.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await ticker
+
+        assert during > 20, f"loop advanced only {during} ticks during a 200ms health call"

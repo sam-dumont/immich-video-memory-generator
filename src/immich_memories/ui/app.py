@@ -8,6 +8,7 @@ import os
 import secrets
 import socket
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -465,7 +466,29 @@ def _operational_detail(
     return automation, last_successful_run
 
 
+# /health and /health/ready are unauthenticated so probes work without
+# credentials, and each build costs a network round trip to Immich plus ~12
+# SQLite connections. Serving repeats from a short-lived snapshot keeps a flood
+# of requests from turning into a flood of work, while staying well inside the
+# 15s readiness period so a scheduled probe still reports current truth.
+_HEALTH_SNAPSHOT_TTL_SECONDS = 10.0
+_health_snapshot_cache: tuple[float, dict[str, Any]] | None = None
+
+
 async def _build_health_snapshot() -> dict[str, Any]:
+    """Build the shared detailed health payload, reusing a recent one if fresh."""
+    global _health_snapshot_cache
+
+    cached = _health_snapshot_cache
+    if cached is not None and time.monotonic() - cached[0] < _HEALTH_SNAPSHOT_TTL_SECONDS:
+        return cached[1]
+
+    snapshot = await _compute_health_snapshot()
+    _health_snapshot_cache = (time.monotonic(), snapshot)
+    return snapshot
+
+
+async def _compute_health_snapshot() -> dict[str, Any]:
     """Build the shared detailed health payload for readiness and compatibility."""
     try:
         config = get_config()
@@ -501,7 +524,11 @@ async def _build_health_snapshot() -> dict[str, Any]:
     else:
         immich = _ImmichDependency(status="missing_configuration", reachable=False)
 
-    automation, last_successful_run = _operational_detail(config, secrets_to_redact)
+    # Synchronous SQLite: on the event loop each open waits on the write lock
+    # while a pipeline run holds it, which stalls every other session.
+    automation, last_successful_run = await asyncio.to_thread(
+        _operational_detail, config, secrets_to_redact
+    )
 
     ready = configured and immich.status == "ready"
     api_version_policy = getattr(config.immich.api_version, "value", config.immich.api_version)
