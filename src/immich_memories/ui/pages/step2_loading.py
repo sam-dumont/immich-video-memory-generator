@@ -289,7 +289,7 @@ async def _load_thumbnails_and_metadata_async(
 
     all_asset_ids = [c.asset.id for c in clips]
 
-    cached_thumbnail_ids = set(thumbnail_cache.get_batch(all_asset_ids, "preview").keys())
+    cached_thumbnail_ids = thumbnail_cache.cached_ids(all_asset_ids, "preview")
     cached_metadata = analysis_cache.get_video_metadata_batch(all_asset_ids)
 
     for clip in clips:
@@ -337,29 +337,32 @@ async def _fetch_thumbnails_batched(
     batch_size: int,
 ) -> int:
     """Fetch thumbnails in batches. Returns updated done count."""
-    for i in range(0, len(need_thumbs), batch_size):
-        batch = need_thumbs[i : i + batch_size]
+    # One client for the whole fetch rather than one per batch of ten: each
+    # carries an httpx connection pool and a private event loop, and 500
+    # thumbnails meant fifty of them, all discarded after ten requests.
+    with SyncImmichClient(
+        base_url=state.immich_url,
+        api_key=state.immich_api_key,
+        api_version=state.immich_api_version,
+    ) as client:
+        for i in range(0, len(need_thumbs), batch_size):
+            batch = need_thumbs[i : i + batch_size]
 
-        def fetch_thumb_batch(clips_batch=batch):
-            with SyncImmichClient(
-                base_url=state.immich_url,
-                api_key=state.immich_api_key,
-                api_version=state.immich_api_version,
-            ) as client:
+            def fetch_thumb_batch(clips_batch=batch, client=client):
                 for clip in clips_batch:
                     with contextlib.suppress(Exception):
                         thumb = client.get_asset_thumbnail(clip.asset.id, size="preview")
                         if thumb:
                             thumbnail_cache.put(clip.asset.id, "preview", thumb)
 
-        await run.io_bound(fetch_thumb_batch)
-        done += len(batch)
-        frac = done / total_work
-        status_label.set_text(
-            f"Thumbnails: {min(i + batch_size, len(need_thumbs))}/{len(need_thumbs)}"
-        )
-        if progress_bar:
-            progress_bar.value = 0.1 + frac * 0.85
+            await run.io_bound(fetch_thumb_batch)
+            done += len(batch)
+            frac = done / total_work
+            status_label.set_text(
+                f"Thumbnails: {min(i + batch_size, len(need_thumbs))}/{len(need_thumbs)}"
+            )
+            if progress_bar:
+                progress_bar.value = 0.1 + frac * 0.85
     return done
 
 
@@ -480,7 +483,7 @@ async def _load_photo_thumbnails_async(
         return
 
     photo_ids = [a.id for a in photo_assets]
-    cached = set(thumbnail_cache.get_batch(photo_ids, "preview").keys())
+    cached = thumbnail_cache.cached_ids(photo_ids, "preview")
     need = [a for a in photo_assets if a.id not in cached]
 
     if not need:

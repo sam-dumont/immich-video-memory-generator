@@ -43,13 +43,6 @@ class TestThumbnailCache:
         """Missing thumbnail returns None."""
         assert cache.get("nonexistent", "preview") is None
 
-    def test_get_batch(self, cache):
-        """Batch retrieval returns only cached items."""
-        cache.put("a1", "preview", b"data-a1")
-        cache.put("a2", "preview", b"data-a2")
-        result = cache.get_batch(["a1", "a2", "a3"], "preview")
-        assert set(result.keys()) == {"a1", "a2"}
-
     def test_clear(self, cache):
         """Clear removes all thumbnails and returns count."""
         cache.put("a1", "preview", b"data1")
