@@ -322,9 +322,8 @@ class TestFrameBlender:
         frame_a = np.full((4, 4, 3), 100, dtype=np.uint8)
         frame_b = np.full((4, 4, 3), 200, dtype=np.uint8)
         out = np.zeros_like(frame_a)
-        temp = np.zeros_like(frame_a)
 
-        blend_crossfade(frame_a, frame_b, alpha=0.5, out=out, temp=temp)
+        blend_crossfade(frame_a, frame_b, alpha=0.5, out=out)
 
         # (100 * 0.5 + 200 * 0.5) = 150
         assert np.all(out == 150)
@@ -336,9 +335,8 @@ class TestFrameBlender:
         frame_a = np.full((4, 4, 3), 100, dtype=np.uint8)
         frame_b = np.full((4, 4, 3), 200, dtype=np.uint8)
         out = np.zeros_like(frame_a)
-        temp = np.zeros_like(frame_a)
 
-        blend_crossfade(frame_a, frame_b, alpha=0.0, out=out, temp=temp)
+        blend_crossfade(frame_a, frame_b, alpha=0.0, out=out)
         assert np.all(out == 100)
 
     def test_crossfade_alpha_one_is_frame_b(self) -> None:
@@ -348,9 +346,8 @@ class TestFrameBlender:
         frame_a = np.full((4, 4, 3), 100, dtype=np.uint8)
         frame_b = np.full((4, 4, 3), 200, dtype=np.uint8)
         out = np.zeros_like(frame_a)
-        temp = np.zeros_like(frame_a)
 
-        blend_crossfade(frame_a, frame_b, alpha=1.0, out=out, temp=temp)
+        blend_crossfade(frame_a, frame_b, alpha=1.0, out=out)
         assert np.all(out == 200)
 
 
