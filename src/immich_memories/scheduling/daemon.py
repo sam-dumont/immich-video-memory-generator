@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import signal
 import subprocess
 import time
@@ -17,6 +18,7 @@ from pathlib import Path
 from immich_memories.scheduling.engine import PendingJob, Scheduler
 from immich_memories.scheduling.executor import resolve_schedule_params
 from immich_memories.scheduling.models import SchedulerConfig
+from immich_memories.security import sanitize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +95,38 @@ def run_daemon_loop(
     logger.info("Scheduler daemon stopped")
 
 
+_STREAM_TAIL = 500
+
+
+def describe_process_failure(stdout: str | None, stderr: str | None) -> str:
+    """Summarise why a child process failed, from whichever stream carries it.
+
+    The child logs to stdout -- `setup_logging` installs a StreamHandler there
+    and `print_error` goes through Rich, also stdout -- so reading only stderr
+    reported "no stderr" for every failure while the cause sat in the stream
+    being discarded.
+    """
+    parts = []
+    if stderr and stderr.strip():
+        parts.append(f"stderr: {stderr.strip()[-_STREAM_TAIL:]}")
+    if stdout and stdout.strip():
+        parts.append(f"stdout: {stdout.strip()[-_STREAM_TAIL:]}")
+    if not parts:
+        return "no output on stdout or stderr"
+    return " | ".join(parts)
+
+
+def _child_log_path(schedule_name: str) -> Path:
+    """Where a scheduled generation writes its own log.
+
+    The daemon keeps a 500-character tail, which is enough to say what went
+    wrong and never enough to work out why. FileHandler appends, so this is
+    one growing file per schedule rather than one per firing.
+    """
+    safe = sanitize_filename(schedule_name) or "schedule"
+    return Path.home() / ".immich-memories" / "logs" / f"generate-{safe}.log"
+
+
 def execute_job(
     job: PendingJob,
     timeout_seconds: int = 3600,
@@ -130,8 +164,22 @@ def execute_job(
     error_msg: str | None = None
     success = False
 
+    # The child logs to its own file as well as to the pipes: the tail the
+    # daemon keeps says what failed, this says why.
+    child_env = os.environ.copy()
+    log_path = _child_log_path(job.schedule.name)
+    with contextlib.suppress(OSError):
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        child_env["IMMICH_MEMORIES_LOG_FILE"] = str(log_path)
+
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_seconds)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            env=child_env,
+        )
     except subprocess.TimeoutExpired:
         error_msg = f"Timed out after {timeout_seconds // 60} minutes"
         logger.error(f"Job '{job.schedule.name}' {error_msg}")
@@ -140,7 +188,7 @@ def execute_job(
             success = True
             logger.info(f"Job '{job.schedule.name}' completed successfully")
         else:
-            error_msg = result.stderr[-500:] if result.stderr else "no stderr"
+            error_msg = describe_process_failure(result.stdout, result.stderr)
             logger.error(
                 f"Job '{job.schedule.name}' failed (exit {result.returncode}): {error_msg}"
             )

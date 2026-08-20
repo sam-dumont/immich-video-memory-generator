@@ -158,6 +158,9 @@ The typed terminal outcomes are `skipped`, `dry_run`, `completed`, and `failed`.
 `dry_run`, and `completed` exit 0; `failed` exits 1. Quiet output is a stable JSON object, not a
 bare path. Its `action` is `generation` or `delivery_retry` when work was selected:
 
+`error` carries the cause of a failure and is always present, so a wrapper
+script never has to tell "no error" from "field missing".
+
 ```json
 {
   "outcome": "dry_run",
@@ -166,6 +169,7 @@ bare path. Its `action` is `generation` or `delivery_retry` when work was select
   "candidate_key": "trip:2026-07-02:2026-07-09:",
   "category": "trip",
   "run_id": null,
+  "error": null,
   "output_path": null,
   "recent_categories": ["monthly_review", "birthday"],
   "rejections": [
