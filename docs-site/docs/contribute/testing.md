@@ -165,6 +165,12 @@ systems. That is a built-in control:
   flight gets the blame it does not deserve.
 - **every Linux cell red, macOS green** → a real platform difference.
 
+The matrix is a hint, not the verdict. Two cells can be reclaimed at once when
+the host is under memory pressure, which looks like a platform difference and is
+not. The log decides: `FAILED` lines mean a real failure, while `Error 137`
+after a run of `PASSED` lines means the runner was killed. Check the log before
+concluding from the pattern.
+
 This settled a real case: a photo-caption test appeared to fail on Python 3.12
 with `Error 137` (SIGKILL/OOM), and passed on 3.11 and 3.13 in the *same run* on
 the *same image*. The test was correct. It was simply the slowest thing running
