@@ -33,7 +33,7 @@ immich-memories generate [OPTIONS]
 | `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Alice" --person "Bob"`) |
 | `--birthday` | `-b` | flag/string | — | Use birthday-based year. Bare flag auto-detects from Immich; or pass `MM/DD` to override |
 | `--season` | — | choice | — | `spring`, `summer`, `fall`, `autumn`, `winter` (use with `--memory-type season`) |
-| `--month` | — | int | — | Month 1-12 (narrows any yearly memory type; selects trip by month) |
+| `--month` | — | int | — | Month 1-12 (with `--year`, generates that month; selects trip by month) |
 | `--hemisphere` | — | choice | `north` | `north` or `south` (for season date calculation) |
 | `--years-back` | — | int | all | Years to look back for `on_this_day` (default: all years) |
 

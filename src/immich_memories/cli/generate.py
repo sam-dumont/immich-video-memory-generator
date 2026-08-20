@@ -13,6 +13,7 @@ from rich.table import Table
 from immich_memories.cli._date_resolution import (
     default_duration_for_type,
     duration_from_date_range,
+    infer_memory_type,
     resolve_date_range,
 )
 from immich_memories.cli._helpers import console, print_error, print_info, print_success
@@ -277,7 +278,7 @@ def register_generate_commands(main: click.Group) -> None:
         "--month",
         type=int,
         default=None,
-        help="Month 1-12 (narrows any yearly memory type; selects trip by month)",
+        help="Month 1-12 (with --year, generates that month; selects trip by month)",
     )
     @click.option(
         "--hemisphere",
@@ -567,6 +568,19 @@ def register_generate_commands(main: click.Group) -> None:
                 memory_type=memory_type,
                 person_names=person_names,
             )
+
+        # Read the memory from the date flags when it was not named. Without
+        # this --month did nothing unless --memory-type was also given, so
+        # `--year 2025 --month 7` rendered the whole year.
+        memory_type = infer_memory_type(
+            memory_type,
+            year=year,
+            month=month,
+            has_person=bool(person_names),
+            season=season,
+            birthday=birthday,
+            from_album=from_album,
+        )
 
         # Validate memory type constraints
         if memory_type in ("person_spotlight", "multi_person") and not person_names:

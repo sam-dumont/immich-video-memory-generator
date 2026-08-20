@@ -223,7 +223,7 @@ immich-memories generate [OPTIONS]
 | `--person`, `-p` | text | - | Person name (repeatable) |
 | `--memory-type` | choice: `year_in_review` \| `season` \| `person_spotlight` \| `multi_person` \| `monthly_highlights` \| `on_this_day` \| `trip` | - | Memory type preset |
 | `--season` | choice: `spring` \| `summer` \| `fall` \| `autumn` \| `winter` | - | Season (use with --memory-type season) |
-| `--month` | integer | - | Month 1-12 (narrows any yearly memory type; selects trip by month) |
+| `--month` | integer | - | Month 1-12 (with --year, generates that month; selects trip by month) |
 | `--hemisphere` | choice: `north` \| `south` | north | Hemisphere for season calculation |
 | `--duration`, `-d` | integer | - | Target duration in seconds (default: from memory type preset) |
 | `--orientation`, `-o` | choice: `landscape` \| `portrait` \| `square` | landscape | Output orientation |

@@ -51,6 +51,40 @@ def _resolve_manual_dates(
     return None
 
 
+def infer_memory_type(
+    memory_type: str | None,
+    *,
+    year: int | None,
+    month: int | None,
+    has_person: bool = False,
+    season: str | None = None,
+    birthday: str | None = None,
+    from_album: str | None = None,
+) -> str | None:
+    """Work out which memory the date flags describe.
+
+    `--month` used to do nothing unless `--memory-type` was also given, so
+    `--year 2025 --month 7` quietly rendered the whole year. Inferring the type
+    from the dates means the combination a user naturally types does what it
+    looks like it does, without `--month` depending on a second flag.
+
+    An explicit `--memory-type` always wins, so existing invocations are
+    unchanged. A year on its own is only read as a yearly review when nothing
+    else narrows the selection -- with a person, a season or a birthday the user
+    has asked for something specific, and guessing would override it. An album
+    brings its own assets, so the date flags say nothing about it.
+    """
+    if memory_type or from_album:
+        return memory_type
+    if year is None:
+        return None
+    if month is not None:
+        return "monthly_highlights"
+    if has_person or season or birthday:
+        return None
+    return "year_in_review"
+
+
 def resolve_date_range(
     year: int | None,
     start: str | None,
