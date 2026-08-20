@@ -1143,7 +1143,10 @@ class TestAudioFilterChain:
         fade_dur = 0.5
         frame_dur = int(clip_dur * fps) / fps
 
-        # Create short WAV files
+        # Create short WAV files.
+        # WHY timeout=30 for a 2s sine: this spawns 30 processes in a row, and
+        # a loaded CI runner has taken >5s just to start one of them. The
+        # generous budget only fires on a genuinely wedged process.
         wavs: list[Path] = []
         for i in range(n_clips):
             wav = tmp_path / f"clip_{i}.wav"
@@ -1162,7 +1165,7 @@ class TestAudioFilterChain:
                     str(wav),
                 ],
                 capture_output=True,
-                timeout=5,
+                timeout=30,
             )
             wavs.append(wav)
 
@@ -1208,7 +1211,7 @@ class TestAudioFilterChain:
             ],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=30,
         )
         actual = float(dur_result.stdout.strip())
         expected = n_clips * frame_dur - (n_clips - 1) * fade_dur
