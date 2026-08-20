@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from pathlib import Path
 
 from nicegui import ui
 
@@ -35,7 +36,6 @@ def _make_preview_loader(video_aid: str, container: ui.element, vid_id: str):
     """Return async loader that swaps thumbnail with video preview."""
 
     async def load_preview():
-        from nicegui import app as nicegui_app
 
         state = get_app_state()
         preview_path = await io_bound_result(_get_preview_path, video_aid, config=state.config)
@@ -45,10 +45,9 @@ def _make_preview_loader(video_aid: str, container: ui.element, vid_id: str):
             )
 
         if preview_path:
-            preview_url = nicegui_app.add_media_file(local_file=preview_path)
             container.clear()
             with container:
-                video_el = ui.video(preview_url).classes("w-full rounded")
+                video_el = ui.video(Path(preview_path)).classes("w-full rounded")
                 video_el.props(f'muted playsinline id="{vid_id}"')
 
     return load_preview

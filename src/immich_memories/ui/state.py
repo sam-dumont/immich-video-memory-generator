@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -73,6 +74,9 @@ class AppState:
 
     # Music preview (generated in Step 3, used in Step 4)
     music_preview_result: Any | None = None  # MusicGenerationResult
+    # Kept so the previous preview's stems can be removed when a new one is
+    # generated: a full mix plus four stems is 50-300 MB per click.
+    music_preview_dir: Path | None = None
     music_generating: bool = False
 
     # Cancel support
@@ -174,6 +178,14 @@ class AppState:
         self.cancel_requested = False
         self.scored_photos = []
         self.photo_budget_result = None
+        self.discard_music_preview()
+
+    def discard_music_preview(self) -> None:
+        """Delete a previously generated music preview and its stems."""
+        previous, self.music_preview_dir = self.music_preview_dir, None
+        self.music_preview_result = None
+        if previous is not None:
+            shutil.rmtree(previous, ignore_errors=True)
 
     def get_selected_clips(self) -> list[VideoClipInfo]:
         """Get the list of currently selected clips."""

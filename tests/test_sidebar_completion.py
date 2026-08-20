@@ -77,8 +77,7 @@ def test_step4_rerender_keeps_warning_delivery_truth_and_video_link(
         delivery_status=DeliveryStatus.PENDING,
     )
     labels: list[str] = []
-    media_paths: list[Path] = []
-    video_urls: list[str] = []
+    shown_videos: list[Path] = []
 
     monkeypatch.setattr(step4_export, "im_section_header", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
@@ -87,14 +86,9 @@ def test_step4_rerender_keeps_warning_delivery_truth_and_video_link(
         lambda value, **_kwargs: (labels.append(value), _Element())[1],
     )
     monkeypatch.setattr(
-        step4_export.nicegui_app,
-        "add_media_file",
-        lambda *, local_file: (media_paths.append(local_file), "/video/memory")[1],
-    )
-    monkeypatch.setattr(
         step4_export.ui,
         "video",
-        lambda value, **_kwargs: (video_urls.append(value), _Element())[1],
+        lambda value, **_kwargs: (shown_videos.append(value), _Element())[1],
     )
 
     step4_export._render_existing_result(state)
@@ -102,5 +96,6 @@ def test_step4_rerender_keeps_warning_delivery_truth_and_video_link(
     assert f"Saved to: {output_path}" in labels
     assert warning in labels
     assert "Immich delivery: Pending" in labels
-    assert media_paths == [output_path]
-    assert video_urls == ["/video/memory"]
+    # The element is handed the file, not a pre-registered URL: NiceGUI owns
+    # the route's lifetime that way.
+    assert shown_videos == [output_path]

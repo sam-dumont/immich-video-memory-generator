@@ -91,7 +91,11 @@ async def _generate_music(
         musicgen_config = MusicGenClientConfig.from_app_config(config.musicgen)
         musicgen_config.num_versions = 1
 
+        # Replaces the previous preview: each one is a full mix plus four
+        # stems, and they used to accumulate for the life of the container.
+        state.discard_music_preview()
         output_dir = Path(tempfile.mkdtemp(prefix="immich_music_preview_"))
+        state.music_preview_dir = output_dir
         music_dir = output_dir / "music"
         music_dir.mkdir(exist_ok=True)
 

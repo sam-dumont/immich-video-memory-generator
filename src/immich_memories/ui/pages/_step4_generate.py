@@ -11,7 +11,6 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from nicegui import app as nicegui_app
 from nicegui import run as run  # re-exported test seam shared by nicegui_compat
 from nicegui import ui
 
@@ -657,14 +656,13 @@ def _show_output(output_container, result_path: Path, state) -> None:
                 )
 
         if result_path.exists():
-            video_url = nicegui_app.add_media_file(local_file=result_path)
             video_wrapper = (
                 ui.element("div")
                 .classes("rounded-xl overflow-hidden mt-4")
                 .style("background: var(--im-bg)")
             )
             with video_wrapper:
-                ui.video(video_url).classes("w-full max-w-2xl").style(
+                ui.video(result_path).classes("w-full max-w-2xl").style(
                     "max-height: 60vh; object-fit: contain"
                 )
             # Auto-scroll to the video player

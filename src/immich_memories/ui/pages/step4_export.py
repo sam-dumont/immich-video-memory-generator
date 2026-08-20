@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from nicegui import app as nicegui_app
 from nicegui import ui
 
 from immich_memories.ui.components import (
@@ -44,8 +43,7 @@ def _render_existing_result(state) -> None:
     ui.label(f"Immich delivery: {delivery_label}").classes("text-sm").style(
         "color: var(--im-text-secondary)"
     )
-    video_url = nicegui_app.add_media_file(local_file=output_path)
-    ui.video(video_url).classes("w-full rounded-lg").style(
+    ui.video(output_path).classes("w-full rounded-lg").style(
         "max-height: 400px; object-fit: contain; background: var(--im-bg-surface)"
     )
 

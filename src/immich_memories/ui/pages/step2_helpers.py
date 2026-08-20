@@ -148,12 +148,15 @@ def _download_immich_preview(asset_id: str, *, config=None) -> Path | None:
     try:
         from immich_memories.api.immich import SyncImmichClient
 
-        client = SyncImmichClient(
+        # Context-managed: this runs once per preview download, and each client
+        # left to the garbage collector strands an httpx client and its private
+        # event loop.
+        with SyncImmichClient(
             base_url=state.immich_url,
             api_key=state.immich_api_key,
             api_version=state.immich_api_version,
-        )
-        video_bytes: bytes = client.get_video_playback(asset_id)
+        ) as client:
+            video_bytes: bytes = client.get_video_playback(asset_id)
         if video_bytes and len(video_bytes) > 10_000:
             preview_path.write_bytes(video_bytes)
             return preview_path

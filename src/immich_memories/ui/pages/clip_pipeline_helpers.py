@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import base64
-import contextlib
 import logging
+from pathlib import Path
 from typing import Any
 
 from nicegui import ui
@@ -112,29 +112,17 @@ def _render_segment_and_score(segment: tuple | None, score: float | None) -> Non
             ui.label(f"Score: {score:.2f}").classes("text-sm")
 
 
-def _try_render_video_preview(preview_path: str | None, _rendered_state: dict[str, Any]) -> bool:
+def _try_render_video_preview(preview_path: str | None) -> bool:
     """Attempt to render a video preview. Returns True if successful."""
     if not preview_path:
         return False
     try:
-        from nicegui import app as nicegui_app
-
-        video_url = nicegui_app.add_media_file(local_file=preview_path)
-
-        # Track URLs for cleanup but don't remove routes while they may still be
-        # streaming — Starlette raises RuntimeError if a route is removed mid-request.
-        prev_url = _rendered_state.get("prev_media_url")
-        urls_to_clean = _rendered_state.setdefault("media_urls_to_clean", [])
-        if prev_url and prev_url != video_url:
-            urls_to_clean.append(prev_url)
-        # Only clean up old URLs (2+ cycles stale)
-        while len(urls_to_clean) > 3:
-            old_url = urls_to_clean.pop(0)
-            with contextlib.suppress(Exception):
-                nicegui_app.remove_route(old_url)
-        _rendered_state["prev_media_url"] = video_url
-
-        ui.video(video_url).classes("rounded").props("muted autoplay loop").style(
+        # Passing the Path lets NiceGUI own the media route: it registers one on
+        # assignment and removes it when the element is deleted. That also
+        # answers what the hand-rolled deferral here was guarding against --
+        # Starlette raises if a route is removed mid-request, and a route tied
+        # to the element cannot outlive or predecease the element using it.
+        ui.video(Path(preview_path)).classes("rounded").props("muted autoplay loop").style(
             "max-height: 180px; max-width: 100%; object-fit: contain"
         )
         return True
@@ -158,7 +146,7 @@ def _render_last_analyzed_card(
         )
 
         preview_path = progress_state["last_completed_video_path"]
-        video_shown = _try_render_video_preview(preview_path, _rendered_state)
+        video_shown = _try_render_video_preview(preview_path)
         if not video_shown:
             _render_thumbnail_for(last_asset, detail_container)
 

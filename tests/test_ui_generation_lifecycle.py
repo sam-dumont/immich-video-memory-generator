@@ -1137,13 +1137,12 @@ async def test_ui_observer_after_completion_recovers_persisted_session_truth(
     monkeypatch.setattr(step4_generate.ui, "row", lambda *_args, **_kwargs: _Element())
     monkeypatch.setattr(step4_generate.ui, "column", lambda *_args, **_kwargs: _Element())
     monkeypatch.setattr(step4_generate.ui, "icon", lambda *_args, **_kwargs: _Element())
-    monkeypatch.setattr(step4_generate.ui, "video", lambda *_args, **_kwargs: _Element())
-    monkeypatch.setattr(step4_generate.ui, "run_javascript", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
-        step4_generate.nicegui_app,
-        "add_media_file",
-        lambda *, local_file: (linked_paths.append(local_file), "/video")[1],
+        step4_generate.ui,
+        "video",
+        lambda value, **_kwargs: (linked_paths.append(value), _Element())[1],
     )
+    monkeypatch.setattr(step4_generate.ui, "run_javascript", lambda *_args, **_kwargs: None)
     show_output(_Container(), state.output_path, state)
 
     assert linked_paths == [output_path]
@@ -1261,7 +1260,6 @@ def test_completion_screen_keeps_music_warning_and_truthful_pending_delivery(
     )
     monkeypatch.setattr(step4_generate.ui, "video", lambda *_args, **_kwargs: _Element())
     monkeypatch.setattr(step4_generate.ui, "run_javascript", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(step4_generate.nicegui_app, "add_media_file", lambda **_kwargs: "/video")
 
     step4_generate._show_output(_Container(), output_path, state)
 

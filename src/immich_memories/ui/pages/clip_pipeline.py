@@ -525,7 +525,6 @@ def _render_pipeline_progress_ui(clips: list[VideoClipInfo]) -> None:
         "current_asset_id": None,
         "last_completed_asset_id": None,
         "phase_number": -1,
-        "prev_media_url": None,
     }
 
     cancel_btn = (

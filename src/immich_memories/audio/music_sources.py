@@ -21,7 +21,6 @@ class MusicTrack:
     artist: str
     duration_seconds: float
     url: str
-    preview_url: str | None = None
     tags: list[str] = field(default_factory=list)
     mood: str | None = None
     genre: str | None = None
