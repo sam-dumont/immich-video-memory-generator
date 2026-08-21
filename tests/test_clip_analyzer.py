@@ -154,19 +154,29 @@ class TestCheckAnalysisCache:
 
         assert result is None
 
-    def test_semantic_cache_from_different_model_is_a_miss(self) -> None:
+    def test_model_switch_keeps_objective_scores_and_drops_semantics(self) -> None:
+        """A model change stales the SEMANTICS, not the vision analysis.
+
+        Base scores are visual+audio+duration; the LLM only adds a bonus. #467:
+        discarding the whole cache on a model switch degraded entire libraries
+        to metadata-fallback scoring (5 of 6 shipped clips content-blind).
+        """
         app_config = Config(
             llm={"model": "qwen-3.6"},
             content_analysis={"enabled": True},
         )
         analyzer, _, mock_cache, _ = _make_analyzer(app_config=app_config)
-        cached = _make_cached_analysis(_make_cached_segment(score=0.95))
+        cached = _make_cached_analysis(
+            _make_cached_segment(score=0.95, llm_description="old-model text", llm_emotion="joy")
+        )
         cached.model_version = "qwen-3.5"
         mock_cache.get_analysis.return_value = cached
 
         result = analyzer._check_analysis_cache(make_clip("asset-stale", duration=10.0))
 
-        assert result is None
+        assert result is not None
+        assert result[2] == 0.95  # objective score reused
+        assert result[4] is None  # stale semantics not applied
 
     def test_semantic_cache_from_configured_model_is_reused(self) -> None:
         app_config = Config(

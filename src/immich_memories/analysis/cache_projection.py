@@ -12,6 +12,20 @@ if TYPE_CHECKING:
     from immich_memories.config_loader import Config
 
 
+def has_reusable_objective_analysis(cached: CachedVideoAnalysis | None) -> bool:
+    """Return whether a cache row's objective analysis (segments, vision/audio
+    scores) is reusable, regardless of which LLM produced any semantics.
+
+    Base scores are visual+audio+duration; the LLM only ever adds a bonus. A
+    model switch therefore stales the semantic payload, not the analysis —
+    treating it as a full miss degrades the whole library to metadata-fallback
+    scoring (#467).
+    """
+    if not (cached and cached.segments):
+        return False
+    return cached.analysis_version == ANALYSIS_VERSION
+
+
 def is_compatible_analysis_cache(cached: CachedVideoAnalysis | None, config: Config) -> bool:
     """Return whether a cache row is safe to reuse under the active configuration.
 

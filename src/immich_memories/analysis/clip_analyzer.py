@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, cast
 from immich_memories.analysis.cache_projection import (
     apply_cached_segment,
     apply_semantic_payload,
+    has_reusable_objective_analysis,
     is_compatible_analysis_cache,
 )
 from immich_memories.processing.downscaler import cleanup_downscaled
@@ -229,19 +230,22 @@ class ClipAnalyzer:
         if not (cached and cached.segments and len(cached.segments) > 0):
             return None
 
-        if not is_compatible_analysis_cache(cached, self._app_config):
-            logger.info(
-                "Ignoring semantic cache for %s: cached model=%s, configured model=%s",
-                clip.asset.id,
-                cached.model_version or "none",
-                self._app_config.llm.model,
-            )
+        if not has_reusable_objective_analysis(cached):
             return None
 
         best = max(cached.segments, key=lambda s: s.total_score or 0.0)
         start, end, score = best.start_time, best.end_time, best.total_score or 0.0
 
-        cached_llm_analysis = apply_cached_segment(clip, best)
+        semantics_fresh = is_compatible_analysis_cache(cached, self._app_config)
+        if not semantics_fresh:
+            logger.info(
+                "Semantic cache stale for %s (cached model=%s, configured model=%s): "
+                "reusing objective scores, dropping semantics",
+                clip.asset.id,
+                cached.model_version or "none",
+                self._app_config.llm.model,
+            )
+        cached_llm_analysis = apply_cached_segment(clip, best) if semantics_fresh else None
 
         preview_path = self.preview_builder.find_cached_preview(clip.asset.id, start, end)
 
