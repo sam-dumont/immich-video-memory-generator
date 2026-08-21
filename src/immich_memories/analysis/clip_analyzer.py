@@ -218,7 +218,13 @@ class ClipAnalyzer:
         else:
             start, end, score, _preview_path, llm_analysis = cached
             apply_semantic_payload(clip, llm_analysis)
-        return ClipWithSegment(clip=clip, start_time=start, end_time=end, score=score)
+        return ClipWithSegment(
+            clip=clip,
+            start_time=start,
+            end_time=end,
+            score=score,
+            analyzed=cached is not None,
+        )
 
     def _check_analysis_cache(
         self,

@@ -1047,3 +1047,25 @@ class TestPhaseAnalyzeOrchestration:
 
         assert analyzer._cached_content_analyzer is None
         assert analyzer._cached_audio_analyzer is None
+
+
+class TestFallbackProvenance:
+    """#468: the verify pass must know which shipped clips were guesses."""
+
+    def test_a_metadata_fallback_is_marked_unanalyzed(self) -> None:
+        analyzer, _, mock_cache, _ = _make_analyzer(avg_clip_duration=5.0)
+        mock_cache.get_analysis.return_value = None
+
+        (planned,) = analyzer.plan_cached_or_metadata([make_clip("asset-x", duration=12.0)])
+
+        assert planned.analyzed is False
+
+    def test_a_cached_analysis_is_marked_analyzed(self) -> None:
+        analyzer, _, mock_cache, _ = _make_analyzer()
+        mock_cache.get_analysis.return_value = _make_cached_analysis(
+            _make_cached_segment(score=0.9)
+        )
+
+        (planned,) = analyzer.plan_cached_or_metadata([make_clip("asset-y", duration=10.0)])
+
+        assert planned.analyzed is True

@@ -413,7 +413,7 @@ def run_pipeline_and_generate(
 
     # Phase 4: Unified selection (videos + photos compete together)
     phases.emit(OperationalPhase.SELECTION, 0, len(all_candidates), "Selecting clips")
-    pipeline_result = pipeline.run_selection(all_candidates)
+    pipeline_result = pipeline.run_selection(all_candidates, verify=not dry_run)
     _analysis_time = _time.monotonic() - _pipeline_start
     selected_clips = pipeline_result.selected_clips
     clip_segments = pipeline_result.clip_segments

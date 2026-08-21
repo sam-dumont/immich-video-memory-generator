@@ -13,7 +13,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from immich_memories.analysis.clip_scaler import ClipScaler
-    from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineConfig
+    from immich_memories.analysis.smart_pipeline import (
+        ClipWithSegment,
+        PipelineConfig,
+        PipelineResult,
+    )
     from immich_memories.api.models import VideoClipInfo
 
 logger = logging.getLogger(__name__)
@@ -836,7 +840,7 @@ class ClipRefiner:
         self,
         analyzed: list[ClipWithSegment],
         tracker: object,
-    ) -> object:
+    ) -> PipelineResult:
         """Phase 4: Refine final selection."""
         from immich_memories.analysis.progress import PipelinePhase
         from immich_memories.analysis.smart_pipeline import PipelineResult

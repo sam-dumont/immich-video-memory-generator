@@ -347,3 +347,94 @@ class TestSmartPipelineIntegration:
         result2 = pipeline.run(clips)
 
         assert len(result1.selected_clips) == len(result2.selected_clips)
+
+
+class TestVerifyPass:
+    """#468: what ships must be analyzed — a fallback score is a placeholder,
+    not a rank, and the verify pass replaces it with the real thing."""
+
+    def _make_pipeline(self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache):
+        return SmartPipeline(
+            client=mock_immich_client,
+            analysis_cache=mock_analysis_cache,
+            thumbnail_cache=mock_thumbnail_cache,
+            config=PipelineConfig(target_clips=10, avg_clip_duration=5.0),
+            analysis_config=AnalysisConfig(),
+            app_config=Config(),
+        )
+
+    def _fallback(self, pipeline, clip, score: float):
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment
+
+        return ClipWithSegment(clip=clip, start_time=0.0, end_time=5.0, score=score, analyzed=False)
+
+    def _analyzed(self, clip, score: float):
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment
+
+        return ClipWithSegment(clip=clip, start_time=0.0, end_time=5.0, score=score)
+
+    def test_a_shipped_fallback_clip_is_analyzed_before_assembly(
+        self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+    ):
+        pipeline = self._make_pipeline(
+            mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+        )
+        clips = _make_clips(3)
+        candidates = [
+            self._analyzed(clips[0], 0.8),
+            self._analyzed(clips[1], 0.7),
+            self._fallback(pipeline, clips[2], 0.4),
+        ]
+
+        # WHY: phase_analyze downloads and scores real video — the external boundary
+        verified = self._analyzed(clips[2], 0.75)
+        pipeline.analyzer.phase_analyze = MagicMock(return_value=[verified])
+
+        result = pipeline.run_selection(candidates)
+
+        analyzed_ids = [c.asset.id for c in pipeline.analyzer.phase_analyze.call_args[0][0]]
+        assert analyzed_ids == [clips[2].asset.id]
+        assert clips[2].asset.id in {c.asset.id for c in result.selected_clips}
+
+    def test_a_verified_clip_whose_score_collapses_is_replaced(
+        self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+    ):
+        pipeline = self._make_pipeline(
+            mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+        )
+        clips = _make_clips(3)
+        # tight budget: only 2 of 3 fit; the fallback's optimistic 0.9 wins pass 1
+        pipeline.config.target_duration_seconds = 10.0
+        candidates = [
+            self._analyzed(clips[0], 0.8),
+            self._analyzed(clips[1], 0.7),
+            self._fallback(pipeline, clips[2], 0.9),
+        ]
+
+        # WHY: real analysis is the boundary; it reveals the clip is bad (feet)
+        collapsed = self._analyzed(clips[2], 0.05)
+        pipeline.analyzer.phase_analyze = MagicMock(return_value=[collapsed])
+
+        result = pipeline.run_selection(candidates)
+
+        selected = {c.asset.id for c in result.selected_clips}
+        assert clips[2].asset.id not in selected
+
+    def test_dry_run_planning_never_analyzes(
+        self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+    ):
+        pipeline = self._make_pipeline(
+            mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+        )
+        clips = _make_clips(2)
+        candidates = [
+            self._analyzed(clips[0], 0.8),
+            self._fallback(pipeline, clips[1], 0.4),
+        ]
+        pipeline.analyzer.phase_analyze = MagicMock(
+            side_effect=AssertionError("dry-run must stay local")
+        )
+
+        result = pipeline.run_selection(candidates, verify=False)
+
+        assert result.selected_clips

@@ -68,6 +68,9 @@ class PipelineConfig:
 
     # Selection settings
     target_clips: int = 120  # Target number of clips to select
+    # Verify passes (#468): re-analyze shipped fallback-scored clips and
+    # re-select, until nothing shipping is a guess or the budget is spent.
+    max_refinement_passes: int = 3
     avg_clip_duration: float = 5.0  # Average clip duration in final video
     target_duration_seconds: float | None = None  # Explicit strict content budget
     hdr_only: bool = False  # Only select HDR clips
@@ -133,6 +136,9 @@ class ClipWithSegment:
     start_time: float
     end_time: float
     score: float
+    # WHY: the verify pass (#468) must tell real analysis from a metadata
+    # guess — a fallback score is a placeholder, not a rank.
+    analyzed: bool = True
 
 
 class SmartPipeline:
@@ -308,6 +314,51 @@ class SmartPipeline:
         self.tracker.complete_item("filters")
         self.tracker.complete_phase()
 
+    def _verify_selection(
+        self,
+        analyzed: list[ClipWithSegment],
+        result: PipelineResult,
+    ) -> PipelineResult:
+        """Re-analyze any shipped fallback-scored clip and re-select (#468).
+
+        Heavy when cold, cheap when warm: every verified clip lands in the
+        analysis cache, so later runs start from real scores. A clip whose
+        analysis fails keeps its fallback score but stops being re-queued,
+        so the loop always terminates.
+        """
+        by_id = {c.clip.asset.id: c for c in analyzed}
+        for _ in range(max(0, self.config.max_refinement_passes - 1)):
+            unverified = [
+                by_id[c.asset.id]
+                for c in result.selected_clips
+                if c.asset.id in by_id and not by_id[c.asset.id].analyzed
+            ]
+            if not unverified:
+                break
+            logger.info(
+                "Verify pass: analyzing %d selected clip(s) shipping on fallback scores",
+                len(unverified),
+            )
+            try:
+                verified = self.analyzer.phase_analyze([u.clip for u in unverified], self.tracker)
+            finally:
+                with contextlib.suppress(Exception):
+                    self.analyzer.close()
+            verified_ids = {v.clip.asset.id for v in verified}
+            for v in verified:
+                by_id[v.clip.asset.id] = v
+            for u in unverified:
+                if u.clip.asset.id not in verified_ids:
+                    by_id[u.clip.asset.id] = ClipWithSegment(
+                        clip=u.clip,
+                        start_time=u.start_time,
+                        end_time=u.end_time,
+                        score=u.score,
+                        analyzed=True,
+                    )
+            result = self.refiner.phase_refine(list(by_id.values()), self.tracker)
+        return result
+
     def _semantic_cache_miss_count(self, clips: list[VideoClipInfo]) -> int:
         """Count clips that need work under the exact active semantic model."""
         from immich_memories.analysis.cache_projection import is_compatible_analysis_cache
@@ -363,8 +414,16 @@ class SmartPipeline:
         self,
         analyzed: list[ClipWithSegment],
         progress_callback: Callable[[dict], None] | None = None,
+        *,
+        verify: bool = True,
     ) -> PipelineResult:
-        """Run phase 4 (refine) on pre-analyzed clips. Finishes the tracker."""
+        """Run phase 4 (refine) on pre-analyzed clips. Finishes the tracker.
+
+        With ``verify`` (the default), selection runs the #468 verify loop:
+        any selected clip whose score is a metadata guess is analyzed for
+        real and selection re-runs, so nothing ships unseen. ``verify=False``
+        is for planning/dry-run paths that must stay local.
+        """
         if progress_callback:
             self.tracker.add_callback(
                 lambda _: progress_callback(self.tracker.get_status_summary())
@@ -372,6 +431,8 @@ class SmartPipeline:
 
         try:
             result = self.refiner.phase_refine(analyzed, self.tracker)
+            if verify:
+                result = self._verify_selection(analyzed, result)
             self.tracker.finish()
             return result
         except (
