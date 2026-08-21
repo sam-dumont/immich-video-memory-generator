@@ -792,8 +792,10 @@ class TestHealthIsCheapUnderRepeatedProbes:
         ticks = 0
 
         async def tick() -> None:
+            # Unbounded: a fixed count can run out on a slow runner, which
+            # reads as "the loop was blocked" when it was merely busy.
             nonlocal ticks
-            for _ in range(40):
+            while True:
                 await asyncio.sleep(0.005)
                 ticks += 1
 
@@ -825,4 +827,7 @@ class TestHealthIsCheapUnderRepeatedProbes:
             with contextlib.suppress(asyncio.CancelledError):
                 await ticker
 
-        assert during > 20, f"loop advanced only {during} ticks during a 200ms health call"
+        # Blocked and unblocked are ~0 vs ~20-40 ticks, so the bar goes in the
+        # gap rather than at half the theoretical maximum: at > 20 a loaded CI
+        # runner (5 ms sleeps landing at 10 ms) failed with exactly 20.
+        assert during > 5, f"loop advanced only {during} ticks during a 200ms health call"
