@@ -325,6 +325,11 @@ the app has to keep seeing the proxy's own address to trust `Remote-User`, and t
 limiter and OIDC redirect don't apply to that provider anyway. Leave `FORWARDED_ALLOW_IPS` unset
 in that case.
 
+The login rate limiter reads `X-Forwarded-For` the same way — only when the immediate peer
+is in `auth.trusted_proxies`. Without that, every login behind a proxy shares one bucket and
+five wrong passwords from anyone lock out everyone for ten minutes; with it, an untrusted
+caller still cannot pick its own bucket by setting the header itself.
+
 When running without a reverse proxy (direct access on localhost), none of this applies.
 :::
 

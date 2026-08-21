@@ -59,6 +59,36 @@ def _render_preset_banner(config) -> None:
     )
 
 
+# A soundtrack is minutes of compressed audio; 64 MiB is generous for MP3/M4A
+# and still bounds what one click can pin in session memory (S10).
+MAX_MUSIC_UPLOAD_BYTES = 64 * 1024 * 1024
+
+_AUDIO_SUFFIXES = {".mp3", ".m4a", ".wav"}
+_AUDIO_MAGIC = (
+    b"ID3",  # MP3 with an ID3 tag
+    b"RIFF",  # WAV
+    b"\xff\xfb",  # MP3 frame sync
+    b"\xff\xf3",
+    b"\xff\xf2",
+)
+
+
+def is_supported_audio(filename: str, payload: bytes) -> bool:
+    """Whether an upload really is one of the audio formats we accept.
+
+    Suffix AND content: the browser's `accept=` filter is advisory, and a
+    renamed executable must not reach the mixer or session state.
+    """
+    from pathlib import Path as _Path
+
+    if _Path(filename).suffix.lower() not in _AUDIO_SUFFIXES:
+        return False
+    if payload.startswith(_AUDIO_MAGIC):
+        return True
+    # M4A/MP4: 'ftyp' box at offset 4
+    return len(payload) >= 12 and payload[4:8] == b"ftyp"
+
+
 def _render_volume_slider(options: dict, width: str = "w-64") -> None:
     """Render a music volume slider."""
     with ui.row().classes("items-center gap-4 mt-2"):
@@ -81,13 +111,20 @@ def _render_upload_music_options(options: dict) -> None:
     )
 
     async def handle_upload(e):
-        options["music_file"] = e.content.read()
+        payload = e.content.read()
+        # WHY (S10): `accept=` is browser-side only, so the server must check
+        # what actually arrived before holding it in session state.
+        if not is_supported_audio(e.name, payload):
+            ui.notify("That file is not an MP3, M4A or WAV", type="negative")
+            return
+        options["music_file"] = payload
         options["music_filename"] = e.name
         ui.notify(f"Uploaded: {e.name}", type="positive")
 
     ui.upload(
         label="Select music file",
         auto_upload=True,
+        max_file_size=MAX_MUSIC_UPLOAD_BYTES,
         on_upload=handle_upload,
     ).props("accept='.mp3,.m4a,.wav'").classes("w-full max-w-md")
 

@@ -33,6 +33,7 @@ from immich_memories.security import (
 )
 from immich_memories.ui.auth import (
     clear_session,
+    client_ip_for_rate_limit,
     is_auth_enabled,
     is_bypass_path,
     is_health_probe_path,
@@ -599,7 +600,12 @@ def _check_login_rate_limit(request: Request) -> JSONResponse | None:
     to a file keyed by a cookie the caller may not send, and expires only tab
     storage. The login page reads the same IP off `client.ip` instead.
     """
-    client_ip = request.client.host if request.client else "unknown"
+    peer_ip = request.client.host if request.client else "unknown"
+    client_ip = client_ip_for_rate_limit(
+        peer_ip=peer_ip,
+        forwarded_for=request.headers.get("x-forwarded-for"),
+        auth_config=get_config().auth,
+    )
     if is_rate_limited(client_ip):
         return JSONResponse({"detail": "Too many failed login attempts"}, status_code=429)
     return None

@@ -165,3 +165,25 @@ def clear_session(session: MutableMapping[str, object]) -> None:
 def is_auth_enabled(auth_config: AuthConfig) -> bool:
     """Check whether authentication is enabled in config."""
     return auth_config.enabled
+
+
+def client_ip_for_rate_limit(
+    *,
+    peer_ip: str,
+    forwarded_for: str | None,
+    auth_config: AuthConfig,
+) -> str:
+    """The IP the login limiter should bucket on (S3).
+
+    Behind Traefik/nginx every request carries the proxy's address, so one
+    bad actor locks out everyone (5 failures = a 10-minute global lockout).
+    X-Forwarded-For fixes that, but only from a peer we trust: an untrusted
+    caller reaching the port directly could otherwise pick its own bucket —
+    or evade the limiter entirely — by setting the header itself.
+    """
+    if not forwarded_for or not is_trusted_proxy(peer_ip, auth_config.trusted_proxies):
+        return peer_ip
+    # Leftmost is the originating client as recorded by the first proxy; the
+    # chain is only as trustworthy as the peer that handed it to us.
+    candidate = forwarded_for.split(",")[0].strip()
+    return candidate or peer_ip

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 from typing import Any
 
@@ -25,14 +26,16 @@ _SENSITIVE_KEYS = {
 }
 
 
-def _redact(data: Any, _key: str = "") -> Any:
+def redact_config(data: Any, _key: str = "") -> Any:
     """Recursively redact sensitive values in a config dict."""
     if isinstance(data, dict):
-        return {k: _redact(v, k) for k, v in data.items()}
+        return {k: redact_config(v, k) for k, v in data.items()}
     if isinstance(data, list):
-        return [_redact(v, _key) for v in data]
+        return [redact_config(v, _key) for v in data]
     if _key in _SENSITIVE_KEYS and isinstance(data, str) and data:
-        return data[:3] + "***" + data[-2:] if len(data) > 5 else "***"
+        # WHY a full mask (S16): the old abc***yz showed five characters of
+        # every secret, auth.password included.
+        return "***"
     return data
 
 
@@ -69,43 +72,48 @@ def _section_icon(section: str) -> str:
     }.get(section, "settings")
 
 
-def _render_section_table(section_data: dict) -> None:
-    """Render a config section as a compact HTML table."""
-    rows_html: list[str] = []
+def build_config_table_html(section_data: dict) -> str:
+    """The section table's HTML, with every key and value escaped.
+
+    WHY (S5): `immich.url` is editable from the browser and persisted, and this
+    table is rendered with `ui.html`, so an unescaped f-string is stored XSS
+    against the next admin who opens Settings.
+    """
+    rows_html = []
     for key, value in section_data.items():
         if isinstance(value, dict):
-            # Nested — render as sub-header + rows
             rows_html.append(
                 f'<tr><td colspan="2" style="color:var(--im-text);font-weight:600;'
-                f'padding:4px 0 2px 0;font-size:12px">{key}</td></tr>'
+                f'padding:4px 0 2px 0;font-size:12px">{html.escape(str(key))}</td></tr>'
             )
             for sk, sv in value.items():
-                display = _format_value(sv)
+                display = html.escape(_format_value(sv))
                 rows_html.append(
                     f'<tr><td style="color:var(--im-text-secondary);padding:1px 12px 1px 16px;'
-                    f'font-size:12px;white-space:nowrap">{sk}</td>'
+                    f'font-size:12px;white-space:nowrap">{html.escape(str(sk))}</td>'
                     f'<td style="color:var(--im-text);font-family:monospace;font-size:12px;'
                     f'padding:1px 0;word-break:break-all">{display}</td></tr>'
                 )
         else:
-            display = _format_value(value)
+            display = html.escape(_format_value(value))
             rows_html.append(
                 f'<tr><td style="color:var(--im-text-secondary);padding:1px 12px 1px 0;'
-                f'font-size:12px;white-space:nowrap">{key}</td>'
+                f'font-size:12px;white-space:nowrap">{html.escape(str(key))}</td>'
                 f'<td style="color:var(--im-text);font-family:monospace;font-size:12px;'
                 f'padding:1px 0;word-break:break-all">{display}</td></tr>'
             )
+    return '<table style="width:100%;border-collapse:collapse">' + "".join(rows_html) + "</table>"
 
-    table_html = (
-        '<table style="width:100%;border-collapse:collapse">' + "".join(rows_html) + "</table>"
-    )
-    ui.html(table_html)
+
+def _render_section_table(section_data: dict) -> None:
+    """Render a config section as a compact table."""
+    ui.html(build_config_table_html(section_data))
 
 
 def render_config_viewer() -> None:
     """Render the configuration viewer panel."""
     config = get_config(reload=True)
-    redacted = _redact(config.model_dump())
+    redacted = redact_config(config.model_dump())
 
     im_info_card(
         "Active config from ~/.immich-memories/config.yaml with env overrides. "
