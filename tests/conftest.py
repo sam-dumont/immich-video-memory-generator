@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+import threading
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -199,3 +200,21 @@ def tmp_output_dir(tmp_path: Path) -> Path:
 def sample_config() -> Config:
     """Provide a Config with safe defaults for testing."""
     return Config()
+
+
+@pytest.fixture(autouse=True)
+def _no_leaked_drain_threads():
+    """Fail any test that leaves a stderr drain thread spinning.
+
+    A mocked pipe whose read() never returns b"" (constant return_value, or a
+    bare MagicMock — its __iter__ yields nothing and __bool__ is True) traps
+    drain_stderr_tail in an infinite loop. The thread outlives the test at
+    ~250k read()/s, MagicMock records every call, and the suite bloats by
+    gigabytes until the 7 GB macOS CI runner kills pytest (exit 137).
+    """
+    yield
+    leaked = [t for t in threading.enumerate() if "drain_stderr_tail" in t.name and t.is_alive()]
+    assert not leaked, (
+        f"stderr drain thread(s) outlived this test: {leaked} — a mocked pipe "
+        'never reached EOF; use stderr.read.side_effect = [data, b""]'
+    )
