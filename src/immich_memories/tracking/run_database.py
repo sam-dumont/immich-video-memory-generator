@@ -104,7 +104,15 @@ def row_to_run(row: sqlite3.Row) -> RunMetadata:
         date_range_end=(
             date.fromisoformat(row["date_range_end"]) if row["date_range_end"] else None
         ),
-        target_duration_seconds=(row["target_duration_minutes"] or 10) * 60,
+        # WHY the keys() check: a reader can hold a connection while another
+        # process is mid-migration (the concurrent-upgrade tests pin that
+        # window), and sqlite3.Row raises on a column that does not exist yet.
+        target_duration_seconds=(
+            row["target_duration_seconds"]
+            if "target_duration_seconds" in row.keys()  # noqa: SIM118 — sqlite3.Row `in` checks values, not keys
+            and row["target_duration_seconds"] is not None
+            else (row["target_duration_minutes"] or 10) * 60
+        ),
         output_path=row["output_path"],
         output_size_bytes=row["output_size_bytes"] or 0,
         output_duration_seconds=row["output_duration_seconds"] or 0.0,
@@ -195,7 +203,7 @@ class RunDatabase:
                     automation_attempt_id,
                     last_phase,
                     person_name, person_id, date_range_start, date_range_end,
-                    target_duration_minutes, output_path, output_size_bytes,
+                    target_duration_seconds, output_path, output_size_bytes,
                     output_duration_seconds, clips_analyzed, clips_selected,
                     errors_count, system_info, delivery_status, delivery_attempts,
                     delivery_error, immich_asset_id, delivery_album, warnings_json
@@ -218,7 +226,7 @@ class RunDatabase:
                     run.person_id,
                     run.date_range_start.isoformat() if run.date_range_start else None,
                     run.date_range_end.isoformat() if run.date_range_end else None,
-                    run.target_duration_seconds // 60,
+                    run.target_duration_seconds,
                     run.output_path,
                     run.output_size_bytes,
                     run.output_duration_seconds,

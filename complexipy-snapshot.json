@@ -5375,28 +5375,20 @@
       {
         "name": "RunDatabase::update_run_status",
         "complexity": 18,
-        "line_start": 331,
-        "line_end": 392,
+        "line_start": 339,
+        "line_end": 400,
         "line_complexities": [
           {
-            "line": 346,
-            "complexity": 0
-          },
-          {
-            "line": 347,
-            "complexity": 0
-          },
-          {
-            "line": 348,
-            "complexity": 0
-          },
-          {
-            "line": 350,
-            "complexity": 2
-          },
-          {
             "line": 354,
-            "complexity": 2
+            "complexity": 0
+          },
+          {
+            "line": 355,
+            "complexity": 0
+          },
+          {
+            "line": 356,
+            "complexity": 0
           },
           {
             "line": 358,
@@ -5425,42 +5417,34 @@
           {
             "line": 382,
             "complexity": 2
+          },
+          {
+            "line": 386,
+            "complexity": 2
+          },
+          {
+            "line": 390,
+            "complexity": 2
           }
         ]
       },
       {
         "name": "RunDatabase::update_operational_phase",
         "complexity": 21,
-        "line_start": 241,
-        "line_end": 274,
+        "line_start": 249,
+        "line_end": 282,
         "line_complexities": [
           {
-            "line": 243,
-            "complexity": 0
-          },
-          {
-            "line": 244,
-            "complexity": 0
-          },
-          {
-            "line": 248,
-            "complexity": 2
-          },
-          {
-            "line": 249,
-            "complexity": 0
-          },
-          {
-            "line": 250,
-            "complexity": 2
-          },
-          {
             "line": 251,
-            "complexity": 3
+            "complexity": 0
           },
           {
             "line": 252,
             "complexity": 0
+          },
+          {
+            "line": 256,
+            "complexity": 2
           },
           {
             "line": 257,
@@ -5472,22 +5456,38 @@
           },
           {
             "line": 259,
-            "complexity": 0
-          },
-          {
-            "line": 262,
             "complexity": 3
           },
           {
-            "line": 263,
+            "line": 260,
+            "complexity": 0
+          },
+          {
+            "line": 265,
+            "complexity": 0
+          },
+          {
+            "line": 266,
+            "complexity": 2
+          },
+          {
+            "line": 267,
+            "complexity": 0
+          },
+          {
+            "line": 270,
+            "complexity": 3
+          },
+          {
+            "line": 271,
             "complexity": 4
           },
           {
-            "line": 268,
+            "line": 276,
             "complexity": 5
           },
           {
-            "line": 274,
+            "line": 282,
             "complexity": 0
           }
         ]

@@ -89,6 +89,8 @@ class TestSavePhaseStatsFKConstraint:
 
     def test_valid_run_id_saves_normally(self, db):
         """Phase stats with a valid run_id are saved successfully."""
+        from datetime import datetime
+
         from immich_memories.tracking.models import RunMetadata
 
         run = RunMetadata(
@@ -506,3 +508,68 @@ def test_completed_automation_attempt_identity_rejects_ambiguity(db: RunDatabase
             "attempt-duplicate",
             memory_key="trip:key",
         )
+
+
+class TestTargetDurationSurvivesTheRoundTrip:
+    """#411: a 25s target was stored as 25//60 = 0 minutes and read back as
+    (0 or 10)*60 = 600 — run_metadata claimed the preset default for every
+    sub-minute or non-round-minute run."""
+
+    def test_a_sub_minute_target_is_preserved(self, tmp_path: Path) -> None:
+        from datetime import UTC, datetime
+
+        from immich_memories.tracking.models import RunMetadata
+
+        db = RunDatabase(db_path=tmp_path / "t.db")
+        run = RunMetadata(
+            run_id="r-25s",
+            created_at=datetime(2026, 8, 21, tzinfo=UTC),
+            target_duration_seconds=25,
+        )
+        db.save_run(run)
+
+        loaded = db.get_run("r-25s")
+
+        assert loaded is not None
+        assert loaded.target_duration_seconds == 25
+
+    def test_a_pre_migration_row_backfills_from_minutes(self, tmp_path: Path) -> None:
+        import sqlite3
+
+        from immich_memories.cache import database as cache_database
+
+        db_path = tmp_path / "old.db"
+        current = cache_database.SCHEMA_VERSION
+        try:
+            cache_database.SCHEMA_VERSION = 18
+            RunDatabase(db_path)
+            with sqlite3.connect(db_path) as conn:
+                conn.execute(
+                    "INSERT INTO pipeline_runs (run_id, created_at, status, target_duration_minutes)"
+                    " VALUES ('r-old', '2026-08-01', 'completed', 10)"
+                )
+        finally:
+            cache_database.SCHEMA_VERSION = current
+
+        db = RunDatabase(db_path)  # migrates
+        loaded = db.get_run("r-old")
+
+        assert loaded is not None
+        assert loaded.target_duration_seconds == 600
+
+    def test_v19_tolerates_a_missing_table_and_reruns(self, tmp_path: Path) -> None:
+        """A migration must be a no-op on a db without the table, and re-entrant
+        when the column already exists (interrupted upgrade, restarted)."""
+        import sqlite3
+
+        from immich_memories.cache.migration_v19 import migrate_target_duration_seconds
+
+        with sqlite3.connect(tmp_path / "no-table.db") as conn:
+            migrate_target_duration_seconds(conn)  # no pipeline_runs — no-op
+
+        RunDatabase(db_path=tmp_path / "t.db")  # fully migrated
+        with sqlite3.connect(tmp_path / "t.db") as conn:
+            migrate_target_duration_seconds(conn)  # column exists — no-op
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(pipeline_runs)")]
+
+        assert cols.count("target_duration_seconds") == 1

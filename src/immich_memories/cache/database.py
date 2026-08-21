@@ -26,6 +26,7 @@ from immich_memories.cache.migration_v14 import migrate_operational_phases
 from immich_memories.cache.migration_v15 import migrate_notification_health
 from immich_memories.cache.migration_v16 import migrate_video_analysis_model_version
 from immich_memories.cache.migration_v17 import migrate_segment_transcripts
+from immich_memories.cache.migration_v19 import migrate_target_duration_seconds
 from immich_memories.cache.versions import ANALYSIS_VERSION, SCHEMA_VERSION, SCORING_VERSION
 
 if TYPE_CHECKING:
@@ -108,6 +109,7 @@ class VideoAnalysisCache:
             16: migrate_video_analysis_model_version,
             17: migrate_segment_transcripts,
             18: self._migration_v18_llm_category,
+            19: migrate_target_duration_seconds,
         }
 
         for version in range(from_version + 1, SCHEMA_VERSION + 1):
