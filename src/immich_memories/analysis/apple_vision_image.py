@@ -9,58 +9,6 @@ from __future__ import annotations
 import numpy as np
 
 
-def create_ci_image_from_numpy(image_array: np.ndarray) -> object:
-    """Create a CIImage from a numpy array (BGR format from OpenCV).
-
-    Args:
-        image_array: BGR image from OpenCV.
-
-    Returns:
-        CIImage object.
-    """
-    import CoreImage
-    import Quartz
-
-    # Convert BGR to RGB
-    if len(image_array.shape) == image_array.shape[2] == 3:
-        image_rgb = image_array[:, :, ::-1].copy()
-    else:
-        image_rgb = image_array
-
-    height, width = image_array.shape[:2]
-    channels = image_array.shape[2] if len(image_array.shape) == 3 else 1
-
-    # Create CGImage
-    bytes_per_row = width * channels
-    color_space = Quartz.CGColorSpaceCreateDeviceRGB()
-
-    # Create bitmap context
-    provider = Quartz.CGDataProviderCreateWithData(
-        None,
-        image_rgb.tobytes(),
-        height * bytes_per_row,
-        None,
-    )
-
-    cg_image = Quartz.CGImageCreate(
-        width,
-        height,
-        8,  # bits per component
-        8 * channels,  # bits per pixel
-        bytes_per_row,
-        color_space,
-        Quartz.kCGImageAlphaNoneSkipLast if channels == 4 else Quartz.kCGBitmapByteOrderDefault,
-        provider,
-        None,
-        False,
-        Quartz.kCGRenderingIntentDefault,
-    )
-
-    # Create CIImage from CGImage
-    ci_image = CoreImage.CIImage.imageWithCGImage_(cg_image)
-    return ci_image
-
-
 def create_cg_image_from_numpy(image_array: np.ndarray) -> object:
     """Create a CGImage from a numpy array.
 
@@ -93,13 +41,11 @@ def create_cg_image_from_numpy(image_array: np.ndarray) -> object:
     # Create color space
     color_space = Quartz.CGColorSpaceCreateDeviceRGB()
 
-    # Create data provider
-    provider = Quartz.CGDataProviderCreateWithData(
-        None,
-        image_rgba.tobytes(),
-        height * bytes_per_row,
-        None,
-    )
+    # WHY: CGDataProviderCreateWithData does not copy — PyObjC would retain the
+    # bytes buffer forever (no release callback fires), leaking a full RGBA
+    # frame per call. CFData is refcounted by the provider and freed with it.
+    data = Quartz.CFDataCreate(None, image_rgba.tobytes(), height * bytes_per_row)
+    provider = Quartz.CGDataProviderCreateWithCFData(data)
 
     # Create CGImage
     cg_image = Quartz.CGImageCreate(

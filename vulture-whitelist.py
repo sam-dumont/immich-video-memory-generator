@@ -7,7 +7,6 @@ _._handler  # unused attribute (src/immich_memories/analysis/apple_vision.py:122
 _.left_eye  # unused attribute (src/immich_memories/analysis/apple_vision.py:228)
 _.right_eye  # unused attribute (src/immich_memories/analysis/apple_vision.py:235)
 _.mouth  # unused attribute (src/immich_memories/analysis/apple_vision.py:249)
-create_ci_image_from_numpy  # unused function (src/immich_memories/analysis/apple_vision_image.py:12)
 used_overrun  # unused variable (src/immich_memories/analysis/clip_refiner.py:145)
 get_content_analyzer_from_config  # unused function (src/immich_memories/analysis/content_analyzer.py:95)
 hash_frames  # unused variable (src/immich_memories/analysis/duplicates.py:32)
