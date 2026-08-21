@@ -30,7 +30,9 @@ class TestStreamRenderStderrCapture:
         mock_proc.wait.return_value = None
         mock_proc.returncode = 1
         mock_proc.stderr = MagicMock()
-        mock_proc.stderr.read.return_value = b"Error: codec not found"
+        # WHY: a real pipe reaches EOF; a constant return_value never does and
+        # the drain thread spins on it for the rest of the suite.
+        mock_proc.stderr.read.side_effect = [b"Error: codec not found", b""]
 
         # WHY: mock Popen and render_ken_burns_streaming to avoid real FFmpeg
         with (
