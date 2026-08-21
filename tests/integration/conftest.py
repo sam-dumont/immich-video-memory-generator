@@ -77,7 +77,8 @@ def _has_ffmpeg() -> bool:
 
 # WHY: integration tests spawn FFmpeg subprocesses (CPU + memory heavy).
 # xdist_group serializes them on one worker while unit tests fly in parallel.
-pytestmark = [pytest.mark.integration, pytest.mark.xdist_group("ffmpeg")]
+# (markers are applied by path in tests/conftest.py — pytestmark in a
+# conftest has never worked; see #450)
 requires_ffmpeg = pytest.mark.skipif(not _has_ffmpeg(), reason="FFmpeg not available")
 
 

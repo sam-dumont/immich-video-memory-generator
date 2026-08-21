@@ -218,3 +218,15 @@ def _no_leaked_drain_threads():
         f"stderr drain thread(s) outlived this test: {leaked} — a mocked pipe "
         'never reached EOF; use stderr.read.side_effect = [data, b""]'
     )
+
+
+def pytest_collection_modifyitems(items) -> None:
+    """Mark everything under tests/integration/ as integration, by path.
+
+    WHY: `pytestmark` in a conftest does nothing, so a forgotten decorator
+    silently runs an integration test in every unit job (#450). Path-based
+    marking cannot be forgotten.
+    """
+    for item in items:
+        if "tests/integration" in item.path.as_posix():
+            item.add_marker("integration")
