@@ -85,6 +85,7 @@ advanced:
     issuer_url: https://your-idp.example.com
     client_id: immich-memories
     client_secret: ${OIDC_CLIENT_SECRET}  # or leave empty for public clients
+    public_url: https://memories.example.com  # the URL users reach you on
     scope: openid email profile            # default
     session_ttl_hours: 24                  # default
     auto_launch: false    # if true, redirect directly to IdP (skips the login page)
@@ -92,6 +93,10 @@ advanced:
 ```
 
 The `issuer_url` is used to auto-discover the OIDC configuration from `/.well-known/openid-configuration`.
+
+Set `public_url` to the address users actually reach the app on. It pins the `redirect_uri` sent to
+the IdP — which must match what you registered there — instead of letting it be derived from
+whatever host the request resolves to, and it is what allows the callback origin to be validated.
 
 **authlib is required for OIDC.** Install with:
 
@@ -241,7 +246,7 @@ In your config YAML, set `trusted_proxies` to Traefik's container IP (prefer a s
 
 :::warning Behind a reverse proxy: bind locally, name the proxy, mark the cookie Secure
 
-Three things to set when the UI sits behind Traefik, Caddy or nginx with TLS:
+Four things to set when the UI sits behind Traefik, Caddy or nginx with TLS:
 
 1. **Don't publish `8080` on the LAN once the proxy is up.** Bind it to localhost
    (`127.0.0.1:8080:8080` in compose) or keep the container on the proxy network only.
@@ -251,7 +256,12 @@ Three things to set when the UI sits behind Traefik, Caddy or nginx with TLS:
    lock the whole household out of login for 10 minutes — and the OIDC `redirect_uri` is built as
    `http://…` instead of `https://…`, which most identity providers reject. `"*"` trusts any
    peer; only use it when the app is unreachable except through the proxy.
-3. **Set `server.secure_cookies: true`** so the session cookie carries the `Secure` flag and
+3. **Set `auth.public_url`** to the address users actually type, e.g.
+   `https://memories.example.com`. It pins the OIDC `redirect_uri` to that origin rather than
+   whatever the request resolves to, and it is what makes callback-origin validation possible —
+   without it there is nothing trustworthy to compare an incoming `Host` header against, so no
+   origin check is performed and the IdP's registered `redirect_uri` is the only control.
+4. **Set `server.secure_cookies: true`** so the session cookie carries the `Secure` flag and
    browsers never send it over plain HTTP. Only do this once every visitor arrives over HTTPS —
    with it on, a plain `http://` origin (other than `localhost`) can't log in at all.
 
@@ -265,6 +275,7 @@ advanced:
     provider: basic            # or oidc
     username: admin
     password: ${MY_SECRET_PASSWORD}
+    public_url: https://memories.example.com
     trusted_proxies:
       - 172.20.0.2             # your proxy container's IP or CIDR
 ```
@@ -297,6 +308,7 @@ All fields under `advanced.auth` with their defaults:
 | `enabled` | `false` | Enable authentication |
 | `provider` | `basic` | Provider: `basic`, `oidc`, or `header` |
 | `session_ttl_hours` | `24` | How long a session lasts (1–720) |
+| `public_url` | `""` | The URL users reach this app on, e.g. `https://memories.example.com`. Pins the OIDC `redirect_uri` and enables callback-origin validation |
 | `username` | `""` | Basic auth: username |
 | `password` | `""` | Basic auth: password (supports `${ENV_VAR}`) |
 | `issuer_url` | `""` | OIDC: IdP base URL (autodiscovery via `/.well-known/openid-configuration`; supports `${ENV_VAR}`) |

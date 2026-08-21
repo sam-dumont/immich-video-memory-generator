@@ -535,6 +535,9 @@ auth:
   enabled: false
   provider: basic                # basic, oidc, or header
   session_ttl_hours: 24          # 1-720
+  public_url: ""                 # e.g. https://memories.example.com -- the URL users reach you
+                                 # on. Pins the OIDC redirect_uri and enables callback-origin
+                                 # validation; without it no origin check is performed
 
   # Basic auth
   username: ""

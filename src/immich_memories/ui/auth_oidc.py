@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     from authlib.integrations.starlette_client import OAuth  # type: ignore[import-untyped]
@@ -90,24 +90,36 @@ def get_end_session_url(auth_config: AuthConfig) -> str | None:
         return None
 
 
-def validate_callback_origin(request: Request) -> bool:
-    """Ensure the OIDC callback URL belongs to the same origin as the app.
+def _origin(url: str) -> tuple[str, str | None, int | None]:
+    parts = urlsplit(url)
+    default_port = {"http": 80, "https": 443}.get(parts.scheme)
+    return parts.scheme, (parts.hostname or "").lower() or None, parts.port or default_port
 
-    Rejects callbacks where the Host header doesn't match the request URL,
-    which would indicate an open-redirect attack via a crafted redirect_uri.
+
+def validate_callback_origin(request: Request, public_url: str) -> bool:
+    """Whether the callback arrived on the origin the app is published under.
+
+    Only meaningful when `auth.public_url` is configured. Without it there is
+    nothing trustworthy to compare against: Starlette builds `request.url` from
+    the Host header, so checking one against the other is a tautology -- which
+    is what this function used to do. Unconfigured, the control is the IdP,
+    which redirects only to the redirect_uri registered with it.
     """
-    callback_url = str(request.url)
-    parsed = urlparse(callback_url)
+    if not public_url:
+        return True
+    return _origin(str(request.url)) == _origin(public_url)
 
-    expected_host = request.headers.get("host", "")
-    # Strip port from parsed netloc for comparison
-    callback_host = parsed.netloc
 
-    if not expected_host or not callback_host:
-        return False
+def oidc_redirect_uri(derived_uri: str, public_url: str) -> str:
+    """The redirect_uri to hand the IdP.
 
-    # WHY: compare full netloc (host:port) to handle non-standard ports
-    return callback_host == expected_host
+    Behind a reverse proxy the derived host is the internal one unless the
+    forwarded headers are trusted, and the IdP rejects any redirect_uri that is
+    not the registered one. A configured public URL pins it.
+    """
+    if not public_url:
+        return derived_uri
+    return public_url.rstrip("/") + urlsplit(derived_uri).path
 
 
 def reset_oidc_client() -> None:

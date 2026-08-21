@@ -702,10 +702,10 @@ async def _oidc_authorize(request: Request) -> RedirectResponse:
     config = get_config()
     if config.auth.provider != "oidc":
         return RedirectResponse("/login")
-    from immich_memories.ui.auth_oidc import create_oidc_client
+    from immich_memories.ui.auth_oidc import create_oidc_client, oidc_redirect_uri
 
     oauth = create_oidc_client(config.auth)
-    redirect_uri = str(request.url_for("_oidc_callback"))
+    redirect_uri = oidc_redirect_uri(str(request.url_for("_oidc_callback")), config.auth.public_url)
     return await oauth.oidc.authorize_redirect(request, redirect_uri)
 
 
@@ -718,7 +718,7 @@ async def _oidc_callback(request: Request) -> Response:
         validate_callback_origin,
     )
 
-    if not validate_callback_origin(request):
+    if not validate_callback_origin(request, config.auth.public_url):
         logger.warning("OIDC callback origin mismatch: %s", request.url)
         return JSONResponse({"detail": "Invalid callback origin"}, status_code=400)
 
