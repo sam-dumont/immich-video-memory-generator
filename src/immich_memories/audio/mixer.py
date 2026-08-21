@@ -70,6 +70,9 @@ class MixConfig:
     fade_out_seconds: float = 3.0
     music_starts_at: float = 0.0  # Seconds into video
     normalize_audio: bool = True
+    # Timeline windows [start, end) where the source audio IS music and the
+    # soundtrack must step aside (#466) — near-mute, not sidechain-lowered.
+    mute_windows: list[tuple[float, float]] | None = None
 
 
 def get_audio_duration(audio_path: Path) -> float:
@@ -317,6 +320,10 @@ def _build_ducking_filter(
     # Prepare music: trim to video length, apply volume, add fades
     music_filter = f"[1:a]atrim=0:{video_duration}"
     music_filter += f",volume={ducking.music_volume_db}dB"
+    # WHY 0.05 not 0: dead silence reads as an error; -26 dB reads as stepping
+    # aside. The step lands on a clip boundary, where the cut masks it.
+    for start, end in config.mute_windows or []:
+        music_filter += f",volume=enable='between(t,{start},{end})':volume=0.05"
 
     if config.fade_in_seconds > 0:
         music_filter += f",afade=t=in:st={config.music_starts_at}:d={config.fade_in_seconds}"
@@ -364,3 +371,29 @@ def _build_ducking_filter(
     )
 
     return filter_parts
+
+
+def music_mute_windows(
+    clips: list,
+    transitions: list[str],
+    fade_duration: float,
+) -> list[tuple[float, float]]:
+    """Timeline windows of clips whose own audio is music (#466).
+
+    Follows the assembler's clock: a crossfade overlaps the next clip into
+    the previous one by ``fade_duration``. Adjacent music windows merge so
+    the soundtrack does not pump between back-to-back concert clips.
+    """
+    windows: list[tuple[float, float]] = []
+    start = 0.0
+    for idx, clip in enumerate(clips):
+        if idx > 0 and idx - 1 < len(transitions) and transitions[idx - 1] == "fade":
+            start -= fade_duration
+        end = start + clip.duration
+        if getattr(clip, "has_music", False):
+            if windows and start <= windows[-1][1]:
+                windows[-1] = (windows[-1][0], end)
+            else:
+                windows.append((start, end))
+        start = end
+    return windows

@@ -129,6 +129,10 @@ class AssemblySettings:
     target_resolution: tuple[int, int] | None = None  # Override resolution (width, height)
     # Title screens
     title_screens: TitleScreenSettings | None = None
+    # Recorded by the assembly engine from the FINAL clip sequence (titles
+    # included): timeline windows where a clip's own audio is music, so the
+    # music phase can step the soundtrack aside (#466).
+    music_mute_windows: list[tuple[float, float]] | None = None
     # Pre-decided transitions (from clips.plan_transitions)
     # If provided, these override the automatic transition decisions
     # Format: list of "fade" or "cut" for each transition between clips
@@ -176,6 +180,9 @@ class AssemblyClip:
     is_photo: bool = False
     # Seek offset: skip this many seconds from the start (used for title trim)
     input_seek: float = 0.0
+    # Source audio contains music (PANNs 'music'/'singing'); the added
+    # soundtrack steps aside over this clip's window (#466).
+    has_music: bool = False
 
 
 def _get_rotation_filter(rotation: int) -> str:

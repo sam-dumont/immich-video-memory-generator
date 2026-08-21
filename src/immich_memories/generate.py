@@ -440,6 +440,7 @@ def _complete_music_phase(
     encoding_plan: EncodingPlan,
     operational: _OperationalProgress,
     progress: _PipelineProgress,
+    mute_windows: list[tuple[float, float]] | None = None,
 ):
     """Run or explicitly skip music while emitting the shared outer phase."""
     if params.no_music:
@@ -457,6 +458,7 @@ def _complete_music_phase(
         run_output_dir,
         run_tracker,
         encoding_plan=encoding_plan,
+        mute_windows=mute_windows,
     )
     progress.report("music", 1.0, result.warning or "Music ready")
     operational.emit(OperationalPhase.MUSIC, 1, 1, result.warning or "Music ready")
@@ -797,6 +799,7 @@ def _generate_memory_inner(
             settings.encoding_plan,
             operational,
             pp,
+            mute_windows=settings.music_mute_windows,
         )
         _phase_times["music"] = _time.monotonic() - _t
 

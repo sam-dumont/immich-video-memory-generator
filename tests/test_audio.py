@@ -579,3 +579,99 @@ class TestBundledMoodFolders:
         from immich_memories.audio.music_sources import LocalMusicSource
 
         assert ".opus" in LocalMusicSource.SUPPORTED_EXTENSIONS
+
+
+class TestMusicStepsAsideForSourceMusic:
+    """#466: when a clip's own audio IS music, the soundtrack must step
+    aside for that clip's window — sidechain compression only lowers it,
+    and two songs at once is what the matrix review heard."""
+
+    def test_mute_windows_reach_the_music_filter(self):
+        from immich_memories.audio.mixer import _build_ducking_filter
+
+        config = MixConfig(ducking=DuckingConfig(), mute_windows=[(10.0, 14.5)])
+
+        parts = _build_ducking_filter(config, config.ducking, video_duration=30.0)
+        music_chain = next(p for p in parts if p.startswith("[1:a]"))
+
+        assert "between(t,10.0,14.5)" in music_chain
+        assert "volume=" in music_chain
+
+    def test_no_windows_means_the_chain_is_unchanged(self):
+        from immich_memories.audio.mixer import _build_ducking_filter
+
+        config = MixConfig(ducking=DuckingConfig())
+
+        parts = _build_ducking_filter(config, config.ducking, video_duration=30.0)
+        music_chain = next(p for p in parts if p.startswith("[1:a]"))
+
+        assert "between(" not in music_chain
+
+
+class TestMusicMuteWindows:
+    """Timeline windows of clips whose source audio is music."""
+
+    def _clip(self, duration: float, has_music: bool = False):
+        from pathlib import Path
+
+        from immich_memories.processing.assembly_config import AssemblyClip
+
+        return AssemblyClip(
+            path=Path("/x.mp4"), duration=duration, asset_id="x", has_music=has_music
+        )
+
+    def test_windows_follow_the_timeline_with_crossfade_overlap(self):
+        from immich_memories.audio.mixer import music_mute_windows
+
+        clips = [self._clip(10.0), self._clip(8.0, has_music=True), self._clip(6.0)]
+
+        windows = music_mute_windows(clips, ["fade", "cut"], fade_duration=1.0)
+
+        # clip B starts at 10 - 1 (crossfade overlap) = 9.0, runs 8s
+        assert windows == [(9.0, 17.0)]
+
+    def test_adjacent_music_clips_merge_into_one_window(self):
+        from immich_memories.audio.mixer import music_mute_windows
+
+        clips = [self._clip(10.0, has_music=True), self._clip(8.0, has_music=True)]
+
+        windows = music_mute_windows(clips, ["cut"], fade_duration=1.0)
+
+        assert windows == [(0.0, 18.0)]
+
+    def test_no_music_no_windows(self):
+        from immich_memories.audio.mixer import music_mute_windows
+
+        assert music_mute_windows([self._clip(10.0)], [], fade_duration=1.0) == []
+
+
+class TestMuteWindowWiring:
+    def test_apply_music_file_hands_windows_to_the_mixer(self, tmp_path):
+        from unittest.mock import MagicMock, patch
+
+        from immich_memories.generate_music import apply_music_file
+
+        captured = {}
+
+        # WHY: mixing runs real ffmpeg; the contract here is config plumbing
+        def spy(video_path, music_path, output_path, config):
+            captured["windows"] = config.mute_windows
+            raise RuntimeError("stop after capture")
+
+        # WHY: mixing runs real ffmpeg and staging touches the filesystem
+        with (
+            patch("immich_memories.audio.mixer.mix_audio_with_ducking", side_effect=spy),
+            patch("immich_memories.generate_music.staged_music_output"),
+        ):
+            try:
+                apply_music_file(
+                    tmp_path / "v.mp4",
+                    tmp_path / "m.mp3",
+                    0.5,
+                    MagicMock(),
+                    mute_windows=[(3.0, 9.0)],
+                )
+            except Exception:
+                pass
+
+        assert captured["windows"] == [(3.0, 9.0)]

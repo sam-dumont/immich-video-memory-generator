@@ -367,6 +367,7 @@ def apply_music_file(
     music_path: Path,
     volume: float,
     encoding_plan: EncodingPlan,
+    mute_windows: list[tuple[float, float]] | None = None,
 ) -> OutputProbe:
     """Mix a music file and publish it only when it matches the encoding plan."""
     from immich_memories.audio.mixer import DuckingConfig, MixConfig, mix_audio_with_ducking
@@ -375,6 +376,7 @@ def apply_music_file(
         ducking=DuckingConfig(
             music_volume_db=-20 + (volume * 20),
         ),
+        mute_windows=mute_windows,
     )
     with staged_music_output(video_path, encoding_plan) as staged_path:
         mix_audio_with_ducking(

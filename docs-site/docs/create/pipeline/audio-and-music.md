@@ -10,6 +10,7 @@ The music pipeline has three stages:
 1. **Mood detection**: A vision LLM looks at keyframes from your video and outputs a structured mood analysis (happy, calm, energetic, etc. plus genre and tempo suggestions).
 2. **Music generation**: The pipeline takes that mood and sends it to the configured music backend. ACE-Step can run directly in the app or through its REST API. MusicGen is the alternative generator when ACE-Step is disabled.
 3. **Audio ducking**: When background music plays over your clips, it automatically gets quieter when someone's talking or when there's an interesting sound in the original audio.
+4. **Music steps aside for music**: when a clip's own audio *is* music — a concert, someone playing piano, a party — the added soundtrack drops to near-silence for that clip instead of playing two songs at once. Detection uses the audio-content analysis (PANNs) `music`/`singing` labels, so it needs the `audio-ml` extra.
 
 ## No GPU? Start here
 

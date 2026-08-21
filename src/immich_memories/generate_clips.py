@@ -171,6 +171,7 @@ def _extract_clips(
                     latitude=exif.latitude if exif else None,
                     longitude=exif.longitude if exif else None,
                     location_name=clip_location_name(exif),
+                    has_music=bool(set(clip.audio_categories or []) & {"music", "singing"}),
                 )
             )
         except (OSError, subprocess.SubprocessError, ValueError) as e:

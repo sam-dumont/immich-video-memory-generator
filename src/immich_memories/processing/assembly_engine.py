@@ -233,6 +233,11 @@ class AssemblyEngine:
 
         ctx = create_assembly_context(self.settings, self.prober, clips, target_w, target_h)
         fade_duration = self.settings.transition_duration or 0.5
+        from immich_memories.audio.mixer import music_mute_windows
+
+        # The engine is the only place the FINAL sequence (titles included)
+        # and its transitions coexist — the music phase runs later (#466).
+        self.settings.music_mute_windows = music_mute_windows(clips, transitions, fade_duration)
         plan = self.settings.encoding_plan
         if plan.hdr:
             logger.info("Streaming %s HDR assembly with %s", ctx.hdr_type.upper(), plan.encoder)

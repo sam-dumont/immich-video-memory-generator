@@ -1597,7 +1597,9 @@ class TestRunMusicPhase:
                 encoding_plan=encoding_plan,
             )
 
-        mock_apply.assert_called_once_with(result_path, music_file, 0.7, encoding_plan)
+        mock_apply.assert_called_once_with(
+            result_path, music_file, 0.7, encoding_plan, mute_windows=None
+        )
         mock_tracker.start_phase.assert_called_once_with("music", 1)
         mock_tracker.complete_phase.assert_called_once_with(items_processed=1)
 

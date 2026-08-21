@@ -1567,7 +1567,9 @@ def test_music_phase_passes_exact_encoding_plan_to_publication(tmp_path: Path) -
         )
 
     assert result == generate_music.MusicPhaseResult(applied=True)
-    apply_music.assert_called_once_with(base_video, music_file, params.music_volume, plan)
+    apply_music.assert_called_once_with(
+        base_video, music_file, params.music_volume, plan, mute_windows=None
+    )
     tracker.complete_phase.assert_called_once_with(items_processed=1)
 
 

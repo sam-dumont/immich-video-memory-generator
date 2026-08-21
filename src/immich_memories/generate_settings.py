@@ -247,6 +247,7 @@ def _run_music_phase(
     run_tracker: RunTracker,
     *,
     encoding_plan: EncodingPlan,
+    mute_windows: list[tuple[float, float]] | None = None,
 ) -> MusicPhaseResult:
     """Resolve and apply music to the assembled video."""
     from immich_memories.generate_music import (
@@ -284,7 +285,13 @@ def _run_music_phase(
             # without an explicit path or configured generation backend.
             run_tracker.start_phase("music", 1)
             phase_started = True
-        apply_music_file(result_path, music_file, params.music_volume, encoding_plan)
+        apply_music_file(
+            result_path,
+            music_file,
+            params.music_volume,
+            encoding_plan,
+            mute_windows=mute_windows,
+        )
     except Exception as exc:  # WHY: optional music must not invalidate the base artifact
         return _complete_music_failure(
             exc,
