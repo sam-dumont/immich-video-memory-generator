@@ -10,11 +10,12 @@ import contextlib
 import json
 import logging
 import re
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
+
+from immich_memories.security import private_temp_dir
 
 logger = logging.getLogger(__name__)
 
@@ -226,8 +227,7 @@ class ContentAnalyzer:
         ]
 
         frames: list[Path] = []
-        temp_dir = Path(tempfile.gettempdir()) / "immich_memories" / "content_frames"
-        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_dir = private_temp_dir("content_frames")
 
         for i, time_pos in enumerate(frame_times):
             frame_num = int(time_pos * fps)

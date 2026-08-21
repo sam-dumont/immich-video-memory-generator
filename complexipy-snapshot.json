@@ -3768,77 +3768,77 @@
       {
         "name": "configured_secret_values",
         "complexity": 23,
-        "line_start": 45,
-        "line_end": 68,
+        "line_start": 76,
+        "line_end": 99,
         "line_complexities": [
           {
-            "line": 47,
+            "line": 78,
             "complexity": 0
           },
           {
-            "line": 48,
+            "line": 79,
             "complexity": 0
           },
           {
-            "line": 49,
+            "line": 80,
             "complexity": 1
           },
           {
-            "line": 50,
+            "line": 81,
             "complexity": 0
           },
           {
-            "line": 51,
+            "line": 82,
             "complexity": 2
           },
           {
-            "line": 52,
+            "line": 83,
             "complexity": 3
           },
           {
-            "line": 53,
+            "line": 84,
             "complexity": 0
           },
           {
-            "line": 54,
+            "line": 85,
             "complexity": 4
           },
           {
-            "line": 55,
+            "line": 86,
             "complexity": 6
           },
           {
-            "line": 57,
+            "line": 88,
             "complexity": 1
           },
           {
-            "line": 59,
+            "line": 90,
             "complexity": 1
           },
           {
-            "line": 61,
+            "line": 92,
             "complexity": 1
           },
           {
-            "line": 64,
+            "line": 95,
             "complexity": 0
           },
           {
-            "line": 65,
+            "line": 96,
             "complexity": 1
           },
           {
-            "line": 66,
+            "line": 97,
             "complexity": 3
           },
           {
-            "line": 68,
+            "line": 99,
             "complexity": 0
           }
         ]
       }
     ],
-    "complexity": 36
+    "complexity": 39
   },
   {
     "path": "src/immich_memories/titles/sdf_font.py",

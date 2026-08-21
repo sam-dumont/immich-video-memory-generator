@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import stat
+import tempfile
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -40,6 +41,36 @@ def write_secret_file(path: Path, text: str) -> None:
         with contextlib.suppress(OSError):
             tmp.unlink(missing_ok=True)
         raise
+
+
+def _assert_private(path: Path) -> None:
+    """Refuse a path someone else could have prepared for us."""
+    info = path.lstat()
+    owned = info.st_uid == os.getuid()
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode) or not owned:
+        raise RuntimeError(f"{path} is not a private directory")
+    if stat.S_IMODE(info.st_mode) & (stat.S_IRWXG | stat.S_IRWXO):
+        raise RuntimeError(f"{path} is not a private directory (group/other access)")
+
+
+def private_temp_dir(name: str) -> Path:
+    """A scratch directory under the system temp dir that only this user can enter.
+
+    `tempfile.gettempdir()` is shared and world-writable, so a fixed path under
+    it is a name another user can claim first -- as a symlink we then write
+    through, since `ffmpeg -y` follows one, or as a directory they can read.
+    Scoping by uid and refusing anything we do not own closes both.
+
+    `lstat` rather than `stat`: the question is what the path itself is, and a
+    symlink to a directory we own would answer "directory" through `stat`.
+    """
+    root = Path(tempfile.gettempdir()) / f"immich-memories-{os.getuid()}"
+    target = root / name
+    root.mkdir(mode=0o700, exist_ok=True)
+    _assert_private(root)
+    target.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _assert_private(target)
+    return target
 
 
 def configured_secret_values(config: BaseModel) -> tuple[str, ...]:

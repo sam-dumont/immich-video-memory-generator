@@ -6,7 +6,6 @@ import contextlib
 import hashlib
 import logging
 import subprocess
-import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -26,7 +25,7 @@ from immich_memories.processing.hardware import (
     get_ffmpeg_encoder,
     get_ffmpeg_hwaccel_args,
 )
-from immich_memories.security import validate_video_path
+from immich_memories.security import private_temp_dir, validate_video_path
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +77,7 @@ class ClipExtractor:
         self._config = config
 
         if output_dir is None:
-            output_dir = Path(tempfile.gettempdir()) / "immich_memories" / "clips"
+            output_dir = private_temp_dir("clips")
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -553,8 +552,7 @@ def _build_clip_output_path(
     buffer_end: bool,
     reencode: bool,
 ) -> Path:
-    output_dir = Path(tempfile.gettempdir()) / "immich_memories" / "clips"
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = private_temp_dir("clips")
     source_hash = hashlib.md5(str(source_path).encode(), usedforsecurity=False).hexdigest()[:8]  # noqa: S324
     buffer_suffix = (
         f"_b{int(buffer_start)}{int(buffer_end)}" if (buffer_start or buffer_end) else ""
