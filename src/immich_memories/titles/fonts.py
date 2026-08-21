@@ -245,9 +245,18 @@ def download_font(
                 response = client.get(download_url)
                 response.raise_for_status()
 
-                # Verify it's actually a font file (TTF starts with specific bytes)
-                if len(response.content) < 100:
-                    logger.warning(f"Downloaded file too small for {font_family} {weight_name}")
+                # WHY the magic check: the CDN URL is @latest (unpinned) — an
+                # sfnt magic plus a sane size is the minimum bar before writing
+                # executable-adjacent content into the font cache.
+                magic = response.content[:4]
+                if len(response.content) < 100 or magic not in (
+                    b"\x00\x01\x00\x00",  # TrueType
+                    b"OTTO",  # CFF OpenType
+                    b"true",  # legacy Apple TrueType
+                ):
+                    logger.warning(
+                        f"Downloaded file for {font_family} {weight_name} is not a font; skipping"
+                    )
                     continue
 
                 # Save with our naming convention: FontFamily-Weight.ttf

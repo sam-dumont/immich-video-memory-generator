@@ -7,10 +7,15 @@ import ThemedScreenshot from '@site/src/components/ThemedScreenshot';
 
 # Authentication
 
-By default, the web UI has no authentication. If you expose it beyond localhost, add auth.
+By default, the web UI has no authentication — and because of that, it binds to
+`127.0.0.1` unless you decide otherwise. To listen beyond localhost you either enable
+authentication, set `server.host` explicitly, or set
+`server.allow_unauthenticated_lan: true` — a name that spells out what it allows.
+(The Docker image passes `--host 0.0.0.0` explicitly; publishing its port is the
+compose file's deliberate decision, so enable auth there before exposing it.)
 
-When authentication is disabled and the server binds to `0.0.0.0`, anyone who can reach the port
-can use the app. The UI is single-user, single-replica because active workflow state lives in the
+When authentication is disabled and the server listens beyond localhost, anyone who can reach the
+port can use the app — and, through it, your Immich library. The UI is single-user, single-replica because active workflow state lives in the
 process. A shared storage secret or volume does not make multiple replicas safe.
 
 <ThemedScreenshot name="login" alt="Login page" />

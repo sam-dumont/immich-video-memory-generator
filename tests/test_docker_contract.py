@@ -90,8 +90,9 @@ def test_docker_builds_the_bundled_music_package_from_the_tree() -> None:
     dockerfile = _logical_instructions(_dockerfile())
 
     assert "COPY packages/ ./packages/" in dockerfile
-    assert "pip wheel --no-cache-dir --wheel-dir=/wheels ./packages/immich-memories-music" in (
-        dockerfile
+    assert (
+        "pip wheel --no-cache-dir --wheel-dir=/wheels --constraint /constraints.txt ./packages/immich-memories-music"
+        in (dockerfile)
     )
     assert "--find-links=/wheels" in dockerfile
 

@@ -180,7 +180,7 @@ resource "kubernetes_deployment_v1" "this" {
             allow_privilege_escalation = false
             # Sessions now live on the data volume, but ~/.cache still needs
             # a writable mount before this can flip to true (#445).
-            read_only_root_filesystem = false
+            read_only_root_filesystem = true
 
             capabilities {
               drop = ["ALL"]

@@ -26,10 +26,10 @@ from immich_memories.config_models import (  # noqa: F401
     MusicGenConfig,
     OutputConfig,
     PhotoConfig,
-    ServerConfig,
     TitleScreenConfig,
     expand_env_vars,
 )
+from immich_memories.config_models_server import ServerConfig
 
 __all__ = [
     "ACEStepConfig",

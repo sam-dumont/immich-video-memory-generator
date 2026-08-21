@@ -16,7 +16,7 @@ from immich_memories.config import (
     OutputConfig,
     expand_env_vars,
 )
-from immich_memories.config_models import ServerConfig
+from immich_memories.config_models_server import ServerConfig
 from immich_memories.processing.encoding_plan import HdrMode
 
 

@@ -33,7 +33,6 @@ from immich_memories.config_models import (
     NotificationConfig,
     OutputConfig,
     PhotoConfig,
-    ServerConfig,
     SpeechConfig,
     TitleScreenConfig,
     TranscriptionConfig,
@@ -41,6 +40,7 @@ from immich_memories.config_models import (
     UploadConfig,
 )
 from immich_memories.config_models_auth import AuthConfig
+from immich_memories.config_models_server import ServerConfig
 from immich_memories.config_presets import PresetName, apply_preset
 from immich_memories.scheduling.models import SchedulerConfig
 from immich_memories.security import CREDENTIAL_FIELD_NAMES, write_secret_file

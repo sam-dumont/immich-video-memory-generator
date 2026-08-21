@@ -109,7 +109,7 @@ def main(ctx: click.Context, config: str | None, preset: str | None) -> None:
 def ui(ctx: click.Context, port: int | None, host: str | None, reload: bool) -> None:
     """Launch the interactive NiceGUI UI."""
     config: Config = ctx.obj["config"]
-    host = host or config.server.host
+    host = host or config.server.effective_host(auth_enabled=config.auth.enabled)
     port = port or config.server.port
     _warn_about_unauthenticated_external_bind(config, host)
     print_info(f"Starting Immich Memories UI on http://{host}:{port}")

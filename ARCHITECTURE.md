@@ -346,6 +346,7 @@ src/immich_memories/
 ├── config_loader.py            # Config loading logic
 ├── config_models.py            # Config data models
 ├── config_models_auth.py       # Authentication config model (basic, OIDC, header)
+├── config_models_server.py     # UI server bind settings + secure-by-default host rule
 ├── generate.py                 # End-to-end generation orchestrator
 ├── generate_clips.py           # Clip extraction, probing, cleanup
 ├── generate_downloads.py       # Parallel asset downloads

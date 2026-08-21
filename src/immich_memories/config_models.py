@@ -450,20 +450,6 @@ class LLMConfig(BaseModel):
         return v
 
 
-class ServerConfig(BaseModel):
-    """UI server settings (host, port)."""
-
-    host: str = Field(default="0.0.0.0", description="Listen address (IPv4, IPv6, or hostname)")  # noqa: S104
-    port: int = Field(default=8080, ge=1, le=65535, description="Listen port")
-    enable_demo_mode: bool = Field(
-        default=False, description="Show demo/privacy toggle in sidebar (for screenshots/E2E)"
-    )
-    secure_cookies: bool = Field(
-        default=False,
-        description="Mark the session cookie Secure (only when every visitor arrives over HTTPS)",
-    )
-
-
 class TripsConfig(BaseModel):
     """Trip detection configuration: homebase location and clustering thresholds."""
 

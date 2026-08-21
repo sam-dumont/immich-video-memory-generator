@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md uv.lock ./
 COPY src/ ./src/
 COPY packages/ ./packages/
 COPY docker/validate_install_extras.py ./docker/validate_install_extras.py
@@ -29,12 +29,21 @@ ARG INSTALL_EXTRAS=all
 RUN if [ -z "${APP_VERSION}" ]; then echo "APP_VERSION build argument is required" >&2; exit 1; fi
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
 
+# WHY constraints from uv.lock (#345): a bare `pip wheel` re-resolves every
+# dependency at build time, so the published image could ship a set CI never
+# tested — that is how OpenCV 5 landed in a release (#339/#340). The lock is
+# exported as a pip constraints file: the image resolves to exactly the
+# versions the suite ran against.
+RUN pip install --no-cache-dir "uv==0.8.17" && \
+    uv export --frozen --all-extras --no-emit-project --no-hashes \
+        --format requirements-txt -o /constraints.txt
+
 # The bundled-music package is built from the tree so the image does not depend
 # on it being published yet; pip then resolves the `music` extra against it.
-RUN pip wheel --no-cache-dir --wheel-dir=/wheels ./packages/immich-memories-music
+RUN pip wheel --no-cache-dir --wheel-dir=/wheels --constraint /constraints.txt ./packages/immich-memories-music
 
 RUN INSTALL_TARGET="$(python docker/validate_install_extras.py "${INSTALL_EXTRAS}")" && \
-    pip wheel --no-cache-dir --wheel-dir=/wheels --find-links=/wheels "${INSTALL_TARGET}"
+    pip wheel --no-cache-dir --wheel-dir=/wheels --find-links=/wheels --constraint /constraints.txt "${INSTALL_TARGET}"
 
 
 # Stage 2: Runtime image

@@ -471,10 +471,14 @@ Thumbnails and clip previews are derived from your library and are cheap to rebu
 
 ```yaml
 server:
-  host: "0.0.0.0"               # Listen address (use 127.0.0.1 to restrict to localhost)
+  host: "0.0.0.0"               # Listen address. Without auth and without this set
+                                 # explicitly, the UI binds 127.0.0.1 (secure default)
   port: 8080                     # Listen port (1-65535)
   enable_demo_mode: false        # Show the demo/privacy (blur) toggle in the sidebar
   secure_cookies: false          # Mark the session cookie Secure (turn on behind an HTTPS reverse proxy)
+  allow_unauthenticated_lan: false  # Listen beyond localhost with auth disabled —
+                                 # anyone reaching the port can use the UI and the
+                                 # Immich library behind it
 ```
 
 These can also be set via CLI flags: `immich-memories ui --host 127.0.0.1 --port 9090`.

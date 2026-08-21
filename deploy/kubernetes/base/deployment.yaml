@@ -38,7 +38,7 @@ spec:
             allowPrivilegeEscalation: false
             # Sessions now live on the `data` volume, but ~/.cache still
             # needs a writable mount before this can flip to true (#445).
-            readOnlyRootFilesystem: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL
