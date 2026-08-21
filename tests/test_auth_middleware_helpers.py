@@ -51,7 +51,19 @@ class TestCheckLoginRateLimit:
             result = _check_login_rate_limit(request)
 
         assert result is None
-        assert _mock_storage["_client_ip"] == "192.168.1.1"
+
+    def test_an_unauthenticated_hit_leaves_nothing_to_persist(self, _mock_storage):
+        """NiceGUI writes a storage file per cookieless request that dirties the
+        user dict, and expires only tab storage -- so a scanner sweeping /login
+        used to cost one file per hit, forever."""
+        from immich_memories.ui.app import _check_login_rate_limit
+
+        request = _make_request(host="192.168.1.1")
+        # WHY: the rate limiter's process-wide failed-attempt counters.
+        with patch("immich_memories.ui.app.is_rate_limited", return_value=False):
+            _check_login_rate_limit(request)
+
+        assert _mock_storage == {}
 
     def test_limited_returns_429(self, _mock_storage):
         from immich_memories.ui.app import _check_login_rate_limit
@@ -75,11 +87,11 @@ class TestCheckLoginRateLimit:
             "server": ("localhost", 8080),
         }
         request = Request(scope)
-        with patch("immich_memories.ui.app.is_rate_limited", return_value=False):
+        with patch("immich_memories.ui.app.is_rate_limited", return_value=False) as limited:
             result = _check_login_rate_limit(request)
 
         assert result is None
-        assert _mock_storage["_client_ip"] == "unknown"
+        limited.assert_called_once_with("unknown")
 
 
 class TestTryHeaderAuth:

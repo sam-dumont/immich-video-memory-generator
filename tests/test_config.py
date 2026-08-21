@@ -29,11 +29,17 @@ class TestExpandEnvVars:
         result = expand_env_vars("prefix_${TEST_VAR}_suffix")
         assert result == "prefix_test_value_suffix"
 
-    def test_expand_dollar_format(self, monkeypatch):
-        """Test $VAR format expansion."""
+    def test_bare_dollar_format_is_no_longer_expanded(self, monkeypatch):
+        """Deliberately removed: these fields hold passwords and API keys.
+
+        `$USER` is set on every login shell, so a password like `S3cret$USER!`
+        became `S3cretsam!` and auth failed with no path to the cause. The
+        delimited `${VAR}` form cannot collide with a `$` inside a secret, and
+        it is what every documented example uses.
+        """
         monkeypatch.setenv("TEST_VAR2", "another_value")
         result = expand_env_vars("$TEST_VAR2")
-        assert result == "another_value"
+        assert result == "$TEST_VAR2"
 
     def test_missing_var_unchanged(self):
         """Test that missing variables are left unchanged."""

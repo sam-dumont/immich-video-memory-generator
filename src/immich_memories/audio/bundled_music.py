@@ -26,12 +26,21 @@ def bundled_library() -> Path | None:
     return directory if directory.is_dir() else None
 
 
-def bundled_track_for_mood(mood: str | None, library: Path | None = None) -> Path | None:
+def bundled_track_for_mood(
+    mood: str | None,
+    library: Path | None = None,
+    cadence_seconds: float | None = None,
+) -> Path | None:
     """Pick a bundled track for a mood, at random so repeats differ.
 
     Falls back to any bundled track when the mood has no folder of its own: some
     music beats silence, and the analyser's mood vocabulary is wider than the set
     of moods we ship.
+
+    With a photo cadence, the pick stops being random and becomes the track whose
+    beat divides that cadence -- the bundled counterpart to asking a generator
+    for a beat-aligned tempo (#312). Without photos there is no rhythm to sync
+    to, so variety wins and the choice stays random.
     """
     root = library if library is not None else bundled_library()
     if root is None or not root.is_dir():
@@ -46,10 +55,19 @@ def bundled_track_for_mood(mood: str | None, library: Path | None = None) -> Pat
     if not candidates:
         return None
 
-    chosen = random.choice(candidates)
+    chosen = _fitting_track(candidates, cadence_seconds) or random.choice(candidates)
     logger.info("Using bundled music: %s/%s", chosen.parent.name, chosen.name)
     return chosen
 
 
 def _tracks_in(folder: Path) -> list[Path]:
     return sorted(p for p in folder.iterdir() if p.suffix.lower() in _SUFFIXES)
+
+
+def _fitting_track(candidates: list[Path], cadence_seconds: float | None) -> Path | None:
+    """The candidate whose beat lands on the cadence, when there is one to land on."""
+    if not cadence_seconds:
+        return None
+    from immich_memories.audio.track_tempo import track_for_cadence
+
+    return track_for_cadence(candidates, cadence_seconds)

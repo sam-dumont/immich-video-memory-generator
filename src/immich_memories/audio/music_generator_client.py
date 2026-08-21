@@ -12,6 +12,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -56,6 +57,25 @@ class MusicGenClientConfig:
 # =============================================================================
 # API Client
 # =============================================================================
+
+
+def _origin(parts) -> tuple[str, str | None, int | None]:
+    default_port = {"http": 80, "https": 443}.get(parts.scheme)
+    return parts.scheme, (parts.hostname or "").lower() or None, parts.port or default_port
+
+
+def result_url_within(file_url: str, base_url: str) -> bool:
+    """Whether a job's result URL stays on the configured API host.
+
+    A relative path is fine -- httpx resolves it against `base_url`. An absolute
+    URL overrides `base_url` entirely while still carrying the client's
+    `X-API-Key` header, so anything naming another origin would hand the key to
+    a host the user never configured.
+    """
+    parts = urlsplit(file_url)
+    if not parts.scheme and not parts.netloc:
+        return True
+    return _origin(parts) == _origin(urlsplit(base_url))
 
 
 class MusicGenClient:
@@ -151,7 +171,9 @@ class MusicGenClient:
             await asyncio.sleep(self.config.poll_interval_seconds)
 
     async def _download_file(self, file_url: str, output_path: Path) -> Path:
-        """Download a result file."""
+        """Download a result file, refusing any URL that leaves the API host."""
+        if not result_url_within(file_url, self.config.base_url):
+            raise ValueError(f"Result URL {file_url!r} is outside the configured MusicGen host")
         resp = await self.client.get(file_url)
         resp.raise_for_status()
         output_path.parent.mkdir(parents=True, exist_ok=True)

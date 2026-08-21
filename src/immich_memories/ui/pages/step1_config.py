@@ -33,7 +33,7 @@ from immich_memories.ui.pages.step1_tabs import (
     _render_duration_tab,
     _render_year_tab,
 )
-from immich_memories.ui.state import get_app_state
+from immich_memories.ui.state import apply_api_key_entry, get_app_state
 
 if TYPE_CHECKING:
     from nicegui.elements.number import Number
@@ -69,11 +69,15 @@ def _render_immich_config_section(state) -> None:
                 placeholder="https://photos.example.com",
             ).classes("flex-1").bind_value(state, "immich_url")
 
+            # WHY the entry field: a binding is two-way, so binding the stored
+            # key would send it to every browser that loads this page --
+            # `password=True` masks it on screen, it does not withhold it.
             ui.input(
                 "API Key",
                 password=True,
                 password_toggle_button=True,
-            ).classes("flex-1").bind_value(state, "immich_api_key")
+                placeholder="Saved - type a new key to replace it" if state.immich_api_key else "",
+            ).classes("flex-1").bind_value(state, "api_key_entry")
 
         # Connection buttons
         status_label = ui.label("").classes("text-sm")
@@ -81,6 +85,7 @@ def _render_immich_config_section(state) -> None:
         with ui.row().classes("gap-2 mt-1"):
 
             async def test_connection() -> None:
+                apply_api_key_entry(state)
                 if not state.immich_url or not state.immich_api_key:
                     status_label.set_text("Please enter both URL and API key")
                     status_label.style("color: var(--im-error)")
@@ -130,6 +135,7 @@ def _render_immich_config_section(state) -> None:
                     status_label.style("color: var(--im-error)")
 
             def save_config() -> None:
+                apply_api_key_entry(state)
                 config = state.config
                 config.immich.url = state.immich_url
                 config.immich.api_key = state.immich_api_key

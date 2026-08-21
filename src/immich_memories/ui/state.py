@@ -36,6 +36,10 @@ class AppState:
     config_saved: bool = False
     immich_url: str = ""
     immich_api_key: str = ""
+    # What the user typed into the API key field. Separate from the stored
+    # key because this one is bound to a widget, and a binding is two-way:
+    # whatever it holds is sent to the browser.
+    api_key_entry: str = ""
     immich_api_version: ApiVersionPolicy = ApiVersionPolicy.AUTO
 
     # Time period selection
@@ -200,6 +204,19 @@ class AppState:
     def target_duration_seconds(self) -> float:
         """Return the exact total runtime requested by Auto or Manual mode."""
         return self.target_duration * 60.0
+
+
+def apply_api_key_entry(state: AppState) -> None:
+    """Move a newly typed API key into the stored one, then forget the entry.
+
+    An empty field means "unchanged" rather than "clear it": the field always
+    loads empty, because filling it would mean sending the stored key to the
+    browser.
+    """
+    typed = state.api_key_entry.strip()
+    if typed:
+        state.immich_api_key = typed
+    state.api_key_entry = ""
 
 
 # Session store: maps session_id → AppState

@@ -106,6 +106,16 @@ Measured on the 28 bundled tracks, ACE-Step honours a requested tempo to within
 0.4% (median), so asking for an aligned tempo is worth doing — but that residual
 is also why cuts are aligned in *rate*, not yet locked to the beat.
 
+A bundled track cannot be asked for a tempo; its own is already fixed. So the
+choice runs the other way — the tracks are measured and the one whose beat
+divides the photo cadence is picked, instead of one at random. With no photos
+there is no rhythm to sync to, and the pick stays random so repeats differ.
+
+Tempo is measured with an onset envelope and autocorrelation over an FFmpeg
+decode, using numpy alone. librosa would be a line, but it is not a dependency
+of this project — it only arrives transitively with the torch extras — and a
+plain install with the `music` extra has to work without them.
+
 ### MusicGen
 
 Meta's MusicGen handles text-to-music generation and Demucs stem separation via a remote API server. If you're running everything locally with ACE-Step + local Demucs, you don't need MusicGen at all.

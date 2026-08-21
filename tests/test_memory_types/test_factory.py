@@ -261,8 +261,13 @@ class TestCreatePresetTrip:
 
 
 class TestUnregisteredType:
-    """Unregistered memory types raise ValueError."""
+    """Unregistered memory types raise ValueError.
+
+    ALBUM is the last enum member with no factory: an album brings its own
+    assets, so it is selected by id rather than built from a date preset.
+    HOLIDAY used to stand here and now has one (#38).
+    """
 
     def test_unregistered_type_raises(self) -> None:
         with pytest.raises(ValueError, match="No preset factory"):
-            create_preset(MemoryType.HOLIDAY, year=2024)
+            create_preset(MemoryType.ALBUM, year=2024)

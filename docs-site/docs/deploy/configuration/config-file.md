@@ -134,7 +134,7 @@ See the [Config Reference](../../reference/config-reference.md#video-analysis) f
 
 ## Environment variable substitution
 
-A handful of secret-bearing fields expand `${VAR_NAME}` (or `$VAR_NAME`) at load time:
+A handful of secret-bearing fields expand `${VAR_NAME}` at load time:
 
 | Section | Fields |
 |---------|--------|
@@ -143,6 +143,12 @@ A handful of secret-bearing fields expand `${VAR_NAME}` (or `$VAR_NAME`) at load
 | `musicgen` | `base_url`, `api_key` |
 | `ace_step` | `api_url` (not `api_key`) |
 | `auth` | `password`, `client_secret`, `issuer_url`, `client_id` |
+
+Only the braced form expands. A bare `$VAR_NAME` is left exactly as written,
+because these fields hold passwords and API keys and a `$` in a secret is
+ordinary — `S3cret$USER!` would otherwise pick up your login name and the only
+symptom would be a rejected password. If a value contains a bare `$NAME` that
+matches a variable you have set, a warning says so at load time.
 
 ```yaml
 immich:

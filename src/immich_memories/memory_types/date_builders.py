@@ -7,7 +7,7 @@ and "on this day" lookbacks.
 from __future__ import annotations
 
 import calendar
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from immich_memories.timeperiod import DateRange
 
@@ -181,3 +181,110 @@ def build_trip(start: date, end: date) -> DateRange:
         start=datetime(start.year, start.month, start.day, 0, 0, 0),
         end=datetime(end.year, end.month, end.day, 23, 59, 59),
     )
+
+
+# Fixed-date holidays. Deliberately short: this is a starting set, and any date
+# the list misses can be given as MM-DD.
+_FIXED_HOLIDAYS = {
+    "new_year": (1, 1),
+    "valentines": (2, 14),
+    "halloween": (10, 31),
+    "christmas_eve": (12, 24),
+    "christmas": (12, 25),
+    "new_years_eve": (12, 31),
+}
+
+
+def _easter(year: int) -> date:
+    """Western Easter Sunday, by the anonymous Gregorian algorithm.
+
+    Computed rather than tabulated: a table of Easter dates is wrong the year
+    after it is written, and this is the holiday most likely to be photographed
+    by families with young children.
+    """
+    a, b, c = year % 19, year // 100, year % 100
+    d, e = b // 4, b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = c // 4, c % 4
+    length = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * length) // 451
+    month = (h + length - 7 * m + 114) // 31
+    day = ((h + length - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+
+def _nth_weekday(year: int, month: int, weekday: int, nth: int) -> date:
+    """The nth given weekday of a month, e.g. the fourth Thursday of November."""
+    first = date(year, month, 1)
+    offset = (weekday - first.weekday()) % 7
+    return date(year, month, 1 + offset + 7 * (nth - 1))
+
+
+def resolve_holiday(holiday: str, year: int) -> date:
+    """The date a holiday falls on in a given year.
+
+    Accepts a known name or an explicit ``MM-DD``. Moving holidays are computed,
+    so they stay correct in years nobody has thought about yet.
+    """
+    key = holiday.strip().lower().replace("-", "_").replace(" ", "_")
+    if key in _FIXED_HOLIDAYS:
+        month, day = _FIXED_HOLIDAYS[key]
+        return date(year, month, day)
+    if key == "easter":
+        return _easter(year)
+    if key == "thanksgiving":
+        return _nth_weekday(year, 11, weekday=3, nth=4)
+    if key == "mothers_day":
+        return _nth_weekday(year, 5, weekday=6, nth=2)
+    if key == "fathers_day":
+        return _nth_weekday(year, 6, weekday=6, nth=3)
+
+    try:
+        month_str, day_str = holiday.strip().split("-")
+        return date(year, int(month_str), int(day_str))
+    except (ValueError, TypeError) as exc:
+        known = ", ".join(sorted([*_FIXED_HOLIDAYS, "easter", "thanksgiving"]))
+        raise ValueError(
+            f"Unknown holiday {holiday!r}. Use one of: {known}, or a MM-DD date."
+        ) from exc
+
+
+def build_holiday(
+    holiday: str,
+    year: int,
+    years_back: int = 5,
+    window_days: int = 2,
+    today: date | None = None,
+) -> list[DateRange]:
+    """One window per year around a holiday, most recent first.
+
+    A holiday is the date a library is most likely to have every single year, so
+    it is worth spanning years the way On This Day does rather than covering one
+    occasion.
+
+    ``today`` only affects the starting year, and only when it makes the first
+    window impossible: asking for Christmas in August would otherwise include a
+    Christmas that has not happened, spending one of the requested years on a
+    window no photo can fall in. An explicit ``year`` from the caller is a
+    choice and is left alone.
+    """
+    if years_back <= 0:
+        return []
+
+    if today is not None and resolve_holiday(holiday, year) > today:
+        year -= 1
+
+    ranges: list[DateRange] = []
+    for offset in range(years_back):
+        centre = resolve_holiday(holiday, year - offset)
+        start = centre - timedelta(days=window_days)
+        end = centre + timedelta(days=window_days)
+        ranges.append(
+            DateRange(
+                start=datetime(start.year, start.month, start.day, 0, 0, 0),
+                end=datetime(end.year, end.month, end.day, 23, 59, 59),
+            )
+        )
+    return ranges

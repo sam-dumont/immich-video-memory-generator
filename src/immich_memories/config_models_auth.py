@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from immich_memories.config_models import expand_env_vars
+
+
+def _normalised_public_url(value: str) -> str:
+    """Reject anything that is not an absolute http(s) URL, and drop the trailing slash."""
+    parts = urlsplit(value)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        raise ValueError("public_url must be an absolute http(s) URL, e.g. https://host")
+    return value.rstrip("/")
 
 
 class AuthConfig(BaseModel):
@@ -19,6 +28,12 @@ class AuthConfig(BaseModel):
     # Basic auth
     username: str = ""
     password: str = ""
+
+    # The externally reachable base URL of this app, e.g.
+    # "https://memories.example.com". Pins the OIDC redirect_uri behind a
+    # reverse proxy and makes callback-origin validation possible; without it
+    # there is nothing trustworthy to compare an incoming Host header against.
+    public_url: str = ""
 
     # OIDC
     issuer_url: str = ""
@@ -42,7 +57,10 @@ class AuthConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> AuthConfig:
-        """Validate that required fields are set for the active provider."""
+        """Check public_url, then the fields the active provider requires."""
+        if self.public_url:
+            self.public_url = _normalised_public_url(self.public_url)
+
         if not self.enabled:
             return self
 

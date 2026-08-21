@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from nicegui import app, ui
+from nicegui import app, context, ui
 
 from immich_memories.config_models_auth import AuthConfig
 from immich_memories.ui.auth import (
@@ -52,9 +52,10 @@ def _render_basic_form(auth_config: AuthConfig) -> None:
     error_label = ui.label("").classes("text-xs").style("color: var(--im-error); display: none")
 
     async def attempt_login() -> None:
-        # WHY: the HTTP middleware stashes client IP in storage on /login load
-        # because NiceGUI button callbacks run over websockets, not HTTP.
-        client_ip = app.storage.user.get("_client_ip", "unknown")
+        # WHY: this callback arrives over a websocket, so there is no HTTP
+        # request to read. `client.ip` reads through to the request that loaded
+        # the page, and is defined before the socket connects.
+        client_ip = context.client.ip or "unknown"
 
         if is_rate_limited(client_ip):
             error_label.style("display: block")
