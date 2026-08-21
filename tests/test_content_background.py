@@ -166,3 +166,35 @@ class TestPerformance:
         frame = np.random.rand(1080, 1920, 3).astype(np.float32)
         result = benchmark(prepare_content_background, frame, 0.45, 40)
         assert result is not None
+
+
+class TestSourceLoadingStreams:
+    """#408: capture_output=True buffered every raw frame (746 MB at 4K HDR)
+    while float32 copies accumulated beside it — a 2.2 GB peak the comment
+    called 150 MB. Loading must stream the pipe, one frame at a time."""
+
+    def test_loading_never_uses_the_buffering_api(self, sample_video: Path):
+        import subprocess as sp
+        from unittest.mock import patch
+
+        from immich_memories.titles.content_background import SlowmoBackgroundReader
+
+        real_run = sp.run  # captured before the patch replaces the module attr
+
+        # WHY: subprocess.run(capture_output=True) IS the leak — holding the
+        # whole raw stream. The tiny ffprobe duration call may buffer; the
+        # frame extraction must go through a streamed pipe.
+        def no_rawvideo_run(cmd, *args, **kwargs):
+            assert "rawvideo" not in cmd, "frame extraction used the buffering API"
+            return real_run(cmd, *args, **kwargs)
+
+        # WHY: run() with capture_output IS the leak under test; the probe may pass
+        with patch(
+            "immich_memories.titles.content_background.subprocess.run",
+            side_effect=no_rawvideo_run,
+        ):
+            reader = SlowmoBackgroundReader(sample_video, width=64, height=64, fps=10.0)
+
+        assert reader.is_active
+        frame = reader.read_frame()
+        assert frame is not None and frame.dtype == np.float32

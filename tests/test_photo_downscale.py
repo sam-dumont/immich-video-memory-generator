@@ -75,3 +75,34 @@ def test_a_gain_mapped_photo_is_capped_and_still_hdr(tmp_path) -> None:
 
     assert max(_dimensions(result.path)) <= max(CAP)
     assert result.has_gain_map
+
+
+def test_the_pipeline_caps_the_source_at_1_5x_output(monkeypatch, tmp_path) -> None:
+    """#423: the renderer samples at most output x 1.12 zoom x 1.26 margin
+    = 1.41x; a 2.0x cap paid 0.63s and 0.32 GB per photo for pixels the
+    internal resize threw away. 1.5x covers the worst case with headroom."""
+    from immich_memories.photos import photo_pipeline
+
+    seen = {}
+
+    def spy_prepare(path, work_dir, max_size=None):  # WHY: capture the cap, skip real HEIC work
+        seen["max_size"] = max_size
+        raise RuntimeError("stop after capture")
+
+    monkeypatch.setattr(photo_pipeline, "prepare_photo_source", spy_prepare)
+    from unittest.mock import MagicMock
+
+    asset = MagicMock(id="a1", original_file_name="p.jpg")
+    import contextlib
+
+    with contextlib.suppress(RuntimeError):
+        photo_pipeline._render_single_photo(  # noqa: SLF001 — the cap lives on this path
+            asset,
+            config=MagicMock(),
+            target_w=3840,
+            target_h=2160,
+            work_dir=tmp_path,
+            download_fn=lambda _id, p: p.write_bytes(b"x"),
+        )
+
+    assert seen["max_size"] == (5760, 3240)  # 1.5x of 4K, not 2.0x

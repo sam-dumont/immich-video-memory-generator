@@ -6,6 +6,7 @@ Supports both static frames and slow-motion video backgrounds.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import shutil
 import subprocess
@@ -175,6 +176,7 @@ class SlowmoBackgroundReader:
         source_transfer: HdrTransfer = HdrTransfer.NONE,
     ):
         self._source_frames: list[np.ndarray] = []
+        self._float_cache: dict[int, np.ndarray] = {}
         self._output_index = 0
         self._total_output_frames = int(title_duration * fps)
 
@@ -204,28 +206,30 @@ class SlowmoBackgroundReader:
             "pipe:1",
         ]  # fmt: skip
 
+        # WHY streaming + native dtype (#408): capture_output=True held every
+        # raw frame (746 MB for 15 frames at 4K 16-bit) while float32 copies
+        # (1.5 GB) accumulated beside it — a 2.2 GB peak. Reading the pipe one
+        # frame at a time and keeping frames in their native dtype caps the
+        # working set at the raw frames plus the small float window read_frame
+        # converts on demand.
         try:
-            result = subprocess.run(cmd, capture_output=True, timeout=30)
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            assert proc.stdout is not None
+            while True:
+                chunk = proc.stdout.read(frame_size)
+                if len(chunk) < frame_size:
+                    break
+                dtype = np.uint16 if source_is_hdr else np.uint8
+                self._source_frames.append(
+                    np.frombuffer(chunk, dtype=dtype).reshape((height, width, 3))
+                )
+            proc.wait(timeout=30)
         except (OSError, subprocess.SubprocessError) as e:
             logger.debug(f"Failed to extract frames from {clip_path}: {e}")
+            with contextlib.suppress(Exception):
+                proc.kill()
+            self._source_frames.clear()
             return
-
-        if result.returncode != 0:
-            return
-
-        # Read all source frames into memory (~150MB for 15 frames at 4K 16-bit)
-        data = result.stdout
-        offset = 0
-        while offset + frame_size <= len(data):
-            chunk = data[offset : offset + frame_size]
-            if source_is_hdr:
-                raw = np.frombuffer(chunk, dtype=np.uint16)
-                frame = raw.reshape((height, width, 3)).astype(np.float32) / 65535.0
-            else:
-                raw = np.frombuffer(chunk, dtype=np.uint8)
-                frame = raw.reshape((height, width, 3)).astype(np.float32) / 255.0
-            self._source_frames.append(frame)
-            offset += frame_size
 
         logger.info(
             f"Loaded {len(self._source_frames)} source frames for "
@@ -261,10 +265,10 @@ class SlowmoBackgroundReader:
         # WHY: Catmull-Rom cubic interpolation uses 4 frames instead of 2.
         # This eliminates the "pop" at frame pair boundaries that linear
         # interpolation creates (C1 continuity vs C0).
-        p0 = self._source_frames[max(0, idx - 1)]
-        p1 = self._source_frames[idx]
-        p2 = self._source_frames[min(idx + 1, n_src - 1)]
-        p3 = self._source_frames[min(idx + 2, n_src - 1)]
+        p0 = self._as_float(max(0, idx - 1))
+        p1 = self._as_float(idx)
+        p2 = self._as_float(min(idx + 1, n_src - 1))
+        p3 = self._as_float(min(idx + 2, n_src - 1))
 
         frame = 0.5 * (
             2.0 * p1
@@ -277,8 +281,24 @@ class SlowmoBackgroundReader:
         self._output_index += 1
         return frame
 
+    def _as_float(self, idx: int) -> np.ndarray:
+        """Normalized float32 view of one source frame, cached for the 4-frame
+        Catmull-Rom window. Access is monotonic, so each frame converts once
+        and the float working set never exceeds four frames."""
+        cached = self._float_cache.get(idx)
+        if cached is not None:
+            return cached
+        raw = self._source_frames[idx]
+        scale = 65535.0 if raw.dtype == np.uint16 else 255.0
+        frame = raw.astype(np.float32) / scale
+        self._float_cache[idx] = frame
+        while len(self._float_cache) > 4:
+            del self._float_cache[min(self._float_cache)]
+        return frame
+
     def close(self) -> None:
         self._source_frames.clear()
+        self._float_cache.clear()
 
     def __del__(self) -> None:
         self.close()

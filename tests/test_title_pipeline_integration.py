@@ -180,17 +180,28 @@ class TestSlowmoColorDomain:
 
     @staticmethod
     def _reader_command(source_transfer: HdrTransfer) -> list[str]:
+        import io
+
         from immich_memories.titles.content_background import SlowmoBackgroundReader
 
         duration_probe = MagicMock(stdout="2.0", returncode=0)
         frame = np.full((2, 2, 3), 32768, dtype=np.uint16).tobytes()
-        frame_probe = MagicMock(stdout=frame * 2, returncode=0)
+        # WHY a real BytesIO: extraction streams the pipe (#408); the mock
+        # process must behave like one — data, then EOF.
+        frame_proc = MagicMock()
+        frame_proc.stdout = io.BytesIO(frame * 2)
+        frame_proc.wait.return_value = 0
+        # WHY: ffprobe/ffmpeg are the external boundary; the fake streams then EOFs (#408)
         with (
             patch("immich_memories.titles.content_background.shutil.which", return_value="ffmpeg"),
             patch(
                 "immich_memories.titles.content_background.subprocess.run",
-                side_effect=[duration_probe, frame_probe],
-            ) as run,
+                side_effect=[duration_probe],
+            ),
+            patch(
+                "immich_memories.titles.content_background.subprocess.Popen",
+                return_value=frame_proc,
+            ) as popen,
         ):
             reader = SlowmoBackgroundReader(
                 Path("/tmp/content.mp4"),
@@ -201,7 +212,7 @@ class TestSlowmoColorDomain:
                 source_transfer=source_transfer,
             )
         assert reader.is_active
-        return run.call_args_list[1].args[0]
+        return popen.call_args_list[0].args[0]
 
     def test_hlg_background_is_not_tone_mapped_before_title_composition(self) -> None:
         command = self._reader_command(HdrTransfer.HLG)
