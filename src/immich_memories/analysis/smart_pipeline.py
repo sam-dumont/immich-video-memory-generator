@@ -352,23 +352,33 @@ class SmartPipeline:
         so the loop always terminates.
         """
         by_id = {c.clip.asset.id: c for c in analyzed}
+        attempted: set[str] = set()
         for _ in range(max(1, self.config.max_refinement_passes)):
             unverified = [
                 by_id[c.asset.id]
                 for c in result.selected_clips
-                if c.asset.id in by_id and not by_id[c.asset.id].analyzed
+                if c.asset.id in by_id
+                and c.asset.id not in attempted
+                and self._needs_a_real_look(by_id[c.asset.id])
             ]
             if not unverified:
                 break
             logger.info(
-                "Verify pass: analyzing %d selected clip(s) shipping on fallback scores",
+                "Verify pass: analyzing %d selected clip(s) the review cannot see",
                 len(unverified),
             )
+            attempted.update(u.clip.asset.id for u in unverified)
             try:
                 verified = self.analyzer.phase_analyze([u.clip for u in unverified], self.tracker)
             finally:
                 with contextlib.suppress(Exception):
                     self.analyzer.close()
+            # WHY only what we asked for: analysis can hand back more than it
+            # was given (a Live Photo expands into its components), and any
+            # extra id lands straight back in the pool — resurrecting a clip
+            # the judge or the review had just dropped.
+            requested = {u.clip.asset.id for u in unverified}
+            verified = [v for v in verified if v.clip.asset.id in requested]
             verified_ids = {v.clip.asset.id for v in verified}
             for v in verified:
                 by_id[v.clip.asset.id] = v
@@ -383,6 +393,22 @@ class SmartPipeline:
                     )
             result = self.refiner.phase_refine(list(by_id.values()), self.tracker)
         return result, list(by_id.values())
+
+    def _needs_a_real_look(self, member: ClipWithSegment) -> bool:
+        """Would the LLM review be judging this clip blind?
+
+        A metadata guess for a score is one way to ship unseen. The other is
+        subtler and was shipping: a clip carries a real visual score, so it
+        counts as analyzed, but no content analysis ever ran on it, so the
+        review is handed a bare line. It is then told — correctly — never to
+        drop a clip for missing information, and two near-identical hotel
+        mirror selfies from consecutive days both survive as a result.
+        """
+        if not member.analyzed:
+            return True
+        if not self._app_config.content_analysis.enabled:
+            return False
+        return not getattr(member.clip, "llm_description", None)
 
     def _judge_selection(
         self,
@@ -533,11 +559,25 @@ class SmartPipeline:
             result = self.refiner.phase_refine(analyzed, self.tracker)
             if verify:
                 result, analyzed = self._stabilize_selection(analyzed, result)
-                result, analyzed, review_changed = self._holistic_review(analyzed, result)
-                if review_changed:
-                    # WHY: the review's re-selection can admit new fallback
-                    # clips, exactly like a judge drop — same stabilization.
+                # WHY a loop: one review pass drops what it can see, and the
+                # refill puts new clips in their place that nothing has looked
+                # at yet. Reviewing once leaves whatever the last refill
+                # admitted unjudged, which is how a product shot survived a
+                # cut that had already dropped two others.
+                review_changed = True
+                for _ in range(max(1, self.config.max_refinement_passes)):
+                    result, analyzed, review_changed = self._holistic_review(analyzed, result)
+                    if not review_changed:
+                        break
+                    # The review's re-selection can admit new fallback clips,
+                    # exactly like a judge drop — same stabilization.
                     result, analyzed = self._stabilize_selection(analyzed, result)
+                if review_changed:
+                    logger.info(
+                        "Selection review: budget spent after %d passes — whatever the "
+                        "last refill admitted ships unreviewed",
+                        max(1, self.config.max_refinement_passes),
+                    )
             self.tracker.finish()
             return result
         except (

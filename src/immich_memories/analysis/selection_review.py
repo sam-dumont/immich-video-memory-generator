@@ -33,11 +33,20 @@ Below is every clip in timeline order, with everything we can see and hear.
 
 {clips}
 
-Judge the SET as a whole: feel, coherence, variety. Identify clips that are
-REDUNDANT (the same moment or scene shown twice) or that CLASH with the rest
-of the set. Most good selections need no changes.
+Judge the SET as a whole: feel, coherence, variety. Drop a clip when it is
 
-Answer with STRICT JSON only, no prose:
+- REDUNDANT: the same moment or scene is already in the set,
+- CLASHING: it breaks the feel the rest of the set has,
+- NOT A MEMORY: it records a thing rather than a moment — an object or a
+  product photographed on its own, a screen or a video game, a document or
+  a receipt, an empty room, a photo taken to remember information rather
+  than an occasion.
+
+A clip with no description has not been analysed yet. That says nothing about
+whether it is any good: never drop a clip for missing information, and never
+treat it as a duplicate on those grounds.
+
+Most good selections need no changes. Answer with STRICT JSON only, no prose:
 {{"drop": [{{"index": <clip number>, "reason": "<short reason>"}}]}}
 Use an empty list when the set is good."""
 
