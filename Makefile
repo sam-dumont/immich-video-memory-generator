@@ -406,16 +406,23 @@ commitlint:
 	uvx --from commitizen cz check --rev-range $${COMMIT_RANGE:-HEAD~1..HEAD}
 
 # Cognitive complexity (complements cyclomatic complexity)
+# On failure the FAILED list is only the grandfathered backlog — the actual
+# cause is the "Snapshot watermark:" line, so that is what gets printed (#453).
+# complexipy rewrites the snapshot on every run; a FAILING run restores it so
+# diagnosing by hand cannot absorb the violation into the baseline. A passing
+# run keeps the rewrite — that is the ratchet tightening.
 cognitive-complexity:
 	@OUTPUT=$$(uvx complexipy==5.2.0 src/ --max-complexity-allowed 15 2>&1); \
 	ANALYZER_STATUS=$$?; \
 	if echo "$$OUTPUT" | grep -q "Snapshot watermark passed"; then \
 		echo "Cognitive complexity: snapshot watermark passed (no new violations)"; \
-	elif echo "$$OUTPUT" | grep -q "FAILED"; then \
-		echo "$$OUTPUT" | grep "FAILED"; \
-		echo "Cognitive complexity gate FAILED: new violations detected"; \
+	elif echo "$$OUTPUT" | grep -q "Snapshot watermark"; then \
+		git checkout --quiet -- complexipy-snapshot.json 2>/dev/null || true; \
+		echo "$$OUTPUT" | sed -n '/Snapshot watermark/,$$p'; \
+		echo "Cognitive complexity gate FAILED: the watermark lines above name the new violations"; \
 		exit 1; \
 	elif [ "$$ANALYZER_STATUS" -ne 0 ]; then \
+		git checkout --quiet -- complexipy-snapshot.json 2>/dev/null || true; \
 		echo "$$OUTPUT"; \
 		echo "Cognitive complexity gate FAILED: analyzer exited $$ANALYZER_STATUS"; \
 		exit "$$ANALYZER_STATUS"; \
