@@ -20,7 +20,12 @@ WHITELIST = Path(__file__).resolve().parent.parent / "vulture-whitelist.py"
 # MemoryType.ALBUM entry that briefly lived here is the worked example: the
 # right fix turned out to be using the enum instead of a bare string, which
 # made the reference visible and the whitelist line unnecessary.
-MAX_WHITELISTED_SYMBOLS = 322
+# 316, down from 322: the nine @register_preset functions were whitelisted one
+# by one because vulture sees a definition nobody calls -- the decorator puts
+# them in a dict. Telling vulture about the decorator (`make dead-code`) removes
+# the whole class of false positive, so the entries went rather than growing by
+# two when HOLIDAY and THEN_AND_NOW landed.
+MAX_WHITELISTED_SYMBOLS = 316
 
 
 def test_the_dead_code_whitelist_never_grows() -> None:

@@ -28,14 +28,15 @@ immich-memories generate [OPTIONS]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--memory-type` | — | choice | — | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `trip` |
+| `--memory-type` | — | choice | — | `year_in_review`, `season`, `person_spotlight`, `multi_person`, `monthly_highlights`, `on_this_day`, `trip`, `holiday`, `then_and_now` |
+| `--holiday` | — | text | — | Holiday name or `MM-DD` (with `--memory-type holiday`) |
 | `--from-album` | — | string | — | Generate from an Immich album (name or ID) instead of a date range. See [Album Memories](../memory-types/album-memories). Cannot be combined with any time-period or person flag |
 | `--person` | `-p` | string | — | Person name from Immich face recognition (repeatable: `--person "Alice" --person "Bob"`) |
 | `--birthday` | `-b` | flag/string | — | Use birthday-based year. Bare flag auto-detects from Immich; or pass `MM/DD` to override |
 | `--season` | — | choice | — | `spring`, `summer`, `fall`, `autumn`, `winter` (use with `--memory-type season`) |
 | `--month` | — | int | — | Month 1-12 (with `--year`, generates that month; selects trip by month) |
 | `--hemisphere` | — | choice | `north` | `north` or `south` (for season date calculation) |
-| `--years-back` | — | int | all | Years to look back for `on_this_day` (default: all years) |
+| `--years-back` | — | int | all | Years to look back for `on_this_day`, `holiday` or `then_and_now` |
 
 ### Output
 
@@ -49,7 +50,7 @@ immich-memories generate [OPTIONS]
 | `--transition` | `-t` | choice | `smart` | `smart`, `cut`, `crossfade`, or `none` |
 | `--quality` | `-q` | choice | config value | `high`, `medium`, or `low` |
 | `--format` | — | choice | config value | `mp4`, `h265`, or `prores` |
-| `--output` | `-O` | path | auto | Output file path |
+| `--output` | `-O` | path | auto | Where to write — see [Output](#output); the file lands in a per-run folder beside it |
 | `--title` | — | string | — | Override title screen text |
 | `--subtitle` | — | string | — | Override subtitle text |
 | `--add-date` | — | flag | — | Caption each clip with its capture date |
@@ -214,6 +215,36 @@ immich-memories generate --memory-type on_this_day
 
 Or limit to the last 3 years: `--years-back 3`.
 
+### The same holiday, across the years
+
+A holiday is the one date a library reliably has every year, so this spans them
+rather than covering a single occasion:
+
+```bash
+immich-memories generate --memory-type holiday --holiday christmas --years-back 5
+```
+
+Known names: `new_year`, `valentines`, `easter`, `mothers_day`, `fathers_day`,
+`halloween`, `thanksgiving`, `christmas_eve`, `christmas`, `new_years_eve`.
+Anything else can be given as a date — `--holiday 07-04` — so a household's own
+occasion works without being on the list.
+
+Moving holidays are computed, not looked up in a table: Easter, Thanksgiving,
+Mother's and Father's Day land on the correct date in each year, including years
+nobody has thought about yet. The window is the holiday ±2 days by default, so
+Christmas Eve and Boxing Day belong to Christmas.
+
+### Then and now
+
+Two whole years, far apart, in one video:
+
+```bash
+immich-memories generate --memory-type then_and_now --year 2025 --years-back 10
+```
+
+That covers 2015 and 2025. Whole years rather than narrow windows, because the
+contrast is the point and a two-day window a decade ago is usually empty.
+
 ### Trip closest to a date
 
 Find and generate the trip closest to a specific date:
@@ -246,6 +277,18 @@ Date formats: `YYYY-MM-DD`, `DD/MM/YYYY`, or `MM/DD` (for `--birthday` manual ov
 Period format: number + unit (`d` days, `w` weeks, `m` months, `y` years). Examples: `90d`, `2w`, `6m`, `1y`.
 
 ## Output
+
+`--output` names the file you want, not the path you get. Every run writes into
+its own folder so a rerun of the same recipe replaces itself instead of piling
+up, so:
+
+```bash
+immich-memories generate --year 2025 --output ~/Videos/summer.mp4
+```
+
+writes `~/Videos/summer_<hash>_<timestamp>_<id>/summer_<hash>.mp4`. The folder
+is named after the file you asked for, and sits where you pointed. Album runs
+name the file after the album rather than after `--output`.
 
 If you don't pass `--output`, the file lands in your configured output directory (default `~/Videos/Memories/`), inside a per-run folder, with an auto-generated name of the form `{person}_{memory-type}_{date}.mp4` — for example `all_memories_2024.mp4`, `alice_year_in_review_2024.mp4` or `alice_memories_20240207-20250206.mp4`. (The web UI names its files differently, e.g. `alice_2024_memories.mp4`.)
 

@@ -857,39 +857,15 @@
       {
         "name": "register_config_commands",
         "complexity": 52,
-        "line_start": 14,
-        "line_end": 227,
+        "line_start": 41,
+        "line_end": 250,
         "line_complexities": [
           {
-            "line": 31,
+            "line": 58,
             "complexity": 0
           },
           {
-            "line": 32,
-            "complexity": 0
-          },
-          {
-            "line": 34,
-            "complexity": 2
-          },
-          {
-            "line": 37,
-            "complexity": 0
-          },
-          {
-            "line": 38,
-            "complexity": 3
-          },
-          {
-            "line": 39,
-            "complexity": 3
-          },
-          {
-            "line": 45,
-            "complexity": 2
-          },
-          {
-            "line": 47,
+            "line": 59,
             "complexity": 0
           },
           {
@@ -897,128 +873,128 @@
             "complexity": 2
           },
           {
-            "line": 62,
-            "complexity": 0
-          },
-          {
-            "line": 63,
-            "complexity": 2
-          },
-          {
             "line": 64,
             "complexity": 0
+          },
+          {
+            "line": 65,
+            "complexity": 3
           },
           {
             "line": 66,
             "complexity": 3
           },
           {
-            "line": 69,
-            "complexity": 1
+            "line": 72,
+            "complexity": 2
           },
           {
             "line": 74,
             "complexity": 0
           },
           {
-            "line": 78,
+            "line": 88,
+            "complexity": 2
+          },
+          {
+            "line": 89,
             "complexity": 0
           },
           {
-            "line": 84,
-            "complexity": 0
-          },
-          {
-            "line": 85,
-            "complexity": 0
+            "line": 90,
+            "complexity": 2
           },
           {
             "line": 91,
+            "complexity": 0
+          },
+          {
+            "line": 93,
             "complexity": 3
           },
           {
-            "line": 95,
-            "complexity": 0
-          },
-          {
-            "line": 100,
-            "complexity": 0
-          },
-          {
-            "line": 102,
+            "line": 96,
             "complexity": 1
           },
           {
-            "line": 109,
+            "line": 101,
             "complexity": 0
           },
           {
-            "line": 111,
+            "line": 105,
+            "complexity": 0
+          },
+          {
+            "line": 107,
+            "complexity": 0
+          },
+          {
+            "line": 108,
+            "complexity": 0
+          },
+          {
+            "line": 114,
             "complexity": 3
           },
           {
-            "line": 117,
+            "line": 118,
             "complexity": 0
           },
           {
-            "line": 122,
+            "line": 123,
             "complexity": 0
           },
           {
-            "line": 124,
+            "line": 125,
+            "complexity": 1
+          },
+          {
+            "line": 132,
             "complexity": 0
           },
           {
-            "line": 128,
+            "line": 134,
             "complexity": 3
           },
           {
-            "line": 129,
-            "complexity": 4
-          },
-          {
-            "line": 139,
+            "line": 140,
             "complexity": 0
           },
           {
-            "line": 141,
-            "complexity": 3
+            "line": 145,
+            "complexity": 0
           },
           {
             "line": 147,
             "complexity": 0
           },
           {
-            "line": 152,
-            "complexity": 0
-          },
-          {
-            "line": 155,
+            "line": 151,
             "complexity": 3
           },
           {
-            "line": 172,
+            "line": 152,
+            "complexity": 4
+          },
+          {
+            "line": 162,
             "complexity": 0
           },
           {
-            "line": 177,
+            "line": 164,
+            "complexity": 3
+          },
+          {
+            "line": 170,
             "complexity": 0
           },
           {
-            "line": 180,
+            "line": 175,
             "complexity": 0
           },
           {
-            "line": 184,
-            "complexity": 2
-          },
-          {
-            "line": 187,
-            "complexity": 0
-          },
-          {
-            "line": 194,
-            "complexity": 2
+            "line": 178,
+            "complexity": 3
           },
           {
             "line": 195,
@@ -1026,52 +1002,76 @@
           },
           {
             "line": 200,
-            "complexity": 3
-          },
-          {
-            "line": 208,
             "complexity": 0
           },
           {
-            "line": 209,
+            "line": 203,
             "complexity": 0
+          },
+          {
+            "line": 207,
+            "complexity": 2
           },
           {
             "line": 210,
             "complexity": 0
           },
           {
-            "line": 211,
-            "complexity": 0
-          },
-          {
-            "line": 213,
-            "complexity": 0
-          },
-          {
-            "line": 214,
-            "complexity": 0
-          },
-          {
-            "line": 216,
+            "line": 217,
             "complexity": 2
           },
           {
-            "line": 217,
-            "complexity": 3
-          },
-          {
-            "line": 221,
-            "complexity": 1
+            "line": 218,
+            "complexity": 0
           },
           {
             "line": 223,
+            "complexity": 3
+          },
+          {
+            "line": 231,
+            "complexity": 0
+          },
+          {
+            "line": 232,
+            "complexity": 0
+          },
+          {
+            "line": 233,
+            "complexity": 0
+          },
+          {
+            "line": 234,
+            "complexity": 0
+          },
+          {
+            "line": 236,
+            "complexity": 0
+          },
+          {
+            "line": 237,
+            "complexity": 0
+          },
+          {
+            "line": 239,
+            "complexity": 2
+          },
+          {
+            "line": 240,
+            "complexity": 3
+          },
+          {
+            "line": 244,
+            "complexity": 1
+          },
+          {
+            "line": 246,
             "complexity": 1
           }
         ]
       }
     ],
-    "complexity": 52
+    "complexity": 55
   },
   {
     "path": "src/immich_memories/cli/generate.py",
@@ -1080,43 +1080,23 @@
       {
         "name": "register_generate_commands",
         "complexity": 179,
-        "line_start": 160,
-        "line_end": 905,
+        "line_start": 162,
+        "line_end": 921,
         "line_complexities": [
           {
-            "line": 460,
-            "complexity": 0
-          },
-          {
-            "line": 461,
-            "complexity": 0
-          },
-          {
-            "line": 468,
-            "complexity": 2
-          },
-          {
-            "line": 469,
-            "complexity": 0
-          },
-          {
-            "line": 470,
+            "line": 471,
             "complexity": 0
           },
           {
             "line": 472,
-            "complexity": 2
-          },
-          {
-            "line": 474,
-            "complexity": 3
-          },
-          {
-            "line": 478,
-            "complexity": 3
+            "complexity": 0
           },
           {
             "line": 479,
+            "complexity": 2
+          },
+          {
+            "line": 480,
             "complexity": 0
           },
           {
@@ -1124,164 +1104,160 @@
             "complexity": 0
           },
           {
-            "line": 482,
+            "line": 483,
             "complexity": 2
           },
           {
-            "line": 483,
-            "complexity": 1
-          },
-          {
-            "line": 488,
+            "line": 485,
             "complexity": 3
           },
           {
             "line": 489,
+            "complexity": 3
+          },
+          {
+            "line": 490,
+            "complexity": 0
+          },
+          {
+            "line": 492,
             "complexity": 0
           },
           {
             "line": 493,
-            "complexity": 0
+            "complexity": 2
           },
           {
             "line": 494,
             "complexity": 1
           },
           {
-            "line": 495,
+            "line": 499,
+            "complexity": 3
+          },
+          {
+            "line": 500,
             "complexity": 0
           },
           {
-            "line": 497,
+            "line": 504,
+            "complexity": 0
+          },
+          {
+            "line": 505,
+            "complexity": 1
+          },
+          {
+            "line": 506,
+            "complexity": 0
+          },
+          {
+            "line": 508,
             "complexity": 2
-          },
-          {
-            "line": 513,
-            "complexity": 0
           },
           {
             "line": 524,
+            "complexity": 0
+          },
+          {
+            "line": 535,
             "complexity": 3
           },
           {
-            "line": 528,
+            "line": 539,
             "complexity": 3
           },
           {
-            "line": 532,
+            "line": 543,
             "complexity": 4
           },
           {
-            "line": 536,
+            "line": 547,
             "complexity": 3
           },
           {
-            "line": 540,
+            "line": 551,
             "complexity": 3
           },
           {
-            "line": 544,
+            "line": 559,
             "complexity": 0
-          },
-          {
-            "line": 560,
-            "complexity": 2
-          },
-          {
-            "line": 561,
-            "complexity": 0
-          },
-          {
-            "line": 562,
-            "complexity": 1
-          },
-          {
-            "line": 564,
-            "complexity": 0
-          },
-          {
-            "line": 565,
-            "complexity": 1
-          },
-          {
-            "line": 566,
-            "complexity": 0
-          },
-          {
-            "line": 567,
-            "complexity": 3
-          },
-          {
-            "line": 572,
-            "complexity": 1
-          },
-          {
-            "line": 573,
-            "complexity": 3
-          },
-          {
-            "line": 574,
-            "complexity": 0
-          },
-          {
-            "line": 575,
-            "complexity": 1
           },
           {
             "line": 576,
+            "complexity": 2
+          },
+          {
+            "line": 577,
             "complexity": 0
           },
           {
-            "line": 579,
+            "line": 578,
+            "complexity": 1
+          },
+          {
+            "line": 580,
+            "complexity": 0
+          },
+          {
+            "line": 581,
+            "complexity": 1
+          },
+          {
+            "line": 582,
             "complexity": 0
           },
           {
             "line": 583,
-            "complexity": 2
+            "complexity": 3
           },
           {
             "line": 588,
+            "complexity": 1
+          },
+          {
+            "line": 589,
+            "complexity": 3
+          },
+          {
+            "line": 590,
             "complexity": 0
           },
           {
             "line": 591,
-            "complexity": 0
-          },
-          {
-            "line": 592,
-            "complexity": 2
-          },
-          {
-            "line": 593,
-            "complexity": 0
-          },
-          {
-            "line": 596,
             "complexity": 1
           },
           {
-            "line": 599,
-            "complexity": 3
-          },
-          {
-            "line": 600,
-            "complexity": 3
-          },
-          {
-            "line": 602,
+            "line": 592,
             "complexity": 0
+          },
+          {
+            "line": 595,
+            "complexity": 0
+          },
+          {
+            "line": 599,
+            "complexity": 2
+          },
+          {
+            "line": 604,
+            "complexity": 0
+          },
+          {
+            "line": 607,
+            "complexity": 0
+          },
+          {
+            "line": 608,
+            "complexity": 2
           },
           {
             "line": 609,
             "complexity": 0
           },
           {
-            "line": 613,
-            "complexity": 3
-          },
-          {
-            "line": 614,
-            "complexity": 0
+            "line": 612,
+            "complexity": 1
           },
           {
             "line": 615,
@@ -1289,162 +1265,162 @@
           },
           {
             "line": 616,
-            "complexity": 0
+            "complexity": 3
           },
           {
             "line": 618,
             "complexity": 0
           },
           {
-            "line": 642,
-            "complexity": 1
+            "line": 625,
+            "complexity": 0
           },
           {
-            "line": 643,
-            "complexity": 2
-          },
-          {
-            "line": 647,
-            "complexity": 1
-          },
-          {
-            "line": 658,
+            "line": 629,
             "complexity": 3
           },
           {
+            "line": 630,
+            "complexity": 0
+          },
+          {
+            "line": 631,
+            "complexity": 3
+          },
+          {
+            "line": 632,
+            "complexity": 0
+          },
+          {
+            "line": 634,
+            "complexity": 0
+          },
+          {
+            "line": 658,
+            "complexity": 1
+          },
+          {
             "line": 659,
+            "complexity": 2
+          },
+          {
+            "line": 663,
+            "complexity": 1
+          },
+          {
+            "line": 674,
+            "complexity": 3
+          },
+          {
+            "line": 675,
             "complexity": 0
           },
           {
-            "line": 660,
+            "line": 676,
             "complexity": 0
           },
           {
-            "line": 662,
+            "line": 678,
             "complexity": 0
           },
           {
-            "line": 664,
+            "line": 680,
             "complexity": 0
           },
           {
-            "line": 666,
+            "line": 682,
             "complexity": 0
           },
           {
-            "line": 673,
+            "line": 689,
             "complexity": 5
           },
           {
-            "line": 714,
+            "line": 730,
             "complexity": 6
-          },
-          {
-            "line": 757,
-            "complexity": 0
-          },
-          {
-            "line": 758,
-            "complexity": 5
-          },
-          {
-            "line": 759,
-            "complexity": 6
-          },
-          {
-            "line": 760,
-            "complexity": 0
-          },
-          {
-            "line": 761,
-            "complexity": 0
-          },
-          {
-            "line": 762,
-            "complexity": 7
-          },
-          {
-            "line": 770,
-            "complexity": 6
-          },
-          {
-            "line": 771,
-            "complexity": 0
-          },
-          {
-            "line": 772,
-            "complexity": 7
           },
           {
             "line": 773,
             "complexity": 0
           },
           {
+            "line": 774,
+            "complexity": 5
+          },
+          {
             "line": 775,
+            "complexity": 6
+          },
+          {
+            "line": 776,
+            "complexity": 0
+          },
+          {
+            "line": 777,
+            "complexity": 0
+          },
+          {
+            "line": 778,
+            "complexity": 7
+          },
+          {
+            "line": 786,
+            "complexity": 6
+          },
+          {
+            "line": 787,
+            "complexity": 0
+          },
+          {
+            "line": 788,
+            "complexity": 7
+          },
+          {
+            "line": 789,
+            "complexity": 0
+          },
+          {
+            "line": 791,
             "complexity": 1
-          },
-          {
-            "line": 780,
-            "complexity": 7
-          },
-          {
-            "line": 781,
-            "complexity": 0
-          },
-          {
-            "line": 794,
-            "complexity": 7
-          },
-          {
-            "line": 795,
-            "complexity": 0
           },
           {
             "line": 796,
+            "complexity": 7
+          },
+          {
+            "line": 797,
             "complexity": 0
           },
           {
-            "line": 799,
-            "complexity": 1
+            "line": 810,
+            "complexity": 7
           },
           {
-            "line": 800,
+            "line": 811,
             "complexity": 0
           },
           {
-            "line": 801,
-            "complexity": 0
-          },
-          {
-            "line": 804,
-            "complexity": 0
-          },
-          {
-            "line": 814,
+            "line": 812,
             "complexity": 0
           },
           {
             "line": 815,
-            "complexity": 5
+            "complexity": 1
           },
           {
             "line": 816,
-            "complexity": 6
+            "complexity": 0
           },
           {
             "line": 817,
-            "complexity": 7
+            "complexity": 0
           },
           {
-            "line": 821,
-            "complexity": 6
+            "line": 820,
+            "complexity": 0
           },
           {
-            "line": 824,
-            "complexity": 6
-          },
-          {
-            "line": 829,
+            "line": 830,
             "complexity": 0
           },
           {
@@ -1452,43 +1428,67 @@
             "complexity": 5
           },
           {
+            "line": 832,
+            "complexity": 6
+          },
+          {
             "line": 833,
-            "complexity": 5
+            "complexity": 7
           },
           {
             "line": 837,
-            "complexity": 5
+            "complexity": 6
           },
           {
             "line": 840,
-            "complexity": 1
+            "complexity": 6
           },
           {
-            "line": 842,
+            "line": 845,
             "complexity": 0
           },
           {
-            "line": 844,
+            "line": 847,
+            "complexity": 5
+          },
+          {
+            "line": 849,
+            "complexity": 5
+          },
+          {
+            "line": 853,
+            "complexity": 5
+          },
+          {
+            "line": 856,
+            "complexity": 1
+          },
+          {
+            "line": 858,
             "complexity": 0
           },
           {
-            "line": 888,
-            "complexity": 1
-          },
-          {
-            "line": 891,
-            "complexity": 1
-          },
-          {
-            "line": 894,
-            "complexity": 1
-          },
-          {
-            "line": 895,
+            "line": 860,
             "complexity": 0
           },
           {
-            "line": 896,
+            "line": 904,
+            "complexity": 1
+          },
+          {
+            "line": 907,
+            "complexity": 1
+          },
+          {
+            "line": 910,
+            "complexity": 1
+          },
+          {
+            "line": 911,
+            "complexity": 0
+          },
+          {
+            "line": 912,
             "complexity": 1
           }
         ]
