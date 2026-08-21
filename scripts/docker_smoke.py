@@ -54,7 +54,9 @@ def main() -> int:
                     "-e",
                     f"IMMICH_URL={server.base_url}",
                     "-e",
-                    "IMMICH_API_KEY=smoke-test-key",
+                    # WHY the server's own key: FakeImmichServer rejects anything
+                    # else with "Invalid API key", which failed every release.
+                    f"IMMICH_API_KEY={server.api_key}",
                     "-v",
                     f"{out_dir}:/app/output",
                     args.image,
@@ -85,6 +87,9 @@ def main() -> int:
 
         print(proc.stdout[-4000:])
         if proc.returncode != 0:
+            # WHY stderr AND stdout: the CLI logs to stdout (StreamHandler +
+            # Rich), so stderr alone hid the actual cause.
+            print(proc.stdout[-4000:], file=sys.stderr)
             print(proc.stderr[-4000:], file=sys.stderr)
             print(f"FAIL: exit {proc.returncode}", file=sys.stderr)
             return 1
