@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from immich_memories.analysis.clip_refiner import enforce_photo_cap
+from immich_memories.analysis.clip_distribution import enforce_photo_cap
 from immich_memories.analysis.smart_pipeline import ClipWithSegment
 from immich_memories.api.models import Asset, AssetType, VideoClipInfo
 

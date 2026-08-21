@@ -50,8 +50,22 @@ def _ask(prompt: str, llm_config: LLMConfig, timeout_seconds: int) -> str:
     )
 
 
+def _place_for_llm(exif: object) -> str | None:
+    """City, state and country — the caption form is too thin to reason from.
+
+    Captions say "Paradise" because that is what reads well on screen. A model
+    asked whether a set of clips hangs together cannot do anything with that:
+    Paradise and Winchester are the Las Vegas Strip townships, and without the
+    state they look like two unrelated villages rather than one trip.
+    """
+    if not exif:
+        return None
+    parts = [getattr(exif, attr, None) for attr in ("city", "state", "country")]
+    named = [p for p in parts if p]
+    return ", ".join(named) if named else None
+
+
 def _clip_line(index: int, member: ClipWithSegment) -> str:
-    from immich_memories.generate_privacy import clip_location_name
 
     clip = member.clip
     parts = [f"Clip {index}:"]
@@ -60,7 +74,7 @@ def _clip_line(index: int, member: ClipWithSegment) -> str:
     taken = getattr(clip.asset, "file_created_at", None)
     if taken:
         parts.append(f"date={taken.date().isoformat()}")
-    where = clip_location_name(getattr(clip.asset, "exif_info", None))
+    where = _place_for_llm(getattr(clip.asset, "exif_info", None))
     if where:
         parts.append(f"place={where}")
     parts.append(f"score={member.score:.2f}")

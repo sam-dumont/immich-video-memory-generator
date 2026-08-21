@@ -20,111 +20,23 @@ if TYPE_CHECKING:
     )
     from immich_memories.api.models import VideoClipInfo
 
+from immich_memories.analysis.clip_distribution import (
+    _EVENT_CLIPS_PER_PERIOD,
+    _event_periods_of,
+    _fill_gap_periods,
+    _partition_photos_per_day,
+    _period_key,
+    enforce_photo_cap,
+)
+
 logger = logging.getLogger(__name__)
 
-
-def _period_key(dt: datetime, span_days: int) -> str:
-    """Bucket key adaptive to date range: weeks for short, months for medium, quarters for long."""
-    if span_days <= 30:
-        return dt.strftime("%Y-%m-%d")  # daily for ≤1 month
-    if span_days <= 90:
-        iso = dt.isocalendar()
-        return f"{iso[0]}-W{iso[1]:02d}"  # weekly for ≤3 months
-    if span_days <= 365:
-        return dt.strftime("%Y-%m")  # monthly for ≤1 year
-    return f"{dt.year}-Q{(dt.month - 1) // 3 + 1}"  # quarterly for >1 year
-
-
-_MAX_PHOTOS_PER_DAY = 2
-
-
-def _partition_photos_per_day(
-    clips: list[ClipWithSegment],
-    max_per_day: int = _MAX_PHOTOS_PER_DAY,
-) -> tuple[list[ClipWithSegment], list[ClipWithSegment]]:
-    """Partition same-day photos into preferred and duration-fallback pools.
-
-    Videos are always preferred. Within each day, the highest-scored photos
-    enter initial selection and the remainder stay available for backfill.
-    """
-    from immich_memories.api.models import AssetType
-
-    videos = [c for c in clips if c.clip.asset.type != AssetType.IMAGE]
-    photos = [c for c in clips if c.clip.asset.type == AssetType.IMAGE]
-
-    if not photos:
-        return clips, []
-
-    # Group photos by day, keep best N per day
-    by_day: dict[str, list[ClipWithSegment]] = defaultdict(list)
-    for p in photos:
-        day_key = p.clip.asset.file_created_at.strftime("%Y-%m-%d")
-        by_day[day_key].append(p)
-
-    kept_photos: list[ClipWithSegment] = []
-    overflow_photos: list[ClipWithSegment] = []
-    for day_key in sorted(by_day):
-        day_photos = sorted(by_day[day_key], key=lambda c: c.score, reverse=True)
-        kept_photos.extend(day_photos[:max_per_day])
-        overflow_photos.extend(day_photos[max_per_day:])
-
-    if overflow_photos:
-        logger.info(
-            f"Same-day photo preference: reserved {len(overflow_photos)} overflow photos "
-            f"for duration backfill (preferred max {max_per_day}/day)"
-        )
-
-    return videos + kept_photos, overflow_photos
-
-
-def enforce_photo_cap(
-    clips: list[ClipWithSegment],
-    max_ratio: float,
-    videos_scarce: bool = False,
-) -> list[ClipWithSegment]:
-    """Drop lowest-scored photos until photo ratio <= max_ratio.
-
-    Videos are never dropped. If only photos exist (no videos),
-    all are kept since the ratio can't be improved by dropping.
-    When videos_scarce is True, the cap is bypassed entirely —
-    photos fill the budget freely (matches unified_budget PR #224).
-    """
-    from immich_memories.api.models import AssetType
-
-    videos = [c for c in clips if c.clip.asset.type != AssetType.IMAGE]
-    photos = [c for c in clips if c.clip.asset.type == AssetType.IMAGE]
-
-    if not photos or not videos:
-        return clips
-
-    if videos_scarce:
-        return clips
-
-    if max_ratio >= 1.0:
-        return clips
-
-    # Solve P / (V + P) <= ratio for P. Using the pre-filter total here
-    # leaves the final, smaller result above the requested ratio.
-    max_photos = max(0, int(len(videos) * max_ratio / (1.0 - max_ratio)))
-
-    if len(photos) <= max_photos:
-        return clips
-
-    # Keep highest-scored photos
-    photos.sort(key=lambda c: c.score, reverse=True)
-    kept_photos = photos[:max_photos]
-
-    # WHY not "final": duration backfill runs after this and adds more clips, so
-    # the count here is the pool mid-refinement. A real run logged "2 photos
-    # (50% of 4 final clips)" and delivered a 13-clip video with 7 photos in it,
-    # which reads as the cap having been ignored rather than simply not final.
-    logger.info(
-        f"Photo cap: {len(photos)} → {len(kept_photos)} photos "
-        f"(at most {max_ratio:.0%} alongside {len(videos)} videos; "
-        f"backfill may add more)"
-    )
-
-    return videos + kept_photos
+# An event is defined by CONTRAST with the rest of the period, not by an
+# absolute share: in a flat month every day clears any fixed threshold and the
+# tie-break decides who wins, which is arbitrary. Measured on April 2021, the
+# two events held 133 and 99 assets against a median day of 5 (#488).
+# At most this many periods get the event treatment, so a month recap keeps
+# room for the ordinary days that make it a month.
 
 
 @dataclass(frozen=True)
@@ -432,6 +344,60 @@ class ClipRefiner:
         self.config = config
         self.scaler = scaler
 
+    def _select_without_favorites(
+        self,
+        clips: list[ClipWithSegment],
+        non_favorites: list[ClipWithSegment],
+        target_count: int,
+        event_periods: set[str],
+    ) -> list[ClipWithSegment]:
+        """Select when the user starred nothing — the common case for an
+        older library (#488).
+
+        Ranking alone cannot do this job here: measured on a real recap,
+        83% of the pool carried a metadata fallback score and 55% shared one
+        identical value, so "top N by score" is largely list order. The
+        structure of the month is the only real signal, so periods holding
+        the most material are represented first, and the rest of the slots
+        go to score.
+        """
+        dates = [c.clip.asset.file_created_at for c in clips]
+        span_days = (max(dates) - min(dates)).days if dates else 0
+
+        by_period: dict[str, list[ClipWithSegment]] = defaultdict(list)
+        for c in non_favorites:
+            by_period[_period_key(c.clip.asset.file_created_at, span_days)].append(c)
+
+        densest_first = sorted(by_period, key=lambda k: (-len(by_period[k]), k))
+        reserved = max(1, target_count // 2)
+
+        selected: list[ClipWithSegment] = []
+        selected_ids: set[str] = set()
+        coverage_ids: set[str] = set()
+        events = event_periods
+        for period in densest_first[:reserved]:
+            take = _EVENT_CLIPS_PER_PERIOD if period in events else 1
+            ranked = sorted(by_period[period], key=lambda c: c.score, reverse=True)
+            for best in ranked[:take]:
+                selected.append(best)
+                selected_ids.add(best.clip.asset.id)
+                coverage_ids.add(best.clip.asset.id)
+
+        for c in sorted(non_favorites, key=lambda c: c.score, reverse=True):
+            if len(selected) >= target_count:
+                break
+            if c.clip.asset.id not in selected_ids:
+                selected.append(c)
+                selected_ids.add(c.clip.asset.id)
+
+        self._coverage_ids = coverage_ids
+        selected.sort(key=lambda c: c.clip.asset.file_created_at or datetime.min)
+        logger.info(
+            f"No favorites: {len(coverage_ids)} clips from the densest periods "
+            f"+ {len(selected) - len(coverage_ids)} by score"
+        )
+        return selected
+
     def _classify_favorites_by_week(
         self,
         favorites: list[ClipWithSegment],
@@ -614,6 +580,7 @@ class ClipRefiner:
         selected: list[ClipWithSegment],
         all_clips: list[ClipWithSegment],
         selected_ids: set[str],
+        event_periods: set[str] | None = None,
     ) -> list[ClipWithSegment]:
         """Guarantee at least 1 clip per time period across the full date range.
 
@@ -634,20 +601,18 @@ class ClipRefiner:
                 key = _period_key(c.clip.asset.file_created_at, span_days)
                 unselected_by_period[key].append(c)
 
-        gap_fillers: list[ClipWithSegment] = []
-        for period in sorted(unselected_by_period):
-            if period not in covered:
-                candidates = unselected_by_period[period]
-                candidates.sort(key=lambda c: c.score, reverse=True)
-                best = candidates[0]
-                gap_fillers.append(best)
-                selected_ids.add(best.clip.asset.id)
-                covered.add(period)
+        gap_fillers = _fill_gap_periods(
+            unselected_by_period,
+            covered,
+            _event_periods_of(all_clips) if event_periods is None else event_periods,
+        )
+        selected_ids.update(filler.clip.asset.id for filler in gap_fillers)
 
         if gap_fillers:
             logger.info(
                 f"Temporal coverage: added {len(gap_fillers)} clips "
-                f"to fill {len(gap_fillers)} empty periods (granularity: {span_days}d span)"
+                f"across {len(covered)} periods, densest first "
+                f"(granularity: {span_days}d span)"
             )
 
         return gap_fillers
@@ -656,8 +621,17 @@ class ClipRefiner:
         self,
         clips: list[ClipWithSegment],
         target_count: int,
+        event_periods: set[str] | None = None,
     ) -> list[ClipWithSegment]:
-        """Select clips using density-aware favorites-first approach."""
+        """Select clips using density-aware favorites-first approach.
+
+        event_periods must be measured on the pool before any per-day cap:
+        a cap compresses every day into the same narrow range, so a set
+        derived here would be reading its own output. Callers that still hold
+        the raw pool pass it; otherwise it is derived from `clips`.
+        """
+        if event_periods is None:
+            event_periods = _event_periods_of(clips)
         if not clips:
             return []
 
@@ -672,13 +646,7 @@ class ClipRefiner:
         )
 
         if not favorites:
-            non_favorites.sort(key=lambda c: c.score, reverse=True)
-            selected = non_favorites[:target_count]
-            selected_ids = {c.clip.asset.id for c in selected}
-            coverage = self._ensure_temporal_coverage(selected, clips, selected_ids)
-            selected.extend(coverage)
-            self._coverage_ids = {c.clip.asset.id for c in coverage}
-            return selected[:target_count]
+            return self._select_without_favorites(clips, non_favorites, target_count, event_periods)
 
         _favorites_by_week, protected_weeks = self._classify_favorites_by_week(favorites)
 
@@ -700,7 +668,7 @@ class ClipRefiner:
         self._fill_remaining_slots(selected, non_favorites, target_count, selected_ids)
 
         # Ensure every time period has at least 1 clip
-        coverage = self._ensure_temporal_coverage(selected, clips, selected_ids)
+        coverage = self._ensure_temporal_coverage(selected, clips, selected_ids, event_periods)
         selected.extend(coverage)
         self._coverage_ids = {c.clip.asset.id for c in coverage}
 
@@ -851,6 +819,9 @@ class ClipRefiner:
         # Prefer two photos/day during initial selection, while retaining the
         # overflow as a fallback if the diverse pool cannot fill the target.
         all_analyzed = analyzed
+        # Measured before the per-day cap flattens every day into the same
+        # narrow range (#488).
+        event_periods = _event_periods_of(all_analyzed)
         analyzed, _photo_overflow = _partition_photos_per_day(all_analyzed)
 
         target_with_buffer = int(self.config.target_clips * 1.2)
@@ -858,7 +829,9 @@ class ClipRefiner:
         if self.config.overnight_bases:
             selected = self.select_clips_by_trip_segments(analyzed, target_with_buffer)
         else:
-            selected = self.select_clips_distributed_by_date(analyzed, target_with_buffer)
+            selected = self.select_clips_distributed_by_date(
+                analyzed, target_with_buffer, event_periods
+            )
 
         target_duration = self.config.duration_target
         max_overrun = (
@@ -912,7 +885,12 @@ class ClipRefiner:
             # Even when photos may ultimately fill freely, first normalize a
             # photo-biased selection so backfill has room to use every valid
             # video candidate. The backfill exemption then admits photos again.
-            selected = enforce_photo_cap(selected, self.config.photo_max_ratio, videos_scarce=False)
+            selected = enforce_photo_cap(
+                selected,
+                self.config.photo_max_ratio,
+                videos_scarce=False,
+                protected_ids=coverage_ids,
+            )
 
         selected = self._backfill_to_duration(
             selected,

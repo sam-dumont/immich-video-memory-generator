@@ -611,7 +611,7 @@ class TestDetectScenesConvenience:
 
 class TestEnforcePhotoCap:
     def test_no_photos_returns_all(self):
-        from immich_memories.analysis.clip_refiner import enforce_photo_cap
+        from immich_memories.analysis.clip_distribution import enforce_photo_cap
 
         clips = [_make_clip_with_segment(f"v{i}") for i in range(5)]
         result = enforce_photo_cap(clips, max_ratio=0.25)
@@ -668,7 +668,7 @@ class TestSelectClipsDistributedByDate:
         result = refiner.select_clips_distributed_by_date([], target_count=10)
         assert result == []
 
-    def test_no_favorites_selects_by_score(self):
+    def test_no_favorites_spreads_across_the_span(self):
         refiner = self._make_refiner()
         clips = [
             _make_clip_with_segment(
@@ -680,9 +680,11 @@ class TestSelectClipsDistributedByDate:
         ]
         result = refiner.select_clips_distributed_by_date(clips, target_count=3)
         assert len(result) == 3
-        # Should be sorted by score descending, so top 3 scores
-        scores = [c.score for c in result]
-        assert scores == sorted(scores, reverse=True)
+        # Ranking alone clusters a recap on its three best-scored days and
+        # opens three days into the month (#488). The best clip is still kept.
+        assert max(c.score for c in result) == 4.0
+        days = {c.clip.asset.file_created_at.day for c in result}
+        assert min(days) == 1
 
     def test_all_favorites_included(self):
         refiner = self._make_refiner()
