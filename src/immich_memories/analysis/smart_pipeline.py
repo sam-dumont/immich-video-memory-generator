@@ -320,11 +320,30 @@ class SmartPipeline:
         self.tracker.complete_item("filters")
         self.tracker.complete_phase()
 
+    def _stabilize_selection(
+        self,
+        analyzed: list[ClipWithSegment],
+        result: PipelineResult,
+    ) -> tuple[PipelineResult, list[ClipWithSegment]]:
+        """Verify and judge until the selection is stable (#468).
+
+        Found live on the 2026-08-21 demo: a judge (or review) drop
+        re-selects, the re-selection admits a NEW fallback-scored clip, and
+        a straight verify→judge sequence ships it unverified. The stages
+        iterate together until a pass changes nothing or the budget is spent.
+        """
+        for _ in range(max(1, self.config.max_refinement_passes)):
+            result, analyzed = self._verify_selection(analyzed, result)
+            result, analyzed, dropped = self._judge_selection(analyzed, result)
+            if not dropped:
+                break
+        return result, analyzed
+
     def _verify_selection(
         self,
         analyzed: list[ClipWithSegment],
         result: PipelineResult,
-    ) -> PipelineResult:
+    ) -> tuple[PipelineResult, list[ClipWithSegment]]:
         """Re-analyze any shipped fallback-scored clip and re-select (#468).
 
         Heavy when cold, cheap when warm: every verified clip lands in the
@@ -333,7 +352,7 @@ class SmartPipeline:
         so the loop always terminates.
         """
         by_id = {c.clip.asset.id: c for c in analyzed}
-        for _ in range(max(0, self.config.max_refinement_passes - 1)):
+        for _ in range(max(1, self.config.max_refinement_passes)):
             unverified = [
                 by_id[c.asset.id]
                 for c in result.selected_clips
@@ -363,39 +382,34 @@ class SmartPipeline:
                         analyzed=True,
                     )
             result = self.refiner.phase_refine(list(by_id.values()), self.tracker)
-        return result
+        return result, list(by_id.values())
 
     def _judge_selection(
         self,
         analyzed: list[ClipWithSegment],
         result: PipelineResult,
-    ) -> tuple[PipelineResult, list[ClipWithSegment]]:
-        """Global quality gate (#468): drop offenders, let selection refill.
+    ) -> tuple[PipelineResult, list[ClipWithSegment], bool]:
+        """One judge sweep (#468): drop offenders, let selection refill.
 
-        Two rules, both acting by exclusion so every distribution rule in the
-        refiner keeps its say: a member below the floor never ships (feet,
-        pocket, ground — #463's shipped 0.21), and the chronological ending
-        cannot be both the weakest member and far below the mean, because the
-        last clip is the most visible slot in the video.
+        A single sweep by design — the caller re-verifies whatever the
+        re-selection admitted before judging again.
         """
         by_id = {c.clip.asset.id: c for c in analyzed}
-        for _ in range(max(1, self.config.max_refinement_passes)):
-            selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
-            if len(selected) < 2:
-                break
-            offenders = self._judge_offenders(selected)
-            if not offenders:
-                break
-            logger.info(
-                "Judge: dropping %d clip(s) below the quality gate, re-selecting",
-                len(offenders),
-            )
-            analyzed = [c for c in analyzed if c.clip.asset.id not in offenders]
-            by_id = {c.clip.asset.id: c for c in analyzed}
-            if not analyzed:
-                break
-            result = self.refiner.phase_refine(analyzed, self.tracker)
-        return result, analyzed
+        selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
+        if len(selected) < 2:
+            return result, analyzed, False
+        offenders = self._judge_offenders(selected)
+        if not offenders:
+            return result, analyzed, False
+        logger.info(
+            "Judge: dropping %d clip(s) below the quality gate, re-selecting",
+            len(offenders),
+        )
+        analyzed = [c for c in analyzed if c.clip.asset.id not in offenders]
+        if not analyzed:
+            return result, analyzed, False
+        result = self.refiner.phase_refine(analyzed, self.tracker)
+        return result, analyzed, True
 
     def _judge_offenders(self, selected: list[ClipWithSegment]) -> set[str]:
         """Members failing the gate. Favorites are exempt from both rules —
@@ -422,7 +436,7 @@ class SmartPipeline:
         self,
         analyzed: list[ClipWithSegment],
         result: PipelineResult,
-    ) -> PipelineResult:
+    ) -> tuple[PipelineResult, list[ClipWithSegment], bool]:
         """One LLM pass over the finished cut (#468): redundancy and feel.
 
         The mechanical judge sees scores; only something reading the
@@ -430,18 +444,20 @@ class SmartPipeline:
         construction — no LLM, no drops, selection unchanged.
         """
         if not self._app_config.content_analysis.enabled:
-            return result
+            return result, analyzed, False
         from immich_memories.analysis.selection_review import review_selection
 
         by_id = {c.clip.asset.id: c for c in analyzed}
         selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
         drops = review_selection(selected, self._app_config.llm)
         if not drops:
-            return result
+            return result, analyzed, False
         remaining = [c for c in analyzed if c.clip.asset.id not in set(drops)]
         if not remaining:
-            return result
-        return self.refiner.phase_refine(remaining, self.tracker)
+            return result, analyzed, False
+        # WHY the pool shrinks too: a later stabilization re-refines from the
+        # pool — returning the old one would resurrect the LLM's drops.
+        return self.refiner.phase_refine(remaining, self.tracker), remaining, True
 
     def _semantic_cache_miss_count(self, clips: list[VideoClipInfo]) -> int:
         """Count clips that need work under the exact active semantic model."""
@@ -516,10 +532,12 @@ class SmartPipeline:
         try:
             result = self.refiner.phase_refine(analyzed, self.tracker)
             if verify:
-                result = self._verify_selection(analyzed, result)
-            result, analyzed = self._judge_selection(analyzed, result)
-            if verify:
-                result = self._holistic_review(analyzed, result)
+                result, analyzed = self._stabilize_selection(analyzed, result)
+                result, analyzed, review_changed = self._holistic_review(analyzed, result)
+                if review_changed:
+                    # WHY: the review's re-selection can admit new fallback
+                    # clips, exactly like a judge drop — same stabilization.
+                    result, analyzed = self._stabilize_selection(analyzed, result)
             self.tracker.finish()
             return result
         except (

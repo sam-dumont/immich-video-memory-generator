@@ -580,3 +580,97 @@ class TestHolisticReview:
             result = pipeline.run_selection([self._analyzed(c) for c in clips])
 
         assert len(result.selected_clips) == 3
+
+
+class TestQualityStagesAreOneLoop:
+    """Found by the 2026-08-21 live demo: a judge/review drop re-selects, the
+    re-selection admits a NEW fallback clip, and nothing verified it — two
+    0.21 unverified clips shipped. Verify, judge and review must iterate
+    together until the selection is stable."""
+
+    def _make_pipeline(self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache):
+        return SmartPipeline(
+            client=mock_immich_client,
+            analysis_cache=mock_analysis_cache,
+            thumbnail_cache=mock_thumbnail_cache,
+            config=PipelineConfig(target_clips=10, avg_clip_duration=5.0),
+            analysis_config=AnalysisConfig(),
+            app_config=Config(),
+        )
+
+    def test_a_clip_admitted_by_reselection_is_verified_before_shipping(
+        self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+    ):
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment
+
+        pipeline = self._make_pipeline(
+            mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+        )
+        clips = _make_clips(4)
+        pipeline.config.target_duration_seconds = 15.0
+        weak_end = clips[3]
+        spare = clips[2]
+        candidates = [
+            ClipWithSegment(clip=clips[0], start_time=0, end_time=5, score=0.9),
+            ClipWithSegment(clip=clips[1], start_time=0, end_time=5, score=0.85),
+            # the spare that re-selection will admit — a fallback guess
+            ClipWithSegment(clip=spare, start_time=0, end_time=5, score=0.5, analyzed=False),
+            # weak ending: judged out on the first pass
+            ClipWithSegment(clip=weak_end, start_time=0, end_time=5, score=0.31),
+        ]
+
+        verified_ids = []
+
+        def fake_analyze(to_analyze, tracker):
+            verified_ids.extend(c.asset.id for c in to_analyze)
+            return [
+                ClipWithSegment(clip=c, start_time=0, end_time=5, score=0.7) for c in to_analyze
+            ]
+
+        # WHY: phase_analyze downloads and scores real video — the boundary
+        pipeline.analyzer.phase_analyze = fake_analyze
+
+        result = pipeline.run_selection(candidates)
+
+        selected = {c.asset.id for c in result.selected_clips}
+        if spare.asset.id in selected:
+            assert spare.asset.id in verified_ids, (
+                "a re-selection admitted an unverified clip and nothing analyzed it"
+            )
+
+    def test_a_review_drop_stays_dropped_through_stabilization(
+        self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+    ):
+        """The LLM dropped it; a later verify re-refine must not resurrect it."""
+        from unittest.mock import patch
+
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment
+
+        pipeline = self._make_pipeline(
+            mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+        )
+        pipeline._app_config.content_analysis.enabled = True
+        clips = _make_clips(4)
+        redundant = clips[1]
+        candidates = [
+            ClipWithSegment(clip=clips[0], start_time=0, end_time=5, score=0.9),
+            ClipWithSegment(clip=redundant, start_time=0, end_time=5, score=0.85),
+            ClipWithSegment(clip=clips[2], start_time=0, end_time=5, score=0.8),
+            # unverified spare: forces a verify re-refine AFTER the review
+            ClipWithSegment(clip=clips[3], start_time=0, end_time=5, score=0.7, analyzed=False),
+        ]
+
+        def fake_analyze(to_analyze, tracker):  # WHY: real analysis is the boundary
+            return [
+                ClipWithSegment(clip=c, start_time=0, end_time=5, score=0.75) for c in to_analyze
+            ]
+
+        pipeline.analyzer.phase_analyze = fake_analyze
+        # WHY: review_selection wraps the external LLM
+        with patch(
+            "immich_memories.analysis.selection_review.review_selection",
+            return_value=[redundant.asset.id],
+        ):
+            result = pipeline.run_selection(candidates)
+
+        assert redundant.asset.id not in {c.asset.id for c in result.selected_clips}
