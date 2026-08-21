@@ -553,12 +553,25 @@ class TestHolisticReview:
         )
         clips = _make_clips(3)
 
-        # WHY: the LLM call is the external boundary
-        with patch(
-            "immich_memories.analysis.selection_review.review_selection",
-            return_value=[clips[1].asset.id],
+        members = [self._analyzed(c) for c in clips]
+
+        # WHY two mocks: the LLM call is one external boundary, and the verify
+        # pass now analyzes any selected clip the review would otherwise judge
+        # blind — a second boundary this fixture cannot serve.
+        with (
+            patch(
+                "immich_memories.analysis.selection_review.review_selection",
+                return_value=[clips[1].asset.id],
+            ),
+            patch.object(
+                pipeline.analyzer,
+                "phase_analyze",
+                side_effect=lambda c, _t: [
+                    m for m in members if m.clip.asset.id in {x.asset.id for x in c}
+                ],
+            ),
         ):
-            result = pipeline.run_selection([self._analyzed(c) for c in clips])
+            result = pipeline.run_selection(members)
 
         assert clips[1].asset.id not in {c.asset.id for c in result.selected_clips}
 
