@@ -156,7 +156,11 @@ def resolve_music_file(
     # the Docker/NAS path gets by default.
     from immich_memories.audio.bundled_music import bundled_track_for_mood
 
-    bundled = bundled_track_for_mood(_mood_for_clips(assembly_clips), library=bundled_library)
+    bundled = bundled_track_for_mood(
+        _mood_for_clips(assembly_clips),
+        library=bundled_library,
+        cadence_seconds=photo_cadence_seconds(assembly_clips),
+    )
     return _master(bundled, run_output_dir) if bundled else bundled
 
 

@@ -157,15 +157,25 @@ def _classify_failure(exc: Exception) -> NotificationFailureCategory:
 
 def _extract_thumbnail(output_path: str) -> str | None:
     """Extract a thumbnail frame from the output video for notification attachment."""
+    import os
     import subprocess
     import tempfile
     from pathlib import Path
+
+    from immich_memories.security import private_temp_dir
 
     video = Path(output_path)
     if not video.exists():
         return None
 
-    thumb = Path(tempfile.gettempdir()) / f"immich_notif_{video.stem}.jpg"
+    # WHY mkstemp, not a name built from the video: `ffmpeg -y` overwrites
+    # whatever is at the path, following a symlink placed there first. A
+    # predictable name in a shared directory is what makes that reachable.
+    handle, thumb_name = tempfile.mkstemp(
+        suffix=".jpg", prefix="notif_", dir=private_temp_dir("notifications")
+    )
+    os.close(handle)
+    thumb = Path(thumb_name)
     try:
         # WHY: seek to 25% of video for a representative frame (skips title screen)
         subprocess.run(

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
+
+from immich_memories.security import private_temp_dir
 
 if TYPE_CHECKING:
     from immich_memories.config_models import AnalysisConfig, HardwareAccelConfig
@@ -377,10 +378,7 @@ class SceneDetector:
             scenes: List of scenes to extract keyframes for.
             output_dir: Directory to save keyframes.
         """
-        if output_dir is None:
-            output_dir = Path(tempfile.gettempdir()) / "immich_memories" / "keyframes"
-        else:
-            output_dir = Path(output_dir)
+        output_dir = private_temp_dir("keyframes") if output_dir is None else Path(output_dir)
 
         output_dir.mkdir(parents=True, exist_ok=True)
 

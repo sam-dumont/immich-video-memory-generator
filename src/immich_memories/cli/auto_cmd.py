@@ -69,6 +69,9 @@ def _auto_result_to_json(result: AutoRunResult) -> str:
             "candidate_key": result.candidate.memory_key if result.candidate else None,
             "category": result.candidate.category.value if result.candidate else None,
             "run_id": result.run_id,
+            # Always present, so a consumer never has to tell "no error"
+            # from "field missing".
+            "error": result.error,
             "output_path": str(result.output_path) if result.output_path else None,
             "recent_categories": list(result.recent_categories),
             "rejections": [

@@ -383,7 +383,11 @@ dead-code:
 	# 60, not 90: at 90 vulture only reports unused imports and found nothing,
 	# while eight genuinely dead functions sat in src/ kept alive by their own
 	# tests. The whitelist freezes what was already there; anything new fails.
-	uvx vulture src/ vulture-whitelist.py --min-confidence 60
+	# --ignore-decorators: @register_preset puts the function in a dict, so vulture
+	# sees a definition nobody calls. Six presets were whitelisted one by one for
+	# this; telling vulture about the decorator removes the whole class instead.
+	uvx vulture src/ vulture-whitelist.py --min-confidence 60 \
+		--ignore-decorators "@register_preset"
 
 # Security lint (Bandit)
 security-lint:

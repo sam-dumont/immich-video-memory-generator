@@ -8,7 +8,6 @@ Public API surface — delegates heavy lifting to helper modules:
 from __future__ import annotations
 
 import logging
-import tempfile
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal
@@ -30,7 +29,7 @@ from immich_memories.processing.transforms_smart_crop import (
     init_face_detectors,
     transform_smart_crop,
 )
-from immich_memories.security import validate_video_path
+from immich_memories.security import private_temp_dir, validate_video_path
 
 # Re-export helpers so existing ``from transforms import …`` keeps working.
 __all__ = [
@@ -156,8 +155,7 @@ class AspectRatioTransformer:
         input_path = validate_video_path(input_path, must_exist=True)
 
         if output_path is None:
-            output_dir = Path(tempfile.gettempdir()) / "immich_memories" / "transformed"
-            output_dir.mkdir(parents=True, exist_ok=True)
+            output_dir = private_temp_dir("transformed")
             output_path = output_dir / f"transformed_{input_path.stem}.mp4"
 
         if self.scale_mode == ScaleMode.FIT:

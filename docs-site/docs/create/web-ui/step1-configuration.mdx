@@ -13,7 +13,7 @@ This is where you tell the tool what to work with. The sidebar calls this step *
 
 ## Immich Connection
 
-A collapsible panel with two fields, **Immich Server URL** and **API Key**, and two buttons: **Test Connection** and **Save Config**. If the URL and key are already in your `config.yaml` or environment variables, they are pre-filled and the page connects on its own when it loads. Once connected, the panel collapses to a one-line header, "Immich Connection — *your name*"; expand it again to change the credentials.
+A collapsible panel with two fields, **Immich Server URL** and **API Key**, and two buttons: **Test Connection** and **Save Config**. If the URL and key are already in your `config.yaml` or environment variables, the URL is pre-filled and the page connects on its own when it loads. The **API Key** field stays empty and reads *"Saved — type a new key to replace it"*: the stored key is never sent to the browser, so leaving the field alone keeps it, and typing in it replaces it. Once connected, the panel collapses to a one-line header, "Immich Connection — *your name*"; expand it again to change the credentials.
 
 The rest of the page (Memory Type, Options, Next) only appears after a successful connection.
 

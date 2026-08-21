@@ -378,6 +378,7 @@ class TestAutoRunOutput:
             "candidate_key": "monthly:2026-07",
             "category": "monthly_review",
             "run_id": "run-123",
+            "error": None,
             "output_path": str(output),
             "recent_categories": [],
             "rejections": [],
@@ -420,6 +421,7 @@ class TestAutoRunOutput:
             "candidate_key": None,
             "category": None,
             "run_id": None,
+            "error": None,
             "output_path": None,
             "recent_categories": [],
             "rejections": [],
@@ -469,6 +471,7 @@ class TestAutoRunOutput:
             "candidate_key": None,
             "category": None,
             "run_id": None,
+            "error": None,
             "output_path": None,
             "recent_categories": ["monthly_review", "trip"],
             "rejections": [
@@ -525,6 +528,9 @@ class TestAutoRunOutput:
             "candidate_key": "monthly:2026-07",
             "category": "monthly_review",
             "run_id": None,
+            # The cause the child wrote to stdout, which previously reached
+            # stderr only and never the machine-readable result.
+            "error": "root cause on stdout",
             "output_path": None,
             "recent_categories": [],
             "rejections": [],

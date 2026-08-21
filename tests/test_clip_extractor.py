@@ -65,10 +65,17 @@ class TestClipExtractorInit:
         assert out.exists()
         assert extractor.output_dir == out
 
-    def test_default_output_dir(self):
-        """Default output dir uses tempdir."""
+    def test_default_output_dir_is_private_to_this_user(self):
+        """Clips are extracted to a scratch dir; shared /tmp would let another
+        user on the host read them, or pre-place a symlink we write through."""
+        import os
+        import stat
+
         extractor = ClipExtractor(config=_MOCK_CONFIG)
-        assert "immich_memories" in str(extractor.output_dir)
+        info = extractor.output_dir.stat()
+
+        assert info.st_uid == os.getuid()
+        assert stat.S_IMODE(info.st_mode) == 0o700
 
 
 class TestClipExtractorCleanup:

@@ -76,8 +76,9 @@ RUN pip install --no-cache-dir /wheels/*.whl && \
 RUN groupadd -g 1000 immich && useradd -u 1000 -g immich -d /home/immich -m immich
 
 # Create config, cache, and NiceGUI state directories with correct ownership
-RUN mkdir -p /home/immich/.immich-memories/cache /app/output /app/.nicegui && \
-    chown -R immich:immich /home/immich/.immich-memories /app/output /app/.nicegui
+RUN mkdir -p /home/immich/.immich-memories/cache /home/immich/.immich-memories/.nicegui \
+      /app/output && \
+    chown -R immich:immich /home/immich/.immich-memories /app/output
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -85,6 +86,12 @@ ENV HOME=/home/immich
 # Generated videos must land on the volume the compose quickstart mounts;
 # the app default (~/Videos/Memories) would resolve inside the container.
 ENV IMMICH_MEMORIES_OUTPUT__DIRECTORY=/app/output
+# NiceGUI writes session storage to `.nicegui` beside the working directory,
+# which is /app -- part of the root filesystem the hardening recipe makes
+# read-only. The write fails silently and logins evaporate about ten seconds
+# after the last tab closes. The config volume is writable and persists, so
+# sessions survive a restart rather than merely surviving the container.
+ENV NICEGUI_STORAGE_PATH=/home/immich/.immich-memories/.nicegui
 
 # Switch to non-root user
 USER immich

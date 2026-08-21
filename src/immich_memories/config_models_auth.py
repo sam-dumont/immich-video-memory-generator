@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -16,6 +17,14 @@ def _check_email_entries(entries: list[str]) -> None:
         raise ValueError(f"allowed_emails entries must be addresses, got {bad!r}")
 
 
+def _normalised_public_url(value: str) -> str:
+    """Reject anything that is not an absolute http(s) URL, and drop the trailing slash."""
+    parts = urlsplit(value)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        raise ValueError("public_url must be an absolute http(s) URL, e.g. https://host")
+    return value.rstrip("/")
+
+
 class AuthConfig(BaseModel):
     """Authentication settings for the web UI."""
 
@@ -26,6 +35,12 @@ class AuthConfig(BaseModel):
     # Basic auth
     username: str = ""
     password: str = ""
+
+    # The externally reachable base URL of this app, e.g.
+    # "https://memories.example.com". Pins the OIDC redirect_uri behind a
+    # reverse proxy and makes callback-origin validation possible; without it
+    # there is nothing trustworthy to compare an incoming Host header against.
+    public_url: str = ""
 
     # OIDC
     issuer_url: str = ""
@@ -55,8 +70,10 @@ class AuthConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> AuthConfig:
-        """Check the allow-list, then the fields the active provider requires."""
+        """Check public_url and the allow-list, then the active provider's fields."""
         _check_email_entries(self.allowed_emails)
+        if self.public_url:
+            self.public_url = _normalised_public_url(self.public_url)
 
         if not self.enabled:
             return self

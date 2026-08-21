@@ -409,7 +409,8 @@ class TestRunWithProgress:
         mock_process.stdout.readline.side_effect = ["", ""]
         mock_process.poll.return_value = 1
         mock_process.returncode = 1
-        mock_process.stderr.read.return_value = "encode failed"
+        # WHY: EOF after one chunk — a constant return_value spins the drain.
+        mock_process.stderr.read.side_effect = ["encode failed", ""]
         mock_process.__enter__ = MagicMock(return_value=mock_process)
         mock_process.__exit__ = MagicMock(return_value=False)
 
@@ -926,6 +927,7 @@ class TestStreamRenderToMp4:
         mock_proc.wait.return_value = None
         mock_proc.returncode = 0
         mock_proc.stderr = MagicMock()
+        mock_proc.stderr.read.side_effect = [b""]
 
         # WHY: subprocess.Popen starts ffmpeg process for encoding
         with (
@@ -967,6 +969,7 @@ class TestStreamRenderToMp4:
         mock_proc.wait.return_value = None
         mock_proc.returncode = 0
         mock_proc.stderr = MagicMock()
+        mock_proc.stderr.read.side_effect = [b""]
 
         with (
             patch(
@@ -1012,7 +1015,9 @@ class TestStreamRenderToMp4:
         mock_proc.stdin = MagicMock()
         mock_proc.wait.return_value = None
         mock_proc.returncode = 1
-        mock_proc.stderr.read.return_value = b"encode error"
+        # WHY: a real pipe reaches EOF; a constant return_value spins the
+        # stderr drain thread for the rest of the suite.
+        mock_proc.stderr.read.side_effect = [b"encode error", b""]
 
         with (
             patch("immich_memories.photos.photo_pipeline.subprocess.Popen", return_value=mock_proc),
@@ -1489,6 +1494,7 @@ class TestZscaleFallbackBehavior:
             mock_proc = MagicMock()
             mock_proc.returncode = 0
             mock_proc.stdin = MagicMock()
+            mock_proc.stderr.read.side_effect = [b""]
             mock_popen.return_value = mock_proc
 
             import numpy as np
@@ -1522,6 +1528,7 @@ class TestZscaleFallbackBehavior:
             mock_proc = MagicMock()
             mock_proc.returncode = 0
             mock_proc.stdin = MagicMock()
+            mock_proc.stderr.read.side_effect = [b""]
             mock_popen.return_value = mock_proc
 
             import numpy as np

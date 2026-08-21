@@ -7,13 +7,13 @@ plus a Protocol for stem separation (Demucs local or MusicGen API).
 from __future__ import annotations
 
 import logging
-import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from immich_memories.audio.music_generator_models import MusicStems
+from immich_memories.security import private_temp_dir
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class GenerationRequest:
     photo_cadence_seconds: float | None = None
 
     # Output
-    output_dir: Path = field(default_factory=lambda: Path(tempfile.gettempdir()) / "musicgen")
+    output_dir: Path = field(default_factory=lambda: private_temp_dir("musicgen"))
 
     @property
     def is_multi_scene(self) -> bool:
