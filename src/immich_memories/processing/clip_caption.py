@@ -10,27 +10,37 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-# Spelled out rather than left to strftime so the caption does not change with
-# the machine's locale.
-_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-_WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+from immich_memories.i18n import (
+    DEFAULT_LOCALE,
+    SUPPORTED_LOCALES,
+    detect_system_locale,
+    get_month_name,
+    get_weekday_name,
+)
+
+
+def resolve_caption_locale(value: str | None) -> str:
+    """The captions' language: the configured locale, with `auto` following
+    the host machine — which, deployed next to Immich, is the server's locale."""
+    if value in SUPPORTED_LOCALES:
+        return value
+    if value == "auto":
+        return detect_system_locale()
+    return DEFAULT_LOCALE
+
 
 # Caption metrics as a share of the frame's short side, so the date reads the
-# same on a 4K memory and a 720p one.
-_FONT_RATIO = 0.040
-_MARGIN_RATIO = 0.04
-
-# Vertical renders go to Reels, Shorts and Stories, which paint captions, the
-# handle and an action rail over roughly the bottom sixth of the frame. A
-# short-side inset puts the date underneath all of it, so portrait insets off
-# the height instead.
-_VERTICAL_BOTTOM_RATIO = 0.16
+# same on a 4K memory and a 720p one. Ratios validated on the 2026-08-21
+# proof-sheet review (v4): title-scale bold uppercase, corners hugged the
+# same way in both orientations.
+_FONT_RATIO = 0.062
+_MARGIN_RATIO = 0.055
 
 # 0xBF is 75% of full range: HLG graphics white. Measured, plain white@0.85
 # draws at 872/1023 in a 10-bit pipe, which glares above the picture's own
 # diffuse white; this lands at 721.
 _HDR_COLOUR = "0xBFBFBF"
-_SDR_COLOUR = "white@0.85"
+_SDR_COLOUR = "white"
 
 # Middle dot rather than a comma: place names already contain commas.
 _SEPARATOR = " \u00b7 "
@@ -47,7 +57,9 @@ class ClipCaption:
         return bool(self.place or self.date)
 
 
-def captions_for_timeline(clips: list[Any], *, place: bool = False) -> list[ClipCaption]:
+def captions_for_timeline(
+    clips: list[Any], *, place: bool = False, locale_code: str = "en"
+) -> list[ClipCaption]:
     """Captions for a clip sequence, shown-place deduplicated.
 
     The interesting information in a place caption is the CHANGE of place, so
@@ -72,18 +84,23 @@ def captions_for_timeline(clips: list[Any], *, place: bool = False) -> list[Clip
             if where and str(where) != last_place:
                 shown_place = str(where)
                 last_place = shown_place
-        captions.append(ClipCaption(place=shown_place, date=_worded(taken, same_month, same_year)))
+        captions.append(
+            ClipCaption(
+                place=shown_place,
+                date=_worded(taken, same_month, same_year, locale_code),
+            )
+        )
     return captions
 
 
-def _worded(taken: date | None, same_month: bool, same_year: bool) -> str:
+def _worded(taken: date | None, same_month: bool, same_year: bool, locale_code: str) -> str:
     if taken is None:
         return ""
     if same_month:
-        return f"{_WEEKDAYS[taken.weekday()]} {taken.day}"
+        return f"{get_weekday_name(taken.weekday(), locale_code)} {taken.day}"
     if same_year:
-        return f"{taken.day} {_MONTHS[taken.month - 1]}"
-    return f"{taken.day} {_MONTHS[taken.month - 1]} {taken.year}"
+        return f"{taken.day} {get_month_name(taken.month, locale_code)}"
+    return f"{taken.day} {get_month_name(taken.month, locale_code)} {taken.year}"
 
 
 def _parsed_date(clip: Any) -> date | None:
@@ -131,40 +148,43 @@ def caption_filters(
     is_hdr: bool = False,
     font_path: str | None = None,
 ) -> list[str]:
-    """FFmpeg drawtext filters: the place bottom-left, the date bottom-right.
+    """FFmpeg drawtext filters: the place top-left, the date bottom-right.
 
-    Sized and inset off the short side so captions hold their proportions
-    across output resolutions. A translucent box scrim plus drop shadow keeps
-    the text legible over bright content — a white date on sunlit skin is
-    invisible with a shadow alone. Vertical output insets further from the
-    bottom, where the platforms draw their own UI.
+    Bold uppercase at title scale, hugging the corners the same way in both
+    orientations, anchored at constant y so nothing drifts with descenders.
+    A heavy dark outline plus shadow keeps white text legible over bright
+    content — validated frame-by-frame on light, dark, colorful and busy
+    backgrounds in the 2026-08-21 proof-sheet review.
     """
     short_side = min(width, height)
     font_size = max(12, round(short_side * _FONT_RATIO))
-    margin = round(short_side * _MARGIN_RATIO)
-    bottom = round(height * _VERTICAL_BOTTOM_RATIO) if height > width else margin
+    inset = round(short_side * _MARGIN_RATIO)
+    line = round(font_size * 1.05)
     colour = _HDR_COLOUR if is_hdr else _SDR_COLOUR
-    # WHY a box over a heavier shadow: measured on the matrix renders, a 2px
-    # shadow disappears against skin tones and sand; a soft scrim never does.
     common = (
         f":fontsize={font_size}"
         f":fontcolor={colour}"
-        f":shadowcolor=black@0.6:shadowx=2:shadowy=2"
-        f":box=1:boxcolor=black@0.5:boxborderw={max(4, round(font_size * 0.35))}"
-        f":y=h-th-{bottom}"
+        f":borderw={max(2, font_size // 10)}:bordercolor=black@0.75"
+        f":shadowcolor=black@0.6"
+        f":shadowx={max(2, font_size // 20)}:shadowy={max(2, font_size // 20)}"
     )
     if font_path:
         common = f":fontfile='{font_path}'" + common
     filters = []
     if caption.place:
-        filters.append(f"drawtext=text='{_escape(caption.place)}'{common}:x={margin}")
+        filters.append(
+            f"drawtext=text='{_escape(caption.place.upper())}'{common}:x={inset}:y={inset}"
+        )
     if caption.date:
-        filters.append(f"drawtext=text='{_escape(caption.date)}'{common}:x=w-tw-{margin}")
+        filters.append(
+            f"drawtext=text='{_escape(caption.date.upper())}'{common}"
+            f":x=w-tw-{inset}:y=h-{inset}-{line}"
+        )
     return filters
 
 
 def caption_font_path() -> str | None:
-    """The captions' font file: Outfit Regular, the flagship title family.
+    """The captions' font file: Outfit SemiBold, the flagship title family.
 
     One face for every caption rather than chasing the run's title style —
     consistent product typography, and the bundled file needs no network.
@@ -172,12 +192,15 @@ def caption_font_path() -> str | None:
     """
     from immich_memories.titles.fonts import get_font_path
 
-    path = get_font_path("Outfit", "Regular")
+    path = get_font_path("Outfit", "SemiBold")
     return str(path) if path else None
 
 
 def timeline_captions(
-    clips: list, date_overlay: bool, place_overlay: bool
+    clips: list,
+    date_overlay: bool,
+    place_overlay: bool,
+    locale_code: str = "en",
 ) -> tuple[list[ClipCaption] | None, str | None]:
     """Captions for the whole sequence, or nothing when neither flag is set.
 
@@ -186,7 +209,7 @@ def timeline_captions(
     """
     if not (date_overlay or place_overlay):
         return None, None
-    captions = captions_for_timeline(clips, place=place_overlay)
+    captions = captions_for_timeline(clips, place=place_overlay, locale_code=locale_code)
     if not date_overlay:
         captions = [ClipCaption(place=c.place) for c in captions]
     return captions, caption_font_path()

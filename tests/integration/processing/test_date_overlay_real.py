@@ -115,7 +115,11 @@ def test_a_place_with_an_apostrophe_reaches_the_screen(tmp_path: Path) -> None:
     escaped, so "L'Aquila" rendered as "LAquila". Compared against a
     `textfile=` render, which needs no escaping at all and is therefore the
     ground truth."""
-    from immich_memories.processing.clip_caption import caption_filter
+    from immich_memories.processing.clip_caption import ClipCaption, caption_filters
+
+    def caption_filter(text: str, w: int, h: int) -> str:
+        (only,) = caption_filters(ClipCaption(place=text), w, h)
+        return only
 
     base = [
         "ffmpeg",

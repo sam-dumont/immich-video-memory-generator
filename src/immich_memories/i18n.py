@@ -117,6 +117,20 @@ _MONTH_NAMES: dict[str, list[str]] = {
 }
 
 
+WEEKDAY_NAMES = {
+    "en": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+    "fr": ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"],
+}
+
+
+def get_weekday_name(weekday: int, locale_code: str = "en") -> str:
+    """Localized weekday name; ``weekday`` follows ``date.weekday()`` (0=Monday)."""
+    if not 0 <= weekday <= 6:
+        raise ValueError(f"Weekday must be 0-6, got {weekday}")
+    names = WEEKDAY_NAMES.get(locale_code, WEEKDAY_NAMES[DEFAULT_LOCALE])
+    return names[weekday]
+
+
 def get_month_name(month: int, locale_code: str = "en") -> str:
     """Get localized month name.
 

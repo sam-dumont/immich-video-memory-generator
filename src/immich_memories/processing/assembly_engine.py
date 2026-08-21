@@ -16,6 +16,7 @@ from immich_memories.processing.assembly_config import (
     AssemblySettings,
     TransitionType,
 )
+from immich_memories.processing.clip_caption import resolve_caption_locale
 from immich_memories.processing.clip_encoder import ClipEncoder
 from immich_memories.processing.ffmpeg_filter_graph import ConcatService
 from immich_memories.processing.ffmpeg_prober import FFmpegProber
@@ -258,6 +259,9 @@ class AssemblyEngine:
             privacy_mode=self.settings.privacy_mode,
             date_overlay=self.settings.add_date_overlay,
             place_overlay=self.settings.add_place_overlay,
+            caption_locale=resolve_caption_locale(
+                self.settings.title_screens.locale if self.settings.title_screens else None
+            ),
             scale_mode=self.settings.scale_mode,
             progress_callback=progress_callback,
             frame_preview_callback=frame_preview_callback,

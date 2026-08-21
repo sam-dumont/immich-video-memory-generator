@@ -23,7 +23,7 @@ class TestOverlayIsDrawn:
         vf = _decoder(caption=ClipCaption(date="5 Jan 2026"))._build_vf()
 
         assert "drawtext=" in vf
-        assert "5 Jan 2026" in vf
+        assert "5 JAN 2026" in vf  # captions render uppercase (v4 review)
 
     def test_no_overlay_without_text(self):
         assert "drawtext" not in _decoder()._build_vf()
@@ -46,7 +46,8 @@ class TestOverlayScalesWithTheFrame:
         vf = _decoder(caption=ClipCaption(date="x"))._build_vf()
 
         assert "x=w-tw-" in vf
-        assert "y=h-th-" in vf
+        # constant y anchor — descenders must not shift the baseline (v4 review)
+        assert ":y=h-" in vf and "y=h-th-" not in vf
 
     def test_text_is_readable_over_a_bright_background(self):
         """White-on-white is invisible; the shadow is what guarantees contrast."""
@@ -73,7 +74,7 @@ class TestWhatGetsCaptioned:
             _fake_clip(date="2026-01-05"), 0, 1920, 1080, 30, caption=ClipCaption(date="5 Jan 2026")
         )
 
-        assert "5 Jan 2026" in decoder._build_vf()
+        assert "5 JAN 2026" in decoder._build_vf()
 
     def test_nothing_is_drawn_when_the_option_is_off(self):
         from immich_memories.processing.streaming_assembler import _make_decoder

@@ -63,8 +63,8 @@ class TestEscaping:
         rendering "LAquila". U+2019 is the only form that reaches the screen."""
         out = _place_filter("L'Aquila")
 
-        assert "L\u2019Aquila" in out
-        assert "L'Aquila" not in out
+        assert "L\u2019AQUILA" in out
+        assert "L'AQUILA" not in out
 
     def test_a_backslash_is_escaped_before_anything_else(self):
         """Escaping backslash last would double-escape what came before it."""

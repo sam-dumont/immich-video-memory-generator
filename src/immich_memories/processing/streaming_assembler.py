@@ -649,6 +649,7 @@ def assemble_streaming(
     privacy_mode: bool = False,
     date_overlay: bool = False,
     place_overlay: bool = False,
+    caption_locale: str = "en",
     scale_mode: str = "blur",
     progress_callback: Callable[[int, int], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
@@ -666,7 +667,7 @@ def assemble_streaming(
     fade_frames = int(fade_duration * fps)
     total_frames = _estimate_total_frames(clips, transitions, fps, fade_duration)
 
-    captions, caption_font = timeline_captions(clips, date_overlay, place_overlay)
+    captions, caption_font = timeline_captions(clips, date_overlay, place_overlay, caption_locale)
     plan = encoding_plan or _default_streaming_plan()
     hdr_type = plan.target_transfer.value if plan.hdr else None
     encoder = StreamingEncoder(output_path, width, height, fps, encoding_plan=plan)
@@ -696,6 +697,7 @@ def assemble_streaming(
             privacy_mode,
             date_overlay,
             place_overlay,
+            caption_locale,
             scale_mode,
             progress_callback,
             frame_preview_callback,
@@ -901,6 +903,7 @@ def streaming_assemble_full(
     privacy_mode: bool = False,
     date_overlay: bool = False,
     place_overlay: bool = False,
+    caption_locale: str = "en",
     scale_mode: str = "blur",
     progress_callback: Callable[[float, str], None] | None = None,
     frame_preview_callback: Callable[[bytes], None] | None = None,
@@ -952,6 +955,7 @@ def streaming_assemble_full(
             privacy_mode=privacy_mode,
             date_overlay=date_overlay,
             place_overlay=place_overlay,
+            caption_locale=caption_locale,
             scale_mode=scale_mode,
             progress_callback=_frame_progress,
             frame_preview_callback=frame_preview_callback,
