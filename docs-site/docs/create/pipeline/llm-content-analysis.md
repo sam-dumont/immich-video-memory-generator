@@ -32,12 +32,15 @@ This works with anything that speaks the OpenAI chat completions API:
 | `category` | exactly one of `people`, `animal`, `landscape`, `object`, `screen` — drives the subject policy |
 | `subjects` | short lowercase nouns in frame (`["child", "dog", "beach"]`) |
 | `setting` | exactly one of `indoor_home`, `indoor_public`, `outdoor_nature`, `outdoor_urban`, `vehicle`, `water` |
+| `activities` | recognisable pastimes or sports (`["cycling"]`), empty when none — most clips have none |
 | `emotion` | one word mood, used for music selection |
 | `interestingness`, `quality` | 0.0–1.0 |
 
 `setting` is a closed vocabulary on purpose: it describes *what kind of period* a memory covers,
 which free text cannot answer reliably. A value outside the list is dropped rather than stored, so
-a model that ignores the vocabulary cannot reintroduce free text.
+a model that ignores the vocabulary cannot reintroduce free text. `activities` is deliberately
+sparse — it fires on a recognisable pastime and stays empty otherwise, which is the correct answer
+for most clips.
 
 Analysis is per-period and on demand: when the fields change, `ANALYSIS_VERSION` is bumped and each
 pool re-analyzes itself the next time a memory covers it. Nothing sweeps the whole library.

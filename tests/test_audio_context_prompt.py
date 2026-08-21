@@ -37,6 +37,9 @@ Return JSON with these fields:
   outdoor_urban, vehicle, water. Use "water" for in or on water (pool, sea, boat),
   "vehicle" for inside a car, train or plane, "outdoor_urban" for streets and towns,
   "outdoor_nature" for anything outdoors that is not built up.
+- activities: If the scene shows a recognisable pastime or sport, name it:
+  ["cycling"], ["swimming"], ["skiing"], ["hiking"], ["running"], ["cooking"].
+  Empty list when no pastime or sport is recognisable.
 - emotion: What is the mood? (one word: happy, calm, excited, playful, joyful, peaceful)
 - interestingness: How memorable is this moment? (0.0 to 1.0)
 - quality: How good is the image quality? (0.0 to 1.0)

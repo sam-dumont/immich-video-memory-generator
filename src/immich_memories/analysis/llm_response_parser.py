@@ -49,6 +49,9 @@ _PROMPT_TAIL = """Return JSON with these fields:
   outdoor_urban, vehicle, water. Use "water" for in or on water (pool, sea, boat),
   "vehicle" for inside a car, train or plane, "outdoor_urban" for streets and towns,
   "outdoor_nature" for anything outdoors that is not built up.
+- activities: If the scene shows a recognisable pastime or sport, name it:
+  ["cycling"], ["swimming"], ["skiing"], ["hiking"], ["running"], ["cooking"].
+  Empty list when no pastime or sport is recognisable.
 - emotion: What is the mood? (one word: happy, calm, excited, playful, joyful, peaceful)
 - interestingness: How memorable is this moment? (0.0 to 1.0)
 - quality: How good is the image quality? (0.0 to 1.0)
@@ -108,6 +111,7 @@ class ContentAnalysis:
     category: str = ""
     subjects: list[str] = field(default_factory=list)
     setting: str = ""
+    activities: list[str] = field(default_factory=list)
     emotion: str = ""
     interestingness: float = 0.5
     quality: float = 0.5
@@ -402,6 +406,9 @@ class ContentAnalyzer:
         category = str(data.get("category", ""))[:MAX_STR]
         # An unlisted value is dropped rather than stored: a model that ignores
         # the enum must not quietly reintroduce free text (#483).
+        activities = [
+            str(a).strip().lower()[:MAX_STR] for a in data.get("activities", [])[:MAX_LIST]
+        ]
         raw_setting = str(data.get("setting", "")).strip().lower()
         setting = raw_setting if raw_setting in SETTING_VALUES else ""
         emotion = emotion[:MAX_STR]
@@ -416,6 +423,7 @@ class ContentAnalyzer:
             subjects=subjects,
             category=category,
             setting=setting,
+            activities=activities,
             emotion=emotion,
             interestingness=interestingness,
             quality=quality,

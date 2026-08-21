@@ -633,6 +633,7 @@ class VideoAnalysisCache:
         for i, segment in enumerate(segments):
             # Serialize list fields to JSON
             subjects = getattr(segment, "llm_subjects", None)
+            activities = getattr(segment, "llm_activities", None)
             audio_cats = getattr(segment, "audio_categories", None)
 
             conn.execute(
@@ -642,11 +643,11 @@ class VideoAnalysisCache:
                     face_score, motion_score, stability_score,
                     audio_score, total_score, face_positions,
                     llm_description, llm_category, llm_emotion, llm_setting,
-                    llm_subjects,
+                    llm_subjects, llm_activities,
                     llm_interestingness, llm_quality,
                     audio_categories,
                     transcript, transcript_language, transcript_confidence
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     asset_id,
@@ -664,6 +665,7 @@ class VideoAnalysisCache:
                     getattr(segment, "llm_emotion", None),
                     getattr(segment, "llm_setting", None),
                     json.dumps(list(subjects)) if subjects else None,
+                    json.dumps(list(activities)) if activities else None,
                     getattr(segment, "llm_interestingness", None),
                     getattr(segment, "llm_quality", None),
                     json.dumps(sorted(audio_cats)) if audio_cats else None,
