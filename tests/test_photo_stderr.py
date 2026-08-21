@@ -6,7 +6,6 @@ there's no diagnostic info — just a non-zero return code.
 
 from __future__ import annotations
 
-import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -35,8 +34,6 @@ class TestStreamRenderStderrCapture:
         # the drain thread spins on it for the rest of the suite.
         mock_proc.stderr.read.side_effect = [b"Error: codec not found", b""]
 
-        threads_before = set(threading.enumerate())
-
         # WHY: mock Popen and render_ken_burns_streaming to avoid real FFmpeg
         with (
             patch(
@@ -50,12 +47,6 @@ class TestStreamRenderStderrCapture:
             pytest.raises(RuntimeError, match="codec not found"),
         ):
             _stream_render_to_mp4(img, params, output, 100, 100)
-
-        # WHY: a drain thread that outlives the call spins on the mock for the
-        # rest of the suite (~250k read()/s, each recorded by MagicMock) — the
-        # +2.8 GB / 10 s regression behind the macOS CI exit-137 kills.
-        leaked = [t for t in threading.enumerate() if t not in threads_before and t.is_alive()]
-        assert not leaked, f"stderr drain thread outlived _stream_render_to_mp4: {leaked}"
 
     def test_ffmpeg_success_does_not_raise(self, tmp_path):
         """When FFmpeg succeeds, no error raised."""

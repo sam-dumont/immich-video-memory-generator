@@ -1485,6 +1485,7 @@ class TestZscaleFallbackBehavior:
             mock_proc = MagicMock()
             mock_proc.returncode = 0
             mock_proc.stdin = MagicMock()
+            mock_proc.stderr.read.side_effect = [b""]
             mock_popen.return_value = mock_proc
 
             import numpy as np
@@ -1518,6 +1519,7 @@ class TestZscaleFallbackBehavior:
             mock_proc = MagicMock()
             mock_proc.returncode = 0
             mock_proc.stdin = MagicMock()
+            mock_proc.stderr.read.side_effect = [b""]
             mock_popen.return_value = mock_proc
 
             import numpy as np
