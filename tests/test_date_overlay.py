@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from immich_memories.processing.clip_caption import ClipCaption
 from immich_memories.processing.streaming_assembler import FrameDecoder
 
 
@@ -19,7 +20,7 @@ def _decoder(**kwargs) -> FrameDecoder:
 
 class TestOverlayIsDrawn:
     def test_the_date_reaches_the_filter_chain(self):
-        vf = _decoder(overlay_text="5 Jan 2026")._build_vf()
+        vf = _decoder(caption=ClipCaption(date="5 Jan 2026"))._build_vf()
 
         assert "drawtext=" in vf
         assert "5 Jan 2026" in vf
@@ -32,20 +33,24 @@ class TestOverlayScalesWithTheFrame:
     """A fixed 24 px date is unreadable at 4K and huge on a phone-sized render."""
 
     def test_font_size_grows_with_the_frame(self):
-        hd = FrameDecoder(Path("/f.mp4"), width=1920, height=1080, fps=30, overlay_text="x")
-        uhd = FrameDecoder(Path("/f.mp4"), width=3840, height=2160, fps=30, overlay_text="x")
+        hd = FrameDecoder(
+            Path("/f.mp4"), width=1920, height=1080, fps=30, caption=ClipCaption(date="x")
+        )
+        uhd = FrameDecoder(
+            Path("/f.mp4"), width=3840, height=2160, fps=30, caption=ClipCaption(date="x")
+        )
 
         assert _font_size(uhd._build_vf()) > _font_size(hd._build_vf())
 
     def test_text_stays_clear_of_the_frame_edge(self):
-        vf = _decoder(overlay_text="x")._build_vf()
+        vf = _decoder(caption=ClipCaption(date="x"))._build_vf()
 
         assert "x=w-tw-" in vf
         assert "y=h-th-" in vf
 
     def test_text_is_readable_over_a_bright_background(self):
         """White-on-white is invisible; the shadow is what guarantees contrast."""
-        vf = _decoder(overlay_text="x")._build_vf()
+        vf = _decoder(caption=ClipCaption(date="x"))._build_vf()
 
         assert "shadowcolor=" in vf
 
@@ -64,7 +69,9 @@ class TestWhatGetsCaptioned:
     def test_the_clips_date_is_captioned_when_the_option_is_on(self):
         from immich_memories.processing.streaming_assembler import _make_decoder
 
-        decoder = _make_decoder(_fake_clip(date="2026-01-05"), 0, 1920, 1080, 30, date_overlay=True)
+        decoder = _make_decoder(
+            _fake_clip(date="2026-01-05"), 0, 1920, 1080, 30, caption=ClipCaption(date="5 Jan 2026")
+        )
 
         assert "5 Jan 2026" in decoder._build_vf()
 
@@ -80,14 +87,14 @@ class TestWhatGetsCaptioned:
         from immich_memories.processing.streaming_assembler import _make_decoder
 
         clip = _fake_clip(date="2026-01-05", is_title_screen=True)
-        decoder = _make_decoder(clip, 0, 1920, 1080, 30, date_overlay=True)
+        decoder = _make_decoder(clip, 0, 1920, 1080, 30, caption=ClipCaption(date="5 Jan 2026"))
 
         assert "drawtext" not in decoder._build_vf()
 
     def test_a_clip_with_no_date_is_left_alone(self):
         from immich_memories.processing.streaming_assembler import _make_decoder
 
-        decoder = _make_decoder(_fake_clip(date=None), 0, 1920, 1080, 30, date_overlay=True)
+        decoder = _make_decoder(_fake_clip(date=None), 0, 1920, 1080, 30, caption=ClipCaption())
 
         assert "drawtext" not in decoder._build_vf()
 
@@ -119,18 +126,20 @@ class TestHdrCaptionBrightness:
             height=1080,
             fps=30,
             pix_fmt="yuv420p10le",
-            overlay_text="x",
+            caption=ClipCaption(date="x"),
         )
 
         assert "fontcolor=white" not in hdr._build_vf()
 
     def test_sdr_output_keeps_a_white_caption(self):
-        assert "fontcolor=white" in _decoder(overlay_text="x")._build_vf()
+        assert "fontcolor=white" in _decoder(caption=ClipCaption(date="x"))._build_vf()
 
 
 class TestMalformedDates:
     def test_an_unparseable_date_captions_nothing_rather_than_raising(self):
         """Clip dates come from Immich metadata; a broken one must not stop a render."""
-        from immich_memories.processing.clip_caption import caption_for
+        from immich_memories.processing.clip_caption import captions_for_timeline
 
-        assert caption_for(_fake_clip(date="not-a-date")) == ""
+        (caption,) = captions_for_timeline([_fake_clip(date="not-a-date")])
+
+        assert caption.date == ""

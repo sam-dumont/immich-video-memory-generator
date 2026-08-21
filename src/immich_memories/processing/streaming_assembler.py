@@ -39,7 +39,11 @@ from immich_memories.processing.streaming_audio import (
 if TYPE_CHECKING:
     from immich_memories.processing.probe_cache import ProbeCache
 
-from immich_memories.processing.clip_caption import caption_filter, caption_for
+from immich_memories.processing.clip_caption import (
+    ClipCaption,
+    caption_filters,
+    timeline_captions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +98,8 @@ class FrameDecoder:
         sdr_to_hdr_filter: str = "",
         input_seek: float = 0.0,
         audio_output: Path | None = None,
-        overlay_text: str = "",
+        caption: ClipCaption | None = None,
+        caption_font: str | None = None,
     ) -> None:
         self._clip_path = clip_path
         self._input_seek = input_seek
@@ -114,7 +119,8 @@ class FrameDecoder:
         # Without this, SDR full-range data piped as yuv420p10le gets
         # interpreted as TV-range HLG = red/wrong tint.
         self._sdr_to_hdr_filter = sdr_to_hdr_filter
-        self._overlay_text = overlay_text
+        self._caption = caption
+        self._caption_font = caption_font
 
     def _build_vf(self) -> str:
         """Build the -vf filter chain matching filter_builder.build_clip_video_filter."""
@@ -185,13 +191,14 @@ class FrameDecoder:
 
         # Drawn last so the text is never scaled, padded or blurred with the
         # source, and lands in target-frame coordinates.
-        if self._overlay_text:
-            parts.append(
-                caption_filter(
-                    self._overlay_text,
+        if self._caption:
+            parts.extend(
+                caption_filters(
+                    self._caption,
                     self._width,
                     self._height,
                     is_hdr=self._pix_fmt != "rgb24",
+                    font_path=self._caption_font,
                 )
             )
 
@@ -548,8 +555,8 @@ def _make_decoder(
     fps: int,
     ctx: Any | None = None,
     privacy_mode: bool = False,
-    date_overlay: bool = False,
-    place_overlay: bool = False,
+    caption: ClipCaption | None = None,
+    caption_font: str | None = None,
     scale_mode: str = "black",
     hdr_type: str | None = None,
     audio_work_dir: Path | None = None,
@@ -606,11 +613,8 @@ def _make_decoder(
         sdr_to_hdr_filter=sdr_to_hdr_filter,
         input_seek=getattr(clip, "input_seek", 0.0),
         audio_output=audio_output,
-        overlay_text=(
-            caption_for(clip, place=place_overlay)
-            if (date_overlay or place_overlay) and not is_title
-            else ""
-        ),
+        caption=caption if not is_title else None,
+        caption_font=caption_font,
     )
 
 
@@ -661,6 +665,8 @@ def assemble_streaming(
 
     fade_frames = int(fade_duration * fps)
     total_frames = _estimate_total_frames(clips, transitions, fps, fade_duration)
+
+    captions, caption_font = timeline_captions(clips, date_overlay, place_overlay)
     plan = encoding_plan or _default_streaming_plan()
     hdr_type = plan.target_transfer.value if plan.hdr else None
     encoder = StreamingEncoder(output_path, width, height, fps, encoding_plan=plan)
@@ -720,8 +726,8 @@ def assemble_streaming(
             fps,
             ctx,
             privacy_mode,
-            date_overlay,
-            place_overlay,
+            captions,
+            caption_font,
             scale_mode,
             hdr_type,
             progress_callback,
@@ -778,8 +784,8 @@ def _encode_clip_sequence(
     fps: int,
     ctx: Any | None,
     privacy_mode: bool,
-    date_overlay: bool,
-    place_overlay: bool,
+    captions: list[ClipCaption] | None,
+    caption_font: str | None,
     scale_mode: str,
     hdr_type: str | None,
     progress_callback: Callable[[int, int], None] | None,
@@ -793,6 +799,10 @@ def _encode_clip_sequence(
     last_preview_time = 0.0
     is_hdr = hdr_type is not None
 
+    clip_captions: list[ClipCaption | None] = (
+        list(captions) if captions is not None else [None] * len(clips)
+    )
+
     for clip_idx, clip in enumerate(clips):
         if active_iter is None:
             decoder = _make_decoder(
@@ -803,8 +813,8 @@ def _encode_clip_sequence(
                 fps,
                 ctx,
                 privacy_mode,
-                date_overlay,
-                place_overlay,
+                clip_captions[clip_idx],
+                caption_font,
                 scale_mode,
                 hdr_type,
                 audio_work_dir=audio_work_dir,
@@ -839,8 +849,8 @@ def _encode_clip_sequence(
                 fps,
                 ctx,
                 privacy_mode,
-                date_overlay,
-                place_overlay,
+                clip_captions[clip_idx + 1],
+                caption_font,
                 scale_mode,
                 hdr_type,
                 audio_work_dir=audio_work_dir,

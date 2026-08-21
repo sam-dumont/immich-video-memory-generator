@@ -11,7 +11,13 @@ from __future__ import annotations
 
 import re
 
-from immich_memories.processing.clip_caption import caption_filter
+from immich_memories.processing.clip_caption import ClipCaption, caption_filters
+
+
+def caption_filter(text: str, w: int, h: int) -> str:
+    (only,) = caption_filters(ClipCaption(date=text), w, h)
+    return only
+
 
 # 1080x1920 is the canonical vertical render.
 _W, _H = 1080, 1920

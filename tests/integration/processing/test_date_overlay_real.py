@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from immich_memories.processing.clip_caption import ClipCaption
 from immich_memories.processing.streaming_assembler import FrameDecoder
 
 pytestmark = pytest.mark.integration
@@ -49,7 +50,7 @@ def _first_frame(clip: Path, width: int = 640, height: int = 360, **kwargs) -> n
 
 def test_the_caption_is_actually_drawn(grey_clip: Path) -> None:
     plain = _first_frame(grey_clip)
-    captioned = _first_frame(grey_clip, overlay_text="5 Jan 2026")
+    captioned = _first_frame(grey_clip, caption=ClipCaption(date="5 Jan 2026"))
 
     assert not np.array_equal(plain, captioned), "overlay changed nothing"
 
@@ -57,7 +58,7 @@ def test_the_caption_is_actually_drawn(grey_clip: Path) -> None:
 def test_the_caption_lands_in_the_bottom_corner(grey_clip: Path) -> None:
     """Bottom-right, inset — not centred over the subject's face."""
     plain = _first_frame(grey_clip)
-    captioned = _first_frame(grey_clip, overlay_text="5 Jan 2026")
+    captioned = _first_frame(grey_clip, caption=ClipCaption(date="5 Jan 2026"))
 
     changed = np.argwhere(np.any(plain != captioned, axis=-1))
     assert changed.size, "overlay changed nothing"
@@ -95,7 +96,9 @@ def grey_portrait(tmp_path_factory) -> Path:
 
 def test_a_vertical_caption_sits_above_the_platform_chrome(grey_portrait: Path) -> None:
     plain = _first_frame(grey_portrait, width=360, height=640)
-    captioned = _first_frame(grey_portrait, width=360, height=640, overlay_text="5 Jan 2026")
+    captioned = _first_frame(
+        grey_portrait, width=360, height=640, caption=ClipCaption(date="5 Jan 2026")
+    )
 
     changed = np.argwhere(np.any(plain != captioned, axis=-1))
     assert changed.size, "overlay changed nothing"
