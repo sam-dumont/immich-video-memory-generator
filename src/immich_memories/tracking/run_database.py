@@ -391,6 +391,31 @@ class RunDatabase:
             )
             conn.commit()
 
+    def mark_delivery_abandoned(self, run_id: str, error: str) -> RunMetadata:
+        """Stop retrying a delivery that has used up its attempts.
+
+        The artifact stays completed and on disk; only its delivery gives up.
+        Leaving it pending would consume every nightly wake forever, because the
+        runner retries a pending delivery before it considers generating.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE pipeline_runs
+                SET delivery_status = ?,
+                    delivery_error = ?
+                WHERE run_id = ? AND status = 'completed'
+                """,
+                (DeliveryStatus.ABANDONED.value, error, run_id),
+            )
+            if cursor.rowcount != 1:
+                _raise_invalid_delivery_transition(conn, run_id)
+            conn.commit()
+        saved = self.get_run(run_id)
+        if saved is None:  # pragma: no cover - the UPDATE just matched this row
+            raise KeyError(f"Unknown pipeline run: {run_id}")
+        return saved
+
     def mark_delivery_pending(
         self,
         run_id: str,

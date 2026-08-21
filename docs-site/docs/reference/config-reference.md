@@ -515,6 +515,7 @@ automation:
   enabled: false                  # run the daily auto-run decision inside the web UI process (Docker)
   daily_at: "09:00"               # HH:MM, local time of that process (container TZ)
   cooldown_hours: 24              # min hours between auto-generated memories (1-168)
+  max_delivery_attempts: 5        # give up on an Immich upload after this many failures (1-50)
   upload_to_immich: false         # auto-upload results
   album_name: null                # target album for uploads
   detect_monthly: true            # monthly highlights candidates

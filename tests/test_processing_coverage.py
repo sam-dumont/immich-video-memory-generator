@@ -409,7 +409,8 @@ class TestRunWithProgress:
         mock_process.stdout.readline.side_effect = ["", ""]
         mock_process.poll.return_value = 1
         mock_process.returncode = 1
-        mock_process.stderr.read.return_value = "encode failed"
+        # WHY: EOF after one chunk — a constant return_value spins the drain.
+        mock_process.stderr.read.side_effect = ["encode failed", ""]
         mock_process.__enter__ = MagicMock(return_value=mock_process)
         mock_process.__exit__ = MagicMock(return_value=False)
 
@@ -859,9 +860,13 @@ class TestPhotoPlaceCaption:
     `--add-place` renders "City, Country" for a video, via clip_location_name.
     The photo path attached the bare city, so one memory containing both showed
     "Ghent, Belgium" under a video and "Ghent" under the photo beside it.
+
+    This has never passed on a macOS runner -- not since #434 shortened it, since
+    #421 introduced it. #421's macOS job failed too, and #434 merged with all
+    three macOS jobs cancelled, so nothing ever reported it.
     """
 
-    def test_a_photo_captions_a_place_like_a_video_does(self, tmp_path):
+    def test_a_photo_captions_a_place_like_a_video_does(self, tmp_path, monkeypatch):
         import cv2
         import numpy as np
 
@@ -869,6 +874,17 @@ class TestPhotoPlaceCaption:
         from immich_memories.config_models import PhotoConfig
         from immich_memories.generate_privacy import clip_location_name
         from immich_memories.photos.photo_pipeline import _render_single_photo
+
+        # WHY: the encoder is what this fails on, not the caption.
+        # _render_single_photo picks hevc_videotoolbox when zscale is present, and
+        # VideoToolbox writes no file inside CI's macOS VM -- the render returns
+        # None and the assertion below blames the caption instead. This test has
+        # never passed on a macOS runner for that reason, at any duration.
+        # Forcing the SDR path (rgb24 + libx264, always available) keeps it about
+        # the thing it names.
+        monkeypatch.setattr(
+            "immich_memories.processing.hdr_utilities.check_zscale_available", lambda: False
+        )
 
         exif = ExifInfo(city="Ghent", country="Belgium")
         # WHY .jpg: the download path takes its suffix from the filename, and
@@ -878,7 +894,9 @@ class TestPhotoPlaceCaption:
         def download(asset_id, path):
             cv2.imwrite(str(path), np.full((240, 320, 3), 128, dtype=np.uint8))
 
-        clip = _render_single_photo(asset, PhotoConfig(), 640, 360, tmp_path, download)
+        config = PhotoConfig(duration=1.0)
+
+        clip = _render_single_photo(asset, config, 640, 360, tmp_path, download)
 
         assert clip is not None
         assert clip.location_name == clip_location_name(exif) == "Ghent, Belgium"
@@ -909,6 +927,7 @@ class TestStreamRenderToMp4:
         mock_proc.wait.return_value = None
         mock_proc.returncode = 0
         mock_proc.stderr = MagicMock()
+        mock_proc.stderr.read.side_effect = [b""]
 
         # WHY: subprocess.Popen starts ffmpeg process for encoding
         with (
@@ -950,6 +969,7 @@ class TestStreamRenderToMp4:
         mock_proc.wait.return_value = None
         mock_proc.returncode = 0
         mock_proc.stderr = MagicMock()
+        mock_proc.stderr.read.side_effect = [b""]
 
         with (
             patch(
@@ -995,7 +1015,9 @@ class TestStreamRenderToMp4:
         mock_proc.stdin = MagicMock()
         mock_proc.wait.return_value = None
         mock_proc.returncode = 1
-        mock_proc.stderr.read.return_value = b"encode error"
+        # WHY: a real pipe reaches EOF; a constant return_value spins the
+        # stderr drain thread for the rest of the suite.
+        mock_proc.stderr.read.side_effect = [b"encode error", b""]
 
         with (
             patch("immich_memories.photos.photo_pipeline.subprocess.Popen", return_value=mock_proc),
@@ -1472,6 +1494,7 @@ class TestZscaleFallbackBehavior:
             mock_proc = MagicMock()
             mock_proc.returncode = 0
             mock_proc.stdin = MagicMock()
+            mock_proc.stderr.read.side_effect = [b""]
             mock_popen.return_value = mock_proc
 
             import numpy as np
@@ -1505,6 +1528,7 @@ class TestZscaleFallbackBehavior:
             mock_proc = MagicMock()
             mock_proc.returncode = 0
             mock_proc.stdin = MagicMock()
+            mock_proc.stderr.read.side_effect = [b""]
             mock_popen.return_value = mock_proc
 
             import numpy as np

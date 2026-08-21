@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Callable
 from pathlib import Path
@@ -13,6 +14,7 @@ from immich_memories.automation.models import (
     AutoOutcome,
     AutoRunResult,
 )
+from immich_memories.automation.notifications import send_configured_notification
 from immich_memories.automation.state_store import AutomationStateStore
 from immich_memories.config_loader import Config
 from immich_memories.operations.phases import OperationalPhase, PhaseEvent
@@ -276,3 +278,31 @@ class PendingDeliveryRetry:
             run_id=pending.run_id,
             output_path=output_path,
         )
+
+
+def abandon_if_exhausted(pending: RunMetadata, *, config: Config, db: RunDatabase) -> bool:
+    """Give up on a delivery that has used its attempts, and say why.
+
+    A pending delivery is retried before anything else on a nightly wake and
+    ends it, so one that can never succeed -- an API key without upload scope,
+    an album that no longer accepts writes -- would consume every night and
+    generate nothing. Giving up here, at selection rather than after the retry,
+    means this wake still goes on to make a memory.
+    """
+    if pending.delivery_attempts < config.automation.max_delivery_attempts:
+        return False
+
+    reason = (
+        f"Gave up delivering to Immich after {pending.delivery_attempts} attempts: "
+        f"{pending.delivery_error or 'no error recorded'}"
+    )
+    logger.warning("%s (run %s)", reason, pending.run_id)
+    with contextlib.suppress(Exception):
+        db.mark_delivery_abandoned(pending.run_id, reason)
+    # The original error is what tells an operator whether to fix a scope, an
+    # album name or a server, so it travels with the notification.
+    with contextlib.suppress(Exception):
+        send_configured_notification(
+            config=config, memory_type="delivery", success=False, error=reason
+        )
+    return True

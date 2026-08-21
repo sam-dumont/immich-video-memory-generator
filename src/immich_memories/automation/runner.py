@@ -13,7 +13,7 @@ from typing import Any
 
 from immich_memories.automation.candidate_scorer import score_and_rank
 from immich_memories.automation.candidates import MemoryCandidate
-from immich_memories.automation.delivery_retry import PendingDeliveryRetry
+from immich_memories.automation.delivery_retry import PendingDeliveryRetry, abandon_if_exhausted
 from immich_memories.automation.failure_backoff import drop_backed_off
 from immich_memories.automation.models import (
     AutoAction,
@@ -715,6 +715,8 @@ class AutoRunner:
         """Run retry preflight only after selecting an executable artifact."""
         pending = self.db.get_oldest_pending_delivery(source="auto")
         if pending is None or pending.output_path is None:
+            return None
+        if abandon_if_exhausted(pending, config=self.config, db=self.db):
             return None
         retry = self._pending_delivery_retry()
         retry.start_delivery(attempt)

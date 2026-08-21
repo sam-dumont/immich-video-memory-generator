@@ -22,6 +22,9 @@ class DeliveryStatus(StrEnum):
     NOT_REQUESTED = "not_requested"
     PENDING = "pending"
     DELIVERED = "delivered"
+    # Terminal: retried to the configured limit and given up on, so it stops
+    # occupying the nightly wake. The artifact itself is untouched.
+    ABANDONED = "abandoned"
 
 
 @dataclass

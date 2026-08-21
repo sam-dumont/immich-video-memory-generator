@@ -133,10 +133,19 @@ def resolve_music_file(
     if not music_path and music_config_available(config):
         if report_fn:
             report_fn("music", 0.85, "Generating AI music...")
-        generated = auto_generate_music(
-            config, assembly_clips, run_output_dir, memory_type, report_fn
-        )
-        return _master(generated, run_output_dir) if generated else generated
+        try:
+            generated = auto_generate_music(
+                config, assembly_clips, run_output_dir, memory_type, report_fn
+            )
+        except Exception as exc:  # WHY: optional music must not invalidate the base artifact
+            # A configured generator that fails used to be worse than no generator
+            # at all: the exception unwound past the bundled branch below and the
+            # whole music phase was abandoned, so the most-configured setup got
+            # the only silent video. Fall through to bundled and keep the warning.
+            logger.warning("%s; using a bundled track", optional_music_warning(exc, config))
+            generated = None
+        if generated:
+            return _master(generated, run_output_dir)
 
     if music_path is not None:
         # An explicit track that is missing is a user error; substituting bundled
