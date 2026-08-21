@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -62,6 +63,17 @@ def log_top_segments(segments: list[ScoredSegment], top_n: int = 5) -> None:
             f"duration={seg.duration_score:.2f} visual={seg.visual_score:.2f} "
             f"cut_q={seg.cut_quality:.2f}"
         )
+
+
+@dataclass(frozen=True)
+class _VisualScores:
+    """One segment's visual scores plus the face geometry behind them."""
+
+    face: float
+    motion: float
+    stability: float
+    total: float
+    face_positions: list[tuple[float, float]] | None = None
 
 
 class UnifiedSegmentAnalyzer:
@@ -491,9 +503,7 @@ class UnifiedSegmentAnalyzer:
 
         return score
 
-    def _score_visual(
-        self, video_path: Path, start_time: float, end_time: float
-    ) -> dict[str, float]:
+    def _score_visual(self, video_path: Path, start_time: float, end_time: float) -> _VisualScores:
         """Score a segment using visual analysis (faces, motion, stability).
 
         Args:
@@ -528,12 +538,16 @@ class UnifiedSegmentAnalyzer:
         else:
             total = 0.0
 
-        return {
-            "face": moment.face_score,
-            "motion": moment.motion_score,
-            "stability": moment.stability_score,
-            "total": total,
-        }
+        return _VisualScores(
+            face=moment.face_score,
+            motion=moment.motion_score,
+            stability=moment.stability_score,
+            total=total,
+            # WHY carried through: score_scene computes face geometry and this
+            # returned only the floats, so processing/transforms.py — which
+            # takes face_positions for framing — was fed nothing (#483).
+            face_positions=moment.face_positions,
+        )
 
     def _score_content(
         self,
@@ -697,11 +711,12 @@ class UnifiedSegmentAnalyzer:
 
             # Score using visual analysis only
             try:
-                visual_scores = self._score_visual(video_path, segment.start_time, segment.end_time)
-                segment.face_score = visual_scores.get("face", 0.0)
-                segment.motion_score = visual_scores.get("motion", 0.0)
-                segment.stability_score = visual_scores.get("stability", 0.0)
-                segment.visual_score = visual_scores.get("total", 0.0)
+                visual = self._score_visual(video_path, segment.start_time, segment.end_time)
+                segment.face_score = visual.face
+                segment.motion_score = visual.motion
+                segment.stability_score = visual.stability
+                segment.visual_score = visual.total
+                segment.face_positions = visual.face_positions
             except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError) as e:
                 logger.warning(f"Visual scoring failed: {e}")
                 # Not 0.5: the ceiling for a segment with no faces is exactly

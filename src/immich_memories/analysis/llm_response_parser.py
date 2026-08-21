@@ -22,6 +22,20 @@ logger = logging.getLogger(__name__)
 # Prompt for content analysis - optimized for small vision models like Moondream
 _PROMPT_HEAD = """Describe what you see in this image."""
 
+# WHY a closed vocabulary (#483): free text gave 39+ values including both
+# "indoor" and "indoors", plus "computer screen" and "restaurant patio". The
+# indoor/outdoor split is the one signal that survived every control in the
+# #475 period-classification study, so it has to be exact rather than
+# reconstructed from description keywords.
+SETTING_VALUES = (
+    "indoor_home",
+    "indoor_public",
+    "outdoor_nature",
+    "outdoor_urban",
+    "vehicle",
+    "water",
+)
+
 _PROMPT_TAIL = """Return JSON with these fields:
 - description: What is happening in this scene?
 - category: What is this mainly of? Exactly one of: people, animal, landscape, object, screen.
@@ -31,12 +45,17 @@ _PROMPT_TAIL = """Return JSON with these fields:
   toy, figurine, drawing or photo of one. Use "landscape" only for a wide outdoor view,
   never for a close-up of a thing. Use "object" for anything else.
 - subjects: What is in frame? (short lowercase nouns, e.g. ["child", "dog", "beach"])
-- setting: Where is it? (one or two words: beach, kitchen, park, car)
+- setting: Where is it? Exactly one of: indoor_home, indoor_public, outdoor_nature,
+  outdoor_urban, vehicle, water. Use "water" for in or on water (pool, sea, boat),
+  "vehicle" for inside a car, train or plane, "outdoor_urban" for streets and towns,
+  "outdoor_nature" for anything outdoors that is not built up.
+- activities: What are they doing? (short lowercase verbs, e.g. ["cycling", "riding"];
+  empty list when nothing specific is happening)
 - emotion: What is the mood? (one word: happy, calm, excited, playful, joyful, peaceful)
 - interestingness: How memorable is this moment? (0.0 to 1.0)
 - quality: How good is the image quality? (0.0 to 1.0)
 
-Example format: {"description": "...", "category": "people", "subjects": ["child", "sand"], "setting": "beach", "emotion": "...", "interestingness": 0.7, "quality": 0.8}
+Example format: {"description": "...", "category": "people", "subjects": ["child", "sand"], "setting": "outdoor_nature", "activities": ["digging"], "emotion": "...", "interestingness": 0.7, "quality": 0.8}
 
 JSON:"""
 
@@ -91,6 +110,7 @@ class ContentAnalysis:
     category: str = ""
     subjects: list[str] = field(default_factory=list)
     setting: str = ""
+    activities: list[str] = field(default_factory=list)
     emotion: str = ""
     interestingness: float = 0.5
     quality: float = 0.5
@@ -383,7 +403,13 @@ class ContentAnalyzer:
         description = str(data.get("description", ""))[:MAX_STR]
         subjects = [str(s)[:MAX_STR] for s in data.get("subjects", [])[:MAX_LIST]]
         category = str(data.get("category", ""))[:MAX_STR]
-        setting = str(data.get("setting", ""))[:MAX_STR]
+        # An unlisted value is dropped rather than stored: a model that ignores
+        # the enum must not quietly reintroduce free text (#483).
+        raw_setting = str(data.get("setting", "")).strip().lower()
+        setting = raw_setting if raw_setting in SETTING_VALUES else ""
+        activities = [
+            str(a).strip().lower()[:MAX_STR] for a in data.get("activities", [])[:MAX_LIST]
+        ]
         emotion = emotion[:MAX_STR]
 
         raw_interest = float(data.get("interestingness", 0.5))
@@ -396,6 +422,7 @@ class ContentAnalyzer:
             subjects=subjects,
             category=category,
             setting=setting,
+            activities=activities,
             emotion=emotion,
             interestingness=interestingness,
             quality=quality,

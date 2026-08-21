@@ -563,14 +563,12 @@ class TestUnifiedAnalyzerIntegration:
             call_count = [0]
 
             def score_side_effect(*args, **kwargs):
+                from immich_memories.analysis.unified_analyzer import _VisualScores
+
                 call_count[0] += 1
                 scores = [0.5, 0.9, 0.7]  # Middle segment is best
-                return {
-                    "face": scores[call_count[0] % 3],
-                    "motion": scores[call_count[0] % 3],
-                    "stability": scores[call_count[0] % 3],
-                    "total": scores[call_count[0] % 3],
-                }
+                score = scores[call_count[0] % 3]
+                return _VisualScores(face=score, motion=score, stability=score, total=score)
 
             mock_score.side_effect = score_side_effect
 
@@ -679,7 +677,7 @@ class TestScoreVisualExcludesAudio:
 
         # Visual score = weighted average of face, motion, stability ONLY
         expected = (0.9 * 0.35 + 0.6 * 0.20 + 0.3 * 0.15) / (0.35 + 0.20 + 0.15)
-        assert abs(result["total"] - expected) < 0.001
+        assert abs(result.total - expected) < 0.001
 
 
 class TestBestSegmentOverlapHandling:

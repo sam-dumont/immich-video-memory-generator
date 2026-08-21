@@ -278,14 +278,18 @@ class TestBuildContentAnalysis:
         assert result.quality == pytest.approx(0.5)
 
     def test_setting_field(self):
-        data = {"setting": "indoor kitchen"}
+        """setting is a closed vocabulary since #483 — free text is dropped."""
+        data = {"setting": "outdoor_nature"}
         result = ContentAnalyzer._build_content_analysis(data, "happy")
-        assert result.setting == "indoor kitchen"
+        assert result.setting == "outdoor_nature"
 
-    def test_truncates_long_setting(self):
-        data = {"setting": "s" * 600}
-        result = ContentAnalyzer._build_content_analysis(data, "")
-        assert len(result.setting) == 500
+    def test_free_text_setting_is_dropped_not_truncated(self):
+        """Truncation was the right answer for free text; for an enum, a value
+        outside the list is simply not a value."""
+        assert (
+            ContentAnalyzer._build_content_analysis({"setting": "indoor kitchen"}, "").setting == ""
+        )
+        assert ContentAnalyzer._build_content_analysis({"setting": "s" * 600}, "").setting == ""
 
 
 class TestParseContentResponse:

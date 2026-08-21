@@ -20,7 +20,8 @@ from immich_memories.config_models import AnalysisConfig, AudioContentConfig
 
 # Hard-coded rather than compared against the constant: comparing against the
 # constant would pass even if both changed together, which is the regression this
-# guards.
+# guards. Updating this literal is therefore a deliberate act — it means the
+# prompt genuinely changed and every analysis from here on differs (#483).
 TODAYS_PROMPT = """Describe what you see in this image.
 
 Return JSON with these fields:
@@ -32,12 +33,17 @@ Return JSON with these fields:
   toy, figurine, drawing or photo of one. Use "landscape" only for a wide outdoor view,
   never for a close-up of a thing. Use "object" for anything else.
 - subjects: What is in frame? (short lowercase nouns, e.g. ["child", "dog", "beach"])
-- setting: Where is it? (one or two words: beach, kitchen, park, car)
+- setting: Where is it? Exactly one of: indoor_home, indoor_public, outdoor_nature,
+  outdoor_urban, vehicle, water. Use "water" for in or on water (pool, sea, boat),
+  "vehicle" for inside a car, train or plane, "outdoor_urban" for streets and towns,
+  "outdoor_nature" for anything outdoors that is not built up.
+- activities: What are they doing? (short lowercase verbs, e.g. ["cycling", "riding"];
+  empty list when nothing specific is happening)
 - emotion: What is the mood? (one word: happy, calm, excited, playful, joyful, peaceful)
 - interestingness: How memorable is this moment? (0.0 to 1.0)
 - quality: How good is the image quality? (0.0 to 1.0)
 
-Example format: {"description": "...", "category": "people", "subjects": ["child", "sand"], "setting": "beach", "emotion": "...", "interestingness": 0.7, "quality": 0.8}
+Example format: {"description": "...", "category": "people", "subjects": ["child", "sand"], "setting": "outdoor_nature", "activities": ["digging"], "emotion": "...", "interestingness": 0.7, "quality": 0.8}
 
 JSON:"""
 

@@ -24,6 +24,25 @@ This works with anything that speaks the OpenAI chat completions API:
 3. The LLM response is parsed into a score
 4. That score is weighted and added to the overall [interest score](./clip-selection-scoring.md)
 
+### What the model returns per segment
+
+| field | what it is |
+|---|---|
+| `description` | what is happening in the scene |
+| `category` | exactly one of `people`, `animal`, `landscape`, `object`, `screen` — drives the subject policy |
+| `subjects` | short lowercase nouns in frame (`["child", "dog", "beach"]`) |
+| `setting` | exactly one of `indoor_home`, `indoor_public`, `outdoor_nature`, `outdoor_urban`, `vehicle`, `water` |
+| `activities` | short lowercase verbs (`["cycling", "riding"]`), empty when nothing specific is happening |
+| `emotion` | one word mood, used for music selection |
+| `interestingness`, `quality` | 0.0–1.0 |
+
+`setting` and `activities` are closed/structured on purpose: they describe *what kind of period* a
+memory covers, which free text cannot answer reliably. A value outside the `setting` list is
+dropped rather than stored, so a model that ignores the vocabulary cannot reintroduce free text.
+
+Analysis is per-period and on demand: when the fields change, `ANALYSIS_VERSION` is bumped and each
+pool re-analyzes itself the next time a memory covers it. Nothing sweeps the whole library.
+
 ## LLM Title Generation
 
 Instead of generic "TWO WEEKS IN SPAIN, SUMMER 2025" template titles, the app feeds your trip's raw GPS data to a local LLM and gets back something like "Sous les falaises de grès" or "Odyssée le long de la côte". It works in any language and classifies your trip pattern too.

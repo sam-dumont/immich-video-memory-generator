@@ -454,7 +454,7 @@ class TestScoreVisualZeroWeights:
 
         analyzer = _make_analyzer(scorer=scorer)
         result = analyzer._score_visual(Path("/fake.mp4"), 0.0, 5.0)
-        assert result["total"] == 0.0
+        assert result.total == 0.0
 
 
 class TestScoreContentBranches:
