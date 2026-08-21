@@ -71,7 +71,7 @@ class PipelineConfig:
     target_clips: int = 120  # Target number of clips to select
     # Verify passes (#468): re-analyze shipped fallback-scored clips and
     # re-select, until nothing shipping is a guess or the budget is spent.
-    max_refinement_passes: int = 3
+    max_refinement_passes: int = 10
     # The judge (#468/#463): a selected clip below the floor never ships,
     # and the chronological ending cannot be the one weak clip in the
     # timeline (weakest member AND below this share of the mean score).
