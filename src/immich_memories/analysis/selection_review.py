@@ -3,7 +3,7 @@
 The mechanical judge sees scores; it cannot see that two clips are the same
 birthday candles twice, or that one clip breaks the set's feel. This pass
 shows the LLM the FULL cut — every clip's raw description, emotion, setting,
-subjects and transcript, in timeline order — and asks which clips are
+subjects and audio, in timeline order — and asks which clips are
 redundant or clash with the whole. Raw data in, not pre-digested stats: the
 model finds the patterns.
 
@@ -51,12 +51,16 @@ def _ask(prompt: str, llm_config: LLMConfig, timeout_seconds: int) -> str:
 
 
 def _clip_line(index: int, member: ClipWithSegment) -> str:
+    from immich_memories.generate_privacy import clip_location_name
+
     clip = member.clip
     parts = [f"Clip {index}:"]
-    when = getattr(clip, "date", None)
-    if when:
-        parts.append(f"date={when}")
-    where = getattr(clip, "location_name", None)
+    # WHY read through asset: date and place live on the Immich asset, not on
+    # VideoClipInfo — reading them off the clip silently sent nothing (#475).
+    taken = getattr(clip.asset, "file_created_at", None)
+    if taken:
+        parts.append(f"date={taken.date().isoformat()}")
+    where = clip_location_name(getattr(clip.asset, "exif_info", None))
     if where:
         parts.append(f"place={where}")
     parts.append(f"score={member.score:.2f}")
@@ -66,7 +70,6 @@ def _clip_line(index: int, member: ClipWithSegment) -> str:
         ("setting", "llm_setting"),
         ("subjects", "llm_subjects"),
         ("heard", "audio_categories"),
-        ("transcript", "transcript"),
     ):
         value = getattr(clip, attr, None)
         if value:

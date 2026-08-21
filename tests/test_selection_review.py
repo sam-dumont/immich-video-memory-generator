@@ -74,3 +74,38 @@ class TestReviewSelection:
             drops = review_selection(_selection(), LLMConfig())
 
         assert len(drops) <= 1  # 20% of 3, floored, min 1
+
+
+class TestTheClipLineCarriesRealFields:
+    """Found by the #475 investigation: _clip_line read `date`, `location_name`
+    and `transcript` off VideoClipInfo, which has none of them — three of the
+    fields the prompt claims to send were silently absent. Place in particular
+    is the evidence a "does this set hang together" question needs."""
+
+    def test_date_and_place_reach_the_prompt(self):
+        from datetime import UTC, datetime
+
+        from immich_memories.api.models import ExifInfo
+
+        member = _member("a-1", "Kids on the sand")
+        member.clip.asset.file_created_at = datetime(2025, 8, 14, tzinfo=UTC)
+        member.clip.asset.exif_info = ExifInfo(city="Jette", country="Belgium")
+        selection = [member, _member("a-2", "Ferry crossing"), _member("a-3", "Dinner")]
+
+        # WHY: the LLM call is the external boundary; we inspect the prompt
+        with patch(
+            "immich_memories.analysis.selection_review._ask", return_value='{"drop": []}'
+        ) as ask:
+            review_selection(selection, LLMConfig())
+
+        prompt = ask.call_args[0][0]
+        assert "2025-08-14" in prompt
+        assert "Jette, Belgium" in prompt
+
+    def test_a_clip_without_exif_still_renders(self):
+        with patch(
+            "immich_memories.analysis.selection_review._ask", return_value='{"drop": []}'
+        ) as ask:
+            review_selection(_selection(), LLMConfig())
+
+        assert "Clip 1:" in ask.call_args[0][0]
