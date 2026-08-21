@@ -49,13 +49,11 @@ _PROMPT_TAIL = """Return JSON with these fields:
   outdoor_urban, vehicle, water. Use "water" for in or on water (pool, sea, boat),
   "vehicle" for inside a car, train or plane, "outdoor_urban" for streets and towns,
   "outdoor_nature" for anything outdoors that is not built up.
-- activities: What are they doing? (short lowercase verbs, e.g. ["cycling", "riding"];
-  empty list when nothing specific is happening)
 - emotion: What is the mood? (one word: happy, calm, excited, playful, joyful, peaceful)
 - interestingness: How memorable is this moment? (0.0 to 1.0)
 - quality: How good is the image quality? (0.0 to 1.0)
 
-Example format: {"description": "...", "category": "people", "subjects": ["child", "sand"], "setting": "outdoor_nature", "activities": ["digging"], "emotion": "...", "interestingness": 0.7, "quality": 0.8}
+Example format: {"description": "...", "category": "people", "subjects": ["child", "sand"], "setting": "outdoor_nature", "emotion": "...", "interestingness": 0.7, "quality": 0.8}
 
 JSON:"""
 
@@ -110,7 +108,6 @@ class ContentAnalysis:
     category: str = ""
     subjects: list[str] = field(default_factory=list)
     setting: str = ""
-    activities: list[str] = field(default_factory=list)
     emotion: str = ""
     interestingness: float = 0.5
     quality: float = 0.5
@@ -407,9 +404,6 @@ class ContentAnalyzer:
         # the enum must not quietly reintroduce free text (#483).
         raw_setting = str(data.get("setting", "")).strip().lower()
         setting = raw_setting if raw_setting in SETTING_VALUES else ""
-        activities = [
-            str(a).strip().lower()[:MAX_STR] for a in data.get("activities", [])[:MAX_LIST]
-        ]
         emotion = emotion[:MAX_STR]
 
         raw_interest = float(data.get("interestingness", 0.5))
@@ -422,7 +416,6 @@ class ContentAnalyzer:
             subjects=subjects,
             category=category,
             setting=setting,
-            activities=activities,
             emotion=emotion,
             interestingness=interestingness,
             quality=quality,
