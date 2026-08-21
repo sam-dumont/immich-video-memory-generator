@@ -35,12 +35,18 @@ Below is every clip in timeline order, with everything we can see and hear.
 
 Judge the SET as a whole: feel, coherence, variety. Drop a clip when it is
 
-- REDUNDANT: the same moment or scene is already in the set,
+- REDUNDANT: the same moment, scene or kind of shot is already in the set.
+  Self-portraits and mirror shots repeat hard — three of them from three days
+  is one idea shown three times, however different the days were.
 - CLASHING: it breaks the feel the rest of the set has,
 - NOT A MEMORY: it records a thing rather than a moment — an object or a
   product photographed on its own, a screen or a video game, a document or
   a receipt, an empty room, a photo taken to remember information rather
   than an occasion.
+
+A memory of a trip or an occasion is not only the people in it. If every
+clip is a person facing the camera, say so by dropping the weakest of them:
+where they were is part of what happened.
 
 A clip with no description has not been analysed yet. That says nothing about
 whether it is any good: never drop a clip for missing information, and never
