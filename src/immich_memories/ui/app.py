@@ -592,9 +592,13 @@ app.add_api_route("/health/ready", _readiness_handler, methods=["GET"])
 
 
 def _check_login_rate_limit(request: Request) -> JSONResponse | None:
-    """Stash client IP and return 429 if rate-limited."""
+    """Return 429 if the client is rate-limited.
+
+    Deliberately writes nothing: NiceGUI persists any non-empty `storage.user`
+    to a file keyed by a cookie the caller may not send, and expires only tab
+    storage. The login page reads the same IP off `client.ip` instead.
+    """
     client_ip = request.client.host if request.client else "unknown"
-    app.storage.user["_client_ip"] = client_ip
     if is_rate_limited(client_ip):
         return JSONResponse({"detail": "Too many failed login attempts"}, status_code=429)
     return None
@@ -753,6 +757,15 @@ def initialize_app() -> None:
 app.on_startup(initialize_app)
 
 
+def _expire_session_storage() -> None:
+    """Drop the session files NiceGUI persists and never expires."""
+    from nicegui.storage import Storage
+
+    from immich_memories.ui.session_storage import sweep_expired_user_storage
+
+    sweep_expired_user_storage(Storage.path, ttl_hours=get_config().auth.session_ttl_hours)
+
+
 async def _session_cleanup_loop() -> None:
     """Periodically clean up stale sessions."""
     from immich_memories.ui.state import cleanup_stale_sessions
@@ -760,12 +773,14 @@ async def _session_cleanup_loop() -> None:
     while True:
         await asyncio.sleep(900)  # 15 minutes
         cleanup_stale_sessions()
+        _expire_session_storage()
 
 
 def _start_cleanup_task() -> None:
     asyncio.ensure_future(_session_cleanup_loop())
 
 
+app.on_startup(_expire_session_storage)
 app.on_startup(_start_cleanup_task)
 app.on_startup(lambda: asyncio.ensure_future(automation_scheduler.run_forever()))
 
