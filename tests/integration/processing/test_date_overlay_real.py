@@ -94,7 +94,9 @@ def grey_portrait(tmp_path_factory) -> Path:
     return out
 
 
-def test_a_vertical_caption_sits_above_the_platform_chrome(grey_portrait: Path) -> None:
+def test_a_portrait_caption_hugs_the_bottom_corner(grey_portrait: Path) -> None:
+    """v4 review decision: portrait mirrors landscape — close to each corner,
+    inset 5.5% of the short side, not pushed above the platform chrome."""
     plain = _first_frame(grey_portrait, width=360, height=640)
     captioned = _first_frame(
         grey_portrait, width=360, height=640, caption=ClipCaption(date="5 Jan 2026")
@@ -103,11 +105,10 @@ def test_a_vertical_caption_sits_above_the_platform_chrome(grey_portrait: Path) 
     changed = np.argwhere(np.any(plain != captioned, axis=-1))
     assert changed.size, "overlay changed nothing"
 
+    inset = round(360 * 0.055)
     lowest = changed[:, 0].max()
-    chrome_top = 640 * (1 - 0.15)
-    assert lowest < chrome_top, (
-        f"caption reaches row {lowest}; the platform UI starts around {chrome_top:.0f}"
-    )
+    assert lowest <= 640 - inset + 2, f"caption at row {lowest} crosses the corner inset"
+    assert lowest >= 640 * 0.8, f"caption at row {lowest} floats far above the corner"
 
 
 def test_a_place_with_an_apostrophe_reaches_the_screen(tmp_path: Path) -> None:
@@ -135,7 +136,7 @@ def test_a_place_with_an_apostrophe_reaches_the_screen(tmp_path: Path) -> None:
     ]
     escaped = caption_filter("L'Aquila", 640, 360)
     reference = tmp_path / "ref.txt"
-    reference.write_text("L’Aquila")
+    reference.write_text("L’AQUILA")  # captions render uppercase (v4)
     tail = escaped.split(":fontsize=", 1)[1]
 
     ours, theirs = tmp_path / "ours.png", tmp_path / "theirs.png"
