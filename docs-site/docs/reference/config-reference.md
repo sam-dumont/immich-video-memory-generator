@@ -545,6 +545,9 @@ auth:
   client_id: ""                  # Supports ${ENV_VAR} expansion
   client_secret: ""              # Supports ${ENV_VAR} expansion; empty for public clients
   scope: "openid email profile"
+  allowed_emails: []             # OIDC: addresses that may sign in. Empty = anyone the IdP
+  allowed_domains: []            # authenticates. Domains match exactly: example.com does
+                                 # not admit sub.example.com
   auto_launch: false             # Skip login page, redirect straight to IdP
   button_text: "Sign in with SSO"
 

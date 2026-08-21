@@ -78,6 +78,25 @@ def extract_user_from_token(token: dict[str, Any]) -> tuple[str, str]:
     return (username, email)
 
 
+def is_user_allowed(email: str, auth_config: AuthConfig) -> bool:
+    """Whether an authenticated account may actually sign in.
+
+    An empty allow-list admits anyone, which is what a single-user tenant wants
+    and is the behaviour this had before the option existed. Once either list is
+    set, an account with no email claim is refused rather than exempt -- an IdP
+    that omits the claim must not become a way past the list.
+    """
+    emails = {e.strip().casefold() for e in auth_config.allowed_emails}
+    domains = {d.strip().lstrip("@.").casefold() for d in auth_config.allowed_domains}
+    if not emails and not domains:
+        return True
+
+    address = email.strip().casefold()
+    if not address or "@" not in address:
+        return False
+    return address in emails or address.rpartition("@")[2] in domains
+
+
 def get_end_session_url(auth_config: AuthConfig) -> str | None:
     """Return the IdP's end_session_endpoint, or None if unavailable."""
     if _oauth_instance is None:

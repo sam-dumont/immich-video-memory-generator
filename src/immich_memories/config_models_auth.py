@@ -9,6 +9,13 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from immich_memories.config_models import expand_env_vars
 
 
+def _check_email_entries(entries: list[str]) -> None:
+    """A domain in allowed_emails would silently never match; say so instead."""
+    bad = [e for e in entries if "@" not in e]
+    if bad:
+        raise ValueError(f"allowed_emails entries must be addresses, got {bad!r}")
+
+
 class AuthConfig(BaseModel):
     """Authentication settings for the web UI."""
 
@@ -28,6 +35,12 @@ class AuthConfig(BaseModel):
     auto_launch: bool = False
     button_text: str = "Sign in with SSO"
 
+    # Who may sign in, once the IdP has authenticated them. Empty means anyone
+    # the IdP accepts, which is right for a single-user tenant and wrong for a
+    # shared realm -- the option exists so that choice is a visible one.
+    allowed_emails: list[str] = Field(default_factory=list)
+    allowed_domains: list[str] = Field(default_factory=list)
+
     # Trusted header SSO
     user_header: str = "Remote-User"
     email_header: str = "Remote-Email"
@@ -42,7 +55,9 @@ class AuthConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> AuthConfig:
-        """Validate that required fields are set for the active provider."""
+        """Check the allow-list, then the fields the active provider requires."""
+        _check_email_entries(self.allowed_emails)
+
         if not self.enabled:
             return self
 

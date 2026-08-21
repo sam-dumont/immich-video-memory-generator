@@ -85,6 +85,7 @@ advanced:
     issuer_url: https://your-idp.example.com
     client_id: immich-memories
     client_secret: ${OIDC_CLIENT_SECRET}  # or leave empty for public clients
+    allowed_domains: [example.com]        # who may sign in; empty = anyone the IdP accepts
     scope: openid email profile            # default
     session_ttl_hours: 24                  # default
     auto_launch: false    # if true, redirect directly to IdP (skips the login page)
@@ -92,6 +93,33 @@ advanced:
 ```
 
 The `issuer_url` is used to auto-discover the OIDC configuration from `/.well-known/openid-configuration`.
+
+:::warning Your IdP decides *who you are*, not *whether you may enter*
+
+With no allow-list, anyone your IdP authenticates becomes a full admin of this app —
+including the Immich API key. That is fine for a personal tenant, and wrong for a shared
+Keycloak/Authentik realm or an Auth0 tenant with social sign-ups, where "anyone the IdP
+authenticates" means anyone with a Google account.
+
+Set at least one of these:
+
+```yaml
+advanced:
+  auth:
+    allowed_emails:
+      - me@example.com
+    allowed_domains:
+      - example.com          # exact: does NOT admit sub.example.com
+```
+
+Either list admits, so you can allow a whole domain plus a named outside contractor.
+Matching ignores case. Once either list is set, an account whose token carries no `email`
+claim is refused — otherwise an IdP that omits the claim would be a way around the list.
+
+Someone who signs in successfully but is not on the list gets a "Not authorised" page
+naming the account they used, not a redirect back to the login page — their IdP session is
+still valid, so a redirect would simply loop.
+:::
 
 **authlib is required for OIDC.** Install with:
 
@@ -297,6 +325,8 @@ All fields under `advanced.auth` with their defaults:
 | `enabled` | `false` | Enable authentication |
 | `provider` | `basic` | Provider: `basic`, `oidc`, or `header` |
 | `session_ttl_hours` | `24` | How long a session lasts (1–720) |
+| `allowed_emails` | `[]` | OIDC: addresses permitted to sign in. Empty allows any account the IdP authenticates |
+| `allowed_domains` | `[]` | OIDC: email domains permitted to sign in. Exact match — `example.com` does not admit `sub.example.com` |
 | `username` | `""` | Basic auth: username |
 | `password` | `""` | Basic auth: password (supports `${ENV_VAR}`) |
 | `issuer_url` | `""` | OIDC: IdP base URL (autodiscovery via `/.well-known/openid-configuration`; supports `${ENV_VAR}`) |

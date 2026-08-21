@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import os
 import secrets
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
 import httpx
 from nicegui import app, ui
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from immich_memories import __version__
 from immich_memories.automation.in_process_scheduler import automation_scheduler
@@ -709,12 +710,31 @@ async def _oidc_authorize(request: Request) -> RedirectResponse:
     return await oauth.oidc.authorize_redirect(request, redirect_uri)
 
 
+_NOT_AUTHORISED_PAGE = """<!doctype html>
+<meta charset="utf-8"><title>Not authorised</title>
+<style>
+  body {{ font-family: system-ui, sans-serif; background: #111; color: #eee;
+         display: grid; place-items: center; height: 100vh; margin: 0; }}
+  div {{ max-width: 32rem; padding: 2rem; text-align: center; }}
+  code {{ background: #222; padding: .15em .4em; border-radius: .25em; }}
+</style>
+<div>
+  <h1>Not authorised</h1>
+  <p>You signed in as <code>{who}</code>, but that account is not on this
+     server's allow-list.</p>
+  <p>Ask the administrator to add you to <code>auth.allowed_emails</code> or
+     <code>auth.allowed_domains</code>.</p>
+</div>
+"""
+
+
 async def _oidc_callback(request: Request) -> Response:
     """Handle OIDC callback — exchange code for tokens and create session."""
     config = get_config()
     from immich_memories.ui.auth_oidc import (
         create_oidc_client,
         extract_user_from_token,
+        is_user_allowed,
         validate_callback_origin,
     )
 
@@ -727,6 +747,11 @@ async def _oidc_callback(request: Request) -> Response:
     # Our auth session goes in app.storage.user (NiceGUI's store).
     token = await oauth.oidc.authorize_access_token(request)
     username, email = extract_user_from_token(token)
+    if not is_user_allowed(email, config.auth):
+        # WHY a page and not a redirect to /login: the IdP session is still
+        # valid, so /login would send them straight back here and loop.
+        logger.warning("OIDC login refused for %s: not in the allow-list", email or username)
+        return HTMLResponse(_NOT_AUTHORISED_PAGE.format(who=html.escape(email or username)), 403)
     set_session(app.storage.user, username=username, provider="oidc", email=email)
     return RedirectResponse("/")
 
