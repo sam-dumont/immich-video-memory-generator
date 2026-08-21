@@ -35,8 +35,12 @@ ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
 # exported as a pip constraints file: the image resolves to exactly the
 # versions the suite ran against.
 RUN pip install --no-cache-dir "uv==0.8.17" && \
-    uv export --frozen --all-extras --no-emit-project --no-hashes \
+    uv export --frozen --all-extras --no-emit-project \
+        --no-emit-package immich-memories-music --no-hashes \
         --format requirements-txt -o /constraints.txt
+# pip rejects unnamed (path/editable) constraint lines; only pins may remain
+RUN grep -E '^[A-Za-z0-9_.[-]+==' /constraints.txt > /constraints.pins && \
+    mv /constraints.pins /constraints.txt
 
 # The bundled-music package is built from the tree so the image does not depend
 # on it being published yet; pip then resolves the `music` extra against it.
