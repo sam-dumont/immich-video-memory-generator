@@ -150,7 +150,7 @@ def caption_filters(
         f":fontsize={font_size}"
         f":fontcolor={colour}"
         f":shadowcolor=black@0.6:shadowx=2:shadowy=2"
-        f":box=1:boxcolor=black@0.3:boxborderw={max(4, round(font_size * 0.35))}"
+        f":box=1:boxcolor=black@0.5:boxborderw={max(4, round(font_size * 0.35))}"
         f":y=h-th-{bottom}"
     )
     if font_path:
