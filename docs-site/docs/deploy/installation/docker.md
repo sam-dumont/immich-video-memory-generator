@@ -137,7 +137,7 @@ Inside Immich's own compose stack, `immich-server` listens on **2283** (every Im
 | `IMMICH_API_KEY` | Yes | Immich API key |
 | `IMMICH_MEMORIES_PRESET` | No | `fast` = CPU-only/NAS profile (1080p h264, fast encoder, static titles, no speech pass, favorites-first analysis). Explicit settings win. See the [NAS guide](../common-setups/nas-only.md#one-switch-preset-fast). |
 | `IMMICH_MEMORIES_OUTPUT__DIRECTORY` | Recommended | Set to `/app/output` so videos land in the mounted output directory (default is `~/Videos/Memories` inside the container). |
-| `IMMICH_MEMORIES_STORAGE_SECRET` | No | Session secret for the web UI. Auto-generated if not set. Set this explicitly to keep sessions across restarts. It does not make multiple replicas supported. |
+| `IMMICH_MEMORIES_STORAGE_SECRET` | No | Session secret for the web UI. Auto-generated into the config volume if not set, so sessions already survive a restart. Set it explicitly to share one secret across hosts. It does not make multiple replicas supported. |
 | `IMMICH_MEMORIES_LLM__BASE_URL` | No | LLM endpoint (any OpenAI-compatible API). On its own it does nothing for scoring — see the next row. |
 | `IMMICH_MEMORIES_LLM__MODEL` | No | LLM model name (e.g., `qwen2.5-vl`) |
 | `IMMICH_MEMORIES_CONTENT_ANALYSIS__ENABLED` | No | `true` to actually use the LLM for clip scoring. Off by default. |
@@ -179,6 +179,12 @@ services:
 ```
 
 The root `docker-compose.yml` has these options as a commented section: uncomment to enable.
+
+Nothing else needs a writable root. The web UI keeps its session storage under
+`/home/immich/.immich-memories/.nicegui` on the config volume (the image sets
+`NICEGUI_STORAGE_PATH`), so logins survive both a read-only root and a restart.
+Don't repoint that variable at `/tmp` or another tmpfs — sessions would work
+until the next restart and then quietly log everyone out.
 
 :::caution tmpfs size for 4K
 The default tmpfs is 2 GB. If you're generating 4K videos, FFmpeg intermediates can exceed that. Either increase to 8 GB (`/tmp:size=8G`) or remove the tmpfs entry and let the container write to disk.

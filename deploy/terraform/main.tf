@@ -178,7 +178,9 @@ resource "kubernetes_deployment_v1" "this" {
 
           security_context {
             allow_privilege_escalation = false
-            read_only_root_filesystem  = false # NiceGUI writes under /app/.nicegui
+            # Sessions now live on the data volume, but ~/.cache still needs
+            # a writable mount before this can flip to true (#445).
+            read_only_root_filesystem = false
 
             capabilities {
               drop = ["ALL"]
