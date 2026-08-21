@@ -195,6 +195,49 @@ reads `cancelled`. So an OOM still fails the gate, and only genuinely superseded
 runs pass through. Check `gh run list --branch <branch>` to confirm a newer run
 covered the cancelled one.
 
+### A reclaimed job is an unverified job
+
+This is the one that costs real time, so it goes before the mechanics.
+
+A cancelled job is a scheduling artefact, and it is tempting to treat it as
+noise to re-run at leisure. It is not noise. **It is a job that did not run**, so
+merging while one is outstanding means merging on the strength of whichever jobs
+happened to survive.
+
+That is not hypothetical. `TestPhotoPlaceCaption` reached `main` broken and
+stayed there through two PRs:
+
+| PR | macOS job | merged |
+|---|---|---|
+| introduced the test | **failure** | yes |
+| shortened the test | **all three cancelled — never ran** | yes |
+| next merge | — | failure finally surfaced on main |
+
+The test had never once passed on a macOS runner. Nothing reported it, because
+the job was either red-and-ignored or reclaimed, and every branch cut from main
+afterwards inherited a red macOS job that was nobody's own change.
+
+Before merging, check that each job **ran**, not just that nothing is red.
+
+### Hardware encoders are absent on CI
+
+`_render_single_photo` picks its encoder from `check_zscale_available()`: with
+zscale it uses `hevc_videotoolbox`, without it `libx264`. VideoToolbox writes no
+file inside CI's macOS VM, and the function returns `None` when encoding
+produces nothing — so the failure surfaces as whatever the test asserted next,
+not as an encoder error.
+
+Any unit test that reaches the photo encoder needs the software path forced:
+
+```python
+monkeypatch.setattr(
+    "immich_memories.processing.hdr_utilities.check_zscale_available", lambda: False
+)
+```
+
+It passes on a real Mac either way, which is what makes this one easy to merge
+and hard to notice.
+
 ### Re-running
 
 `gh run rerun <run-id> --failed` is rejected while any job in the run is still
