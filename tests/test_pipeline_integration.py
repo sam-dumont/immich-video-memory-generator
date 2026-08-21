@@ -438,3 +438,145 @@ class TestVerifyPass:
         result = pipeline.run_selection(candidates, verify=False)
 
         assert result.selected_clips
+
+
+class TestSelectionJudge:
+    """#468 judge slice / #463: after verification, selection must pass a
+    global quality gate — no sub-floor member ships, and the chronological
+    ending cannot be the one weak clip in the timeline."""
+
+    def _make_pipeline(self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache):
+        return SmartPipeline(
+            client=mock_immich_client,
+            analysis_cache=mock_analysis_cache,
+            thumbnail_cache=mock_thumbnail_cache,
+            config=PipelineConfig(target_clips=10, avg_clip_duration=5.0),
+            analysis_config=AnalysisConfig(),
+            app_config=Config(),
+        )
+
+    def _analyzed(self, clip, score: float):
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment
+
+        return ClipWithSegment(clip=clip, start_time=0.0, end_time=5.0, score=score)
+
+    def test_a_sub_floor_clip_never_ships(
+        self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+    ):
+        """A clip whose REAL score is junk (feet, pocket, ground) is dropped
+        and the refiner refills from the pool."""
+        pipeline = self._make_pipeline(
+            mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+        )
+        clips = _make_clips(4)
+        # room for everything: only a floor, not budget pressure, can reject
+        pipeline.config.target_duration_seconds = 25.0
+        candidates = [
+            self._analyzed(clips[0], 0.8),
+            self._analyzed(clips[1], 0.7),
+            self._analyzed(clips[2], 0.05),  # junk, but analyzed — floor's job
+            self._analyzed(clips[3], 0.75),
+        ]
+
+        result = pipeline.run_selection(candidates)
+
+        assert clips[2].asset.id not in {c.asset.id for c in result.selected_clips}
+
+    def test_a_weak_ending_is_replaced_by_reselection(
+        self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+    ):
+        """The chronologically-last clip was both the minimum and far below the
+        mean — the most visible slot must not hold the worst clip (#463)."""
+        pipeline = self._make_pipeline(
+            mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+        )
+        clips = _make_clips(4)
+        pipeline.config.target_duration_seconds = 15.0
+        weak_last = clips[3]
+        candidates = [
+            self._analyzed(clips[0], 0.9),
+            self._analyzed(clips[1], 0.85),
+            self._analyzed(clips[2], 0.8),
+            self._analyzed(weak_last, 0.4),  # above floor, but a weak ending
+        ]
+
+        result = pipeline.run_selection(candidates)
+
+        selected = sorted(result.selected_clips, key=lambda c: c.asset.file_created_at)
+        assert selected, "selection must not be empty"
+        assert selected[-1].asset.id != weak_last.asset.id
+
+    def test_a_uniformly_scored_selection_is_left_alone(
+        self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+    ):
+        """The judge fixes outliers; it must not churn a healthy selection."""
+        pipeline = self._make_pipeline(
+            mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+        )
+        clips = _make_clips(3)
+        candidates = [self._analyzed(c, 0.7) for c in clips]
+
+        result = pipeline.run_selection(candidates)
+
+        assert {c.asset.id for c in result.selected_clips} == {c.asset.id for c in clips}
+
+
+class TestHolisticReview:
+    """#468: one LLM pass over the finished cut — redundancy the scores
+    cannot see. Optional by construction: no LLM, no changes."""
+
+    def _make_pipeline(self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache, **cfg):
+        return SmartPipeline(
+            client=mock_immich_client,
+            analysis_cache=mock_analysis_cache,
+            thumbnail_cache=mock_thumbnail_cache,
+            config=PipelineConfig(target_clips=10, avg_clip_duration=5.0),
+            analysis_config=AnalysisConfig(),
+            app_config=Config(**cfg),
+        )
+
+    def _analyzed(self, clip, score: float = 0.7):
+        from immich_memories.analysis.smart_pipeline import ClipWithSegment
+
+        return ClipWithSegment(clip=clip, start_time=0.0, end_time=5.0, score=score)
+
+    def test_llm_flagged_redundancy_is_dropped(
+        self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+    ):
+        from unittest.mock import patch
+
+        pipeline = self._make_pipeline(
+            mock_immich_client,
+            mock_analysis_cache,
+            mock_thumbnail_cache,
+            content_analysis={"enabled": True},
+        )
+        clips = _make_clips(3)
+
+        # WHY: the LLM call is the external boundary
+        with patch(
+            "immich_memories.analysis.selection_review.review_selection",
+            return_value=[clips[1].asset.id],
+        ):
+            result = pipeline.run_selection([self._analyzed(c) for c in clips])
+
+        assert clips[1].asset.id not in {c.asset.id for c in result.selected_clips}
+
+    def test_without_content_analysis_no_llm_is_consulted(
+        self, mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+    ):
+        from unittest.mock import patch
+
+        pipeline = self._make_pipeline(
+            mock_immich_client, mock_analysis_cache, mock_thumbnail_cache
+        )
+        clips = _make_clips(3)
+
+        # WHY: review_selection wraps the external LLM; consulting it here is the bug
+        with patch(
+            "immich_memories.analysis.selection_review.review_selection",
+            side_effect=AssertionError("LLM must not be consulted"),
+        ):
+            result = pipeline.run_selection([self._analyzed(c) for c in clips])
+
+        assert len(result.selected_clips) == 3

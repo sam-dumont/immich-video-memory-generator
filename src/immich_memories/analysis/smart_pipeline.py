@@ -13,6 +13,7 @@ import contextlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -71,6 +72,11 @@ class PipelineConfig:
     # Verify passes (#468): re-analyze shipped fallback-scored clips and
     # re-select, until nothing shipping is a guess or the budget is spent.
     max_refinement_passes: int = 3
+    # The judge (#468/#463): a selected clip below the floor never ships,
+    # and the chronological ending cannot be the one weak clip in the
+    # timeline (weakest member AND below this share of the mean score).
+    judge_floor_score: float = 0.30
+    judge_boundary_ratio: float = 0.6
     avg_clip_duration: float = 5.0  # Average clip duration in final video
     target_duration_seconds: float | None = None  # Explicit strict content budget
     hdr_only: bool = False  # Only select HDR clips
@@ -359,6 +365,84 @@ class SmartPipeline:
             result = self.refiner.phase_refine(list(by_id.values()), self.tracker)
         return result
 
+    def _judge_selection(
+        self,
+        analyzed: list[ClipWithSegment],
+        result: PipelineResult,
+    ) -> tuple[PipelineResult, list[ClipWithSegment]]:
+        """Global quality gate (#468): drop offenders, let selection refill.
+
+        Two rules, both acting by exclusion so every distribution rule in the
+        refiner keeps its say: a member below the floor never ships (feet,
+        pocket, ground — #463's shipped 0.21), and the chronological ending
+        cannot be both the weakest member and far below the mean, because the
+        last clip is the most visible slot in the video.
+        """
+        by_id = {c.clip.asset.id: c for c in analyzed}
+        for _ in range(max(1, self.config.max_refinement_passes)):
+            selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
+            if len(selected) < 2:
+                break
+            offenders = self._judge_offenders(selected)
+            if not offenders:
+                break
+            logger.info(
+                "Judge: dropping %d clip(s) below the quality gate, re-selecting",
+                len(offenders),
+            )
+            analyzed = [c for c in analyzed if c.clip.asset.id not in offenders]
+            by_id = {c.clip.asset.id: c for c in analyzed}
+            if not analyzed:
+                break
+            result = self.refiner.phase_refine(analyzed, self.tracker)
+        return result, analyzed
+
+    def _judge_offenders(self, selected: list[ClipWithSegment]) -> set[str]:
+        """Members failing the gate. Favorites are exempt from both rules —
+        the user explicitly chose them, and "Starting with ALL favorites" is
+        the selection's oldest contract."""
+        judgeable = [s for s in selected if not getattr(s.clip.asset, "is_favorite", False)]
+        offenders = {s.clip.asset.id for s in judgeable if s.score < self.config.judge_floor_score}
+        scores = [s.score for s in selected]
+        mean_score = sum(scores) / len(scores)
+        ending = max(
+            selected,
+            key=lambda s: s.clip.asset.file_created_at or datetime.min.replace(tzinfo=UTC),
+        )
+        if (
+            len(selected) > 2
+            and not getattr(ending.clip.asset, "is_favorite", False)
+            and ending.score == min(scores)
+            and ending.score < mean_score * self.config.judge_boundary_ratio
+        ):
+            offenders.add(ending.clip.asset.id)
+        return offenders
+
+    def _holistic_review(
+        self,
+        analyzed: list[ClipWithSegment],
+        result: PipelineResult,
+    ) -> PipelineResult:
+        """One LLM pass over the finished cut (#468): redundancy and feel.
+
+        The mechanical judge sees scores; only something reading the
+        descriptions can see the same birthday candles twice. Optional by
+        construction — no LLM, no drops, selection unchanged.
+        """
+        if not self._app_config.content_analysis.enabled:
+            return result
+        from immich_memories.analysis.selection_review import review_selection
+
+        by_id = {c.clip.asset.id: c for c in analyzed}
+        selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
+        drops = review_selection(selected, self._app_config.llm)
+        if not drops:
+            return result
+        remaining = [c for c in analyzed if c.clip.asset.id not in set(drops)]
+        if not remaining:
+            return result
+        return self.refiner.phase_refine(remaining, self.tracker)
+
     def _semantic_cache_miss_count(self, clips: list[VideoClipInfo]) -> int:
         """Count clips that need work under the exact active semantic model."""
         from immich_memories.analysis.cache_projection import is_compatible_analysis_cache
@@ -433,6 +517,9 @@ class SmartPipeline:
             result = self.refiner.phase_refine(analyzed, self.tracker)
             if verify:
                 result = self._verify_selection(analyzed, result)
+            result, analyzed = self._judge_selection(analyzed, result)
+            if verify:
+                result = self._holistic_review(analyzed, result)
             self.tracker.finish()
             return result
         except (
