@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from collections import deque
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,7 @@ from immich_memories.processing.ffmpeg_prober import FFmpegProber
 from immich_memories.processing.ffmpeg_runner import write_frames_to_ffmpeg
 from immich_memories.processing.hdr_utilities import _get_colorspace_filter
 from immich_memories.processing.scaling_utilities import aggregate_mood_from_clips
+from immich_memories.titles.ffmpeg_pipe import StderrDrain
 
 logger = logging.getLogger(__name__)
 
@@ -150,15 +153,15 @@ class TitleInserter:
             return
         first = clips[0]
         if first.duration > trim_seconds + 1.0:
-            clips[0] = AssemblyClip(
-                path=first.path,
+            # WHY replace(): AssemblyClip carries sixteen fields and rebuilding
+            # it by hand copied eight, silently dropping a user-set
+            # rotation_override, the has_music flag the ducking pass depends on,
+            # has_speech, is_photo and the planned outgoing_transition. Trimming
+            # a clip should change its start and its length, nothing else.
+            clips[0] = replace(
+                first,
                 duration=first.duration - trim_seconds,
-                date=first.date,
-                asset_id=first.asset_id,
                 input_seek=trim_seconds,
-                latitude=first.latitude,
-                longitude=first.longitude,
-                location_name=first.location_name,
             )
 
     def _build_title_config(
@@ -268,11 +271,11 @@ class TitleInserter:
                 if ending_clip and last.duration > source_seconds + 1.0
                 else last.duration
             )
-            final_clips[-1] = AssemblyClip(
-                path=last.path,
+            # Same here: the hand-built copy also lost the clip's place, so a
+            # cut ending on a located clip dropped its caption.
+            final_clips[-1] = replace(
+                last,
                 duration=trim_dur,
-                date=last.date,
-                asset_id=last.asset_id,
                 outgoing_transition="cut" if use_content_bg else None,
             )
         final_clips.append(
@@ -347,28 +350,37 @@ class TitleInserter:
             str(output_path),
         ]  # fmt: skip
 
+        # WHY exactly this many and no more: only the last 0.5s is written,
+        # matching what SlowmoBackgroundReader reads — the ending starts where
+        # the clip ends, with no going back in time. Buffering two seconds to
+        # use half of one cost 4x the memory for nothing, and at 4K/60 a
+        # 120-frame rgb24 ring is about 3 GB inside the module whose whole
+        # design goal is flat memory.
+        source_frames = max(1, fps // 2)
+
         try:
-            # WHY: read ALL frames, keep only the last fps*1 frames
-            all_frames: list[bytes] = []
+            tail_frames: deque[bytes] = deque(maxlen=source_frames)
             for frame in decoder:
-                all_frames.append(bytes(frame.data))
-                # Keep only last 2 seconds worth of frames
-                if len(all_frames) > fps * 2:
-                    all_frames.pop(0)
+                tail_frames.append(bytes(frame.data))
 
             proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-            # WHY: write exactly the last 0.5s (source_seconds) to match
-            # what SlowmoBackgroundReader reads. The ending starts where
-            # the clip ends — no "go back in time".
-            source_frames = max(1, fps // 2)  # 0.5s
-            for frame_data in all_frames[-source_frames:]:
-                proc.stdin.write(frame_data)  # type: ignore[union-attr]
-            proc.stdin.close()  # type: ignore[union-attr]
-            proc.wait(timeout=30)
+            # WHY drained: writing frames to stdin while stderr fills its pipe
+            # buffer deadlocks both sides — the failure titles/ffmpeg_pipe.py
+            # exists to document. Without it this stalls until the 30s wait
+            # expires and the ending is silently dropped.
+            drain = StderrDrain(proc).start()
+            try:
+                for frame_data in tail_frames:
+                    proc.stdin.write(frame_data)  # type: ignore[union-attr]
+                proc.stdin.close()  # type: ignore[union-attr]
+                proc.wait(timeout=30)
+            finally:
+                stderr_tail = drain.stop()
 
             if proc.returncode == 0 and output_path.exists():
                 logger.info(f"Pre-rendered last clip for ending: {output_path}")
                 return output_path
+            logger.warning("Pre-render of last clip failed: %s", stderr_tail[-400:])
         except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.warning("Failed to pre-render last clip: %s", e, exc_info=True)
         return None
