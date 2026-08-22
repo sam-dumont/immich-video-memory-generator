@@ -98,11 +98,20 @@ def _find_sole_month_representatives(
     for c in clips:
         month_counts[c.clip.asset.file_created_at.strftime("%Y-%m")] += 1
 
-    protected_ids = {
-        c.clip.asset.id
-        for c in clips
-        if month_counts[c.clip.asset.file_created_at.strftime("%Y-%m")] == 1
-    } | (extra_ids or set())
+    protected_ids = (
+        {
+            c.clip.asset.id
+            for c in clips
+            if month_counts[c.clip.asset.file_created_at.strftime("%Y-%m")] == 1
+        }
+        # A favorite is protected too. Coverage fillers exist because nothing
+        # better was known about a period; a favorite is the user saying
+        # outright what they want. Measured on a real February: the protected
+        # set overflowed the runtime on fillers alone, the scaler fell back to
+        # distributing only those, and 19 favorites became 2.
+        | {c.clip.asset.id for c in clips if c.clip.asset.is_favorite}
+        | (extra_ids or set())
+    )
 
     sole = [c for c in clips if c.clip.asset.id in protected_ids]
     regular = [c for c in clips if c.clip.asset.id not in protected_ids]
@@ -151,6 +160,9 @@ class ClipScaler:
             logger.info(
                 "Protected clips exceed the strict duration budget; retaining a distributed subset"
             )
+            # Favorites and coverage compete on equal footing here: both are
+            # protected, and a distributed subset keeps a period from vanishing
+            # while still spending most of the runtime on starred clips.
             return _fit_temporally_distributed(sole_reps, max_allowed)
 
         if sole_reps:
