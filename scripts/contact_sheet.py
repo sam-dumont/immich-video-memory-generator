@@ -60,6 +60,20 @@ def _collect(rows: list[dict]):
     SmartPipeline.run_selection = spy
 
 
+def _mean_luma(image) -> int | str:
+    """Average brightness of a tile, 0-255.
+
+    On the sheets 18% of tiles read as black or near-black. Whether that is
+    the pipeline choosing dark clips or the thumbnail showing something the
+    clip does not is a different bug each way, so the sheet reports it.
+    """
+    if image is None:
+        return "?"
+    import numpy as np
+
+    return int(np.asarray(image.convert("L"), dtype="float32").mean())
+
+
 def _thumbnail(client, asset_id: str):
     """Fetch a tile, trying the sizes Immich offers before giving up.
 
@@ -120,6 +134,7 @@ def _draw(rows: list[dict], label: str, subtitle: str, out: Path) -> Path:
             x = PAD + (i % COLUMNS) * (THUMB_W + PAD)
             y = HEADER_H + (i // COLUMNS) * (THUMB_H + LABEL_H + PAD)
             image = _thumbnail(client, row["id"])
+            row["lum"] = _mean_luma(image)
             if image is None:
                 # A blank tile is unreviewable, so say why rather than leave a
                 # grey square the reader has to guess at.
@@ -141,7 +156,7 @@ def _draw(rows: list[dict], label: str, subtitle: str, out: Path) -> Path:
             res = f"{row['res']}p" if row["res"] else "?"
             draw.text(
                 (x + 2, y + THUMB_H + 20),
-                f"    {res}  score {row['score']}  {row['city'][:14]}",
+                f"    {res}  score {row['score']}  lum {row.get('lum', '?')}  {row['city'][:12]}",
                 (230, 120, 110) if row["res"] and row["res"] < 1080 else (140, 140, 148),
                 font=font,
             )

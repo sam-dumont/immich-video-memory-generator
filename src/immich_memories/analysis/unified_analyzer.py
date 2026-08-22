@@ -76,6 +76,12 @@ class _VisualScores:
     face_positions: list[tuple[float, float]] | None = None
 
 
+# What a flawless photo scores once the default photo penalty is applied.
+_PHOTO_CEILING = 0.8
+# The base a video must reach before its bonuses may carry it past that.
+_VIDEO_ADVANTAGE_BASE = 0.7
+
+
 class UnifiedSegmentAnalyzer:
     """Unified video segment analysis with audio-aware boundaries.
 
@@ -672,13 +678,18 @@ class UnifiedSegmentAnalyzer:
         # Extra bonus for segments with laughter (highly desirable for memories)
         laughter_bonus = self._laughter_bonus if segment.has_laughter else 0.0
 
-        # Bounded to the range the score claims to be in. Photos are clamped
-        # to 1.0 and then carry the 20% penalty, so they top out at 0.80;
-        # letting a video reach 1.25 on bonuses puts the two on different
-        # scales in a pool where they compete directly, which is a bigger
-        # advantage than the penalty ever intended. Seen on a real sheet: a
-        # clip scoring 1.01.
-        return min(1.0, base_score + llm_bonus + cut_bonus + laughter_bonus)
+        total = base_score + llm_bonus + cut_bonus + laughter_bonus
+
+        # Video is meant to outrank photo — a perfect photo reaches 0.80 after
+        # its penalty, and video is allowed past 1.0 so an equally good video
+        # wins. The advantage has to be earned by the footage itself, though.
+        # Paid flat, a mediocre clip collected the same bonuses as a great one:
+        # a 0.65 video reached 0.90 and beat a 0.85 photo that was plainly
+        # better. Below the bar, bonuses may still order videos against each
+        # other but cannot lift one past what a photo can reach.
+        if base_score < _VIDEO_ADVANTAGE_BASE:
+            return min(total, _PHOTO_CEILING)
+        return total
 
     def _score_segments_visual_only(
         self,
