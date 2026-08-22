@@ -63,3 +63,52 @@ def test_a_non_favorite_video_is_preferred_over_relaxing_the_photo_ratio() -> No
 
     assert resolved.tier != "photo_ratio_70"
     assert [c.clip.asset.id for c in resolved.items] == ["video-1"]
+
+
+def test_a_repeated_moment_is_conceded_after_extra_photos() -> None:
+    """Order of concessions, worst-last (#489).
+
+    A real August filled a 10.9s gap by relaxing temporal spacing and shipped
+    four near-identical videos of the same field, two of them four minutes
+    apart. A bounded number of extra stills reads better than the same shot
+    twice, so the photo ratio is now spent first.
+    """
+    from datetime import UTC, datetime
+
+    from immich_memories.analysis.clip_refiner import (
+        _BackfillContext,
+        _resolve_backfill_candidates,
+    )
+    from immich_memories.analysis.smart_pipeline import ClipWithSegment, PipelineConfig
+    from immich_memories.api.models import AssetType
+    from tests.conftest import make_clip
+
+    taken = datetime(2016, 8, 15, 5, 32, tzinfo=UTC)
+
+    def member(asset_id: str, when: datetime, is_photo: bool) -> ClipWithSegment:
+        clip = make_clip(asset_id, duration=6.0, file_created_at=when)
+        if is_photo:
+            clip.asset.type = AssetType.IMAGE
+        return ClipWithSegment(clip=clip, start_time=0.0, end_time=4.0, score=0.5)
+
+    same_moment_video = member("v-again", taken.replace(minute=36), is_photo=False)
+    another_photo = member("p-elsewhere", datetime(2016, 8, 20, 12, 0, tzinfo=UTC), is_photo=True)
+
+    context = _BackfillContext(
+        config=PipelineConfig(target_clips=10, avg_clip_duration=5.0),
+        selected_count=4,
+        photo_count=2,
+        non_favorite_count=4,
+        temporal_window=5.0,
+        occupied_moments=[taken],
+    )
+
+    resolved = _resolve_backfill_candidates(
+        [same_moment_video, another_photo],
+        context=context,
+        active_photo_limit=0.5,
+        remaining_budget=10.0,
+    )
+
+    assert resolved.tier != "temporal_spacing", "a repeat is the last thing to concede"
+    assert any(c.clip.asset.id == "p-elsewhere" for c in resolved.items)
