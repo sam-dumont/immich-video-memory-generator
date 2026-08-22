@@ -28,7 +28,7 @@ def is_same_moment(
     if when is None or time_window_minutes <= 0:
         return False
     window = time_window_minutes * 60
-    return any(abs((when - other).total_seconds()) < window for other in others)
+    return any(abs((when - other).total_seconds()) <= window for other in others)
 
 
 def group_by_moment(
@@ -49,7 +49,10 @@ def group_by_moment(
     window = time_window_minutes * 60
     for clip in dated:
         when = clip.clip.asset.file_created_at
-        if groups and (when - groups[-1][-1].clip.asset.file_created_at).total_seconds() < window:
+        # Inclusive: two shots exactly the window apart are the same moment.
+        # A 2023 hike put 08:34 and 08:39 in a cut five minutes apart, which a
+        # strict comparison called distinct by one second of arithmetic.
+        if groups and (when - groups[-1][-1].clip.asset.file_created_at).total_seconds() <= window:
             groups[-1].append(clip)
         else:
             groups.append([clip])

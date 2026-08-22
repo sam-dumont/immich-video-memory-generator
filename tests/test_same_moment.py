@@ -57,3 +57,16 @@ def test_backfill_can_tell_a_moment_is_already_in_the_cut() -> None:
     assert is_same_moment(datetime(2019, 12, 25, 15, 56, tzinfo=UTC), taken, 5.0)
     assert not is_same_moment(datetime(2019, 12, 25, 16, 10, tzinfo=UTC), taken, 5.0)
     assert not is_same_moment(None, taken, 5.0)
+
+
+def test_exactly_one_window_apart_is_still_one_moment() -> None:
+    """A 2023 hike put 08:34 and 08:39 in the same cut.
+
+    Five minutes apart, on a five-minute window, called distinct by one second
+    of arithmetic.
+    """
+    kept = ClipScaler().deduplicate_temporal_clusters(
+        [_at(8, 34, score=0.64), _at(8, 39, score=0.48)], time_window_minutes=5.0
+    )
+
+    assert len(kept) == 1
