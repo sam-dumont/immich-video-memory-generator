@@ -1065,7 +1065,10 @@ class TestPhaseRefine:
 
         photo_count = sum(1 for clip in result.selected_clips if clip.asset.type.value == "IMAGE")
         selected_duration = sum(end - start for start, end in result.clip_segments.values())
-        assert selected_duration == pytest.approx(59.0)
+        # 60, not 59: once nothing admissible is left, the strongest clips are
+        # held a little longer to close the last second rather than the cut
+        # simply stopping short of its target.
+        assert selected_duration == pytest.approx(60.0)
         assert photo_count / len(result.selected_clips) <= 0.70
 
     def test_backfill_accepts_one_small_overrun_instead_of_leaving_a_hole(self):
