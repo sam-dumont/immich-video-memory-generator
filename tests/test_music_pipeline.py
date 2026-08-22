@@ -491,3 +491,63 @@ class TestCreatePipelineAPIMode:
         assert len(pipeline._generators) == 1
         assert isinstance(pipeline._generators[0], MusicGenBackend)
         assert isinstance(pipeline._stem_separator, MusicGenBackend)
+
+
+class TestBackendChainSurvivesAnyFailure:
+    """A chain exists so one backend failing is not the run failing.
+
+    It caught only RuntimeError and OSError, so a hosted backend raising
+    httpx.HTTPStatusError — neither of those — escaped the chain and took the
+    run with it, without ever trying the next backend.
+    """
+
+    async def test_an_http_error_falls_through_to_the_next_backend(self, tmp_path: Path) -> None:
+        import httpx
+
+        class HttpFailingGenerator(FakeGenerator):
+            async def generate(self, request: Any, progress_callback: Any = None) -> Any:
+                del request, progress_callback
+                raise httpx.HTTPStatusError(
+                    "502 from the music service",
+                    request=httpx.Request("POST", "http://example.invalid/generate"),
+                    response=httpx.Response(502),
+                )
+
+        pipeline = MusicPipeline(
+            generators=[HttpFailingGenerator("Hosted"), FakeGenerator("Local")],
+            stem_separator=None,
+        )
+
+        async with pipeline:
+            result = await pipeline.generate_music_for_video(
+                timeline=VideoTimeline(), output_dir=tmp_path, num_versions=1
+            )
+
+        assert len(result.versions) == 1, "the second backend should have produced the music"
+
+    async def test_each_version_separates_into_its_own_directory(self, tmp_path: Path) -> None:
+        """Demucs writes fixed stem filenames, so a shared directory loses versions."""
+        seen: list[Path] = []
+
+        class RecordingSeparator(FakeStemSeparator):
+            async def separate_stems(
+                self,
+                audio_path: Path,
+                output_dir: Path,
+                progress_callback: Any | None = None,
+            ) -> MusicStems:
+                del progress_callback
+                seen.append(output_dir)
+                return await FakeStemSeparator.separate_stems(self, audio_path, output_dir)
+
+        pipeline = MusicPipeline(
+            generators=[FakeGenerator("Gen")], stem_separator=RecordingSeparator()
+        )
+
+        async with pipeline:
+            await pipeline.generate_music_for_video(
+                timeline=VideoTimeline(), output_dir=tmp_path, num_versions=3
+            )
+
+        assert len(seen) >= 2, "expected a separation per version"
+        assert len(seen) == len(set(seen)), f"versions shared a stem directory: {seen}"
