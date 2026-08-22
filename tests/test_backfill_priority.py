@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from immich_memories.analysis.clip_refiner import (
+from immich_memories.analysis.clip_backfill import (
     _BackfillContext,
     _resolve_backfill_candidates,
 )
@@ -75,7 +75,7 @@ def test_a_repeated_moment_is_conceded_after_extra_photos() -> None:
     """
     from datetime import UTC, datetime
 
-    from immich_memories.analysis.clip_refiner import (
+    from immich_memories.analysis.clip_backfill import (
         _BackfillContext,
         _resolve_backfill_candidates,
     )

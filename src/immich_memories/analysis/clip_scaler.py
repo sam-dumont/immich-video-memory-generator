@@ -305,10 +305,18 @@ class ClipScaler:
         self,
         clips: list[ClipWithSegment],
         time_window_minutes: float = 10.0,
+        keep_per_moment: int = 1,
     ) -> list[ClipWithSegment]:
-        """Remove near-duplicate clips from the same time period.
+        """Thin near-duplicate clips from the same moment.
 
-        Keeps only the best-scored clip per time window bucket.
+        One per moment suits a sixty-second month. On a five-minute trip it is
+        wrong: several distinct shots minutes apart are what a travel day looks
+        like, and cutting to one left selection too short to fill the runtime,
+        so duration backfill put the very clips this had just rejected back in.
+        Measured on a 967-asset trip: 39 clips in, 16 out, then backfill
+        rebuilt the cut to 55.
+
+        keep_per_moment lets the caller say how many a long memory can afford.
         """
         if not clips:
             return clips
@@ -317,14 +325,20 @@ class ClipScaler:
         removed_count = 0
         clusters_with_duplicates = 0
 
+        keep = max(1, keep_per_moment)
         for cluster_clips in group_by_moment(clips, time_window_minutes):
-            if len(cluster_clips) == 1:
-                result.append(cluster_clips[0])
+            if len(cluster_clips) <= keep:
+                result.extend(cluster_clips)
                 continue
 
             when = cluster_clips[0].clip.asset.file_created_at
-            best, removed = self._pick_best_from_cluster(str(when), cluster_clips)
-            result.append(best)
+            if keep == 1:
+                best, removed = self._pick_best_from_cluster(str(when), cluster_clips)
+                result.append(best)
+            else:
+                ranked = sorted(cluster_clips, key=lambda c: c.score, reverse=True)
+                result.extend(ranked[:keep])
+                removed = len(cluster_clips) - keep
             if removed > 0:
                 removed_count += removed
                 clusters_with_duplicates += 1

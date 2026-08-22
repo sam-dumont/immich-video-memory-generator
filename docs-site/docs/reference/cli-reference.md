@@ -173,6 +173,42 @@ immich-memories config [OPTIONS]
 **Arguments:**
 - `action` (choice)
 
+## `days-due`
+
+Show which discovered days have an anniversary about now.
+
+```bash
+immich-memories days-due [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--on` | datetime | - | The date to look around (default today) |
+| `--catalogue` | file | special-days.json |  |
+
+## `discover-days`
+
+Find days something happened on, and remember them for later.
+
+Meant to run occasionally rather than per generation: the point of a
+catalogue is a memory nobody asked for — five years to the day since
+the wedding — and that needs the days found in advance.
+
+Days inside a trip are skipped, since a trip memory already tells that
+story, and so are holidays, which have their own.
+
+```bash
+immich-memories discover-days [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--since` | integer | 2007 | First year to scan |
+| `--until` | integer | 2026 | Last year to scan |
+| `--per-year` | integer | 6 | Busiest candidates to ask about |
+| `--also-skip` | text | - | A holiday name or MM-DD this library keeps that the defaults miss |
+| `--out` | file | special-days.json | Where to write the catalogue |
+
 ## `export-project`
 
 Export project state for later editing.

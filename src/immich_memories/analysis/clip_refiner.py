@@ -6,8 +6,8 @@ Handles Phase 4: selecting, distributing, and refining the final clip selection.
 from __future__ import annotations
 
 import logging
+import math
 from collections import defaultdict
-from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -20,6 +20,16 @@ if TYPE_CHECKING:
     )
     from immich_memories.api.models import VideoClipInfo
 
+from immich_memories.analysis.clip_backfill import (
+    _build_backfill_context,
+    _choose_backfill_candidate,
+    _hold_best_clips_longer,
+    _initial_backfill_photo_limit,
+    _log_backfill_resolution,
+    _log_backfill_summary,
+    _occupied_moments,
+    _resolve_backfill_candidates,
+)
 from immich_memories.analysis.clip_distribution import (
     _EVENT_CLIPS_PER_PERIOD,
     _event_periods_of,
@@ -27,9 +37,13 @@ from immich_memories.analysis.clip_distribution import (
     _partition_photos_per_day,
     _period_key,
     enforce_photo_cap,
+    photos_per_day_for,
 )
 
 logger = logging.getLogger(__name__)
+
+# No single moment may supply more than this share of a cut.
+_MAX_SHARE_FROM_ONE_MOMENT = 0.25
 
 # An event is defined by CONTRAST with the rest of the period, not by an
 # absolute share: in a flat month every day clears any fixed threshold and the
@@ -39,310 +53,23 @@ logger = logging.getLogger(__name__)
 # room for the ordinary days that make it a month.
 
 
-@dataclass(frozen=True)
-class _BackfillContext:
-    """Selection state used to evaluate one duration-backfill candidate."""
-
-    config: PipelineConfig
-    selected_count: int
-    photo_count: int
-    non_favorite_count: int
-    temporal_window: float
-    occupied_moments: list[datetime]
+# What a memory may do when the material cannot fill its runtime well, rather
+# than padding with whatever is left.
 
 
-@dataclass(frozen=True)
-class _BackfillCandidates:
-    """Resolved candidate set plus any constraint relaxation that produced it."""
+def _clips_per_moment(target_clips: int, moments: int) -> int:
+    """How many clips one moment may contribute.
 
-    items: list[ClipWithSegment]
-    photo_limit: float | None
-    tier: str = "strict"
-    used_overrun: bool = False
-
-
-def _is_backfill_candidate_admissible(
-    candidate: ClipWithSegment,
-    *,
-    context: _BackfillContext,
-    photo_limit: float | None,
-    remaining_budget: float,
-    enforce_favorite_ratio: bool = True,
-    enforce_temporal_spacing: bool = True,
-) -> bool:
-    """Return whether a leftover preserves active selection constraints."""
-    from immich_memories.analysis.clip_scaler import is_same_moment
-    from immich_memories.api.models import AssetType
-
-    candidate_duration = candidate.end_time - candidate.start_time
-    if candidate_duration <= 0 or candidate_duration > remaining_budget + 1e-6:
-        return False
-
-    if enforce_temporal_spacing and is_same_moment(
-        candidate.clip.asset.file_created_at,
-        context.occupied_moments,
-        context.temporal_window,
-    ):
-        return False
-
-    new_total = context.selected_count + 1
-    if (
-        candidate.clip.asset.type == AssetType.IMAGE
-        and photo_limit is not None
-        and (context.photo_count + 1) / new_total > photo_limit + 1e-9
-    ):
-        return False
-
-    if (
-        enforce_favorite_ratio
-        and not candidate.clip.asset.is_favorite
-        and context.config.prioritize_favorites
-        and context.config.max_non_favorite_ratio < 1.0
-    ):
-        favorite_count = context.selected_count - context.non_favorite_count
-        max_non_favorites = max(
-            int(new_total * context.config.max_non_favorite_ratio),
-            max(0, context.config.target_clips - favorite_count),
-        )
-        if context.non_favorite_count + 1 > max_non_favorites:
-            return False
-
-    return True
-
-
-def _admissible_backfill_candidates(
-    available: list[ClipWithSegment],
-    *,
-    context: _BackfillContext,
-    photo_limit: float | None,
-    remaining_budget: float,
-    enforce_favorite_ratio: bool = True,
-    enforce_temporal_spacing: bool = True,
-) -> list[ClipWithSegment]:
-    """Filter leftovers through the active backfill constraints."""
-    return [
-        candidate
-        for candidate in available
-        if _is_backfill_candidate_admissible(
-            candidate,
-            context=context,
-            photo_limit=photo_limit,
-            remaining_budget=remaining_budget,
-            enforce_favorite_ratio=enforce_favorite_ratio,
-            enforce_temporal_spacing=enforce_temporal_spacing,
-        )
-    ]
-
-
-def _resolve_backfill_candidates(
-    available: list[ClipWithSegment],
-    *,
-    context: _BackfillContext,
-    active_photo_limit: float | None,
-    remaining_budget: float,
-) -> _BackfillCandidates:
-    """Find candidates by progressively relaxing editorial constraints."""
-    exact = _admissible_backfill_candidates(
-        available,
-        context=context,
-        photo_limit=active_photo_limit,
-        remaining_budget=remaining_budget,
-    )
-    if exact:
-        return _BackfillCandidates(exact, active_photo_limit)
-
-    # Order of concessions, worst-last. Loosening who appears (non-favorites)
-    # barely shows. Admitting a few more stills shows a little. Admitting a
-    # clip from a moment already in the cut shows most of all: a real August
-    # filled a 10.9s gap that way and shipped four near-identical videos of
-    # the same field, two of them four minutes apart. The photo ratio used to
-    # be spent last, on the reasoning that stills turn a film into a
-    # slideshow — true, but a bounded number of stills reads better than the
-    # same shot twice.
-    relaxed_favorites = _admissible_backfill_candidates(
-        available,
-        context=context,
-        photo_limit=active_photo_limit,
-        remaining_budget=remaining_budget,
-        enforce_favorite_ratio=False,
-    )
-    if relaxed_favorites:
-        return _BackfillCandidates(relaxed_favorites, active_photo_limit, "favorite_ratio")
-
-    relaxed_photo_limit = active_photo_limit
-    if active_photo_limit is not None and active_photo_limit < 0.70:
-        relaxed_photo_limit = 0.70
-        relaxed_photos = _admissible_backfill_candidates(
-            available,
-            context=context,
-            photo_limit=relaxed_photo_limit,
-            remaining_budget=remaining_budget,
-            enforce_favorite_ratio=False,
-        )
-        if relaxed_photos:
-            return _BackfillCandidates(relaxed_photos, relaxed_photo_limit, "photo_ratio_70")
-
-    relaxed_temporal = _admissible_backfill_candidates(
-        available,
-        context=context,
-        photo_limit=relaxed_photo_limit,
-        remaining_budget=remaining_budget,
-        enforce_favorite_ratio=False,
-        enforce_temporal_spacing=False,
-    )
-    if relaxed_temporal:
-        return _BackfillCandidates(relaxed_temporal, relaxed_photo_limit, "temporal_spacing")
-
-    if relaxed_photo_limit is not None:
-        unlimited_photos = _admissible_backfill_candidates(
-            available,
-            context=context,
-            photo_limit=None,
-            remaining_budget=remaining_budget,
-            enforce_favorite_ratio=False,
-            enforce_temporal_spacing=False,
-        )
-        if unlimited_photos:
-            return _BackfillCandidates(unlimited_photos, None, "photo_ratio_unlimited")
-
-    overrun = _admissible_backfill_candidates(
-        available,
-        context=context,
-        photo_limit=None,
-        remaining_budget=remaining_budget + 2.0,
-        enforce_favorite_ratio=False,
-        enforce_temporal_spacing=False,
-    )
-    return _BackfillCandidates(
-        overrun,
-        None,
-        "bounded_overrun",
-        used_overrun=bool(overrun),
-    )
-
-
-def _choose_backfill_candidate(
-    candidates: list[ClipWithSegment],
-    *,
-    selected_dates: list[datetime],
-    photo_cap_bypassed: bool,
-) -> ClipWithSegment:
-    """Choose a constraint-safe leftover by type, favorite, spread, then score."""
-    from immich_memories.api.models import AssetType
-
-    def rank(item: ClipWithSegment) -> tuple[bool, bool, float, float]:
-        temporal_distance = min(
-            (
-                abs((item.clip.asset.file_created_at - date).total_seconds())
-                for date in selected_dates
-            ),
-            default=0.0,
-        )
-        # Favorite before the prefer-a-video rule: preferring footage is a
-        # heuristic about pacing, and a star is the user telling us directly.
-        return (
-            item.clip.asset.is_favorite,
-            photo_cap_bypassed and item.clip.asset.type != AssetType.IMAGE,
-            temporal_distance,
-            item.score,
-        )
-
-    return max(candidates, key=rank)
-
-
-def _initial_backfill_photo_limit(
-    config: PipelineConfig,
-    *,
-    photo_cap_bypassed: bool,
-) -> float | None:
-    """Return the strict photo limit, or no limit when scarcity bypasses it."""
-    if photo_cap_bypassed or config.photo_max_ratio >= 1.0:
-        return None
-    return config.photo_max_ratio
-
-
-def _occupied_moments(
-    selected: list[ClipWithSegment],
-    temporal_window: float,
-) -> list[datetime]:
-    """When the cut is already covered, so backfill cannot re-add a moment."""
-    if temporal_window <= 0:
-        return []
-    return [
-        item.clip.asset.file_created_at
-        for item in selected
-        if item.clip.asset.file_created_at is not None
-    ]
-
-
-def _build_backfill_context(
-    selected: list[ClipWithSegment],
-    *,
-    config: PipelineConfig,
-    temporal_window: float,
-    occupied_moments: list[datetime],
-) -> _BackfillContext:
-    """Summarize the changing selection state for candidate evaluation."""
-    from immich_memories.api.models import AssetType
-
-    return _BackfillContext(
-        config=config,
-        selected_count=len(selected),
-        photo_count=sum(1 for item in selected if item.clip.asset.type == AssetType.IMAGE),
-        non_favorite_count=sum(1 for item in selected if not item.clip.asset.is_favorite),
-        temporal_window=temporal_window,
-        occupied_moments=occupied_moments,
-    )
-
-
-def _log_backfill_resolution(
-    resolved: _BackfillCandidates,
-    *,
-    original_photo_limit: float,
-    remaining: float,
-    logged_tiers: set[str],
-) -> set[str]:
-    """Log each progressive relaxation at most once per selection."""
-    if not resolved.items or resolved.tier == "strict" or resolved.tier in logged_tiers:
-        return logged_tiers
-
-    messages = {
-        "photo_ratio_70": (
-            "relaxing photo ratio from %.0f%% to 70%%",
-            (original_photo_limit * 100,),
-        ),
-        "favorite_ratio": ("allowing additional non-favorites", ()),
-        "temporal_spacing": ("allowing a nearby moment", ()),
-        "photo_ratio_unlimited": ("allowing photos beyond the ratio cap", ()),
-        "bounded_overrun": ("accepting up to 2.0s runtime overrun", ()),
-    }
-    message, args = messages[resolved.tier]
-    logger.info("Post-filter backfill: %s to fill %.1fs gap", message % args, remaining)
-    logged_tiers.add(resolved.tier)
-    return logged_tiers
-
-
-def _log_backfill_summary(
-    *,
-    backfilled: int,
-    initial_duration: float,
-    total_duration: float,
-    max_duration: float,
-) -> None:
-    """Log the aggregate duration result after the backfill loop."""
-    if backfilled:
-        logger.info(
-            "Post-filter backfill: added %d leftover clips (%.1fs → %.1fs of %.1fs)",
-            backfilled,
-            initial_duration,
-            total_duration,
-            max_duration,
-        )
-    elif max_duration - total_duration > 0.5:
-        logger.info(
-            "Post-filter backfill: no valid leftover fits the remaining %.1fs",
-            max_duration - total_duration,
-        )
+    One suits a sixty-second month. A long memory thinned to one per moment
+    could not fill its runtime, and backfill restored the same clips by
+    relaxing constraints — so the rule scales with what the cut needs. Never
+    more than a quarter of it from a single moment, which is what keeps a
+    deduplicated slot from being refilled by its own duplicate.
+    """
+    if target_clips <= 0 or moments <= 0:
+        return 1
+    share = math.ceil(target_clips / moments)
+    return max(1, min(share, int(target_clips * _MAX_SHARE_FROM_ONE_MOMENT)))
 
 
 class ClipRefiner:
@@ -802,6 +529,32 @@ class ClipRefiner:
             if temporal_window > 0 and chosen.clip.asset.file_created_at is not None:
                 occupied_moments.append(chosen.clip.asset.file_created_at)
 
+        # Nothing admissible is left, and the cut is still short. Hold the
+        # strongest clips a little longer rather than reaching for whatever
+        # remains — a weak clip nobody would choose is a worse answer to four
+        # missing seconds than two extra seconds of the best one.
+        gap = max_duration - total_duration
+        if gap > 0.5:
+            gained = _hold_best_clips_longer(selected, gap)
+            total_duration += gained
+            if gained > 0.05:
+                logger.info(
+                    "Held %d strong clip(s) %.1fs longer rather than padding the cut",
+                    sum(1 for _ in selected),
+                    gained,
+                )
+
+        # And if it is still short, let it be short. Below this the material
+        # genuinely could not fill the runtime, and a recap that ends early
+        # beats one padded with clips that earned no place in it.
+        shortfall = max_duration - total_duration
+        if shortfall > 0.5:
+            logger.info(
+                "Finishing %.0fs short of %.0fs: the pool had nothing better to add",
+                shortfall,
+                max_duration,
+            )
+
         _log_backfill_summary(
             backfilled=backfilled,
             initial_duration=initial_duration,
@@ -830,7 +583,17 @@ class ClipRefiner:
         # Measured before the per-day cap flattens every day into the same
         # narrow range (#488).
         event_periods = _event_periods_of(all_analyzed)
-        analyzed, _photo_overflow = _partition_photos_per_day(all_analyzed)
+        active_days = len(
+            {
+                c.clip.asset.file_created_at.date()
+                for c in all_analyzed
+                if c.clip.asset.file_created_at
+            }
+        )
+        analyzed, _photo_overflow = _partition_photos_per_day(
+            all_analyzed,
+            photos_per_day_for(self.config.target_clips, active_days),
+        )
         trace.record("per-day photo cap", all_analyzed, analyzed)
 
         target_with_buffer = int(self.config.target_clips * 1.2)
@@ -859,8 +622,16 @@ class ClipRefiner:
 
         if self.config.temporal_dedup_window_minutes > 0:
             before_dedup = selected
+            # How many clips one moment may keep depends on how many the cut
+            # needs: thinning to one left a long memory too short to fill, and
+            # backfill then restored the same clips by relaxing constraints.
+            from immich_memories.analysis.clip_scaler import group_by_moment
+
+            moments = len(group_by_moment(selected, self.config.temporal_dedup_window_minutes))
             selected = self.scaler.deduplicate_temporal_clusters(
-                selected, time_window_minutes=self.config.temporal_dedup_window_minutes
+                selected,
+                time_window_minutes=self.config.temporal_dedup_window_minutes,
+                keep_per_moment=_clips_per_moment(self.config.target_clips, moments),
             )
             trace.record("same-moment dedup", before_dedup, selected)
 
