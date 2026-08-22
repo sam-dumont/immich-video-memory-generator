@@ -6,76 +6,20 @@
       {
         "name": "ClipRefiner::_fill_empty_weeks",
         "complexity": 20,
-        "line_start": 508,
-        "line_end": 551,
+        "line_start": 527,
+        "line_end": 570,
         "line_complexities": [
-          {
-            "line": 518,
-            "complexity": 0
-          },
-          {
-            "line": 519,
-            "complexity": 1
-          },
-          {
-            "line": 520,
-            "complexity": 0
-          },
-          {
-            "line": 523,
-            "complexity": 0
-          },
-          {
-            "line": 524,
-            "complexity": 1
-          },
-          {
-            "line": 525,
-            "complexity": 0
-          },
-          {
-            "line": 528,
-            "complexity": 0
-          },
-          {
-            "line": 529,
-            "complexity": 0
-          },
-          {
-            "line": 531,
-            "complexity": 0
-          },
-          {
-            "line": 532,
-            "complexity": 0
-          },
-          {
-            "line": 533,
-            "complexity": 1
-          },
-          {
-            "line": 534,
-            "complexity": 0
-          },
-          {
-            "line": 535,
-            "complexity": 2
-          },
           {
             "line": 537,
             "complexity": 0
           },
           {
-            "line": 539,
-            "complexity": 0
-          },
-          {
-            "line": 540,
+            "line": 538,
             "complexity": 1
           },
           {
-            "line": 541,
-            "complexity": 2
+            "line": 539,
+            "complexity": 0
           },
           {
             "line": 542,
@@ -83,24 +27,80 @@
           },
           {
             "line": 543,
-            "complexity": 3
+            "complexity": 1
           },
           {
-            "line": 545,
-            "complexity": 4
+            "line": 544,
+            "complexity": 0
           },
           {
-            "line": 546,
-            "complexity": 5
+            "line": 547,
+            "complexity": 0
+          },
+          {
+            "line": 548,
+            "complexity": 0
+          },
+          {
+            "line": 550,
+            "complexity": 0
           },
           {
             "line": 551,
+            "complexity": 0
+          },
+          {
+            "line": 552,
+            "complexity": 1
+          },
+          {
+            "line": 553,
+            "complexity": 0
+          },
+          {
+            "line": 554,
+            "complexity": 2
+          },
+          {
+            "line": 556,
+            "complexity": 0
+          },
+          {
+            "line": 558,
+            "complexity": 0
+          },
+          {
+            "line": 559,
+            "complexity": 1
+          },
+          {
+            "line": 560,
+            "complexity": 2
+          },
+          {
+            "line": 561,
+            "complexity": 0
+          },
+          {
+            "line": 562,
+            "complexity": 3
+          },
+          {
+            "line": 564,
+            "complexity": 4
+          },
+          {
+            "line": 565,
+            "complexity": 5
+          },
+          {
+            "line": 570,
             "complexity": 0
           }
         ]
       }
     ],
-    "complexity": 119
+    "complexity": 121
   },
   {
     "path": "src/immich_memories/analysis/unified_budget.py",

@@ -6,6 +6,7 @@ Handles Phase 4: selecting, distributing, and refining the final clip selection.
 from __future__ import annotations
 
 import logging
+import math
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -31,6 +32,9 @@ from immich_memories.analysis.clip_distribution import (
 )
 
 logger = logging.getLogger(__name__)
+
+# No single moment may supply more than this share of a cut.
+_MAX_SHARE_FROM_ONE_MOMENT = 0.25
 
 # An event is defined by CONTRAST with the rest of the period, not by an
 # absolute share: in a flat month every day clears any fixed threshold and the
@@ -260,6 +264,21 @@ def _initial_backfill_photo_limit(
     if photo_cap_bypassed or config.photo_max_ratio >= 1.0:
         return None
     return config.photo_max_ratio
+
+
+def _clips_per_moment(target_clips: int, moments: int) -> int:
+    """How many clips one moment may contribute.
+
+    One suits a sixty-second month. A long memory thinned to one per moment
+    could not fill its runtime, and backfill restored the same clips by
+    relaxing constraints — so the rule scales with what the cut needs. Never
+    more than a quarter of it from a single moment, which is what keeps a
+    deduplicated slot from being refilled by its own duplicate.
+    """
+    if target_clips <= 0 or moments <= 0:
+        return 1
+    share = math.ceil(target_clips / moments)
+    return max(1, min(share, int(target_clips * _MAX_SHARE_FROM_ONE_MOMENT)))
 
 
 def _occupied_moments(
@@ -870,8 +889,16 @@ class ClipRefiner:
 
         if self.config.temporal_dedup_window_minutes > 0:
             before_dedup = selected
+            # How many clips one moment may keep depends on how many the cut
+            # needs: thinning to one left a long memory too short to fill, and
+            # backfill then restored the same clips by relaxing constraints.
+            from immich_memories.analysis.clip_scaler import group_by_moment
+
+            moments = len(group_by_moment(selected, self.config.temporal_dedup_window_minutes))
             selected = self.scaler.deduplicate_temporal_clusters(
-                selected, time_window_minutes=self.config.temporal_dedup_window_minutes
+                selected,
+                time_window_minutes=self.config.temporal_dedup_window_minutes,
+                keep_per_moment=_clips_per_moment(self.config.target_clips, moments),
             )
             trace.record("same-moment dedup", before_dedup, selected)
 
