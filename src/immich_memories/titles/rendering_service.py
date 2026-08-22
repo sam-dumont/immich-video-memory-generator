@@ -41,22 +41,52 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+# Taichi backends that are actually a GPU. "CPU" is a legitimate return from
+# init_taichi(), so anything not listed here means the Taichi renderer is
+# running on the processor.
+_GPU_BACKENDS = frozenset({"Metal", "CUDA", "Vulkan"})
+
+
 class RenderingService:
-    """Selects GPU or CPU renderer and creates title/map videos."""
+    """Selects the Taichi or PIL renderer and creates title/map videos."""
 
     def __init__(self, config: TitleScreenConfig) -> None:
         self.config = config
         self._use_gpu = False
+        self.backend: str | None = None
         if config.use_gpu_rendering and TAICHI_AVAILABLE:
-            backend = init_taichi()
-            if backend:
-                self._use_gpu = True
-                logger.info(f"GPU rendering enabled: {backend}")
-            else:
-                logger.info("GPU rendering unavailable, falling back to PIL")
+            self.backend = init_taichi()
+            self._use_gpu = self.backend is not None
+            self._log_backend()
+
+    def _log_backend(self) -> None:
+        """Say what is really about to render, not what was hoped for.
+
+        init_taichi() falls back to its CPU backend when Metal, CUDA and
+        Vulkan all fail to start, and returns the string "CPU". The old line
+        printed "GPU rendering enabled: CPU", so a container quietly rendering
+        titles on the processor looked identical in the log to one using the
+        card — and titles are the most expensive stage there is.
+        """
+        if self.backend is None:
+            logger.info("Taichi unavailable, falling back to the PIL renderer")
+        elif self.backend in _GPU_BACKENDS:
+            logger.info("Title rendering on GPU: %s", self.backend)
+        else:
+            logger.warning(
+                "Title rendering on CPU: Taichi found no GPU backend and fell back to %s. "
+                "Titles will be markedly slower than the footage around them.",
+                self.backend,
+            )
 
     @property
     def use_gpu(self) -> bool:
+        """Whether the Taichi renderer is in use — not whether it has a GPU.
+
+        Kept as-is because it selects the renderer, and the Taichi path is the
+        right choice even on CPU: it is the only one that can do the animated
+        slow-mo deblur. Read `backend` to find out what is underneath.
+        """
         return self._use_gpu
 
     def create_title_video(
