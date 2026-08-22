@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -159,6 +160,12 @@ def resolve_inclusion(flag: bool | None, *, config_enabled: bool) -> bool:
     return flag
 
 
+def _arm_selection_trace(path: Path | None) -> None:
+    """Tell run_selection where to write its stage-by-stage report."""
+    if path:
+        os.environ["IMMICH_MEMORIES_SELECTION_TRACE"] = str(path)
+
+
 def register_generate_commands(main: click.Group) -> None:
     """Register the generate command on the main CLI group."""
 
@@ -305,6 +312,11 @@ def register_generate_commands(main: click.Group) -> None:
     )
     @click.option("--dry-run", is_flag=True, help="Show what would be done without generating")
     @click.option(
+        "--trace-selection",
+        type=click.Path(dir_okay=False, path_type=Path),
+        help="Write a stage-by-stage report of how the clips were chosen",
+    )
+    @click.option(
         "--upload-to-immich",
         is_flag=True,
         default=False,
@@ -425,6 +437,7 @@ def register_generate_commands(main: click.Group) -> None:
         music: str | None,
         no_music: bool,
         dry_run: bool,
+        trace_selection: Path | None,
         upload_to_immich: bool,
         album: str | None,
         from_album: str | None,
@@ -466,6 +479,8 @@ def register_generate_commands(main: click.Group) -> None:
           --start 2024-01-01 --end 2024-06-30   Custom range
           --start 2024-01-01 --period 6m        Period from start
         """
+        _arm_selection_trace(trace_selection)
+
         from immich_memories.cli._live_display import LiveDisplay, ProgressDisplay, QuietDisplay
 
         config = ctx.obj["config"]

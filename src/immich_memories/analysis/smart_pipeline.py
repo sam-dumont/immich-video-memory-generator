@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from immich_memories.analysis import selection_trace as trace
 from immich_memories.analysis.clip_analyzer import ClipAnalyzer
 from immich_memories.analysis.clip_refiner import ClipRefiner
 from immich_memories.analysis.clip_scaler import ClipScaler
@@ -367,6 +369,12 @@ class SmartPipeline:
                 "Verify pass: analyzing %d selected clip(s) the review cannot see",
                 len(unverified),
             )
+            trace.record(
+                "verify: analyze unseen",
+                result.selected_clips,
+                result.selected_clips,
+                [f"{len(unverified)} clip(s) analyzed for real before judging"],
+            )
             attempted.update(u.clip.asset.id for u in unverified)
             try:
                 verified = self.analyzer.phase_analyze([u.clip for u in unverified], self.tracker)
@@ -518,8 +526,15 @@ class SmartPipeline:
         selected = [by_id[c.asset.id] for c in result.selected_clips if c.asset.id in by_id]
         drops = review_selection(selected, self._app_config.llm)
         if not drops:
+            trace.record("llm review", selected, selected)
             return result, analyzed, False
-        remaining = [c for c in analyzed if c.clip.asset.id not in set(drops)]
+        dropped = set(drops)
+        trace.record(
+            "llm review",
+            selected,
+            [c for c in selected if c.clip.asset.id not in dropped],
+        )
+        remaining = [c for c in analyzed if c.clip.asset.id not in dropped]
         if not remaining:
             return result, analyzed, False
         # WHY the pool shrinks too: a later stabilization re-refines from the
@@ -596,6 +611,19 @@ class SmartPipeline:
                 lambda _: progress_callback(self.tracker.get_status_summary())
             )
 
+        # WHY an environment variable rather than an argument: every caller of
+        # this method — CLI, UI, scripts — would otherwise need a parameter it
+        # does not use, to carry a debugging concern four layers down.
+        trace_path = os.environ.get("IMMICH_MEMORIES_SELECTION_TRACE")
+        with trace.tracing(Path(trace_path) if trace_path else None):
+            return self._run_selection(analyzed, verify=verify)
+
+    def _run_selection(
+        self,
+        analyzed: list[ClipWithSegment],
+        *,
+        verify: bool,
+    ) -> PipelineResult:
         try:
             result = self.refiner.phase_refine(analyzed, self.tracker)
             if verify:
