@@ -1,13 +1,12 @@
 """High-level music generation functions.
 
-Provides generate_music_for_video() and generate_music_sync() which
+Provides generate_music_for_video() which
 orchestrate music generation using either the multi-provider pipeline
 or the legacy MusicGen client path.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import random
 from pathlib import Path
@@ -206,27 +205,3 @@ def _has_pipeline_backends(app_config: object) -> bool:
     ace = getattr(app_config, "ace_step", None)
     mg = getattr(app_config, "musicgen", None)
     return bool((ace and ace.enabled) or (mg and mg.enabled))
-
-
-# =============================================================================
-# Sync Wrapper
-# =============================================================================
-
-
-def generate_music_sync(
-    timeline: VideoTimeline,
-    mood: str,
-    output_dir: Path,
-    config: MusicGenClientConfig | None = None,
-    progress_callback: callable | None = None,
-) -> MusicGenerationResult:
-    """Synchronous wrapper for generate_music_for_video."""
-    return asyncio.run(
-        generate_music_for_video(
-            timeline=timeline,
-            mood=mood,
-            output_dir=output_dir,
-            config=config,
-            progress_callback=progress_callback,
-        )
-    )

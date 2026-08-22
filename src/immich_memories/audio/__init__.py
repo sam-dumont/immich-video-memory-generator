@@ -18,7 +18,6 @@ __all__ = [
     "MusicGenerationResult",
     "StemDuckingConfig",
     "generate_music_for_video",
-    "generate_music_sync",
     # Mood analysis
     "VideoMood",
     "MoodAnalyzer",
@@ -67,7 +66,6 @@ _SUBMODULE_MAP = {
     "StemDuckingConfig": "immich_memories.audio.music_generator_models",
     "VideoTimeline": "immich_memories.audio.music_generator_models",
     "generate_music_for_video": "immich_memories.audio.music_generator",
-    "generate_music_sync": "immich_memories.audio.music_generator",
     "LocalMusicSource": "immich_memories.audio.music_sources",
     "MusicSource": "immich_memories.audio.music_sources",
     "MusicTrack": "immich_memories.audio.music_sources",

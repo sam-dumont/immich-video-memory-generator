@@ -156,7 +156,15 @@ class MusicPipeline:
                 logger.info(f"Generating with {gen.name}")
                 return await gen.generate(request, _progress)
 
-            except (RuntimeError, OSError):
+            except Exception:
+                # WHY broad: the point of a backend chain is that one backend
+                # failing is not the run failing, and each backend fails in its
+                # own vocabulary — a hosted one raises httpx.HTTPStatusError,
+                # which is neither RuntimeError nor OSError and used to escape
+                # the chain entirely. CancelledError is a BaseException and
+                # still propagates.
+                # No exc_info: a backend's exception text can carry its URL or
+                # key, and these logs are kept deliberately quiet about that.
                 logger.warning("Music backend %s failed; trying next backend", gen.name)
                 continue
 
@@ -183,14 +191,25 @@ class MusicPipeline:
                 logger.warning("Stem separator unavailable, skipping")
                 return None
 
+            # WHY a directory per version: Demucs writes fixed stem filenames
+            # (vocals.wav, drums.wav...), so three versions separating into one
+            # directory left one set of stems belonging to whichever finished
+            # last, silently attributed to all three.
+            stem_dir = request.output_dir / f"version_{version_idx}"
+            stem_dir.mkdir(parents=True, exist_ok=True)
+
             logger.info(f"Separating stems with {self._stem_separator.name}")
             return await self._stem_separator.separate_stems(
                 result.audio_path,
-                output_dir=request.output_dir,
+                output_dir=stem_dir,
                 progress_callback=_progress,
             )
 
-        except (ImportError, RuntimeError, OSError):
+        except Exception:
+            # WHY broad: same reasoning as the backend chain — stems are a
+            # bonus, and no way of failing to produce them should cost the
+            # music that was already generated.
+            # No exc_info, for the same reason as the backend chain above.
             logger.warning("Stem separation failed; continuing without stems")
             return None
 
