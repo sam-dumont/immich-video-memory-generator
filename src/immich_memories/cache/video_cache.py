@@ -373,6 +373,20 @@ class VideoDownloadCache:
         batch: CacheBatch,
     ) -> Path | None:
         """Download implementation that updates a caller-owned manifest."""
+        # A still with no live-photo component is not video, and handing the
+        # decoder a HEIC ends the whole run: two year_in_review sweeps died on
+        # "OpenCV: Couldn't read video stream" over a plain IMG_*.HEIC. Skip it
+        # and say which asset, so whatever routed a photo here stays findable.
+        from immich_memories.api.models import AssetType
+
+        if asset.type == AssetType.IMAGE and not asset.live_photo_video_id:
+            logger.warning(
+                "Not video, skipping: %s (%s) reached the video cache as a still",
+                asset.original_file_name or asset.id,
+                asset.id,
+            )
+            return None
+
         # For live photos, the video is a separate asset
         download_id = asset.live_photo_video_id or asset.id
         ext = Path(asset.original_file_name or "video.mp4").suffix or ".mp4"
