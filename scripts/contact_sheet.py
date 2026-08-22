@@ -60,6 +60,22 @@ def _collect(rows: list[dict]):
     SmartPipeline.run_selection = spy
 
 
+def _thumbnail(client, asset_id: str):
+    """Fetch a tile, trying the sizes Immich offers before giving up.
+
+    Live Photo video components do not always answer on "preview", and a run
+    that silently renders grey squares cannot be reviewed.
+    """
+    from PIL import Image
+
+    for size in ("preview", "thumbnail"):
+        try:
+            return Image.open(io.BytesIO(client.get_asset_thumbnail(asset_id, size))).convert("RGB")
+        except Exception:  # noqa: BLE001, PERF203 - try the next size, then give up
+            continue
+    return None
+
+
 def _fonts():
     from PIL import ImageFont
 
@@ -103,15 +119,17 @@ def _draw(rows: list[dict], label: str, subtitle: str, out: Path) -> Path:
         for i, row in enumerate(rows):
             x = PAD + (i % COLUMNS) * (THUMB_W + PAD)
             y = HEADER_H + (i // COLUMNS) * (THUMB_H + LABEL_H + PAD)
-            try:
-                data = client.get_asset_thumbnail(row["id"], "preview")
-                image = Image.open(io.BytesIO(data)).convert("RGB")
+            image = _thumbnail(client, row["id"])
+            if image is None:
+                # A blank tile is unreviewable, so say why rather than leave a
+                # grey square the reader has to guess at.
+                draw.rectangle([x, y, x + THUMB_W, y + THUMB_H], fill=(40, 40, 44))
+                draw.text((x + 10, y + THUMB_H // 2), "no thumbnail", (200, 120, 110), font=font)
+            else:
                 image.thumbnail((THUMB_W, THUMB_H))
                 sheet.paste(
                     image, (x + (THUMB_W - image.width) // 2, y + (THUMB_H - image.height) // 2)
                 )
-            except Exception:  # noqa: BLE001 - a missing thumbnail costs a tile, not the sheet
-                draw.rectangle([x, y, x + THUMB_W, y + THUMB_H], fill=(40, 40, 44))
             on_busiest = row["day"] in dict(busiest)
             draw.text(
                 (x + 2, y + THUMB_H + 4),
